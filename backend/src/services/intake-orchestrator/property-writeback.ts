@@ -61,6 +61,21 @@ function extractMunicipalDetail(
 }
 
 /**
+ * Extracts the regulatory_lookup log entry (status 'ok') from an enrichment_log
+ * array. Returns null if not present or not status ok.
+ */
+function extractRegulatoryDetail(
+  log: LogEntry[],
+): { constraints: Record<string, unknown>; ts: string } | null {
+  const entry = log.find(
+    (e) => e.step === 'regulatory_lookup' && e.status === 'ok' && e.detail?.constraints,
+  );
+  if (!entry) return null;
+  const constraints = entry.detail!.constraints as Record<string, unknown>;
+  return { constraints, ts: entry.ts };
+}
+
+/**
  * Writes enrichment data from the log into property_descriptions for the given
  * parcel. Returns a summary of what was written.
  *
@@ -74,64 +89,86 @@ export async function writeBackToPropertyDescriptions(
     return { parcelId: '', fieldsWritten: [], source: null, skipped: true, skipReason: 'no_parcel_id' };
   }
 
-  const municipal = extractMunicipalDetail(enrichmentLog);
-  if (!municipal) {
+  const municipal   = extractMunicipalDetail(enrichmentLog);
+  const regulatory  = extractRegulatoryDetail(enrichmentLog);
+
+  // Skip only when neither section has anything to contribute.
+  if (!municipal && !regulatory) {
     return { parcelId, fieldsWritten: [], source: null, skipped: true, skipReason: 'no_municipal_ok_entry' };
   }
-
-  const { detail: d, ts: runAt } = municipal;
-  const arcgisSource = typeof d.source === 'string' ? d.source : 'unknown';
-  const lvSource = `municipal:${arcgisSource}`;
 
   // Build the SET clauses. Each field is only written when:
   //   (a) the current column value is NULL, OR
   //   (b) the current source is NOT 'user' (preserves manual overrides)
   type FieldSpec = { col: string; value: unknown };
   const fields: FieldSpec[] = [];
-
-  if (typeof d.address === 'string' && d.address) {
-    fields.push({ col: 'address', value: d.address });
-  }
-  if (typeof d.county === 'string' && d.county) {
-    fields.push({ col: 'county', value: d.county });
-  }
-  if (d.units != null && typeof d.units === 'number') {
-    fields.push({ col: 'unit_count', value: d.units });
-  }
-  if (d.land_acres != null && typeof d.land_acres === 'number') {
-    fields.push({ col: 'lot_size_acres', value: d.land_acres });
-  }
-  if (d.assessed_value != null && typeof d.assessed_value === 'number') {
-    fields.push({ col: 'assessed_value', value: d.assessed_value });
-  }
-  if (d.appraised_value != null && typeof d.appraised_value === 'number') {
-    fields.push({ col: 'appraised_value', value: d.appraised_value });
-  }
-  if (typeof d.owner === 'string' && d.owner.trim()) {
-    fields.push({ col: 'owner', value: d.owner.trim() });
-  }
-
-  if (fields.length === 0) {
-    return { parcelId, fieldsWritten: [], source: lvSource, skipped: true, skipReason: 'no_mappable_fields' };
-  }
-
-  // Build parameterised UPDATE
-  // For each field: only overwrite if NULL or source != 'user'
   const setClauses: string[] = [];
   const params: unknown[] = [];
   let idx = 1;
 
-  for (const f of fields) {
-    const lv = JSON.stringify(buildLV(f.value, lvSource, runAt));
+  // ── Municipal / ArcGIS fields ─────────────────────────────────────────────
+  let lvSource: string | null = null;
+
+  if (municipal) {
+    const { detail: d, ts: runAt } = municipal;
+    const arcgisSource = typeof d.source === 'string' ? d.source : 'unknown';
+    lvSource = `municipal:${arcgisSource}`;
+
+    if (typeof d.address === 'string' && d.address) {
+      fields.push({ col: 'address', value: d.address });
+    }
+    if (typeof d.county === 'string' && d.county) {
+      fields.push({ col: 'county', value: d.county });
+    }
+    if (d.units != null && typeof d.units === 'number') {
+      fields.push({ col: 'unit_count', value: d.units });
+    }
+    if (d.land_acres != null && typeof d.land_acres === 'number') {
+      fields.push({ col: 'lot_size_acres', value: d.land_acres });
+    }
+    if (d.assessed_value != null && typeof d.assessed_value === 'number') {
+      fields.push({ col: 'assessed_value', value: d.assessed_value });
+    }
+    if (d.appraised_value != null && typeof d.appraised_value === 'number') {
+      fields.push({ col: 'appraised_value', value: d.appraised_value });
+    }
+    if (typeof d.owner === 'string' && d.owner.trim()) {
+      fields.push({ col: 'owner', value: d.owner.trim() });
+    }
+
+    for (const f of fields) {
+      const lv = JSON.stringify(buildLV(f.value, lvSource, runAt));
+      setClauses.push(
+        `${f.col} = CASE
+           WHEN ${f.col} IS NULL THEN $${idx}::jsonb
+           WHEN ${f.col}->>'source' = 'user' THEN ${f.col}
+           ELSE $${idx}::jsonb
+         END`,
+      );
+      params.push(lv);
+      idx++;
+    }
+  }
+
+  // ── regulatory_constraints (M02) ─────────────────────────────────────────
+  // Written as a raw JSONB blob (the full RegulatoryConstraints object).
+  // The top-level source guard rejects writes only when the stored value
+  // carries source='user', matching the same convention as municipal fields.
+  if (regulatory) {
     setClauses.push(
-      `${f.col} = CASE
-         WHEN ${f.col} IS NULL THEN $${idx}::jsonb
-         WHEN ${f.col}->>'source' = 'user' THEN ${f.col}
+      `regulatory_constraints = CASE
+         WHEN regulatory_constraints IS NULL THEN $${idx}::jsonb
+         WHEN regulatory_constraints->>'source' = 'user' THEN regulatory_constraints
          ELSE $${idx}::jsonb
        END`,
     );
-    params.push(lv);
+    params.push(JSON.stringify(regulatory.constraints));
     idx++;
+    fields.push({ col: 'regulatory_constraints', value: '__jsonb__' });
+  }
+
+  if (setClauses.length === 0) {
+    return { parcelId, fieldsWritten: [], source: lvSource, skipped: true, skipReason: 'no_mappable_fields' };
   }
 
   params.push(parcelId);
@@ -162,7 +199,7 @@ export async function writeBackToPropertyDescriptions(
 
   const fieldsWritten = fields.map((f) => f.col);
   logger.debug(
-    `[property-writeback] parcel ${parcelId} → wrote [${fieldsWritten.join(', ')}] (source: ${lvSource})`,
+    `[property-writeback] parcel ${parcelId} → wrote [${fieldsWritten.join(', ')}] (source: ${lvSource ?? 'regulatory'})`,
   );
 
   return { parcelId, fieldsWritten, source: lvSource, skipped: false };

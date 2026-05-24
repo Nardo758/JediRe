@@ -410,4 +410,80 @@ router.post('/scrape/fulton', requireAuth, async (req: AuthenticatedRequest, res
   }
 });
 
+/**
+ * GET /api/v1/properties/by-parcel/:parcelId/summary
+ *
+ * Returns the merged property + property_descriptions record for a county
+ * parcel ID. Includes regulatory_constraints (M02 output) when available.
+ *
+ * Used by:
+ *   - M02 paired-read verification
+ *   - Any consumer that needs the full enriched view for a known parcel
+ */
+router.get('/by-parcel/:parcelId/summary', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { parcelId } = req.params;
+    if (!parcelId || !parcelId.trim()) {
+      res.status(400).json({ error: 'parcelId is required' });
+      return;
+    }
+
+    const result = await query(
+      `SELECT
+         p.id,
+         p.parcel_id,
+         p.address_line1,
+         p.city,
+         p.state_code,
+         p.zip,
+         p.property_type,
+         p.year_built,
+         p.lot_size_sqft,
+         p.created_at,
+         p.updated_at,
+         pd.unit_count,
+         pd.lot_size_acres,
+         pd.assessed_value,
+         pd.appraised_value,
+         pd.owner,
+         pd.county,
+         pd.regulatory_constraints
+       FROM properties p
+       LEFT JOIN property_descriptions pd ON pd.parcel_id = p.parcel_id
+       WHERE p.parcel_id = $1
+       LIMIT 1`,
+      [parcelId.trim()],
+    );
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: 'Property not found', parcelId });
+      return;
+    }
+
+    const row = result.rows[0];
+    res.json({
+      parcel_id:              row.parcel_id,
+      property_id:            row.id,
+      address:                row.address_line1,
+      city:                   row.city,
+      state:                  row.state_code,
+      zip:                    row.zip,
+      property_type:          row.property_type,
+      year_built:             row.year_built,
+      lot_size_sqft:          row.lot_size_sqft,
+      // LayeredValue fields from property_descriptions
+      unit_count:             row.unit_count,
+      lot_size_acres:         row.lot_size_acres,
+      assessed_value:         row.assessed_value,
+      appraised_value:        row.appraised_value,
+      owner:                  row.owner,
+      county:                 row.county,
+      // M02 output
+      regulatory_constraints: row.regulatory_constraints ?? null,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

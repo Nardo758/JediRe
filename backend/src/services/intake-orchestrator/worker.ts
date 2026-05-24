@@ -25,6 +25,7 @@ import {
   setCachedGeocodeFailed,
 } from '../geocoder/census/geocode-cache';
 import { writeBackToPropertyDescriptions } from './property-writeback';
+import { lookupRegulatory } from '../regulatory/m02-zoning';
 
 const POLL_INTERVAL_MS = parseInt(process.env.INTAKE_POLL_INTERVAL_MS || '30000', 10);
 const BATCH_SIZE = parseInt(process.env.INTAKE_BATCH_SIZE || '20', 10);
@@ -397,6 +398,76 @@ async function stepGooglePlaces(jobId: string): Promise<void> {
   });
 }
 
+// ── Step (e): M02 Regulatory lookup ──────────────────────────────────────────
+
+async function stepRegulatoryLookup(
+  jobId: string,
+  address: string | null,
+  state: string | null,
+  city: string | null,
+): Promise<void> {
+  if (!address || !state) {
+    await appendLog(jobId, {
+      step: 'regulatory_lookup',
+      status: 'blocked',
+      ts: ts(),
+      detail: { reason: 'missing_address_or_state' },
+    });
+    return;
+  }
+
+  // Retrieve lat/lng and county FIPS from the geocoder cache (populated during
+  // stepMunicipalLookup for GA addresses — and for any state once Census runs).
+  let lat: number | null = null;
+  let lng: number | null = null;
+  let countyFips: string | null = null;
+
+  try {
+    const cached = await getCachedGeocode(address);
+    if (cached && !cached.geocodeFailed) {
+      lat        = cached.lat;
+      lng        = cached.lng;
+      countyFips = cached.countyFips;
+    }
+  } catch (_) {
+    // Non-fatal: proceed without coordinates (adapter will degrade gracefully)
+  }
+
+  try {
+    const rc = await lookupRegulatory({
+      address,
+      lat,
+      lng,
+      county_fips: countyFips,
+      city,
+      state,
+    });
+
+    await appendLog(jobId, {
+      step: 'regulatory_lookup',
+      status: rc.zone_code.value !== null || rc.jurisdiction.value ? 'ok' : 'not_implemented',
+      ts: ts(),
+      detail: {
+        jurisdiction:   rc.jurisdiction.value,
+        zone_code:      rc.zone_code.value,
+        far_max:        rc.far_max.value,
+        height_max_ft:  rc.height_max_feet.value,
+        density_max:    rc.density_max_units_per_acre.value,
+        regulatory_model: rc.regulatory_model.value,
+        source_chain:   rc.source_chain,
+        constraints:    rc,   // full object stored in log for writeback
+      },
+    });
+  } catch (err: any) {
+    await appendLog(jobId, {
+      step: 'regulatory_lookup',
+      status: 'error',
+      ts: ts(),
+      detail: { error: err?.message ?? String(err), address, state },
+    });
+  }
+}
+
 // ── Parcel-id extraction from source_data ────────────────────────────────────
 
 function extractParcelId(sourceData: Record<string, unknown> | null): string | null {
@@ -464,6 +535,7 @@ async function processJob(job: {
 
     const otherDocs = await stepOtherDocs(id, parcel_id);
     const municipal = await stepMunicipalLookup(id, lookupAddress, lookupState, parcel_id, lookupCity);
+    await stepRegulatoryLookup(id, lookupAddress, lookupState, lookupCity);
     await stepWebSearch(id);
     await stepGooglePlaces(id);
 
