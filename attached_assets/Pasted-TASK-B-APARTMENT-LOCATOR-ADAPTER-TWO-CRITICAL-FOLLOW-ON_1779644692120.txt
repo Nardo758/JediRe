@@ -1,0 +1,287 @@
+TASK B — APARTMENT LOCATOR ADAPTER + TWO CRITICAL FOLLOW-ONS
+
+CONTEXT
+Tasks A + C shipped clean. property_descriptions now receives 
+write-back from the orchestrator, the producer/reader contract is 
+verified, and 170 retroactively-enriched properties are now visible 
+via the API.
+
+This dispatch wires the Apartment Locator scrape feed into the 
+orchestrator. It also addresses two issues surfaced by the A+C 
+closing note:
+
+(1) The historical Apartment Locator ingest produced 53 duplicate 
+    pairs of apartment_locator_id values. The new unique partial 
+    index on (source_type, source_record_id) will now reject 
+    duplicate inserts at the DB layer. The adapter MUST be 
+    duplicate-safe via UPSERT or pre-check pattern, or the daily 
+    scrape will start failing silently on every duplicate.
+
+(2) The municipal_lookup step extracts assessed_value, 
+    appraised_value, and owner — all valuable fields with no 
+    column in property_descriptions. These are not minor: 
+    assessed_value drives tax-formula reversal for Comp ProForma 
+    reconstruction; appraised_value is the county's market valuation; 
+    owner is critical for off-market deal sourcing. This dispatch 
+    adds the columns and extends the write-back path so the data 
+    is no longer log-only.
+
+═══════════════════════════════════════════════════════════════════
+PRINCIPLES
+═══════════════════════════════════════════════════════════════════
+
+1. INVESTIGATION FIRST — both Task B and the column additions have 
+   investigation gates. Don't write code until findings are reported.
+
+2. IDEMPOTENCY IS NON-NEGOTIABLE. The Apartment Locator adapter 
+   must produce no duplicate intake_jobs given repeated scrape 
+   records with the same source_record_id. Either UPSERT on the 
+   unique constraint or pre-check before insert. Failure to handle 
+   this means daily scrape failures.
+
+3. PAIRED-READ VERIFICATION IS THE GATE. Same discipline as A+C — 
+   for the column additions, after write-back is extended, 5 
+   sample properties must show the new fields visible via 
+   GET /api/v1/properties/:parcelId/summary. If verification fails, 
+   STOP.
+
+4. NO BUNDLING OF UNRELATED WORK. The two follow-ons are listed 
+   explicitly because they emerged from A+C closing findings. Do 
+   not add other "while I'm here" fixes — those go to separate 
+   dispatches.
+
+5. PRESERVE THE LOG-AS-TRUTH PATTERN. The orchestrator log remains 
+   the audit trail. Backfill for new columns replays from log, 
+   does not re-run enrichment.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INVESTIGATION (no code yet)
+═══════════════════════════════════════════════════════════════════
+
+A. APARTMENT LOCATOR CURRENT PATH
+
+   - Where does Apartment Locator data currently enter the platform?
+   - What's the data shape? Paste 1 raw sample record (literal JSON)
+   - What primary identifier does it carry? (likely apartment_locator_id, 
+     but confirm)
+   - Where in the codebase does the current "dump into DB" happen?
+   - What table(s) does it currently write to? (Note: A+C closing 
+     mentioned existing rows with apartment_locator_id — confirm 
+     which table)
+   - What is the current daily volume? (rough — last 7 days count 
+     is fine)
+   - What fields can be reliably extracted from a scrape record:
+     property_name, address, lat/long, unit_count, rent_ranges, 
+     amenities?
+
+B. DUPLICATE PATTERN ANALYSIS
+
+   - The 53 duplicate pairs had what shape? Same address with 
+     different IDs? Same ID with different timestamps? Same record 
+     re-scraped?
+   - Sample 3 duplicate pairs (paste IDs + key fields side by side)
+   - Determines whether dedup key is (source_type, source_record_id) 
+     or needs to be (source_type, address_canonical) or something else
+
+C. property_descriptions COLUMN GAP
+
+   - Confirm property_descriptions does NOT currently have 
+     assessed_value, appraised_value, or owner columns
+   - Identify the LayeredValue schema convention used by existing 
+     columns (e.g., unit_count, year_built) so the new columns 
+     match
+
+REPORT FINDINGS TO LEON BEFORE WRITING CODE. STOP GATE.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — SCHEMA: ADD THREE COLUMNS TO property_descriptions
+═══════════════════════════════════════════════════════════════════
+
+Reversible migration:
+
+ALTER TABLE property_descriptions
+  ADD COLUMN assessed_value  jsonb,  -- LayeredValue<number>
+  ADD COLUMN appraised_value jsonb,  -- LayeredValue<number>
+  ADD COLUMN owner           jsonb;  -- LayeredValue<string>
+
+Match the existing { value, source, runAt } shape per A+C findings.
+
+Add index for owner-name search (Step 4 use case):
+CREATE INDEX idx_pd_owner_value ON property_descriptions 
+  USING gin ((owner -> 'value'));
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — EXTEND WRITE-BACK MODULE
+═══════════════════════════════════════════════════════════════════
+
+Update property-writeback.ts to map:
+
+| Log field         | property_descriptions column | Layer    |
+|-------------------|------------------------------|----------|
+| assessed_value    | assessed_value               | municipal|
+| appraised_value   | appraised_value              | municipal|
+| owner             | owner                        | municipal|
+
+Same { value, source: "municipal:<arcgis_source>", runAt } shape as 
+existing fields. Same user-override protection (skip if source = 
+"user").
+
+Run backfill across the 170 already-enriched properties to populate 
+the new columns from their existing enrichment_log.
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — PAIRED-READ VERIFICATION FOR NEW COLUMNS
+═══════════════════════════════════════════════════════════════════
+
+Pick 5 properties from the 170 that have assessed_value, 
+appraised_value, and owner data in their enrichment_log.
+
+For each:
+a. Paste the log entry showing the three values (literal JSON)
+b. Hit GET /api/v1/properties/:parcelId/summary
+c. Show the relevant section of the API response  
+d. Confirm all three new fields visible with correct provenance
+
+If any of the 5 fail verification, STOP. Don't proceed to Apartment 
+Locator adapter work. Report what's missing and diagnose.
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — APARTMENT LOCATOR SOURCE ADAPTER
+═══════════════════════════════════════════════════════════════════
+
+Location: src/services/intake-sources/apartment-locator/
+
+A. NORMALIZE FUNCTION
+
+   Convert a scrape record into an IntakeJob payload:
+   {
+     source_type: 'apartment_locator',
+     source_record_id: <scrape's primary ID — confirmed in Step 1>,
+     raw_input: <full original scrape record as jsonb>,
+     parcel_id: <if extractable from scrape; can be null>,
+     status: 'pending',
+   }
+
+B. IDEMPOTENCY VIA UPSERT
+
+   Use INSERT ... ON CONFLICT (source_type, source_record_id) 
+   WHERE source_type IS NOT NULL AND source_record_id IS NOT NULL 
+   DO UPDATE SET:
+   - raw_input = EXCLUDED.raw_input (refresh in case scrape updated)
+   - updated_at = NOW()
+   - DO NOT touch status, attempts, or enrichment_log (preserve 
+     in-flight processing state)
+   
+   This means re-scraping the same record refreshes the raw_input 
+   but doesn't restart processing. Correct semantics.
+
+C. REPLACE CURRENT "DUMP INTO DB" PATH
+
+   - Find the current ingest code (identified in Step 1)
+   - Replace direct table writes with this adapter's normalize → 
+     upsert flow
+   - Preserve any non-orchestrator-relevant data writes (e.g., if 
+     scrape data is also written to a separate scrape-archive table 
+     for analytics, leave that alone)
+
+D. ORCHESTRATOR INTEGRATION
+
+   No orchestrator changes needed — it picks up status='pending' 
+   jobs on the next poll cycle. Confirm by manually triggering a 
+   poll after creating a test job.
+
+═══════════════════════════════════════════════════════════════════
+STEP 6 — DUPLICATE-CLEANUP VERIFICATION
+═══════════════════════════════════════════════════════════════════
+
+For the 53 historical duplicate pairs (the "losers" left at NULL 
+source_record_id per Task A migration):
+
+A. Are any of them currently 'pending' or 'enriching'? If yes, the 
+   orchestrator would be processing duplicates — not ideal. Decide 
+   whether to mark them 'ignored' to skip processing.
+
+B. If 'complete' duplicates exist, verify they wrote to the same 
+   property_descriptions row (parcel_id-keyed, not adapter-id-keyed). 
+   If two complete jobs wrote to the same property, the later one 
+   should have won via the write-back's UPSERT semantics. Confirm.
+
+C. Document the 53 duplicates' final disposition in the closing 
+   note.
+
+═══════════════════════════════════════════════════════════════════
+STEP 7 — END-TO-END VERIFICATION
+═══════════════════════════════════════════════════════════════════
+
+A. Manually trigger an Apartment Locator scrape (or replay one 
+   historical record through the new adapter).
+
+B. Confirm:
+   - intake_jobs row created with source_type='apartment_locator', 
+     source_record_id populated
+   - Re-running with the same source_record_id produces UPSERT, not 
+     duplicate row (verify via DB check)
+   - Orchestrator picks up the job, processes through enrichment 
+     chain
+   - On complete, property_descriptions reflects the result via 
+     write-back
+   - GET /api/v1/properties/:parcelId/summary returns the data
+
+C. Stress test idempotency: send the same record 5 times in rapid 
+   succession. Confirm exactly 1 intake_jobs row exists at the end.
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE in docs/operations/TASK_B_CLOSING.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Investigation findings (Step 1) — including raw scrape sample, 
+    daily volume, duplicate pattern analysis
+
+(b) Schema migration — three new columns added to 
+    property_descriptions
+
+(c) Write-back extension — mapping of new fields, backfill counts 
+    (170 properties × 3 new fields, populated where log data 
+    present)
+
+(d) Paired-read verification — 5 properties with literal log 
+    entries and literal API response sections
+
+(e) Apartment Locator adapter — diff summary, location, 
+    integration point
+
+(f) Idempotency proof — stress test result (5 identical posts → 
+    1 row)
+
+(g) Duplicate cleanup disposition — what happened to the 53 
+    historical duplicate pairs
+
+(h) End-to-end verification — sample property name + parcel_id + 
+    timestamp showing a scrape record went all the way through to 
+    visible API output
+
+(i) Pattern note: Apartment Locator is now the first non-OM 
+    upstream source wired through the orchestrator. Future sources 
+    (Data Library uploads in Phase 1.3, future Pipeline-deal 
+    pageloads, future email ingestion) follow this same pattern — 
+    normalize to IntakeJob with source_type + source_record_id, 
+    upsert via the unique constraint, let orchestrator handle the 
+    rest.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Mark complete without paired-read verification passing (Step 4)
+- Mark complete without idempotency stress test passing (Step 7C)
+- Skip Step 1 investigation gate
+- Build a Data Library upload adapter in this dispatch (Phase 1.3, 
+  separate)
+- Build any new county adapters (multi-metro work, separate)
+- Modify the orchestrator state machine or enrichment chain
+- Touch the per-property page or library page UIs
+- Add scrape filtering or scope-narrowing logic (separate scope 
+  decision)
+- Fake success in any return path — explicit error states required
+- Re-run enrichment during the new-column backfill — replay from 
+  cached log only
