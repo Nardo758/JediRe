@@ -48,6 +48,12 @@ import {
 const GWINNETT_TAX_MASTER_URL =
   'https://services3.arcgis.com/RfpmnkSAQleRbndX/arcgis/rest/services/Property_and_Tax/FeatureServer/3/query';
 
+// Layer 0 is the polygon Parcel layer and supports esriSpatialRelIntersects.
+// Layer 3 (Tax Master Table) is attribute-only and does NOT support spatial queries.
+// WGS84 strategy: spatial intersect on L0 to recover PIN, then L3 attribute lookup for full data.
+const GWINNETT_PARCELS_L0_URL =
+  'https://services3.arcgis.com/RfpmnkSAQleRbndX/arcgis/rest/services/Property_and_Tax/FeatureServer/0/query';
+
 const OUT_FIELDS = [
   'PIN', 'RPIN', 'LRSN',
   'LOCADDR', 'LOCCITY', 'LOCZIP',
@@ -248,24 +254,93 @@ async function queryArcGIS(
   };
 }
 
+// ─── WGS84 spatial intersect (two-step) ──────────────────────────────────────
+
+/**
+ * Spatial intersect using WGS84 lat/lng (WKID 4326).
+ *
+ * Two-step strategy required because Gwinnett's Tax Master Table (layer 3)
+ * is attribute-only and does NOT support spatial queries.  Layer 0 (Parcels)
+ * is the polygon layer that DOES support esriSpatialRelIntersects.
+ *
+ *   Step 1 — L0 spatial: point-in-polygon → recovers PIN
+ *   Step 2 — L3 attr:    PIN = '{pin}'    → full financial record
+ *
+ * Recovers addresses whose stored STRNUM/STRNAME don't match the Census-
+ * normalized input form but whose geocoded point falls inside the parcel polygon.
+ */
+async function queryParcelByWgs84(lat: number, lng: number, inputAddress: string): Promise<MunicipalLookupResult> {
+  // Step 1: spatial intersect on L0 (Parcels polygon layer)
+  const geometry = JSON.stringify({
+    x: lng,
+    y: lat,
+    spatialReference: { wkid: 4326 },
+  });
+
+  const l0Params = new URLSearchParams({
+    geometry,
+    geometryType: 'esriGeometryPoint',
+    spatialRel:   'esriSpatialRelIntersects',
+    inSR:         '4326',
+    outFields:    'PIN',
+    resultRecordCount: '1',
+    returnGeometry: 'false',
+    f: 'json',
+  });
+
+  const { data: l0Data, error: l0Err } = await fetchArcGIS(GWINNETT_PARCELS_L0_URL + '?' + l0Params.toString());
+  if (l0Err) return { status: 'error', error: l0Err };
+
+  const l0Features: any[] = l0Data?.features ?? [];
+  if (l0Features.length === 0) return { status: 'not_found' };
+
+  const pin: string | null = l0Features[0].attributes?.PIN ?? null;
+  if (!pin) return { status: 'not_found' };
+
+  logger.debug(`[gwinnett-ga] WGS84 L0 spatial → PIN "${pin}", fetching L3 record`);
+
+  // Step 2: attribute query on L3 (Tax Master Table) for full financial data
+  const l3Where = `PIN = '${sanitize(pin)}'`;
+  const result = await queryArcGIS(l3Where, inputAddress);
+
+  if (result.status === 'ok') {
+    logger.debug(`[gwinnett-ga] WGS84 two-step resolved → PIN ${result.parcel_id}`);
+  }
+  return result;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * Look up a Gwinnett County parcel by street address.
  *
- * knownCoords (WGS84 lat/lng from Census Geocoder) is accepted for API
- * consistency with the Cobb and DeKalb adapters, but Gwinnett's
- * Property_and_Tax FeatureServer does not support esriSpatialRelIntersects
- * on any of its layers — spatial queries always return "Invalid query
- * parameters".  Until Gwinnett publishes a spatial-capable parcel service,
- * knownCoords is intentionally ignored and the address WHERE-clause is used
- * unconditionally.
+ * Two-path strategy:
+ *   A) knownCoords provided (WGS84 lat/lng from Census Geocoder)
+ *      → L0 spatial intersect to recover PIN, then L3 attribute lookup for
+ *        full financial record; fall back to address WHERE-clause on not_found/error.
+ *        Recovers addresses whose stored STRNUM/STRNAME doesn't match the input form.
+ *   B) No knownCoords → address WHERE-clause query (existing path).
  */
 export async function lookupGwinnettGA(
   address: string,
-  knownCoords?: { lat: number; lng: number },  // reserved — spatial not supported by Gwinnett GIS
+  knownCoords?: { lat: number; lng: number },
 ): Promise<MunicipalLookupResult> {
-  logger.debug(`[gwinnett-ga] address lookup: "${address}"`);
+  logger.debug(
+    `[gwinnett-ga] address lookup: "${address}"` +
+    (knownCoords ? ` (pre-geocoded lat=${knownCoords.lat.toFixed(5)}, lng=${knownCoords.lng.toFixed(5)})` : ''),
+  );
+
+  // Path A: Census Geocoder already resolved coordinates — try two-step spatial.
+  if (knownCoords) {
+    const result = await queryParcelByWgs84(knownCoords.lat, knownCoords.lng, address);
+    if (result.status === 'ok') return result;
+    // not_found or transient error — fall back to address WHERE-clause (graceful degradation)
+    logger.debug(
+      `[gwinnett-ga] WGS84 spatial ${result.status} for "${address}", falling back to address WHERE query`,
+    );
+  }
+
+  // Path B: address WHERE-clause query.
   const where = buildAddressWhere(address);
   logger.debug(`[gwinnett-ga] address WHERE: ${where}`);
   return queryArcGIS(where, address);
