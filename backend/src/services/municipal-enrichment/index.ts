@@ -10,7 +10,8 @@
  * City is used to disambiguate multi-county states (TX, FL).
  *
  * Currently implements:
- *   GA → Fulton County ArcGIS adapter      (Atlanta)
+ *   GA → Fulton County ArcGIS adapter      (Atlanta/Fulton)
+ *       → DeKalb County ArcGIS adapter     (fallback for non-Fulton GA addresses)
  *   NC → Mecklenburg County ArcGIS adapter (Charlotte)
  *   TN → Davidson County ArcGIS adapter    (Nashville)
  *   TX → Dallas County DCAD adapter        (Dallas)
@@ -28,6 +29,7 @@
 
 import { logger } from '../../utils/logger';
 import { lookupFultonGA, lookupFultonGAByParcelId }           from './adapters/fulton-ga.adapter';
+import { lookupDeKalbGA, lookupDeKalbGAByParcelId }           from './adapters/dekalb-ga.adapter';
 import { lookupMecklenburgNC, lookupMecklenburgNCByParcelId } from './adapters/mecklenburg-nc.adapter';
 import { lookupDavidsonTN, lookupDavidsonTNByParcelId }       from './adapters/davidson-tn.adapter';
 import { lookupDallasTX, lookupDallasTXByParcelId }           from './adapters/dallas-tx.adapter';
@@ -62,9 +64,14 @@ class MunicipalEnrichmentService {
     }
 
     switch (normalizedState) {
-      case 'GA':
-        logger.debug(`[municipal-enrichment] GA address lookup for "${address}"`);
-        return lookupFultonGA(address.trim());
+      case 'GA': {
+        logger.debug(`[municipal-enrichment] GA address lookup for "${address}" — trying Fulton first`);
+        const fultonResult = await lookupFultonGA(address.trim());
+        if (fultonResult.status === 'ok') return fultonResult;
+        // Fulton returned not_found or error → try DeKalb
+        logger.debug(`[municipal-enrichment] Fulton miss (${fultonResult.status}), falling back to DeKalb for "${address}"`);
+        return lookupDeKalbGA(address.trim());
+      }
 
       case 'NC':
         if (!normalizedCity || normalizedCity.includes('charlotte') || normalizedCity.includes('mecklenburg')) {
@@ -125,9 +132,14 @@ class MunicipalEnrichmentService {
     }
 
     switch (normalizedState) {
-      case 'GA':
-        logger.debug(`[municipal-enrichment] GA parcel-id lookup for "${parcelId}"`);
-        return lookupFultonGAByParcelId(parcelId.trim());
+      case 'GA': {
+        logger.debug(`[municipal-enrichment] GA parcel-id lookup for "${parcelId}" — trying Fulton first`);
+        const fultonResult = await lookupFultonGAByParcelId(parcelId.trim());
+        if (fultonResult.status === 'ok') return fultonResult;
+        // Fulton miss → try DeKalb
+        logger.debug(`[municipal-enrichment] Fulton parcel-id miss (${fultonResult.status}), falling back to DeKalb for "${parcelId}"`);
+        return lookupDeKalbGAByParcelId(parcelId.trim());
+      }
 
       case 'NC':
         if (!normalizedCity || normalizedCity.includes('charlotte') || normalizedCity.includes('mecklenburg')) {
