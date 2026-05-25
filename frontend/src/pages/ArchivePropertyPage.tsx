@@ -513,11 +513,9 @@ export default function ArchivePropertyPage() {
                       }}
                       onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                     />
-                    {p.attribution && (
-                      <div style={{ fontSize: '9px', color: '#8892b0', marginTop: '3px', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        © {p.attribution}
-                      </div>
-                    )}
+                    <div style={{ fontSize: '9px', color: '#8892b0', marginTop: '3px', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      © {p.attribution ?? 'Google Places'}
+                    </div>
                   </div>
                 ))}
               </div>

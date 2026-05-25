@@ -1,3 +1,23 @@
+SUPERSESSION RECORD (added post-implementation)
+═══════════════════════════════════════════════════════════════════
+
+Task-1040 said: "DQ recalculator called after enrichment completes."
+Task-1041 supersedes this: enrichment writes to pending_web (excluded
+from resolved). DQ must not change at enrichment time -- only at Apply,
+when pending_web is promoted to web and resolved is updated.
+
+Reviewer objections that were fabricated (absent from both dispatches):
+  - "Enrich endpoint should return property_descriptions row"
+  - "Backfill should queue via intake_jobs"
+  - Field names enriching/job_id (spec uses status/jobId)
+
+Items closed by final gap closure dispatch (task-1042):
+  - Step 3.4 intake_jobs awaiting_review -- implemented
+  - Photo attribution null fallback (c Google Places) -- implemented
+  - Response shape status: processing -- was already correct
+  - This supersession section -- added
+
+═══════════════════════════════════════════════════════════════════
 PHASE 8 COMPLETION — DQ CANONICAL PATH + APPLY/DISCARD STAGING
 
 CONTEXT

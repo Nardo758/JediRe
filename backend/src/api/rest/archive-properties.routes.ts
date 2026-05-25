@@ -432,6 +432,13 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
       const { recalculateDQScoreByParcelId } = await import('../../services/research/dq-recalculator.service');
       const newDqScore = await recalculateDQScoreByParcelId(rawParcelId);
 
+      // Move the intake_job from awaiting_review → complete (if one exists for this parcel).
+      await pool.query(
+        `UPDATE intake_jobs SET state = 'complete', updated_at = NOW()
+         WHERE parcel_id = $1 AND state = 'awaiting_review'`,
+        [rawParcelId],
+      );
+
       return res.json({ status: 'applied', parcel_id: rawParcelId, new_dq_score: newDqScore });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -456,6 +463,13 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
 
       await pool.query(
         `UPDATE property_descriptions SET ${discardSetClauses}, updated_at = NOW() WHERE parcel_id = $1`,
+        [rawParcelId],
+      );
+
+      // Move the intake_job from awaiting_review → complete (discard is also a resolution).
+      await pool.query(
+        `UPDATE intake_jobs SET state = 'complete', updated_at = NOW()
+         WHERE parcel_id = $1 AND state = 'awaiting_review'`,
         [rawParcelId],
       );
 

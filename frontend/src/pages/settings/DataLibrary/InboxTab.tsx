@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../services/api.client';
 
 const MONO = "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace";
@@ -32,18 +33,21 @@ interface IntakeSummary {
   pending?: number;
   parsing?: number;
   enriching?: number;
+  awaiting_review?: number;
   complete?: number;
   blocked_needs_user?: number;
   failed?: number;
 }
 
-const STATE_FILTERS = ['ALL', 'pending', 'parsing', 'enriching', 'complete', 'blocked_needs_user', 'failed'];
+const STATE_FILTERS = ['ALL', 'pending', 'parsing', 'enriching', 'awaiting_review', 'complete', 'blocked_needs_user', 'failed'];
 const STATE_COLOR: Record<string, string> = {
   pending: '#8892b0', parsing: '#4fc3f7', enriching: '#a78bfa',
-  complete: '#4ade80', blocked_needs_user: '#f59e0b', failed: '#e06c75',
+  awaiting_review: '#f59e0b',
+  complete: '#4ade80', blocked_needs_user: '#e06c75', failed: '#e06c75',
 };
 const STATE_LABEL: Record<string, string> = {
   pending: 'PENDING', parsing: 'PARSING', enriching: 'ENRICHING',
+  awaiting_review: 'AWAITING REVIEW',
   complete: 'COMPLETE', blocked_needs_user: 'NEEDS INFO', failed: 'FAILED',
 };
 
@@ -61,6 +65,7 @@ const chipBtn = (active: boolean): React.CSSProperties => ({
 });
 
 export function InboxTab() {
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState<IntakeJob[]>([]);
   const [summary, setSummary] = useState<IntakeSummary | null>(null);
   const [pagination, setPagination] = useState<{ total: number; page: number; limit: number; pages: number } | null>(null);
@@ -113,8 +118,9 @@ export function InboxTab() {
             { label: 'PENDING', value: summary.pending ?? 0, color: '#8892b0' },
             { label: 'PARSING', value: summary.parsing ?? 0, color: '#4fc3f7' },
             { label: 'ENRICHING', value: summary.enriching ?? 0, color: '#a78bfa' },
+            { label: 'AWAITING REVIEW', value: summary.awaiting_review ?? 0, color: '#f59e0b' },
             { label: 'COMPLETE', value: summary.complete ?? 0, color: '#4ade80' },
-            { label: 'NEEDS INFO', value: summary.blocked_needs_user ?? 0, color: '#f59e0b' },
+            { label: 'NEEDS INFO', value: summary.blocked_needs_user ?? 0, color: '#e06c75' },
             { label: 'FAILED', value: summary.failed ?? 0, color: '#e06c75' },
           ].map((s, i) => (
             <div key={i} style={{ padding: '10px 14px', background: '#161b22', border: '1px solid #21262d', borderRadius: 6, minWidth: 80, textAlign: 'center' }}>
@@ -170,7 +176,17 @@ export function InboxTab() {
                   <td style={{ padding: '8px', color: '#8892b0', fontSize: 10 }}>{job.parcel_id || '\u2014'}</td>
                   <td style={{ padding: '8px', color: '#8892b0', fontSize: 10 }}>{fmtDateTime(job.updated_at)}</td>
                   <td style={{ padding: '8px' }}>
-                    {job.state === 'blocked_needs_user' && (
+                    {job.state === 'awaiting_review' && job.parcel_id && (
+                      <button
+                        onClick={() => navigate(`/archive/properties/${encodeURIComponent(job.parcel_id!)}`)}
+                        style={{
+                          background: '#f59e0b22', border: '1px solid #f59e0b66', color: '#f59e0b',
+                          borderRadius: 3, padding: '3px 8px', cursor: 'pointer',
+                          fontFamily: MONO, fontSize: 10, fontWeight: 700,
+                        }}
+                      >Review →</button>
+                    )}
+                  {job.state === 'blocked_needs_user' && (
                       <button onClick={() => {
                         const pid = prompt('Enter parcel_id:');
                         if (pid) submitUserInput(job.id, { parcel_id: pid });

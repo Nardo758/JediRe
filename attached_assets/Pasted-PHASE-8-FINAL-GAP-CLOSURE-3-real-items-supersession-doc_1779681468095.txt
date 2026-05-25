@@ -1,0 +1,138 @@
+PHASE 8 — FINAL GAP CLOSURE (3 real items + supersession doc)
+
+CONTEXT
+Reviewer analysis (per prior session) identified the following 
+items that need closure before Phase 8 marks complete:
+
+1. Step 3.4 intake_jobs awaiting_review state for new assets — 
+   in Task-1041 dispatch, was deferred. Now closing.
+
+2. Photo attribution text on per-property page — Google Places 
+   API ToS requires attribution display. Not explicit in 
+   dispatch but a legal/contractual obligation.
+
+3. Response shape naming on enrich endpoint — Task-1040 specified 
+   { status: 'processing', jobId } but implementation returns 
+   { processing: boolean, jobId }. Minor inconsistency.
+
+4. DQ recalc timing supersession — Task-1040 said DQ runs at 
+   enrichment completion; Task-1041 architecture moves it to 
+   Apply. This is implemented correctly per Task-1041 but needs 
+   explicit supersession documentation.
+
+Reviewer objections that are NOT being addressed (documented as 
+fabrications/out-of-scope):
+- "Returns property_descriptions row on sync" — not in any 
+  dispatch
+- "Backfill via intake_jobs" — dispatch explicitly says call 
+  dq-recalculator directly
+- Field names enriching / job_id — actual spec is status / jobId
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INTAKE_JOBS AWAITING_REVIEW WORKFLOW (Task-1041 §3.4)
+═══════════════════════════════════════════════════════════════════
+
+A. INVESTIGATION
+   - Document the current new-asset flow:
+     * What happens today when Apartment Locator scrape adds a 
+       property?
+     * What happens when a file upload adds a property?
+     * Where do intake_jobs get created? What status do they get?
+   - Document the current orchestrator behavior for new assets:
+     * Does enrichment run automatically?
+     * Where do results land (now that pending_web layer exists)?
+
+B. WIRING
+   - Add 'awaiting_review' state to intake_jobs status enum 
+     (if not already present)
+   - For new assets (Apartment Locator scrape, file upload):
+     * After orchestrator runs enrichment → if pending_web layer 
+       populated → set intake_jobs.status = 'awaiting_review'
+     * If no enrichment data produced → status stays at whatever 
+       it would have been (don't force-add a review step for 
+       empty enrichment)
+   - For existing assets that user AUTO-ENRICHes from modal:
+     * No intake_jobs status change required (the modal is its 
+       own review surface)
+
+C. INTAKE INBOX RENDERING
+   - Data Library → Inbox tab shows intake_jobs with status = 
+     'awaiting_review'
+   - Each row shows: property name, source (apartment_locator / 
+     file_upload), enrichment timestamp, fields populated
+   - "Review" button opens the modal for that property
+   - Modal Apply → intake_jobs.status moves to 'complete'
+   - Modal Discard → intake_jobs.status moves to 'complete' 
+     (with note in enrichment_log that user discarded)
+
+D. PAIRED-READ VERIFICATION
+   Trigger a new Apartment Locator scrape that produces enrichment:
+   - Confirm intake_jobs row created with status = 'awaiting_review'
+   - Confirm property appears in Inbox tab
+   - Click Review → modal opens with pending_web data
+   - Apply → status moves to 'complete', property removes from Inbox
+   
+   Repeat with Discard:
+   - Status moves to 'complete', pending_web layer cleared
+   - Property removes from Inbox
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — PHOTO ATTRIBUTION TEXT (Google Places ToS compliance)
+═══════════════════════════════════════════════════════════════════
+
+A. INVESTIGATION
+   - Read Google Places API attribution requirements:
+     https://developers.google.com/maps/documentation/places/web-service/policies
+   - Specifically: "Photos returned by the Places API must be 
+     displayed with attribution"
+   - Document what the required attribution text is
+
+B. IMPLEMENTATION
+   - On per-property page Photos section: each photo displays 
+     the html_attributions string from the Places API response
+   - If no html_attributions (rare), show generic "Photo: Google" 
+     attribution
+   - Style: small text below or alongside each photo, readable 
+     but not visually dominant
+
+C. ALSO CHECK
+   - Are there other Places-derived fields that require 
+     attribution? (Reviews typically do — author attribution)
+   - Audit current rendering of reviews — confirm review author 
+     name and time are displayed as Places ToS requires
+
+D. PAIRED-READ
+   - Open per-property page for a property with Places photos
+   - Confirm attribution visible on each photo
+   - Open per-property page with Places reviews
+   - Confirm review attribution (author, time) visible
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — RESPONSE SHAPE NAMING (Task-1040 alignment)
+═══════════════════════════════════════════════════════════════════
+
+A. Update POST /api/v1/properties/by-parcel/:parcelId/enrich:
+   
+   Current async response:
+     { processing: true, jobId: "<uuid>" }
+   
+   Updated async response (matches Task-1040 spec):
+     { status: 'processing', jobId: "<uuid>" }
+   
+   Sync response: return whatever shape was working — Task-1040 
+   doesn't specify. Leave as-is unless something is broken.
+
+B. Update frontend polling code to read status === 'processing' 
+   instead of processing === true.
+
+C. PAIRED-READ
+   - Trigger an enrichment that should go async (slow property)
+   - Confirm response shape matches { status: 'processing', jobId }
+   - Confirm frontend polling continues to work correctly
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — DOCUMENT DISPATCH SUPERSESSION
+═══════════════════════════════════════════════════════════════════
+
+A. Update docs/dispatches/task-1041-phase-8-completion.md with 
+   an explicit supersession section near the top:

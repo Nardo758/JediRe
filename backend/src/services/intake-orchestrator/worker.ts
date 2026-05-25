@@ -602,6 +602,8 @@ async function processJob(job: {
       || (sd.name as string | undefined)?.trim()
       || parcel_id;
 
+    let phase8HasData = false; // set true if Research Agent writes to pending_web
+
     if (parcel_id && (lookupAddress || propertyNameForSearch)) {
       try {
         const { runResearchEnrichment } = await import('../research/research-enrichment.service');
@@ -639,6 +641,14 @@ async function processJob(job: {
             photos_count: enrichResult.photos_count,
           },
         });
+        // Mark that Phase 8 data was staged to pending_web, requiring user review.
+        if (
+          (enrichResult.narrative_words ?? 0) > 0 ||
+          (enrichResult.reviews_count ?? 0) > 0 ||
+          (enrichResult.photos_count ?? 0) > 0
+        ) {
+          phase8HasData = true;
+        }
       } catch (enrichErr: unknown) {
         const msg = enrichErr instanceof Error ? enrichErr.message : String(enrichErr);
         logger.warn(`[intake-worker] job ${id} Phase 8 enrichment failed: ${msg}`);
@@ -689,7 +699,10 @@ async function processJob(job: {
     const resolved = otherDocs.resolved || municipal.resolved;
 
     if (resolved) {
-      await setState(id, 'complete');
+      // If Phase 8 enrichment wrote data to pending_web, the job needs user
+      // review before it completes. The Apply/Discard action moves it to 'complete'.
+      const terminalState = phase8HasData ? 'awaiting_review' : 'complete';
+      await setState(id, terminalState);
 
       // ── Task C: write enrichment data to property_descriptions ─────────────
       if (parcel_id) {
