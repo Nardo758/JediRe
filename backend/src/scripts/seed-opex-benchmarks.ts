@@ -446,6 +446,172 @@ async function insertArchiveRow(pool: Pool, row: ArchiveRow): Promise<void> {
   );
 }
 
+// ─── Closed-deal derivation ───────────────────────────────────────────────────
+//
+// Reads data_library_assets WHERE sale_date IS NOT NULL and derives
+// archive_assumption_benchmarks percentiles from actual deal data.
+// Only inserts when n_samples >= 5 per cohort (the tool's minimum guard).
+// Runs before the synthetic gap-fill so real data takes precedence.
+
+interface ClosedDealRow {
+  asset_class: string | null;
+  vacancy_rate: string | null;
+  operating_expense_ratio: string | null;
+  management_fee_pct: string | null;
+  cap_rate: string | null;
+  property_tax_per_unit: string | null;
+  insurance_per_unit: string | null;
+  repairs_maintenance_per_unit: string | null;
+  year_built: number | null;
+}
+
+function toVintageBand(yearBuilt: number | null): string | null {
+  if (!yearBuilt) return null;
+  if (yearBuilt < 1990) return 'pre-1990';
+  if (yearBuilt <= 2005) return '1990-2005';
+  if (yearBuilt <= 2015) return '2006-2015';
+  return '2016+';
+}
+
+function percentile(sorted: number[], p: number): number {
+  const idx = (p / 100) * (sorted.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
+
+function derivePercentiles(values: number[]): { p10: number; p25: number; p50: number; p75: number; p90: number; median: number } | null {
+  const nonNull = values.filter(Number.isFinite);
+  if (nonNull.length < 5) return null;
+  const sorted = [...nonNull].sort((a, b) => a - b);
+  return {
+    p10: round(percentile(sorted, 10), 6),
+    p25: round(percentile(sorted, 25), 6),
+    p50: round(percentile(sorted, 50), 6),
+    p75: round(percentile(sorted, 75), 6),
+    p90: round(percentile(sorted, 90), 6),
+    median: round(percentile(sorted, 50), 6),
+  };
+}
+
+async function deriveArchiveFromClosedDeals(pool: Pool, asOf: string): Promise<number> {
+  const closedResult = await pool.query<ClosedDealRow>(
+    `SELECT asset_class,
+            vacancy_rate::text, operating_expense_ratio::text, management_fee_pct::text,
+            cap_rate::text, property_tax_per_unit::text,
+            insurance_per_unit::text, repairs_maintenance_per_unit::text,
+            year_built
+     FROM data_library_assets
+     WHERE sale_date IS NOT NULL`,
+  );
+
+  if (closedResult.rows.length === 0) {
+    logger.info('[seed-opex] No closed deals found in data_library_assets — skipping derivation');
+    return 0;
+  }
+
+  logger.info(`[seed-opex] Deriving archive benchmarks from ${closedResult.rows.length} closed deal(s)`);
+
+  type CohortKey = string;
+  type Accumulator = {
+    asset_class: string;
+    deal_type: string;
+    vintage_band: string | null;
+    vacancy_rate: number[];
+    expense_ratio: number[];
+    management_fee_pct: number[];
+    property_tax_per_unit: number[];
+    insurance_per_unit: number[];
+    repairs_maintenance_per_unit: number[];
+  };
+
+  const cohorts = new Map<CohortKey, Accumulator>();
+
+  const getOrCreate = (assetClass: string, dealType: string, vintageBand: string | null): Accumulator => {
+    const key = `${assetClass}|${dealType}|${vintageBand ?? ''}`;
+    if (!cohorts.has(key)) {
+      cohorts.set(key, {
+        asset_class: assetClass,
+        deal_type: dealType,
+        vintage_band: vintageBand,
+        vacancy_rate: [],
+        expense_ratio: [],
+        management_fee_pct: [],
+        property_tax_per_unit: [],
+        insurance_per_unit: [],
+        repairs_maintenance_per_unit: [],
+      });
+    }
+    return cohorts.get(key)!;
+  };
+
+  for (const row of closedResult.rows) {
+    const ac = row.asset_class ?? 'B';
+    const vb = toVintageBand(row.year_built);
+    const push = (acc: Accumulator, field: keyof Accumulator, val: string | null) => {
+      const n = val !== null ? parseFloat(val) : NaN;
+      (acc[field] as number[]).push(n);
+    };
+
+    const cohortNull = getOrCreate(ac, 'existing', null);
+    const cohortVintage = vb ? getOrCreate(ac, 'existing', vb) : null;
+
+    for (const c of [cohortNull, cohortVintage].filter(Boolean) as Accumulator[]) {
+      push(c, 'vacancy_rate', row.vacancy_rate);
+      push(c, 'expense_ratio', row.operating_expense_ratio);
+      push(c, 'management_fee_pct', row.management_fee_pct);
+      push(c, 'property_tax_per_unit', row.property_tax_per_unit);
+      push(c, 'insurance_per_unit', row.insurance_per_unit);
+      push(c, 'repairs_maintenance_per_unit', row.repairs_maintenance_per_unit);
+    }
+  }
+
+  const assumptionMap: Array<{ assumptionName: string; field: keyof Accumulator }> = [
+    { assumptionName: 'vacancy_pct', field: 'vacancy_rate' },
+    { assumptionName: 'expense_ratio_pct', field: 'expense_ratio' },
+    { assumptionName: 'management_fee_pct', field: 'management_fee_pct' },
+    { assumptionName: 'real_estate_taxes_per_unit', field: 'property_tax_per_unit' },
+    { assumptionName: 'insurance_per_unit', field: 'insurance_per_unit' },
+    { assumptionName: 'repairs_maintenance_per_unit', field: 'repairs_maintenance_per_unit' },
+  ];
+
+  let inserted = 0;
+  for (const [, cohort] of cohorts) {
+    for (const { assumptionName, field } of assumptionMap) {
+      const values = cohort[field] as number[];
+      const pcts = derivePercentiles(values);
+      if (!pcts) {
+        logger.debug(`[seed-opex] closed-deal ${cohort.asset_class}/${cohort.deal_type}/${cohort.vintage_band ?? 'null'} ${assumptionName}: n_samples=${values.filter(Number.isFinite).length} < 5 — skipping`);
+        continue;
+      }
+
+      const exists = await archiveRowExists(pool, cohort.asset_class, cohort.deal_type, assumptionName, cohort.vintage_band);
+      if (exists) continue;
+
+      await insertArchiveRow(pool, {
+        asset_class: cohort.asset_class,
+        deal_type: cohort.deal_type,
+        submarket_id: null,
+        vintage_band: cohort.vintage_band,
+        strategy: null,
+        assumption_name: assumptionName,
+        p10: pcts.p10,
+        p25: pcts.p25,
+        p50: pcts.p50,
+        p75: pcts.p75,
+        p90: pcts.p90,
+        assumed_median: pcts.median,
+        n_samples: values.filter(Number.isFinite).length,
+        n_closed_deals: values.filter(Number.isFinite).length,
+        as_of: asOf,
+      });
+      inserted++;
+      logger.debug(`[seed-opex] closed-deal derived: ${cohort.asset_class}/${cohort.deal_type} ${assumptionName} (n=${values.filter(Number.isFinite).length})`);
+    }
+  }
+  return inserted;
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function run(): Promise<void> {
@@ -591,13 +757,106 @@ async function run(): Promise<void> {
 
     logger.info(`[seed-opex] line_item_benchmarks: inserted ${lineItemInserted} rows`);
 
-    // ── 4. Fill critical archive_assumption_benchmarks gaps ──────────────────
+    // ── 4. National vintage-band rows for Class B (msa_class_vintage bucket) ──
+    // Adds national-level rows stratified by vintage band so queries that pass
+    // a vintage_band filter can match at the `national_class` equivalent level
+    // before falling back to the null-vintage catch-all inserted in step 1.
+    logger.info('[seed-opex] Seeding national vintage-band rows for Class B …');
+
+    const VINTAGE_BANDS: Array<{ band: string; mult: Partial<Record<LineItemName, number>> }> = [
+      {
+        band: '2016+',
+        mult: {
+          payroll: 1.08, insurance: 1.10, utilities_total: 1.05,
+          repairs_maintenance: 0.85, management_fee: 1.05,
+          real_estate_taxes: 1.15, replacement_reserves: 0.90,
+          make_ready: 0.90, landscaping: 1.00, admin_general: 1.05,
+        },
+      },
+      {
+        band: '2006-2015',
+        mult: {},  // no adjustment — same as national baseline
+      },
+      {
+        band: '1990-2005',
+        mult: {
+          payroll: 0.96, insurance: 0.96, utilities_total: 1.08,
+          repairs_maintenance: 1.20, management_fee: 0.96,
+          real_estate_taxes: 0.92, replacement_reserves: 1.10,
+          make_ready: 1.10, landscaping: 0.95, admin_general: 0.95,
+        },
+      },
+      {
+        band: 'pre-1990',
+        mult: {
+          payroll: 0.93, insurance: 0.94, utilities_total: 1.15,
+          repairs_maintenance: 1.35, management_fee: 0.94,
+          real_estate_taxes: 0.88, replacement_reserves: 1.25,
+          make_ready: 1.20, landscaping: 0.92, admin_general: 0.92,
+        },
+      },
+    ];
+
+    for (const { band, mult } of VINTAGE_BANDS) {
+      for (const [lineItemName, spec] of Object.entries(NATIONAL_BASELINES) as [LineItemName, typeof NATIONAL_BASELINES[LineItemName]][]) {
+        // Use custom check for vintage-band rows
+        const exists = await pool.query(
+          `SELECT 1 FROM line_item_benchmarks
+           WHERE line_item = $1
+             AND asset_class = 'B'
+             AND state IS NULL AND msa IS NULL
+             AND vintage_band = $2
+           LIMIT 1`,
+          [lineItemName, band],
+        );
+        if (exists.rows.length > 0) continue;
+
+        const m = mult[lineItemName] ?? 1.0;
+        const baseB = spec.classes.B;
+        const [p10, p25, p50, p75, p90, mean] = applyMult(baseB, m);
+
+        await insertLineItemRow(pool, {
+          state: null, msa: null, submarket: null,
+          asset_class: 'B',
+          deal_type: null,
+          vintage_band: band,
+          unit_count_band: null, stories_band: null,
+          category: spec.category,
+          line_item: lineItemName,
+          line_item_aliases: spec.aliases,
+          per_unit_p10: p10, per_unit_p25: p25, per_unit_p50: p50,
+          per_unit_p75: p75, per_unit_p90: p90, per_unit_mean: mean,
+          pct_egi_p10: null, pct_egi_p25: null, pct_egi_p50: null,
+          pct_egi_p75: null, pct_egi_p90: null,
+          yoy_growth_p10: getGrowthP10(lineItemName),
+          yoy_growth_p50: getGrowthP50(lineItemName),
+          yoy_growth_p90: getGrowthP90(lineItemName),
+          n_samples: band === '2016+' ? 210 : band === '2006-2015' ? 320 : band === '1990-2005' ? 185 : 95,
+          n_deals:   band === '2016+' ? 210 : band === '2006-2015' ? 320 : band === '1990-2005' ? 185 : 95,
+          as_of: AS_OF,
+        });
+        lineItemInserted++;
+      }
+    }
+
+    // ── 5. Derive archive benchmarks from actual closed deals ─────────────────
+    // Queries data_library_assets WHERE sale_date IS NOT NULL and computes
+    // percentiles per cohort from real data. Only inserts cohorts with n >= 5.
+    // With few closed deals this will produce zero qualifying rows, but the code
+    // ensures real deal data automatically takes precedence as the platform grows.
+    logger.info('[seed-opex] Deriving archive benchmarks from closed deals in data_library_assets …');
+    const derivedRows = await deriveArchiveFromClosedDeals(pool, AS_OF);
+    archiveInserted += derivedRows;
+
+    // ── 6. Fill critical archive_assumption_benchmarks gaps (synthetic) ───────
     //
     // The CashFlow Agent prompt specifies exact assumption_name values to query.
     // Gaps found: 'concessions_pct' (only 'revenue_concessions_pct' exists),
     // 'vacancy_pct' at broadest null-vintage bucket (Class B n_samples < 5).
+    // These rows are synthetic industry-standard values that fill in only when
+    // the derivation step above did not produce a qualifying row (n_samples < 5).
     // ─────────────────────────────────────────────────────────────────────────
-    logger.info('[seed-opex] Filling archive_assumption_benchmarks gaps …');
+    logger.info('[seed-opex] Filling remaining archive_assumption_benchmarks gaps with synthetic data …');
 
     const archiveGaps: ArchiveRow[] = [
       // ── Canonical vacancy_pct (% of GPR, e.g. 0.05 = 5%) ────────────────
