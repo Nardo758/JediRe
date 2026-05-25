@@ -13,6 +13,8 @@
  *   --limit=N         Process at most N properties (default: all)
  *   --concurrency=N   Parallel workers (default: 3)
  *   --city=CITY       Filter to properties in a specific city
+ *   --skip-places     Skip Google Places step (only run Tavily web search)
+ *   --jitter=MS       Max random jitter in ms between tasks (default: 1500)
  */
 
 import { Pool } from 'pg';
@@ -30,9 +32,11 @@ function hasFlag(flag: string): boolean {
 
 const DRY_RUN = hasFlag('dry-run');
 const FORCE = hasFlag('force');
+const SKIP_PLACES = hasFlag('skip-places');
 const LIMIT = parseInt(parseFlag('limit', '0') ?? '0', 10);
 const CONCURRENCY = parseInt(parseFlag('concurrency', '3') ?? '3', 10);
 const CITY_FILTER = parseFlag('city');
+const JITTER_MS = parseInt(parseFlag('jitter', '1500') ?? '1500', 10);
 
 interface PropertyRow {
   asset_id: string;
@@ -84,7 +88,7 @@ async function main() {
   });
 
   console.log(`\n[phase8-backfill] Starting Phase 8 research backfill`);
-  console.log(`  dry-run: ${DRY_RUN}, force: ${FORCE}, limit: ${LIMIT || 'all'}, concurrency: ${CONCURRENCY}`);
+  console.log(`  dry-run: ${DRY_RUN}, force: ${FORCE}, skip-places: ${SKIP_PLACES}, limit: ${LIMIT || 'all'}, concurrency: ${CONCURRENCY}, jitter: ${JITTER_MS}ms`);
   if (CITY_FILTER) console.log(`  city filter: ${CITY_FILTER}`);
 
   const whereConditions: string[] = [];
@@ -113,6 +117,7 @@ async function main() {
     FROM data_library_assets a
     LEFT JOIN property_descriptions pd ON pd.parcel_id = a.property_name
     WHERE a.property_name IS NOT NULL
+      AND a.source_type = 'archive'
       ${whereClause}
     ORDER BY a.created_at DESC
     ${limitClause}
@@ -144,13 +149,17 @@ async function main() {
   const tasks = rows.map(r => async () => {
     const label = `${r.property_name.slice(0, 40)} (${r.city ?? '?'}, ${r.state ?? '?'})`;
     try {
-      console.log(`  → enriching: ${label}`);
+      if (JITTER_MS > 0) {
+        await new Promise(res => setTimeout(res, Math.floor(Math.random() * JITTER_MS)));
+      }
+      console.log(`  → enriching: ${label}${SKIP_PLACES ? ' [skip-places]' : ''}`);
       const result = await runResearchEnrichment({
         parcelId: r.property_name,
         propertyName: r.property_name,
         address: r.address,
         city: r.city,
         state: r.state,
+        skipPlaces: SKIP_PLACES,
       });
 
       if (result.fields_written.length === 0) {

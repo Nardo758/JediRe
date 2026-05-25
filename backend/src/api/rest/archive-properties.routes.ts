@@ -178,26 +178,45 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
     const rawParcelId = decodeURIComponent(req.params.parcelId);
 
     try {
-      const dlaRow = await pool.query<{
-        property_name: string;
-        address: string | null;
-        city: string | null;
-        state: string | null;
-        id: string;
-        data_quality_score: number | null;
-      }>(
-        `SELECT id, property_name, address, city, state, data_quality_score
-         FROM data_library_assets
-         WHERE property_name = $1
-         ORDER BY created_at DESC LIMIT 1`,
-        [rawParcelId],
-      );
+      const bodyAssetId: string | undefined = typeof req.body?.assetId === 'string' ? req.body.assetId : undefined;
+
+      const dlaRow = bodyAssetId
+        ? await pool.query<{
+            property_name: string;
+            address: string | null;
+            city: string | null;
+            state: string | null;
+            id: string;
+            data_quality_score: number | null;
+          }>(
+            `SELECT id, property_name, address, city, state, data_quality_score
+             FROM data_library_assets WHERE id = $1 LIMIT 1`,
+            [bodyAssetId],
+          )
+        : await pool.query<{
+            property_name: string;
+            address: string | null;
+            city: string | null;
+            state: string | null;
+            id: string;
+            data_quality_score: number | null;
+          }>(
+            `SELECT id, property_name, address, city, state, data_quality_score
+             FROM data_library_assets
+             WHERE property_name = $1
+             ORDER BY created_at DESC LIMIT 1`,
+            [rawParcelId],
+          );
 
       if (dlaRow.rows.length === 0) {
         return res.status(404).json({ error: `No asset found for parcel_id: ${rawParcelId}` });
       }
 
       const asset = dlaRow.rows[0];
+
+      if (!process.env.GOOGLE_PLACES_API_KEY) {
+        return res.status(503).json({ error: 'places_key_missing' });
+      }
 
       if (!asset.address || !asset.city || !asset.state) {
         return res.status(400).json({

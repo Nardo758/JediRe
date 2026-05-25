@@ -243,8 +243,14 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
     try {
       return await fn();
     } catch (err) {
-      if (err instanceof PlacesQuotaError) throw err;
       lastErr = err;
+      if (err instanceof PlacesKeyMissingError) throw err;
+      if (err instanceof PlacesQuotaError) {
+        if (attempt >= maxAttempts) throw err;
+        const backoffMs = Math.pow(2, attempt) * 5000;
+        await new Promise(r => setTimeout(r, backoffMs));
+        continue;
+      }
       if (attempt < maxAttempts) {
         await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 500));
       }

@@ -62,8 +62,9 @@ export async function runResearchEnrichment(opts: {
   address: string | null;
   city: string | null;
   state: string | null;
+  skipPlaces?: boolean;
 }): Promise<ResearchEnrichmentResult> {
-  const { parcelId, propertyName, address, city, state } = opts;
+  const { parcelId, propertyName, address, city, state, skipPlaces = false } = opts;
   const logEntries: LogEntry[] = [];
   const fieldsWritten: string[] = [];
   const now = () => new Date().toISOString();
@@ -73,7 +74,14 @@ export async function runResearchEnrichment(opts: {
   let placesResult: Awaited<ReturnType<typeof enrichWithGooglePlaces>> | null = null;
   let placesStatus: ResearchEnrichmentResult['places_status'] = 'skipped';
 
-  if (!process.env.GOOGLE_PLACES_API_KEY) {
+  if (skipPlaces) {
+    logEntries.push({
+      step: 'google_places',
+      status: 'not_implemented',
+      ts: now(),
+      detail: { note: 'skipped by --skip-places flag' },
+    });
+  } else if (!process.env.GOOGLE_PLACES_API_KEY) {
     logger.warn('[research-enrichment] GOOGLE_PLACES_API_KEY missing — skipping Places step', { parcelId });
     logEntries.push({
       step: 'google_places',

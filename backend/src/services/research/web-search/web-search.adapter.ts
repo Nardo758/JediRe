@@ -75,6 +75,31 @@ function isWithinTwoYears(dateStr: string | null): boolean {
 
 // ── Tavily search helper ──────────────────────────────────────────────────────
 
+async function searchSerpApi(
+  query: string,
+  maxResults: number,
+): Promise<Array<{ title: string; url: string; content: string; publishedDate?: string }>> {
+  const serpKey = process.env.SERPAPI_KEY;
+  if (!serpKey) return [];
+  try {
+    const url = `https://serpapi.com/search?engine=google&q=${encodeURIComponent(query)}&num=${maxResults}&api_key=${serpKey}`;
+    const resp = await fetch(url);
+    if (!resp.ok) return [];
+    const data = await resp.json() as {
+      organic_results?: Array<{ title?: string; link?: string; snippet?: string; date?: string }>;
+    };
+    return (data.organic_results ?? []).slice(0, maxResults).map(r => ({
+      title: r.title ?? '',
+      url: r.link ?? '',
+      content: (r.snippet ?? '').slice(0, 1500),
+      publishedDate: r.date,
+    }));
+  } catch (err) {
+    logger.warn('[web-search] SerpAPI fallback query failed', { query, err: (err as Error).message });
+    return [];
+  }
+}
+
 async function searchTavily(
   query: string,
   apiKey: string,
@@ -83,15 +108,19 @@ async function searchTavily(
   try {
     const client = tavily({ apiKey });
     const resp = await client.search(query, { maxResults });
-    return (resp.results ?? []).map(r => ({
+    const results = (resp.results ?? []).map(r => ({
       title: r.title ?? '',
       url: r.url ?? '',
       content: (r.content ?? '').slice(0, 1500),
       publishedDate: r.publishedDate,
     }));
+    if (results.length > 0) return results;
+    logger.info('[web-search] Tavily returned 0 results, trying SerpAPI fallback', { query });
+    return searchSerpApi(query, maxResults);
   } catch (err) {
-    logger.warn('[web-search] Tavily query failed', { query, err: (err as Error).message });
-    return [];
+    const msg = (err as Error).message ?? '';
+    logger.warn('[web-search] Tavily query failed, trying SerpAPI fallback', { query, err: msg });
+    return searchSerpApi(query, maxResults);
   }
 }
 

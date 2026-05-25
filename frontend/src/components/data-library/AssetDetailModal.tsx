@@ -423,14 +423,17 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     setEnriching(true);
     setEnrichError(null);
     setEnrichResult(null);
+    let pollingInBackground = false;
     try {
       const parcelId = details.propertyName || customLabel;
       const res = await apiClient.post(
         `/api/v1/properties/by-parcel/${encodeURIComponent(parcelId)}/enrich`,
+        { assetId },
       );
       const r = res.data;
 
       if (res.status === 202) {
+        pollingInBackground = true;
         setEnrichResult({
           fieldsEnriched: [],
           conflicts: [],
@@ -442,14 +445,18 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         });
         let polls = 0;
         const poll = async (): Promise<void> => {
-          if (polls++ > 24) return;
+          if (polls++ > 24) { setEnriching(false); return; }
           try {
             const statusRes = await apiClient.get(
               `/api/v1/properties/by-parcel/${encodeURIComponent(parcelId)}/enrich/status`,
             );
             if (statusRes.data.status === 'complete') {
               setServerDqScore(statusRes.data.dq_score ?? null);
-              setEnrichResult(prev => prev ? { ...prev, newScore: statusRes.data.dq_score ?? prev.previousScore, status: 'complete' } : null);
+              setEnrichResult(prev => prev ? {
+                ...prev,
+                newScore: statusRes.data.dq_score ?? prev.previousScore,
+                status: 'complete',
+              } : null);
               setEnriching(false);
               return;
             }
@@ -476,16 +483,19 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
       const e = err as { response?: { data?: { error?: string }; status?: number }; message?: string };
       const status = e.response?.status;
       if (status === 400) {
-        setEnrichError(`Missing required fields: ${e.response?.data?.error || 'address, city, and state are required'}`);
+        setEnrichError(e.response?.data?.error || 'address, city, and state are required for enrichment');
       } else if (status === 429) {
         setEnrichError('Rate limit reached — please wait a moment before trying again');
       } else if (status === 503) {
-        setEnrichError('Enrichment service temporarily unavailable');
+        const errMsg = e.response?.data?.error ?? '';
+        setEnrichError(errMsg === 'places_key_missing'
+          ? 'Google Places API key is not configured — contact your administrator'
+          : 'Enrichment service temporarily unavailable');
       } else {
         setEnrichError(e.response?.data?.error || e.message || 'Enrichment failed');
       }
     } finally {
-      if (!(enrichResult?.status === 'processing')) setEnriching(false);
+      if (!pollingInBackground) setEnriching(false);
     }
   };
 
@@ -612,7 +622,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         sale_price: details.soldPrice ? parseFloat(details.soldPrice) : null,
         sale_date: details.soldDate || null,
         noi: details.noi ? parseFloat(details.noi) : null,
-        data_quality_score: calculateDQScore(),
+        data_quality_score: serverDqScore ?? calculateDQScore(),
       };
 
       // Calculate vintage band
