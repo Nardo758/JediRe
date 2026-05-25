@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { BT } from '@/components/deal/bloomberg-ui';
 import { apiClient } from '../../services/api.client';
 import { CloudStoragePanel, BulkUploadPanel } from '../../components/data-library';
@@ -22,6 +22,7 @@ const TABS: { key: TabKey; label: string }[] = [
 
 export function DataLibrarySettings() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const activeTab: TabKey = (searchParams.get('dlTab') as TabKey) || 'assets';
 
   const setTab = (tab: TabKey) => {
@@ -94,12 +95,30 @@ export function DataLibrarySettings() {
       <div style={{
         display: 'flex', gap: 0, padding: '8px 20px 0',
         borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.panelAlt,
+        alignItems: 'center',
       }}>
         {TABS.map(tab => (
           <button key={tab.key} style={navLink(activeTab === tab.key)} onClick={() => setTab(tab.key)}>
             {tab.label}
           </button>
         ))}
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={() => navigate('/archive/upload')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '4px 12px', marginBottom: 4,
+            background: BT.bg.accent,
+            border: `1px solid ${BT.border.accent}`,
+            borderRadius: 4,
+            color: BT.text.amber,
+            fontFamily: MONO, fontSize: 11, letterSpacing: '0.05em',
+            cursor: 'pointer',
+          }}
+        >
+          <Upload size={13} />
+          UPLOAD FILES
+        </button>
       </div>
 
       {/* Tab Content */}
