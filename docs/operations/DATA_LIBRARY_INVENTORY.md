@@ -11,7 +11,7 @@ involved in the JEDI RE Data Library and CashFlow Agent. It is a read-only audit
 no schema or code changes were made.
 
 **Key findings:**
-- `data_library_files` tracks raw file uploads (22 columns, 5 distinct insert paths)
+- `data_library_files` tracks raw file uploads (22 columns, 6 distinct insert paths)
 - `data_library_assets` is the deal-capsule table holding extracted summary stats + `extraction_data` JSONB
 - 13 parsers exist covering T12, Rent Roll, OM, Tax Bill, CoStar, BoxScore, leasing stats, and ancillary documents
 - `historical_observations` has 82 columns, **402 rows live**, 298 distinct parcels, only 1 distinct `deal_id` populated — corpus is sparsely linked
@@ -56,7 +56,7 @@ no schema or code changes were made.
 
 **Asset-id gap:** All archived T12 files uploaded via the bulk/ZIP path arrive with `asset_id = NULL`. The `ON CONFLICT (sha256)` clause only backfills asset_id when the conflict row lacks it. Files ingested before the asset-linkage refactor remain unlinked.
 
-### 2.1 Insert Paths (5 distinct callers)
+### 2.1 Insert Paths (6 distinct callers)
 
 | # | File | Route / Function | Trigger |
 |---|------|-----------------|---------|
@@ -426,7 +426,54 @@ All columns are `jsonb` (LayeredValue wrappers) except `parcel_id` (text) and ti
 
 ---
 
-## 11. Complete Data Flow Map
+## 11. Input-to-Consumer Data-Flow Table
+
+The table below resolves every major document/signal input to exactly where it is stored, which system component reads it today, and what analytical purpose it serves. Rows marked **"no consumer"** are stored but not reachable by any active tool or analytics module.
+
+| # | Input Type | Parser | Stored In | Current Consumer(s) | Used For | Status |
+|---|-----------|--------|-----------|---------------------|----------|--------|
+| 1 | **T12 P&L** (monthly actuals) | `t12-parser.ts` | `deal_monthly_actuals` (71 cols, per-month row); `data_library_assets.extraction_data['T12']`; `historical_observations` (occupancy, avg_rent, unit_count) | `fetch_t12` (CashFlow Agent); `fetch_owned_asset_actuals`; `cashflow.inngest.ts` T12 gate-check | NOI, EGI, OpEx line items for proforma underwriting | **Active — returns data** |
+| 2 | **Rent Roll** (per-unit) | `rent-roll-parser.ts` (Yardi RRwLC + flat) | `deal_lease_transactions` (per-unit: unit#, type, sqft, rent, dates); `data_library_assets.extraction_data['RENT_ROLL']`; `historical_observations` (occupancy, avg_rent, concession, signing_velocity) | `fetch_rent_roll` (CashFlow Agent); `fetch_unit_mix`; M07 Traffic Engine via CorpusQueryService | In-place occupancy, rent by unit type, absorption/signing velocity, loss-to-lease | **Active — returns data** |
+| 3 | **Offering Memorandum** (OM) | `om-parser.ts` | `data_library_assets` (property profile columns); `data_library_assets.extraction_data['OM']`; `historical_observations` (unit_count, year_built, property_class) | `fetch_data_library_comps`; `fetch_data_matrix`; `detect_collision` (for OM vs. agent estimate) | Sponsor asking price, stated NOI/occupancy for collision detection; comp set physical attributes | **Active — but G1: asset_id null blocks `fetch_source_documents`** |
+| 4 | **Tax Bill** | `tax-bill-parser.ts` | `data_library_assets.extraction_data['TAX_BILL']`; `historical_observations` (capital_event_type, capital_event_amount) | `fetch_tax_intel`; `fetch_jurisdiction_tax_forecast` | Millage rate, assessed value, transfer tax for post-acquisition reassessment model | **Active — returns data** |
+| 5 | **CoStar Export** | `costar-parser.ts` | `data_library_assets.extraction_data` (merged overlay); `historical_observations` costar_submarket_* columns | `fetch_peer_comp_noi_metrics`; M07 Traffic Engine via CorpusQueryService | Submarket avg rent, vacancy, concession, absorption, new supply for comp benchmarking | **Active — if ingested; Wesley Chapel has no CoStar data loaded** |
+| 6 | **BoxScore / Leasing Stats** | `box-score-parser.ts`, `leasing-stats-parser.ts` | `deal_monthly_actuals`; `historical_observations` via `leasingStatsToCorpusRow` | `fetch_t12`; `fetch_owned_asset_actuals` | New leases, renewals, move-outs, renewal rate, avg days-to-lease | **Active — if ingested** |
+| 7 | **Property reviews / sentiment** | None (NLP backfill via `nlp-review-backfill.ts`) | `property_descriptions.reviews` (jsonb LV), `property_descriptions.sentiment_summary` (jsonb LV) | `archive-properties.routes.ts` REST API only; `dq-recalculator.service.ts` DQ score | Resident satisfaction signals, review-based demand proxy | **No analytical consumer — not read by any CashFlow Agent tool or corpus query** |
+| 8 | **Photos / amenities** | None (uploaded directly) | `property_descriptions.photos` (jsonb LV), `property_descriptions.amenities` (jsonb LV), amenity flags (`has_pool`, `has_fitness`, etc.) | `archive-properties.routes.ts` REST API only | Physical quality / amenity score for comp filtering | **No analytical consumer — `amenity_score` in `data_library_assets` exists but no agent tool reads `property_descriptions` amenities** |
+| 9 | **Regulatory constraints** | None (manual entry / OM extraction) | `property_descriptions.regulatory_constraints` (jsonb LV) | `archive-properties.routes.ts` REST API only | Rent control, flood zone restrictions, opportunity zone status | **No analytical consumer — CashFlow Agent has no tool that reads `property_descriptions`** |
+| 10 | **Line-item benchmarks / archive distributions** | Aggregation job (not yet run) | `line_item_benchmarks` (0 rows); `archive_assumption_benchmarks` (0 rows) | `fetch_line_item_benchmarks`, `fetch_archive_assumption_distribution`, `fetch_archive_achievement_vs_assumption` — all three tools exist and call these tables | Per-unit OpEx P10/P50/P90 ranges; assumption vs. achievement gap for closed deals | **No data — tables exist with correct schema but are empty (G7)** |
+
+---
+
+## 12. Inputs with No Analytical Consumer
+
+The following stored inputs are **reachable only via the REST API**, not by the CashFlow Agent or any corpus analytics module:
+
+### property_descriptions columns (no agent tool reads this table)
+| Column(s) | Content | Where stored | Gap |
+|-----------|---------|-------------|-----|
+| `reviews`, `sentiment_summary` | Resident reviews (scraped/ingested) + NLP sentiment score | `property_descriptions` | No CashFlow Agent tool reads reviews. Sentiment data that could anchor demand-side risk is completely dark to the underwriting agent. |
+| `photos` | Exterior/interior photos | `property_descriptions` | No tool. Physical quality signals not reachable. |
+| `amenities`, `has_pool`, `has_fitness`, `has_concierge`, `has_dog_park`, `has_business_center`, `is_master_metered`, `is_individual_metered` | Amenity flags | `property_descriptions` | `amenity_score` is computed in `data_library_assets`, but the agent only gets this score if `fetch_data_matrix` triggers an asset lookup. The raw flags are not passed. |
+| `regulatory_constraints` | Rent control ordinances, flood zone, opportunity zone | `property_descriptions` | Agent has no visibility into regulatory encumbrances. Zoning agent consumes this separately, but CashFlow Agent does not. |
+| `flood_zone`, `in_opportunity_zone` | Risk / tax-advantage flags | `property_descriptions` | No tool. Opportunity Zone accelerated depreciation is never captured in proforma. |
+
+### Benchmark / archive tables (exist but empty)
+| Table | Schema | Row Count | Gap |
+|-------|--------|-----------|-----|
+| `line_item_benchmarks` | Correct (30+ columns, P10–P90 distributions, per_unit/pct_egi/yoy) | **0 rows** | Agent falls back to LLM training-data knowledge for all OpEx benchmarks. No FL, MSA, or vintage-band specificity. |
+| `archive_assumption_benchmarks` | Correct (assumed_median, achieved_median, gap_bps) | **0 rows** | `archive_percentile` field is null on every underwriting snapshot field. No cohort comparison is possible. |
+
+### External signal columns (MSA macro — all null)
+| Column Group | Table | Status |
+|-------------|-------|--------|
+| `msa_employment_total`, `msa_employment_growth_yoy`, `msa_avg_wage`, `msa_wage_growth_yoy`, `msa_unemployment_rate`, `msa_population`, `msa_household_growth_yoy`, `msa_in_migration_net` | `historical_observations` | All NULL — LODES/QCEW ingestion is pending (G6) |
+| `commute_shed_workers`, `commute_shed_wage_pct`, `mobility_visits_monthly`, `mobility_unique_visitors` | `historical_observations` | All NULL — Veraset mobility feed pending (G6) |
+| `msa_treasury_10y`, `msa_fed_funds_rate` | `historical_observations` | All NULL — FRED ingestion pending (G6); `fetch_rate_environment` reads FRED directly at runtime instead |
+
+---
+
+## 13. Complete Data Flow Map (Narrative)
 
 ```
 FILE UPLOAD
@@ -518,7 +565,7 @@ REALIZED OUTPUTS BACKFILL
 
 ---
 
-## 12. Known Gaps & Issues
+## 14. Known Gaps & Issues
 
 | # | Issue | Impact |
 |---|-------|--------|
@@ -528,11 +575,11 @@ REALIZED OUTPUTS BACKFILL
 | G4 | `ingestPropertyPerformance()` (old path) marked `@deprecated`; some callers may still use it with `parcelId=''` | Corpus rows with empty parcel_id are unreachable |
 | G5 | M36, M37, M38 listed as corpus consumers but not yet active | Listed in comment only; no actual SQL queries dispatched |
 | G6 | External signal ingestion (LODES, QCEW, FRED, Veraset) all show `status: 'pending'` in coverage report | MSA-level corpus columns (`msa_employment_total`, `commute_shed_workers`, etc.) are all NULL |
-| G7 | `line_item_benchmarks` and `archive_assumption_benchmarks` tables exist with correct schema but row count unknown — if empty, Tier 3 benchmark tools return empty results silently | CashFlow Agent falls back to hardcoded prompt ranges only |
+| G7 | `line_item_benchmarks` = **0 rows**; `archive_assumption_benchmarks` = **0 rows** (confirmed 2026-05-25). Tier 3 benchmark tools return empty results silently | CashFlow Agent falls back to LLM training-data knowledge for all OpEx benchmarks. `archive_percentile` is null on every snapshot field |
 
 ---
 
-## 13. Document-to-Corpus Trigger Chain
+## 15. Document-to-Corpus Trigger Chain
 
 ```
 data-router.ts (parse pipeline)
@@ -544,6 +591,54 @@ data-router.ts (parse pipeline)
 ```
 
 The write happens **inside the surrounding parse transaction** — if corpus write fails, the entire upload rolls back.
+
+---
+
+## 16. Pre-Dispatch Readiness Assessment
+
+This section states the minimum conditions that must be true before the CashFlow Agent can be trusted to deliver high-confidence underwriting output. "Dispatch" means triggering the agent on a subject deal (manual, event-driven, or scheduled).
+
+### Current state (2026-05-25): NOT READY for high-confidence output
+
+The agent runs and produces output today. However, the output quality is materially limited by the conditions below.
+
+### Must-pass conditions before high-confidence dispatch
+
+| Condition | Current State | Must-pass Test |
+|-----------|--------------|---------------|
+| **T12 actuals present** | Required. Gate-check in `cashflow.inngest.ts` enforces at least 3 months | Pass if `deal_monthly_actuals` has ≥ 3 months with non-null NOI for the subject deal |
+| **Rent roll linked** | Strongly preferred. Without it, unit-level data is absent | Pass if `deal_lease_transactions` has ≥ 1 row for the subject deal |
+| **`data_library_files.asset_id` backfilled (G1)** | FAILING — all 266 T12 files have asset_id = NULL | Pass if `SELECT COUNT(*) FROM data_library_files WHERE document_type = 'T12' AND asset_id IS NULL` = 0 |
+| **`historical_observations.deal_id` linked (G2)** | FAILING — only 1 of 402 rows has a deal_id | Pass if subject deal's parcel_id appears in historical_observations with `deal_id` populated |
+| **`line_item_benchmarks` seeded (G7)** | FAILING — 0 rows | Pass if `SELECT COUNT(*) FROM line_item_benchmarks WHERE state = 'FL'` > 0 for a FL deal |
+| **`archive_assumption_benchmarks` seeded (G7)** | FAILING — 0 rows | Pass if table has rows for the relevant asset_class + deal_type cohort |
+| **`deal_evidence_rows` table created** | FAILING — table does not exist | Pass if `SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'deal_evidence_rows')` = true |
+| **`fetch_rate_environment` schema fix (B1)** | FAILING — macro_context fields return strings, Zod rejects | Pass if `gdp_growth_pct`, `cpi_yoy_pct`, `unrate`, `consumer_sentiment`, `m2_yoy`, `dxy` all pass `typeof === 'number'` |
+| **`fetch_cycle_intelligence` schema fix (B2)** | FAILING — cap_rate_forecast fields return strings | Pass if `current_cap` and `predicted_cap` pass `typeof === 'number'` |
+| **Budget headroom** | Near limit — reference run used 772k / 800k tokens (96.6%) | Pass if deal's daily cost total < $20 and 800k token cap not within 50k of being hit |
+
+### Conditions that are optional but materially improve output
+
+| Condition | Current State | Impact if met |
+|-----------|--------------|---------------|
+| CoStar submarket data ingested | Not loaded for Wesley Chapel | `fetch_peer_comp_noi_metrics` returns data; submarket rent/vacancy anchored |
+| Subject deal has OM uploaded | None attached for Sentosa Epperson | `detect_collision` gets sponsor-stated figures; evidence tier improves |
+| `historical_observations` populated for submarket | 0 rows for Wesley Chapel | M35, M07, M36 become active; data completeness score rises from 20 → ~40 |
+| External macro signals ingested (LODES/QCEW/Veraset) | All pending (G6) | MSA macro columns become non-null; corpus query quality improves |
+
+### Minimum viable dispatch checklist
+
+Before triggering a production run on any deal, confirm:
+
+1. [ ] T12 actuals: ≥ 6 months present in `deal_monthly_actuals`
+2. [ ] Rent roll: at least one row in `deal_lease_transactions`
+3. [ ] `deal_evidence_rows` table exists (schema migration applied)
+4. [ ] `line_item_benchmarks` has rows for the deal's state (or at minimum national rows)
+5. [ ] `fetch_rate_environment` B1 fix applied (macro fields cast to number)
+6. [ ] `fetch_cycle_intelligence` B2 fix applied (cap_rate_forecast fields cast to number)
+7. [ ] Deal's budget headroom: < $20/day per-deal cap consumed
+
+Steps 1–2 are the only conditions met today for Sentosa Epperson. Steps 3–7 require code or data fixes (tracked as G7, G1/G2, B1, B2 in this document).
 
 ---
 
