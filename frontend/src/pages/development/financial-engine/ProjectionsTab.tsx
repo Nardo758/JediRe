@@ -26,6 +26,25 @@ type IntegrityCheckItem = F9IntegrityCheck;
 // ─── Projection row type — matches backend DealFinancials['projections'][number] ──────────────────
 export type ProjYear = NonNullable<F9DealFinancials['projections']>[number];
 
+// ─── Per-year override field map: frontend row.key → backend field name ───
+// Only the lines whose values can be directly operator-set (not derived totals
+// or %-of-GPR lines).  Year-1 overrides go through the Assumptions tab; this
+// map is used exclusively for year 2+ cell edits in the DrilldownDrawer.
+const OVERRIDE_FIELD_MAP: Partial<Record<keyof ProjYear, string>> = {
+  gpr:         'gpr',
+  otherIncome: 'other_income',
+  payroll:     'payroll',
+  repairs:     'repairs_maintenance',
+  turnover:    'turnover',
+  contractSvc: 'contract_services',
+  marketing:   'marketing',
+  utilities:   'utilities',
+  gAndA:       'g_and_a',
+  insurance:   'insurance',
+  reTaxes:     'real_estate_tax',
+  reserves:    'replacement_reserves',
+};
+
 // ─── Drilldown formula path entry ─────────────────────────────────────────
 interface DrilldownEntry {
   label: string;
@@ -37,6 +56,7 @@ interface DrilldownEntry {
 
 interface DrilldownInfo {
   rowLabel: string;
+  rowKey: keyof ProjYear;
   year: number;
   value: string;
   entries: DrilldownEntry[];
@@ -278,11 +298,47 @@ function DrilldownDrawer({
   info,
   onClose,
   onTabChange,
+  dealId,
+  onSave,
 }: {
   info: DrilldownInfo;
   onClose: () => void;
   onTabChange?: (i: number) => void;
+  dealId?: string;
+  onSave?: () => void;
 }) {
+  const backendField = OVERRIDE_FIELD_MAP[info.rowKey];
+  const canOverride  = info.year > 1 && backendField != null && dealId != null;
+
+  const [overrideInput, setOverrideInput] = React.useState('');
+  const [saving,        setSaving]        = React.useState(false);
+  const [saveError,     setSaveError]     = React.useState<string | null>(null);
+  const [savedMsg,      setSavedMsg]      = React.useState<string | null>(null);
+
+  const commit = async (val: number | null) => {
+    if (!canOverride || !dealId || !backendField) return;
+    setSaving(true); setSaveError(null); setSavedMsg(null);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
+        field: backendField, year: info.year, value: val,
+      });
+      setSavedMsg(val == null ? 'Cleared — formula restored' : 'Saved');
+      onSave?.();
+    } catch {
+      setSaveError('Save failed — please retry');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSave = () => {
+    const raw = parseFloat(overrideInput.replace(/[$,]/g, ''));
+    if (isNaN(raw)) { setSaveError('Enter a valid number (e.g. 245000)'); return; }
+    commit(raw);
+  };
+
+  const handleClear = () => { setOverrideInput(''); commit(null); };
+
   return (
     <div style={{
       width: 360, flexShrink: 0, display: 'flex', flexDirection: 'column',
@@ -303,6 +359,63 @@ function DrilldownDrawer({
         </div>
         <div style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700, color: BT.met.financial }}>{info.value}</div>
       </div>
+
+      {/* ── Per-year override input (year 2+ editable lines only) ─────────── */}
+      {canOverride && (
+        <div style={{
+          padding: '10px 10px 8px',
+          borderBottom: `1px solid ${BT.border.medium}`,
+          background: `${BT.met.financial}08`,
+        }}>
+          <div style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.met.financial, letterSpacing: 0.8, marginBottom: 6 }}>
+            OVERRIDE YR {info.year} VALUE
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              type="text"
+              value={overrideInput}
+              onChange={e => { setOverrideInput(e.target.value); setSaveError(null); setSavedMsg(null); }}
+              onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') onClose(); }}
+              placeholder="e.g. 245000"
+              style={{
+                flex: 1, background: BT.bg.terminal, border: `1px solid ${BT.border.medium}`,
+                color: BT.text.primary, fontFamily: MONO, fontSize: 11, padding: '4px 8px',
+                borderRadius: 2, outline: 'none',
+              }}
+            />
+            <button
+              onClick={handleSave}
+              disabled={saving || overrideInput.trim() === ''}
+              style={{
+                background: saving ? BT.bg.header : BT.met.financial,
+                color: saving ? BT.text.muted : '#000',
+                border: 'none', fontFamily: MONO, fontSize: 9, fontWeight: 700,
+                padding: '4px 10px', cursor: saving ? 'not-allowed' : 'pointer', borderRadius: 2,
+              }}
+            >{saving ? '…' : 'SET'}</button>
+            <button
+              onClick={handleClear}
+              disabled={saving}
+              title="Clear override — restore formula"
+              style={{
+                background: 'transparent', border: `1px solid ${BT.border.medium}`,
+                color: BT.text.muted, fontFamily: MONO, fontSize: 9,
+                padding: '4px 8px', cursor: saving ? 'not-allowed' : 'pointer', borderRadius: 2,
+              }}
+            >CLR</button>
+          </div>
+          {saveError && (
+            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.red, marginTop: 4 }}>{saveError}</div>
+          )}
+          {savedMsg && (
+            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green ?? '#00B050', marginTop: 4 }}>{savedMsg}</div>
+          )}
+          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginTop: 4, lineHeight: 1.4 }}>
+            Enter annual total ($). CLR restores formula growth. Change persists on refresh.
+          </div>
+        </div>
+      )}
+
       {/* Formula path entries */}
       <div style={{ flex: 1, overflow: 'auto', padding: '8px 0' }}>
         {info.entries.map((e, i) => (
@@ -433,7 +546,7 @@ function buildDrilldown(
     }
   }
 
-  return { rowLabel: row.label, year: proj.year, value: display, entries };
+  return { rowLabel: row.label, rowKey: row.key, year: proj.year, value: display, entries };
 }
 
 // ─── Sub-period columns for monthly/quarterly views ───────────────────────
@@ -2002,6 +2115,8 @@ export function ProjectionsTab({
           info={drilldown}
           onClose={() => setDrilldown(null)}
           onTabChange={onTabChange}
+          dealId={dealId}
+          onSave={() => { setDrilldown(null); onF9Refresh?.(); }}
         />
       )}
 
