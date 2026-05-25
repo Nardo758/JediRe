@@ -398,6 +398,7 @@ import { weeklyCorpusDigestCron } from './inngest/functions/weeklyCorpusDigestCr
 import { trafficCalibrationCron } from './inngest/functions/trafficCalibrationCron';
 import { correlationRollingComputeCron } from './inngest/functions/correlation-rolling-compute';
 import { nightlyEventExtractionCron } from './inngest/functions/nightly-event-extraction';
+import { nightlyApartmentSyncCron } from './inngest/functions/nightly-apartment-sync';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -435,6 +436,8 @@ app.use(
       correlationRollingComputeCron,
       // Task #1078: nightly market event extraction from news_article_cache (03:00 UTC)
       nightlyEventExtractionCron,
+      // Task #635: nightly apartment locator sync — all metros (04:00 UTC)
+      nightlyApartmentSyncCron,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,
