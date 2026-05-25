@@ -552,6 +552,129 @@ export async function cashflowPostProcess(
           }
         }
 
+        // ── Derived fallbacks for high-priority badge fields ──────────────────
+        // When the agent omits revenue.bad_debt, revenue.concessions, or
+        // expense.turnover (all three appear in AGENT_FIELD_TO_YEAR1 but are
+        // frequently absent from proforma_fields output), derive them from
+        // related seed data so the F9 AI badge always appears for these rows.
+        // Fallback only fires when:
+        //   (a) the agent did NOT write the field in the main loop above, AND
+        //   (b) the operator has no non-null numeric override.
+        // Resolution is labelled "agent" (same as the main loop) so the badge
+        // behaviour is identical to an agent-written value.
+        {
+          const getResolvedNum = (lv: unknown): number | null => {
+            if (!lv || typeof lv !== 'object') return null;
+            const v = (lv as Record<string, unknown>).resolved;
+            return typeof v === 'number' && isFinite(v) ? v : null;
+          };
+
+          const gpr   = getResolvedNum(currentYear1['gpr']);
+          const bdPct  = getResolvedNum(currentYear1['bad_debt_pct']);
+          const concPct = getResolvedNum(currentYear1['concessions_pct']);
+
+          // turnover: prefer T12 slot, fall back to current resolved value
+          // (avoids overwriting an agent value that might have just been written)
+          const turnoverLv = currentYear1['turnover'] as Record<string, unknown> | undefined;
+          const turnoverT12 = typeof turnoverLv?.t12 === 'number' && isFinite(turnoverLv.t12 as number)
+            ? (turnoverLv.t12 as number) : null;
+          const turnoverResolved = getResolvedNum(turnoverLv);
+
+          const DERIVED: Array<{ agentKey: string; year1Key: string; value: number | null }> = [
+            {
+              agentKey: 'revenue.bad_debt',
+              year1Key: 'bad_debt_dollars',
+              value: bdPct != null && gpr != null ? Math.round(bdPct * gpr) : null,
+            },
+            {
+              agentKey: 'revenue.concessions',
+              year1Key: 'concessions',
+              value: concPct != null && gpr != null ? Math.round(concPct * gpr) : null,
+            },
+            {
+              agentKey: 'expense.turnover',
+              year1Key: 'turnover',
+              value: turnoverT12 ?? turnoverResolved,
+            },
+          ];
+
+          let derivedWriteCount = 0;
+          for (const fb of DERIVED) {
+            // Skip when the agent already provided this field in the main loop
+            if (effectiveValues[fb.agentKey] != null) continue;
+            if (fb.value == null) continue;
+
+            // Skip when operator has a non-null finite numeric override
+            const existingLv2 = currentYear1[fb.year1Key] as Record<string, unknown> | undefined;
+            const existingOverride2 = existingLv2?.override;
+            if (
+              existingOverride2 !== null &&
+              existingOverride2 !== undefined &&
+              typeof existingOverride2 === 'number' &&
+              isFinite(existingOverride2 as number)
+            ) continue;
+
+            // Skip if field already carries resolution:"agent" (prior run already wrote it
+            // and nothing has invalidated it — avoid a no-op re-write).
+            const existingResolution = existingLv2?.resolution;
+            if (existingResolution === 'agent') continue;
+
+            try {
+              const agentScenarioRes2 = await query(
+                `UPDATE deal_underwriting_scenarios
+                 SET year1 = jsonb_set(
+                   COALESCE(year1, '{}'),
+                   ARRAY[$2::text],
+                   COALESCE(year1->$2::text, '{}') || jsonb_build_object(
+                     'agent',      $3::numeric,
+                     'resolved',   $3::numeric,
+                     'resolution', $4::text
+                   ),
+                   true
+                 ),
+                 updated_at = NOW()
+                 WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
+                 RETURNING id`,
+                [ctx.dealId, fb.year1Key, fb.value, 'agent']
+              );
+              if ((agentScenarioRes2.rowCount ?? 0) === 0) {
+                await query(
+                  `UPDATE deal_assumptions
+                   SET year1 = jsonb_set(
+                     COALESCE(year1, '{}'),
+                     ARRAY[$2::text],
+                     COALESCE(year1->$2::text, '{}') || jsonb_build_object(
+                       'agent',      $3::numeric,
+                       'resolved',   $3::numeric,
+                       'resolution', $4::text
+                     ),
+                     true
+                   )
+                   WHERE deal_id = $1`,
+                  [ctx.dealId, fb.year1Key, fb.value, 'agent']
+                );
+              }
+              derivedWriteCount++;
+            } catch (derivedErr) {
+              logger.warn('[CashflowPostProcess] Derived fallback write failed (non-fatal)', {
+                dealId: ctx.dealId,
+                runId,
+                field: fb.year1Key,
+                err: derivedErr instanceof Error ? derivedErr.message : String(derivedErr),
+              });
+            }
+          }
+
+          if (derivedWriteCount > 0) {
+            agentWriteCount += derivedWriteCount;
+            logger.info('[CashflowPostProcess] Derived fallback fields written', {
+              dealId: ctx.dealId,
+              runId,
+              derivedWriteCount,
+            });
+          }
+        }
+
         logger.info('[CashflowPostProcess] Agent line-item write-back to deal_assumptions.year1', {
           dealId: ctx.dealId,
           runId,

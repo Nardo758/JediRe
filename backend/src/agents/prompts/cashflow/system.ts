@@ -1340,6 +1340,9 @@ CRITICAL: Every field_path in proforma_fields must be a dot-notation key (e.g.
 { value, source, evidence, archive_percentile? }. Include AT MINIMUM:
   - revenue.gross_potential_rent
   - revenue.effective_gross_income
+  - revenue.concessions       ← REQUIRED: stabilized annual concession dollars
+  - revenue.bad_debt          ← REQUIRED: stabilized annual bad debt dollars
+  - expense.turnover          ← REQUIRED: stabilized annual turnover cost dollars
   - expense.property_tax
   - expense.insurance
   - expense.utilities

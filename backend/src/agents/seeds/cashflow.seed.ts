@@ -35,7 +35,7 @@ const EVIDENCE_PROMPTS: Array<{
   {
     id: 'cashflow-v8.0-core',
     promptType: 'core',
-    version: '5.2.0',
+    version: '5.2.1',
     systemPrompt: CASHFLOW_SYSTEM_PROMPT,
   },
   {
@@ -82,7 +82,7 @@ export async function seedCashflowPrompt(): Promise<void> {
     });
   }
 
-  logger.info('CashFlow Agent prompts seeded (v8.0 — pricing power posture framework, prompt-spec v4.0 / agent-version v5.2.0)', {
+  logger.info('CashFlow Agent prompts seeded (v8.0 — pricing power posture framework, prompt-spec v4.0 / agent-version v5.2.1)', {
     count: EVIDENCE_PROMPTS.length,
     ids: EVIDENCE_PROMPTS.map(p => p.id),
   });
