@@ -224,7 +224,12 @@ export default function ArchiveUploadPage() {
 
       if (!urlData.signed_url) throw new Error('No signed URL returned');
 
-      const { signed_url, storage_key } = urlData as { signed_url: string; storage_key: string };
+      const { signed_url, storage_key, expires_at, proxy_token } = urlData as {
+        signed_url:  string;
+        storage_key: string;
+        expires_at:  string;
+        proxy_token: string;
+      };
 
       // Step 3: PUT directly to R2; fall back to backend proxy on CORS/network error
       update({ status: 'uploading', progress: 0 });
@@ -240,8 +245,15 @@ export default function ArchiveUploadPage() {
       } catch (_directErr) {
         // Direct PUT failed (CORS preflight rejected or network error).
         // Route the upload through the backend instead — no CORS issue.
+        // proxy_token + expires_at are validated server-side to prevent
+        // arbitrary-path writes.
+        const params = new URLSearchParams({
+          storage_key,
+          expires_at,
+          proxy_token,
+        });
         const proxyRes = await apiClient.post(
-          `/api/v1/archive/files/upload-proxy?storage_key=${encodeURIComponent(storage_key)}`,
+          `/api/v1/archive/files/upload-proxy?${params.toString()}`,
           uf.file,
           {
             headers: { 'Content-Type': uf.file.type || 'application/octet-stream' },

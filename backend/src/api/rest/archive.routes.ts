@@ -1704,7 +1704,35 @@ ensureR2CorsPolicy().catch(err => {
   );
 });
 
-router.post('/files/signed-upload-url', requireAuth, async (req: Request, res: Response) => {
+// ── Proxy token helpers ───────────────────────────────────────────────────────
+// A short-lived HMAC-SHA256 token is issued with each presigned URL and must
+// be presented to /files/upload-proxy. This prevents any authenticated user
+// from writing to arbitrary R2 paths via the proxy endpoint.
+
+const PROXY_KEY_PATTERN = /^uploads\/library\/[0-9a-f-]{36}\.[a-z0-9]+$/;
+
+function proxyTokenSecret(): string {
+  return process.env.JWT_SECRET ?? process.env.SESSION_SECRET ?? 'r2-proxy-fallback-secret';
+}
+
+function signProxyToken(storageKey: string, userId: string, expiresAt: string): string {
+  const payload = `${storageKey}|${userId}|${expiresAt}`;
+  return crypto.createHmac('sha256', proxyTokenSecret()).update(payload).digest('hex');
+}
+
+function verifyProxyToken(
+  token: string,
+  storageKey: string,
+  userId: string,
+  expiresAt: string,
+): boolean {
+  const expected = signProxyToken(storageKey, userId, expiresAt);
+  // Constant-time comparison to prevent timing attacks
+  if (token.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(token, 'hex'), Buffer.from(expected, 'hex'));
+}
+
+router.post('/files/signed-upload-url', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const { original_filename, mime_type, size_bytes, file_ext } = req.body as {
     original_filename?: string;
     mime_type?: string;
@@ -1751,6 +1779,11 @@ router.post('/files/signed-upload-url', requireAuth, async (req: Request, res: R
 
     const signedUrl = await getSignedUrl(s3, command, { expiresIn: 900 });
 
+    // Issue a proxy token so the fallback upload endpoint can verify this key
+    // was legitimately minted for this user and hasn't expired.
+    const userId = (req as AuthenticatedRequest).user?.userId ?? 'unknown';
+    const proxyToken = signProxyToken(storageKey, userId, expiresAt);
+
     logger.info('[archive/signed-upload-url] issued presigned URL', {
       storage_key: storageKey,
       mime_type,
@@ -1758,10 +1791,11 @@ router.post('/files/signed-upload-url', requireAuth, async (req: Request, res: R
     });
 
     return res.json({
-      signed_url: signedUrl,
+      signed_url:  signedUrl,
       storage_key: storageKey,
       upload_method: 'PUT',
-      expires_at: expiresAt,
+      expires_at:  expiresAt,
+      proxy_token: proxyToken,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -1840,14 +1874,37 @@ router.post(
   '/files/upload-proxy',
   requireAuth,
   express.raw({ type: '*/*', limit: 100 * 1024 * 1024 /* 100 MB */ }),
-  async (req: Request, res: Response) => {
-    const storageKey =
-      (req.query.storage_key as string | undefined) ??
-      (req.headers['x-storage-key'] as string | undefined);
+  async (req: AuthenticatedRequest, res: Response) => {
+    // ── Authorization ─────────────────────────────────────────────────────────
+    // Validate the HMAC proxy token issued by /files/signed-upload-url.
+    // This ensures the storage_key was legitimately minted for this user and
+    // hasn't expired — preventing arbitrary-path writes via the proxy.
 
-    if (!storageKey) {
-      return res.status(400).json({ error: 'storage_key required (query param or X-Storage-Key header)' });
+    const storageKey  = req.query.storage_key as string | undefined;
+    const expiresAt   = req.query.expires_at  as string | undefined;
+    const proxyToken  = req.query.proxy_token  as string | undefined;
+
+    if (!storageKey || !expiresAt || !proxyToken) {
+      return res.status(400).json({ error: 'storage_key, expires_at, and proxy_token are required' });
     }
+
+    // Enforce key namespace — only keys minted by signed-upload-url are allowed
+    if (!PROXY_KEY_PATTERN.test(storageKey)) {
+      return res.status(403).json({ error: 'storage_key is outside the permitted namespace' });
+    }
+
+    // Check token expiry
+    if (Date.now() > new Date(expiresAt).getTime()) {
+      return res.status(403).json({ error: 'Upload token has expired' });
+    }
+
+    // Validate HMAC
+    const userId = req.user?.userId ?? 'unknown';
+    if (!verifyProxyToken(proxyToken, storageKey, userId, expiresAt)) {
+      return res.status(403).json({ error: 'Invalid upload proxy token' });
+    }
+
+    // ── Upload ────────────────────────────────────────────────────────────────
 
     const body = req.body as Buffer;
     if (!Buffer.isBuffer(body) || body.length === 0) {
