@@ -40,6 +40,10 @@ const OutputSchema = z.object({
   deal_id: z.string(),
   field_path: z.string(),
   updated_at: z.string(),
+  deal_id_mismatch: z.boolean().optional().describe(
+    'True when input.deal_id differs from ctx.dealId — indicates the model wrote to a ' +
+    'deal other than the one this run was started for. Logged as a warning.'
+  ),
 });
 
 export const writeDealContextTool: ToolDefinition<
@@ -63,6 +67,22 @@ export const writeDealContextTool: ToolDefinition<
     // Schema: (deal_id, field_path) UNIQUE, value JSONB, source_label, agent_run_id.
 
     const now = new Date().toISOString();
+
+    // Guardrail (finding P5-01): warn when the model supplies a deal_id that differs
+    // from the runtime-injected ctx.dealId. Every other write tool uses ctx.dealId
+    // exclusively; write_dealcontext intentionally accepts input.deal_id for flexibility,
+    // but a mismatch almost always indicates a hallucinated or stale UUID.
+    const dealIdMismatch =
+      ctx.dealId !== undefined && input.deal_id !== ctx.dealId;
+
+    if (dealIdMismatch) {
+      logger.warn('write_dealcontext: deal_id mismatch — model supplied a different deal than the run context', {
+        inputDealId: input.deal_id,
+        ctxDealId: ctx.dealId,
+        fieldPath: input.field_path,
+        correlationId: ctx.correlationId,
+      });
+    }
 
     // Build field metadata. derived_from_search: true marks that this value was
     // sourced via web_search rather than structured data — fulfils the LayeredValue
@@ -105,6 +125,7 @@ export const writeDealContextTool: ToolDefinition<
       deal_id: input.deal_id,
       field_path: input.field_path,
       updated_at: now,
+      ...(dealIdMismatch ? { deal_id_mismatch: true } : {}),
     };
   },
 };
