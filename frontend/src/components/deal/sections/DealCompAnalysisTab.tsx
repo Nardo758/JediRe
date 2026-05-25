@@ -11,6 +11,8 @@ import {
   AlertCircle,
   Zap,
   TrendingUp,
+  ExternalLink,
+  X,
 } from 'lucide-react';
 import { BT } from '@/components/deal/bloomberg-ui';
 import { apiClient } from '../../../api/client';
@@ -18,6 +20,205 @@ import { apiClient } from '../../../api/client';
 const BT2 = BT;
 
 type TierKey = 'trade_area' | 'submarket' | 'msa';
+
+interface RentalDiscoveryComp {
+  alp_id: string | null;
+  name: string;
+  address: string;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  avg_asking_rent: number | null;
+  avg_effective_rent: number | null;
+  occupancy_pct: number | null;
+  concessions: string | null;
+  concession_pct: number | null;
+  unit_mix: any | null;
+  management_company: string | null;
+  source: string | null;
+  data_as_of: string | null;
+  distance_miles: number | null;
+  match_score: number | null;
+  year_built: number | null;
+  total_units: number | null;
+  lat: number | null;
+  lng: number | null;
+}
+
+function RentalCompDetailDrawer({
+  comp,
+  onClose,
+  onViewOnMap,
+}: {
+  comp: RentalDiscoveryComp;
+  onClose: () => void;
+  onViewOnMap: () => void;
+}) {
+  const unitMix: Array<{ type: string; count?: number; sqft?: number; avg_rent?: number }> = useMemo(() => {
+    if (!comp.unit_mix) return [];
+    try {
+      const parsed = typeof comp.unit_mix === 'string' ? JSON.parse(comp.unit_mix) : comp.unit_mix;
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }, [comp.unit_mix]);
+
+  const fullAddress = [comp.address, comp.city, comp.state, comp.zip].filter(Boolean).join(', ');
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9000,
+      display: 'flex', justifyContent: 'flex-end',
+    }}>
+      <div
+        style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }}
+        onClick={onClose}
+      />
+      <div style={{
+        position: 'relative', width: 420, maxWidth: '95vw',
+        height: '100%', background: BT2.bg.terminal,
+        borderLeft: `1px solid ${BT2.border.medium}`,
+        display: 'flex', flexDirection: 'column',
+        overflow: 'hidden',
+        zIndex: 1,
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '10px 14px', borderBottom: `1px solid ${BT2.border.subtle}`,
+          background: BT2.bg.panel, flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: BT2.text.cyan, fontFamily: mono, fontSize: 7, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 3 }}>
+                RENTAL COMP DETAIL
+              </div>
+              <div style={{ color: BT2.text.primary, fontSize: 12, fontWeight: 700, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {comp.name}
+              </div>
+              <div style={{ color: BT2.text.muted, fontSize: 9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {fullAddress}
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              {comp.lat != null && comp.lng != null && (
+                <button
+                  onClick={onViewOnMap}
+                  title="View on map"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                    padding: '3px 7px', fontSize: 7, fontWeight: 700, fontFamily: mono,
+                    border: `1px solid #00BCD440`, borderRadius: 3,
+                    color: '#00BCD4', background: '#00BCD408', cursor: 'pointer',
+                  }}
+                >
+                  <MapPin style={{ width: 9, height: 9 }} />
+                  MAP
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: BT2.text.muted, padding: 2, display: 'flex' }}
+              >
+                <X style={{ width: 14, height: 14 }} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* Key metrics */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            {[
+              { label: 'ASK RENT', value: comp.avg_asking_rent != null ? `$${Math.round(comp.avg_asking_rent).toLocaleString()}/mo` : '—', color: comp.avg_asking_rent != null ? '#00D26A' : BT2.text.muted },
+              { label: 'EFF RENT', value: comp.avg_effective_rent != null ? `$${Math.round(comp.avg_effective_rent).toLocaleString()}/mo` : '—', color: comp.avg_effective_rent != null ? BT2.text.primary : BT2.text.muted },
+              { label: 'OCCUPANCY', value: comp.occupancy_pct != null ? `${comp.occupancy_pct.toFixed(1)}%` : '—', color: comp.occupancy_pct != null ? (comp.occupancy_pct >= 90 ? '#00D26A' : comp.occupancy_pct >= 80 ? '#F5A623' : '#FF4757') : BT2.text.muted },
+              { label: 'TOTAL UNITS', value: comp.total_units != null ? comp.total_units.toLocaleString() : '—', color: BT2.text.primary },
+              { label: 'YEAR BUILT', value: comp.year_built != null ? String(comp.year_built) : '—', color: BT2.text.secondary },
+              { label: 'DISTANCE', value: comp.distance_miles != null ? `${comp.distance_miles.toFixed(2)} mi` : '—', color: BT2.text.secondary },
+              { label: 'MATCH SCORE', value: comp.match_score != null ? Math.round(comp.match_score).toString() : '—', color: comp.match_score != null ? (comp.match_score >= 70 ? '#00D26A' : comp.match_score >= 50 ? '#F5A623' : BT2.text.muted) : BT2.text.muted },
+              { label: 'CONCESSION', value: comp.concession_pct != null ? `${comp.concession_pct.toFixed(1)}%` : (comp.concessions ? 'Yes' : '—'), color: comp.concession_pct != null ? '#F5A623' : BT2.text.muted },
+            ].map(m => (
+              <div key={m.label} style={{
+                padding: '6px 8px', background: BT2.bg.panel,
+                border: `1px solid ${BT2.border.subtle}`, borderRadius: 3,
+              }}>
+                <div style={{ color: BT2.text.muted, fontFamily: mono, fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', marginBottom: 2 }}>{m.label}</div>
+                <div style={{ color: m.color, fontFamily: mono, fontSize: 12, fontWeight: 700 }}>{m.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Concessions text */}
+          {comp.concessions && (
+            <div>
+              <div style={{ color: BT2.text.muted, fontFamily: mono, fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', marginBottom: 4 }}>CONCESSIONS</div>
+              <div style={{ padding: '6px 8px', background: '#F5A62310', border: `1px solid #F5A62330`, borderRadius: 3, color: BT2.text.secondary, fontSize: 9 }}>
+                {comp.concessions}
+              </div>
+            </div>
+          )}
+
+          {/* Unit mix */}
+          {unitMix.length > 0 && (
+            <div>
+              <div style={{ color: BT2.text.muted, fontFamily: mono, fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', marginBottom: 4 }}>UNIT MIX</div>
+              <div style={{ border: `1px solid ${BT2.border.subtle}`, borderRadius: 3, overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono, fontSize: 9 }}>
+                  <thead>
+                    <tr style={{ background: BT2.bg.header }}>
+                      {['TYPE', 'COUNT', 'SQFT', 'AVG RENT'].map((h, i) => (
+                        <th key={h} style={{
+                          padding: '4px 6px', fontSize: 7, fontWeight: 700, letterSpacing: '0.06em',
+                          color: BT2.text.muted, textAlign: i === 0 ? 'left' : 'right',
+                        }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {unitMix.map((row, i) => (
+                      <tr key={i} style={{ borderTop: `1px solid ${BT2.border.subtle}40` }}>
+                        <td style={{ padding: '4px 6px', color: BT2.text.primary, fontWeight: 600 }}>{row.type || '—'}</td>
+                        <td style={{ padding: '4px 6px', textAlign: 'right', color: BT2.text.secondary }}>{row.count ?? '—'}</td>
+                        <td style={{ padding: '4px 6px', textAlign: 'right', color: BT2.text.secondary }}>{row.sqft != null ? row.sqft.toLocaleString() : '—'}</td>
+                        <td style={{ padding: '4px 6px', textAlign: 'right', color: row.avg_rent != null ? '#00D26A' : BT2.text.muted, fontWeight: 700 }}>
+                          {row.avg_rent != null ? `$${Math.round(row.avg_rent).toLocaleString()}` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Metadata */}
+          <div>
+            <div style={{ color: BT2.text.muted, fontFamily: mono, fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', marginBottom: 4 }}>SOURCE INFO</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {[
+                { label: 'Management', value: comp.management_company },
+                { label: 'Source', value: comp.source },
+                { label: 'Data as of', value: comp.data_as_of ? new Date(comp.data_as_of).toLocaleDateString() : null },
+              ].filter(r => r.value).map(r => (
+                <div key={r.label} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '4px 8px', background: BT2.bg.panel, borderRadius: 3,
+                  border: `1px solid ${BT2.border.subtle}`,
+                }}>
+                  <span style={{ color: BT2.text.muted, fontFamily: mono, fontSize: 8 }}>{r.label}</span>
+                  <span style={{ color: BT2.text.secondary, fontFamily: mono, fontSize: 8, fontWeight: 600 }}>{r.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 type ViewMode = 'list' | 'split' | 'map';
 
 const mono = 'var(--bt-mono)';
@@ -123,12 +324,13 @@ function CompRow({
 }
 
 function CompMapPanel({
-  allComps, tiers, hoveredRank, onHover,
+  allComps, tiers, hoveredRank, onHover, highlightedComp,
 }: {
   allComps: TieredCompProperty[];
   tiers: Record<TierKey, TieredCompProperty[]>;
   hoveredRank: number | null;
   onHover: (rank: number | null) => void;
+  highlightedComp?: { lat: number; lng: number; name: string } | null;
 }) {
   const geoComps = allComps.filter(c => c.lat != null && c.lng != null);
 
@@ -228,6 +430,28 @@ function CompMapPanel({
               </g>
             );
           })}
+
+          {/* Highlighted rental comp (from detail drawer view-on-map) */}
+          {highlightedComp && (() => {
+            if (geoComps.length === 0) return null;
+            const centerLat = geoComps.reduce((s, c) => s + (c.lat || 0), 0) / geoComps.length;
+            const centerLng = geoComps.reduce((s, c) => s + (c.lng || 0), 0) / geoComps.length;
+            const maxDistH = Math.max(...geoComps.map(c => c.distance_miles || 0), 2);
+            const scaleH = 180 / maxDistH;
+            const dx = (highlightedComp.lng - centerLng) * 69 * Math.cos((centerLat * Math.PI) / 180);
+            const dy = -(highlightedComp.lat - centerLat) * 69;
+            const hx = Math.max(15, Math.min(445, 230 + dx * scaleH));
+            const hy = Math.max(15, Math.min(445, 230 + dy * scaleH));
+            return (
+              <g>
+                <circle cx={hx} cy={hy} r="14" fill="#F59E0B" opacity="0.12" />
+                <circle cx={hx} cy={hy} r="7" fill={BT2.bg.terminal} stroke="#F59E0B" strokeWidth="2" />
+                <circle cx={hx} cy={hy} r="3" fill="#F59E0B" />
+                <rect x={hx + 10} y={hy - 20} width={140} height={18} rx="3" fill={BT2.bg.header} stroke="#F59E0B" strokeWidth="1" opacity="0.95" />
+                <text x={hx + 15} y={hy - 7} fill="#F59E0B" fontSize="7" fontWeight="700">{highlightedComp.name.substring(0, 24)}</text>
+              </g>
+            );
+          })()}
 
           <g>
             <circle cx="230" cy="230" r="7" fill="#FF8C42" opacity="0.15" />
@@ -370,20 +594,12 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
       median_rent: number | null;
       comp_count: number;
       rent_updated: boolean;
-      comps: Array<{
-        name: string;
-        address: string;
-        city: string | null;
-        state: string | null;
-        avg_asking_rent: number | null;
-        distance_miles: number | null;
-        match_score: number | null;
-        year_built: number | null;
-        total_units: number | null;
-      }>;
+      comps: RentalDiscoveryComp[];
     } | null;
     error: string | null;
   }>({ loading: false, result: null, error: null });
+  const [selectedRentalComp, setSelectedRentalComp] = useState<RentalDiscoveryComp | null>(null);
+  const [mapHighlightComp, setMapHighlightComp] = useState<{ lat: number; lng: number; name: string } | null>(null);
   const [showAllRentalComps, setShowAllRentalComps] = useState(false);
   const [marketRent, setMarketRent] = useState<{
     value: number | null;
@@ -626,7 +842,17 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
                     </thead>
                     <tbody>
                       {visibleComps.map((c, i) => (
-                        <tr key={`${c.address}-${i}`} style={{ borderTop: `1px solid ${BT2.border.subtle}` }}>
+                        <tr
+                          key={`${c.address}-${i}`}
+                          onClick={() => setSelectedRentalComp(c)}
+                          style={{
+                            borderTop: `1px solid ${BT2.border.subtle}`,
+                            cursor: 'pointer',
+                            transition: 'background 0.1s',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.background = '#00BCD408')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                        >
                           <td style={{ padding: '2px 6px 2px 0', color: BT2.text.muted }}>{i + 1}</td>
                           <td style={{ padding: '2px 6px', color: BT2.text.primary, fontWeight: 600, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.name}>{c.name}</td>
                           <td style={{ padding: '2px 6px', color: BT2.text.secondary, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={[c.address, c.city, c.state].filter(Boolean).join(', ')}>
@@ -640,6 +866,9 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
                           </td>
                           <td style={{ padding: '2px 0 2px 6px', textAlign: 'right', color: BT2.text.primary }}>
                             {c.match_score != null ? Math.round(c.match_score) : '—'}
+                          </td>
+                          <td style={{ padding: '2px 0 2px 4px', textAlign: 'right' }}>
+                            <ExternalLink style={{ width: 8, height: 8, color: BT2.text.muted, opacity: 0.6 }} />
                           </td>
                         </tr>
                       ))}
@@ -790,6 +1019,7 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
               tiers={tiers}
               hoveredRank={hoveredRank}
               onHover={setHoveredRank}
+              highlightedComp={mapHighlightComp}
             />
           </div>
         )}
@@ -810,6 +1040,27 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
             RUN AUTO-DISCOVERY
           </button>
         </div>
+      )}
+
+      {selectedRentalComp && (
+        <RentalCompDetailDrawer
+          comp={selectedRentalComp}
+          onClose={() => {
+            setSelectedRentalComp(null);
+            setMapHighlightComp(null);
+          }}
+          onViewOnMap={() => {
+            if (selectedRentalComp.lat != null && selectedRentalComp.lng != null) {
+              setMapHighlightComp({
+                lat: selectedRentalComp.lat,
+                lng: selectedRentalComp.lng,
+                name: selectedRentalComp.name,
+              });
+              if (viewMode === 'list') setViewMode('split');
+            }
+            setSelectedRentalComp(null);
+          }}
+        />
       )}
     </div>
   );

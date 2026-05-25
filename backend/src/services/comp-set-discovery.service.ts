@@ -799,15 +799,27 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
 // ============================================================================
 
 export interface AptLocatorDiscoveryResultComp {
+  alp_id: string | null;
   name: string;
   address: string;
   city: string | null;
   state: string | null;
+  zip: string | null;
   avg_asking_rent: number | null;
+  avg_effective_rent: number | null;
+  occupancy_pct: number | null;
+  concessions: string | null;
+  concession_pct: number | null;
+  unit_mix: any | null;
+  management_company: string | null;
+  source: string | null;
+  data_as_of: string | null;
   distance_miles: number | null;
   match_score: number | null;
   year_built: number | null;
   total_units: number | null;
+  lat: number | null;
+  lng: number | null;
 }
 
 export interface AptLocatorDiscoveryResult {
@@ -1129,15 +1141,27 @@ export async function discoverFromAptLocator(
   // Build the inline comps list returned to the UI so analysts can see *which*
   // apartments drove the calibrated market rent.
   const compsList: AptLocatorDiscoveryResultComp[] = topComps.map((c: any) => ({
+    alp_id: c.id != null ? String(c.id) : null,
     name: c.property_name || c.address,
     address: c.address,
     city: c.city ?? null,
     state: c.state ?? null,
+    zip: c.zip ?? null,
     avg_asking_rent: c.avg_asking_rent != null ? parseFloat(c.avg_asking_rent) : null,
+    avg_effective_rent: c.avg_effective_rent != null ? parseFloat(c.avg_effective_rent) : null,
+    occupancy_pct: c.occupancy_pct != null ? parseFloat(c.occupancy_pct) : null,
+    concessions: c.concessions ?? null,
+    concession_pct: c.concession_pct != null ? parseFloat(c.concession_pct) : null,
+    unit_mix: c.unit_mix ?? null,
+    management_company: c.management_company ?? null,
+    source: c.source ?? null,
+    data_as_of: c.data_as_of ?? null,
     distance_miles: c.distance_miles != null ? Number(c.distance_miles) : null,
     match_score: c.match_score != null ? Number(c.match_score) : null,
     year_built: c.year_built ?? null,
     total_units: c.total_units ?? null,
+    lat: c.latitude != null ? parseFloat(c.latitude) : null,
+    lng: c.longitude != null ? parseFloat(c.longitude) : null,
   }));
 
   logger.info('[discoverFromAptLocator] complete', { dealId, insertedCS, insertedDCS, medianRent });
