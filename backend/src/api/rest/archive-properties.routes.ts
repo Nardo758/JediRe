@@ -222,6 +222,9 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
             id: string;
             data_quality_score: number | null;
           }>(
+            // In the Data Library, parcelId == property_name (the user-supplied label
+            // that uniquely identifies the asset row). ORDER BY created_at DESC guards
+            // against the rare case of duplicate names — most-recent wins.
             `SELECT id, property_name, address, city, state, data_quality_score
              FROM data_library_assets
              WHERE property_name = $1

@@ -401,6 +401,10 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     setDetails(prev => ({ ...prev, [field]: value }));
   };
 
+  // Display-only estimate used ONLY when serverDqScore is null (create mode,
+  // before the first server save). In edit mode, serverDqScore is always
+  // initialised from the DB and this function is never the authoritative value.
+  // This function does NOT write to the database (removed in Phase 8 / Task #1041).
   const calculateDQScore = (): number => {
     let score = 0;
     // Required fields (10 pts each, max 100 — matches server 100-point core)
@@ -453,14 +457,18 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
               { params: { jobId: r.jobId } },
             );
             if (statusRes.data.status === 'pending_review' || statusRes.data.status === 'no_match' || statusRes.data.status === 'error') {
-              setEnrichResult(prev => prev ? {
-                ...prev,
-                fieldsEnriched: statusRes.data.fieldsEnriched?.length > 0
-                  ? statusRes.data.fieldsEnriched
-                  : prev.fieldsEnriched,
-                status: statusRes.data.status === 'pending_review' ? 'pending_review'
-                  : statusRes.data.status === 'no_match' ? 'no_match' : 'complete',
-              } : null);
+              if (statusRes.data.status === 'error') {
+                setEnrichResult(null);
+                setEnrichError(statusRes.data.error_msg || 'Enrichment failed — please try again');
+              } else {
+                setEnrichResult(prev => prev ? {
+                  ...prev,
+                  fieldsEnriched: statusRes.data.fieldsEnriched?.length > 0
+                    ? statusRes.data.fieldsEnriched
+                    : prev.fieldsEnriched,
+                  status: statusRes.data.status === 'pending_review' ? 'pending_review' : 'no_match',
+                } : null);
+              }
               setEnriching(false);
               return;
             }
