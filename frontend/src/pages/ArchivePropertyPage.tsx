@@ -14,6 +14,19 @@ function rv<T>(lv?: LayeredValue<T> | null): T | null {
   return lv?.resolved ?? null;
 }
 
+/** Returns the pending_web staged value, or null if none exists. */
+function pvw<T>(lv?: LayeredValue<T> | null): T | null {
+  const pw = lv?.layers?.pending_web;
+  return pw ? (pw.value as T) : null;
+}
+
+/** True if any Phase 8 field has a pending_web staged value not yet applied. */
+function hasPendingWebEnrichment(desc: PropertySummary['description']): boolean {
+  if (!desc) return false;
+  return [desc.narrative, desc.reviews, desc.photos, desc.sentiment_summary, desc.recent_events]
+    .some(lv => pvw(lv as LayeredValue) != null);
+}
+
 function fmtSize(bytes?: number | null): string {
   if (!bytes) return '—';
   if (bytes < 1024) return `${bytes} B`;
@@ -274,6 +287,9 @@ export default function ArchivePropertyPage() {
     );
   }
 
+  const hasPendingEnrichment = hasPendingWebEnrichment(desc);
+  const pendingNarrative = pvw(desc?.narrative as LayeredValue | undefined);
+
   const displayName = rv(desc?.property_name) ?? parcelId ?? 'Unknown Property';
   const address = resolveAddress(desc);
   const msaVal = rv(desc?.msa);
@@ -371,6 +387,23 @@ export default function ArchivePropertyPage() {
           </div>
         )}
 
+        {/* ── Pending enrichment banner (Step 3.3D) ── */}
+        {hasPendingEnrichment && (
+          <div style={{
+            marginBottom: '16px', padding: '10px 14px',
+            background: '#f59e0b0d', border: '1px solid #f59e0b44',
+            borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '8px',
+          }}>
+            <span style={{ fontSize: '13px', color: '#f59e0b' }}>⏳</span>
+            <span style={{ fontSize: '12px', color: '#f59e0b', fontWeight: 600 }}>
+              Pending review
+            </span>
+            <span style={{ fontSize: '12px', color: '#8892b0' }}>
+              — enriched data is staged and awaiting your approval. Open the asset in the Data Library modal to Apply or Discard.
+            </span>
+          </div>
+        )}
+
         {/* ── Description section ── */}
         <div style={S.section}>
           <div style={S.sectionTitle}>Description</div>
@@ -378,6 +411,20 @@ export default function ArchivePropertyPage() {
           {narrativeText && (
             <div style={S.narrative}>
               <ParsedNarrative text={narrativeText} />
+            </div>
+          )}
+
+          {!narrativeText && pendingNarrative && typeof pendingNarrative === 'string' && (
+            <div style={{
+              ...S.narrative,
+              border: '1px dashed #f59e0b66', background: '#f59e0b06',
+              color: '#b0885f', position: 'relative',
+            }}>
+              <span style={{
+                position: 'absolute', top: '6px', right: '10px',
+                fontSize: '10px', color: '#f59e0b', fontWeight: 700, letterSpacing: '0.08em',
+              }}>PENDING</span>
+              <ParsedNarrative text={pendingNarrative} />
             </div>
           )}
 
