@@ -1,0 +1,187 @@
+INVENTORY — DATA LIBRARY CODE + CASHFLOW AGENT READINESS
+
+CONTEXT
+Before dispatching CashFlow Agent work, need a complete inventory 
+of:
+1. All Data Library code (parsers, ingestion, storage, queries)
+2. Whether CashFlow Agent exists today (any state)
+3. What current code paths consume corpus data for analytical 
+   purposes
+4. Whether rent roll data flows to the Traffic Engine (M07)
+
+This is investigation only. No code changes. Output is a 
+structured document for Leon's review.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — DATA LIBRARY INVENTORY
+═══════════════════════════════════════════════════════════════════
+
+A. FILE INGESTION PATHS
+   - List every code path that writes to data_library_files
+   - For each: file path, function name, what triggers it
+   - Common entry points expected: bulk-upload.routes.ts, 
+     orchestrator worker, Apartment Locator adapter
+   - grep -r "INSERT INTO data_library_files\|INTO data_library_files" 
+     backend/src/
+
+B. PARSERS — current state
+   For each parser (T-12, Rent Roll, OM, Tax Bill, others if 
+   they exist):
+   - File path of parser implementation
+   - What it reads (file format, sample structure)
+   - What it writes (target table, schema, key fields)
+   - Whether it writes line-by-line detail or only aggregates
+   - Whether it updates parser_status on completion (recent fix)
+   - Whether it writes to extraction_data JSONB (the path that's 
+     currently sparse at 2/299)
+
+C. CORPUS STORAGE
+   - Full schema of historical_observations table (every column)
+   - What fields exist for line-item OpEx detail?
+   - Sample row: pick one historical_observations row, paste full 
+     content
+   - Total row count
+   - Distribution: how many rows per asset on average?
+
+D. EXTRACTION_DATA POPULATION PATHS
+   - All code paths that write to data_library_assets.extraction_data
+   - Why is it populated on only 2/299 assets?
+   - What pipeline was supposed to populate it for the rest?
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — CASHFLOW AGENT — DOES IT EXIST?
+═══════════════════════════════════════════════════════════════════
+
+A. Search for CashFlow Agent code:
+   find . -type f -name "*cashflow*" -o -name "*cash-flow*" \
+     -o -name "*proforma*" -o -name "*pro-forma*" \
+     -o -name "*M09*" -o -name "*ProForma*" \
+     -o -name "*CashflowAgent*"
+   
+   Document what was found:
+   - Files that exist
+   - Whether they contain real logic or stubs
+   - Function signatures, what inputs they expect
+   - What outputs they produce
+
+B. Search for module references in spec/docs:
+   - grep -ri "cashflow\|cash flow\|M09\|proforma" docs/
+   - Document spec status
+
+C. If CashFlow Agent code exists in any form:
+   - What tables does it read from? (grep for SELECT statements 
+     in the relevant files)
+   - What tables does it write to?
+   - Is it currently invoked from anywhere? (grep for the 
+     function name)
+
+D. If CashFlow Agent code does NOT exist:
+   - Confirm this explicitly
+   - Note any aspirational references to it (called from somewhere 
+     but doesn't actually exist)
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — CURRENT CONSUMERS OF CORPUS DATA
+═══════════════════════════════════════════════════════════════════
+
+For the historical_observations table:
+
+A. Find all SELECT references:
+   grep -ri "FROM historical_observations\|JOIN historical_observations" 
+     backend/src/
+   
+   For each occurrence:
+   - File path, function name
+   - What fields are queried
+   - What the function does with the result
+   - Whether it loops through rows for per-line-item analysis 
+     OR aggregates / counts / averages
+
+B. Specifically answer: Does any current code path do 
+   per-line-item analysis on corpus rows?
+   - Look for cursor-style iteration through rows
+   - Look for line_item / op_ex / category-level analytics
+   - Look for breakdowns by line item type (Tax / Insurance / 
+     R&M / Mgmt / Utilities / Payroll / etc.)
+
+C. Same investigation for data_library_assets.extraction_data:
+   - All code paths that READ extraction_data
+   - Whether they extract structured line items or just JSONB blob
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — TRAFFIC ENGINE (M07) STATUS + RENT ROLL FLOW
+═══════════════════════════════════════════════════════════════════
+
+A. Does M07 Traffic Engine exist as code?
+   find . -type f -name "*traffic*" -o -name "*M07*" \
+     -o -name "*TrafficEngine*"
+   
+   Document state: not started / specced / stubbed / partial / 
+   complete
+
+B. If M07 exists in any form:
+   - What does it read from?
+   - Does it touch rent roll data?
+   - What fields does it expect from rent roll?
+
+C. Find the rent roll parser output:
+   - What does the rent roll parser actually write?
+   - Does it preserve per-unit lease detail (start date, term, 
+     unit number, lease end, rent)?
+   - Or does it aggregate to property-level only?
+
+D. Document the rent roll → consumer flow:
+   - Rent roll uploaded → parser runs → writes to ?
+   - Then who reads that output?
+   - Specifically: is there any code that consumes per-unit lease 
+     detail for velocity, term mix, seasonality, or waterfall 
+     analysis?
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — DATA FLOW MAP
+═══════════════════════════════════════════════════════════════════
+
+Produce a structured table mapping every data input to its 
+current consumer(s):
+
+| Input Source | Stored In | Current Consumer(s) | Used For |
+|---|---|---|---|
+| T-12 line items (from T-12 parser) | ? | ? | ? |
+| Rent roll line items | ? | ? | ? |
+| OM extracted fields | ? | ? | ? |
+| Tax bill data | ? | ? | ? |
+| Reviews + sentiment (Phase 8) | property_descriptions.reviews | per-property page UI only? | display |
+| Photos + amenities | property_descriptions.{photos,amenities} | per-property page UI only? | display |
+| Regulatory constraints | property_descriptions.regulatory_constraints | M02 substrate only — no downstream consumers yet? | substrate |
+| Operating metrics in corpus | historical_observations | ? | ? |
+| Benchmark aggregations | archive_assumption_benchmarks (currently 0 rows) | ? | ? |
+| Line item benchmarks | line_item_benchmarks (currently 0 rows) | ? | ? |
+
+For each row where Current Consumer(s) is "?": investigate and 
+fill in.
+
+For each row marked "UI only": confirm there's no analytical 
+consumer (which would be a gap for CashFlow Agent dependencies).
+
+═══════════════════════════════════════════════════════════════════
+CLOSING REPORT in docs/operations/DATA_LIBRARY_INVENTORY.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Data Library code map (Step 1)
+(b) CashFlow Agent existence verdict (Step 2)
+(c) Current corpus consumers (Step 3)
+(d) Traffic Engine + rent roll flow (Step 4)
+(e) Complete data flow map (Step 5)
+(f) Gaps identified — inputs with no analytical consumer
+(g) Pre-CashFlow Agent dispatch readiness assessment
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Make code changes
+- Build new connections
+- Fix the phantom column issue (separate dispatch)
+- Speculate about what code "should" do — only document what 
+  it actually does
+- Skip the data flow map (Step 5) — that's the core deliverable
