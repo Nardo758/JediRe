@@ -109,6 +109,19 @@ interface RentByClassHistoryResponse {
   history: RentByClassHistoryEntry[];
 }
 
+interface MultiCityRentResponse {
+  success: boolean;
+  cities: Record<string, { city: string; state: string; history: RentByClassHistoryEntry[] }>;
+}
+
+const COMPARE_CITY_OPTIONS: { label: string; city: string; state: string; colors: [string, string, string] }[] = [
+  { label: 'Atlanta', city: 'Atlanta', state: 'GA', colors: ['#22c55e', '#16a34a', '#15803d'] },
+  { label: 'Charlotte', city: 'Charlotte', state: 'NC', colors: ['#3b82f6', '#2563eb', '#1d4ed8'] },
+  { label: 'Nashville', city: 'Nashville', state: 'TN', colors: ['#f59e0b', '#d97706', '#b45309'] },
+  { label: 'Tampa', city: 'Tampa', state: 'FL', colors: ['#ef4444', '#dc2626', '#b91c1c'] },
+  { label: 'Raleigh', city: 'Raleigh', state: 'NC', colors: ['#8b5cf6', '#7c3aed', '#6d28d9'] },
+];
+
 interface SupplyPipelineSubmarket {
   name: string;
   units: number;
@@ -138,6 +151,13 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   const [rentByClassHistory, setRentByClassHistory] = useState<RentByClassHistoryEntry[]>([]);
   const [supplyPipeline, setSupplyPipeline] = useState<SupplyPipelineSubmarket[]>([]);
   const [supplyPipelineTotal, setSupplyPipelineTotal] = useState<number | null>(null);
+
+  // Multi-city compare state
+  const [compareMode, setCompareMode] = useState(false);
+  const [selectedCompareCities, setSelectedCompareCities] = useState<Set<string>>(new Set());
+  const [multiCityData, setMultiCityData] = useState<MultiCityRentResponse['cities']>({});
+  const [multiCityLoading, setMultiCityLoading] = useState(false);
+
   const msaName = msa?.name || msaId || 'Atlanta';
   const msaCity = (msa?.city || msa?.name || 'Atlanta').split(',')[0].trim();
   const msaState = msa?.state || 'GA';
@@ -216,6 +236,25 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
       })
       .finally(() => setRentByClassLoading(false));
   }, [msaCity, msaState]);
+
+  // Multi-city compare: fetch whenever compare mode is active and city selection changes
+  useEffect(() => {
+    if (!compareMode) return;
+    const allCities = new Set(selectedCompareCities);
+    // Always include the current MSA city
+    const msaKey = `${msaCity}:${msaState}`;
+    allCities.add(msaKey);
+    if (allCities.size === 0) return;
+
+    setMultiCityLoading(true);
+    const citiesParam = Array.from(allCities).join(',');
+    apiClient.get<MultiCityRentResponse>(
+      `/georgia/analytics/rent-by-class/multi?cities=${encodeURIComponent(citiesParam)}&limit=12`
+    )
+      .then((res) => setMultiCityData(res?.cities || {}))
+      .catch(() => setMultiCityData({}))
+      .finally(() => setMultiCityLoading(false));
+  }, [compareMode, selectedCompareCities, msaCity, msaState]);
 
   useEffect(() => {
     apiClient.get<SupplyPipelineResponse>('/georgia/supply/pipeline?state=GA&limit=8')
@@ -522,34 +561,208 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
       <div style={{ display: 'flex', gap: 20 }}>
         {/* Rent by Vintage Class */}
         <div style={{ flex: 1, ...terminalStyles.card, padding: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14 }}>
-              Rent by Vintage Class
-            </h3>
-            {rentByClassLoading ? (
-              <span style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: 1,
-                color: BT.text.muted, background: BT.bg.elevated,
-                padding: '2px 7px', borderRadius: 0,
-              }}>LOADING</span>
-            ) : rentByClass.length > 0 ? (
-              <span style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: 1,
-                color: BT.text.green, background: 'rgba(34,197,94,0.12)',
-                padding: '2px 7px', borderRadius: 0,
-              }}>LIVE · APT LOCATOR</span>
-            ) : (
-              <span style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: 1,
-                color: BT.text.muted, background: BT.bg.elevated,
-                padding: '2px 7px', borderRadius: 0,
-              }}>MARKET BENCHMARK</span>
+          {/* Card header: title + compare toggle */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: compareMode ? 10 : 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14 }}>
+                Rent by Vintage Class
+              </h3>
+              <button
+                onClick={() => {
+                  const next = !compareMode;
+                  setCompareMode(next);
+                  if (!next) setSelectedCompareCities(new Set());
+                }}
+                style={{
+                  padding: '3px 10px',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: 0.5,
+                  cursor: 'pointer',
+                  border: 'none',
+                  borderRadius: 0,
+                  background: compareMode ? BT.accent.blue : BT.bg.elevated,
+                  color: compareMode ? '#fff' : BT.text.muted,
+                }}
+              >
+                {compareMode ? '⊗ COMPARE ON' : '⊕ COMPARE'}
+              </button>
+            </div>
+            {!compareMode && (
+              rentByClassLoading ? (
+                <span style={{
+                  fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                  color: BT.text.muted, background: BT.bg.elevated,
+                  padding: '2px 7px', borderRadius: 0,
+                }}>LOADING</span>
+              ) : rentByClass.length > 0 ? (
+                <span style={{
+                  fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                  color: BT.text.green, background: 'rgba(34,197,94,0.12)',
+                  padding: '2px 7px', borderRadius: 0,
+                }}>LIVE · APT LOCATOR</span>
+              ) : (
+                <span style={{
+                  fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                  color: BT.text.muted, background: BT.bg.elevated,
+                  padding: '2px 7px', borderRadius: 0,
+                }}>MARKET BENCHMARK</span>
+              )
             )}
           </div>
-          {(() => {
-            // Task #353: build trend chart independently of the current
-            // snapshot so it shows whenever we have >= 2 historical points,
-            // even if today's snapshot query returned 0 rows.
+
+          {/* City selector — shown only in compare mode */}
+          {compareMode && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: BT.text.muted, letterSpacing: 1, marginBottom: 6 }}>
+                SELECT CITIES TO COMPARE (current MSA always included)
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {COMPARE_CITY_OPTIONS.map(opt => {
+                  const key = `${opt.city}:${opt.state}`;
+                  const isCurrent = opt.city.toLowerCase() === msaCity.toLowerCase() && opt.state === msaState;
+                  const isSelected = isCurrent || selectedCompareCities.has(key);
+                  return (
+                    <button
+                      key={key}
+                      disabled={isCurrent}
+                      onClick={() => {
+                        setSelectedCompareCities(prev => {
+                          const next = new Set(prev);
+                          if (next.has(key)) next.delete(key);
+                          else next.add(key);
+                          return next;
+                        });
+                      }}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: 10,
+                        fontWeight: 600,
+                        cursor: isCurrent ? 'default' : 'pointer',
+                        border: 'none',
+                        borderRadius: 0,
+                        background: isSelected ? opt.colors[0] + '33' : BT.bg.elevated,
+                        color: isSelected ? opt.colors[0] : BT.text.muted,
+                        borderLeft: `3px solid ${isSelected ? opt.colors[0] : 'transparent'}`,
+                        opacity: isCurrent ? 0.7 : 1,
+                      }}
+                    >
+                      {opt.label}{isCurrent ? ' ★' : ''}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Compare mode: multi-city chart */}
+          {compareMode ? (() => {
+            if (multiCityLoading) {
+              return (
+                <div style={{ fontSize: 11, color: BT.text.muted, textAlign: 'center', padding: 20 }}>
+                  Loading comparison data...
+                </div>
+              );
+            }
+
+            // Build unified timeline and series
+            const allDates = new Set<string>();
+            const activeCities = COMPARE_CITY_OPTIONS.filter(opt => {
+              const key = `${opt.city}:${opt.state}`;
+              const isCurrent = opt.city.toLowerCase() === msaCity.toLowerCase() && opt.state === msaState;
+              return isCurrent || selectedCompareCities.has(key);
+            });
+
+            // Map city key (City|State format from backend) to option
+            const optionByBackendKey: Record<string, typeof COMPARE_CITY_OPTIONS[number]> = {};
+            for (const opt of activeCities) {
+              optionByBackendKey[`${opt.city}|${opt.state}`] = opt;
+            }
+
+            for (const [bKey, cityData] of Object.entries(multiCityData)) {
+              if (optionByBackendKey[bKey]) {
+                for (const h of cityData.history) allDates.add(h.snapshot_date);
+              }
+            }
+
+            const sortedDates = Array.from(allDates).sort();
+            if (sortedDates.length < 2 || activeCities.length === 0) {
+              return (
+                <div style={{ padding: 20, textAlign: 'center' }}>
+                  <div style={{ fontSize: 12, color: BT.text.muted, marginBottom: 6 }}>
+                    {activeCities.length <= 1 ? 'Select at least one more city to compare' : 'No snapshot history found for selected cities'}
+                  </div>
+                  <div style={{ fontSize: 10, color: BT.text.muted }}>
+                    Run the Apartment Locator sync to populate data for comparison cities.
+                  </div>
+                </div>
+              );
+            }
+
+            // Build chart data: one row per date, columns per city×class
+            const chartData: ChartDataPoint[] = sortedDates.map(date => {
+              const point: ChartDataPoint = { date: date.slice(2) };
+              for (const [bKey, cityData] of Object.entries(multiCityData)) {
+                const opt = optionByBackendKey[bKey];
+                if (!opt) continue;
+                const snapshot = cityData.history.find(h => h.snapshot_date === date);
+                if (!snapshot) continue;
+                for (const cls of snapshot.classes) {
+                  if (cls.avg_rent != null) {
+                    point[`${opt.label}_${cls.asset_class}`] = cls.avg_rent;
+                  }
+                }
+              }
+              return point;
+            });
+
+            const CLASS_SUFFIX: Record<string, string> = { A: '(A)', B: '(B)', C: '(C)' };
+            const chartSeries: ChartSeries[] = [];
+            for (const opt of activeCities) {
+              const bKey = `${opt.city}|${opt.state}`;
+              const cityData = multiCityData[bKey];
+              if (!cityData || cityData.history.length === 0) continue;
+              (['A', 'B', 'C'] as const).forEach((cls, clsIdx) => {
+                const seriesKey = `${opt.label}_${cls}`;
+                if (chartData.some(d => typeof d[seriesKey] === 'number')) {
+                  chartSeries.push({
+                    key: seriesKey,
+                    name: `${opt.label} ${CLASS_SUFFIX[cls]}`,
+                    color: opt.colors[clsIdx],
+                    data: [],
+                  });
+                }
+              });
+            }
+
+            if (chartSeries.length === 0) {
+              return (
+                <div style={{ padding: 20, textAlign: 'center', fontSize: 11, color: BT.text.muted }}>
+                  No class rent data available for selected cities.
+                </div>
+              );
+            }
+
+            return (
+              <>
+                <div style={{ fontSize: 10, color: BT.text.muted, fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>
+                  CLASS A/B/C TREND · {activeCities.length} {activeCities.length === 1 ? 'CITY' : 'CITIES'} · LAST {sortedDates.length} SNAPSHOTS
+                </div>
+                <TerminalChart
+                  data={chartData}
+                  series={chartSeries}
+                  timeRanges={[]}
+                  height={220}
+                  showLegend={true}
+                  valueFormatter={(v) => `$${Math.round(v).toLocaleString()}`}
+                />
+                <div style={{ fontSize: 9, color: BT.text.muted, marginTop: 10, borderTop: `1px solid ${BT.border.subtle}`, paddingTop: 8 }}>
+                  Source: Apartment Locator AI · {activeCities.map(c => c.label).join(', ')}
+                </div>
+              </>
+            );
+          })() : (() => {
+            // Single-city view (original logic)
             const CLASS_COLORS: Record<string, string> = { A: '#22c55e', B: '#3b82f6', C: '#f59e0b' };
             const CLASS_LABELS: Record<string, string> = {
               A: 'Class A (2010+)',
@@ -557,8 +770,6 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
               C: 'Class C (pre-1995)',
             };
             const trendData: ChartDataPoint[] = rentByClassHistory.map(h => {
-              // Year-aware compact label (e.g. "26-05-08") so multi-year
-              // ranges stay unambiguous.
               const iso = h.snapshot_date.slice(0, 10);
               const point: ChartDataPoint = { date: iso.slice(2) };
               for (const c of h.classes) {
@@ -641,9 +852,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                 </>
               );
             }
-            // Fallback: no current snapshot rows. Still show the trend
-            // chart on top if we have history; otherwise render the
-            // static market-benchmark vintage table.
+            // Fallback: static market-benchmark vintage table
             const last = RENT_VINTAGE_DATA[RENT_VINTAGE_DATA.length - 1];
             const FB_CLASS_COLORS = ['#22c55e', '#3b82f6', '#f97316', '#f59e0b', '#a78bfa'];
             const entries = [

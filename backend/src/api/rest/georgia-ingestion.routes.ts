@@ -628,6 +628,99 @@ router.get('/analytics/rent-by-class', requireAuth, async (req: Request, res: Re
 });
 
 /**
+ * GET /api/v1/georgia/analytics/rent-by-class/multi
+ * Multi-city rent-by-class history for side-by-side comparison.
+ * Query: ?cities=Atlanta:GA,Charlotte:NC,Nashville:TN&limit=12
+ * Returns per-city snapshot history from apartment_class_rent_snapshots.
+ * Cities without data return an empty history array (not an error).
+ */
+router.get('/analytics/rent-by-class/multi', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const rawCities = (req.query.cities as string) || '';
+    const limitRaw = parseInt(String(req.query.limit || '12'), 10);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw <= 365 ? limitRaw : 12;
+    const pool = getPool();
+
+    // Parse "City:State" pairs, e.g. "Atlanta:GA,Charlotte:NC"
+    const cityPairs: { city: string; state: string }[] = rawCities
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => {
+        const [city, state] = s.split(':');
+        return { city: (city || '').trim(), state: (state || 'GA').trim() };
+      })
+      .filter(p => p.city.length > 0);
+
+    if (cityPairs.length === 0) {
+      return res.status(400).json({ error: 'cities param required, e.g. cities=Atlanta:GA,Charlotte:NC' });
+    }
+    if (cityPairs.length > 8) {
+      return res.status(400).json({ error: 'Maximum 8 cities per request' });
+    }
+
+    // Fetch history for each city in parallel
+    const results = await Promise.all(cityPairs.map(async ({ city, state }) => {
+      const key = `${city}|${state}`;
+
+      const datesResult = await pool.query(`
+        SELECT DISTINCT snapshot_date
+        FROM apartment_class_rent_snapshots
+        WHERE city ILIKE $1 AND state = $2
+        ORDER BY snapshot_date DESC
+        LIMIT $3
+      `, [city, state, limit]);
+
+      const dates = datesResult.rows.map((r: any) => r.snapshot_date);
+      if (dates.length === 0) {
+        return { key, city, state, history: [] };
+      }
+
+      const rowsResult = await pool.query(`
+        SELECT
+          snapshot_date,
+          asset_class,
+          property_count,
+          avg_rent,
+          min_rent,
+          max_rent
+        FROM apartment_class_rent_snapshots
+        WHERE city ILIKE $1
+          AND state = $2
+          AND snapshot_date = ANY($3::date[])
+        ORDER BY snapshot_date ASC, asset_class ASC
+      `, [city, state, dates]);
+
+      const byDate = new Map<string, any>();
+      for (const r of rowsResult.rows) {
+        const dateStr = r.snapshot_date instanceof Date
+          ? r.snapshot_date.toISOString().slice(0, 10)
+          : String(r.snapshot_date).slice(0, 10);
+        if (!byDate.has(dateStr)) byDate.set(dateStr, { snapshot_date: dateStr, classes: [] });
+        byDate.get(dateStr).classes.push({
+          asset_class: r.asset_class,
+          property_count: r.property_count,
+          avg_rent: r.avg_rent != null ? Number(r.avg_rent) : null,
+          min_rent: r.min_rent != null ? Number(r.min_rent) : null,
+          max_rent: r.max_rent != null ? Number(r.max_rent) : null,
+        });
+      }
+
+      return { key, city, state, history: Array.from(byDate.values()) };
+    }));
+
+    // Shape into a keyed map for easy lookup on the frontend
+    const cities: Record<string, any> = {};
+    for (const r of results) cities[r.key] = { city: r.city, state: r.state, history: r.history };
+
+    res.json({ success: true, cities });
+  } catch (error) {
+    console.error('[API] /georgia/analytics/rent-by-class/multi error:', error);
+    res.status(500).json({ error: 'Failed to get multi-city rent by class' });
+  }
+});
+
+/**
  * GET /api/v1/georgia/analytics/nearby-comps
  * Ad-hoc proximity comp lookup for a lat/lon point.
  * Query: ?lat=33.749&lon=-84.388&radiusMiles=3&minUnits=20
