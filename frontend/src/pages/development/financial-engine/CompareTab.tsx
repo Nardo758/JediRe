@@ -55,9 +55,23 @@ function getNestedValue(obj: any, path: string[]): any {
 }
 
 export function CompareTab({ dealId, versions = [], isLoadingVersions }: FinancialEngineTabProps) {
-  const [selectedIds, setSelectedIds] = useState<string[]>(
-    versions.length >= 2 ? [versions[0].id, versions[1].id] : versions.length === 1 ? [versions[0].id] : []
-  );
+  // Persist selection across reloads using localStorage keyed by dealId.
+  const storageKey = `compare_selection_${dealId}`;
+
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) return JSON.parse(stored) as string[];
+    } catch { /* ignore parse/access errors */ }
+    return [];
+  });
+
+  // Save selection to localStorage whenever it changes.
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(selectedIds));
+    } catch { /* ignore quota/access errors */ }
+  }, [selectedIds, storageKey]);
 
   // Ref guard: ensures auto-selection fires at most once per tab mount, even if
   // `versions` later updates (e.g. a new version is saved while the tab is open).
@@ -66,13 +80,18 @@ export function CompareTab({ dealId, versions = [], isLoadingVersions }: Financi
   const hasAutoSelected = useRef(false);
 
   // Auto-select the two most recent versions when `versions` first populates
-  // after an async fetch. The useState initializer above only runs at mount,
-  // when versions is typically still empty, so nothing gets selected without this.
+  // after an async fetch. The useState initializer reads from localStorage but
+  // those IDs may no longer exist (deleted versions). This effect validates the
+  // stored selection against the fetched list and falls back to auto-selecting
+  // the two most recent only when no valid stored selection exists.
   useEffect(() => {
     if (hasAutoSelected.current || versions.length === 0) return;
     hasAutoSelected.current = true;
     setSelectedIds(prev => {
-      if (prev.length > 0) return prev;
+      // Keep only IDs that still exist in the fetched versions list.
+      const validIds = prev.filter(id => versions.some(v => v.id === id));
+      if (validIds.length > 0) return validIds;
+      // No valid stored selection — fall back to the two most recent versions.
       return versions.length >= 2
         ? [versions[0].id, versions[1].id]
         : [versions[0].id];
