@@ -121,9 +121,9 @@ function mergeModelIntoFinancials(
   // When the backend Lease Velocity engine has run (src.leaseVelocity != null)
   // AND the /financials response includes a returns object, preserve those
   // treatment-aware values — do NOT overwrite with the legacy model summary
-  // which is treatment-agnostic.  Without this guard, toggling
-  // leasing_cost_treatment re-fetches /financials with treatment-aware returns
-  // but mergeModel would immediately clobber them.
+  // which is treatment-agnostic.  Without this guard, a treatment change
+  // re-fetch would return treatment-aware returns that mergeModel would
+  // immediately clobber with treatment-agnostic legacy values.
   //
   // Guard rationale: keyed on `src.leaseVelocity != null` (LV engine has run)
   // AND `src.returns != null` (backend included a returns object) rather than
@@ -743,9 +743,11 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const fetchF9Financials = useCallback((hold?: number) => {
     if (!resolvedDealId) return;
     const h = hold ?? f9HoldRef.current;
-    const t = lvTreatmentRef.current;
+    // leasing_cost_treatment is NOT passed — backend reads from operator_stance
+    // directly (Task #639/#646). lvTreatmentRef drives re-fetch via the event
+    // listener below; the stance is already persisted server-side.
     apiClient.get<{ success: boolean; data: F9DealFinancials }>(
-      `/api/v1/deals/${resolvedDealId}/financials?hold=${h}&leasing_cost_treatment=${t}`,
+      `/api/v1/deals/${resolvedDealId}/financials?hold=${h}`,
     ).then(res => {
       if (res.data?.data) setF9Financials(res.data.data);
     }).catch(() => {});
