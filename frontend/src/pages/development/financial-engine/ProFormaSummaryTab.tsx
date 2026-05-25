@@ -652,9 +652,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     });
   }, [data]);
 
-  // lvCostTreatmentView prop drives the leasing_cost_treatment URL param on load().
-  // The write surface moved to StanceTab (PATCH /context → deal_data.leasing_cost_treatment). No local toggle here.
-
   // Prefer model results from the build pipeline; fall back to composer fetch.
   const modelData = modelResults ?? null;
 
@@ -664,17 +661,15 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     // tab. modelResults is used separately for KPI overlays and must NOT gate
     // this fetch; skipping it left data=null and rendered a blank screen when a
     // saved model was already loaded on mount (from /financial-model/:id/latest).
-    // leasing_cost_treatment is included so this tab's numbers stay in sync with
-    // the shared top-bar override on every re-fetch (treatment change → parent
-    // fetchF9Financials fires → parent f9Financials prop changes → this effect
-    // re-runs because lvCostTreatmentView prop also changes → new treatment in URL).
+    // leasing_cost_treatment is NOT passed as a URL param — the backend reads
+    // operator_stance.leasingCostTreatment directly (Task #639). lvCostTreatmentView
+    // is kept in the dep array so this tab re-fetches whenever treatment changes.
     if (!dealId) return;
     setLoading(true);
     setError(null);
-    const treatment = lvCostTreatmentView ?? 'OPERATING';
     try {
       const res = await apiClient.get<{ success: boolean; data: DealFinancials; message?: string }>(
-        `/api/v1/deals/${dealId}/financials?leasing_cost_treatment=${encodeURIComponent(treatment)}`,
+        `/api/v1/deals/${dealId}/financials`,
       );
       const body = res.data;
       if (body?.success === false) throw new Error(body.message ?? 'Unknown error');
@@ -693,7 +688,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
       setLoading(false);
     }
   // lvCostTreatmentView in deps: when parent updates treatment, load reference
-  // changes → useEffect re-runs → re-fetches with correct treatment param.
+  // changes → useEffect re-runs → re-fetches (backend reads treatment from stance).
   }, [dealId, onIntegrityChange, onF9Refresh, lvCostTreatmentView]);
 
   useEffect(() => { load(); }, [load]);

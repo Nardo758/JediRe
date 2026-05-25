@@ -826,7 +826,7 @@ export interface FinancialEngineTabProps {
   lvCostTreatmentView?: LeasingCostTreatment;
   /**
    * Update the shared treatment view override.  Triggers a full F9 re-fetch
-   * (parent re-fetches /financials?leasing_cost_treatment=T) so all sibling
+   * (parent re-fetches /financials — backend reads treatment from operator_stance) so all sibling
    * tabs reflect the change without duplicated fetch calls.
    */
   onLvTreatmentViewChange?: (t: LeasingCostTreatment) => void;

@@ -733,7 +733,7 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh, pla
         }
         // LV engine is connected — the LP Net IRR and Equity Multiple in the hero
         // strip above ALREADY reflect cost-treatment-aware monthly cash flows from
-        // GET /financials?leasing_cost_treatment=T.  The mergeModelIntoFinancials
+        // GET /financials (backend reads treatment from operator_stance — Task #646).  The mergeModelIntoFinancials
         // guard preserves these values; they are NOT overwritten by the legacy model.
         const treatColors: Record<string, string> = {
           OPERATING:   BT.met.financial,
