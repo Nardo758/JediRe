@@ -397,6 +397,7 @@ import { dataCorpusReminderCron } from './inngest/functions/dataCorpusReminderCr
 import { weeklyCorpusDigestCron } from './inngest/functions/weeklyCorpusDigestCron';
 import { trafficCalibrationCron } from './inngest/functions/trafficCalibrationCron';
 import { correlationRollingComputeCron } from './inngest/functions/correlation-rolling-compute';
+import { nightlyEventExtractionCron } from './inngest/functions/nightly-event-extraction';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -432,6 +433,8 @@ app.use(
       trafficCalibrationCron,
       // Task #919: nightly rolling correlation compute (12m + 36m windows → correlation_history)
       correlationRollingComputeCron,
+      // Task #1078: nightly market event extraction from news_article_cache (03:00 UTC)
+      nightlyEventExtractionCron,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,
