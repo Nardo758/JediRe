@@ -438,7 +438,7 @@ export default function ArchivePropertyPage() {
               </div>
               {[desc?.has_pool, desc?.has_fitness, desc?.has_clubhouse,
                 desc?.has_concierge, desc?.has_business_center, desc?.has_dog_park]
-                .some(lv => lv?.resolvedFrom?.includes('google_places')) && (
+                .some(lv => lv?.layers?.web !== undefined) && (
                 <div style={{ fontSize: '10px', color: '#8892b0', marginTop: '6px' }}>
                   Source: Google Places
                 </div>
