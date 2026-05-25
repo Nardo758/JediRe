@@ -263,7 +263,7 @@ describe('applyUserOverride: Task #832 — agent sub-key preservation', () => {
     const instance = (DealVersionsService as ReturnType<typeof vi.fn>).mock.results[0]?.value;
     expect(instance?.saveVersion).toHaveBeenCalledTimes(1);
     const call = instance.saveVersion.mock.calls[0][0];
-    expect(call.trigger).toBe('user_save');
+    expect(call.trigger).toBe('operator_override');
     expect(call.note).toBe('operator_override:payroll');
     expect(call.dealId).toBe('deal-1');
   });

@@ -1346,23 +1346,25 @@ export async function seedProFormaYear1(
     // other_income_dollars, management_fee_dollars) exist only in the DB's
     // year1; they are not in extractionDelta or seedJson, so they are
     // preserved by the jsonb_object_agg over jsonb_each(year1) in Step 1.
-    if (activeScenId) {
-      // Step A: build the extraction-only delta — only t12/om/rent_roll/...
-      // sub-keys per field.  Agent-protected sub-keys are never present here.
-      const EXTRACTION_SUBKEYS = new Set([
-        't12', 'om', 'rent_roll', 'tax_bill', 'box_score', 'aged_ar', 'platform', 'warning',
-      ]);
-      const extractionDelta: Record<string, Record<string, unknown>> = {};
-      for (const [fieldKey, seedValue] of Object.entries(seed as unknown as Record<string, unknown>)) {
-        if (!seedValue || typeof seedValue !== 'object') continue; // skip scalars
-        const seedLv = seedValue as Record<string, unknown>;
-        const extractionOnly: Record<string, unknown> = {};
-        for (const sk of EXTRACTION_SUBKEYS) {
-          if (sk in seedLv) extractionOnly[sk] = seedLv[sk];
-        }
-        if (Object.keys(extractionOnly).length > 0) extractionDelta[fieldKey] = extractionOnly;
+    // Build the extraction-only delta — only document-sourced sub-keys.
+    // Agent-protected sub-keys (agent, resolved, resolution, override,
+    // override_source, updated_by, updated_at) are never included here, so
+    // they are always preserved by DB-level field merges in both paths below.
+    const EXTRACTION_SUBKEYS = new Set([
+      't12', 'om', 'rent_roll', 'tax_bill', 'box_score', 'aged_ar', 'platform', 'warning',
+    ]);
+    const extractionDelta: Record<string, Record<string, unknown>> = {};
+    for (const [fieldKey, seedValue] of Object.entries(seed as unknown as Record<string, unknown>)) {
+      if (!seedValue || typeof seedValue !== 'object') continue; // skip scalars
+      const seedLv = seedValue as Record<string, unknown>;
+      const extractionOnly: Record<string, unknown> = {};
+      for (const sk of EXTRACTION_SUBKEYS) {
+        if (sk in seedLv) extractionOnly[sk] = seedLv[sk];
       }
+      if (Object.keys(extractionOnly).length > 0) extractionDelta[fieldKey] = extractionOnly;
+    }
 
+    if (activeScenId) {
       // Step B: atomic SQL merge.
       //
       // $2 = extractionDelta  — {field: {t12:.., om:.., platform:..}, ...}
@@ -1439,16 +1441,49 @@ export async function seedProFormaYear1(
       );
     } else {
       // No active scenario — write year1 directly to deal_assumptions (legacy path).
-      // Task #838 re-application above has already woven agent sub-keys into seed.
+      //
+      // LEGACY PATH: same atomic extraction-layer sub-key merge as the scenario
+      // path above, applied directly to deal_assumptions.
+      //
+      // $1 = dealId
+      // $2 = full seed JSON  — used for the INSERT values and for NEW fields in
+      //        the ON CONFLICT merge (fields that do not yet exist in year1).
+      // $3 = extractionDelta — used for EXISTING fields: only document-sourced
+      //        sub-keys (t12, om, rent_roll, ...) are merged in; agent/resolved/
+      //        resolution/override sub-keys are never present here and are
+      //        therefore preserved by the DB-level jsonb_object_agg merge.
+      // $4 = total_units, $5 = vacancy_pct, $6 = other_income_per_unit
       await pool.query(
         `INSERT INTO deal_assumptions
            (deal_id, year1, total_units, vacancy_pct, other_income_per_unit,
             source_type, source_date, created_at, updated_at)
-         VALUES ($1, $2::jsonb, $3, $4,
-                 COALESCE($5::numeric, 50),
+         VALUES ($1, $2::jsonb, $4, $5,
+                 COALESCE($6::numeric, 50),
                  'platform_seeded', NOW(), NOW(), NOW())
          ON CONFLICT (deal_id) DO UPDATE SET
-           year1                  = EXCLUDED.year1,
+           year1 = (
+             -- Step 1: iterate existing fields; merge extraction delta into
+             -- each field that appears in $3, leave others (including agent-
+             -- written fields like real_estate_tax with resolution='agent')
+             -- completely untouched.
+             COALESCE(
+               (SELECT jsonb_object_agg(
+                 key,
+                 CASE
+                   WHEN $3::jsonb ? key
+                   THEN value || ($3::jsonb->key)
+                   ELSE value
+                 END
+               )
+               FROM jsonb_each(COALESCE(deal_assumptions.year1, '{}')) j(key, value))
+             , '{}'::jsonb)
+           ) || (
+             -- Step 2: add new fields that do not yet exist in year1.
+             -- Uses the full seed LayeredValue (agent has never written here yet).
+             SELECT COALESCE(jsonb_object_agg(dk, dv), '{}'::jsonb)
+             FROM jsonb_each($2::jsonb) jd(dk, dv)
+             WHERE NOT (COALESCE(deal_assumptions.year1, '{}') ? dk)
+           ),
            total_units            = EXCLUDED.total_units,
            vacancy_pct            = EXCLUDED.vacancy_pct,
            other_income_per_unit  = EXCLUDED.other_income_per_unit,
@@ -1458,6 +1493,7 @@ export async function seedProFormaYear1(
         [
           dealId,
           JSON.stringify(seed),
+          JSON.stringify(extractionDelta),
           seed._unit_count,
           seed.vacancy_pct?.resolved != null ? Math.round(seed.vacancy_pct.resolved * 10000) / 100 : null,
           seed.other_income_per_unit?.resolved,
