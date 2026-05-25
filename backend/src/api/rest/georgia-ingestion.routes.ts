@@ -1417,7 +1417,9 @@ router.get('/snapshots', requireAuth, async (req: Request, res: Response) => {
  * through extractMarketEvents(), inserts any new events into market_events.
  * Owner/admin only — avoids unintentional LLM cost accumulation.
  *
- * Body: { lookbackDays?: number }   (default 7, max 30)
+ * Body: { lookbackDays?: number }
+ *   - 1..30 → process articles cached within the last N days (default 7)
+ *   - 0     → process ALL cached articles (full backfill, Task #372)
  * Response: { inserted, skipped, events: MarketEvent[] }
  */
 router.post('/extract-events', requireAuth, requireRole('owner', 'admin'), async (req: Request, res: Response) => {
@@ -1425,21 +1427,40 @@ router.post('/extract-events', requireAuth, requireRole('owner', 'admin'), async
     const { extractMarketEvents, insertExtractedEvents } = await import('../../services/market-event-extraction.service');
     const pool = getPool();
 
-    const lookbackDays = Math.max(1, Math.min(parseInt(req.body?.lookbackDays) || 7, 30));
+    const rawLookback = req.body?.lookbackDays;
+    const parsedLookback = rawLookback === 0 || rawLookback === '0'
+      ? 0
+      : (parseInt(rawLookback) || 7);
+    const lookbackDays = parsedLookback === 0
+      ? 0
+      : Math.max(1, Math.min(parsedLookback, 30));
 
-    const articlesResult = await pool.query<{
-      title: string;
-      description: string | null;
-      content: string | null;
-      url: string;
-      published_at: string | null;
-    }>(`
-      SELECT title, description, content, url, published_at
-      FROM news_article_cache
-      WHERE cached_at >= NOW() - ($1 || ' days')::interval
-        AND title IS NOT NULL
-      ORDER BY cached_at DESC
-    `, [lookbackDays]);
+    const articlesResult = lookbackDays === 0
+      ? await pool.query<{
+          title: string;
+          description: string | null;
+          content: string | null;
+          url: string;
+          published_at: string | null;
+        }>(`
+          SELECT title, description, content, url, published_at
+          FROM news_article_cache
+          WHERE title IS NOT NULL
+          ORDER BY cached_at DESC
+        `)
+      : await pool.query<{
+          title: string;
+          description: string | null;
+          content: string | null;
+          url: string;
+          published_at: string | null;
+        }>(`
+          SELECT title, description, content, url, published_at
+          FROM news_article_cache
+          WHERE cached_at >= NOW() - ($1 || ' days')::interval
+            AND title IS NOT NULL
+          ORDER BY cached_at DESC
+        `, [lookbackDays]);
 
     const articles = articlesResult.rows;
 
@@ -1483,7 +1504,7 @@ router.post('/extract-events', requireAuth, requireRole('owner', 'admin'), async
     res.json({
       success: true,
       articles_processed: articles.length,
-      lookback_days: lookbackDays,
+      lookback_days: lookbackDays === 0 ? 'all' : lookbackDays,
       inserted: totalInserted,
       skipped: totalSkipped,
       eventIds: allEvents.map(e => e.id).filter(Boolean),
