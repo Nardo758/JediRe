@@ -20,6 +20,25 @@ import {
   type SupportedMetric,
 } from '../../services/property-visibility/asset-time-series.service';
 
+// ── In-memory enrichment job tracking ────────────────────────────────────────
+// Tracks async enrichment jobs for status polling. TTL-purged after 30 min.
+interface EnrichJobEntry {
+  status: 'enriching' | 'complete' | 'error' | 'no_match';
+  dq_score?: number;
+  error_msg?: string;
+  updated_at: string;
+  expires_at: number;
+}
+const enrichJobStore = new Map<string, EnrichJobEntry>();
+const ENRICH_JOB_TTL_MS = 30 * 60 * 1000;
+
+function setJobState(jobId: string, update: Omit<EnrichJobEntry, 'expires_at'>) {
+  enrichJobStore.set(jobId, { ...update, expires_at: Date.now() + ENRICH_JOB_TTL_MS });
+  for (const [id, entry] of enrichJobStore) {
+    if (Date.now() > entry.expires_at) enrichJobStore.delete(id);
+  }
+}
+
 export function createArchivePropertiesRouter(pool: Pool): Router {
   const router = Router();
 
@@ -274,20 +293,27 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
         });
       }
 
+      setJobState(jobId, { status: 'enriching', updated_at: new Date().toISOString() });
+
       res.status(202).json({
         status: 'processing',
         jobId,
         parcel_id: rawParcelId,
         asset_id: asset.id,
         previousScore: prevScore,
-        message: 'Enrichment is running in the background. Poll /enrich/status/:jobId for completion.',
+        message: 'Enrichment is running in the background. Poll /enrich/status for completion.',
       });
 
-      enrichPromise.catch(err => {
-        console.error('[archive-properties] background enrich failed', {
-          parcelId: rawParcelId, error: (err as Error).message,
+      enrichPromise
+        .then(({ result, newScore }) => {
+          const finalStatus = result.fields_written.length === 0 ? 'no_match' : 'complete';
+          setJobState(jobId, { status: finalStatus, dq_score: newScore, updated_at: new Date().toISOString() });
+        })
+        .catch(err => {
+          const msg = (err as Error).message;
+          setJobState(jobId, { status: 'error', error_msg: msg, updated_at: new Date().toISOString() });
+          console.error('[archive-properties] background enrich failed', { parcelId: rawParcelId, error: msg });
         });
-      });
 
       return;
     } catch (err) {
@@ -302,10 +328,27 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
 
   // ─────────────────────────────────────────────────────────────────────────
   // GET /api/v1/properties/by-parcel/:parcelId/enrich/status
-  // Poll enrichment status — checks if Phase 8 fields are present in property_descriptions.
+  // Poll enrichment status. Checks in-memory job store by jobId query param.
+  // Falls back to property_descriptions scan if jobId not provided.
   // ─────────────────────────────────────────────────────────────────────────
   router.get('/by-parcel/:parcelId/enrich/status', async (req: Request, res: Response) => {
     const rawParcelId = decodeURIComponent(req.params.parcelId);
+    const jobId = typeof req.query.jobId === 'string' ? req.query.jobId : undefined;
+
+    if (jobId) {
+      const entry = enrichJobStore.get(jobId);
+      if (entry) {
+        return res.json({
+          status: entry.status,
+          jobId,
+          parcel_id: rawParcelId,
+          dq_score: entry.dq_score ?? null,
+          error_msg: entry.error_msg ?? null,
+          updated_at: entry.updated_at,
+        });
+      }
+    }
+
     try {
       const pd = await pool.query<{
         reviews: unknown;
@@ -320,7 +363,7 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
       );
 
       if (pd.rows.length === 0) {
-        return res.json({ status: 'pending', parcel_id: rawParcelId, has_phase8: false });
+        return res.json({ status: 'enriching', parcel_id: rawParcelId });
       }
 
       const row = pd.rows[0];
@@ -333,9 +376,8 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
       const dqScore = dla.rows[0]?.data_quality_score ?? null;
 
       return res.json({
-        status: hasPhase8 ? 'complete' : 'pending',
+        status: hasPhase8 ? 'complete' : 'no_match',
         parcel_id: rawParcelId,
-        has_phase8: hasPhase8,
         dq_score: dqScore,
         updated_at: row.updated_at,
       });

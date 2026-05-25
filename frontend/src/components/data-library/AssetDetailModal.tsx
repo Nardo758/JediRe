@@ -402,20 +402,21 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
 
   const calculateDQScore = (): number => {
     let score = 0;
-    // Required fields (10 pts each, max 50)
+    // Required fields (10 pts each) — max 100 core pts out of 130 total
     if (details.city && details.state) score += 10;
     if (details.propertyType) score += 10;
     if (details.assetClass) score += 10;
     if (details.units) score += 10;
     if (details.yearBuilt) score += 10;
-    // Financial fields (10 pts each, max 50)
+    // Financial fields (10 pts each)
     if (details.avgRent) score += 10;
     if (details.occupancyPct) score += 10;
     if (details.capRate || details.noi) score += 10;
-    // Either Asking Price OR Sold Price counts — never both, so DQ stays ≤ 100.
+    // Either Asking Price OR Sold Price counts
     if (details.askingPrice || details.soldPrice) score += 10;
     if (details.dealType) score += 10;
-    return Math.min(score, 100);
+    // Normalize against 130-point scale (Phase 8 fields add up to 30 pts server-side)
+    return Math.round((score / 130) * 100);
   };
 
   const handleAutoEnrich = async () => {
@@ -449,8 +450,9 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
           try {
             const statusRes = await apiClient.get(
               `/api/v1/properties/by-parcel/${encodeURIComponent(parcelId)}/enrich/status`,
+              { params: { jobId: r.jobId } },
             );
-            if (statusRes.data.status === 'complete') {
+            if (statusRes.data.status === 'complete' || statusRes.data.status === 'no_match' || statusRes.data.status === 'error') {
               setServerDqScore(statusRes.data.dq_score ?? null);
               setEnrichResult(prev => prev ? {
                 ...prev,
@@ -622,7 +624,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         sale_price: details.soldPrice ? parseFloat(details.soldPrice) : null,
         sale_date: details.soldDate || null,
         noi: details.noi ? parseFloat(details.noi) : null,
-        data_quality_score: serverDqScore ?? calculateDQScore(),
+        ...(serverDqScore != null ? { data_quality_score: serverDqScore } : {}),
       };
 
       // Calculate vintage band
@@ -788,119 +790,34 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                 )}
               </div>
             )}
-            {enrichResult && enrichResult.logId && (
+            {enrichResult && enrichResult.status === 'processing' && (
+              <div style={{ marginTop: 4, fontSize: 10, color: C.secondary, fontFamily: MONO }}>
+                Running in background — polling for completion…
+              </div>
+            )}
+            {enrichResult && enrichResult.status === 'complete' && enrichResult.fieldsEnriched.length > 0 && (
               <div style={{
-                marginTop: 4, border: `1px solid ${C.border}`, background: C.panel,
+                marginTop: 4, padding: '6px 10px', border: `1px solid #10B98144`,
+                background: '#10B98110', display: 'flex', alignItems: 'center', gap: 8,
               }}>
-                {enrichResult.conflicts.length > 0 && (
-                  <div style={{ maxHeight: 200, overflow: 'auto' }}>
-                    {enrichResult.conflicts.map((c, idx) => {
-                      const decision = decisions[c.field] || 'overwrite';
-                      const accepted = decision === 'overwrite';
-                      return (
-                        <div key={`${c.field}-${idx}`} style={{
-                          padding: '8px 10px', borderBottom: idx < enrichResult.conflicts.length - 1 ? `1px solid ${C.border}` : 'none',
-                          display: 'flex', flexDirection: 'column', gap: 4,
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div style={{ fontSize: 10, color: C.cyan, fontFamily: MONO, fontWeight: 700 }}>
-                              {c.field} <span style={{ color: C.muted, fontWeight: 400 }}>· {c.source}</span>
-                            </div>
-                            <div style={{ display: 'flex', gap: 4 }}>
-                              <button
-                                onClick={() => stageDecision(c.field, 'overwrite')}
-                                disabled={resolving}
-                                style={{
-                                  padding: '2px 8px', fontSize: 9, fontWeight: 700,
-                                  background: accepted ? '#10B981' : 'transparent',
-                                  color: accepted ? '#001018' : '#10B981',
-                                  border: accepted ? 'none' : '1px solid #10B981',
-                                  cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
-                                }}
-                              >
-                                ACCEPT
-                              </button>
-                              <button
-                                onClick={() => stageDecision(c.field, 'keep')}
-                                disabled={resolving}
-                                style={{
-                                  padding: '2px 8px', fontSize: 9, fontWeight: 700,
-                                  background: !accepted ? '#7F1D1D' : 'transparent',
-                                  color: !accepted ? '#FFF' : '#FCA5A5',
-                                  border: !accepted ? 'none' : '1px solid #7F1D1D',
-                                  cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
-                                }}
-                              >
-                                KEEP
-                              </button>
-                            </div>
-                          </div>
-                          <div style={{ fontSize: 10, color: C.secondary, display: 'flex', gap: 12 }}>
-                            <div>Existing: <span style={{ color: C.primary, fontFamily: MONO }}>{String(c.existingValue ?? '—')}</span></div>
-                            <div>Proposed: <span style={{ color: '#FCD34D', fontFamily: MONO }}>{String(c.enrichedValue ?? '—')}</span></div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                <div style={{
-                  display: 'flex', gap: 6, padding: '8px 10px', alignItems: 'center', flexWrap: 'wrap',
-                  borderTop: enrichResult.conflicts.length > 0 ? `1px solid ${C.border}` : 'none',
-                  background: C.bg,
-                }}>
-                  {enrichResult.conflicts.length > 0 && (
-                    <>
-                      <button
-                        onClick={() => stageAll('overwrite')}
-                        disabled={resolving}
-                        style={{
-                          padding: '2px 8px', fontSize: 9, fontWeight: 700,
-                          background: 'transparent', color: '#10B981',
-                          border: '1px solid #10B981',
-                          cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
-                        }}
-                      >
-                        ACCEPT ALL
-                      </button>
-                      <button
-                        onClick={() => stageAll('keep')}
-                        disabled={resolving}
-                        style={{
-                          padding: '2px 8px', fontSize: 9, fontWeight: 700,
-                          background: 'transparent', color: '#FCA5A5',
-                          border: '1px solid #7F1D1D',
-                          cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
-                        }}
-                      >
-                        KEEP ALL
-                      </button>
-                      <div style={{ flex: 1 }} />
-                    </>
-                  )}
-                  <button
-                    onClick={handleApply}
-                    disabled={resolving}
-                    style={{
-                      padding: '4px 14px', fontSize: 10, fontWeight: 700,
-                      background: '#10B981', color: '#001018', border: 'none',
-                      cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
-                    }}
-                  >
-                    {resolving ? '…' : 'APPLY ENRICHMENT'}
-                  </button>
-                  <button
-                    onClick={handleDiscard}
-                    disabled={resolving}
-                    style={{
-                      padding: '4px 12px', fontSize: 10, fontWeight: 700,
-                      background: 'transparent', color: '#FCA5A5',
-                      border: '1px solid #7F1D1D', cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
-                    }}
-                  >
-                    DISCARD
-                  </button>
-                </div>
+                <span style={{ fontSize: 10, color: '#10B981', fontFamily: MONO }}>
+                  ✓ Written: [{enrichResult.fieldsEnriched.join(', ')}]
+                </span>
+                <button
+                  onClick={() => { setEnrichResult(null); setEnrichError(null); }}
+                  style={{
+                    marginLeft: 'auto', padding: '2px 8px', fontSize: 9, fontWeight: 700,
+                    background: 'transparent', color: C.secondary,
+                    border: `1px solid ${C.border}`, cursor: 'pointer', fontFamily: MONO,
+                  }}
+                >
+                  DISMISS
+                </button>
+              </div>
+            )}
+            {enrichResult && (enrichResult.status === 'no_match' || (enrichResult.status === 'complete' && enrichResult.fieldsEnriched.length === 0)) && (
+              <div style={{ marginTop: 4, fontSize: 10, color: C.secondary, fontFamily: MONO }}>
+                No new Phase 8 data found for this property.
               </div>
             )}
           </div>
