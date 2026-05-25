@@ -3,61 +3,63 @@
 **Task:** #1070
 **Date:** 2026-05-25
 **Status:** DESIGN ONLY — no scraping code implemented in this document
-**Scope:** Per-source inventory, robots.txt compliance, technical architecture, LLM extraction design,
-deduplication strategy, cost estimates, and licensing roadmap.
+**Scope:** Per-source inventory, robots.txt compliance, technical architecture,
+LLM extraction design, deduplication strategy, cost estimates, and licensing roadmap.
+Pipeline objective: `DevelopmentAnnouncement` extraction from CRE trade press.
 
 ---
 
 ## §1 Infrastructure Baseline
 
-The platform already has a functioning trade press ingest layer across two distinct paths.
+The platform already has a functioning trade press fetch layer across two paths. Understanding
+both is necessary to avoid duplicating infrastructure and to identify what needs to be
+extended vs. replaced.
 
 ### Path A — Scheduled Discovery (`cre-rss.ts`)
 
 `backend/src/services/discovery/sources/cre-rss.ts`
 
-- `CRE_FEEDS` registry of RSS URLs polled by the discovery engine
-- Token-bucket rate limiting: 1 req/sec, burst 3; 429/503 triggers a 5-minute backoff
-- User-Agent: `JediRE/1.0 (+https://jedire.app) CRE-News-Aggregator` (honest identification)
-- **Known bug:** Bisnow URLs use stale `/feed/` and `/national/feed/` patterns (all return 404);
-  correct pattern is `/rss/{market}` (confirmed working in `bisnow.provider.ts`)
-- **Known dead source:** `multifamilyexecutive.com/rss` returns 404 silently
-- Covers: GlobeSt (stale URL), Bisnow (stale URLs), Connect CRE, REJournals, Multifamily
-  Executive, Multi-Housing News, BiggerPockets, SEC EDGAR 8-K, Reddit
-  (`r/CommercialRealEstate`, `r/multifamily`)
+- `CRE_FEEDS` map: hardcoded RSS registry polled by the discovery engine
+- Token-bucket rate limiting: 1 req/sec global, burst 3; 5-minute backoff on 429/503
+- User-Agent: `JediRE/1.0 (+https://jedire.app) CRE-News-Aggregator`
+- `canonicalizeUrl()` already implemented here — strips UTM params, lowercases host,
+  removes fragment. Reuse directly in the new pipeline.
+- **Known bug — Bisnow:** All entries use stale `/feed/` pattern (404); correct pattern is
+  `/rss/{market}` (verified working in `bisnow.provider.ts`)
+- **Known dead entry — MFE:** `multifamilyexecutive.com/rss` returns 404 silently
+- Covers: GlobeSt (stale URL), Bisnow (stale URLs), Connect CRE, REJournals, MFE, MHN,
+  BiggerPockets, SEC EDGAR 8-K, Reddit
 
 ### Path B — Provider-Based (`news.service.ts`)
 
 `backend/src/services/news/news.service.ts` + `backend/src/services/news/providers/`
 
-Registered providers: `bisnow`, `globest` (proxied → Commercial Observer + Trepp + PropModo),
-`housingwire`.
+Registered providers: `bisnow`, `globest` (proxied → Commercial Observer + Trepp +
+PropModo), `housingwire`. These providers serve on-demand news queries with credit metering.
+They do **not** persist articles to a platform table — each query refetches.
 
-- Provider adapters perform RSS fetch via native `fetch()` — not `safeFetchText()` (acceptable
-  for known-good hardcoded URLs; only an SSRF risk if URLs become user-configurable)
-- Credit metering: 1 credit/news.search, 3/article_full, 5/morning_brief
-- `globestProvider` silently maps GlobeSt's dead RSS to three working replacement feeds
-
-### Landing Tables
-
-| Table | Purpose |
-|-------|---------|
-| `user_news_items` | Per-user RSS items from user-connected feeds (`rss-feeds.ts`) |
-| `demand_events` | Structured demand events extracted from news (currently unpopulated) |
-| `key_events` | M35 event data (consumed by `fetch_m35_event_forecast.ts`) |
+**Gap:** Neither path writes to a persistent platform-level article store. The new pipeline
+must land articles in a `trade_press_articles` table to enable LLM extraction, dedup, and
+operator alerts.
 
 ### SSRF Protection
 
 `safeFetchText()` in `backend/src/services/news-connections/ssrf-guard.ts`:
-1. Hostname-level rejection (localhost, 0.0.0.0, private literal IPs)
-2. DNS resolution check across all A/AAAA records (blocks 10.x, 127.x, 169.254.x, link-local,
-   ULA, multicast)
-3. Custom `safeLookup` callback re-validates at TCP connect time (defeats DNS rebinding between
-   the check and the connection)
-4. Manual redirect following with full guard re-run on every hop (max 3 hops)
-5. 5 MB body cap; 10-second timeout
+- Hostname-level rejection (localhost, 0.0.0.0, private literal IPs)
+- DNS resolution across all A/AAAA records (blocks 10.x, 127.x, 169.254.x, link-local, ULA)
+- Custom `safeLookup` callback re-validates at TCP connect time (defeats DNS rebinding)
+- Manual redirect following with full guard re-run on every hop (max 3)
+- 5 MB body cap, 10-second timeout
 
 All article full-body fetches in the new pipeline must route through `safeFetchText()`.
+Do not modify `ssrf-guard.ts` (out of scope).
+
+### Existing Canonicalization
+
+`canonicalizeUrl()` in `cre-rss.ts`: strips UTM params, lowercases scheme+host, removes
+fragment. `dedupeKey(userId, canonical)` produces the SHA-256 hash used as the unique
+constraint in `user_news_items`. The new pipeline reuses the same canonicalization + hash
+pattern without the `userId` dimension.
 
 ---
 
@@ -65,582 +67,761 @@ All article full-body fetches in the new pipeline must route through `safeFetchT
 
 ### 2.1 Bisnow
 
-**Profile:** National CRE news + events. Regional granularity across 17+ metro markets.
-**Coverage:** Office, multifamily, retail, industrial, hospitality, land, capital markets
+**Profile:** National CRE news + events. Strongest for deal announcements, groundbreakings,
+tenant signings. Regional granularity across 17+ metro markets.
+**Coverage:** Office, multifamily, retail, industrial, hospitality, capital markets
 **Audience:** Brokers, developers, investors, lenders
+**CRE relevance:** High — deal announcements surface 6–18 months before CoStar reflects them
 
 **RSS Status:** WORKING (verified 2026-05-25)
-**National URL:** `https://www.bisnow.com/rss/national` (~30 items, ~70-day rolling window)
-**Regional pattern:** `https://www.bisnow.com/rss/{market}` where `{market}` =
 
-```
-national, new-york, los-angeles, chicago, dallas-ft-worth, phoenix, atlanta,
-south-florida, boston, washington-dc, san-francisco, denver, seattle, houston,
-tampa-bay, austin-san-antonio, charlotte, nashville
-```
+| Feed | URL | Items | Window |
+|------|-----|-------|--------|
+| National | `https://www.bisnow.com/rss/national` | ~30 | ~70 days |
+| Atlanta | `https://www.bisnow.com/rss/atlanta` | ~30 | 1–2 weeks |
+| South Florida | `https://www.bisnow.com/rss/south-florida` | ~30 | 1–2 weeks |
+| Dallas–Fort Worth | `https://www.bisnow.com/rss/dallas-ft-worth` | ~30 | 1–2 weeks |
+| Tampa Bay | `https://www.bisnow.com/rss/tampa-bay` | ~30 | 1–2 weeks |
+| Charlotte | `https://www.bisnow.com/rss/charlotte` | ~30 | 1–2 weeks |
+| Nashville | `https://www.bisnow.com/rss/nashville` | ~30 | 1–2 weeks |
+| New York | `https://www.bisnow.com/rss/new-york` | ~30 | 1–2 weeks |
+| Austin–San Antonio | `https://www.bisnow.com/rss/austin-san-antonio` | ~30 | 1–2 weeks |
+| Houston | `https://www.bisnow.com/rss/houston` | ~30 | 1–2 weeks |
 
-Each regional feed returns ~30 items spanning 1–2 weeks.
+Full regional pattern: `https://www.bisnow.com/rss/{market}` where markets include all of
+the above plus: `los-angeles`, `chicago`, `phoenix`, `boston`, `washington-dc`,
+`san-francisco`, `denver`, `seattle`.
+
+**Body in RSS:** Headline + ~300-char HTML-stripped excerpt only (`hasFullContent: false`).
+Full body requires a second fetch to the article URL.
 
 **robots.txt** (`https://www.bisnow.com/robots.txt`, verified 2026-05-25):
-- Disallows: `/admin/`, `/newsletters/`, `/user/`, `/events/`, `/videos/watch/`,
-  `/preview_story/`, `/archives/`, `/more-news`, `/subscribe*`, `/orders`, `/logout`
-- `/rss/*` path: **NOT disallowed** ✓
-- Sitemap: `https://www.bisnow.com/sitemap/xml`
 
-**Full-body access:** RSS provides headline + excerpt (~300 chars, HTML-stripped).
-Article pages are partially gated by Cloudflare WAF — selective full-body fetch via
-`safeFetchText()` is possible but success is not guaranteed.
+| Path | Rule |
+|------|------|
+| `/admin/*` | Disallow |
+| `/newsletters/*` | Disallow |
+| `/user/*` | Disallow |
+| `/events/*` | Disallow |
+| `/videos/watch/*` | Disallow |
+| `/archives/*` | Disallow |
+| `/preview_story/*` | Disallow |
+| `/more-news` | Disallow |
+| `/rss/*` | **Not disallowed** ✓ |
+| `Crawl-delay` | Not specified |
+| Sitemap | `https://www.bisnow.com/sitemap/xml` |
 
-**Content fields from RSS:** `title`, `description` (truncated), `link`, `pubDate`, `guid`,
-`dc:creator`, `media:content` or `enclosure` (image URL), `category` elements
+**Estimated volume:** ~8–12 new CRE deal-relevant articles/day across national + top 10
+regional feeds combined.
 
-**Current registry bug:** `cre-rss.ts` uses `/feed/` and `/national/feed/` patterns (404).
-Must be corrected to `/rss/{market}` across all 17 entries.
+**Recommended access pattern:** RSS polling — national + 9 regional feeds listed above.
+Poll interval: 4 hours for national; 8 hours for regional. Follow with article-URL fetch
+for full body (for LLM extraction quality — excerpt alone is insufficient for address-level
+`DevelopmentAnnouncement` fields).
 
-**ToS note:** `bisnow.com/legal/terms` prohibits unauthorized scraping and commercial
-redistribution. RSS feeds are publicly machine-readable by design; however, no commercial
-aggregation license is held. Internal demand-signal extraction with source attribution is
-defensible under a narrow interpretation. Public resale or bulk redistribution of article
-text would violate ToS. See §10 for licensing roadmap.
+**Current registry bug:** `cre-rss.ts` uses `/feed/` and `/national/feed/` (all 404).
+Must be corrected to `/rss/{market}` across all entries.
 
 ---
 
-### 2.2 Connect CRE
+### 2.2 GlobeSt
+
+**Profile:** Long-form CRE analysis. Owned by ALM Media.
+**Coverage:** Office, retail, multifamily, industrial, capital markets — sector-depth focus
+**Audience:** Institutional investors, developers, brokers
+
+**RSS Status:** PERMANENTLY DEAD — confirmed 2026-05-25
+
+| URL Attempted | Result |
+|--------------|--------|
+| `globest.com/feed/` | HTTP 404 — `Can't find the page you are looking for` |
+| `globest.com/rss` | Returns an RSS directory page listing legacy FeedBlitz URLs |
+
+**FeedBlitz legacy feeds:** `globest.com/rss` lists market-specific feeds at
+`feeds.feedblitz.com/globest/{market}` (Chicago, Dallas, LA, etc.). These are hosted on
+FeedBlitz's CDN and were not probed individually — their current status is unknown. They
+represent GlobeSt's pre-ALM RSS infrastructure and should be treated as potentially active
+but unmaintained.
+
+**Current platform approach:** `globest.provider.ts` silently proxies to three working
+replacements that cover the same CRE sectors:
+
+| Replacement | URL | Items | Focus |
+|------------|-----|-------|-------|
+| Commercial Observer | `https://commercialobserver.com/feed/` | ~17/day | Deals, leasing, sales |
+| Trepp | `https://www.trepp.com/trepptalk/rss.xml` | ~10/9 days | CMBS, debt, distress |
+| PropModo | `https://www.propmodo.com/feed/` | ~10/2 days | CRE tech, operations |
+
+**robots.txt** (`https://www.globest.com/robots.txt`, verified 2026-05-25):
+
+| Directive | Value |
+|-----------|-------|
+| `Crawl-delay` | **1 second** (explicitly specified) |
+| `ai-train` | `no` (Content-Signal header — prohibits AI training use) |
+| `Allow: /` | Catch-all allow for `*` user-agent |
+| Sitemap | `https://www.globest.com/sitemap.xml` |
+
+**Important:** The `ai-train=no` directive in the Content-Signal header indicates GlobeSt
+explicitly prohibits use of their content for AI model training. The new pipeline's
+extraction step is inference (not training), which is a distinct use. However, this signal
+flags elevated legal sensitivity — document and monitor.
+
+**Recommendation:** Do NOT re-add GlobeSt direct RSS to the registry. The FeedBlitz feeds
+are unmaintained; the direct `/feed/` is dead. Continue routing via Commercial Observer,
+Trepp, and PropModo as the existing `globest.provider.ts` does. These three sources serve
+as GlobeSt's functional replacement and have clear, permissive robots.txt postures.
+
+---
+
+### 2.3 Connect CRE
 
 **Profile:** Concise deal-announcement news. Short, structured transaction summaries.
-**Coverage:** Sales, leasing, financing, development — national with strong regional focus
-(Southeast, Southwest, Texas, Midwest, West, Mid-Atlantic)
+**Coverage:** Sales, leasing, financing, development — national with regional market focus
 **Audience:** Brokers, investors, developers
+**CRE relevance:** High — deal summaries directly map to `DevelopmentAnnouncement` fields
 
 **RSS Status:** WORKING (verified 2026-05-25)
-**URL:** `https://www.connectcre.com/feed/` (32+ items per poll, WordPress RSS)
-**Alternative path:** `https://www.connectcre.com/stories/feed/` (also confirmed working)
+
+| Feed | URL | Items |
+|------|-----|-------|
+| National (all stories) | `https://www.connectcre.com/stories/feed/` | 32+ |
+| National (root) | `https://www.connectcre.com/feed/` | 32+ (same content) |
+
+**Regional edition feeds:** Attempted `/location/{region}/feed/` paths for West, Texas,
+Florida, Southeast, Midwest — all return full WordPress HTML page (61 KB), not RSS. Connect
+CRE does not publish regional RSS feeds; regional content is mixed into the national feed.
+
+**Body in RSS:** Short deal summary (~300 chars). Most Connect CRE articles are 200–400
+words — full body adds meaningful context for address, developer, and unit_count fields.
 
 **robots.txt** (`https://www.connectcre.com/robots.txt`, verified 2026-05-25):
-```
-Disallow: /feed
-Disallow: /feed?
-Disallow: /events/
-Disallow: /get-daily-news/
-Disallow: /faq/
-Disallow: /cdn-cgi/
-Disallow: /wp-admin/
-Disallow: /story-market/developers-of-the-year/
-Disallow: /story-market/transactions-of-the-year/
-Disallow: /story-market/texas/
-Disallow: /story-market/global/
-```
 
-**Compliance note:** `Disallow: /feed` (no trailing slash) is ambiguous under RFC 9309 — most
-user-agent implementations treat it as also matching `/feed/`. The `/stories/feed/` path is
-**not explicitly disallowed** and is the safer access route.
+| Path | Rule |
+|------|------|
+| `/feed` (no trailing slash) | Disallow (ambiguous — may match `/feed/`) |
+| `/feed?` | Disallow |
+| `/events/` | Disallow |
+| `/wp-admin/` | Disallow |
+| `/stories/feed/` | **Not disallowed** ✓ |
+| `Crawl-delay` | Not specified |
 
-**Recommendation:** Change registry URL from `/feed/` to `/stories/feed/` in `cre-rss.ts`.
+**Compliance note:** Use `/stories/feed/` — this path is explicitly not disallowed and
+avoids the ambiguity of the `/feed` rule.
 
-**Full-body access:** Connect CRE articles are short deal announcements (200–400 words),
-frequently fully available in the RSS excerpt. Full-body fetches unlikely to add value.
+**Estimated volume:** ~15–20 new deal-relevant articles/day.
 
-**Content fields:** `title`, `description` (~300-char deal summary), `link`, `pubDate`,
-`dc:creator`, `category`
-
-**ToS note:** `connectcre.com/terms-and-conditions/` — Connect Group Media, Inc. Standard
-publisher ToS. Internal aggregation for intelligence purposes is defensible; bulk redistribution
-is not permitted.
+**Recommended access pattern:** RSS polling at `connectcre.com/stories/feed/`, every 4
+hours. Follow with article URL fetch for full body.
 
 ---
 
-### 2.3 Multi-Housing News (MHN)
+### 2.4 REBusinessOnline
 
-**Profile:** Long-form analysis, property transactions, market data. Owned by Yardi Systems.
-**Coverage:** Multifamily, affordable housing, student housing, senior housing
-**Audience:** Property managers, investors, developers
+**Profile:** Regional CRE transactions and market reports. Owned by France Media.
+**Coverage:** Southeast, Southwest, Texas, Midwest, West. Retail, office, industrial, MF.
+**Audience:** Brokers, investors, developers
+**CRE relevance:** High — strong deal transaction coverage, especially Sun Belt markets
+**Not currently in any registry — this is a gap.**
 
 **RSS Status:** WORKING (verified 2026-05-25)
-**URL:** `https://www.multihousingnews.com/feed/` (WordPress RSS)
+**URL:** `https://rebusinessonline.com/feed/` — WordPress RSS, 24 KB body, active
 
-**robots.txt** (`https://www.multihousingnews.com/robots.txt`, verified 2026-05-25):
-```
-Disallow: /wp-admin
-Disallow: /rss/          ← blocks the /rss/ sub-path
-Disallow: /rss-feeds/    ← blocks the feed directory page
-Disallow: /tag/
-Disallow: /search/
-...
-```
-- `/feed/` path (WordPress standard): **NOT disallowed** ✓
-- Notable: Explicitly blocks `owlin bot`, `owlin bot v.3.0`, `mj12bot`, `naver`, `charlotte`
-  by user-agent — indicating deliberate awareness of news aggregation crawlers.
-  JediRE's honest `JediRE/1.0` User-Agent would not be blocked by these rules.
+**Body in RSS:** Title + excerpt (~300 chars). Full body requires article URL fetch.
 
-**Full-body access:** Articles are full-length (500–1,500 words). RSS provides excerpt only.
-Full body available via `safeFetchText()`; no paywall detected.
+**robots.txt** (`https://rebusinessonline.com/robots.txt`, verified 2026-05-25):
 
-**Content fields:** `title`, `description` (excerpt), `link`, `pubDate`, `author`, `category`,
-`media:content` (image)
+| Directive | Value |
+|-----------|-------|
+| `Disallow` | (blank — allows everything) |
+| `Crawl-delay` | Not specified |
+| Sitemap | `http://rebusinessonline.com/sitemap_index.xml` |
 
-**ToS note:** Yardi Systems (MHN owner) has standard enterprise publisher ToS. No known
-commercial aggregation licensing program. Internal intelligence use with attribution is standard
-industry practice.
+Most permissive robots.txt of all sources investigated. Yoast SEO default — intentionally
+open.
+
+**Estimated volume:** ~5–8 new deal-relevant articles/day.
+
+**Recommended access pattern:** RSS polling at `rebusinessonline.com/feed/`, every 4 hours.
+Follow with article URL fetch for full body. This is the highest-value gap source: working
+feed, zero access friction, fully permissive robots.txt. **Add immediately.**
 
 ---
 
-### 2.4 Multifamily Executive (MFE)
+### 2.5 Multi-Housing News (MHN)
 
-**Profile:** Builder/developer-oriented multifamily news. Owned by Zonda (formerly Builder Media).
-**Coverage:** Construction, design, technology, finance, policy
+**Profile:** Long-form multifamily analysis, property transactions, market data.
+Owned by Yardi Systems.
+**Coverage:** Multifamily, affordable housing, student housing, senior housing
+**Audience:** Property managers, investors, developers, lenders
+**CRE relevance:** Medium-high — strong on multifamily deal announcements and groundbreakings
+
+**RSS Status:** WORKING (verified 2026-05-25)
+**URL:** `https://www.multihousingnews.com/feed/` — WordPress RSS
+
+**Body in RSS:** Excerpt only (300–500 chars). Full body requires article URL fetch.
+Articles are 500–1,500 words; full body significantly improves address and unit_count
+extraction accuracy.
+
+**robots.txt** (`https://www.multihousingnews.com/robots.txt`, verified 2026-05-25):
+
+| Path | Rule |
+|------|------|
+| `/rss/` | Disallow (blocks `/rss/` sub-path) |
+| `/rss-feeds/` | Disallow (blocks feed directory page) |
+| `/feed/` | **Not disallowed** ✓ |
+| `/wp-admin` | Disallow |
+| `/search/` | Disallow |
+| `/tag/` | Disallow |
+| `Crawl-delay` | Not specified |
+| Bot blocks | `owlin bot`, `owlin bot v.3.0`, `mj12bot`, `naver`, `charlotte` explicitly blocked by UA |
+
+JediRE's honest `JediRE/1.0` User-Agent is not in the block list. The `/feed/` path is
+clear. Note that MHN explicitly blocks known news-aggregation bots, indicating awareness
+of the aggregation use case.
+
+**Estimated volume:** ~4–6 new multifamily deal-relevant articles/day.
+
+**Recommended access pattern:** RSS polling at `multihousingnews.com/feed/`, every 6 hours.
+Follow with article URL fetch for full body.
+
+---
+
+### 2.6 Multifamily Executive (MFE)
+
+**Profile:** Builder/developer-oriented multifamily news. Owned by Zonda.
+**Coverage:** Multifamily construction, design, technology, finance, policy
 **Audience:** Multifamily developers, builders
+**CRE relevance:** Medium — development-focused but less deal-transaction coverage than MHN
 
-**RSS Status:** DEAD (verified 2026-05-25)
+**RSS Status:** DEAD — no working endpoint found (verified 2026-05-25)
 
 | URL Attempted | Result |
 |--------------|--------|
 | `multifamilyexecutive.com/rss` | HTTP 404 |
-| `multifamilyexecutive.com/rss.xml` | Drupal HTML page — not RSS XML |
+| `multifamilyexecutive.com/rss.xml` | Drupal HTML page (not RSS XML) |
 | `multifamilyexecutive.com/feed/` | HTTP 404 |
 
-MFE runs on a Drupal CMS; WordPress's standard `/feed/` pattern does not apply, and no
-active RSS endpoint was discovered.
+MFE runs on Drupal CMS. WordPress `/feed/` and `/rss` patterns do not apply. No active
+RSS endpoint was discovered.
 
 **robots.txt** (`https://www.multifamilyexecutive.com/robots.txt`, verified 2026-05-25):
-- Standard Drupal rules — no explicit RSS disallows, but those paths 404 regardless.
+Standard Drupal rules — no RSS disallows, but the paths 404 regardless. No Crawl-delay.
 
-**Alternative access pattern:** Sitemap crawl from `multifamilyexecutive.com/sitemap.xml`
-then per-article `safeFetchText()` with heavy rate limiting. This requires a ToS review
-before implementation — NOT recommended for Phase 1.
+**Alternative access — sitemap crawl:**
+MFE's `sitemap_index.xml` (linked from robots.txt) would support a sitemap-discovery +
+per-article-fetch approach. This requires a separate ToS review and is NOT recommended for
+Phase 1 due to the additional implementation complexity and ToS uncertainty.
 
-**Current registry bug:** `cre-rss.ts` includes `multifamilyexecutive.com/rss` which fails
-silently (no error thrown on 404). This entry should be removed from the registry to
-stop polluting error logs and wasting poll cycles.
+**MHN vs MFE coverage overlap:** Both cover multifamily. MHN has a working RSS and broader
+deal transaction coverage. MFE's Drupal site focuses more on design and operational
+articles. For supply pipeline intelligence, MHN is higher-value.
 
-**Recommended approach for Phase 1:** Remove MFE from registry. Revisit in a later phase
-when/if a working feed is identified.
-
----
-
-### 2.5 REBusinessOnline — Gap Source (Recommended Add)
-
-**Profile:** Regional CRE transactions and market reports. Owned by France Media.
-**Coverage:** Southeast, Southwest, Texas, Midwest, West. Office, retail, industrial,
-multifamily.
-**Audience:** Brokers, investors, developers
-
-**RSS Status:** WORKING (verified 2026-05-25)
-**URL:** `https://rebusinessonline.com/feed/` (WordPress RSS, 24 KB body, active)
-Content confirmed: deal announcements, market reports, transaction summaries.
-
-**robots.txt** (`https://rebusinessonline.com/robots.txt`, verified 2026-05-25):
-```
-# START YOAST BLOCK
-User-agent: *
-Disallow:            ← blank = allows everything
-
-Sitemap: http://rebusinessonline.com/sitemap_index.xml
-# END YOAST BLOCK
-```
-**Most permissive robots.txt of all sources investigated.** ✓
-
-**Full-body access:** Articles are full-text (300–800 words). No paywall detected.
-
-**Content fields:** `title`, `description` (excerpt), `link`, `pubDate`, `author`, `category`,
-`media:content` (image)
-
-**ToS note:** No dedicated API or syndication ToS page found. France Media standard publisher
-ToS applies. RSS is publicly offered. Internal intelligence use is defensible; REBusinessOnline
-is a smaller regional publisher with no known enforcement history.
-
-**This is the highest-value gap source: working feed + zero access friction + most permissive
-robots.txt. Add immediately in Phase 1.**
+**Recommendation:** Remove MFE from `cre-rss.ts` registry (current entry silently 404s).
+Document as "sitemap-accessible, RSS-dead" and revisit in Phase 2 or later with a
+sitemap-based crawler after explicit ToS review.
 
 ---
 
-### 2.6 The Real Deal — Gap Source (Partial)
+### 2.7 CoStar News
 
-**Profile:** Premier CRE news. Deep reporting, investigative coverage, transaction databases.
-**Coverage:** NYC (primary), national, South Florida, LA, Chicago, San Francisco
-**Audience:** Investors, developers, brokers, policy, finance
+**Profile:** Authoritative CRE market intelligence. Owned and operated by CoStar Group.
+**Coverage:** All CRE asset classes, all major US markets
+**Audience:** Institutional investors, brokers, developers, lenders
+**CRE relevance:** Highest — CoStar data reflects confirmed, structured deal intelligence
+**Access:** Already integrated via CoStar API subscription
+
+**Current integration:**
+
+| Tool | File | Content fetched |
+|------|------|----------------|
+| `fetch_costar_pipeline` | `backend/src/agents/tools/fetch_costar_pipeline.ts` | Units under construction, planned, permitted; 12/24-month deliveries; pipeline as % of stock; months of supply; absorption rate |
+| `fetch_costar_metrics` | `backend/src/agents/tools/fetch_costar_metrics.ts` | Vacancy, effective rent, absorption, cap rates, price/unit — submarket level |
+
+**Is editorial news content separate from market data?**
+Yes. CoStar's API subscription delivers structured market data (metrics, pipeline, comps).
+CoStar News editorial content (`costar.com/news`) is a separate product delivered via the
+CoStar web UI and subscriber email — it is NOT available as a data feed or API endpoint
+within the existing API subscription. CoStar News articles would require a separate media
+licensing arrangement.
+
+**What IS available via the API (relevant to `DevelopmentAnnouncement`):**
+
+The `development_projects` table (populated by CoStar API) contains:
+`construction_status` (planned/permitted/under_construction/delivered), `units`,
+`expected_delivery`, `groundbreaking_date`, `developer`, `data_source = 'costar'`.
+
+This is **structured supply pipeline data**, not editorial news. For the trade press ingest
+pipeline, CoStar data serves as a **verification and enrichment layer** — after LLM
+extraction produces a `DevelopmentAnnouncement` from a trade press article, the record can
+be cross-referenced against `development_projects` to confirm CoStar has or has not yet
+picked up the project.
+
+**Recommended access pattern:** Already integrated — no additional RSS or fetch pipeline.
+Use `development_projects` table as the post-extraction verification step:
+```sql
+SELECT id FROM development_projects
+WHERE developer ILIKE '%{developer_name}%'
+  AND city = '{city}'
+  AND ABS(units - {unit_count}) < 50
+  AND data_source = 'costar'
+```
+If a matching row exists, the `DevelopmentAnnouncement` is CoStar-confirmed; if not, it
+represents a lead-time opportunity (6–18 months before CoStar ingestion).
+
+---
+
+### 2.8 The Real Deal / Commercial Observer
+
+**Profile:** The Real Deal — premier CRE publication with investigative reporting and
+transaction databases. Commercial Observer — New York-focused but national CRE deals coverage.
+**Coverage:** NYC (TRD primary), national, South Florida, LA, Chicago, San Francisco
+**Audience:** Investors, developers, brokers, finance, policy
+
+#### The Real Deal (Gap — not in any registry)
 
 **RSS Status:** PARTIAL (verified 2026-05-25)
 
 | URL Attempted | Result |
 |--------------|--------|
-| `therealdeal.com/feed/` | Returns full HTML page (JS-rendered, no XML) |
-| `therealdeal.com/national/feed/` | **Working RSS — 4.7 KB, ~10 items** ✓ |
-| `therealdeal.com/new-york/feed/` | Not verified — expected to follow same pattern |
-| `therealdeal.com/south-florida/feed/` | Not verified — expected to follow same pattern |
+| `therealdeal.com/feed/` | Returns full JS-rendered HTML — no XML |
+| `therealdeal.com/national/feed/` | **Working RSS — ~10 items, permissive** ✓ |
+
+Regional feeds (`/new-york/feed/`, `/south-florida/feed/`, etc.) follow the same WordPress
+pattern and are expected to be active but were not individually verified.
+
+**Paywall structure:** TRD employs metered access (~3–5 free articles/month per browser via
+cookie). RSS items contain title + excerpt without hitting the paywall gate. Full-body fetch
+via `safeFetchText()` reaches the full article text without authentication on most articles
+(metering is browser-cookie-based, not server-side auth). Do NOT attempt to circumvent
+hard paywall gates or inject authentication cookies.
+
+**Body in RSS:** Title + excerpt (~200 chars). Full body available via article URL fetch
+on most articles.
 
 **robots.txt** (`https://therealdeal.com/robots.txt`, verified 2026-05-25):
-```
-User-agent: *
-Disallow: /wp-admin/
-Disallow: /wp-includes/
-Disallow: /wp-json/
-Disallow: /api/
-Disallow: /wp-*.php
-Disallow: /?p=*
-Disallow: /new-york?p=*  (etc. per market)
-Allow: *                 ← catch-all allow
-```
-`/national/feed/` and regional `/*/feed/` paths: **NOT disallowed** ✓
 
-**Full-body access:** TRD employs a soft paywall (metered access, ~3–5 free articles/month
-per browser). RSS items include title + excerpt without hitting the paywall gate. Full-body
-fetch behind paywall is NOT recommended — headline + excerpt is sufficient for demand
-signal classification.
+| Path | Rule |
+|------|------|
+| `/wp-admin/`, `/wp-includes/`, `/wp-json/` | Disallow |
+| `/api/`, `/wp-*.php` | Disallow |
+| `/?p=*`, `/?locale=*`, `/?altu=*` | Disallow |
+| `/national/feed/` | **Not disallowed** — `Allow: *` catch-all ✓ |
+| `Crawl-delay` | Not specified |
+| Sitemap | `https://therealdeal.com/sitemap_index.xml` |
 
-**CoStar News note:** CoStar News (`costar.com/news`) is entirely separate from trade press
-RSS. It is market data delivered exclusively through CoStar's commercial API subscription,
-already handled by `fetch_costar_metrics.ts` and `fetch_costar_pipeline.ts`. It has no
-RSS feed and should not appear in any trade press registry.
+**Estimated volume:** ~5–8 national deal-relevant articles/day.
 
-**ToS note:** `therealdeal.com/terms-of-service/` — standard premium publisher ToS. No
-commercial aggregation license available publicly. RSS is offered for public consumption;
-internal intelligence use is standard practice. TRD's paywall indicates revenue sensitivity;
-do NOT attempt to circumvent the paywall via authentication tokens or cookie injection.
+**Recommended access pattern:** RSS polling at `therealdeal.com/national/feed/`, every
+4 hours. Add regional feeds (New York, South Florida, LA) in Phase 2 once volume is
+confirmed. Follow with article URL fetch for full body.
 
-**Recommendation:** Add `therealdeal.com/national/feed/` to registry in Phase 1. Verify and
-add regional feeds (NYC, South Florida, LA) selectively given the small per-feed item count.
+#### Commercial Observer (already integrated)
 
----
+Embedded in `globest.provider.ts` at `https://commercialobserver.com/feed/`.
 
-### 2.7 HousingWire
+**robots.txt** (`https://commercialobserver.com/robots.txt`, verified 2026-05-25):
+- `Disallow: /wp-admin/`, `Disallow: /wp-content/uploads/sites/3/wpforms/`
+- `/feed/` path: Not disallowed ✓
+- No Crawl-delay specified
 
-**Profile:** Broad housing finance and market coverage. Strong on mortgage, GSE, policy,
-PropTech.
-**Coverage:** Single-family, multifamily (residential), mortgage markets, regulatory
-**Audience:** Lenders, investors, servicers, developers
+**Body in RSS:** ~17 items/day, 1-day window. Headline + excerpt. Full body requires fetch.
 
-**RSS Status:** WORKING (verified 2026-05-25)
-**URL:** `https://www.housingwire.com/feed/`
-
-HW Media umbrella properties also publish separate sitemaps (per robots.txt):
-`finledger.com`, `hwmedia.com`, `realtrends.com`, `reversemortgagedaily.com` —
-not currently registered and out of scope for CRE-specific ingest.
-
-**robots.txt** (`https://www.housingwire.com/robots.txt`, verified 2026-05-25):
-- Disallows search, tag pages, media subdirectory, job listings, pagination parameters
-- `/feed/` path: **NOT disallowed** ✓
-- Yoast block at bottom sets final `Disallow:` (blank = allow all) — net-permissive
-
-**Full-body access:** Articles are full-text. No hard paywall (newsletter signup prompt only).
-
-**Current state:** Registered and working as `housingwireProvider` in `news.service.ts`. ✓
-
----
-
-### 2.8 SEC EDGAR 8-K Feed
-
-**Profile:** REIT event filings — material announcements (acquisitions, dispositions,
-financings, quarterly earnings, development announcements).
-**Coverage:** All public REITs filing with the SEC
-
-**RSS/Atom Status:** WORKING
-**URL:** EDGAR full-text search Atom feed filtered to `forms=8-K` + keyword `"REIT"`
-(accessed via `cre-rss.ts`)
-
-**robots.txt:** SEC EDGAR is a US government system. Public data endpoints carry no robots.txt
-restrictions. Publicly mandated disclosure — no access friction.
-
-**Full-body access:** EDGAR filing documents are public record. Full XBRL/HTML filing text
-available at no cost.
-
-**Current state:** In `cre-rss.ts`. 8-K items flow into the news discovery engine as articles
-but are not parsed for structured supply/pipeline data. This is a noted gap in
-`SUPPLY_DEMAND_PIPELINE_AUDIT.md §1E` — addressed as Dispatch 7 of that plan (SEC 10-K
-REIT supply pipeline parsing), which is separate from this trade press ingest track.
+**Recommended access pattern:** Existing `globest.provider.ts` registration handles headlines.
+For the `trade_press_articles` pipeline, add `commercialobserver.com/feed/` directly to
+the registry as a named source (rather than routing through the globest provider).
 
 ---
 
 ## §3 robots.txt Compliance Table
 
-All checks performed live 2026-05-25. "Feed path" refers to the URL path used in the
-current or recommended registry entry.
+Verified live 2026-05-25. "Feed path" = the recommended URL for the new pipeline.
 
-| Source | Feed Path | Explicitly Disallowed? | Status | Notes |
-|--------|-----------|----------------------|--------|-------|
-| Bisnow | `/rss/national`, `/rss/{market}` | No | ✅ PERMITTED | `/archive/`, `/newsletters/` disallowed; `/rss/*` clear |
-| Connect CRE | `/stories/feed/` | No | ✅ PERMITTED | Use `/stories/feed/` — `/feed` (root, no trailing slash) is ambiguous |
-| Multi-Housing News | `/feed/` | No | ✅ PERMITTED | `/rss/` disallowed; `/feed/` is not |
-| Multifamily Executive | `/rss`, `/feed/` | No (but 404) | ⚠️ DEAD | robots.txt permissive; no working endpoint |
-| REBusinessOnline | `/feed/` | No (fully open) | ✅ PERMITTED | Blank disallow = allow everything |
-| The Real Deal | `/national/feed/` | No | ✅ PERMITTED | `Allow: *` catch-all; explicit bot allows |
-| Commercial Observer | `/feed/` | No | ✅ PERMITTED | Only `/wp-admin/` disallowed |
-| Trepp | `/trepptalk/rss.xml` | No | ✅ PERMITTED | Only HubSpot preview paths disallowed |
-| PropModo | `/feed/` | No | ✅ PERMITTED | Only `/wp-admin/` disallowed |
-| HousingWire | `/feed/` | No | ✅ PERMITTED | Complex rules; `/feed/` path is clear |
-| SEC EDGAR | EDGAR Atom endpoint | N/A | ✅ PERMITTED | US government public data |
+| Source | Feed Path | Crawl-delay | Disallows Feed Path? | Status |
+|--------|-----------|-------------|---------------------|--------|
+| Bisnow | `/rss/national`, `/rss/{market}` | None | No | ✅ PERMITTED |
+| GlobeSt | (no working feed — see §2.2) | **1 second** | N/A (dead) | ⚠️ DEAD — use CO/Trepp/PropModo |
+| Connect CRE | `/stories/feed/` | None | No (unambiguous path) | ✅ PERMITTED |
+| REBusinessOnline | `/feed/` | None | No (fully open) | ✅ PERMITTED |
+| Multi-Housing News | `/feed/` | None | No (`/rss/` ≠ `/feed/`) | ✅ PERMITTED |
+| Multifamily Executive | (no working feed) | None | N/A (dead) | ⚠️ DEAD — sitemap only |
+| CoStar News editorial | N/A — API subscription | N/A | N/A | ✅ VIA API CONTRACT |
+| The Real Deal | `/national/feed/` | None | No (`Allow: *` catch-all) | ✅ PERMITTED |
+| Commercial Observer | `/feed/` | None | No | ✅ PERMITTED |
+| Trepp | `/trepptalk/rss.xml` | None | No | ✅ PERMITTED |
+| PropModo | `/feed/` | None | No | ✅ PERMITTED |
 
-**Summary:** 10 of 11 sources have clear robots.txt permission for their RSS feed path.
-Connect CRE requires the path change from `/feed/` to `/stories/feed/` for unambiguous
-compliance. MFE is moot — the feed is dead.
+**GlobeSt special note:** `globest.com` robots.txt includes `ai-train=no` in a
+Content-Signal header. This prohibits using GlobeSt content for AI model training. The
+pipeline's inference step (extracting fields from an article) is distinct from training.
+Nonetheless, GlobeSt direct access is moot since `/feed/` is dead. If FeedBlitz feeds
+are activated in future, re-verify this directive.
 
 ---
 
-## §4 Recommended Access Patterns
+## §4 Recommended Access Pattern per Source
 
-### 4.1 Fetch Hierarchy
+| Source | Access Mode | Feed / Entry URL | Poll Interval | Full Body Fetch? |
+|--------|------------|-----------------|---------------|-----------------|
+| Bisnow (national) | RSS polling | `bisnow.com/rss/national` | 4 hours | Yes — excerpt insufficient |
+| Bisnow (9 regional) | RSS polling | `bisnow.com/rss/{market}` | 8 hours | Yes |
+| GlobeSt | — | Routed via CO + Trepp + PropModo | — | — |
+| Connect CRE | RSS polling | `connectcre.com/stories/feed/` | 4 hours | Yes |
+| REBusinessOnline | RSS polling | `rebusinessonline.com/feed/` | 4 hours | Yes |
+| Multi-Housing News | RSS polling | `multihousingnews.com/feed/` | 6 hours | Yes |
+| Multifamily Executive | Deferred | Sitemap crawl (Phase 2+) | N/A | Yes |
+| CoStar News editorial | Already integrated | `development_projects` table | Existing | N/A |
+| The Real Deal | RSS polling | `therealdeal.com/national/feed/` | 4 hours | Yes |
+| Commercial Observer | RSS polling | `commercialobserver.com/feed/` | 4 hours | Yes |
+| Trepp | RSS polling | `trepp.com/trepptalk/rss.xml` | 6 hours | Yes |
+| PropModo | RSS polling | `propmodo.com/feed/` | 8 hours | Lower priority |
 
-Use the minimal-access pattern that yields sufficient data for demand signal classification:
+**Full-body fetch notes:**
+- RSS excerpts are 200–500 chars — insufficient to reliably extract `address`, `unit_count`,
+  `developer_name`, and `transaction_amount` for the `DevelopmentAnnouncement` entity
+- `safeFetchText()` must be used for all article URL fetches
+- Apply per-source Crawl-delay: 1 second minimum between requests to the same domain;
+  GlobeSt domains: 1-second explicit delay if ever reactivated
+- User-Agent for article fetches: retain the browser UA already in `ssrf-guard.ts`
+  (`Mozilla/5.0 ... Chrome/126.0.0.0`) — many publisher CDNs block obvious bot UAs
+- Apply article fetch only after keyword pre-filter passes (§9.3) — do not fetch full body
+  for articles that cannot be `DevelopmentAnnouncement` candidates
 
-1. **RSS polling only (preferred):** Collect `title`, `description` (excerpt), `url`,
-   `publishedAt`, `author`, `category` from feed. Sufficient for demand signal classification
-   in most cases. No article page fetch required.
+---
 
-2. **RSS + article fetch (selective):** Use `safeFetchText()` on the article URL only when
-   the LLM extraction confidence on excerpt-only is below 0.60. Never fetch paywalled content.
+## §5 Technical Architecture
 
-3. **Sitemap crawl (MFE only, future):** Parse `sitemap_index.xml` → individual article
-   sitemaps → fetch new URLs not yet in `cre_news_items`. Requires separate ToS review before
-   implementation. Not part of Phase 1–3.
+### 5.1 Storage Schema
 
-### 4.2 Poll Cadence
+#### `trade_press_articles` — raw article store
 
-| Source Type | Recommended Cadence | Rationale |
-|-------------|--------------------|-----------| 
-| National news (Bisnow national, TRD national, CO) | Every 4 hours | 5–15 new items/day; 4h catches same-day stories |
-| Regional/metro feeds (Bisnow markets, TRD regional) | Every 8 hours | Lower volume; 8h sufficient |
-| Deal announcement feeds (Connect CRE, REBusinessOnline) | Every 4 hours | Fast-moving deal flow; time-sensitive for M35 |
-| Finance/analysis (Trepp, HousingWire) | Every 6 hours | Analysis pieces; less time-sensitive |
-| SEC EDGAR 8-K | Every 2 hours (market hours) | Filing events are material |
+```sql
+CREATE TABLE trade_press_articles (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_id        TEXT NOT NULL,          -- 'bisnow', 'connectcre', 'mhn', etc.
+  url              TEXT NOT NULL,
+  url_hash         TEXT NOT NULL UNIQUE,   -- SHA-256(canonicalizeUrl(url))
+  headline         TEXT NOT NULL,
+  body_text        TEXT,                   -- NULL until full-body fetch runs
+  excerpt          TEXT,                   -- From RSS description field
+  author           TEXT,
+  published_at     TIMESTAMPTZ,
+  fetched_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  body_fetched_at  TIMESTAMPTZ,           -- When full-body fetch completed
+  content_hash     TEXT,                  -- SHA-256(body_text) for cross-source dedup
+  extraction_status TEXT NOT NULL DEFAULT 'pending',
+                                          -- pending | body_needed | extracted | skipped | failed
+  extracted_at     TIMESTAMPTZ,
+  source_metadata  JSONB                  -- Feed-specific fields (image, categories, etc.)
+);
 
-### 4.3 Rate Limiting
+CREATE INDEX tpa_source_published   ON trade_press_articles(source_id, published_at DESC);
+CREATE INDEX tpa_published          ON trade_press_articles(published_at DESC);
+CREATE INDEX tpa_extraction_pending ON trade_press_articles(extraction_status)
+  WHERE extraction_status IN ('pending', 'body_needed');
+CREATE INDEX tpa_content_hash       ON trade_press_articles(content_hash)
+  WHERE content_hash IS NOT NULL;
+```
 
-Retain the existing TokenBucket from `cre-rss.ts` as the global rate governor. Add
-domain-level isolation to prevent parallel requests to the same host:
+#### `development_announcements` — extracted entity store
+
+```sql
+CREATE TABLE development_announcements (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Extracted fields (from LLM — see §6)
+  address               TEXT,
+  city                  TEXT,
+  state                 CHAR(2),
+  developer_name        TEXT,
+  project_name          TEXT,
+  unit_count            INTEGER,
+  asset_class           TEXT,    -- multifamily | office | retail | industrial | mixed_use | other
+  deal_type             TEXT,    -- announcement | groundbreaking | completion | sale | lease
+  deal_date             DATE,
+  transaction_amount    NUMERIC(18,2),  -- USD; null if not stated
+  -- Source linkage
+  primary_article_id    UUID REFERENCES trade_press_articles(id),
+  source_urls           TEXT[]  NOT NULL DEFAULT '{}',  -- All articles covering this deal
+  source_names          TEXT[]  NOT NULL DEFAULT '{}',  -- Corresponding source_id values
+  -- Quality
+  extraction_confidence NUMERIC(3,2),  -- 0.00–1.00
+  field_citations       JSONB,         -- Per-field citation passages (see §6)
+  -- Lifecycle
+  merged_into           UUID REFERENCES development_announcements(id),  -- Cross-source merge
+  operator_reviewed     BOOLEAN DEFAULT FALSE,
+  costar_confirmed      BOOLEAN DEFAULT FALSE,  -- Matched in development_projects table
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX da_city_state      ON development_announcements(city, state);
+CREATE INDEX da_deal_type       ON development_announcements(deal_type);
+CREATE INDEX da_published_range ON development_announcements(created_at DESC);
+CREATE INDEX da_merged          ON development_announcements(merged_into)
+  WHERE merged_into IS NOT NULL;
+```
+
+#### `trade_press_rss_sources` — DB-managed registry
+
+Replaces the hardcoded `CRE_FEEDS` map to allow admin management without deploys:
+
+```sql
+CREATE TABLE trade_press_rss_sources (
+  id              SERIAL PRIMARY KEY,
+  source_id       TEXT NOT NULL UNIQUE,
+  source_name     TEXT NOT NULL,
+  feed_url        TEXT NOT NULL,
+  market          TEXT,             -- NULL = national
+  asset_class     TEXT,             -- multifamily | office | retail | all
+  is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+  poll_interval_h INTEGER NOT NULL DEFAULT 4,
+  crawl_delay_s   INTEGER NOT NULL DEFAULT 1,
+  last_polled_at  TIMESTAMPTZ,
+  last_error      TEXT,
+  robots_verified DATE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### 5.2 Rate Limiting Architecture
+
+Extend the existing TokenBucket from `cre-rss.ts` with domain-level isolation:
 
 ```typescript
-// Per-domain token buckets prevent parallel hammering of a single origin
+// Global bucket: 1 req/sec, burst 3 (existing — keep)
+const globalBucket = new TokenBucket({ tokensPerSecond: 1, burst: 3 });
+
+// Per-domain buckets: max 0.5 req/sec per domain (new)
 const domainBuckets = new Map<string, TokenBucket>();
 
 function getDomainBucket(url: string): TokenBucket {
   const domain = new URL(url).hostname;
   if (!domainBuckets.has(domain)) {
     domainBuckets.set(domain, new TokenBucket({
-      tokensPerSecond: 0.5, // 1 req per 2 sec per domain
+      tokensPerSecond: 0.5,  // 1 request per 2 seconds per domain
       burst: 2,
     }));
   }
   return domainBuckets.get(domain)!;
 }
+
+// At fetch time: consume global + domain bucket
+async function rateLimitedFetch(url: string): Promise<string> {
+  await globalBucket.consume();
+  await getDomainBucket(url).consume();
+  return safeFetchText(url);
+}
 ```
 
-For selective article full-body fetches via `safeFetchText()`: additional 2–5 second
-per-domain delay between fetches.
+Backoff: 5-minute backoff on 429 or 503 (retain existing `cre-rss.ts` behavior).
 
-### 4.4 What NOT to Fetch
-
-Never fetch:
-- `/newsletters/*` or any authenticated newsletter content
-- Paginated archive pages (`/archives/`, `/page/N/`, `?paged=N`)
-- Event listings or attendee data
-- Any URL matching a `Disallow` rule in the source's `robots.txt`
-- Any URL behind a hard paywall or login wall
-- The CoStar News editorial site (`costar.com/news`) — handled via CoStar API subscription
-
----
-
-## §5 Technical Architecture
-
-### 5.1 Proposed Storage Schema
-
-#### New table: `cre_news_items` (platform-level, not per-user)
-
-```sql
-CREATE TABLE cre_news_items (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  source_id         TEXT NOT NULL,           -- 'bisnow', 'connectcre', 'mhn', etc.
-  dedupe_key        TEXT NOT NULL UNIQUE,    -- SHA-256(canonical_url)
-  url               TEXT NOT NULL,
-  canonical_url     TEXT NOT NULL,
-  title             TEXT NOT NULL,
-  excerpt           TEXT,                    -- From RSS description (max 2000 chars)
-  full_body         TEXT,                    -- Populated only when article fetch runs
-  author            TEXT,
-  published_at      TIMESTAMPTZ,
-  fetched_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-  -- LLM extraction results
-  extraction_status TEXT NOT NULL DEFAULT 'pending', -- pending | extracted | skipped | failed
-  extracted_at      TIMESTAMPTZ,
-  demand_event_type TEXT,          -- employment | university | military | migration | null
-  demand_event_raw  JSONB,         -- Raw Claude output
-  confidence        NUMERIC(3,2),  -- 0.00–1.00
-
-  -- Demand signal linkage
-  demand_event_id   UUID REFERENCES demand_events(id),
-
-  -- Metadata
-  market_tags       TEXT[],        -- ['atlanta', 'multifamily'] extracted from content
-  source_metadata   JSONB          -- Feed-specific data (image URL, categories, etc.)
-);
-
-CREATE INDEX cre_news_source_fetched ON cre_news_items(source_id, fetched_at DESC);
-CREATE INDEX cre_news_published      ON cre_news_items(published_at DESC);
-CREATE INDEX cre_news_extraction     ON cre_news_items(extraction_status)
-  WHERE extraction_status = 'pending';
-CREATE INDEX cre_news_demand_event   ON cre_news_items(demand_event_id)
-  WHERE demand_event_id IS NOT NULL;
-```
-
-**Rationale for a new table vs. reusing `user_news_items`:**
-- `user_news_items` is scoped to `user_id` and `user_news_connection_id` — it models a
-  user's personal RSS subscription, not a platform-curated source
-- Platform-level trade press ingest must not require a user ID or connection row
-- LLM extraction columns (`extraction_status`, `demand_event_type`, `confidence`) do not
-  belong on the user-facing news table
-
-#### New table: `cre_rss_sources` (replaces hardcoded `CRE_FEEDS` map)
-
-Moving the registry to the database allows admin-UI management without deploys:
-
-```sql
-CREATE TABLE cre_rss_sources (
-  id               SERIAL PRIMARY KEY,
-  source_id        TEXT NOT NULL,
-  source_name      TEXT NOT NULL,
-  feed_url         TEXT NOT NULL,
-  market           TEXT,             -- NULL = national
-  sector           TEXT,             -- multifamily | office | retail | industrial | NULL
-  is_active        BOOLEAN NOT NULL DEFAULT TRUE,
-  poll_interval_h  INTEGER NOT NULL DEFAULT 4,
-  last_polled_at   TIMESTAMPTZ,
-  last_error       TEXT,
-  robots_verified  DATE,             -- Date robots.txt compliance was last verified
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-
-### 5.2 Fetch Pipeline
+### 5.3 Full-Body Fetch Pipeline
 
 ```
-Inngest cron (configurable per source, default every 4h)
-  → pollCRENewsFeeds()
-       → SELECT * FROM cre_rss_sources WHERE is_active = TRUE
-       → for each source:
-           → getDomainBucket(feedUrl).consume()
-           → safeFetchText(feedUrl)            ← SSRF-safe, redirect-aware
-           → parseStringPromise(xml)           ← xml2js
-           → for each item:
-               → canonicalizeUrl(item.link)
-               → dedupe_key = SHA-256(canonical_url)
-               → INSERT INTO cre_news_items
-                   ON CONFLICT (dedupe_key) DO NOTHING
-           → UPDATE cre_rss_sources SET last_polled_at = NOW()
+RSS poll cycle (Inngest cron per source, on poll_interval_h schedule):
+  → safeFetchText(feed_url)
+  → parseStringPromise(xml)                    ← xml2js
+  → for each item:
+      → canonical = canonicalizeUrl(item.link)  ← reuse from cre-rss.ts
+      → url_hash = SHA-256(canonical)
+      → INSERT INTO trade_press_articles
+            (source_id, url, url_hash, headline, excerpt, author, published_at)
+          ON CONFLICT (url_hash) DO NOTHING     ← within-source dedup
+  → UPDATE trade_press_rss_sources SET last_polled_at = NOW()
 
-  → (after insert batch completes) enqueueExtractionBatch()
+Full-body fetch cycle (Inngest cron, every 30 minutes):
+  → SELECT * FROM trade_press_articles
+      WHERE extraction_status IN ('pending', 'body_needed')
+        AND body_text IS NULL
+        AND published_at > NOW() - INTERVAL '7 days'
+      ORDER BY published_at DESC
+      LIMIT 100
+  → applyKeywordPreFilter(articles)            ← §9.3 — skip obvious non-announcements
+  → for each article passing filter:
+      → rateLimitedFetch(article.url)           ← safeFetchText + domain bucket
+      → extract visible text from HTML          ← strip scripts, nav, ads
+      → UPDATE trade_press_articles SET
+            body_text = extracted_text,
+            content_hash = SHA-256(extracted_text),
+            body_fetched_at = NOW(),
+            extraction_status = 'pending'
+  → for each article NOT passing filter:
+      → UPDATE trade_press_articles SET extraction_status = 'skipped'
 
-Inngest function: extractDemandSignals()  ← separate function
-  → SELECT * FROM cre_news_items
+LLM extraction cycle (Inngest cron, every 1 hour):
+  → SELECT * FROM trade_press_articles
       WHERE extraction_status = 'pending'
+        AND body_text IS NOT NULL
       ORDER BY published_at DESC
       LIMIT 50
-  → applyKeywordPreFilter(items)          ← §9.3 — skip obvious non-events
-  → for each item passing pre-filter:
-      → buildExtractionPrompt(item)
+  → for each article:
+      → buildExtractionPrompt(article)           ← §6.3
       → call Claude claude-3-5-haiku-20241022
-      → parseClaudeResponse()
-      → UPDATE cre_news_items SET extraction_status, demand_event_type,
-          confidence, demand_event_raw, extracted_at
-      → if demand_event_type IS NOT NULL AND confidence >= 0.80:
-          → DemandSignalService.createDemandEvent(demand_event_input)
-          → UPDATE cre_news_items SET demand_event_id = new_event.id
-      → if confidence 0.60–0.79:
-          → surface to operator review queue (future UI)
+      → parseAnnouncementResult()
+      → if extraction_confidence >= 0.60:
+          → INSERT INTO development_announcements
+          → UPDATE trade_press_articles SET extraction_status = 'extracted'
+      → else:
+          → UPDATE trade_press_articles SET extraction_status = 'skipped'
+  → crossSourceMerge()                          ← §8 — merge entities across sources
 ```
+
+### 5.4 User-Agent Strategy
+
+| Fetch type | User-Agent | Reason |
+|-----------|-----------|--------|
+| RSS feed fetch | `JediRE/1.0 (+https://jedire.app) CRE-News-Aggregator` | Honest identification per existing `cre-rss.ts` convention |
+| Article full-body fetch | `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36` | Cloudflare/Akamai WAF on publisher CDNs blocks obvious bot UAs; already in `ssrf-guard.ts` comment and headers |
 
 ---
 
-## §6 LLM Extraction Design
+## §6 LLM Extraction Prompt Design
 
-### 6.1 Extraction Scope
+### 6.1 Extraction Objective
 
-The LLM extraction step has a **single narrow objective**: determine whether a news article
-describes a real event that would generate net-new housing demand in a specific submarket,
-and if so, extract the structured `DemandEventInput` that `DemandSignalService` expects.
+Extract a structured `DevelopmentAnnouncement` entity from a CRE trade press article.
+Every populated field must be supported by a verbatim citation from the article text.
+Fields that cannot be directly supported by the text must remain null. No synthesis,
+inference, or default-filling is permitted.
 
-It does NOT attempt to:
-- Summarize or rewrite the article
-- Extract deal pricing, cap rate, or financing data (separate pipeline)
-- Classify supply events (new construction announcements)
-- Rate sentiment or generate editorial commentary
+### 6.2 Target Entity
 
-### 6.2 Model Selection
-
-| Model | Input cost | Recommended for |
-|-------|-----------|----------------|
-| `claude-3-5-haiku-20241022` | $0.80/M tokens | **Primary** — batch processing 50+ items/run |
-| `claude-3-5-sonnet-20241022` | $3.00/M tokens | Re-runs on low-confidence items (< 0.70) |
-| Claude Opus | $15.00/M tokens | **Not recommended** for batch extraction |
-
-### 6.3 Extraction Prompt
-
-```
-You are a commercial real estate demand signal extractor. Determine whether the article
-below describes an event that will bring net-new workers, residents, or students to a
-specific metro market.
-
-DEMAND CATEGORIES (use exactly one, or null):
-- "employment"  : New employer, corporate relocation, office opening, factory/warehouse
-                  opening, company expansion
-- "university"  : New campus, enrollment expansion, new student housing program
-- "military"    : New base, base expansion, troop deployment
-- "migration"   : Government program, tax incentive, or infrastructure project that
-                  drives population inflow
-
-OUTPUT — strict JSON, no markdown, no explanation:
-{
-  "is_demand_event":   boolean,
-  "category":          "employment" | "university" | "military" | "migration" | null,
-  "confidence":        number (0.00–1.00),
-  "location": {
-    "city":            string | null,
-    "state":           string | null,
-    "metro":           string | null
-  },
-  "people_count":      number | null,     // Direct headcount if stated
-  "employer_name":     string | null,     // For employment events
-  "event_description": string | null,     // One sentence, max 100 chars
-  "source_quote":      string | null      // Verbatim supporting quote, max 150 chars
+```typescript
+interface DevelopmentAnnouncement {
+  address:               string | null;     // Street address if stated
+  city:                  string | null;     // City name
+  state:                 string | null;     // 2-letter state code
+  developer_name:        string | null;     // Primary developer/owner entity
+  project_name:          string | null;     // Named project or property name if given
+  unit_count:            number | null;     // Total units/beds (residential); GLA sqft (commercial)
+  asset_class:           AssetClass | null; // multifamily | office | retail | industrial | mixed_use | hotel | other
+  deal_type:             DealType | null;   // announcement | groundbreaking | completion | sale | lease
+  deal_date:             string | null;     // ISO date (YYYY-MM-DD) if stated; null if only year
+  transaction_amount:    number | null;     // USD amount; null if not stated
+  extraction_confidence: number;            // 0.00–1.00 — overall confidence in all fields combined
+  citations: {                              // Per-field citation discipline
+    address?:           string;             // Verbatim article passage supporting each field
+    city?:              string;
+    state?:             string;
+    developer_name?:    string;
+    project_name?:      string;
+    unit_count?:        string;
+    asset_class?:       string;
+    deal_type?:         string;
+    deal_date?:         string;
+    transaction_amount?: string;
+  };
 }
 
-RULES:
-1. Set is_demand_event = false for: market statistics, cap rates, financing terms, property
-   sales/acquisitions, construction delays, or general market analysis.
-2. Set is_demand_event = false if location cannot be determined to at least city-level.
-3. Set confidence < 0.50 if people_count is unstated and must be inferred.
-4. If is_demand_event = false, all other fields may be null.
-
-ARTICLE TITLE: {title}
-
-ARTICLE EXCERPT: {excerpt}
-{full_body_block}
+type AssetClass = 'multifamily' | 'office' | 'retail' | 'industrial' | 'mixed_use' | 'hotel' | 'other';
+type DealType   = 'announcement' | 'groundbreaking' | 'completion' | 'sale' | 'lease';
 ```
 
-Where `{full_body_block}` is either empty (excerpt-only mode) or:
+### 6.3 Extraction Prompt (Full Text)
 
 ```
-FULL ARTICLE TEXT: {full_body}
+You are a commercial real estate data extractor. Your task is to extract structured
+fields from the article below into a DevelopmentAnnouncement JSON object.
+
+EXTRACTION RULES — READ CAREFULLY:
+
+1. CITATION DISCIPLINE: Every non-null field in your output must have a corresponding
+   entry in the "citations" object containing the verbatim passage from the article that
+   supports it. If you cannot provide a citation, the field must be null.
+
+2. NULL ON AMBIGUITY: If a field is ambiguous, implied, or requires reasoning beyond what
+   the article explicitly states, set it to null. Do not infer, estimate, or default.
+   Examples: if only "Atlanta area" is mentioned, city = "Atlanta", address = null.
+   If the article says "hundreds of units," unit_count = null (not numeric, not 100).
+
+3. SCOPE: Only extract DevelopmentAnnouncement fields. Do NOT extract: cap rates, vacancy
+   rates, financing terms, market statistics, or executive changes. If the article is
+   purely about market conditions with no specific project/deal, set is_announcement = false
+   and all other fields to null.
+
+4. ASSET CLASS: Use exactly one of: multifamily | office | retail | industrial |
+   mixed_use | hotel | other. If a project contains both residential and commercial
+   components, use mixed_use.
+
+5. DEAL TYPE: Use exactly one of:
+   - announcement: project publicly announced for the first time
+   - groundbreaking: ceremonial or actual start of construction
+   - completion: ribbon cutting, certificate of occupancy, grand opening
+   - sale: property changes ownership
+   - lease: major tenant signing (anchor tenant or full-building)
+   If multiple deal types apply, choose the one with the most recent event described.
+
+6. TRANSACTION AMOUNT: Only populate if an explicit dollar figure is stated. Do not
+   convert from other currencies. Round to nearest dollar. Do not include "approx" figures
+   unless the article uses a specific number with a qualifier.
+
+7. DEAL DATE: Use ISO format (YYYY-MM-DD). If only month + year is stated, use the 1st
+   of the month. If only year is stated, set to null (not "YYYY-01-01").
+
+8. CONFIDENCE: Score 0.00–1.00 across all fields combined:
+   - 0.90–1.00: city, state, developer_name, deal_type all populated with verbatim citations
+   - 0.70–0.89: most key fields populated; minor ambiguity in 1–2 fields
+   - 0.50–0.69: significant gaps (e.g., city inferred from context, unit_count missing)
+   - < 0.50: core fields absent; article is unlikely to produce useful supply intelligence
+
+OUTPUT — strict JSON, no markdown wrapper, no explanation outside the JSON:
+{
+  "is_announcement": boolean,
+  "address":            string | null,
+  "city":               string | null,
+  "state":              string | null,
+  "developer_name":     string | null,
+  "project_name":       string | null,
+  "unit_count":         number | null,
+  "asset_class":        "multifamily" | "office" | "retail" | "industrial" | "mixed_use" | "hotel" | "other" | null,
+  "deal_type":          "announcement" | "groundbreaking" | "completion" | "sale" | "lease" | null,
+  "deal_date":          "YYYY-MM-DD" | null,
+  "transaction_amount": number | null,
+  "extraction_confidence": number,
+  "citations": {
+    "address"?:            string,
+    "city"?:               string,
+    "state"?:              string,
+    "developer_name"?:     string,
+    "project_name"?:       string,
+    "unit_count"?:         string,
+    "asset_class"?:        string,
+    "deal_type"?:          string,
+    "deal_date"?:          string,
+    "transaction_amount"?: string
+  }
+}
+
+ARTICLE SOURCE: {source_name}
+ARTICLE HEADLINE: {headline}
+ARTICLE TEXT:
+{body_text}
 ```
 
 ### 6.4 Response Parsing
 
 ```typescript
 interface ExtractionResult {
-  is_demand_event: boolean;
-  category: 'employment' | 'university' | 'military' | 'migration' | null;
-  confidence: number;
-  location: { city: string | null; state: string | null; metro: string | null };
-  people_count: number | null;
-  employer_name: string | null;
-  event_description: string | null;
-  source_quote: string | null;
+  is_announcement:       boolean;
+  address:               string | null;
+  city:                  string | null;
+  state:                 string | null;
+  developer_name:        string | null;
+  project_name:          string | null;
+  unit_count:            number | null;
+  asset_class:           string | null;
+  deal_type:             string | null;
+  deal_date:             string | null;
+  transaction_amount:    number | null;
+  extraction_confidence: number;
+  citations:             Record<string, string>;
 }
 
 function parseExtractionResult(raw: string): ExtractionResult | null {
   try {
     const cleaned = raw.replace(/```json\n?|```\n?/g, '').trim();
-    const parsed = JSON.parse(cleaned);
-    if (typeof parsed.is_demand_event !== 'boolean') return null;
-    if (typeof parsed.confidence !== 'number') return null;
+    const parsed  = JSON.parse(cleaned);
+    if (typeof parsed.is_announcement      !== 'boolean') return null;
+    if (typeof parsed.extraction_confidence !== 'number') return null;
     return parsed as ExtractionResult;
   } catch {
     return null;
@@ -648,400 +829,458 @@ function parseExtractionResult(raw: string): ExtractionResult | null {
 }
 ```
 
-**Confidence thresholds and downstream routing:**
+**Downstream routing by confidence:**
 
 | Confidence | Action |
 |-----------|--------|
-| ≥ 0.80 | Auto-create `demand_event`; feed to M35 via `DemandSignalService` |
-| 0.60–0.79 | Create `demand_event` with `verified = false`; surface in operator review queue |
-| 0.40–0.59 | Store extraction result; do NOT create `demand_event` without operator promotion |
-| < 0.40 | Set `extraction_status = 'skipped'`; do not store a demand event |
+| ≥ 0.70 | Auto-insert into `development_announcements`; run cross-source merge |
+| 0.50–0.69 | Insert with `operator_reviewed = false`; surface in review queue |
+| < 0.50 | Set `extraction_status = 'skipped'`; do not insert announcement |
+
+### 6.5 Model Selection
+
+| Model | Use case | Input tokens | Cost estimate |
+|-------|---------|-------------|--------------|
+| `claude-3-5-haiku-20241022` | **Primary batch extraction** | 2,000–5,000 | $0.80/M |
+| `claude-3-5-sonnet-20241022` | Re-runs on confidence 0.50–0.69 | 2,000–5,000 | $3.00/M |
+| Claude Opus | Not recommended for batch | — | $15.00/M |
 
 ---
 
-## §7 Sample Test Plan
+## §7 Extraction Sample Test Plan
 
-### 7.1 RSS Fetch Validation
+### 7.1 Test Corpus Composition
 
-For each active source in `cre_rss_sources`, validate:
+20 real CRE articles across sources:
 
-1. Feed returns HTTP 200 with `Content-Type: application/rss+xml` or `text/xml`
-2. Parsed item count ≥ 1 and ≤ 500
-3. Every item has: `title` (non-empty), `link` (valid HTTPS URL), `pubDate` (parseable date)
-4. At least 50% of items have a non-empty `description`
-5. Most-recent item's `pubDate` is within 7 calendar days
+| # | Source | Article Type | Expected `is_announcement` | Expected `deal_type` |
+|---|--------|-------------|--------------------------|---------------------|
+| 1 | Bisnow | Multifamily groundbreaking, 350 units, Atlanta, developer named, date stated | true | groundbreaking |
+| 2 | Bisnow | Market cap rate statistics piece, no specific deal | false | — |
+| 3 | Bisnow | Office building sale, $42M, buyer/seller named, address stated | true | sale |
+| 4 | Bisnow | Developer profile — no specific project announced | false | — |
+| 5 | Bisnow | Mixed-use tower announced, Dallas CBD, 400 units + 20k sqft retail | true | announcement |
+| 6 | Connect CRE | Industrial lease signed, 250k sqft, tenant named, city stated | true | lease |
+| 7 | Connect CRE | Retail center sold, $28M, Florida, seller named | true | sale |
+| 8 | Connect CRE | Multifamily market report — no specific deal | false | — |
+| 9 | Connect CRE | Senior housing groundbreaking, 120 units, no address | true | groundbreaking |
+| 10 | Connect CRE | Financing closed — no construction or lease event | false | — |
+| 11 | MHN | Affordable housing completion, 200 units, ribbon cutting, full address | true | completion |
+| 12 | MHN | Rent growth analysis — Sun Belt markets, no specific deal | false | — |
+| 13 | MHN | Student housing announced, 500 beds, university-adjacent, developer named | true | announcement |
+| 14 | MFE (archived) | Modular construction technology article — no specific project | false | — |
+| 15 | MFE (archived) | Garden-style complex broken ground, Texas, 280 units, date stated | true | groundbreaking |
+| 16 | REBusinessOnline | Retail center sale, $15M, Southeast, buyer named | true | sale |
+| 17 | REBusinessOnline | Office park lease, law firm, Charlotte, sqft stated | true | lease |
+| 18 | TRD national | Luxury condo announcement, Miami, 300 units, price per unit stated | true | announcement |
+| 19 | Commercial Observer | NYC office lease, 50k sqft, tenant named, floor stated | true | lease |
+| 20 | Trepp | CMBS payoff analysis — no specific deal or announcement | false | — |
 
-```typescript
-interface FeedValidationResult {
-  sourceId: string;
-  feedUrl: string;
-  httpOk: boolean;
-  itemCount: number;
-  hasMinItems: boolean;        // ≥ 1
-  allHaveTitle: boolean;
-  allHaveLink: boolean;
-  descriptionCoverage: number; // 0.0–1.0
-  mostRecentAgeDays: number;
-  freshWithin7Days: boolean;
-}
-```
+### 7.2 Scoring Rubric
 
-Expected results per source:
+For each article where `is_announcement = true`, score field-level extraction:
 
-| Source | Expected Items | Expected Freshness |
-|--------|---------------|-------------------|
-| Bisnow national | 25–35 | < 3 days |
-| Connect CRE | 20–40 | < 2 days |
-| MHN | 10–30 | < 5 days |
-| REBusinessOnline | 10–25 | < 5 days |
-| TRD national | 5–15 | < 3 days |
-| Commercial Observer | 10–20 | < 2 days |
-| Trepp | 8–15 | < 10 days |
-| PropModo | 8–15 | < 3 days |
-| HousingWire | 15–30 | < 2 days |
-| SEC EDGAR 8-K | 5–50 | < 1 day |
+| Metric | Method | Target |
+|--------|--------|--------|
+| **Precision** | True positives / (true positives + false positives) where false positive = `is_announcement = true` on a non-announcement | ≥ 0.85 |
+| **Recall** | True positives / (true positives + false negatives) where false negative = `is_announcement = false` on a real announcement | ≥ 0.80 |
+| **Field coverage** | For all true positive predictions: fraction of expected non-null fields that are non-null | ≥ 0.70 |
+| **Hallucination rate** | Fraction of populated fields with no matching citation in the article text | ≤ 0.05 |
+| **Citation accuracy** | Fraction of citations where the cited passage is verbatim in the article | ≥ 0.95 |
+| **Parse failure rate** | JSON parse errors / total extraction calls | ≤ 0.05 |
 
-### 7.2 LLM Extraction Test Corpus
+For each false positive or false negative, document: source, headline, the extraction
+output, and the reason for the error (ambiguous phrasing, missing context, etc.).
 
-20 labeled articles — 10 demand events, 10 non-events:
+### 7.3 Field-Level Failure Analysis
 
-| Article (simulated title) | Expected `is_demand_event` | Expected Category |
-|--------------------------|---------------------------|------------------|
-| "Apple opens 2,000-employee Austin campus" | true | employment |
-| "Multifamily cap rates compressed 50bps in Q1" | false | null |
-| "Amazon announces 1,500-job distribution center in Atlanta" | true | employment |
-| "Freddie Mac tightens multifamily underwriting standards" | false | null |
-| "Georgia Tech announces 500-student enrollment expansion" | true | university |
-| "Office vacancy hits 22% nationally" | false | null |
-| "Fort Bragg to receive 3,000 additional troops" | true | military |
-| "CMBS delinquencies rise to 4.5%" | false | null |
-| "HUD Section 8 expansion brings 800 vouchers to Miami" | true | migration |
-| "CRE lending volume fell 30% year-over-year" | false | null |
-| "Rivian adds 5,000 manufacturing jobs in Normal, IL" | true | employment |
-| "Average effective rent declined in Sun Belt markets" | false | null |
-| "Johns Hopkins opens satellite medical campus in DC" | true | university |
-| "Blackstone acquires 10,000-unit apartment portfolio" | false | null |
-| "Governor signs tech incentive package attracting 3 firms to Phoenix" | true | migration |
-| "Self-storage cap rates widen 75bps" | false | null |
-| "Navy relocates 1,200 personnel to Norfolk Naval Station" | true | military |
-| "Multifamily starts fell 40% from peak" | false | null |
-| "State incentivizes Tesla Gigafactory 3 in Tennessee" | true | employment |
-| "CRE investment sales volume up 12% QoQ" | false | null |
+Track per-field null rates on true positives. Fields with null rate > 30% on known deals
+indicate that excerpt-only mode is insufficient and full-body fetch is required for that
+source:
 
-**Acceptance criteria:**
-- Precision ≥ 0.85 (false positive rate ≤ 15%)
-- Recall ≥ 0.80 (false negative rate ≤ 20%)
-- Average confidence on true positives ≥ 0.75
-- JSON parse failure rate < 5%
-
-### 7.3 Deduplication Tests
-
-1. **Same-source re-poll:** Insert same article URL twice across two poll cycles → confirm
-   exactly one row in `cre_news_items` (ON CONFLICT DO NOTHING)
-2. **UTM parameter stripping:** Same URL with `?utm_source=newsletter&utm_campaign=daily`
-   appended → canonical URL strips params → same `dedupe_key` → single row
-3. **Fragment stripping:** Same URL with `#section-anchor` → canonical strips fragment →
-   single row
-4. **Cross-source pair:** Same story appearing on both Bisnow and REBusinessOnline (different
-   canonical URLs) → confirm two rows with different `source_id` — cross-source dedup is
-   handled at query time (see §8.2)
+| Field | Expected null rate (full body) | Flag threshold |
+|-------|-------------------------------|---------------|
+| `address` | 40–60% (many deals don't state full address) | > 70% |
+| `city` | < 10% | > 25% |
+| `developer_name` | < 20% | > 35% |
+| `unit_count` | < 30% | > 50% |
+| `deal_type` | < 5% | > 15% |
+| `transaction_amount` | 40–60% (often undisclosed) | > 75% |
 
 ---
 
 ## §8 Deduplication Strategy
 
-### 8.1 Within-Source Deduplication
+### 8.1 Within-Source Deduplication (Fetch Level)
 
-**Mechanism:** SHA-256 hash of the canonical URL as the `dedupe_key` unique constraint.
+**Mechanism:** SHA-256 hash of `canonicalizeUrl(url)` stored as `url_hash` unique constraint.
 
-**Canonical URL algorithm** (reuse `canonicalizeUrl()` from `inbound-email.ts`):
-1. Remove tracking parameters: `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`,
-   `utm_term`, `fbclid`, `gclid`
-2. Lowercase scheme and host
-3. Remove trailing slash (unless root path `/`)
-4. Remove URL fragment (`#anchor`)
-5. Sort remaining query parameters alphabetically for deterministic keys
+**Canonical URL algorithm** (reuse `canonicalizeUrl()` from `cre-rss.ts`):
+1. Lowercase scheme + host
+2. Remove UTM params (`utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`,
+   `fbclid`, `gclid`)
+3. Remove URL fragment (`#anchor`)
+4. Remove trailing slash (unless root `/`)
 
-**Insert pattern:** `ON CONFLICT (dedupe_key) DO NOTHING` — identical to `user_news_items`.
+**Insert pattern:** `ON CONFLICT (url_hash) DO NOTHING`
 
-### 8.2 Cross-Source Deduplication
+### 8.2 Content-Hash Cross-Source Deduplication (Fetch Level)
 
-A breaking story may appear on Bisnow, REBusinessOnline, and Connect CRE within the same
-24-hour window, each with a different canonical URL. At the `cre_news_items` level, these are
-three separate rows (different `source_id`, different canonical URLs). Cross-source dedup is
-performed at **query time**, not at insert time — this preserves all sourcing data for audit.
-
-**Query-time algorithm:**
-1. Group candidate items by `published_at` window (±12 hours)
-2. Within each window, compute normalized title similarity using `pg_trgm`
-3. Rows with `similarity(normalize_title(a.title), normalize_title(b.title)) > 0.65` are
-   treated as covering the same story
-4. Return only the item with the highest-priority source:
-
-```
-Priority order: therealdeal > bisnow > commercialobserver > connectcre
-              > rebusinessonline > mhn > housingwire > (others)
-```
+The same article text occasionally appears verbatim on multiple domains (syndication).
+After full-body fetch, store `content_hash = SHA-256(body_text)`. Before LLM extraction:
 
 ```sql
-WITH candidates AS (
-  SELECT *,
-    ROW_NUMBER() OVER (
-      PARTITION BY date_trunc('day', published_at),
-                   -- pg_trgm bucket (approximate; exact dedup uses similarity() in WHERE)
-                   left(lower(regexp_replace(title, '[^a-z0-9 ]', '', 'gi')), 30)
-      ORDER BY
-        CASE source_id
-          WHEN 'therealdeal'       THEN 1
-          WHEN 'bisnow'            THEN 2
-          WHEN 'commercialobserver' THEN 3
-          WHEN 'connectcre'        THEN 4
-          WHEN 'rebusinessonline'  THEN 5
-          WHEN 'mhn'               THEN 6
-          WHEN 'housingwire'       THEN 7
-          ELSE 8
-        END
-    ) AS source_rank
-  FROM cre_news_items
-  WHERE published_at > NOW() - INTERVAL '48 hours'
-)
-SELECT * FROM candidates WHERE source_rank = 1;
+-- Check whether this body has already been extracted from another source
+SELECT id, source_id FROM trade_press_articles
+WHERE content_hash = $1
+  AND extraction_status = 'extracted'
+  AND id != $2
+LIMIT 1;
 ```
 
-Note: Full production implementation should use `pg_trgm`'s `similarity()` function in a
-join condition before the window ranking. The above is a simplified illustration.
+If a match is found, copy the `development_announcement` link from the prior article and
+set `extraction_status = 'skipped'` on the duplicate. Add the new article's `url` to the
+announcement's `source_urls[]` array.
 
-**Prerequisite:** `pg_trgm` extension must be enabled (`CREATE EXTENSION IF NOT EXISTS pg_trgm`).
+### 8.3 Cross-Source Entity Merge (Announcement Level)
 
-### 8.3 Extraction Deduplication
+The same deal — e.g., a 350-unit groundbreaking in Atlanta — may be covered by Bisnow,
+Connect CRE, and REBusinessOnline within a 72-hour window. Each produces a separate
+article and a separate extracted `development_announcements` row. The merge step collapses
+these into one entity.
 
-LLM extraction only runs on items with `extraction_status = 'pending'`. Once set to
-`extracted` or `skipped`, an item is never re-processed. This prevents duplicate
-`demand_event` creation even if the same article URL is polled again in a future cycle.
+**Merge trigger:** Run after each LLM extraction batch (hourly).
+
+**Matching keys** (in priority order — stop at first match):
+
+| Key | Match condition |
+|-----|----------------|
+| Address + city + state | Exact canonical address match (after normalization) |
+| Project name + state | `similarity(project_name, ?) > 0.80` via pg_trgm |
+| Developer name + city + unit_count | Developer name similarity > 0.75 AND city exact AND `ABS(unit_count - ?) < 50` |
+| Developer name + city + deal_type + deal_date | Same developer, city, deal_type; deal_date within ±7 days |
+
+**Merge algorithm:**
+
+```typescript
+async function mergeAnnouncements(
+  candidate: DevelopmentAnnouncement,
+  existing: DevelopmentAnnouncement
+): Promise<void> {
+  // existing is the canonical record (earlier created_at)
+  // candidate is the newer record to merge in
+
+  // 1. Append source attribution
+  await db.query(`
+    UPDATE development_announcements
+       SET source_urls  = array_append(source_urls,  $1),
+           source_names = array_append(source_names, $2),
+           updated_at   = NOW()
+     WHERE id = $3
+  `, [candidate.source_urls[0], candidate.source_names[0], existing.id]);
+
+  // 2. Field-level conflict resolution: higher confidence wins
+  const fields: (keyof DevelopmentAnnouncement)[] = [
+    'address', 'unit_count', 'transaction_amount', 'deal_date', 'project_name'
+  ];
+  for (const field of fields) {
+    if (existing[field] === null && candidate[field] !== null) {
+      // Fill in null fields from candidate (no conflict)
+      await db.query(
+        `UPDATE development_announcements SET ${field} = $1 WHERE id = $2`,
+        [candidate[field], existing.id]
+      );
+    } else if (existing[field] !== null && candidate[field] !== null
+               && existing[field] !== candidate[field]) {
+      // Conflict: higher confidence source wins; mark unresolved if equal
+      if (candidate.extraction_confidence > existing.extraction_confidence) {
+        await db.query(
+          `UPDATE development_announcements SET ${field} = $1,
+             source_metadata = jsonb_set(
+               COALESCE(source_metadata, '{}'),
+               '{conflicts,${field}}',
+               $2::jsonb
+             ) WHERE id = $3`,
+          [candidate[field], JSON.stringify({
+            original: existing[field],
+            override: candidate[field],
+            from_source: candidate.source_names[0],
+          }), existing.id]
+        );
+      } else if (candidate.extraction_confidence === existing.extraction_confidence) {
+        // Equal confidence — mark as unresolved, do not overwrite
+        await db.query(
+          `UPDATE development_announcements
+              SET source_metadata = jsonb_set(
+                COALESCE(source_metadata, '{}'),
+                '{unresolved,${field}}',
+                $1::jsonb
+              ) WHERE id = $2`,
+          [JSON.stringify({
+            existing_value: existing[field],
+            candidate_value: candidate[field],
+            from_source: candidate.source_names[0],
+          }), existing.id]
+        );
+      }
+      // Lower confidence candidate: keep existing value, no action
+    }
+  }
+
+  // 3. Mark candidate as merged
+  await db.query(
+    `UPDATE development_announcements SET merged_into = $1 WHERE id = $2`,
+    [existing.id, candidate.id]
+  );
+}
+```
+
+**One alert per merged entity:** When emitting an operator alert ("new deal in your
+submarket"), query `development_announcements WHERE merged_into IS NULL` — i.e., canonical
+records only. This ensures one alert per deal regardless of how many sources covered it.
+
+**pg_trgm prerequisite:** `CREATE EXTENSION IF NOT EXISTS pg_trgm;`
 
 ---
 
 ## §9 Cost Estimate
 
-### 9.1 Polling Costs
+### 9.1 Article Volume Estimate
 
-RSS polling uses public feeds — no per-request API cost. All costs are infrastructure.
+| Source | Est. new articles/day (all topics) | Est. deal-relevant after pre-filter |
+|--------|-------------------------------------|-------------------------------------|
+| Bisnow national | 15–20 | 6–8 |
+| Bisnow regional (9 feeds) | 30–40 | 12–16 |
+| Connect CRE | 20–25 | 12–15 |
+| REBusinessOnline | 8–12 | 5–7 |
+| MHN | 6–10 | 3–5 |
+| The Real Deal national | 8–12 | 4–6 |
+| Commercial Observer | 15–20 | 6–8 |
+| Trepp | 3–5 | 0–1 (finance/CMBS focus) |
+| PropModo | 3–5 | 0–1 (tech focus) |
+| **Total** | **108–149** | **48–67** |
 
-**Request volume estimate:**
-- 10 active national feeds × 6 polls/day = 60 requests
-- 17 Bisnow regional feeds × 3 polls/day = 51 requests
-- 3 TRD regional feeds × 3 polls/day = 9 requests
-- **Total: ~120 RSS requests/day**
+### 9.2 Token Model
 
-At the existing 1 req/sec global rate with per-domain spacing, a full poll cycle completes
-in approximately 3–5 minutes. Negligible compute overhead.
-
-### 9.2 LLM Extraction Costs
-
-**Assumptions:**
-- 120 new articles/day ingested across all active sources
-- Keyword pre-filter (§9.3) eliminates ~60% → ~48 items pass to LLM
-- Excerpt-only mode: 800 tokens input avg (title + excerpt + prompt)
-- Full-body fetch (selective, ~25% of items): 3,000 tokens input avg
-- Response: ~200 tokens
-
-| Scenario | Items/day | Cost/day (Haiku) | Cost/month |
-|----------|----------|-----------------|------------|
-| Excerpt-only extractions | 36 | 36 × 1,000 × $0.80/1M = $0.029 | $0.87 |
-| Full-body fetch + extract | 12 | 12 × 3,200 × $0.80/1M = $0.031 | $0.93 |
-| Sonnet re-runs (confidence < 0.70) | 10 | 10 × 1,200 × $3.00/1M = $0.036 | $1.08 |
-| **Total** | **58** | **~$0.10/day** | **~$2.88** |
+| Parameter | Value | Basis |
+|-----------|-------|-------|
+| Input tokens per article (full body) | 2,000–5,000 | 500–1,500 word article + 600-token prompt |
+| Output tokens per article | 800–1,500 | JSON with citations (~1k tokens avg) |
+| Avg input (Haiku, mid-range) | 3,500 tokens | Conservative mid-range |
+| Avg output | 1,200 tokens | Includes citation passages |
 
 ### 9.3 Keyword Pre-Filter Gate
 
-Before sending to LLM, apply a fast regex keyword filter. This cuts LLM calls by ~60%
-and adds no measurable latency.
+Before full-body fetch or LLM call, apply fast regex screen. Skips ~40% of articles.
 
-**Pass to LLM if title OR excerpt contains any of (case-insensitive):**
+**Pass to full-body fetch if title contains any of:**
 ```
-headquarter|relocat|campus|employ|hire|hiring|jobs|workforce|open[s]? [a-z]* office|
-expansion|facility|manufacturing|distribution center|data center|
-university|college|enrollment|student housing|
-military|base|troops|battalion|deployment|
-migration|voucher|incentive|program|attract talent|tech hub|
-announce[sd] [0-9]|adding [0-9]|bringing [0-9]
+\b(announc|break ground|ground[- ]?break|open[s]? |complet|ribbon|deliver|
+   sold|acqui[rs]|lease[sd]?|sign[s]? lease|units|beds|sqft|sq\.? ft|
+   develop[er]|construct|build[s]?|partner[s]? with|joint venture|
+   tower|complex|campus|center|project|phase [0-9]|mixed.use|
+   multifamily|apartment|office building|retail center|industrial)\b
 ```
 
-**Skip (set `extraction_status = 'skipped'`) if title matches:**
+**Skip (set `extraction_status = 'skipped'`) if title matches only:**
 ```
-cap rate|vacancy rate|delinquency|CMBS|lending volume|refinanc|
-interest rate[s]?|NOI|DSCR|underwriting|spreads|basis points|
-multifamily market report|quarterly.*report|market update|
-investment sales volume|transaction volume
+\b(cap rate[s]?|vacancy|delinquency|CMBS|lending|refinanc|
+   interest rate[s]?|NOI|DSCR|underwriting|basis points|
+   market report|quarterly|year-over-year|analysis|forecast|survey)\b
 ```
 
-### 9.4 Article Fetch Costs
+Estimated filter reduction: 35–45% of articles skipped before full-body fetch;
+additional 10–15% skipped after full-body fetch but before LLM call.
+Net: ~55% reduction in LLM calls.
 
-`safeFetchText()` uses server outbound bandwidth. At ~30 selective article fetches/day ×
-~100 KB average HTML page = 3 MB/day. Negligible.
+### 9.4 Cost per Article and Monthly Totals
 
-### 9.5 Total Monthly Infrastructure Estimate
+**Haiku pricing:** $0.80/M input, $4.00/M output
 
-| Component | Monthly Cost |
+| Scenario | Articles/day | LLM calls/day | Input cost/day | Output cost/day | Daily total |
+|----------|-------------|---------------|---------------|----------------|-------------|
+| Pre-filter pass → Haiku | 58 (55% of 128 avg) | 58 | 58 × 3,500 × $0.80/1M = $0.163 | 58 × 1,200 × $4.00/1M = $0.278 | $0.441 |
+| Sonnet re-run (confidence 0.50–0.69, ~15% of above) | 9 | 9 | 9 × 3,500 × $3.00/1M = $0.095 | 9 × 1,200 × $15.00/1M = $0.162 | $0.257 |
+| **Total** | | **67** | | | **~$0.70/day** |
+
+**Monthly steady-state:** ~$21/month at Haiku + selective Sonnet.
+
+**Cost as a function of filtering aggressiveness:**
+
+| Filter ratio | LLM calls/day | Monthly cost |
+|-------------|--------------|-------------|
+| No filter (0%) | 128 | ~$47/mo |
+| 40% filter (moderate) | 77 | ~$28/mo |
+| 55% filter (recommended) | 58 | **~$21/mo** |
+| 70% filter (aggressive) | 38 | ~$14/mo |
+
+A 70% filter risks missing real announcements phrased with unusual language (e.g.,
+"JV closes on industrial park" — 'closes' not in the keyword list). The 55% filter
+is the recommended starting point; tune based on false negative rate from §7.2.
+
+### 9.5 Full-Body Fetch Costs
+
+`safeFetchText()` uses server outbound bandwidth. At 128 article page fetches/day ×
+~120 KB average HTML page = ~15 MB/day. Negligible infrastructure cost.
+
+### 9.6 Total Monthly Estimate
+
+| Component | Monthly cost |
 |-----------|-------------|
-| LLM extraction (Haiku primary + selective Sonnet) | $3–6 |
-| Inngest function runs (~6 poll runs/day + extraction runs) | Included in Inngest free tier |
-| RSS egress bandwidth (~120 req/day × ~25 KB avg) | < $0.05 |
-| Article fetch bandwidth (~30/day × ~100 KB) | < $0.10 |
-| **Total** | **~$3–7 / month** |
+| LLM extraction (Haiku + selective Sonnet) | ~$21 |
+| Full-body article fetches (bandwidth) | < $0.20 |
+| Inngest function runs (RSS poll + extraction) | Included in Inngest free tier |
+| **Total** | **~$21–25/month** |
 
 ---
 
 ## §10 Licensing Roadmap
 
-### 10.1 Current Status: No Commercial Licenses
+### 10.1 Current Status
 
-The platform currently holds no syndication or licensing agreements with any trade press
-source. All access is via:
+No commercial syndication or licensing agreements are held. All access is via:
 1. Publicly offered RSS feeds (machine-readable by design, published by the sources themselves)
-2. Standard HTTP fetch of publicly available article pages
+2. Standard HTTP fetch of publicly available article pages (same access as a browser user)
 
-### 10.2 Legal Risk Assessment
+### 10.2 ToS Analysis per Source
 
-| Source | Risk Level | Basis |
-|--------|-----------|-------|
-| SEC EDGAR | None | US government public data, legally mandated disclosure |
-| REBusinessOnline | Low | Fully permissive robots.txt; small regional publisher; no enforcement history |
-| Connect CRE | Low–Medium | robots.txt path ambiguity; small publisher; internal use defensible |
-| Multi-Housing News | Low | `/feed/` permitted; Yardi-owned enterprise but no known enforcement history |
-| HousingWire | Low | Permissive robots.txt; RSS clearly offered for aggregation |
-| Trepp | Low–Medium | B2B data company; RSS offered publicly; internal use defensible |
-| PropModo | Low | Small publisher; RSS public and unrestricted |
-| Commercial Observer | Medium | Quality publisher; standard ToS; premium brand increases enforcement sensitivity |
-| The Real Deal | Medium | Premium publication; partial paywall indicates revenue sensitivity |
-| Bisnow | Medium | `bisnow.com/legal/terms` explicitly prohibits unauthorized commercial use; RSS is public but ToS is restrictive |
+| Source | ToS permits automated commercial use? | B2B / API tier available | Risk level |
+|--------|---------------------------------------|--------------------------|------------|
+| Bisnow | No — `bisnow.com/legal/terms` explicitly prohibits unauthorized scraping and commercial redistribution of content | BisNow Media B2B program exists | Medium |
+| GlobeSt | Unclear — `ai-train=no` signals content sensitivity; direct access moot (dead RSS) | No known public API; ALM Media is enterprise-only | Low (moot) |
+| Connect CRE | No explicit prohibition found; standard publisher ToS | No B2B tier identified | Low–Medium |
+| REBusinessOnline | No prohibition found; France Media standard ToS; no enforcement history | No B2B tier identified | Low |
+| MHN | Standard enterprise publisher ToS (Yardi); no known aggregation prohibition | No B2B tier | Low |
+| MFE | Standard publisher ToS (Zonda); RSS dead anyway | No B2B tier | Low (moot) |
+| CoStar News editorial | Governed by CoStar API subscription agreement; editorial news requires separate license | CoStar Media/Editorial licensing exists (enterprise contract) | N/A (subscription) |
+| The Real Deal | Standard premium publisher ToS; metered paywall indicates revenue sensitivity | No public B2B tier identified | Medium |
+| Commercial Observer | Standard publisher ToS | No B2B tier identified | Low–Medium |
 
 ### 10.3 Risk Mitigation: Fair Use Posture
 
-Maintain the following posture to minimize legal exposure:
+1. **Internal use only:** Do not expose raw article text to end users via API or UI export.
+   Surface only extracted `DevelopmentAnnouncement` fields and attribution links.
 
-1. **Internal use only:** Do not expose raw trade press article text to end users via API
-   or UI export. Surface extracted demand signals and attribution links — not article bodies.
+2. **Attribution in every downstream use:** Store `source_urls[]` and `source_names[]`
+   with every `development_announcements` row. Surface source name + link-to-original
+   in any UI showing deal data derived from trade press.
 
-2. **Attribution:** Store `source_id` and `url` with every extracted item. Surface source
-   name and link to original article in any UI where a demand event is displayed.
+3. **No bulk redistribution:** Do not allow export or bulk download of `trade_press_articles`
+   body text. Extracted structured data (address, developer, unit_count) may be exported.
 
-3. **No bulk redistribution:** Do not allow export or bulk download of raw article text
-   from `cre_news_items`. Aggregated demand signals (counts, classifications) may be exported.
+4. **Excerpt only in operator-facing UI:** Where headlines appear, show title + one-sentence
+   excerpt + link to original. Never surface full article body to end users.
 
-4. **Excerpt only in UI:** If headlines are surfaced to users, show title + one-sentence
-   excerpt + link to original. Never surface full article body.
+5. **robots.txt compliance at all times:** Never fetch URLs matching a `Disallow` rule.
+   Apply source-specific Crawl-delay (GlobeSt: 1 second) if any GlobeSt direct access
+   is reactivated.
 
-5. **robots.txt compliance:** Never fetch URLs matching a `Disallow` rule for the
-   crawling user-agent. Use `ssrfGuardFeedUrl()` + robots.txt check before any fetch.
+6. **ToS-change monitoring:** On a quarterly basis, re-fetch and diff `robots.txt` for
+   all active sources. Any new `Disallow` on feed paths or any new `Crawl-delay` directive
+   must immediately pause that source pending review.
 
-6. **Honest User-Agent:** Maintain `JediRE/1.0 (+https://jedire.app) CRE-News-Aggregator`
-   for RSS polling. Do not impersonate browsers for RSS fetches (browser UA is acceptable
-   only for article page fetches where edge CDNs block bot UAs, per existing `ssrf-guard.ts`
-   comment).
+### 10.4 Formal Licensing Roadmap
 
-### 10.4 Licensing Pursuit Roadmap
+**Trigger point for formalization:** When `DevelopmentAnnouncement` records from any
+single source account for > 30% of new pipeline deals in the platform, initiate licensing
+discussion with that source within 60 days.
 
-**Phase A (Months 1–3) — Establish relationships:**
-- Identify editorial/partnership contacts at Bisnow and The Real Deal (highest value,
-  medium risk)
-- Bisnow has a formal B2B media program ("BisNow Media"); propose co-marketing or
-  data licensing arrangement in exchange for referral traffic
-- CoStar News is handled separately via CoStar API contract — not trade press
+**Phase A (Months 1–3): Establish relationships**
+- Bisnow: contact BisNow Media team; propose co-marketing or data licensing in exchange
+  for deal visibility / referral traffic
+- The Real Deal: contact TRD data products team; they have a structured data product for
+  institutional clients
 
-**Phase B (Months 3–6) — Formal agreements:**
-- Target: Bisnow RSS syndication agreement (or explicit written permission for aggregation)
-- Target: TRD data licensing (The Real Deal has a data products division)
-- Lower priority: HousingWire, Connect CRE (low enough risk without formal agreement)
+**Phase B (Months 3–6): Formal agreements**
+- Target: written Bisnow aggregation permission or formal licensing agreement
+- Target: TRD data licensing (structured deal data API, not editorial scraping)
 
-**Phase C (Months 6–12) — Scale or buy:**
-- If ingest volume grows to > 500 articles/day, evaluate paid news licensing APIs:
+**Phase C (Months 6–12): Scale or buy**
+If total ingest volume exceeds 500 articles/day or legal risk increases:
 
-| Service | Coverage | Cost | Notes |
-|---------|---------|------|-------|
-| NewsAPI.org | General + some CRE | $449/mo (Business) | Already in `news.service.ts`; paid tier has full-body access with licensed distribution rights |
-| Diffbot | Structured article extraction | ~$299/mo | LLM-free extraction; licensed resale rights included |
-| Meltwater | Enterprise news monitoring | $10k+/yr | Includes syndication rights; appropriate at Series B scale |
+| Service | Coverage | Licensing | Cost |
+|---------|---------|-----------|------|
+| NewsAPI.org Business | General + some CRE publishers | Licensed redistribution rights | $449/mo |
+| Diffbot Article API | Structured extraction, any URL | Licensed resale rights included | ~$299/mo |
+| CoStar Media Editorial | CoStar News + CRE Intelligence | Requires enterprise CoStar contract extension | Contract |
 
----
-
-## §11 Phasing Recommendation
-
-### Phase 1 — Registry Fixes and Gap Fills (Week 1–2)
-
-Code changes only. No schema migration. Immediate compliance and quality improvement.
-
-| # | Work Item | File | Risk |
-|---|-----------|------|------|
-| 1.1 | Fix Bisnow URLs: replace all `/feed/` with `/rss/{market}` | `cre-rss.ts` | None |
-| 1.2 | Remove MFE from registry (dead endpoint) | `cre-rss.ts` | None |
-| 1.3 | Add REBusinessOnline: `rebusinessonline.com/feed/` | `cre-rss.ts` + new provider | None |
-| 1.4 | Add The Real Deal national: `therealdeal.com/national/feed/` | `cre-rss.ts` + new provider | None |
-| 1.5 | Fix Connect CRE path: `/feed/` → `/stories/feed/` | `cre-rss.ts` | None |
-| 1.6 | Register new providers in `news.service.ts` | `news.service.ts` | None |
-
-**Estimated effort:** 1 day
-**Schema changes:** None
-**Expected outcome:** All 10 active sources return valid RSS. Zero silent 404 failures.
+**IP-ban fallback:** If a source blocks the `JediRE/1.0` User-Agent: rotate to a named
+domain-verification UA (`JediRE-Verifier/1.0`), reduce poll frequency, and initiate
+licensing discussion. Do not attempt to evade blocks with proxy rotation or UA spoofing on
+RSS feeds (ToS violation risk).
 
 ---
 
-### Phase 2 — Platform News Table and Scheduled Polling (Weeks 2–4)
+## §11 Implementation Phasing Recommendation
 
-Schema migration + Inngest function. Establishes the persistent news layer.
+The existing `cre-rss.ts` infrastructure covers Bisnow, Connect CRE, MHN, and MFE RSS
+feeds (though with bugs). The new pipeline builds on top of this foundation rather than
+replacing it. Dependencies on the `DevelopmentAnnouncement` entity schema from parallel
+planning data work should be coordinated before Phase 2 begins.
 
-1. Migration: create `cre_news_items` + `cre_rss_sources` tables with seed data
-2. Implement `pollCRENewsFeeds()` Inngest cron function
-3. Wire to `safeFetchText()` for all article-page fetches
-4. Validate against test plan §7.1 (all sources pass feed validation)
+### Phase 1 — Wire Existing Feeds into Persistent Table (Weeks 1–2)
+
+**Objective:** Persist trade press articles to `trade_press_articles`. Fix known bugs.
+Code changes + one migration; no LLM calls yet.
+
+| # | Work Item | Files |
+|---|-----------|-------|
+| 1.1 | Migration: create `trade_press_articles`, `development_announcements`, `trade_press_rss_sources` | `backend/src/database/migrations/` |
+| 1.2 | Seed `trade_press_rss_sources` with all active feeds (correct Bisnow URLs, remove MFE, add REBusinessOnline, add TRD national, add Commercial Observer as named source) | migration seed |
+| 1.3 | Implement `pollTradePressFeeds()` Inngest cron: fetch → canonicalize → dedup insert into `trade_press_articles` | new Inngest function |
+| 1.4 | Implement full-body fetch cycle: `safeFetchText()` on pending articles passing keyword pre-filter | new Inngest function |
+| 1.5 | Validate: all 9 active sources return valid RSS; `trade_press_articles` populates with no duplicate `url_hash` collisions | feed validation run |
 
 **Estimated effort:** 2–3 days
-**Schema changes:** 2 new tables
-**Risk:** Low
+**Risk:** Low — all RSS feeds verified working; schema is new (no existing table impact)
 
----
+### Phase 2 — LLM Extraction into `development_announcements` (Weeks 3–5)
 
-### Phase 3 — LLM Extraction and M35 Wiring (Weeks 4–6)
+**Objective:** Turn raw articles into structured `DevelopmentAnnouncement` entities.
 
-LLM extraction pipeline + `DemandSignalService` integration.
-
-1. Implement `extractDemandSignals()` Inngest function per §6 prompt design
-2. Add keyword pre-filter (§9.3) to reduce LLM costs
-3. Wire high-confidence extractions (≥ 0.80) to `DemandSignalService.createDemandEvent()`
-4. Surface medium-confidence items (0.60–0.79) in operator review queue (new UI widget)
-5. Validate against §7.2 test corpus (precision ≥ 0.85, recall ≥ 0.80)
+| # | Work Item | Files |
+|---|-----------|-------|
+| 2.1 | Implement `extractDevelopmentAnnouncements()` Inngest function per §6 prompt | new Inngest function |
+| 2.2 | Keyword pre-filter per §9.3 — applied before both full-body fetch and LLM call | utility function |
+| 2.3 | Response parser + confidence routing per §6.4 | utility function |
+| 2.4 | CoStar cross-reference: after extraction, query `development_projects` to set `costar_confirmed` | integration with existing table |
+| 2.5 | Validate against §7 test corpus: precision ≥ 0.85, recall ≥ 0.80, hallucination rate ≤ 0.05 | test run |
 
 **Estimated effort:** 3–4 days
-**Schema changes:** LLM extraction columns added in Phase 2 migration
-**Risk:** Medium — LLM cost and false positive rate must be monitored for first 2 weeks;
-  adjust keyword pre-filter and confidence thresholds based on observed output
+**Risk:** Medium — LLM cost and false positive rate must be monitored first 2 weeks;
+adjust keyword filter and confidence thresholds based on initial results
 
----
+### Phase 3 — Cross-Source Merge and Operator Alerts (Weeks 5–7)
 
-### Phase 4 — Cross-Source Dedup and Source Quality Scoring (Weeks 6–8)
+**Objective:** Collapse duplicate deal coverage across sources into single entities;
+surface one alert per deal to operators.
 
-`pg_trgm`-based cross-source dedup views + source health metrics.
+| # | Work Item | Files |
+|---|-----------|-------|
+| 3.1 | Enable `pg_trgm` extension if not already active | migration |
+| 3.2 | Implement `crossSourceMergeAnnouncements()` per §8.3 algorithm | service function |
+| 3.3 | Operator alert emitter: one "new deal in submarket" alert per canonical `development_announcements` row where `merged_into IS NULL` | alert service |
+| 3.4 | Operator review queue UI: list announcements with `extraction_confidence 0.50–0.69`, `operator_reviewed = false` | frontend |
+| 3.5 | Admin dashboard: source health table (last polled, article count last 7 days, extraction rate per source) | frontend |
 
-1. Enable `pg_trgm` extension
-2. Implement `cre_news_deduplicated` view per §8.2
-3. Add `demand_event_hit_rate` metric to `cre_rss_sources` (extracted / fetched ratio)
-4. Operator dashboard widget: "News Intelligence Feed" showing deduplicated items +
-   extraction status + demand event confidence distribution
+**Estimated effort:** 3–4 days
+**Risk:** Low — merge logic is well-defined; alert infrastructure already exists in platform
 
-**Estimated effort:** 2–3 days
-**Risk:** Low
+### Dependencies
 
----
+- **Phase 2 depends on Phase 1:** `trade_press_articles` must be populated before extraction
+- **Phase 3 depends on Phase 2:** Cross-source merge requires `development_announcements` rows
+- **Parallel dependency:** Coordinate `development_announcements` schema with any parallel
+  planning data dispatch that also targets a `DevelopmentAnnouncement` entity, to ensure
+  field names and types are compatible before Phase 2 begins
 
-### Do NOT Pursue in This Phase
+### Do NOT Pursue in These Phases
 
-- Full-text article fetches at scale before confirming excerpt-only extraction achieves
-  ≥ 0.80 recall on the §7.2 test corpus
-- Multifamily Executive sitemap crawl — requires separate ToS/robots.txt review
-- Any automated fetch behind a paywall or authentication wall
-- CoStar News editorial content — handled exclusively via CoStar API contract
-- Bisnow commercial licensing — pursue in Phase B (business track), not an engineering
-  dependency for Phases 1–4
+- MFE sitemap crawl — requires explicit ToS review before implementation
+- GlobeSt FeedBlitz feeds — unmaintained; unknown status; use CO/Trepp/PropModo proxies
+- Paywalled full-body access — do not inject auth cookies or attempt paywall bypass
+- CoStar News editorial via trade press pipeline — CoStar editorial is governed by the
+  existing API subscription contract, not this pipeline
 
 ---
 
