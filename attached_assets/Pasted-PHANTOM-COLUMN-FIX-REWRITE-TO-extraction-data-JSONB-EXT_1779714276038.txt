@@ -1,0 +1,162 @@
+PHANTOM COLUMN FIX — REWRITE TO extraction_data JSONB
++ EXTRACTION_DATA POPULATION AUDIT
+
+CONTEXT
+Per PHANTOM_COLUMN_DIAGNOSIS.md, archive-benchmark-aggregator.ts 
+references columns extracted_financials and broker_pro_forma that 
+were never created. The fields actually landed as JSONB sub-keys 
+on data_library_assets.extraction_data ('T12' and 'broker' keys 
+respectively). Both benchmark tables have been at zero rows since 
+deploy. CashFlow Agent (when dispatched) will read from these 
+tables and find them empty.
+
+This dispatch:
+1. Rewrites the queries to use extraction_data sub-keys
+2. Audits why only 2/299 assets have populated extraction_data
+3. Runs the benchmark aggregator and verifies population
+
+The error-swallowing pattern in the calling functions is addressed 
+in a separate dispatch.
+
+═══════════════════════════════════════════════════════════════════
+PRINCIPLES
+═══════════════════════════════════════════════════════════════════
+
+1. STRUCTURE VERIFICATION FIRST. Before rewriting queries, confirm 
+   the JSONB structure of extraction_data->'T12' and 
+   extraction_data->'broker' on the 2 populated assets. The 
+   downstream extraction code at lines 137-165 and 603-640 makes 
+   assumptions about the shape; the rewrite must match.
+
+2. POPULATION SEPARATE FROM QUERY. The query fix and the data 
+   population issue are distinct. Fix the query first so the 
+   aggregator can run; then investigate why population is sparse.
+
+3. STANDING PRINCIPLES APPLY. Verify reads see what writes 
+   produce. Don't swallow errors. JSONB sub-key access must be 
+   verified at runtime (TypeScript types don't catch missing 
+   sub-keys).
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — VERIFY EXTRACTION_DATA STRUCTURE
+═══════════════════════════════════════════════════════════════════
+
+A. Find the 2 assets with non-empty extraction_data:
+   SELECT id, asset_id, jsonb_pretty(extraction_data) 
+   FROM data_library_assets 
+   WHERE extraction_data IS NOT NULL 
+     AND extraction_data != '{}'::jsonb;
+
+B. Document the literal structure of extraction_data->'T12':
+   - What sub-fields exist?
+   - What's the shape (object, array, scalar)?
+   - Sample values
+
+C. Document the literal structure of extraction_data->'broker':
+   - Same investigation
+
+D. Read lines 137-165 and 603-640 of archive-benchmark-aggregator.ts:
+   - Document what fields the extraction code expects to find
+   - Compare against actual structure from B and C
+   - Flag any mismatches between expected vs actual structure
+
+REPORT FINDINGS. STOP GATE.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — REWRITE QUERIES TO USE JSONB SUB-KEYS
+═══════════════════════════════════════════════════════════════════
+
+A. For each of the 9 references identified in the diagnosis:
+   - Replace extracted_financials → extraction_data->'T12'
+   - Replace broker_pro_forma → extraction_data->'broker'
+   - Adjust SQL syntax for JSONB access patterns
+
+B. Update the extraction code at lines 137-165 and 603-640 if 
+   structure mismatches from Step 1D were found:
+   - Surface specific field name changes before applying
+
+C. Run a dry-run query against the live DB:
+   - Confirm syntax is valid (no parse errors)
+   - Confirm execution returns rows from the 2 populated assets
+   - Document what each row looks like
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — RUN BENCHMARK AGGREGATOR
+═══════════════════════════════════════════════════════════════════
+
+A. Invoke refreshArchiveBenchmarks and refreshLineItemBenchmarks 
+   directly (via API endpoint or direct function call).
+
+B. Capture:
+   - HTTP response (status, body)
+   - rowsWritten and lineItemsWritten values
+   - Any entries in errors[] array
+   - SELECT count(*) FROM archive_assumption_benchmarks (expect 
+     > 0 with 2 source assets)
+   - SELECT count(*) FROM line_item_benchmarks (expect > 0)
+
+C. If both tables have rows: success on the query fix.
+
+D. If either table is still empty after run, the issue is deeper 
+   than the query rewrite — report findings and STOP.
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — AUDIT EXTRACTION_DATA POPULATION
+═══════════════════════════════════════════════════════════════════
+
+Only 2/299 assets have populated extraction_data. Investigate:
+
+A. What process is supposed to populate extraction_data?
+   - Search for code that writes to extraction_data
+   - Document the write path(s)
+   - When was each path last invoked?
+
+B. Why are only 2 assets populated?
+   - Are these 2 from a specific source (manual entry, recent 
+     pipeline, test data)?
+   - Did the write path stop running at some point?
+   - Are there file artifacts in data_library_files that should 
+     have populated extraction_data but didn't?
+
+C. Compare to corpus rows:
+   - SELECT count(*) FROM historical_observations
+   - 1,034 corpus rows exist; those came from somewhere
+   - Why didn't that ingest path also populate extraction_data?
+
+D. Report findings. DO NOT attempt to backfill extraction_data 
+   in this dispatch — that's a separate scope decision.
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — DOCUMENTATION
+═══════════════════════════════════════════════════════════════════
+
+Update PHANTOM_COLUMN_DIAGNOSIS.md with:
+- Resolution status (queries rewritten)
+- Verification: archive_assumption_benchmarks has N rows, 
+  line_item_benchmarks has N rows
+- Open issue: extraction_data only populated on 2/299 assets — 
+  separate investigation needed for full benchmark coverage
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE
+═══════════════════════════════════════════════════════════════════
+
+(a) Step 1 findings: extraction_data structure verified or 
+    mismatches flagged
+(b) Step 2 diff: query rewrites applied
+(c) Step 3 results: aggregator run, table counts before/after
+(d) Step 4 findings: why extraction_data is sparse (2/299)
+(e) Pending: extraction_data backfill (separate scope) + error-
+    swallowing fix (separate dispatch)
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Backfill extraction_data in this dispatch — investigate only
+- Address the error-swallowing pattern in the callers — separate 
+  dispatch
+- Touch the threshold values (just shipped, working)
+- "While I'm here" cleanups
+- Mark complete if Step 3 doesn't produce rows in both benchmark 
+  tables

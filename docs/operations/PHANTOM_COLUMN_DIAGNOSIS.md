@@ -223,7 +223,72 @@ This matches the **column-rename drift** pattern: the document extraction pipeli
 
 ---
 
-*Diagnosis complete. No code changes made in this dispatch. Fix requires a separate dispatch to:*
-*1. Inspect the `extraction_data->'T12'` and `extraction_data->'broker'` structure in the 2 non-empty assets*
-*2. Confirm field-name alignment with downstream extraction code (lines 137–165, 603–640)*
-*3. Apply Option 3 rewrite with paired-read verification (confirm benchmark tables have > 0 rows after fix)*
+---
+
+## Resolution Log
+
+### 2026-05-25 — Query Rewrite Applied
+
+**Status: QUERIES REWRITTEN — tables still empty (two deeper blockers identified below)**
+
+**Changes applied to `backend/src/services/archive-benchmark-aggregator.ts`:**
+
+Five phantom references eliminated across two functions:
+
+| Function | Phantom reference | Replacement |
+|---|---|---|
+| `extractArchiveAssumptions` | `deal_type` in SELECT | `data_type AS deal_type` |
+| `extractArchiveAssumptions` | `broker_pro_forma` in SELECT | Removed entirely |
+| `extractArchiveAssumptions` | Lines 137–168 proforma extraction block | Replaced with explanatory comment |
+| `extractArchiveLineItems` | `deal_type` in SELECT | `data_type AS deal_type` |
+| `extractArchiveLineItems` | `extracted_financials` in SELECT + WHERE | `extraction_data->'T12'->'summary' AS t12_summary` + `WHERE extraction_data ? 'T12'` |
+| `extractArchiveLineItems` | `broker_pro_forma` in SELECT | Removed |
+| `extractArchiveLineItems` | `income_lines[]`/`expense_lines[]` loop | Replaced with `T12_FIELD_MAP` iterating real `summary` camelCase keys |
+
+**Structural mismatches resolved in the rewrite:**
+
+`extraction_data->'broker'` = string `"Cushman & Wakefield"` — not a financial object. No equivalent for `exit_cap_rate`, `rent_growth_pct`, `expense_growth_pct`, `noi_per_unit` exists anywhere in `extraction_data`. Proforma assumption extraction removed; comment left for future linkage via `source_deal_id`.
+
+`extraction_data->'T12'` wraps `{ summary, warnings, extracted_at, document_type }`. The `summary` object has named scalar fields (`t12Revenue`, `t12OpEx`, `t12NOI`, `payroll`, `insurance`, etc.) — not `income_lines[]`/`expense_lines[]` arrays. New `T12_FIELD_MAP` maps 20 camelCase summary keys directly to standardized line item names.
+
+**Aggregator run results (post-rewrite):**
+
+`refreshLineItemBenchmarks()`:
+- Result: `{ bucketsWritten: 1, lineItemsWritten: 0, errors: [] }`
+- Interpretation: Query now executes without errors. Found 1 bucket (Sentosa Epperson). Zero items written because the `n < 3` guard rejects all single-asset line items — correct behavior.
+
+`refreshArchiveBenchmarks()`:
+- Result: `{ bucketsWritten: 0, rowsWritten: 0, errors: ['relation "underwriting_snapshots" does not exist'] }`
+- Interpretation: `extractArchiveAssumptions()` now runs cleanly, but `extractLiveDealAssumptions()` (called in the same function) references table `underwriting_snapshots` which was renamed to `deal_underwriting_snapshots`. The error aborts before any archive rows are written.
+
+**Table counts after run:**
+```sql
+SELECT COUNT(*) FROM archive_assumption_benchmarks;  -- 0 (blocked by underwriting_snapshots phantom table)
+SELECT COUNT(*) FROM line_item_benchmarks;            -- 0 (blocked by n < 3 with only 1 T12 asset)
+```
+
+---
+
+### Remaining Blockers (two separate dispatches needed)
+
+**Blocker A — `underwriting_snapshots` phantom table in `extractLiveDealAssumptions`**
+
+`refreshArchiveBenchmarks` calls both `extractArchiveAssumptions()` and `extractLiveDealAssumptions()`. The second function references `underwriting_snapshots` at line ~187. The actual table is `deal_underwriting_snapshots`. This is the 13th instance of the silent state divergence pattern — same column-rename drift. Fix: rename the table reference in `extractLiveDealAssumptions()`. Once fixed, `refreshArchiveBenchmarks` can complete and write archive scalar fields (cap_rate, occupancy_rate) from the 34 qualifying assets.
+
+**Blocker B — extraction_data sparsity (2/299 assets)**
+
+`line_item_benchmarks` requires n ≥ 3 samples per line item per bucket to write. With only 1 asset having T12 data (Sentosa Epperson), every line item has n = 1 — nothing writes. This is correct behavior, not a bug in the aggregator.
+
+**Root cause of sparsity (Step 4 findings):**
+
+The 298 `archive` source assets were ingested via `archive-ingestion.service.ts`. That pipeline writes `{ brokerClaims, sourceFiles, parseWarnings }` to `extraction_data` — no T12 financial data. T12 extraction only runs when documents are uploaded through the live deal document flow (`document-extraction/data-router.ts`), which writes back to `data_library_assets` via `source_deal_id` match. Only Sentosa Epperson has a `source_deal_id` link to a live deal.
+
+The 266 T12 files in `data_library_files` have `asset_id = NULL` — they are linked to live deals (via `deal_id`), not to archive assets. The document extraction pipeline and the archive ingestion pipeline have no bridge.
+
+**What's needed for full benchmark coverage:**
+- Option A: Run document extraction on the uploaded files and backfill `extraction_data` on archive assets (large scope — separate dispatch)
+- Option B: Build a linkage between `data_library_files` → `data_library_assets` so T12 files already uploaded populate `extraction_data` (separate scope decision)
+
+---
+
+*Query rewrite complete 2026-05-25. Tables remain empty pending Blocker A (underwriting_snapshots fix) and Blocker B (extraction_data backfill). Both are separate dispatches.*

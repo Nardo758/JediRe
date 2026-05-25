@@ -75,12 +75,11 @@ async function extractArchiveAssumptions(): Promise<BenchmarkRow[]> {
       property_type,
       submarket_name,
       year_built,
-      deal_type,
+      data_type AS deal_type,
       cap_rate,
       occupancy_rate,
       avg_rent,
-      price_per_unit,
-      broker_pro_forma
+      price_per_unit
     FROM data_library_assets
     WHERE source_type IN ('broker_om', 'manual', 'archive_ingest')
       AND data_quality_score >= 50
@@ -134,38 +133,10 @@ async function extractArchiveAssumptions(): Promise<BenchmarkRow[]> {
       }
     }
 
-    // Extract from broker_pro_forma JSON if available
-    const proforma = row.broker_pro_forma as Record<string, unknown> | null;
-    if (proforma) {
-      if (proforma.exit_cap_rate != null) {
-        const v = Number(proforma.exit_cap_rate);
-        if (!isNaN(v) && v > 0 && v < 20) {
-          if (!assumptions.has('exit_cap_rate')) assumptions.set('exit_cap_rate', []);
-          assumptions.get('exit_cap_rate')!.push(v);
-        }
-      }
-      if (proforma.rent_growth_pct != null || proforma.rent_growth != null) {
-        const v = Number(proforma.rent_growth_pct ?? proforma.rent_growth);
-        if (!isNaN(v) && v >= -10 && v <= 20) {
-          if (!assumptions.has('rent_growth_pct')) assumptions.set('rent_growth_pct', []);
-          assumptions.get('rent_growth_pct')!.push(v);
-        }
-      }
-      if (proforma.expense_growth_pct != null || proforma.expense_growth != null) {
-        const v = Number(proforma.expense_growth_pct ?? proforma.expense_growth);
-        if (!isNaN(v) && v >= 0 && v <= 15) {
-          if (!assumptions.has('expense_growth_pct')) assumptions.set('expense_growth_pct', []);
-          assumptions.get('expense_growth_pct')!.push(v);
-        }
-      }
-      if (proforma.noi_per_unit != null) {
-        const v = Number(proforma.noi_per_unit);
-        if (!isNaN(v) && v > 0 && v < 50000) {
-          if (!assumptions.has('noi_per_unit')) assumptions.set('noi_per_unit', []);
-          assumptions.get('noi_per_unit')!.push(v);
-        }
-      }
-    }
+    // Note: broker proforma assumptions (exit_cap_rate, rent_growth_pct, etc.) are not
+    // available from archive assets — extraction_data->'broker' stores only the broker
+    // firm name string. These fields will be populated once live-deal document extraction
+    // is linked back to archive assets via source_deal_id.
   }
 
   // Convert map to rows
@@ -570,11 +541,10 @@ async function extractArchiveLineItems(): Promise<Map<string, Map<string, LineIt
   const result = await query(`
     SELECT 
       state, msa_name, submarket_name, asset_class,
-      deal_type, year_built, unit_count, stories,
-      extracted_financials,
-      broker_pro_forma
+      data_type AS deal_type, year_built, unit_count, stories,
+      extraction_data->'T12'->'summary' AS t12_summary
     FROM data_library_assets
-    WHERE extracted_financials IS NOT NULL
+    WHERE extraction_data ? 'T12'
       AND unit_count > 0
       AND data_quality_score >= 31
   `);
@@ -600,42 +570,44 @@ async function extractArchiveLineItems(): Promise<Map<string, Map<string, LineIt
     }
     const lineItems = bucketMap.get(bucketKey)!;
 
-    // Extract from extracted_financials (T-12 parser output)
-    const financials = row.extracted_financials as Record<string, unknown> | null;
-    if (financials) {
-      const egi = Number(financials.effective_gross_income ?? financials.egi ?? financials.total_revenue ?? 0);
+    // Extract from T12 summary (extraction_data->'T12'->'summary')
+    // The T12 extractor stores rolled-up line items as named scalar fields under summary,
+    // not as income_lines[]/expense_lines[] arrays. Map camelCase keys → standardized names.
+    const t12Summary = row.t12_summary as Record<string, unknown> | null;
+    if (t12Summary) {
+      // t12Revenue = Effective Gross Income — used as the EGI base for %-of-EGI calculations
+      const egi = Number(t12Summary.t12Revenue ?? 0);
 
-      // Process income lines
-      const incomeLines = financials.income_lines as Record<string, number>[] | null;
-      if (Array.isArray(incomeLines)) {
-        for (const line of incomeLines) {
-          if (line.name && line.total != null) {
-            const stdName = standardizeLineItem(String(line.name));
-            addLineItemValue(lineItems, stdName, 'revenue', Number(line.total), unitCount, egi);
-          }
+      const T12_FIELD_MAP: Record<string, [string, string]> = {
+        // Revenue lines
+        gpr:                ['gross_potential_rent',     'revenue'],
+        lossToLease:        ['loss_to_lease',            'revenue'],
+        vacancyLoss:        ['vacancy_loss',             'revenue'],
+        concessions:        ['concessions',              'revenue'],
+        badDebt:            ['bad_debt',                 'revenue'],
+        t12Revenue:         ['effective_gross_income',   'revenue'],
+        // Operating expense lines
+        payroll:            ['payroll',                  'opex'],
+        insurance:          ['insurance',                'opex'],
+        marketing:          ['marketing',                'opex'],
+        utilities:          ['utilities_total',          'opex'],
+        managementFee:      ['management_fee',           'opex'],
+        repairsMaintenance: ['repairs_maintenance',      'opex'],
+        propertyTax:        ['real_estate_taxes',        'opex'],
+        adminGeneral:       ['admin_general',            'opex'],
+        turnover:           ['make_ready',               'opex'],
+        amenities:          ['amenities',                'opex'],
+        hoaDues:            ['hoa_dues',                 'opex'],
+        contractServices:   ['contract_services',        'opex'],
+        // Rollup totals
+        t12OpEx:            ['total_operating_expenses', 'opex'],
+        t12NOI:             ['net_operating_income',     'noi'],
+      };
+
+      for (const [summaryKey, [stdName, category]] of Object.entries(T12_FIELD_MAP)) {
+        if (t12Summary[summaryKey] != null) {
+          addLineItemValue(lineItems, stdName, category, Number(t12Summary[summaryKey]), unitCount, egi);
         }
-      }
-
-      // Process expense lines
-      const expenseLines = financials.expense_lines as Record<string, number>[] | null;
-      if (Array.isArray(expenseLines)) {
-        for (const line of expenseLines) {
-          if (line.name && line.total != null) {
-            const stdName = standardizeLineItem(String(line.name));
-            addLineItemValue(lineItems, stdName, 'opex', Number(line.total), unitCount, egi);
-          }
-        }
-      }
-
-      // Add summary metrics
-      if (financials.total_revenue) {
-        addLineItemValue(lineItems, 'effective_gross_income', 'revenue', Number(financials.total_revenue), unitCount, egi);
-      }
-      if (financials.total_expenses) {
-        addLineItemValue(lineItems, 'total_operating_expenses', 'opex', Number(financials.total_expenses), unitCount, egi);
-      }
-      if (financials.noi) {
-        addLineItemValue(lineItems, 'net_operating_income', 'noi', Number(financials.noi), unitCount, egi);
       }
     }
   }
