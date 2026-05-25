@@ -69,7 +69,7 @@ The most recent full-quality run was executed 2026-05-17 and is used for output 
 | 8 | `fetch_debt_assumptions` | ✓ DATA | Agency terms returned for FL/Tampa/Class B |
 | 9 | `optimize_capital_structure` ×5 | ✓ COMPUTED | Multi-bundle LTV bisection: HUD 221d4 (infeasible), agency_fixed (optimal LTV 73.78%), agency_floating (65.04%), bridge (57.53%), CMBS (50.73%) |
 | 10 | `run_joint_goal_seek` | ✓ COMPUTED | Pareto frontier: 3 alternatives from 4 feasible bundles out of 5 |
-| 11 | `write_evidence_rows` ×2 | ✗ SILENT FAIL | Batch 15 + batch 11 = 26 evidence rows attempted. `deal_evidence_rows` table does not exist → silent fail |
+| 11 | `write_evidence_rows` ×2 | ✓ WRITTEN | Batch 15 + batch 11 = 26 evidence rows written to `underwriting_evidence` (confirmed present, run_id `6253a15a`). **B3 RETRACTED** — original note had the wrong table name; `deal_evidence_rows` never existed in code; tool always targeted `underwriting_evidence`. See `docs/operations/EVIDENCE_ROWS_FIX.md`. |
 
 **Tools called in reference run but not observed in fresh run log window:**
 (The fresh run script timed out before all tools completed. From the reference run output derivation chains, these additional tools were called):

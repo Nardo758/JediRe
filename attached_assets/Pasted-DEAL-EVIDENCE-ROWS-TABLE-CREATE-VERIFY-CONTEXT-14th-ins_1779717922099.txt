@@ -1,0 +1,87 @@
+DEAL_EVIDENCE_ROWS TABLE — CREATE + VERIFY
+
+CONTEXT
+14th instance of silent state divergence: the CashFlow Agent's 
+write_evidence_rows tool batches 15+ evidence entries per call 
+into a table called deal_evidence_rows. The table does not exist. 
+Writes are silently failing.
+
+This breaks the evidence audit trail — outputs can't be traced 
+back to the data that informed them. Specifically affects 
+fetch_source_documents traceability and compliance/auditability 
+of agent outputs.
+
+STEP 1 — INVESTIGATION
+A. Locate write_evidence_rows tool implementation
+   - File path
+   - Schema it expects to write (column names, types)
+   - Calling pattern (when invoked, what payload)
+
+B. Confirm deal_evidence_rows doesn't exist
+   - \d deal_evidence_rows — should error
+   - Search migration history — was it ever created?
+
+C. Find readers of deal_evidence_rows
+   - grep -ri "deal_evidence_rows\|FROM deal_evidence_rows" 
+     backend/src/ frontend/src/
+   - Document each: what does each reader expect?
+   - This catches schema mismatches between writer and reader
+
+STEP 2 — SCHEMA + MIGRATION
+A. Define the schema based on write_evidence_rows expectations:
+   Typical evidence row shape:
+   - id uuid PK
+   - deal_id uuid FK
+   - agent_run_id uuid FK
+   - tool_name text
+   - evidence_type text (proforma_assumption, line_item_benchmark, 
+     etc.)
+   - field_name text
+   - claimed_value jsonb
+   - source_signal text (db_query | prompt_default | computed | 
+     external_api)
+   - source_table text (nullable)
+   - source_query text (nullable)
+   - confidence_score numeric
+   - created_at timestamptz
+
+   (Adjust per Step 1A findings)
+
+B. Migration file: timestamped, reversible
+
+C. Verify ALL readers agree with the schema before applying — 
+   no producer/reader drift
+
+STEP 3 — VERIFICATION
+A. Apply migration
+B. Manually invoke write_evidence_rows via a test payload
+C. Confirm row inserts cleanly
+D. SELECT count(*) FROM deal_evidence_rows — expect > 0
+E. Try a read from one of the consumers — confirm it returns 
+   the row written
+
+STEP 4 — BACKFILL DECISION
+The prior agent runs that hit write_evidence_rows wrote zero 
+rows because the table didn't exist. Those evidence trails are 
+permanently lost.
+
+Document the gap:
+- How many agent_runs.id values exist?
+- How many evidence rows SHOULD have been written (estimate 
+  from typical batches: prior Sentosa run wrote 15+11 = 26 in 
+  one tool call)
+- Decision: don't backfill (impossible) — but document the 
+  evidence gap for runs that completed before this fix
+
+STEP 5 — CLOSING NOTE in docs/operations/EVIDENCE_ROWS_FIX.md
+(a) Schema as created
+(b) Verification: write tested, read tested
+(c) Evidence gap acknowledgment
+(d) Future-state: all new agent runs have full evidence trail
+
+DO NOT
+- Modify the write_evidence_rows tool itself (only the table 
+  it writes to)
+- Modify CashFlow Agent prompt or behavior
+- Backfill evidence for prior runs (impossible)
+- "While I'm here" cleanups

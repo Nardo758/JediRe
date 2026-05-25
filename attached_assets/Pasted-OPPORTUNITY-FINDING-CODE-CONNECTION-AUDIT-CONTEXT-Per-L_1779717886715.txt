@@ -1,0 +1,59 @@
+OPPORTUNITY-FINDING CODE — CONNECTION AUDIT
+
+CONTEXT
+Per Leon, opportunity-finding code was built across two surfaces:
+1. Comp-finding for deals (used during deal evaluation; agent 
+   tools fetch_data_library_comps, fetch_comp_set, etc.)
+2. Standalone opportunity detection (scans Data Library for 
+   properties matching investment criteria — may include 
+   screening agent, deal radar, F52 sentiment-rent divergence)
+
+Both exist. Need to verify whether each is connected end-to-end 
+given recent silent-failure findings (G1: asset_id NULL, G2: 
+deal_id NULL, G7: benchmark tables empty, narrative/NLP not yet 
+populated).
+
+STEP 1 — INVENTORY
+A. grep -ri "opportunity\|deal.radar\|screening\|signal.detect\|
+            divergence\|buy.signal\|F52\|sentiment.rent" 
+   backend/src/ --include="*.ts"
+
+B. For each finding:
+   - File path
+   - Purpose
+   - Type: service, agent, scheduled job, route
+   - Trigger: manual / scheduled / reactive / dead
+
+STEP 2 — DATA FLOW TRACE
+For each opportunity-finding component (both surfaces):
+A. READ side: tables and columns it queries
+B. Check against known gaps:
+   - Depends on asset_id linkage? (G1)
+   - Depends on deal_id linkage? (G2)
+   - Reads from line_item_benchmarks or 
+     archive_assumption_benchmarks? (G7)
+   - Reads hazard_mentions in property_descriptions.reviews? 
+     (currently empty)
+   - Reads narrative? (currently empty)
+C. WRITE side: where output lands; what UI surface displays it
+
+STEP 3 — CLASSIFY EACH COMPONENT
+A. CONNECTED — runs, inputs populate, outputs reach users
+B. PARTIALLY CONNECTED — runs, some inputs degrade gracefully
+C. BUILT BUT DISCONNECTED — code exists, inputs empty
+D. BUILT BUT NEVER INVOKED — trigger missing or broken
+E. SPEC ONLY — referenced but no code
+
+STEP 4 — REPORT in docs/operations/OPPORTUNITY_CODE_AUDIT.md
+(a) Code inventory
+(b) Per-component data flow trace
+(c) Per-component classification
+(d) Per-component: what would move it to CONNECTED state?
+(e) Cross-cutting: which fixes unblock multiple components 
+    simultaneously
+
+DO NOT
+- Apply fixes
+- Build new components
+- Run components to test them
+- Modify CashFlow Agent or other working code
