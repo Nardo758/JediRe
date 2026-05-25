@@ -7,18 +7,24 @@
 ## 1. Executive Summary
 
 This document maps every ingestion path, parser, storage table, and downstream consumer
-involved in the JEDI RE Data Library and CashFlow Agent. It is a read-only audit —
-no schema or code changes were made.
+involved in the JEDI RE Data Library and CashFlow Agent. Originally a read-only audit
+(Task #1047); updated with corrections and fixes from Task #1048.
 
 **Key findings:**
 - `data_library_files` tracks raw file uploads (22 columns, 6 distinct insert paths)
 - `data_library_assets` is the deal-capsule table holding extracted summary stats + `extraction_data` JSONB
 - 13 parsers exist covering T12, Rent Roll, OM, Tax Bill, CoStar, BoxScore, leasing stats, and ancillary documents
-- `historical_observations` has 82 columns, **402 rows live**, 298 distinct parcels, only 1 distinct `deal_id` populated — corpus is sparsely linked
+- `historical_observations` has 82 columns, **403 rows live** (as of 2026-05-25), 298 distinct parcels, 2 distinct `deal_id` populated — corpus is archive/comp data, parcel_ids are competitor properties not linked to active deals
 - The CashFlow Agent is **fully implemented** (Phase 4/5 AgentRuntime, 35+ tools, Inngest trigger), not a stub
 - OpEx line items live in `deal_monthly_actuals` (71 columns), **not** `historical_observations`
 - `CorpusQueryService` is the sole read path into `historical_observations`; M35, M07, M36, M37, M38 all consume it
 - Traffic Engine reads `deal_lease_transactions` (per-unit rent roll data) via CorpusQueryService, not historical_observations directly
+
+**Task #1048 corrections (2026-05-25):**
+- `data_library_files.asset_id`: only **1 file** has NULL (not 266 as originally estimated) — the bulk-upload backfill at processUploadJob lines 466-475 was already working
+- `data_library_assets.deal_id`: **0 rows** set — all 299 assets are archive/comp properties with no active-deal linkage
+- `historical_observations.deal_id`: **401 NULLs** are expected — these are archive/comp parcels not resolvable to active deals via `deal_properties`
+- `deals.deal_data->'source_documents'` JSONB: populated for **5/29 deals** — `fetch_source_documents` now falls back to `deal_files` for the other 24
 
 ---
 
@@ -52,9 +58,9 @@ no schema or code changes were made.
 | `source_signal` | text | |
 | `license_restricted` | boolean | |
 | `license_source` | text | |
-| `asset_id` | uuid | FK → data_library_assets — **NOTE: null for all 266 T12 files** |
+| `asset_id` | uuid | FK → data_library_assets — 1 file has NULL as of 2026-05-25 (1694 linked) |
 
-**Asset-id gap:** All archived T12 files uploaded via the bulk/ZIP path arrive with `asset_id = NULL`. The `ON CONFLICT (sha256)` clause only backfills asset_id when the conflict row lacks it. Files ingested before the asset-linkage refactor remain unlinked.
+**Asset-id linkage (updated 2026-05-25):** Originally reported as 266 NULLs; actual live count is 1 NULL. The `processUploadJob` backfill (bulk-upload.routes.ts:466-475) correctly sets `asset_id` for new uploads. The 1 remaining NULL has no resolvable join key (neither `file_id` reverse pointer nor `deal_id` on the asset row). Note: `data_library_assets.file_id` is an **integer** (legacy column), not a UUID FK to `data_library_files`.
 
 ### 2.1 Insert Paths (6 distinct callers)
 

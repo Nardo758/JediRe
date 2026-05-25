@@ -10,6 +10,15 @@
  * - Understand which document types have been extracted (T12, RENT_ROLL, OM, etc.)
  * - Reference exact source filenames when building evidence citations
  * - Check if a critical document type (e.g. T12) is missing from the deal
+ *
+ * Data sources (in priority order):
+ * 1. deals.deal_data->'source_documents' — populated by data-router.ts when files
+ *    are parsed through the deal document-extraction pipeline. Includes key_fields
+ *    and rows_inserted from the actual parse run.
+ * 2. deal_files fallback — when the JSONB catalogue is empty, the tool queries
+ *    deal_files directly. This handles deals where files were uploaded but
+ *    extraction is still pending or was handled through a different path.
+ *    document_type is inferred from filename patterns and category.
  */
 import { z } from 'zod';
 import { getPool } from '../../database/connection';
@@ -41,8 +50,67 @@ const OutputSchema = z.object({
   has_tax_bill:              z.boolean(),
   document_types_present:    z.array(z.string()).optional(),
   source_documents_available:z.boolean(),
+  source:                    z.string().optional(),
   note:                      z.string(),
 });
+
+/**
+ * Infer document type from filename, extraction_skill, and category.
+ * Order of preference: filename patterns > extraction_skill > category.
+ */
+function inferDocumentType(
+  filename: string,
+  extractionSkill: string | null,
+  category: string | null,
+): string {
+  const lower = filename.toLowerCase();
+
+  if (
+    lower.includes('t-12') ||
+    lower.includes('t12') ||
+    lower.includes('t 12') ||
+    lower.includes('trailing 12') ||
+    lower.includes('trailing-12') ||
+    lower.includes('income statement')
+  ) return 'T12';
+
+  if (
+    lower.includes('rent roll') ||
+    lower.includes('rentroll') ||
+    lower.includes('rent_roll') ||
+    lower.includes('lease charges') ||
+    lower.includes('rrwlc')
+  ) return 'RENT_ROLL';
+
+  if (
+    lower.includes('offering memorandum') ||
+    lower.includes('offering memo') ||
+    lower.endsWith(' om.pdf') ||
+    lower.endsWith('_om.pdf') ||
+    lower.endsWith('-om.pdf') ||
+    lower.includes(' om ') ||
+    lower === 'om.pdf'
+  ) return 'OM';
+
+  if (
+    lower.includes('tax bill') ||
+    lower.includes('tax_bill') ||
+    lower.includes('property tax') ||
+    lower.includes('tax statement') ||
+    lower.includes('tax notice')
+  ) return 'TAX_BILL';
+
+  if (lower.includes('box score') || lower.includes('boxscore')) return 'BOX_SCORE';
+  if (lower.includes('leasing stat') || lower.includes('leasing report')) return 'LEASING_STATS';
+  if (lower.includes('aged receivable') || lower.includes('ar report')) return 'AGED_RECEIVABLES';
+
+  if (category === 'marketing') return 'OM';
+  if (category === 'financial') return 'FINANCIAL';
+
+  if (extractionSkill) return extractionSkill.toUpperCase().replace(/-/g, '_');
+  if (category) return category.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+  return 'UNKNOWN';
+}
 
 export const fetchSourceDocumentsTool: ToolDefinition<
   z.infer<typeof InputSchema>,
@@ -63,6 +131,10 @@ export const fetchSourceDocumentsTool: ToolDefinition<
     try {
       const pool = getPool();
 
+      // ── Primary source: deals.deal_data->'source_documents' JSONB ──────────
+      // Populated by data-router.ts when files pass through the deal document-
+      // extraction pipeline. Contains key_fields and rows_inserted from the
+      // actual parse run — highest-fidelity source.
       const dealRow = await pool.query(
         `SELECT deal_data->'source_documents' AS source_documents
            FROM deals
@@ -81,27 +153,93 @@ export const fetchSourceDocumentsTool: ToolDefinition<
           has_tax_bill: false,
           document_types_present: [],
           source_documents_available: false,
+          source: 'none',
           note: 'Deal not found',
         };
       }
 
-      const sourceDocs = (dealRow.rows[0].source_documents as z.infer<typeof SourceDocSchema>[] | null) ?? [];
-      const types = new Set(sourceDocs.map((d) => d.document_type));
+      const jsonbDocs =
+        (dealRow.rows[0].source_documents as z.infer<typeof SourceDocSchema>[] | null) ?? [];
+
+      if (jsonbDocs.length > 0) {
+        const types = new Set(jsonbDocs.map((d) => d.document_type));
+        return {
+          deal_id,
+          source_documents: jsonbDocs,
+          count: jsonbDocs.length,
+          has_t12:       types.has('T12'),
+          has_rent_roll: types.has('RENT_ROLL'),
+          has_om:        types.has('OM'),
+          has_tax_bill:  types.has('TAX_BILL'),
+          document_types_present: [...types],
+          source_documents_available: true,
+          source: 'extraction_catalogue',
+          note: `${jsonbDocs.length} document(s) catalogued with full extraction detail. Use filename and document_type for source citations.`,
+        };
+      }
+
+      // ── Fallback: query deal_files directly ─────────────────────────────────
+      // When the JSONB catalogue is empty the deal may still have uploaded files
+      // in deal_files (pre-extraction or uploaded via a path that bypasses the
+      // data-router catalogue writer). document_type is inferred from filename
+      // patterns; key_fields and rows_inserted are unavailable (set to [] and 0).
+      const fileRows = await pool.query(
+        `SELECT
+           df.id                                                AS file_id,
+           COALESCE(df.original_filename, df.filename)         AS filename,
+           df.category,
+           df.extraction_skill,
+           df.mime_type,
+           df.file_size                                        AS file_size_bytes,
+           COALESCE(df.extraction_completed_at, df.created_at) AS extracted_at,
+           df.extraction_status
+         FROM deal_files df
+         WHERE df.deal_id = $1
+           AND df.deleted_at IS NULL
+         ORDER BY df.created_at`,
+        [deal_id]
+      );
+
+      const fallbackDocs: z.infer<typeof SourceDocSchema>[] = fileRows.rows.map((row) => {
+        const filename    = (row.filename as string) ?? '';
+        const docType     = inferDocumentType(
+          filename,
+          row.extraction_skill as string | null,
+          row.category as string | null,
+        );
+        const extractedAt = row.extracted_at instanceof Date
+          ? (row.extracted_at as Date).toISOString()
+          : String(row.extracted_at ?? new Date().toISOString());
+        return {
+          file_id:         (row.file_id as string) ?? null,
+          filename,
+          document_type:   docType,
+          mime_type:       (row.mime_type as string | null) ?? null,
+          file_size_bytes: row.file_size_bytes != null ? Number(row.file_size_bytes) : null,
+          extracted_at:    extractedAt,
+          key_fields:      [],
+          rows_inserted:   0,
+          source_ref:      filename,
+        };
+      });
+
+      const types = new Set(fallbackDocs.map((d) => d.document_type));
 
       return {
         deal_id,
-        source_documents: sourceDocs,
-        count: sourceDocs.length,
+        source_documents: fallbackDocs,
+        count: fallbackDocs.length,
         has_t12:       types.has('T12'),
         has_rent_roll: types.has('RENT_ROLL'),
         has_om:        types.has('OM'),
         has_tax_bill:  types.has('TAX_BILL'),
         document_types_present: [...types],
-        source_documents_available: sourceDocs.length > 0,
+        source_documents_available: fallbackDocs.length > 0,
+        source: fallbackDocs.length > 0 ? 'deal_files_fallback' : 'none',
         note:
-          sourceDocs.length === 0
+          fallbackDocs.length === 0
             ? 'No documents have been extracted for this deal yet. Do not cite document sources.'
-            : `${sourceDocs.length} document(s) catalogued. Use filename and document_type for source citations.`,
+            : `${fallbackDocs.length} file(s) found via deal uploads. Extraction detail (key_fields, rows_inserted) not yet available — document_type is inferred from filename. Cite filename only, not extraction-level fields.`,
       };
     } catch (err) {
       return {
@@ -114,6 +252,7 @@ export const fetchSourceDocumentsTool: ToolDefinition<
         has_tax_bill: false,
         document_types_present: [],
         source_documents_available: false,
+        source: 'error',
         note: `source_documents lookup failed: ${err instanceof Error ? err.message : 'unknown error'}. Do not cite document sources.`,
       };
     }
