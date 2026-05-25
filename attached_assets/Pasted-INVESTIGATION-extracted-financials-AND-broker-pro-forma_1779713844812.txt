@@ -1,0 +1,98 @@
+INVESTIGATION — extracted_financials AND broker_pro_forma PHANTOM COLUMNS
+
+CONTEXT
+During threshold recalibration verification, the bot found that 
+archive-benchmark-aggregator.ts:579 query references columns 
+extracted_financials and broker_pro_forma on data_library_assets, 
+but these columns don't exist in the schema. The query should 
+throw a PostgreSQL 42703 undefined_column error at runtime — but 
+no such error has been surfaced in operations, which means the 
+error is being silently swallowed somewhere.
+
+This is the 12th instance of the silent state divergence pattern. 
+Diagnose before fixing.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — VERIFY THE PHANTOM REFERENCES
+═══════════════════════════════════════════════════════════════════
+
+A. Confirm the columns don't exist:
+   \d data_library_assets
+   Document the actual column list.
+
+B. Find the exact query references in archive-benchmark-aggregator.ts:
+   - Line numbers and full query text
+   - Are there other files with the same column references?
+   - grep -ri "extracted_financials\|broker_pro_forma" backend/src/
+   - Document every occurrence
+
+C. Trace the error path:
+   - Execute the query manually against the live DB
+   - Confirm it returns error 42703 undefined_column
+   - Find the calling code path that invokes this query
+   - Identify whether the error is:
+     a. Caught by .catch(logger.warn) — silently swallowed
+     b. Caught by a broader try/catch that doesn't surface DB errors
+     c. The query is in dead code that's never invoked
+     d. Other — describe
+
+REPORT FINDINGS. STOP GATE.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — CLASSIFY AND REPORT (no fixes yet)
+═══════════════════════════════════════════════════════════════════
+
+Based on Step 1, classify:
+
+A. Was the query EVER working?
+   - Search migration history for ALTER TABLE adding then dropping 
+     these columns
+   - If the columns were dropped without sweep, this is the column-
+     rename drift pattern again
+
+B. What does the query SUPPOSED to do?
+   - Read the surrounding code to understand the intended behavior
+   - If extracted_financials and broker_pro_forma were meant to 
+     be JSONB fields containing structured data, they may now 
+     live as fields on property_descriptions or another table
+
+C. Impact assessment:
+   - When does this query get invoked? (which API endpoint, which 
+     workflow)
+   - What downstream behavior depends on its output?
+   - If the query has been silently failing, what's been quietly 
+     wrong as a result?
+
+REPORT BEFORE PROPOSING A FIX.
+
+═══════════════════════════════════════════════════════════════════
+CLOSING REPORT in docs/operations/PHANTOM_COLUMN_DIAGNOSIS.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Schema verification: confirmed columns missing
+(b) All code references to phantom columns (literal file:line)
+(c) Error path trace: where the error gets swallowed
+(d) Migration history: were these columns ever real?
+(e) Intended behavior: what was the query meant to do?
+(f) Impact assessment: what's been silently broken
+(g) Recommended fix path: 
+    - Option 1: remove the references (query becomes a no-op for 
+      those fields)
+    - Option 2: add the columns (if they should genuinely exist)
+    - Option 3: rewrite the query to use the fields' new location 
+      (if they migrated elsewhere)
+(h) Severity classification (per standing principles)
+
+DO NOT propose or apply a fix. Diagnosis only.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Fix the issue in this dispatch — diagnose only
+- Touch the threshold recalibration changes that just shipped
+- "While I'm here" related cleanups
+- Assume the columns were dropped intentionally without checking 
+  migration history
+- Search migrations in archived/legacy directories that aren't 
+  active
