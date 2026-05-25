@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { calibrationLedger } from '../../services/sigma/calibration-ledger';
 import type { PredictionRecord, RealizationRecord, StratumKey } from '../../services/sigma/calibration-ledger';
+import { query } from '../../database/connection';
 
 const router = Router();
 
@@ -189,6 +190,151 @@ router.get('/stats', (_req: Request, res: Response) => {
     return res.json({ success: true, data: stats });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err?.message ?? 'Stats error' });
+  }
+});
+
+/**
+ * POST /api/v1/calibration/realize
+ * Manual trigger for the M38 realization + pairing loop.
+ *
+ * Equivalent to one run of the nightly calibrationRealizationCron.
+ * Useful for admin testing, seeding actuals after backfill, or
+ * verifying that a newly composed deal's predictions can be matched.
+ *
+ * Query params (all optional):
+ *   dealId — limit to a single deal (still queries T-12 from DB)
+ *
+ * Returns: { realizations, pairings, driftAlerts }
+ */
+router.post('/realize', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.query as { dealId?: string };
+    const now = new Date();
+
+    // Walk matured active predictions
+    let active = calibrationLedger.getActivePredictions().filter(
+      p => p.realizationTargetDate <= now && p.source.dealId,
+    );
+    if (dealId) {
+      active = active.filter(p => p.source.dealId === dealId);
+    }
+
+    if (active.length === 0) {
+      return res.json({ success: true, data: { realizations: 0, pairings: 0, driftAlerts: 0, message: 'No matured predictions found' } });
+    }
+
+    // Fetch T-12 actuals for relevant deals
+    const dealIds = [...new Set(active.map(p => p.source.dealId!))];
+    let t12ByDeal: Record<string, { noi: number | null; gpr: number | null; vacancy_loss: number | null; vacancy_pct: number | null; updated_at: string | null }> = {};
+
+    try {
+      const t12Res = await query<{ deal_id: string; noi: string | null; gpr: string | null; vacancy_loss: string | null; vacancy_pct: string | null; updated_at: string | null }>(
+        `SELECT
+           id                                                      AS deal_id,
+           (deal_data->'extraction_t12'->>'noi')::numeric          AS noi,
+           (deal_data->'extraction_t12'->>'gpr')::numeric          AS gpr,
+           (deal_data->'extraction_t12'->>'vacancy_loss')::numeric  AS vacancy_loss,
+           (deal_data->'extraction_t12'->>'vacancy_pct')::numeric   AS vacancy_pct,
+           updated_at::text                                        AS updated_at
+         FROM deals
+         WHERE id = ANY($1::uuid[])
+           AND deal_data->'extraction_t12' IS NOT NULL`,
+        [dealIds],
+      );
+      for (const r of t12Res.rows) {
+        t12ByDeal[r.deal_id] = {
+          noi:          r.noi != null ? parseFloat(r.noi as unknown as string) : null,
+          gpr:          r.gpr != null ? parseFloat(r.gpr as unknown as string) : null,
+          vacancy_loss: r.vacancy_loss != null ? parseFloat(r.vacancy_loss as unknown as string) : null,
+          vacancy_pct:  r.vacancy_pct != null ? parseFloat(r.vacancy_pct as unknown as string) : null,
+          updated_at:   r.updated_at ?? null,
+        };
+      }
+    } catch (_dbErr) {
+      // Non-fatal — proceed with empty T-12 map (will result in 0 realizations)
+    }
+
+    // Post realization records
+    let realized = 0;
+    for (const pred of active) {
+      const t12 = t12ByDeal[pred.source.dealId!];
+      if (!t12) continue;
+
+      const targetDate = pred.realizationTargetDate;
+      const ym = `${targetDate.getUTCFullYear()}${String(targetDate.getUTCMonth() + 1).padStart(2, '0')}`;
+      const obsDate = t12.updated_at ? new Date(t12.updated_at) : targetDate;
+
+      if (pred.metric === 'noi_year1' && t12.noi != null && Number.isFinite(t12.noi) && t12.noi !== 0) {
+        calibrationLedger.recordRealization({
+          realizationId:        `real_${pred.source.dealId}_noi_year1_${ym}`,
+          recordedAt:           now,
+          metric:               'noi_year1',
+          scope:                { dealId: pred.source.dealId!, assetClass: pred.assetClass },
+          observationDate:      obsDate,
+          observedValue:        t12.noi,
+          observationSource:    'extraction_t12',
+          measurementUncertainty: 0.05,
+        });
+        realized++;
+      } else if (pred.metric === 'occupancy_year1') {
+        let occupancy: number | null = null;
+        if (t12.vacancy_pct != null && Number.isFinite(t12.vacancy_pct)) {
+          occupancy = 1 - t12.vacancy_pct;
+        } else if (t12.gpr != null && t12.gpr > 0 && t12.vacancy_loss != null) {
+          occupancy = Math.max(0, Math.min(1, 1 - Math.abs(t12.vacancy_loss) / t12.gpr));
+        }
+        if (occupancy != null && Number.isFinite(occupancy)) {
+          calibrationLedger.recordRealization({
+            realizationId:     `real_${pred.source.dealId}_occupancy_year1_${ym}`,
+            recordedAt:        now,
+            metric:            'occupancy_year1',
+            scope:             { dealId: pred.source.dealId!, assetClass: pred.assetClass },
+            observationDate:   obsDate,
+            observedValue:     occupancy,
+            observationSource: 'extraction_t12',
+            measurementUncertainty: 0.02,
+          });
+          realized++;
+        }
+      }
+    }
+
+    // Run pairing
+    const newPairings = calibrationLedger.runPairing();
+
+    // Drift detection across affected strata
+    let driftAlerts = 0;
+    if (newPairings.length > 0) {
+      const strataMap = new Map<string, { source: string; metric: string; assetClass: string; regime: string; horizon: string }>();
+      for (const pred of active) {
+        const h = pred.realizationHorizonMonths;
+        const horizon = h <= 12 ? 'short' : h <= 36 ? 'medium' : 'long';
+        const key = `${pred.source.module}|${pred.metric}|${pred.assetClass}|${pred.regimeAtPrediction}|${horizon}`;
+        if (!strataMap.has(key)) {
+          strataMap.set(key, { source: pred.source.module, metric: pred.metric, assetClass: pred.assetClass, regime: pred.regimeAtPrediction, horizon });
+        }
+      }
+      for (const [, stratum] of strataMap) {
+        try {
+          const alerts = calibrationLedger.detectDrift(stratum);
+          driftAlerts += alerts.length;
+        } catch { /* non-fatal */ }
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        maturedPredictions: active.length,
+        dealsWithT12:       Object.keys(t12ByDeal).length,
+        realizations:       realized,
+        pairings:           newPairings.length,
+        driftAlerts,
+        ledger:             calibrationLedger.getStats(),
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message ?? 'Realization error' });
   }
 });
 

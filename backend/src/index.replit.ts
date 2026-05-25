@@ -399,6 +399,7 @@ import { trafficCalibrationCron } from './inngest/functions/trafficCalibrationCr
 import { correlationRollingComputeCron } from './inngest/functions/correlation-rolling-compute';
 import { nightlyEventExtractionCron } from './inngest/functions/nightly-event-extraction';
 import { nightlyApartmentSyncCron } from './inngest/functions/nightly-apartment-sync';
+import { calibrationRealizationCron } from './inngest/functions/calibrationRealizationCron';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -438,6 +439,8 @@ app.use(
       nightlyEventExtractionCron,
       // Task #635: nightly apartment locator sync — all metros (04:00 UTC)
       nightlyApartmentSyncCron,
+      // M38: nightly realization ingestion + pairing so drift detection activates (Task #587)
+      calibrationRealizationCron,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,
