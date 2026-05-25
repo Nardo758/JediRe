@@ -53,9 +53,9 @@
 
 **Tavily (`TAVILY_API_KEY`):** Present in environment (58-char key). Web search adapter is fully operational.
 
-**Google Places (`GOOGLE_PLACES_API_KEY`):** NOT present in environment. Verified via `process.env.GOOGLE_PLACES_API_KEY === undefined`. The `google-places.adapter.ts` constructor throws if key is absent; `research-enrichment.service.ts` catches this and sets `places_status: 'skipped'`, writing a `not_implemented` log entry. No crash, no partial write.
+**Google Places (`GOOGLE_PLACES_API_KEY`):** ✅ Present in environment (39-char key). Verified live against Places API v1 `searchText` endpoint — returned HTTP 200 with rating + userRatingCount for test property "Addison on Long Beach". Both adapters are fully active.
 
-**Action required:** Add `GOOGLE_PLACES_API_KEY` in Replit secrets, then run backfill (see Section k).
+**Backfill ready:** Run `cd backend && npx ts-node --transpile-only scripts/backfill-phase8-research.ts` to enrich all archive properties (see Section k).
 
 ---
 
