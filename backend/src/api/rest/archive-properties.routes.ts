@@ -136,6 +136,71 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
+  // POST /api/v1/properties/by-parcel/:parcelId/enrich
+  // On-demand Phase 8 research enrichment (web search + Google Places).
+  // Called by the AssetDetailModal AUTO-ENRICH button.
+  // ─────────────────────────────────────────────────────────────────────────
+  router.post('/by-parcel/:parcelId/enrich', async (req: Request, res: Response) => {
+    const rawParcelId = decodeURIComponent(req.params.parcelId);
+
+    try {
+      const dlaRow = await pool.query<{
+        property_name: string;
+        address: string | null;
+        city: string | null;
+        state: string | null;
+        id: string;
+        data_quality_score: number | null;
+      }>(
+        `SELECT id, property_name, address, city, state, data_quality_score
+         FROM data_library_assets
+         WHERE property_name = $1
+         ORDER BY created_at DESC LIMIT 1`,
+        [rawParcelId],
+      );
+
+      if (dlaRow.rows.length === 0) {
+        return res.status(404).json({ error: `No asset found for parcel_id: ${rawParcelId}` });
+      }
+
+      const asset = dlaRow.rows[0];
+      const prevScore = asset.data_quality_score ?? 0;
+
+      const { runResearchEnrichment } = await import('../../services/research/research-enrichment.service');
+      const result = await runResearchEnrichment({
+        parcelId: rawParcelId,
+        propertyName: asset.property_name,
+        address: asset.address,
+        city: asset.city,
+        state: asset.state,
+      });
+
+      const { recalculateDQScore } = await import('../../services/research/dq-recalculator.service');
+      const newScore = await recalculateDQScore(asset.id);
+
+      return res.json({
+        parcel_id: rawParcelId,
+        asset_id: asset.id,
+        fieldsEnriched: result.fields_written,
+        conflicts: [],
+        previousScore: prevScore,
+        newScore,
+        places_status: result.places_status,
+        web_status: result.web_status,
+        reviews_count: result.reviews_count,
+        photos_count: result.photos_count,
+        narrative_words: result.narrative_words,
+        log_entries: result.log_entries,
+        logId: `research_${rawParcelId}_${Date.now()}`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[archive-properties] enrich error', { parcelId: rawParcelId, msg });
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
   // GET /api/v1/properties/:parcelId/files
   // Standalone file list for this property (lightweight alternative to /summary)
   // ─────────────────────────────────────────────────────────────────────────

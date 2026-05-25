@@ -376,26 +376,88 @@ async function stepMunicipalLookup(
   return { resolved: false, parcel_id: null };
 }
 
-// ── Step (c): web search stub ────────────────────────────────────────────────
+// ── Step (c): web search ─────────────────────────────────────────────────────
 
-async function stepWebSearch(jobId: string): Promise<void> {
-  await appendLog(jobId, {
-    step: 'web_search',
-    status: 'not_implemented',
-    ts: ts(),
-    detail: { note: 'Real web search wired in Phase 7' },
-  });
+async function stepWebSearch(
+  jobId: string,
+  parcelId: string | null,
+  propertyName: string | null,
+  address: string | null,
+  city: string | null,
+  state: string | null,
+): Promise<void> {
+  const { enrichWithWebSearch } = await import('../research/web-search/web-search.adapter');
+  try {
+    const result = await enrichWithWebSearch({
+      propertyName: propertyName || parcelId || '',
+      address,
+      city,
+      state,
+    });
+    await appendLog(jobId, {
+      step: 'web_search',
+      status: 'ok',
+      ts: ts(),
+      detail: {
+        articles: result.news_articles.length,
+        events: result.recent_events.length,
+        narrative_words: result.narrative ? result.narrative.split(/\s+/).length : 0,
+        citation_count: result.citation_set.length,
+      },
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await appendLog(jobId, {
+      step: 'web_search',
+      status: 'error',
+      ts: ts(),
+      detail: { error: msg },
+    });
+  }
 }
 
-// ── Step (d): Google Places stub ─────────────────────────────────────────────
+// ── Step (d): Google Places ───────────────────────────────────────────────────
 
-async function stepGooglePlaces(jobId: string): Promise<void> {
-  await appendLog(jobId, {
-    step: 'google_places',
-    status: 'not_implemented',
-    ts: ts(),
-    detail: { note: 'Real Places calls wired in Phase 7' },
-  });
+async function stepGooglePlaces(
+  jobId: string,
+  parcelId: string | null,
+  propertyName: string | null,
+  address: string | null,
+  city: string | null,
+  state: string | null,
+): Promise<void> {
+  if (!process.env.GOOGLE_PLACES_API_KEY) {
+    await appendLog(jobId, {
+      step: 'google_places',
+      status: 'not_implemented',
+      ts: ts(),
+      detail: { note: 'GOOGLE_PLACES_API_KEY not configured — Places enrichment skipped' },
+    });
+    return;
+  }
+  const { enrichWithGooglePlaces } = await import('../research/google-places/google-places.adapter');
+  try {
+    const result = await enrichWithGooglePlaces({
+      propertyName: propertyName || parcelId || '',
+      address,
+      city,
+      state,
+    });
+    await appendLog(jobId, {
+      step: 'google_places',
+      status: result.status === 'error' ? 'error' : 'ok',
+      ts: ts(),
+      detail: result.detail,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await appendLog(jobId, {
+      step: 'google_places',
+      status: 'error',
+      ts: ts(),
+      detail: { error: msg },
+    });
+  }
 }
 
 // ── Step (e): M02 Regulatory lookup ──────────────────────────────────────────
@@ -536,8 +598,11 @@ async function processJob(job: {
     const otherDocs = await stepOtherDocs(id, parcel_id);
     const municipal = await stepMunicipalLookup(id, lookupAddress, lookupState, parcel_id, lookupCity);
     await stepRegulatoryLookup(id, lookupAddress, lookupState, lookupCity);
-    await stepWebSearch(id);
-    await stepGooglePlaces(id);
+    const propertyNameForSearch = (sd.property_name as string | undefined)?.trim()
+      || (sd.name as string | undefined)?.trim()
+      || parcel_id;
+    await stepWebSearch(id, parcel_id, propertyNameForSearch ?? null, lookupAddress, lookupCity, lookupState);
+    await stepGooglePlaces(id, parcel_id, propertyNameForSearch ?? null, lookupAddress, lookupCity, lookupState);
 
     // If municipal lookup found a real county parcel_id that differs from the
     // current parcel_id (which is often just the property name), update the row.

@@ -43,6 +43,32 @@ export interface PropertyDescription {
   flood_zone?: LayeredValue<string>;
   narrative?: LayeredValue<string>;
   amenities?: LayeredValue<string[]>;
+  photos?: LayeredValue<Array<{ url: string; attribution: string | null; width_px: number | null; height_px: number | null }>>;
+  reviews?: LayeredValue<Array<{
+    author: string;
+    rating: number;
+    text: string;
+    publishTime: string;
+    sentiment_score: number;
+    named_entities: string[];
+    hazard_mentions: string[];
+    amenity_mentions: string[];
+  }>>;
+  sentiment_summary?: LayeredValue<{
+    overall_score: number;
+    rating: number | null;
+    total_ratings: number | null;
+    hazard_flags: string[];
+    amenity_gaps: string[];
+    recency_weight: boolean;
+  }>;
+  recent_events?: LayeredValue<Array<{
+    title: string;
+    date: string;
+    type: 'renovation' | 'ownership_change' | 'capex' | 'news';
+    summary: string;
+    source_url: string;
+  }>>;
   created_at?: string;
   updated_at?: string;
 }

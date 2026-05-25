@@ -421,9 +421,10 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     setEnrichError(null);
     setEnrichResult(null);
     try {
-      const res = await apiClient.post(`/api/v1/property-discovery/enrich/${assetId}`, {
-        force: true,
-      });
+      const parcelId = details.propertyName || customLabel;
+      const res = await apiClient.post(
+        `/api/v1/properties/by-parcel/${encodeURIComponent(parcelId)}/enrich`,
+      );
       const r = res.data;
       setEnrichResult({
         fieldsEnriched: r.fieldsEnriched || [],
@@ -432,7 +433,6 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         newScore: r.newScore ?? 0,
         logId: r.logId,
       });
-      // Default per-field decisions for any conflicts: 'overwrite' (accept).
       const init: Record<string, 'overwrite' | 'keep'> = {};
       for (const c of (r.conflicts || [])) init[c.field] = 'overwrite';
       setDecisions(init);

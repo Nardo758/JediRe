@@ -436,6 +436,161 @@ export default function ArchivePropertyPage() {
           )}
         </div>
 
+        {/* ── Photos (Phase 8) ── */}
+        {(() => {
+          const photos = rv(desc?.photos);
+          if (!photos || photos.length === 0) return null;
+          return (
+            <div style={S.section}>
+              <div style={S.sectionTitle}>Photos ({photos.length})</div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                {photos.map((p, i) => (
+                  <div key={i} style={{ position: 'relative' }}>
+                    <img
+                      src={p.url}
+                      alt={`Property photo ${i + 1}`}
+                      style={{
+                        width: '180px', height: '120px', objectFit: 'cover',
+                        borderRadius: '6px', border: '1px solid #21262d',
+                      }}
+                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                    />
+                    {p.attribution && (
+                      <div style={{ fontSize: '9px', color: '#8892b0', marginTop: '3px', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        © {p.attribution}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: '10px', color: '#8892b0', marginTop: '8px' }}>
+                Source: Google Places
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Reviews & Sentiment (Phase 8) ── */}
+        {(() => {
+          const reviews = rv(desc?.reviews);
+          const sentiment = rv(desc?.sentiment_summary);
+          if (!reviews || reviews.length === 0) return null;
+          return (
+            <div style={S.section}>
+              <div style={S.sectionTitle}>
+                Reviews & Sentiment ({reviews.length})
+                {sentiment && (
+                  <span style={{ marginLeft: '8px', color: sentiment.overall_score >= 0.3 ? '#4ade80' : sentiment.overall_score >= 0 ? '#f59e0b' : '#e06c75', fontWeight: 600 }}>
+                    · score {(sentiment.overall_score >= 0 ? '+' : '')}{sentiment.overall_score.toFixed(2)}
+                  </span>
+                )}
+              </div>
+              {sentiment && (
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                  {sentiment.rating != null && (
+                    <div style={{ ...S.attrCard, minWidth: '90px', textAlign: 'center' as const }}>
+                      <div style={S.attrLabel}>Google Rating</div>
+                      <div style={{ ...S.attrValue, color: '#f59e0b' }}>{sentiment.rating} ★</div>
+                      {sentiment.total_ratings != null && (
+                        <div style={{ fontSize: '10px', color: '#8892b0' }}>{sentiment.total_ratings.toLocaleString()} reviews</div>
+                      )}
+                    </div>
+                  )}
+                  {sentiment.hazard_flags.length > 0 && (
+                    <div style={{ ...S.attrCard, flexGrow: 1 }}>
+                      <div style={S.attrLabel}>Hazard Flags</div>
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>
+                        {sentiment.hazard_flags.map(h => (
+                          <span key={h} style={{ background: '#2d1a1a', border: '1px solid #7f1d1d', borderRadius: '3px', padding: '2px 6px', fontSize: '10px', color: '#fca5a5' }}>
+                            {h}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {sentiment.amenity_gaps.length > 0 && (
+                    <div style={{ ...S.attrCard, flexGrow: 1 }}>
+                      <div style={S.attrLabel}>Amenity Gaps</div>
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>
+                        {sentiment.amenity_gaps.map(g => (
+                          <span key={g} style={{ background: '#1a1f2d', border: '1px solid #374151', borderRadius: '3px', padding: '2px 6px', fontSize: '10px', color: '#93c5fd' }}>
+                            {g}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {reviews.map((r, i) => (
+                  <div key={i} style={{ background: '#161b22', border: '1px solid #21262d', borderRadius: '6px', padding: '10px 14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#f0f6fc' }}>{r.author}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '11px', color: '#f59e0b' }}>{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
+                        <span style={{ fontSize: '10px', color: '#8892b0' }}>{r.publishTime.slice(0, 10)}</span>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#cdd9e5', lineHeight: 1.55 }}>{r.text}</div>
+                    {(r.hazard_mentions.length > 0 || r.amenity_mentions.length > 0) && (
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
+                        {r.hazard_mentions.map(h => (
+                          <span key={h} style={{ background: '#2d1a1a', border: '1px solid #7f1d1d', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', color: '#fca5a5' }}>⚠ {h}</span>
+                        ))}
+                        {r.amenity_mentions.map(a => (
+                          <span key={a} style={{ background: '#0f2d1a', border: '1px solid #14532d', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', color: '#86efac' }}>✓ {a}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: '10px', color: '#8892b0', marginTop: '8px' }}>Source: Google Places</div>
+            </div>
+          );
+        })()}
+
+        {/* ── Recent Events (Phase 8) ── */}
+        {(() => {
+          const events = rv(desc?.recent_events);
+          if (!events || events.length === 0) return null;
+          const eventColor: Record<string, string> = {
+            renovation: '#4ade80',
+            ownership_change: '#4fc3f7',
+            capex: '#a78bfa',
+            news: '#8892b0',
+          };
+          return (
+            <div style={S.section}>
+              <div style={S.sectionTitle}>Recent Events ({events.length})</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {events.map((e, i) => (
+                  <div key={i} style={{ background: '#161b22', border: '1px solid #21262d', borderRadius: '6px', padding: '10px 14px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: '80px' }}>
+                      <div style={{ fontSize: '10px', color: '#8892b0' }}>{e.date.slice(0, 10)}</div>
+                      <span style={{ background: '#0d1117', border: `1px solid ${eventColor[e.type] ?? '#30363d'}`, borderRadius: '3px', padding: '2px 6px', fontSize: '9px', color: eventColor[e.type] ?? '#8892b0', marginTop: '4px', display: 'inline-block', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
+                        {e.type.replace('_', ' ')}
+                      </span>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: '#f0f6fc', marginBottom: '3px' }}>{e.title}</div>
+                      <div style={{ fontSize: '11px', color: '#8892b0', lineHeight: 1.4 }}>{e.summary}</div>
+                      {e.source_url && (
+                        <a href={e.source_url} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: '10px', color: '#388bfd', textDecoration: 'none', marginTop: '4px', display: 'inline-block' }}>
+                          → source
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: '10px', color: '#8892b0', marginTop: '8px' }}>Source: web search synthesis</div>
+            </div>
+          );
+        })()}
+
         {/* ── Time-series sparklines ── */}
         {ts && (
           <div style={S.section}>
