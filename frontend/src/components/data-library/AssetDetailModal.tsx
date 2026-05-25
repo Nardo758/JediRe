@@ -455,6 +455,9 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
             if (statusRes.data.status === 'pending_review' || statusRes.data.status === 'no_match' || statusRes.data.status === 'error') {
               setEnrichResult(prev => prev ? {
                 ...prev,
+                fieldsEnriched: statusRes.data.fieldsEnriched?.length > 0
+                  ? statusRes.data.fieldsEnriched
+                  : prev.fieldsEnriched,
                 status: statusRes.data.status === 'pending_review' ? 'pending_review'
                   : statusRes.data.status === 'no_match' ? 'no_match' : 'complete',
               } : null);
@@ -805,7 +808,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                 </button>
               </div>
             )}
-            {enrichResult && enrichResult.status === 'pending_review' && enrichResult.fieldsEnriched.length > 0 && (
+            {enrichResult && enrichResult.status === 'pending_review' && (
               <div style={{
                 marginTop: 4, padding: '8px 10px', border: `1px solid #f59e0b44`,
                 background: '#f59e0b0d', display: 'flex', flexDirection: 'column', gap: 6,

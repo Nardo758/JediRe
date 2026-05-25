@@ -14,6 +14,7 @@
 
 import { Router, Request, Response } from 'express';
 import { Pool } from 'pg';
+import { logger } from '../../utils/logger';
 import {
   getAssetTimeSeries,
   DEFAULT_METRICS,
@@ -23,7 +24,8 @@ import {
 // ── In-memory enrichment job tracking ────────────────────────────────────────
 // Tracks async enrichment jobs for status polling. TTL-purged after 30 min.
 interface EnrichJobEntry {
-  status: 'enriching' | 'complete' | 'error' | 'no_match';
+  status: 'enriching' | 'complete' | 'error' | 'no_match' | 'pending_review';
+  fields_written?: string[];
   dq_score?: number;
   error_msg?: string;
   updated_at: string;
@@ -303,7 +305,11 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
       enrichPromise
         .then(({ result }) => {
           const finalStatus = result.fields_written.length === 0 ? 'no_match' : 'pending_review';
-          setJobState(jobId, { status: finalStatus, updated_at: new Date().toISOString() });
+          setJobState(jobId, {
+            status: finalStatus,
+            fields_written: result.fields_written,
+            updated_at: new Date().toISOString(),
+          });
         })
         .catch(err => {
           const msg = (err as Error).message;
@@ -338,6 +344,7 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
           status: entry.status,
           jobId,
           parcel_id: rawParcelId,
+          fieldsEnriched: entry.fields_written ?? [],
           dq_score: entry.dq_score ?? null,
           error_msg: entry.error_msg ?? null,
           updated_at: entry.updated_at,
@@ -370,10 +377,13 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
       const hasApplied = !hasPendingWeb && !!(row.reviews || row.recent_events || row.photos || row.narrative);
       const enrichStatus = hasPendingWeb ? 'pending_review' : hasApplied ? 'complete' : 'no_match';
 
+      const jobEntry = jobId ? enrichJobStore.get(jobId) : undefined;
+
       return res.json({
         status: enrichStatus,
         parcel_id: rawParcelId,
         updated_at: row.updated_at,
+        fieldsEnriched: jobEntry?.fields_written ?? [],
       });
     } catch (err) {
       return res.status(500).json({ error: (err as Error).message });
