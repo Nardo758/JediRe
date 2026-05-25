@@ -36,6 +36,7 @@ export class GmailSyncService {
   private _oauth2Client: OAuth2Client | null = null;
   private static readonly REQUIRED_SCOPES = new Set([
     'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/userinfo.email',
   ]);
 
@@ -229,8 +230,9 @@ export class GmailSyncService {
     expiresAt: Date;
   }> {
     try {
-      this.oauth2Client.setCredentials({ refresh_token: refreshToken });
-      const { credentials } = await this.oauth2Client.refreshAccessToken();
+      const client = this.createOAuthClient();
+      client.setCredentials({ refresh_token: refreshToken });
+      const { credentials } = await client.refreshAccessToken();
 
       if (!credentials.access_token) {
         throw new AppError(500, 'No access token received from refresh');
@@ -281,17 +283,18 @@ export class GmailSyncService {
   }
 
   /**
-   * Get Gmail client for an account
+   * Get Gmail client for an account.
+   * Creates a fresh OAuth2Client per call to avoid singleton credential
+   * clobbering when multiple accounts sync concurrently.
    */
   private async getGmailClient(account: EmailAccount): Promise<gmail_v1.Gmail> {
     const accessToken = await this.getValidAccessToken(account);
-    
-    this.oauth2Client.setCredentials({
+    const client = this.createOAuthClient();
+    client.setCredentials({
       access_token: accessToken,
       refresh_token: account.refresh_token || undefined,
     });
-
-    return google.gmail({ version: 'v1', auth: this.oauth2Client });
+    return google.gmail({ version: 'v1', auth: client });
   }
 
   /**

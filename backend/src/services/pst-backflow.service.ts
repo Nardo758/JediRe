@@ -18,13 +18,15 @@ export async function backflowPstToEmails(uploadId: string, userId: string): Pro
 
   const accountId = accountResult.rows[0].id;
 
+  // email_account_id is UUID (user_email_accounts); PST uses integer email_accounts.
+  // Pass NULL until task #1069 unifies the account tables.
   const result = await query(
     `INSERT INTO emails (
       email_account_id, user_id, external_id, subject, from_name, from_address,
       to_addresses, body_preview, body_text, is_read, is_flagged, has_attachments, received_at, created_at
     )
     SELECT
-      $1,
+      NULL,
       $2,
       'pst-' || pei.id::text,
       pei.subject,
@@ -46,7 +48,7 @@ export async function backflowPstToEmails(uploadId: string, userId: string): Pro
     JOIN data_uploads du ON du.id = pei.upload_id AND du.user_id = $2
     WHERE pei.upload_id = $3
       AND NOT EXISTS (SELECT 1 FROM emails e WHERE e.external_id = 'pst-' || pei.id::text)`,
-    [accountId, userId, uploadId]
+    [null, userId, uploadId]
   );
 
   const inserted = result.rowCount || 0;

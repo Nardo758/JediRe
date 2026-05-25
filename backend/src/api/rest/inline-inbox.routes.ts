@@ -55,7 +55,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
               (SELECT COUNT(*) FROM email_attachments att WHERE att.email_id = e.id) as attachment_count
        FROM emails e
        LEFT JOIN deals d ON e.deal_id = d.id
-       LEFT JOIN email_accounts ea ON e.email_account_id = ea.id
+       LEFT JOIN user_email_accounts ea ON e.email_account_id = ea.id
        WHERE ${whereConditions.join(' AND ')}
        ORDER BY e.received_at DESC
        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
@@ -80,7 +80,7 @@ router.get('/accounts', requireAuth, async (req: AuthenticatedRequest, res) => {
     const gmailResult = await pool.query(
       `SELECT uea.id, uea.email_address, uea.provider, uea.last_sync_at,
               uea.sync_enabled, uea.created_at, uea.token_expires_at,
-              COALESCE((SELECT COUNT(*)::int FROM emails e JOIN email_accounts ea ON ea.id = e.email_account_id WHERE ea.email_address = uea.email_address AND e.user_id = uea.user_id), 0) as email_count
+              COALESCE((SELECT COUNT(*)::int FROM emails e WHERE e.email_account_id = uea.id AND e.user_id = uea.user_id), 0) as email_count
        FROM user_email_accounts uea
        WHERE uea.user_id = $1
        ORDER BY uea.created_at DESC`,
@@ -247,7 +247,8 @@ router.post('/accounts/:id/sync', requireAuth, async (req: AuthenticatedRequest,
               body_preview, body_text, is_read, has_attachments, received_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
             [
-              emailAccountId, userId, externalId,
+              null, // email_account_id is UUID (user_email_accounts); Microsoft uses integer email_accounts — set NULL until task #1069 unifies the account tables
+              userId, externalId,
               msg.subject || '(no subject)', fromName, fromAddress,
               msg.bodyPreview || '', msg.body?.content || '',
               msg.isRead !== false, msg.hasAttachments || false, receivedAt,
@@ -527,7 +528,7 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       `SELECT e.*, d.name as deal_name, ea.provider as source_provider
        FROM emails e
        LEFT JOIN deals d ON e.deal_id = d.id
-       LEFT JOIN email_accounts ea ON e.email_account_id = ea.id
+       LEFT JOIN user_email_accounts ea ON e.email_account_id = ea.id
        WHERE e.id = $1 AND e.user_id = $2`,
       [emailId, userId]
     );

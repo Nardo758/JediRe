@@ -488,7 +488,7 @@ router.delete('/disconnect/:accountId', requireAuth, async (req: any, res: Respo
     const userId = req.user!.userId;
 
     const accountResult = await query(
-      'SELECT email_address FROM user_email_accounts WHERE id = $1 AND user_id = $2',
+      'SELECT email_address, refresh_token FROM user_email_accounts WHERE id = $1 AND user_id = $2',
       [accountId, userId]
     );
 
@@ -496,7 +496,19 @@ router.delete('/disconnect/:accountId', requireAuth, async (req: any, res: Respo
       throw new AppError(404, 'Account not found or access denied');
     }
 
-    const emailAddress = accountResult.rows[0].email_address;
+    const { email_address: emailAddress, refresh_token: refreshToken } = accountResult.rows[0];
+
+    // Revoke the OAuth token at Google before deleting — non-fatal if it fails
+    if (refreshToken) {
+      try {
+        await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(refreshToken)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        });
+      } catch (revokeErr) {
+        logger.warn('Gmail token revocation failed (non-fatal):', revokeErr);
+      }
+    }
 
     await query(
       'DELETE FROM user_email_accounts WHERE id = $1',
@@ -583,7 +595,7 @@ router.get('/emails', requireAuth, async (req: any, res: Response, next: NextFun
         e.has_attachments, e.deal_id as linked_deal_id,
         a.email_address as account_email
       FROM emails e
-      JOIN user_email_accounts a ON e.email_account_id::text = a.id::text
+      JOIN user_email_accounts a ON e.email_account_id = a.id
       WHERE e.user_id = $1
     `;
 

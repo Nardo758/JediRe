@@ -408,17 +408,17 @@ GOOGLE_CALLBACK_URL       = https://<production-domain>/api/v1/auth/google/callb
 
 ### Phase 1 — Make It Work (Blocker fixes, ~3–4 days)
 
-| # | Task | File | Effort |
-|---|---|---|---|
-| P1-1 | Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_GMAIL_CALLBACK_URL`, `GOOGLE_CALLBACK_URL` as Replit secrets | Secrets panel | 1 hour |
-| P1-2 | Register both callback URIs in Google Cloud Console OAuth client | GCC | 30 min |
-| P1-3 | Enable Gmail API + People API in GCC | GCC | 15 min |
-| P1-4 | Add test users to OAuth consent screen (developer emails) | GCC | 15 min |
-| P1-5 | Fix singleton race condition in `GmailSyncService.getGmailClient()` | `gmail-sync.service.ts` | 30 min |
-| P1-6 | Fix schema type mismatch: `emails.email_account_id` UUID migration | migration + `gmail.routes.ts` | 1 hour |
-| P1-7 | Add `gmail.send` to `REQUIRED_SCOPES` | `gmail-sync.service.ts` | 15 min |
-| P1-8 | Add token revocation on disconnect | `gmail.routes.ts` | 30 min |
-| P1-9 | End-to-end test: connect Gmail, sync emails, verify pipeline fires | dev environment | 2 hours |
+| # | Task | File | Effort | Status |
+|---|---|---|---|---|
+| P1-1 | Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_GMAIL_CALLBACK_URL`, `GOOGLE_CALLBACK_URL` as Replit secrets | Secrets panel | 1 hour | ✅ DONE (2026-05-25) |
+| P1-2 | Register both callback URIs in Google Cloud Console OAuth client | GCC | 30 min | ⏳ USER ACTION NEEDED |
+| P1-3 | Enable Gmail API + People API in GCC | GCC | 15 min | ⏳ USER ACTION NEEDED |
+| P1-4 | Add test users to OAuth consent screen (developer emails) | GCC | 15 min | ⏳ USER ACTION NEEDED |
+| P1-5 | Fix singleton race condition in `GmailSyncService.getGmailClient()` + `refreshAccessToken()` | `gmail-sync.service.ts` | 30 min | ✅ DONE (2026-05-25) — both methods now create fresh `OAuth2Client` per call |
+| P1-6 | Fix schema type mismatch: `emails.email_account_id` UUID migration | `20260612_emails_account_id_uuid.sql` + `gmail.routes.ts`, `inbox.routes.ts`, `inline-inbox.routes.ts`, `microsoft.routes.ts`, `pst-backflow.service.ts` | 1 hour | ✅ DONE (2026-05-25) — column is now `UUID REFERENCES user_email_accounts`; non-Gmail write paths set NULL (tracked in task #1069) |
+| P1-7 | Add `gmail.send` to `REQUIRED_SCOPES` | `gmail-sync.service.ts` | 15 min | ✅ DONE (2026-05-25) |
+| P1-8 | Add token revocation on disconnect | `gmail.routes.ts` | 30 min | ✅ DONE (2026-05-25) — revoke via `https://oauth2.googleapis.com/revoke`, non-fatal on failure |
+| P1-9 | End-to-end test: connect Gmail, sync emails, verify pipeline fires | dev environment | 2 hours | ⏳ BLOCKED — requires P1-2/P1-3/P1-4 (GCC setup) |
 
 ### Phase 2 — Harden (Security + Ops, ~2–3 days)
 

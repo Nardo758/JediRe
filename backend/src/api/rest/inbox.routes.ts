@@ -24,7 +24,7 @@ router.get('/accounts', requireAuth, async (req: Request, res: Response, next: N
       `SELECT
         a.id, a.email_address, a.provider, a.last_sync_at, a.sync_enabled,
         a.sync_frequency_minutes, a.is_primary, a.created_at,
-        (SELECT COUNT(*) FROM emails WHERE email_account_id::text = a.id::text) as email_count
+        (SELECT COUNT(*) FROM emails WHERE email_account_id = a.id) as email_count
        FROM user_email_accounts a
        WHERE a.user_id = $1
        ORDER BY a.is_primary DESC, a.created_at DESC`,
@@ -281,7 +281,7 @@ router.get('/:id', requireAuth, async (req: Request, res: Response, next: NextFu
         ea.email_address as account_email
       FROM emails e
       LEFT JOIN deals d ON e.deal_id = d.id
-      LEFT JOIN user_email_accounts ea ON e.email_account_id::text = ea.id::text
+      LEFT JOIN user_email_accounts ea ON e.email_account_id = ea.id
       WHERE e.id = $1 AND e.user_id = $2`,
       [id, userId]
     );
