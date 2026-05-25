@@ -1,7 +1,9 @@
 # OppGrid ApartmentIQ Payload Gap
 
 **Produced:** 2026-05-25  
-**Scope:** Root-cause investigation of why `oppgrid_opportunity_signals` and `oppgrid_growth_trajectories` have 0 rows despite receiving endpoints existing on the platform. Investigation only — no code changes made.
+**Updated:** 2026-05-25 (corrected per Leon — OppGrid is a separate project; endpoints are built correctly)  
+**Scope:** Root-cause investigation of why `oppgrid_opportunity_signals` and `oppgrid_growth_trajectories` have 0 rows despite receiving endpoints existing on the platform. Investigation only — no code changes made.  
+**Status:** Planned integration awaiting OppGrid-side work. No JediRE-side changes are needed or should be made.
 
 ---
 
@@ -147,19 +149,19 @@ signal_density_percentile  numeric  nullable
 
 ## Root Cause Classification
 
-**Category: Missing external caller — OppGrid has not been configured**
+**Category: Planned integration — OppGrid sending side not yet wired**
 
-The endpoints are fully implemented, deployed, and reachable at `POST /api/v1/oppgrid/sync-signals` and `POST /api/v1/oppgrid/sync-trajectory`. The insert code (lines 529 and 597 in `oppgrid.routes.ts`) is correct. The DB tables and indexes are healthy.
+The JediRE endpoints are fully implemented, deployed, and reachable at `POST /api/v1/oppgrid/sync-signals` and `POST /api/v1/oppgrid/sync-trajectory`. The insert code (lines 529 and 597 in `oppgrid.routes.ts`) is correct. The DB tables and indexes are healthy. The endpoints were built correctly for their intended caller.
 
-The tables are empty because **OppGrid (the designated sender) has never posted to either endpoint**. There are no error logs, no rejected payloads, and no silent drops — simply zero inbound requests.
+The tables are empty because **OppGrid (a separate project) has not yet been wired to post to these endpoints**. This is not a bug in JediRE — it is work that lives on the OppGrid side and has not been done yet. There are no error logs, no rejected payloads, and no silent drops — simply zero inbound requests.
 
-**Contributing factors:**
+**Context:**
 
-1. **Health monitoring blind spot** — the `/health` endpoint (line 435–464) counts only `demand_signals` and `market_economics`. The two empty tables are invisible to monitoring; their zero-row state generates no alert.
+1. **Separate project** — OppGrid is Leon's separate project. The JediRE endpoints represent the receiving half of a planned OppGrid → JediRE integration; the sending half (OppGrid making the outbound calls) has not been built yet on the OppGrid side.
 
-2. **No token configured in production** — `OPPGRID_SYNC_TOKEN` is not listed as a configured secret in the environment. The auth middleware allows all traffic in dev mode (no token set), but production deployments may require explicit token agreement before OppGrid can post successfully.
+2. **No token configured in production** — `OPPGRID_SYNC_TOKEN` is not listed as a configured secret in the environment. The auth middleware allows all traffic in dev mode (no token set), but production deployments will require explicit token agreement before OppGrid can post successfully.
 
-3. **Architecture comment mismatch** — the file-level header comment (`"ApartmentIQ → JediRE → OppGrid"`) only describes the forward pipeline and omits the OppGrid back-channel. Someone reading only the header would not know OppGrid is also expected to call back into JediRE.
+3. **Health monitoring blind spot** — the `/health` endpoint (line 435–464) counts only `demand_signals` and `market_economics`. The two empty tables are invisible to monitoring; their zero-row state generates no alert.
 
 ---
 
@@ -176,41 +178,18 @@ ApartmentIQ sends **no opportunity signal or growth trajectory data**. This is c
 
 ---
 
-## Recommended Fix Paths
+## What Needs to Happen
 
-### Option A — Configure OppGrid to call back (intended design, ~2–4 hours)
+**All work is on the OppGrid side. No JediRE changes are needed or should be made.**
 
-The cleanest resolution matching the code's intent. OppGrid must be given:
+When OppGrid is ready to push its computed outputs to JediRE, the OppGrid project needs to be given:
+
 - JediRE endpoint base URL (e.g. `https://jedi-re.replit.app/api/v1/oppgrid`)
-- `OPPGRID_SYNC_TOKEN` secret agreed between OppGrid and JediRE operators
-- Logic to POST computed opportunity signals to `/sync-signals` after processing ApartmentIQ demand data
-- Logic to POST growth trajectory summaries to `/sync-trajectory` after computing city-level growth scores
+- `OPPGRID_SYNC_TOKEN` secret agreed between both operators — set as an env var in production on both sides
+- OppGrid-side logic to POST computed opportunity signals to `/sync-signals` after processing
+- OppGrid-side logic to POST growth trajectory summaries to `/sync-trajectory` after computing city-level scores
 
-**Effort:** Configuration + OppGrid-side code. No JediRE code changes required — the receiving endpoints are already complete.
-
----
-
-### Option B — Derive internally from existing data (self-contained, ~4–6 hours)
-
-JediRE already holds enough data in `oppgrid_demand_signals` and `oppgrid_market_economics` to approximate both output types without OppGrid calling back. An internal derivation service could:
-
-- Compute `opportunity_signals` rows by translating high-demand amenity types (demand_pct thresholds) into typed signals with scores
-- Compute `growth_trajectories` rows from `yoy_change`, `vacancy_rate`, and `rent_trend` in market economics
-- Run as a nightly Inngest job or on-demand when new data is synced
-
-**Effort:** New JediRE service + Inngest function. No OppGrid coordination required — tables become self-populating from existing data.
-
-**Files to create:**
-- `backend/src/services/oppgrid-signal-derivation.service.ts`
-- `backend/src/inngest/functions/derive-oppgrid-signals.ts`
-
----
-
-### Option C — Extend ApartmentIQ with new payload types (ApartmentIQ code changes, ~6–8 hours)
-
-Add new dedicated endpoints to JediRE for ApartmentIQ (e.g. `POST /sync-opportunity`, `POST /sync-growth`) and extend the ApartmentIQ script on Leon's PC to post computed opportunity/growth data alongside demand signals. Highest effort; requires coordination with the ApartmentIQ operator.
-
-**Recommended: Option B** — it is self-contained, requires no external coordination, uses data already on hand, and eliminates the ongoing dependency on OppGrid calling back. Option A is the ideal long-term design if OppGrid is actively maintained.
+The JediRE receiving endpoints, validation, DB tables, and conflict-resolution logic are already complete. No JediRE-side development is required to activate this integration.
 
 ---
 
