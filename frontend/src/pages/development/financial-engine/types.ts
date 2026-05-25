@@ -857,6 +857,8 @@ export interface FinancialEngineTabProps {
    * 'lender'  = Lender DSCR/LTV panel prominently.
    */
   platformRole?: 'sponsor' | 'lp' | 'lender';
+  /** True while the async version-history fetch is in flight (Task #864). */
+  isLoadingVersions?: boolean;
 }
 
 // ─── F9 Debt Stack (v2) ───────────────────────────────────────────────────────

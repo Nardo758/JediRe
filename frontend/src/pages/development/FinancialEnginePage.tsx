@@ -548,6 +548,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const [assumptions, setAssumptions] = useState<ModelAssumptions | null>(null);
   const [modelResults, setModelResults] = useState<ModelResults | null>(null);
   const [versions, setVersions] = useState<ModelVersion[]>([]);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
   const [activeVersion, setActiveVersion] = useState<ModelVersion | null>(null);
   const [showVersionDropdown, setShowVersionDropdown] = useState(false);
   const [saveVersionName, setSaveVersionName] = useState('');
@@ -706,9 +707,10 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   // ModelVersion shape so the existing picker UI keeps working unchanged.
   useEffect(() => {
     if (!resolvedDealId) return;
+    setIsLoadingVersions(true);
     apiClient.get(`/api/v1/financial-model/${resolvedDealId}/versions`).then((res: any) => {
       const data = res?.data?.data ?? res?.data ?? [];
-      if (!Array.isArray(data)) return;
+      if (!Array.isArray(data)) { setIsLoadingVersions(false); return; }
       const mapped: ModelVersion[] = data.map((row: any) => {
         const snap = row.layered_state_snapshot ?? row.layeredStateSnapshot ?? {};
         const isAgent    = row.save_trigger === 'agent_run';
@@ -730,7 +732,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       if (mapped.length > 0) {
         setLastSavedAt(mapped[0].timestamp);
       }
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => { setIsLoadingVersions(false); });
   }, [resolvedDealId, resolvedDealType]);
 
   // ── F9 DealFinancials — fetched at page level for F1/F8/F10 cross-tab wiring ─
@@ -1517,7 +1519,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     minorCollisionFields: evidenceSummary?.collision_summary?.minor_collision_fields ?? null,
     platformRole,
     sourceDocuments,
-  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange, evidenceFilter, evidenceSummary, lvCostTreatmentView, handleLvTreatmentViewChange, platformRole, sourceDocuments]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally omits mergedFinancials — closure reads it from enclosing scope; re-running on listed deps is the desired trigger
+    isLoadingVersions,
+  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange, evidenceFilter, evidenceSummary, lvCostTreatmentView, handleLvTreatmentViewChange, platformRole, sourceDocuments, isLoadingVersions]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally omits mergedFinancials — closure reads it from enclosing scope; re-running on listed deps is the desired trigger
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>

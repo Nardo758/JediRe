@@ -82,6 +82,7 @@ export const BT_CSS = `
   @keyframes bt-pulse { 0%,100%{opacity:1}50%{opacity:0.6} }
   @keyframes bt-fade  { from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)} }
   @keyframes bt-blink { 0%,49%{opacity:1}50%,100%{opacity:0} }
+  @keyframes bt-spin  { from{transform:rotate(0deg)}to{transform:rotate(360deg)} }
 `;
 
 // ─── Bloomberg dark-theme CSS overrides for light-mode Tailwind tab components ─

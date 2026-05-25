@@ -54,7 +54,7 @@ function getNestedValue(obj: any, path: string[]): any {
   return current;
 }
 
-export function CompareTab({ dealId, versions = [] }: FinancialEngineTabProps) {
+export function CompareTab({ dealId, versions = [], isLoadingVersions }: FinancialEngineTabProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>(
     versions.length >= 2 ? [versions[0].id, versions[1].id] : versions.length === 1 ? [versions[0].id] : []
   );
@@ -97,8 +97,17 @@ export function CompareTab({ dealId, versions = [] }: FinancialEngineTabProps) {
         <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>SOURCE: ENGINE + AI</span>
       </div>
 
-      <div style={{ padding: '6px 10px', display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: `1px solid ${BT.border.subtle}` }}>
-        {versions.length > 0 ? versions.map(v => {
+      <div style={{ padding: '6px 10px', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', borderBottom: `1px solid ${BT.border.subtle}` }}>
+        {isLoadingVersions ? (
+          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{
+              display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+              border: `1.5px solid ${BT.text.muted}`, borderTopColor: BT.met.financial,
+              animation: 'bt-spin 0.7s linear infinite',
+            }} />
+            Loading versions…
+          </span>
+        ) : versions.length > 0 ? versions.map(v => {
           const isSelected = selectedIds.includes(v.id);
           return (
             <button key={v.id} onClick={() => toggleVersion(v.id)} style={{
