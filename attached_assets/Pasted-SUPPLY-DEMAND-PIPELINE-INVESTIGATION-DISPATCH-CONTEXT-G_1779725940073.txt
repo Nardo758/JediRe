@@ -1,0 +1,69 @@
+SUPPLY/DEMAND PIPELINE — INVESTIGATION DISPATCH
+
+CONTEXT
+Goal: build forward-looking supply/demand intelligence feeding 
+the Traffic Engine (M07) and broader market analytics. Strategy: 
+prioritize structured public sources (municipal APIs, federal 
+data, SEC filings, public records) over news article extraction.
+
+This dispatch investigates what's already wired vs what needs 
+new integration. No code changes.
+
+STEP 1 — AUDIT EXISTING SUPPLY/DEMAND DATA INGEST
+
+A. Municipal planning data:
+   - What planning/permit APIs are integrated today?
+   - What metros have planning data flowing?
+   - Where does the data land? (tables, fields)
+   - What's the freshness/cadence?
+
+B. Federal data integration (per inventory, "pending"):
+   - LODES (commute) — what's the integration state?
+   - QCEW (employment + wages) — state?
+   - FRED (rates, GDP, CPI) — state?
+   - Census ACS (demographics) — state?
+   - Veraset (mobility) — state?
+
+C. CoStar (already integrated per inventory):
+   - What does the platform currently pull?
+   - Submarket pipeline data? Construction starts?
+
+D. SEC filings:
+   - Any current integration?
+   - 10-K/10-Q/8-K parsing for REIT data?
+
+E. Trade press / news:
+   - Current scrapers (ssrf-guard.ts safeFetchText)
+   - What sources are actually being scraped?
+   - Where does the content land?
+   - Is anything currently extracting structured data from articles?
+
+STEP 2 — GAP ANALYSIS
+
+For each supply/demand signal category, document:
+- What we want
+- What source provides it
+- Current integration state (live / partial / planned / none)
+- Estimated effort to bridge
+
+STEP 3 — TRAFFIC ENGINE CONSUMPTION
+
+A. What signals does M07 actually consume today vs what was 
+   designed?
+B. What additional signals would meaningfully improve forecast 
+   accuracy?
+C. Specific data structure: what shape does M07 need the 
+   forward pipeline data in?
+
+STEP 4 — REPORT in docs/operations/SUPPLY_DEMAND_PIPELINE_AUDIT.md
+(a) Current state by data source category
+(b) Gap analysis prioritized by Traffic Engine impact
+(c) Recommended dispatch sequence to fill highest-impact gaps
+(d) For each gap: structured/licensed source first; news 
+    extraction only where structured source doesn't exist
+
+DO NOT
+- Wire up new sources in this dispatch (audit only)
+- Touch the Ladder submodule or paywall-related infrastructure
+- Build news extraction logic before knowing what structured 
+  sources are missing
