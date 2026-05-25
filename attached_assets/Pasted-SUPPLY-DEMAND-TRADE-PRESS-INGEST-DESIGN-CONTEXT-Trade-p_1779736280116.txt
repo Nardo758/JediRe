@@ -1,0 +1,198 @@
+SUPPLY/DEMAND — TRADE PRESS INGEST DESIGN
+
+CONTEXT
+Trade press (Bisnow, GlobeSt, Connect CRE, REBusinessOnline, 
+Multi-Housing News, etc.) is where development announcements, 
+deal closings, leasing news, and operator commentary surface 
+earliest and most comprehensively. Most are accessible without 
+paywall (some have premium tiers).
+
+This dispatch designs the ingest pipeline. No implementation. 
+Output is a structured plan for what to integrate and how.
+
+CRITICAL: This dispatch operates under the constraint that:
+- No paywall bypass mechanisms (Ladder, browser impersonation 
+  beyond standard User-Agent)
+- Respect robots.txt for every source
+- Rate-limiting < 1 req/sec per host
+- RSS where available before scraping HTML
+- Honest User-Agent identification (no Googlebot emulation)
+- If a source requires authentication (paid subscription), 
+  document but do not access
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — TRADE PRESS INVENTORY
+═══════════════════════════════════════════════════════════════════
+
+Investigate each source:
+
+A. Bisnow
+   - URL pattern for article listings
+   - RSS feed availability + content (headline + summary, or full 
+     body?)
+   - robots.txt rules
+   - ToS for automated access
+   - Coverage areas (national + city editions)
+   - Article volume per day in CRE/multifamily
+
+B. GlobeSt.com
+   - Same investigation
+   - Premium tier vs free tier content distinction
+
+C. Connect CRE
+   - Same investigation
+   - Regional editions (West, Texas, Florida, etc.)
+
+D. REBusinessOnline
+   - Same investigation
+
+E. Multi-Housing News
+   - Same investigation
+   - Multifamily-specific so high relevance per article
+
+F. Multifamily Executive
+   - Same investigation
+
+G. CoStar News (already integrated via CoStar subscription)
+   - What's currently being ingested from CoStar?
+   - Is news content part of the subscription?
+
+H. The Real Deal / Commercial Observer
+   - Regional coverage
+   - Paywall structure (most articles free; some premium)
+   - Honor paywalls: only ingest unpaywalled content
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — TECHNICAL APPROACH
+═══════════════════════════════════════════════════════════════════
+
+A. For each source, recommend access pattern:
+   - RSS (preferred): polled at configurable interval (every 30 
+     min for high-volume sources, every 4 hr for low-volume)
+   - HTML scraping with sitemap.xml as discovery (if RSS 
+     unavailable)
+   - Article content fetching: full text from article URL
+   - All requests with honest User-Agent identifying the platform
+
+B. Robots.txt compliance check per source:
+   - Document each robots.txt
+   - Identify what paths are crawlable vs disallowed
+   - Honor Crawl-delay directives
+
+C. Storage strategy:
+   - Raw article HTML/text in a content store (e.g., R2 + DB row)
+   - Deduplication by URL + content hash
+   - Article metadata: source, publication date, URL, headline, 
+     extraction status
+
+D. Rate limiting:
+   - <1 req/sec per host
+   - Backoff on 429 / 503 responses
+   - Daily volume cap per source to avoid being flagged
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — LLM EXTRACTION DESIGN
+═══════════════════════════════════════════════════════════════════
+
+A. Per-article extraction produces the DevelopmentAnnouncement 
+   entity (from Dispatch B schema). Coordinate with that dispatch 
+   to use the same schema.
+
+B. Extraction prompt constraints (same discipline as Phase 8 
+   narrative generation):
+   - Every populated field cites the article passage
+   - No claims without explicit support
+   - Ambiguous fields stay null
+   - Extraction_confidence reflects explicit vs inferred ratio
+   - Tone: factual extraction only, no synthesis or commentary
+
+C. Sample extraction testing:
+   - Pick 20 real CRE articles (mix of sources)
+   - Run extraction with proposed prompt
+   - Manually evaluate quality:
+     * Field-level accuracy (each populated field actually 
+       supported)
+     * Coverage (what fields got populated; what's typically 
+       missed)
+     * Hallucination rate (any unsupported claims)
+   - Iterate prompt based on findings
+
+D. Cost estimate:
+   - Tokens per article (typical CRE article ~2-5k tokens input 
+     + 1-2k output)
+   - Anthropic cost per article extraction
+   - Daily volume cost estimate (e.g., 50 articles/day × $0.04 = 
+     $2/day)
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — DEDUPLICATION ACROSS SOURCES
+═══════════════════════════════════════════════════════════════════
+
+Same deal may be covered by 3-5 trade press sources within a few 
+days. Need to:
+
+A. Detect duplicates:
+   - Same address + same city = likely same deal
+   - Same property name + same state = likely same deal
+   - Same developer name + similar location = likely same deal
+
+B. Merge strategy:
+   - Single DevelopmentAnnouncement entity per deal
+   - source_url becomes source_urls[] with all sources covering 
+     the deal
+   - Conflicting field values: highest-confidence source wins, 
+     or surface as unresolved
+
+C. Operator-visible behavior:
+   - "Deal announced in your submarket" alert fires once per deal, 
+     not per article
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — LICENSING PATH
+═══════════════════════════════════════════════════════════════════
+
+A. Per Leon's direction: prototype with free-access first, 
+   formalize licensing if essential.
+
+B. Document for each source:
+   - Whether ToS technically permits automated commercial use
+   - Whether the source offers a B2B/API tier
+   - Estimated cost for licensed access
+   - Trigger point for when licensing should be pursued (e.g., 
+     "if we're depending on Bisnow for >X% of pipeline signals, 
+     formalize licensing")
+
+C. Risk register:
+   - If a source blocks our crawler (IP-ban, hard rate limit), 
+     we need a fallback
+   - If a source updates ToS to explicitly prohibit scraping, 
+     we need to honor that
+   - Licensing is the resilient long-term path; document this 
+     clearly
+
+═══════════════════════════════════════════════════════════════════
+CLOSING REPORT in docs/operations/TRADE_PRESS_DESIGN.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Per-source inventory + access pattern
+(b) Robots.txt compliance per source
+(c) Technical architecture (storage, rate limits, fetching)
+(d) Extraction prompt design + sample test results on 20 articles
+(e) Deduplication strategy
+(f) Cost estimates (per article + monthly steady-state)
+(g) Licensing roadmap with trigger points
+(h) Implementation phasing recommendation
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Build any scraping code
+- Use Ladder or any paywall bypass mechanism
+- Impersonate browsers beyond standard User-Agent with platform 
+  identification
+- Access paywalled content
+- Sign up for paid subscriptions in this dispatch
+- Modify existing safeFetchText / ssrf-guard.ts code
+- Implement LLM extraction (testing on samples only)
+- "While I'm here" cleanups

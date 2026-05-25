@@ -1,3 +1,12 @@
+-- ============================================================
+-- ROLLBACK (run manually to undo this migration):
+--
+--   DROP INDEX IF EXISTS idx_jedi_scores_deal_created;
+--   DROP INDEX IF EXISTS idx_jedi_scores_deal_id;
+--   DROP TABLE IF EXISTS jedi_scores;
+--
+-- ============================================================
+
 -- Creates the jedi_scores table referenced by agent-chat.service.ts.
 --
 -- Context:
