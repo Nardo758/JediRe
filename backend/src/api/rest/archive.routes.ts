@@ -5,7 +5,7 @@
  * Used by Settings → Intelligence & Data and the CashFlow agent.
  */
 
-import { Router, Request, Response } from 'express';
+import express, { Router, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -27,7 +27,7 @@ import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import multer from 'multer';
 import { parseOM } from '../../services/document-extraction/parsers/om-parser';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, PutBucketCorsCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { registerUploadedFile } from '../../services/intake-sources/data-library-upload';
 
@@ -1662,6 +1662,48 @@ function buildR2Client(): S3Client {
   });
 }
 
+// ── R2 CORS initialization ────────────────────────────────────────────────────
+// Ensures the bucket allows PUT uploads from all Replit browser origins.
+// Called once at module load. Non-fatal — logs a warning on failure so the
+// server still starts even if R2 credentials are not yet configured.
+async function ensureR2CorsPolicy(): Promise<void> {
+  const accountId  = process.env.R2_ACCOUNT_ID;
+  const bucketName = process.env.R2_BUCKET_NAME;
+  if (!accountId || !bucketName) {
+    logger.debug('[r2-cors] R2_ACCOUNT_ID or R2_BUCKET_NAME not set — skipping CORS init');
+    return;
+  }
+  const s3 = buildR2Client();
+  await s3.send(new PutBucketCorsCommand({
+    Bucket: bucketName,
+    CORSConfiguration: {
+      CORSRules: [
+        {
+          AllowedOrigins: [
+            'https://*.replit.dev',
+            'https://*.repl.co',
+            'https://*.replit.app',
+            'http://localhost:3000',
+            'http://localhost:5000',
+          ],
+          AllowedMethods: ['PUT', 'GET', 'HEAD'],
+          AllowedHeaders: ['*'],
+          ExposeHeaders: ['ETag'],
+          MaxAgeSeconds: 3600,
+        },
+      ],
+    },
+  }));
+  logger.info('[r2-cors] CORS policy applied to R2 bucket', { bucket: bucketName });
+}
+
+ensureR2CorsPolicy().catch(err => {
+  logger.warn(
+    '[r2-cors] could not apply CORS policy — direct browser→R2 uploads may fail if CORS is not pre-configured',
+    { error: err instanceof Error ? err.message : String(err) },
+  );
+});
+
 router.post('/files/signed-upload-url', requireAuth, async (req: Request, res: Response) => {
   const { original_filename, mime_type, size_bytes, file_ext } = req.body as {
     original_filename?: string;
@@ -1784,5 +1826,64 @@ router.post('/files/register', requireAuth, async (req: Request, res: Response) 
     return res.status(500).json({ error: msg });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/archive/files/upload-proxy
+// Backend-proxied upload to R2. Used as a fallback when the browser cannot
+// PUT directly to R2 due to CORS restrictions. The client sends the raw file
+// body with the storage_key provided as a query param or X-Storage-Key header.
+// The presigned URL flow still runs first; this endpoint is only called if the
+// direct PUT fails (e.g. preflight rejected).
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post(
+  '/files/upload-proxy',
+  requireAuth,
+  express.raw({ type: '*/*', limit: 100 * 1024 * 1024 /* 100 MB */ }),
+  async (req: Request, res: Response) => {
+    const storageKey =
+      (req.query.storage_key as string | undefined) ??
+      (req.headers['x-storage-key'] as string | undefined);
+
+    if (!storageKey) {
+      return res.status(400).json({ error: 'storage_key required (query param or X-Storage-Key header)' });
+    }
+
+    const body = req.body as Buffer;
+    if (!Buffer.isBuffer(body) || body.length === 0) {
+      return res.status(400).json({ error: 'Request body is empty — expected raw binary file content' });
+    }
+
+    const bucket = process.env.R2_BUCKET_NAME;
+    if (!bucket) {
+      return res.status(500).json({ error: 'R2_BUCKET_NAME not configured' });
+    }
+
+    const contentType = (req.headers['content-type'] ?? 'application/octet-stream').split(';')[0].trim();
+
+    try {
+      const s3 = buildR2Client();
+      await s3.send(new PutObjectCommand({
+        Bucket:        bucket,
+        Key:           storageKey,
+        Body:          body,
+        ContentType:   contentType,
+        ContentLength: body.length,
+      }));
+
+      logger.info('[archive/upload-proxy] proxied file to R2', {
+        storage_key:  storageKey,
+        size_bytes:   body.length,
+        content_type: contentType,
+      });
+
+      return res.json({ ok: true, storage_key: storageKey });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('[archive/upload-proxy] R2 PUT failed', { error: msg });
+      return res.status(500).json({ error: msg });
+    }
+  },
+);
 
 export default router;

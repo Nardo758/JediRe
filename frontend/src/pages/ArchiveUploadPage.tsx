@@ -226,15 +226,35 @@ export default function ArchiveUploadPage() {
 
       const { signed_url, storage_key } = urlData as { signed_url: string; storage_key: string };
 
-      // Step 3: PUT directly to R2
+      // Step 3: PUT directly to R2; fall back to backend proxy on CORS/network error
       update({ status: 'uploading', progress: 0 });
-      const putRes = await fetch(signed_url, {
-        method: 'PUT',
-        body: uf.file,
-        headers: { 'Content-Type': uf.file.type || 'application/octet-stream' },
-      });
-      if (!putRes.ok) throw new Error(`R2 PUT failed: ${putRes.status} ${putRes.statusText}`);
-      update({ progress: 100 });
+      let directPutOk = false;
+      try {
+        const putRes = await fetch(signed_url, {
+          method: 'PUT',
+          body: uf.file,
+          headers: { 'Content-Type': uf.file.type || 'application/octet-stream' },
+        });
+        if (!putRes.ok) throw new Error(`R2 PUT failed: ${putRes.status} ${putRes.statusText}`);
+        directPutOk = true;
+      } catch (_directErr) {
+        // Direct PUT failed (CORS preflight rejected or network error).
+        // Route the upload through the backend instead — no CORS issue.
+        const proxyRes = await apiClient.post(
+          `/api/v1/archive/files/upload-proxy?storage_key=${encodeURIComponent(storage_key)}`,
+          uf.file,
+          {
+            headers: { 'Content-Type': uf.file.type || 'application/octet-stream' },
+            onUploadProgress: (e: { loaded: number; total?: number }) => {
+              if (e.total) update({ progress: Math.round((e.loaded / e.total) * 100) });
+            },
+          },
+        );
+        if (!proxyRes.data?.ok) {
+          throw new Error('Backend proxy upload failed');
+        }
+      }
+      if (directPutOk) update({ progress: 100 });
 
       // Step 4: register file + create intake job
       update({ status: 'registering' });
