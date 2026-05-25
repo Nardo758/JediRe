@@ -1,0 +1,149 @@
+OPPORTUNITY-FINDING CODE — CONNECTION AUDIT (both surfaces)
+
+CONTEXT
+Per Leon's confirmation, two opportunity-finding workstreams were 
+built:
+
+1. Comp-finding for deals (used during deal evaluation — agent 
+   tools like fetch_data_library_comps, fetch_comp_set, 
+   fetch_peer_comp_noi_metrics already inventoried in 
+   DATA_LIBRARY_INVENTORY.md)
+
+2. Standalone opportunity detection (continuously scans Data 
+   Library for properties matching investment criteria — may 
+   include screening agent, deal radar, F52 sentiment-rent 
+   divergence, or similar)
+
+Both exist as code. Need to verify whether each is actually 
+producing useful output given the data linkage gaps surfaced 
+in DATA_LIBRARY_INVENTORY.md (G1: asset_id NULL, G2: deal_id 
+NULL, G7: benchmark tables empty).
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INVENTORY OPPORTUNITY DETECTION CODE
+═══════════════════════════════════════════════════════════════════
+
+A. Find the standalone opportunity detection code:
+   grep -ri "opportunity\|deal.radar\|screening\|signal.detect\|\
+            divergence\|buy.signal\|F52\|sentiment.rent" \
+     backend/src/ --include="*.ts"
+   
+   Document each finding:
+   - File path
+   - Purpose (function name, header comment)
+   - Whether it's a service, agent, scheduled job, or route
+
+B. Specifically look for:
+   - A ScreeningAgent or DealScoringAgent
+   - An OpportunityDetector or DealRadar service
+   - An F52SentimentDivergence module
+   - Any Inngest function with names like screen.*, score.*, 
+     opportunity.*, detect.*
+   - Any cron / scheduled job that scans data_library_assets
+
+C. For each found component, document its execution trigger:
+   - Manual API endpoint
+   - Scheduled job (Inngest / cron)
+   - Reactive to event (new property ingested, enrichment 
+     completed)
+   - Called from other code (find the callers)
+   - Dead code (no callers)
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — TRACE DATA FLOW FOR EACH COMPONENT
+═══════════════════════════════════════════════════════════════════
+
+For BOTH surfaces (comp-finding agent tools AND standalone 
+opportunity detection):
+
+A. READ side audit — what data sources each component pulls from:
+   - SELECT statements: which tables, which columns
+   - For each source: is it currently populated with meaningful 
+     data?
+
+B. Specifically check against the known G1/G2/G7 gaps:
+   - Does the component depend on data_library_files.asset_id 
+     being set? (G1 — currently NULL on 266 T-12s)
+   - Does the component depend on historical_observations.deal_id 
+     being set? (G2 — currently NULL on ~98% of rows)
+   - Does the component read from line_item_benchmarks or 
+     archive_assumption_benchmarks? (G7 — currently 0 rows)
+   - Does the component read property_descriptions.reviews 
+     hazard_mentions? (Currently empty — Anthropic NLP pass 
+     skipped)
+   - Does the component read property_descriptions.narrative? 
+     (Currently empty — Tavily quota exhausted)
+
+C. WRITE side audit — where each component writes output:
+   - opportunity_score column on what table?
+   - Separate opportunities / signals / alerts table?
+   - Notification queue?
+   - UI surface (which page, which component)?
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — VERIFY OUTPUT IS REACHING USERS
+═══════════════════════════════════════════════════════════════════
+
+For the standalone opportunity detection:
+
+A. Find the UI surface that displays opportunity output
+   - Which page / component / F-key?
+   - What does the user actually see?
+   - Has any user-visible opportunity been surfaced yet?
+
+B. Check the output tables for actual rows:
+   - SELECT count(*) FROM <opportunities_table>
+   - If > 0: sample a row, show it
+   - If 0: trace why — is the detector running? are inputs 
+     present?
+
+C. For comp-finding within CashFlow Agent:
+   - During the baseline CashFlow Agent run (if executed), did 
+     fetch_data_library_comps return useful results or empty?
+   - If empty: identify whether it's because asset_id linkage 
+     is broken, comp matching logic is wrong, or some other cause
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — CLASSIFY CONNECTION STATE
+═══════════════════════════════════════════════════════════════════
+
+For each opportunity-finding component:
+
+A. CONNECTED — code runs, inputs populate, outputs reach users
+B. PARTIALLY CONNECTED — code runs, some inputs populate, output 
+   degrades gracefully (e.g., scoring works but is unreliable 
+   due to missing data)
+C. BUILT BUT DISCONNECTED — code exists, can't run usefully 
+   because inputs are empty (this is the predicted state given 
+   recent patterns)
+D. BUILT BUT NEVER INVOKED — code exists, but the trigger that 
+   should invoke it is missing or broken
+E. SPEC ONLY — referenced in docs but no actual code
+
+═══════════════════════════════════════════════════════════════════
+CLOSING REPORT in docs/operations/OPPORTUNITY_CODE_AUDIT.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Inventory of all opportunity-finding code (Step 1)
+(b) Per-component data flow trace (Step 2)
+(c) Per-component output reachability (Step 3)
+(d) Connection state classification (Step 4)
+(e) Per-component: what would need to change to move it to 
+    CONNECTED state? (recommended fix path; do not apply fixes)
+(f) Cross-cutting: which fixes (asset_id linkage, deal_id linkage, 
+    benchmark population, narrative completion, NLP completion) 
+    unblock multiple components simultaneously
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Apply fixes in this dispatch
+- Modify any opportunity-finding code
+- Build new opportunity-finding components
+- Run the components themselves to "test" them (unless already 
+  inventoried as runnable — and only with explicit user 
+  confirmation)
+- Speculate about what should exist — only document what does
+- Treat the CashFlow Agent comp-finding tools as the entire scope 
+  — the standalone opportunity detection is the harder unknown
