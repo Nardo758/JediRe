@@ -81,7 +81,7 @@ async function extractArchiveAssumptions(): Promise<BenchmarkRow[]> {
       avg_rent,
       price_per_unit
     FROM data_library_assets
-    WHERE source_type IN ('broker_om', 'manual', 'archive_ingest')
+    WHERE source_type IN ('broker_om', 'manual', 'archive_ingest', 'archive')
       AND data_quality_score >= 50
   `);
 
@@ -161,12 +161,11 @@ async function extractLiveDealAssumptions(): Promise<BenchmarkRow[]> {
       d.deal_data->>'deal_type' as deal_type,
       d.deal_data->>'year_built' as year_built,
       d.status,
-      us.assumptions,
-      us.proforma_fields
+      us.proforma_json
     FROM deals d
-    LEFT JOIN underwriting_snapshots us ON us.deal_id = d.id
+    LEFT JOIN deal_underwriting_snapshots us ON us.deal_id = d.id
     WHERE us.id IS NOT NULL
-      AND us.proforma_fields IS NOT NULL
+      AND us.proforma_json IS NOT NULL
   `);
 
   const rows: BenchmarkRow[] = [];
@@ -193,13 +192,15 @@ async function extractLiveDealAssumptions(): Promise<BenchmarkRow[]> {
     }
     const assumptions = bucketMap.get(bucketKey)!;
 
-    const proformaFields = row.proforma_fields as Record<string, { value: number }> | null;
+    const proformaFields = row.proforma_json as Record<string, { value: number } | number> | null;
     if (!proformaFields) continue;
 
-    // Extract proforma field values
+    // Extract proforma field values — entries may be LayeredValue objects {value, source, ...}
+    // or raw scalars depending on agent version
     for (const [fieldPath, field] of Object.entries(proformaFields)) {
-      if (field?.value == null) continue;
-      const v = Number(field.value);
+      const rawVal = typeof field === 'object' && field !== null ? (field as { value?: number }).value : field;
+      if (rawVal == null) continue;
+      const v = Number(rawVal);
       if (isNaN(v)) continue;
 
       // Normalize field path to assumption name
