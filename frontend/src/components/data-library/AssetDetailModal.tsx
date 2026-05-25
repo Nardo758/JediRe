@@ -402,7 +402,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
 
   const calculateDQScore = (): number => {
     let score = 0;
-    // Required fields (10 pts each) — max 100 core pts out of 130 total
+    // Required fields (10 pts each, max 100 — matches server 100-point core)
     if (details.city && details.state) score += 10;
     if (details.propertyType) score += 10;
     if (details.assetClass) score += 10;
@@ -415,8 +415,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     // Either Asking Price OR Sold Price counts
     if (details.askingPrice || details.soldPrice) score += 10;
     if (details.dealType) score += 10;
-    // Normalize against 130-point scale (Phase 8 fields add up to 30 pts server-side)
-    return Math.round((score / 130) * 100);
+    return Math.min(score, 100);
   };
 
   const handleAutoEnrich = async () => {
@@ -624,7 +623,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         sale_price: details.soldPrice ? parseFloat(details.soldPrice) : null,
         sale_date: details.soldDate || null,
         noi: details.noi ? parseFloat(details.noi) : null,
-        ...(serverDqScore != null ? { data_quality_score: serverDqScore } : {}),
+        data_quality_score: serverDqScore ?? calculateDQScore(),
       };
 
       // Calculate vintage band

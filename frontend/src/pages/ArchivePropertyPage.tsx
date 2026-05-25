@@ -436,7 +436,9 @@ export default function ArchivePropertyPage() {
                   <span key={tag} style={S.amenityTag}>{tag}</span>
                 ))}
               </div>
-              {rv(desc?.sentiment_summary) && (
+              {[desc?.has_pool, desc?.has_fitness, desc?.has_clubhouse,
+                desc?.has_concierge, desc?.has_business_center, desc?.has_dog_park]
+                .some(lv => lv?.resolvedFrom?.includes('google_places')) && (
                 <div style={{ fontSize: '10px', color: '#8892b0', marginTop: '6px' }}>
                   Source: Google Places
                 </div>
@@ -532,7 +534,11 @@ export default function ArchivePropertyPage() {
                 </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {reviews.map((r, i) => (
+                {reviews.slice(0, 3).map((r, i) => {
+                  const MAX_TEXT = 280;
+                  const truncated = r.text.length > MAX_TEXT;
+                  const displayText = truncated ? r.text.slice(0, MAX_TEXT) + '…' : r.text;
+                  return (
                   <div key={i} style={{ background: '#161b22', border: '1px solid #21262d', borderRadius: '6px', padding: '10px 14px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                       <span style={{ fontSize: '11px', fontWeight: 600, color: '#f0f6fc' }}>{r.author}</span>
@@ -541,7 +547,7 @@ export default function ArchivePropertyPage() {
                         <span style={{ fontSize: '10px', color: '#8892b0' }}>{r.publishTime.slice(0, 10)}</span>
                       </div>
                     </div>
-                    <div style={{ fontSize: '12px', color: '#cdd9e5', lineHeight: 1.55 }}>{r.text}</div>
+                    <div style={{ fontSize: '12px', color: '#cdd9e5', lineHeight: 1.55 }}>{displayText}</div>
                     {(r.hazard_mentions.length > 0 || r.amenity_mentions.length > 0) && (
                       <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
                         {r.hazard_mentions.map(h => (
@@ -553,9 +559,17 @@ export default function ArchivePropertyPage() {
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
-              <div style={{ fontSize: '10px', color: '#8892b0', marginTop: '8px' }}>Source: Google Places</div>
+              {reviews.length > 3 && (
+                <div style={{ fontSize: '10px', color: '#8892b0', marginTop: '4px' }}>
+                  Showing top 3 of {reviews.length} reviews · Source: Google Places
+                </div>
+              )}
+              {reviews.length <= 3 && (
+                <div style={{ fontSize: '10px', color: '#8892b0', marginTop: '4px' }}>Source: Google Places</div>
+              )}
             </div>
           );
         })()}

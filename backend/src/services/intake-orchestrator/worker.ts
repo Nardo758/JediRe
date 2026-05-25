@@ -612,14 +612,19 @@ async function processJob(job: {
           city: lookupCity,
           state: lookupState,
         });
+        const webEntry = enrichResult.log_entries.find(
+          (e: { step: string; detail?: Record<string, unknown> }) => e.step === 'web_search'
+        );
+        const webDetail = (webEntry?.detail ?? {}) as { articles_found?: number; events_found?: number };
         await appendLog(id, {
           step: 'web_search',
           status: enrichResult.web_status === 'error' ? 'error' : 'ok',
           ts: ts(),
           detail: {
-            articles_found: 0,
             narrative_words: enrichResult.narrative_words,
-            events_found: 0,
+            articles_found: webDetail.articles_found ?? 0,
+            events_found: webDetail.events_found ?? 0,
+            web_status: enrichResult.web_status,
           },
         });
         await appendLog(id, {
