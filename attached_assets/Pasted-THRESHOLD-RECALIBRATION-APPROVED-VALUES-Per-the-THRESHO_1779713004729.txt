@@ -1,0 +1,63 @@
+THRESHOLD RECALIBRATION — APPROVED VALUES
+
+Per the THRESHOLD_RECALIBRATION_REPORT.md and Leon's review, 
+apply the following:
+
+A. archive-benchmark-aggregator.ts:86 — KEEP UNCHANGED at ≥ 50
+   Rationale: comps quality matters more than pool size; Apply 
+   velocity will grow the pool organically post-enrichment
+
+B. archive-benchmark-aggregator.ts:579 — CHANGE from ≥ 40 to ≥ 31
+   SQL: 
+     -- before: AND data_quality_score >= 40
+     -- after:  AND data_quality_score >= 31
+   Rationale: financial benchmarks need broader pool for 
+   statistical reliability; ≥ 31 captures the tier just above 
+   the 30-cluster baseline without admitting minimally-populated 
+   properties
+
+C. auto-enrichment.service.ts:601 — KEEP UNCHANGED at default < 50
+   Rationale: slight increase in eligible assets (260 → 265) is 
+   correct behavior reflecting that pre-Phase-8 "complete" 
+   assets genuinely need enrichment
+
+EXECUTION
+
+1. Apply only the Consumer 2 change (a single SQL clause update)
+2. Verify the change in code — show the diff
+3. Restart the service to pick up the change
+4. Verify against current data: re-run the SELECT that drove 
+   archive-benchmark-aggregator.ts:579 with the new threshold; 
+   confirm 54 properties pass (matches report)
+
+DOCUMENTATION
+
+1. Update THRESHOLD_RECALIBRATION_REPORT.md status from 
+   "AWAITING LEON'S APPROVAL" to "APPROVED 2026-05-25 — Consumer 
+   2 changed to >= 31; Consumers 1 and 3 unchanged"
+
+2. Add a "RE-EVALUATION TRIGGER" section to the report:
+   "Re-evaluate all three thresholds when 80%+ of archive 
+   properties have resolved DQ score >= 50 (i.e., enrichment 
+   has been Applied to the majority of assets). Expected 
+   trigger date: TBD based on operator Apply velocity."
+
+3. Update PHASE_8_FINAL_CLOSING.md with the approved values 
+   and re-evaluation trigger note
+
+PAIRED-READ VERIFICATION
+
+1. SELECT count(*) FROM <wherever archive-benchmark-aggregator.ts:579 
+   query lives> with new threshold — expect 54
+2. SELECT count(*) FROM <archive-benchmark-aggregator.ts:86 query> 
+   — expect 34 (unchanged)
+3. Confirm auto-enrichment service uses default minScore=50 
+   correctly — pick a sample query, confirm 265 eligible
+
+DO NOT
+
+- Change Consumers 1 or 3
+- "While I'm here" cleanups
+- Skip the paired-read verification
+- Mark the report status as approved without actually 
+  implementing the change

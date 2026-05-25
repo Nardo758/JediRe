@@ -576,7 +576,7 @@ async function extractArchiveLineItems(): Promise<Map<string, Map<string, LineIt
     FROM data_library_assets
     WHERE extracted_financials IS NOT NULL
       AND unit_count > 0
-      AND data_quality_score >= 40
+      AND data_quality_score >= 31
   `);
 
   for (const row of result.rows as Record<string, unknown>[]) {

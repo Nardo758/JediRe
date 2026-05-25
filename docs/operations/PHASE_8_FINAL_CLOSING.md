@@ -173,4 +173,24 @@ any user. All extractions are literal-only (prompt explicitly forbids synthesis 
 
 ---
 
+---
+
+## Threshold Recalibration — Approved Values (2026-05-25)
+
+Leon approved the DQ threshold recalibration per `docs/operations/THRESHOLD_RECALIBRATION_REPORT.md`.
+
+| Consumer | File | Previous | Approved | Status |
+|---|---|---|---|---|
+| Consumer 1 — comps pool filter | `archive-benchmark-aggregator.ts:86` | ≥ 50 | **≥ 50 (unchanged)** | No change |
+| Consumer 2 — financial benchmarks filter | `archive-benchmark-aggregator.ts:579` | ≥ 40 | **≥ 31 (changed)** | Applied 2026-05-25 |
+| Consumer 3 — enrichment eligibility | `auto-enrichment.service.ts:601` | < 50 (default) | **< 50 (unchanged)** | No change |
+
+**Post-change verification:** Consumer 2 with ≥ 31 returns 54 assets (restored from 39 — matches pre-Phase-8 count exactly).
+
+### Re-Evaluation Trigger
+
+Re-evaluate all three thresholds when 80%+ of archive properties have a resolved DQ score ≥ 50 (i.e., enrichment has been Applied to the majority of assets). Expected trigger date: TBD based on operator Apply velocity.
+
+---
+
 *This document will be updated after each execution step.*

@@ -1,7 +1,7 @@
 # Threshold Recalibration Report — Phase 8 DQ Formula Change
 
 Generated: 2026-05-25
-Status: **AWAITING LEON'S APPROVAL — do not apply changes**
+Status: **APPROVED 2026-05-25 — Consumer 2 changed to >= 31; Consumers 1 and 3 unchanged**
 
 ---
 
@@ -146,18 +146,39 @@ This selects assets *needing* enrichment (score < threshold), so higher threshol
 
 ---
 
-## DO NOT APPLY
+## Applied Change (2026-05-25)
 
-No code changes should be made until Leon explicitly approves the proposed values above.
+Leon approved the Consumer 2 change. Applied to `backend/src/services/archive-benchmark-aggregator.ts:579`:
 
-The only pending change (if approved) would be:
 ```sql
--- archive-benchmark-aggregator.ts:579
--- change: data_quality_score >= 40
--- to:     data_quality_score >= 31
+-- before: AND data_quality_score >= 40
+-- after:  AND data_quality_score >= 31
 ```
 
-All other thresholds are recommended unchanged.
+Consumers 1 (≥ 50) and 3 (default < 50) are unchanged.
+
+### Paired-Read Verification (post-change)
+
+| Consumer | Query | Expected | Actual | Pass |
+|---|---|---|---|---|
+| Consumer 2 — archive-benchmark-aggregator.ts:579 | `WHERE unit_count > 0 AND data_quality_score >= 31` | 54 | **54** | ✓ |
+| Consumer 1 — archive-benchmark-aggregator.ts:86 | `WHERE data_quality_score >= 50` | 34 | **34** | ✓ |
+| Consumer 3 — auto-enrichment.service.ts:601 | `WHERE data_quality_score IS NULL OR data_quality_score < 50` | 265 | **265** | ✓ |
+
+Band breakdown confirming Consumer 2 = 54 (matches report distribution exactly):
+
+| Band | Count |
+|---|---|
+| 31–39 | 15 |
+| 40–49 | 5 |
+| 50–60 | 34 |
+| **Total ≥ 31** | **54** |
+
+---
+
+## Re-Evaluation Trigger
+
+Re-evaluate all three thresholds when 80%+ of archive properties have a resolved DQ score ≥ 50 (i.e., enrichment has been Applied to the majority of assets). Expected trigger date: TBD based on operator Apply velocity.
 
 ---
 
