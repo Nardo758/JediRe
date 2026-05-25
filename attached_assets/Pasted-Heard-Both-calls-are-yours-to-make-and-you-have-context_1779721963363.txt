@@ -1,0 +1,268 @@
+Heard. Both calls are yours to make, and you have context about urgency, resources, and risk tolerance that I don't. But I want to be honest before drafting the work: I think this is too much to fire simultaneously, and I want to tell you why before I queue it up.
+
+What I'm actually worried about
+Four tracks fired together means:
+In a typical dayYou receiveOne dispatch1 STOP gate to evaluate, 1 closing note to read, 1 decision on next stepFour parallel dispatches4 STOP gates (possibly simultaneous), 4 closing notes, 4 decisions, plus cross-track integration questions
+The bot has been doing good work, but the discipline that's been working — investigating before fixing, paired-read before declaring complete, surfacing findings before patching — depends on you reviewing each finding deliberately. When four tracks are running, that deliberation either compresses (you skim findings instead of reading them) or it bottlenecks (tracks stall waiting for your attention).
+Worse: this week has revealed 15 silent-failure patterns. Each new dispatch reveals 1-3 more on average. Four parallel tracks will probably surface 5-10 new findings simultaneously. Some of those findings will cross tracks (e.g., a finding in the Gmail OAuth track that affects the data linkage track, or vice versa). Without sequential pacing, those cross-track implications get harder to catch.
+This isn't a "you can't do it" — you absolutely can. It's "the conditions that have been producing good outcomes are different from the conditions you're choosing now." Worth being explicit about that trade.
+
+Two specific concerns about Gmail OAuth in this batch
+Gmail OAuth has different properties than the other three tracks:
+
+Security surface. Token storage, scope management, multi-tenant isolation. A bug in OAuth code that ships with the same "fix it later if reviewer complains" pace as other dispatches has worse downside than a data linkage bug. Wrong token storage means user data exposure. Wrong scope handling means accessing emails users didn't consent to.
+Leon-side dependency. Gmail OAuth requires Google Cloud Console setup, OAuth credential creation, scope configuration, redirect URI registration. None of which the bot can do. The investigation dispatch will hit a STOP gate at "need credentials from Leon" early in the work. That's not bot-bound time; it's your time to spend on Google Cloud Console while three other tracks are also running.
+
+If you want Gmail OAuth started, fine — but it'll mean diverted attention to ops setup mid-week. Worth knowing.
+
+What I'd actually recommend you consider
+You answered "fire all four immediately." I'm going to draft the dispatches because that's your call to make. But before I do, one alternative worth one more look:
+Modified approach: fire all four, but stagger by 1 day.
+DayFireTodayDispatch 1 (JEDI table + missing-tables audit) + Dispatch 2 (OppGrid investigation)TomorrowData linkage Workstream 1A — asset_id backfillDay 3Deal Triage UI investigationDay 4Gmail OAuth investigation
+This is "fire all four tracks this week" but spread across 4 days. Each track gets a day of bot focus before the next one fires. STOP gates land sequentially. Findings from earlier dispatches can inform later ones.
+Same scope, less concurrency. ~85% of the speed, ~30% of the chaos.
+But you may have already considered this and decided you want the throughput. If so, here are the four dispatches as drafted.
+
+Dispatch 1 — JEDI scores table + missing-tables audit
+JEDI_SCORES TABLE MIGRATION + MISSING-TABLES AUDIT
+
+CONTEXT
+Per OPPORTUNITY_CODE_AUDIT.md: jedi_scores table never migrated. 
+Code paths (module-wiring endpoint, deal context loader, Kafka 
+consumer) throw at runtime. Combined with prior finding of 
+deal_evidence_rows missing, this suggests there may be other 
+missing tables.
+
+STEP 1 — JEDI_SCORES TABLE
+A. Find all code paths writing to / reading from jedi_scores
+B. Infer schema from those code paths
+C. Verify schema agrees across all callers (catch producer/reader 
+   drift before creating)
+D. Create timestamped reversible migration
+E. Apply migration
+F. Test: invoke previously-erroring path; confirm clean execution
+
+STEP 2 — MISSING-TABLES AUDIT
+A. Extract all table references from backend code:
+   grep -ri "FROM [a-z_]+ \|INSERT INTO [a-z_]+ \|UPDATE [a-z_]+ 
+   SET\|JOIN [a-z_]+" backend/src/ --include="*.ts" | 
+   parse out table names | uniq
+
+B. For each unique table:
+   - \d <table_name> via psql
+   - If exists: confirmed
+   - If missing: flag with calling code
+
+C. Report all missing tables found — DO NOT create them in this 
+   dispatch (separate decisions)
+
+STEP 3 — CLOSING NOTE in docs/operations/MISSING_TABLES_AUDIT.md
+(a) jedi_scores migration applied + verification
+(b) Complete table reference vs DB state map
+(c) Missing tables list with calling-code context
+
+DO NOT
+- Create other missing tables in this dispatch
+- Fix opportunity components beyond jedi_scores
+- "While I'm here" cleanups
+Dispatch 2 — OppGrid ApartmentIQ payload investigation
+OPPGRID APARTMENTIQ PAYLOAD GAP INVESTIGATION
+
+CONTEXT
+ApartmentIQ pushing demand signals (1,044 rows) and market 
+economics (53 rows) successfully. NOT pushing opportunity_signals 
+or growth_trajectories (0 rows each). OppGrid receiving endpoints 
+exist but payloads aren't arriving.
+
+STEP 1 — RECEIVING SIDE
+A. Find endpoints for oppgrid_opportunity_signals + 
+   oppgrid_growth_trajectories
+B. Document expected payload shape (TypeScript types, validation 
+   schemas, DB columns)
+C. Document what ApartmentIQ integration claims to send
+
+STEP 2 — GAP DIAGNOSIS
+A. Is ApartmentIQ configured to send these payload types?
+B. Are payloads being sent but rejected? Check error logs
+C. Are payloads being sent and accepted to wrong tables? Check 
+   insert paths
+D. Is the payload structure mismatched (validation failure 
+   silently dropping)?
+
+STEP 3 — REPORT in docs/operations/OPPGRID_APARTMENTIQ_GAP.md
+(a) Expected payload shape
+(b) Actual ApartmentIQ behavior  
+(c) Root cause classification
+(d) Recommended fix path with estimated effort
+
+DO NOT
+- Apply the fix
+- Modify OppGrid or ApartmentIQ integration code
+- Touch unrelated ApartmentIQ pipelines (demand signals + market 
+  economics are working; don't disturb)
+Dispatch 3 — Data linkage Workstream 1A (asset_id backfill)
+ASSET_ID BACKFILL — 266 UNLINKED T-12 FILES (G1)
+
+CONTEXT
+Per DATA_LIBRARY_INVENTORY.md G1: 266 T-12 files in 
+data_library_files have asset_id = NULL. They were ingested via 
+bulk/ZIP path before asset linkage was added. This blocks:
+- fetch_source_documents traceability for CashFlow Agent
+- benchmark aggregator (downstream of G7)
+- evidence audit trail completeness
+
+STEP 1 — INVESTIGATION
+A. Sample 10 NULL-asset_id files. For each, document:
+   - parcel_id (if any)
+   - property_name (if any)
+   - sha256, original_filename
+   - uploaded_at, source_signal
+   - Any other identifying context
+
+B. Determine matching strategy:
+   - Can parcel_id map to data_library_assets.id?
+   - Can property_name fuzzy-match to data_library_assets?
+   - Are there other linkage signals?
+
+C. Test the matching strategy on the sample of 10:
+   - How many would successfully match an asset?
+   - How many would be ambiguous (multiple possible matches)?
+   - How many would have no match (orphans)?
+
+REPORT FINDINGS. STOP GATE.
+
+STEP 2 — BACKFILL EXECUTION
+Only after Step 1 findings approved:
+
+A. Run backfill in batches of ~50, in a transaction per batch
+B. For each batch:
+   - UPDATE data_library_files SET asset_id = ? WHERE id = ?
+   - Verify count matched expectations
+C. Track:
+   - Total matched
+   - Total ambiguous (left unmatched, requires manual review)
+   - Total orphaned (no possible match)
+
+STEP 3 — VERIFICATION
+A. SELECT count(*) FROM data_library_files WHERE asset_id IS NULL
+   AND document_type = 'T12'
+   Expected: significantly reduced; document exact count
+
+B. Test fetch_source_documents agent tool on a deal whose T-12 
+   was just linked:
+   - Confirm tool returns the file in results
+   - Confirm provenance trail is now traceable
+
+STEP 4 — CLOSING NOTE in docs/operations/ASSET_ID_BACKFILL.md
+(a) Sample analysis + matching strategy
+(b) Backfill results: matched / ambiguous / orphaned counts
+(c) fetch_source_documents verification
+(d) Pending: orphan T-12s — separate decision on how to handle
+
+DO NOT
+- Modify the bulk-upload code that originally created the NULL 
+  asset_ids (separate scope; future ingestion should populate 
+  correctly via the recent fixes)
+- Backfill deal_id on historical_observations (separate dispatch, 
+  Workstream 1B)
+- "While I'm here" cleanups
+Dispatch 4 — Gmail OAuth investigation
+GMAIL OAUTH — INVESTIGATION DISPATCH (no implementation yet)
+
+CONTEXT
+Per OPPORTUNITY_CODE_AUDIT.md: Email Classifier (OPP-1) is a 
+fully coded 12-step Inngest pipeline blocked by zero users 
+having Gmail OAuth connected. This dispatch investigates what 
+infrastructure exists vs needs to be built, surfaces architectural 
+decisions, and produces an implementation plan.
+
+CRITICAL: Gmail OAuth involves security-sensitive code paths 
+(token storage, scope management, multi-tenant isolation). This 
+dispatch is investigation only. Implementation requires explicit 
+Leon approval of the design before any auth code is written.
+
+STEP 1 — EXISTING INFRASTRUCTURE AUDIT
+A. Does any OAuth infrastructure currently exist?
+   - Other OAuth providers integrated?
+   - Token storage schema?
+   - Encryption at rest for secrets?
+
+B. What does Email Classifier currently expect?
+   - Triggering event: gmail.message_received
+   - Expected payload shape
+   - Required scopes (read-only? full mailbox? specific labels?)
+
+C. Are Google Cloud credentials configured?
+   - GOOGLE_OAUTH_CLIENT_ID?
+   - GOOGLE_OAUTH_CLIENT_SECRET?
+   - Redirect URIs registered?
+   - If missing: flag as Leon-side prerequisite
+
+STEP 2 — DESIGN DECISIONS TO SURFACE
+For Leon's review before implementation:
+
+A. Scope strategy:
+   - Minimum scope: gmail.readonly (read inbox, can't modify)
+   - Alternative: gmail.metadata only (headers/subjects, no body 
+     access — limits Email Classifier capability)
+   - Recommendation + tradeoffs
+
+B. Token storage approach:
+   - Encrypted column in users table?
+   - Separate oauth_tokens table?
+   - External secrets manager?
+   - Recommendation + tradeoffs
+
+C. Email ingestion mechanism:
+   - Gmail Push notifications via Pub/Sub (preferred — real-time)
+   - Polling (fallback — every N minutes)
+   - Webhook reliability and replay handling
+
+D. Multi-tenant isolation:
+   - Each user's tokens encrypted independently
+   - How to ensure one user's emails can never be processed by 
+     another user's pipeline
+
+E. UI flow:
+   - Where does "Connect Gmail" button live?
+   - Settings page section?
+   - Onboarding flow?
+   - Permissions explanation copy
+
+F. Disconnect flow:
+   - How user revokes access
+   - What happens to in-flight emails when token revoked
+   - Data retention policy for previously-processed emails
+
+STEP 3 — REPORT in docs/operations/GMAIL_OAUTH_DESIGN.md
+(a) Existing infrastructure audit
+(b) Each design decision with recommendation + tradeoffs
+(c) Estimated implementation effort per component
+(d) Security considerations summary
+(e) Required Google Cloud Console setup (Leon-side prerequisites)
+(f) Phased implementation plan (recommend 2-3 phases)
+(g) Open questions requiring Leon's decision
+
+DO NOT
+- Write any OAuth code
+- Configure Google Cloud Console
+- Modify Email Classifier code
+- Build UI components
+- "While I'm here" cleanups
+- Make design decisions without surfacing them for Leon's input
+
+One last honest thing
+These four dispatches will produce findings between Day 1 and Day 3. The findings will likely include:
+
+More missing tables (probably 1-3 more) → more decisions
+OppGrid root cause that may require ApartmentIQ vendor coordination → external dependency
+asset_id backfill orphan rate (could be 5% or 50%) → strategic decision about platform data integrity
+Gmail OAuth design with 6 substantive decisions requiring your judgment → likely a several-hour design conversation
+
+So "fire all four today" produces a substantial decision backlog by mid-week. If you have the bandwidth to process that, the throughput is real. If your bandwidth is uncertain, the staggered approach gets the same work done with less concurrent decision load.
+
+Status
+Work itemStatusDispatch 1 — JEDI table + missing-tables auditReady, fire todayDispatch 2 — OppGrid ApartmentIQ investigationReady, fire todayDispatch 3 — Asset_id backfill (data linkage 1A)Ready, fire todayDispatch 4 — Gmail OAuth investigationReady, fire todayPhase 8 quota completionIn flightData linkage 1B (deal_id backfill)Queued after 1AData linkage 1C (benchmark rerun)Queued after 1BCashFlow Agent baseline re-runQueued after 1CDeal Triage UI (investigation + build)QueuedGmail OAuth implementationAfter investigation findings
+All four are drafted, ready to send. The structure of each has STOP gates and investigation-first discipline, which should mitigate the concurrency concern at least somewhat — the bot will pause for your review at the critical decision points in each track rather than charging through.
+Fire when ready. If at any point during the week you feel the concurrent decision load is too much, pause new dispatches and let the queue drain. The dispatches above are independently coherent — slowing one track doesn't block the others.
+Honest read: I think this is more than is wise to do simultaneously, and I've now said so twice. From here forward I'll execute on your direction. The four dispatches above are good work as drafted; the open question is operational pacing, which is yours.
