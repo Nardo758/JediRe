@@ -433,7 +433,7 @@ export class CycleIntelligenceService {
     const rateEnv = await this.getRateEnvironment();
     const metrics = await this.getMarketMetricsHistory(marketId, 1);
     
-    const currentCap = metrics[0]?.cap_rate || 5.25;
+    const currentCap = parseFloat(String(metrics[0]?.cap_rate ?? '')) || 5.25;
     
     // Chain C4: Mortgage rate → Cap rate (30-50bps per 100bps mortgage)
     // If forward curve predicts -100bps mortgage decline → -30-50bps cap compression

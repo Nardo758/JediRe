@@ -341,14 +341,14 @@ export async function classifyRateEnvironment(): Promise<RateEnvironmentResult> 
       computePricingWindowScore(classification, sofr, treasury10y);
 
     const macroContext = macroRow ? {
-      gdpGrowthPct: macroRow.gdp_growth_pct,
-      cpiYoyPct: macroRow.cpi_yoy_pct,
-      unrate: macroRow.unrate,
-      consumerSentiment: macroRow.consumer_sentiment,
-      m2Yoy: macroRow.m2_yoy,
-      dxy: macroRow.dxy,
-      snapshotDate: macroRow.snapshot_date,
-      narrativeBlock: macroBlock,
+      gdpGrowthPct:      macroRow.gdp_growth_pct      != null ? parseFloat(String(macroRow.gdp_growth_pct))      : null,
+      cpiYoyPct:         macroRow.cpi_yoy_pct         != null ? parseFloat(String(macroRow.cpi_yoy_pct))         : null,
+      unrate:            macroRow.unrate               != null ? parseFloat(String(macroRow.unrate))               : null,
+      consumerSentiment: macroRow.consumer_sentiment   != null ? parseFloat(String(macroRow.consumer_sentiment))   : null,
+      m2Yoy:             macroRow.m2_yoy               != null ? parseFloat(String(macroRow.m2_yoy))               : null,
+      dxy:               macroRow.dxy                  != null ? parseFloat(String(macroRow.dxy))                  : null,
+      snapshotDate:      macroRow.snapshot_date,
+      narrativeBlock:    macroBlock,
     } : undefined;
 
     const result: RateEnvironmentResult = {

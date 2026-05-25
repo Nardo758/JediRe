@@ -315,4 +315,54 @@ These were not identified in the DATA_LIBRARY_INVENTORY.md gap list:
 
 ---
 
-*End of baseline — Task #1047 extension*
+## 13. Day 5 Re-run — Verified Improvements (2026-05-25)
+
+**Full LLM re-run status:** Blocked — DeepSeek API returned 402 Insufficient Balance.
+**Verification method:** Tool-level dry run — each previously-empty tool's data source queried directly.
+
+### B1 + B2 — Fixed (code change, verified)
+
+| Blocker | Fix applied | Verified |
+|---------|-------------|---------|
+| **B1** `fetch_rate_environment` macro_context strings | `parseFloat()` at each NUMERIC field in `classifyRateEnvironment()` | ✓ `gdp_growth_pct=2.66 (number)`, `cpi_yoy_pct=3.95 (number)`, `unrate=4.3 (number)`, `consumer_sentiment=49.8 (number)`, `m2_yoy=4.57 (number)`, `dxy=119.28 (number)` |
+| **B2** `fetch_cycle_intelligence` cap_rate_forecast strings | `parseFloat(String(...))` on `metrics[0]?.cap_rate` in `predictCapRateMovement()` | ✓ `current_cap=5.15 (number)`, `predicted_cap=4.88 (number)` — tampa-msa |
+
+### G1 + G2 + G7 — Data now in place
+
+| Gap | What changed | Dry-run result |
+|-----|-------------|----------------|
+| **G7: line_item_benchmarks** | Seeded 11 rows via fixed aggregator + direct SQL | `fetch_line_item_benchmarks(['payroll','insurance','utilities_total','repairs_maintenance','management_fee'], asset_class=A, state=GA)` → `found: true, benchmarks: 5` |
+| **G7: archive_assumption_benchmarks** | 190 rows written (172 assumption names, n_samples up to 206) | `fetch_archive_assumption_distribution` → 190 rows covering exit cap, vacancy, debt rate, all major expense lines |
+| **G2: historical_observations** | Sentosa HO row inserted with deal_id linked | `fetch_backtest_context` data source: parcel_id=`fa526821...`, deal_id=`3d96f62d...`, occupancy=0.813, avg_rent=$1,807, units=304 |
+| **G1: data_library_files.asset_id** | 1,694 rows backfilled | `fetch_source_documents` data source: 1,694 of 1,695 files now linked; 1 test artifact intentionally orphaned |
+
+### archive-benchmark-aggregator.ts — 3 bugs fixed (nightly runs now correct)
+
+1. `source_type` filter: added `'archive'` — all 298 archive assets now included in nightly refresh
+2. Table name: `underwriting_snapshots` → `deal_underwriting_snapshots`
+3. Column name: `proforma_fields` → `proforma_json`; value extraction updated for LayeredValue `{value, source, ...}` shape
+
+### Tool status comparison (Day 1 vs Day 5)
+
+| Tool | Day 1 | Day 5 |
+|------|-------|-------|
+| `fetch_line_item_benchmarks` | ✗ EMPTY (0 rows) | ✓ DATA (11 rows, found=true) |
+| `fetch_archive_assumption_distribution` | ✗ EMPTY (0 rows) | ✓ DATA (190 rows) |
+| `fetch_archive_achievement_vs_assumption` | ✗ EMPTY (0 rows) | ✓ DATA (190 rows, same table) |
+| `fetch_backtest_context` | ✗ EMPTY (deal_id=NULL) | ✓ DATA (1 HO row linked) |
+| `fetch_source_documents` | ✗ EMPTY (asset_id=NULL on all files) | ✓ DATA (1,694 files linked) |
+| `fetch_rate_environment` (macro_context) | ⚠ SCHEMA ERR (strings) | ✓ FIXED (numbers) |
+| `fetch_cycle_intelligence` (cap_rate_forecast) | ⚠ SCHEMA ERR (strings) | ✓ FIXED (numbers) |
+| `fetch_data_library_comps` | ✗ EMPTY (no Wesley Chapel comps) | ✗ EMPTY (unchanged — no comps for this submarket) |
+| `fetch_peer_comp_noi_metrics` | ✗ EMPTY (no comp set) | ✗ EMPTY (unchanged) |
+| `fetch_m35_event_forecast` | ✗ EMPTY (no M35 events) | ✗ EMPTY (unchanged) |
+
+### Remaining open items
+
+- `fetch_data_library_comps`, `fetch_peer_comp_noi_metrics`, `fetch_m35_event_forecast` — require external data ingestion, not code fixes
+- `properties.parcel_id = NULL` for Sentosa — should be set to actual FL assessor parcel ID
+- Full LLM baseline re-run pending DeepSeek balance top-up — expected data completeness score improvement from 20/100 to ~40-50/100
+
+---
+
+*End of baseline — Week Plan complete (Dispatches 1–5)*
