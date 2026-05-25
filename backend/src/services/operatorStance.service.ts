@@ -82,7 +82,7 @@ async function loadBaselineSnapshot(
     `SELECT id, proforma_json, evidence_map
      FROM deal_underwriting_snapshots
      WHERE deal_id = $1
-       AND (agent_run_id IS NULL OR agent_run_id NOT LIKE 'stance_reblend_%')
+       AND agent_run_id IS NOT NULL
      ORDER BY created_at DESC LIMIT 1`,
     [dealId],
   );
@@ -431,18 +431,19 @@ export async function applyStanceReblend(
     fieldsModulated.push(fieldPath);
   }
 
-  // Write the stance reblend snapshot
+  // Write the stance reblend snapshot.
+  // agent_run_id is intentionally NULL for reblend snapshots so the UUID
+  // column constraint is satisfied and loadBaselineSnapshot (which filters
+  // agent_run_id IS NOT NULL) correctly skips reblend rows as non-baseline.
   const reblendId = randomUUID();
-  const reblendRunId = `stance_reblend_${reblendId}`;
 
   await db.query(
     `INSERT INTO deal_underwriting_snapshots
        (id, deal_id, agent_run_id, proforma_json, evidence_map, created_at)
-     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, NOW())`,
+     VALUES ($1, $2, NULL, $3::jsonb, $4::jsonb, NOW())`,
     [
       reblendId,
       dealId,
-      reblendRunId,
       JSON.stringify(proformaFields),
       JSON.stringify(baseline.evidence_map),
     ],

@@ -446,4 +446,55 @@ The benchmark data is flowing to the LLM. The data matrix layer just doesn't fla
 
 ---
 
-*End of baseline — Week Plan complete (Dispatches 1–5). Full LLM run executed 2026-05-25.*
+## 15. Task #1055 Post-Cleanup Re-Run (2026-05-25)
+
+Four post-Day-5 fixes applied and a fresh baseline triggered to measure impact.
+
+### Fixes applied
+
+| Fix | Item | Change |
+|-----|------|--------|
+| **Item 1 — MSA ID** | `historical_observations` | `msa_id = 'tampa-msa'` set on Sentosa HO row (parcel `fa526821…`) |
+| **B4 — OperatorStance reblend** | `operatorStance.service.ts` | `loadBaselineSnapshot`: `agent_run_id IS NOT NULL` (was `NOT LIKE 'stance_reblend_%'` on UUID column — illegal operator); reblend INSERT now writes `agent_run_id = NULL` instead of non-UUID prefixed string |
+| **Item 2 — FL/Tampa benchmarks** | `line_item_benchmarks` | **Blocked — insufficient data.** 0 FL deals in corpus with snapshots; only 9 FL assets total across different cities; < 3 samples for any line item. Documented as gap. |
+| **G8 — source_documents backfill** | `deals.deal_data` | **Blocked — no file metadata.** `data_library_files` has 0 rows linked to pre-May-19 deals (neither via `deal_id` nor `asset_id → source_deal_id`). Sentosa's 12 T12 rows in `deal_monthly_actuals` have no corresponding file record to backfill from. Documented as gap. |
+
+### Re-run results
+
+| Metric | Day 5 baseline | Task #1055 re-run |
+|--------|---------------|-------------------|
+| Run ID | `5c0b6ed4` | `b281d172-736a-4c67-ade5-e39cf01bad74` |
+| Status | succeeded | **succeeded** |
+| Cost | $0.148 | $0.136 |
+| Duration | 165.7s | 149.5s |
+| Tokens in | — | 1,586,299 |
+| Tokens out | — | 18,161 |
+| Evidence fields | 20 | **21** (8×T1, 13×T3) |
+| B4 reblend crash | Yes | **No — fixed** (reblend snapshot `4aa1b1c9` written with `agent_run_id = NULL`) |
+
+### B4 fix confirmation
+
+The `deal_underwriting_snapshots` table post-run shows:
+
+```
+4aa1b1c9  agent_run_id=NULL   (reblend snapshot — B4 fix confirmed)
+66928f1b  agent_run_id=b281d172…  (baseline agent run)
+```
+
+`loadBaselineSnapshot` now correctly finds `66928f1b` (the agent baseline) by filtering `agent_run_id IS NOT NULL`, and the reblend INSERT writes `NULL` instead of the un-storable `stance_reblend_UUID` string.
+
+### Remaining gaps (data layer)
+
+| Layer | Status | Root cause |
+|-------|--------|-----------|
+| `backtest` | Still empty | `fetch_backtest_context` joins via `msa_id` in `historical_observations`; msa_id is now set to `tampa-msa` but `m28_cycle_snapshots` market_id is `tampa-msa` — confirm if `fetch_data_matrix` reads HO or directly queries cycle snapshots |
+| `benchmarks` | Still empty | `fetch_line_item_benchmarks` filters `state = 'FL'` / `msa ILIKE '%Tampa%'`; 0 FL rows in `line_item_benchmarks`; national-class fallback is not flagged as "benchmarks layer present" by the data matrix scorer |
+| `source_documents` | Empty | No file extraction metadata in `data_library_files` for pre-May-19 deals; `writeSourceDocument` (added 2026-05-19) only runs on new extractions |
+
+### Agent narrative (Task #1055 re-run)
+
+> Sentosa Epperson (304 units, Wesley Chapel FL) — pipeline deal with T12 NOI $3,038,689 (56.7% margin). Property is in lease-up phase at 82.6% occupancy. Key risks: (1) No purchase price specified — estimated $50M at 6.08% implied cap; (2) T12 other income $0 — likely data extraction gap; (3) Several T12 opex lines (R&M, payroll, utilities) appear understated for lease-up period — normalized to benchmarks; (4) M36 plausibility d=1.82 (Aggressive) driven by management fee (4.05% vs archive 2.75%) and replacement reserves ($400/unit vs archive $153/unit). Projected 5-yr IRR 15.9% at $50M purchase / 65% LTV / 5.5% exit cap. Operator stance is MARKET (defaulted) — no adjustments applied.
+
+---
+
+*End of baseline doc — Task #1055 re-run complete 2026-05-25.*
