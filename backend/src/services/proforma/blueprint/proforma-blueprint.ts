@@ -12,7 +12,7 @@
  *   - The drift test that asserts the registry stays in sync with the spec
  *
  * Anytime the spec changes, this object must be updated and the JSON snapshot
- * (./proforma-blueprint.json) regenerated.
+ * (./proforma-blueprint.snapshot.json) regenerated.
  */
 
 import type { ModuleId } from '../../module-wiring/module-registry';

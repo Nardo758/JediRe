@@ -105,7 +105,7 @@ describe('Pro Forma Blueprint drift', () => {
   });
 
   test('generated JSON artifact matches in-memory blueprint exactly', () => {
-    const jsonPath = path.join(__dirname, '..', 'proforma-blueprint.json');
+    const jsonPath = path.join(__dirname, '..', 'proforma-blueprint.snapshot.json');
     expect(fs.existsSync(jsonPath)).toBe(true);
     const onDisk = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
     // Compare via canonical JSON string round-trip so key order doesn't matter.

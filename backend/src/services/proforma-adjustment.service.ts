@@ -21,6 +21,8 @@ import { kafkaProducer } from './kafka/kafka-producer.service';
 import { KAFKA_TOPICS } from './kafka/event-schemas';
 import { buildTaxContext } from './tax/compositeResolver';
 import { composeOtherIncomeBreakdown, loadTrailingActualsMap } from './financials-composer.service';
+import { projectProforma, type ProjectionYearResult } from './proforma/proforma-projection.service';
+import { provenanced } from '../types/provenanced-value';
 
 // ============================================================================
 // Types
@@ -1997,6 +1999,116 @@ function xirr(cashflows: number[]): number | null {
   return null;
 }
 
+/**
+ * projectProformaForDeal — bridge between the getDealFinancials data context and
+ * the layered growth engine (proforma-projection.service.ts).
+ *
+ * Maps deal-level scalar data to ProjectionInputs and calls projectProforma()
+ * to produce per-year, per-line growth rates. This replaces the flat
+ * `opexGrowthRate` scalar and the hardcoded 3.5% insurance step that the
+ * projection loop previously applied to every OPEX line uniformly.
+ *
+ * Signal wiring:
+ *   momentum         ← rentGrowthYr1 (user Y1 assumption) OR calibRentGrowth (M07)
+ *   cyclePressureIndex ← null (not yet wired; engine falls back to anchor)
+ *   cpiShelterYoY    ← null (BLS feed not yet wired; engine uses CPI shelter defaults)
+ *   eventDeltas      ← [] (Correlation Engine not yet plumbed here)
+ *
+ * When signals are null the engine runs in anchor-dominant mode, producing
+ * rates from CPI shelter + asset-class spread (e.g. multifamily = CPI + 30bps).
+ * That is already a substantial improvement over the single flat 3% rate.
+ */
+export function projectProformaForDeal(
+  opts: {
+    assetClass: string;
+    holdYears: number;
+    totalUnits: number;
+    /** From deal_assumptions.rent_growth_yr1 (decimal). Used as Y1 momentum signal. */
+    rentGrowthYr1: number | null;
+    /** From M07 calibrated rent growth (decimal). Secondary momentum fallback. */
+    calibRentGrowth: number | null;
+    /**
+     * Investment strategy slug (e.g. "value_add", "rental", "redevelopment").
+     * Drives revenue formula selection:
+     *   value_add / value-add → renewal_aware (Tier 3 new+renewal split)
+     *   everything else       → mark_to_market (default)
+     * Only affects the rent-growth computation path; OPEX growth is formula-agnostic.
+     */
+    strategySlug?: string | null;
+  }
+): ProjectionYearResult[] {
+  const normalizedAssetClass = opts.assetClass.toLowerCase().trim() || 'multifamily';
+
+  // Build momentum signal from the best available rent growth signal.
+  // Confidence 0.75 for user-set, 0.65 for M07 calibrated (less certain about forward rates).
+  const momentumSignal = opts.rentGrowthYr1 ?? opts.calibRentGrowth;
+  const momentum = momentumSignal != null
+    ? provenanced(
+        momentumSignal,
+        'platform',
+        opts.rentGrowthYr1 != null ? 0.75 : 0.65,
+        'derived',
+        opts.rentGrowthYr1 != null
+          ? 'user-set Y1 rent growth assumption (deal_assumptions.rent_growth_yr1)'
+          : 'M07 calibrated rent growth (proforma_assumptions.rent_growth_current)',
+      )
+    : null;
+
+  // Minimal OPEX line inputs — all signals null so the engine uses DEFAULT_LINE_ANCHORS:
+  //   propertyTax: 4%, insurance: 7%, utilities: 3%, repairsMaintenance: 3.5%,
+  //   payroll: 4%, marketingAdmin: 2.5%, replacementReserves: 2.5%, other: 2.5%
+  // structuralOverride is required and must be a ProvenancedValue; zero = no FL override.
+  const _noOverride = provenanced(0, 'platform', 1.0, 'derived', 'no structural override');
+  const _minOpexLine = {
+    momentum: null,
+    cycle: null,
+    anchor: null,         // null → engine uses DEFAULT_LINE_ANCHORS[line]
+    eventDeltas: [] as [],
+    structuralOverride: _noOverride,
+  };
+  const opexBase = {
+    propertyTax:        _minOpexLine,
+    insurance:          _minOpexLine,
+    utilities:          _minOpexLine,
+    repairsMaintenance: _minOpexLine,
+    payroll:            _minOpexLine,
+    marketingAdmin:     _minOpexLine,
+    replacementReserves: _minOpexLine,
+    other:              _minOpexLine,
+    // managementFee is handled separately by the engine (auto-couples to revenue growth)
+  };
+
+  // Revenue formula dispatch based on investment strategy:
+  //   value_add / value-add → renewal_aware (Tier 3: splits new-lease vs renewal rent with
+  //                           separate growth rates — most precise for repositioning deals)
+  //   everything else       → mark_to_market (default: mark-to-market effective rent)
+  // OPEX growth rates are formula-agnostic (same per-line engine regardless of formula).
+  const _slug = (opts.strategySlug ?? '').toLowerCase().replace(/[\s-]+/g, '_');
+  const _revenueFormula: 'mark_to_market' | 'renewal_aware' =
+    _slug === 'value_add' ? 'renewal_aware' : 'mark_to_market';
+
+  return projectProforma({
+    templateId: 'acquisition_stabilized',
+    revenueFormula: _revenueFormula,
+    horizonYears: opts.holdYears,
+    rentGrowthBase: {
+      horizonYears: opts.holdYears,
+      assetClass: normalizedAssetClass,
+      momentum,
+      cyclePressureIndex: null,
+      cpiShelterYoY: null,
+      eventDeltas: [],
+    },
+    opexBase,
+    revenueParams: {
+      units: Math.max(1, opts.totalUnits),
+      inPlaceRent: 1000,          // placeholder — only growth rates consumed from result
+      marketRentYear1: 1000,      // placeholder — only growth rates consumed from result
+    },
+    noiMargin: 0.60,
+  });
+}
+
 export async function getDealFinancials(
   pool: Pool,
   dealId: string,
@@ -2845,17 +2957,47 @@ export async function getDealFinancials(
   const allPyOverrides = (assumptionsRow?.per_year_overrides ?? {}) as Record<string, { value: number | null }>;
   const concessionBurnOffFromOverrides: number | null = allPyOverrides['concessionBurnOffPct:yr1']?.value ?? null;
 
-  // Per-year assumptions grid: year1 uses M07 calibrated values; years 2+ blend toward
-  // stabilized growth (platform findings from proforma_assumptions.rent_growth_current)
+  // ── Layered growth engine — replaces the flat opexGrowthRate scalar ─────────
+  // Calls projectProformaForDeal() to get per-year, per-line growth rates from the
+  // five-component rent model and nine-line OPEX model. Results are indexed by year
+  // for O(1) lookup inside the projection loop. Falls back to flat opexGrowthRate
+  // whenever the engine result is unavailable for a given line.
+  const _earlyDealData = (deal.deal_data ?? {}) as Record<string, unknown>;
+  const _layeredAssetClass = (
+    (_earlyDealData.asset_class ?? _earlyDealData.property_type ?? 'multifamily') as string
+  ).toLowerCase().trim() || 'multifamily';
+  // Extract investment strategy for formula dispatch (available from assumptionsRes).
+  const _stratLvRaw = assumptionsRes.rows[0]?.investment_strategy_lv as
+    { detected?: { value?: string } | null; override?: string | null } | null;
+  const _strategySlug: string | null =
+    _stratLvRaw?.override ?? _stratLvRaw?.detected?.value ?? null;
+  const _layeredResults = projectProformaForDeal({
+    assetClass: _layeredAssetClass,
+    holdYears,
+    totalUnits,
+    rentGrowthYr1,
+    calibRentGrowth,
+    strategySlug: _strategySlug,
+  });
+  const _layeredByYear = new Map(_layeredResults.map(r => [r.year, r]));
+
+  // Per-year assumptions grid: year1 uses M07 calibrated values; years 2+ use the
+  // layered engine as the primary rent growth signal, falling back to the stabilized
+  // blend only when the engine produces no result.
   const perYear = Array.from({ length: holdYears }, (_, i) => {
     const yr = i + 1;
-    // Rent growth: yr1 uses rentGrowthYr1, subsequent years blend toward stabilized over 5yrs
+    // Rent growth: prefer layered engine rate (five-component model); fall back to
+    // the stabilized blend when the engine provides no signal.
     const growthBase = rentGrowthYr1 ?? calibRentGrowth ?? null;
     const growthStab = rentGrowthStab ?? growthBase;
     const blendFactor = Math.min(1, (yr - 1) / 5);
-    const rentGrowthPct = growthBase != null && growthStab != null
+    const blendedFallback = growthBase != null && growthStab != null
       ? +(growthBase + (growthStab - growthBase) * blendFactor).toFixed(3)
       : growthStab;
+    const layeredRate = _layeredByYear.get(yr)?.rentGrowth.value ?? null;
+    const rentGrowthPct = layeredRate != null
+      ? +layeredRate.toFixed(4)
+      : blendedFallback;
 
     // Vacancy: use M07-calibrated floor (improving toward stabilized over first 3yrs)
     const vacancyBase = calibVacancy ?? (yr === 1 ? derivedVacancyPct : null);
@@ -4243,6 +4385,9 @@ export async function getDealFinancials(
     let runGAndA      = gAndAY1;
     let runInsurance  = insuranceY1;
     let runReserves   = reservesY1;
+    // RE tax running base — enables year-specific layered property-tax rates to compound
+    // correctly (matches the iterative pattern used for payroll, insurance, reserves, etc.).
+    let runReTax      = reTaxY1Base > 0 ? reTaxY1Base : 0;
 
     for (let yr = 1; yr <= holdYears; yr++) {
       const pv = assumptions.perYear.find(p => p.year === yr);
@@ -4250,12 +4395,44 @@ export async function getDealFinancials(
       const thisYrGrowth = pv?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03;
 
       // Growth step applied TO this year: uses the prior year's per-year growth rate.
-      // opexGrowthRate sourced from proforma_assumptions.opex_growth_current (default 3%).
-      // Insurance uses 3.5% industry standard. No growth at yr=1 (Y1 seeds are the base).
+      // Rent growth and per-line OPEX growth come from the layered engine (five-component
+      // rent model + nine-line OPEX model with individual anchors). opexGrowthRate is
+      // retained as a fallback for any line not mapped to an engine key.
+      // No growth at yr=1 (Y1 seeds are the base).
       const prevPv         = yr > 1 ? assumptions.perYear.find(p => p.year === yr - 1) : null;
-      const rentGrowthStep = yr === 1 ? 0 : (prevPv?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03);
-      const opexGrowthStep = yr === 1 ? 0 : opexGrowthRate;
-      const insGrowthStep  = yr === 1 ? 0 : 0.035;
+      const _prevLy        = yr > 1 ? _layeredByYear.get(yr - 1) : null;
+      const rentGrowthStep = yr === 1 ? 0 : (
+        prevPv?.rentGrowthPct ??                            // operator per-year override wins
+        _prevLy?.rentGrowth.value ??                        // layered engine (five-component)
+        assumptions.rentGrowthStabilized ?? 0.03            // stabilized fallback
+      );
+
+      // Per-line OPEX step resolver: reads the current year's layered engine result for
+      // the given OpexLineKey. Falls back to the flat opexGrowthRate scalar when the
+      // engine has no result. Year-1 is always 0 (seeds are already the base).
+      const _curLy = _layeredByYear.get(yr);
+      const _opexStep = (lineKey: string): number =>
+        yr === 1 ? 0 : (_curLy?.opex.find(o => o.line === lineKey)?.growthTuned ?? opexGrowthRate);
+
+      // Convenience aliases for each projected OPEX line.
+      // Line-to-OpexLineKey mapping (spec §7):
+      //   payroll           → 'payroll'          (anchor 4%, BLS ECI)
+      //   repairs_maint.    → 'repairsMaintenance'(anchor 3.5%, BLS PPI construction)
+      //   turnover          → 'repairsMaintenance'(closest match — labour + materials)
+      //   contract_services → 'repairsMaintenance'(contract labour ~ PPI construction)
+      //   marketing         → 'marketingAdmin'   (anchor 2.5%, CPI all-items)
+      //   utilities         → 'utilities'         (anchor 3%, EIA AEO)
+      //   g_and_a           → 'marketingAdmin'   (anchor 2.5%)
+      //   insurance         → 'insurance'         (anchor 7%, NAIC regional)
+      //   replacement res.  → 'replacementReserves'(anchor 2.5%, per-unit age curve)
+      const payrollStep    = _opexStep('payroll');
+      const repairsStep    = _opexStep('repairsMaintenance');
+      const contractStep   = _opexStep('repairsMaintenance');
+      const marketingStep  = _opexStep('marketingAdmin');
+      const utilitiesStep  = _opexStep('utilities');
+      const gAndAStep      = _opexStep('marketingAdmin');
+      const insStep        = _opexStep('insurance');
+      const reservesStep   = _opexStep('replacementReserves');
 
       // Per-year override resolver: returns the operator-set dollar value for field F at
       // year yr (from per_year_overrides), or null if no override (formula applies).
@@ -4286,31 +4463,33 @@ export async function getDealFinancials(
         : runOtherIncPU * (1 + rentGrowthStep);
       const egi         = nri + otherIncome;
 
-      // Expenses — override-aware running-base compounding
+      // Expenses — override-aware running-base compounding using per-line layered rates.
+      // Each line uses its own anchor from the layered OPEX engine (spec §7) instead of
+      // a single flat opexGrowthRate. Dollar-amount operator overrides always take priority.
       const payrollOvr   = projPyOvr('payroll');
-      const payroll      = payrollOvr   != null ? Math.round(payrollOvr)   : Math.round(runPayroll   * (1 + opexGrowthStep));
+      const payroll      = payrollOvr   != null ? Math.round(payrollOvr)   : Math.round(runPayroll   * (1 + payrollStep));
       runPayroll         = payroll;
       const repairsOvr   = projPyOvr('repairs_maintenance');
-      const repairs      = repairsOvr   != null ? Math.round(repairsOvr)   : Math.round(runRepairs   * (1 + opexGrowthStep));
+      const repairs      = repairsOvr   != null ? Math.round(repairsOvr)   : Math.round(runRepairs   * (1 + repairsStep));
       runRepairs         = repairs;
       const turnoverOvr  = projPyOvr('turnover');
-      const turnover     = turnoverOvr  != null ? Math.round(turnoverOvr)  : Math.round(runTurnover  * (1 + opexGrowthStep));
+      const turnover     = turnoverOvr  != null ? Math.round(turnoverOvr)  : Math.round(runTurnover  * (1 + repairsStep));
       runTurnover        = turnover;
       const contractOvr  = projPyOvr('contract_services');
-      const contractSvc  = contractOvr  != null ? Math.round(contractOvr)  : Math.round(runContract  * (1 + opexGrowthStep));
+      const contractSvc  = contractOvr  != null ? Math.round(contractOvr)  : Math.round(runContract  * (1 + contractStep));
       runContract        = contractSvc;
       const marketingOvr = projPyOvr('marketing');
-      const marketing    = marketingOvr != null ? Math.round(marketingOvr) : Math.round(runMarketing * (1 + opexGrowthStep));
+      const marketing    = marketingOvr != null ? Math.round(marketingOvr) : Math.round(runMarketing * (1 + marketingStep));
       runMarketing       = marketing;
       const utilitiesOvr = projPyOvr('utilities');
-      const utilities    = utilitiesOvr != null ? Math.round(utilitiesOvr) : Math.round(runUtilities * (1 + opexGrowthStep));
+      const utilities    = utilitiesOvr != null ? Math.round(utilitiesOvr) : Math.round(runUtilities * (1 + utilitiesStep));
       runUtilities       = utilities;
       const gAndAOvr     = projPyOvr('g_and_a');
-      const gAndA        = gAndAOvr    != null ? Math.round(gAndAOvr)    : Math.round(runGAndA    * (1 + opexGrowthStep));
+      const gAndA        = gAndAOvr    != null ? Math.round(gAndAOvr)    : Math.round(runGAndA    * (1 + gAndAStep));
       runGAndA           = gAndA;
       const mgmtFee      = Math.round(egi * mgmtFeePct);
       const insuranceOvr = projPyOvr('insurance');
-      const insurance    = insuranceOvr != null ? Math.round(insuranceOvr) : Math.round(runInsurance * (1 + insGrowthStep));
+      const insurance    = insuranceOvr != null ? Math.round(insuranceOvr) : Math.round(runInsurance * (1 + insStep));
       runInsurance       = insurance;
 
       // RE Taxes: prefer tax_abatement per-year override (W-04), then taxes tab, else compound Y1 seed
@@ -4323,12 +4502,18 @@ export async function getDealFinancials(
       } else if (taxYr?.taxAmount != null && taxYr.taxAmount > 0) {
         reTaxes = Math.round(taxYr.taxAmount); reTaxSource = 'taxes_tab';
       } else if (reTaxY1Base > 0) {
-        reTaxes = Math.round(reTaxY1Base * Math.pow(1 + opexGrowthRate, yr - 1));
+        // Use propertyTax anchor from the layered engine (default 4%) compounded iteratively
+        // on the running base. Running-base (like payroll, insurance, reserves) ensures
+        // year-specific rates compound correctly — Math.pow(1+step, yr-1) diverges from
+        // the true cumulative product when step varies by year.
+        const propTaxStep = yr === 1 ? 0 : (_curLy?.opex.find(o => o.line === 'propertyTax')?.growthTuned ?? opexGrowthRate);
+        reTaxes = yr === 1 ? Math.round(runReTax) : Math.round(runReTax * (1 + propTaxStep));
+        runReTax = reTaxes;
         reTaxSource = 'proforma';
       }
 
       const reservesOvr = projPyOvr('replacement_reserves');
-      const reserves    = reservesOvr != null ? Math.round(reservesOvr) : Math.round(runReserves * (1 + opexGrowthStep));
+      const reserves    = reservesOvr != null ? Math.round(reservesOvr) : Math.round(runReserves * (1 + reservesStep));
       runReserves       = reserves;
       const totalOpex  = payroll + repairs + turnover + contractSvc + marketing + utilities + gAndA + mgmtFee + insurance + reTaxes + reserves;
       const noi        = egi - totalOpex;

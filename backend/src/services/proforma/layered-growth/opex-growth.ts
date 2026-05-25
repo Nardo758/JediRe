@@ -245,13 +245,29 @@ export function computeOpexLineGrowth(inputs: OpexLineInputs): LayeredOpexLineRe
 
   const structuralVal = inputs.structuralOverride.value ?? 0;
 
-  const contributions = {
-    momentum: w.momentum * (momentumVal ?? 0),
-    cycle: w.cycle * (cycleVal ?? 0),
-    anchor: w.anchor * anchorVal,
-    eventDeltas: eventDeltasSum,
-    structuralOverride: structuralVal,
-  };
+  // Anchor-only mode: when neither momentum nor cycle has a real signal, skip the
+  // weight schedule entirely and return the anchor directly. Applying the weight
+  // schedule against zero (null→0 fallback) would attenuate the anchor by 1-w_a,
+  // producing materially below-nominal rates in early years (e.g. insurance Y1
+  // would be ~0.6% instead of 7% because w_a ≈ 0.086 in Y1). The weight schedule
+  // is meaningful only when there are real competing signals to blend.
+  const noSignals = momentumVal === null && cycleVal === null;
+
+  const contributions = noSignals
+    ? {
+        momentum: 0,
+        cycle: 0,
+        anchor: anchorVal,          // full anchor, no weight attenuation
+        eventDeltas: eventDeltasSum,
+        structuralOverride: structuralVal,
+      }
+    : {
+        momentum: w.momentum * (momentumVal ?? 0),
+        cycle: w.cycle * (cycleVal ?? 0),
+        anchor: w.anchor * anchorVal,
+        eventDeltas: eventDeltasSum,
+        structuralOverride: structuralVal,
+      };
 
   let total =
     contributions.momentum +
