@@ -606,6 +606,15 @@ async function processJob(job: {
 
     if (parcel_id && (lookupAddress || propertyNameForSearch)) {
       try {
+        // Resolve the DLA asset_id so research-enrichment can write the FK,
+        // enabling the DQ recalculator to use the deterministic asset_id path
+        // rather than the brittle property_name == parcel_id string match.
+        const dlaLookup = await query<{ id: string }>(
+          `SELECT id FROM data_library_assets WHERE property_name = $1 ORDER BY created_at DESC LIMIT 1`,
+          [parcel_id],
+        );
+        const dlaAssetId = dlaLookup.rows[0]?.id ?? undefined;
+
         const { runResearchEnrichment } = await import('../research/research-enrichment.service');
         const enrichResult = await runResearchEnrichment({
           parcelId: parcel_id,
@@ -613,6 +622,7 @@ async function processJob(job: {
           address: lookupAddress,
           city: lookupCity,
           state: lookupState,
+          assetId: dlaAssetId,
         });
         const webEntry = enrichResult.log_entries.find(
           (e: { step: string; detail?: Record<string, unknown> }) => e.step === 'web_search'
@@ -642,11 +652,10 @@ async function processJob(job: {
           },
         });
         // Mark that Phase 8 data was staged to pending_web, requiring user review.
-        if (
-          (enrichResult.narrative_words ?? 0) > 0 ||
-          (enrichResult.reviews_count ?? 0) > 0 ||
-          (enrichResult.photos_count ?? 0) > 0
-        ) {
+        // Use fields_written.length > 0 so ALL staged fields (sentiment_summary,
+        // recent_events, amenity flags, etc.) trigger awaiting_review — not just
+        // the three originally checked (narrative / reviews / photos).
+        if (enrichResult.fields_written.length > 0) {
           phase8HasData = true;
         }
       } catch (enrichErr: unknown) {

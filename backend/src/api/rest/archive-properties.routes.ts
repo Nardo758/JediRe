@@ -264,6 +264,7 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
         address: asset.address,
         city: asset.city,
         state: asset.state,
+        assetId: asset.id,
       }).then(result => ({ result }));
 
       const SYNC_TIMEOUT_MS = 5000;

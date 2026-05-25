@@ -405,22 +405,26 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   // before the first server save). In edit mode, serverDqScore is always
   // initialised from the DB and this function is never the authoritative value.
   // This function does NOT write to the database (removed in Phase 8 / Task #1041).
+  // Formula: base_pts / 130 * 100, matching the server 130-point normalization.
+  // Phase 8 bonus (up to 30 pts) contributes 0 here since no enrichment exists
+  // yet at create-time; the score rises once enrichment is applied server-side.
   const calculateDQScore = (): number => {
-    let score = 0;
-    // Required fields (10 pts each, max 100 — matches server 100-point core)
-    if (details.city && details.state) score += 10;
-    if (details.propertyType) score += 10;
-    if (details.assetClass) score += 10;
-    if (details.units) score += 10;
-    if (details.yearBuilt) score += 10;
+    let basePts = 0;
+    // Required fields (10 pts each, 100 pts max base — matches server core)
+    if (details.city && details.state) basePts += 10;
+    if (details.propertyType) basePts += 10;
+    if (details.assetClass) basePts += 10;
+    if (details.units) basePts += 10;
+    if (details.yearBuilt) basePts += 10;
     // Financial fields (10 pts each)
-    if (details.avgRent) score += 10;
-    if (details.occupancyPct) score += 10;
-    if (details.capRate || details.noi) score += 10;
+    if (details.avgRent) basePts += 10;
+    if (details.occupancyPct) basePts += 10;
+    if (details.capRate || details.noi) basePts += 10;
     // Either Asking Price OR Sold Price counts
-    if (details.askingPrice || details.soldPrice) score += 10;
-    if (details.dealType) score += 10;
-    return Math.min(score, 100);
+    if (details.askingPrice || details.soldPrice) basePts += 10;
+    if (details.dealType) basePts += 10;
+    // Normalize to 130-point denominator (server formula: raw / 130 * 100)
+    return Math.round(Math.min(basePts, 100) / 130 * 100);
   };
 
   const handleAutoEnrich = async () => {

@@ -60,8 +60,9 @@ export async function runResearchEnrichment(opts: {
   city: string | null;
   state: string | null;
   skipPlaces?: boolean;
+  assetId?: string;
 }): Promise<ResearchEnrichmentResult> {
-  const { parcelId, propertyName, address, city, state, skipPlaces = false } = opts;
+  const { parcelId, propertyName, address, city, state, skipPlaces = false, assetId } = opts;
   const logEntries: LogEntry[] = [];
   const fieldsWritten: string[] = [];
   const now = () => new Date().toISOString();
@@ -197,11 +198,12 @@ export async function runResearchEnrichment(opts: {
   if (Object.keys(updates).length > 0) {
     const pendingCols = Object.keys(updates);
     // For new rows: write the full pending structure.
-    // For existing rows: inject ONLY the pending_web slot via jsonb_set,
+    // For existing rows: inject ONLY the pending_web slot via || merge,
     // preserving any existing resolved value and layers.web.
-    // jsonb_set cannot create nested missing paths in one step (e.g. {layers,pending_web}
-    // silently returns {} when the 'layers' key doesn't exist in the base object).
-    // Solution: ensure 'layers' exists first via || merge, then inject pending_web.
+    // Note: jsonb_set cannot create nested missing paths in one step
+    // ({layers,pending_web} silently returns {} when 'layers' doesn't exist).
+    // The || + jsonb_build_object pattern handles all three base cases:
+    //   null base, empty {} base, base with existing layers.
     const setClauses = pendingCols.map(col =>
       `${col} = (
              COALESCE(property_descriptions.${col}, '{}') ||
@@ -211,14 +213,20 @@ export async function runResearchEnrichment(opts: {
              )
            )`
     ).join(',\n           ');
-    const values = [parcelId, ...Object.values(updates)];
+    // asset_id FK persists a deterministic link to data_library_assets
+    // so DQ recalculation and apply/discard can resolve the correct asset
+    // without relying on the brittle property_name == parcel_id assumption.
+    const assetIdClause = assetId ? ', asset_id = COALESCE(property_descriptions.asset_id, EXCLUDED.asset_id)' : '';
+    const insertAssetIdCol = assetId ? ', asset_id' : '';
+    const insertAssetIdVal = assetId ? `, $${pendingCols.length + 2}::uuid` : '';
+    const values = [parcelId, ...Object.values(updates), ...(assetId ? [assetId] : [])];
 
     try {
       await dbQuery(
-        `INSERT INTO property_descriptions (parcel_id, ${pendingCols.join(', ')}, updated_at)
-         VALUES ($1, ${pendingCols.map((_, i) => `$${i + 2}::jsonb`).join(', ')}, NOW())
+        `INSERT INTO property_descriptions (parcel_id, ${pendingCols.join(', ')}${insertAssetIdCol}, updated_at)
+         VALUES ($1, ${pendingCols.map((_, i) => `$${i + 2}::jsonb`).join(', ')}${insertAssetIdVal}, NOW())
          ON CONFLICT (parcel_id) DO UPDATE SET
-           ${setClauses},
+           ${setClauses}${assetIdClause},
            updated_at = NOW()`,
         values,
       );

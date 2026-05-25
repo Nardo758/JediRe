@@ -34,12 +34,18 @@ export async function recalculateDQScore(assetId: string): Promise<number> {
     ).then(r => r.rows[0] ?? null),
 
     dbQuery<Record<string, unknown>>(
+      // Prefer asset_id FK (deterministic) over property_name string match (fragile).
+      // COALESCE fallback handles rows that predate the asset_id backfill.
       `SELECT narrative, photos, reviews, sentiment_summary, recent_events,
               regulatory_constraints, has_pool, has_fitness, has_clubhouse,
               has_concierge, has_business_center, has_dog_park
-       FROM property_descriptions WHERE parcel_id = (
-         SELECT property_name FROM data_library_assets WHERE id = $1 LIMIT 1
-       )`,
+       FROM property_descriptions
+       WHERE asset_id = $1
+          OR (asset_id IS NULL AND parcel_id = (
+                SELECT property_name FROM data_library_assets WHERE id = $1 LIMIT 1
+              ))
+       ORDER BY CASE WHEN asset_id = $1 THEN 0 ELSE 1 END
+       LIMIT 1`,
       [assetId],
     ).then(r => r.rows[0] ?? null),
   ]);
