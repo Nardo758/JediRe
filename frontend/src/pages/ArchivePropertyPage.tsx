@@ -376,7 +376,9 @@ export default function ArchivePropertyPage() {
           <div style={S.sectionTitle}>Description</div>
 
           {narrativeText && (
-            <div style={S.narrative}>{narrativeText}</div>
+            <div style={S.narrative}>
+              <ParsedNarrative text={narrativeText} />
+            </div>
           )}
 
           <div style={S.attrGrid}>
@@ -447,7 +449,7 @@ export default function ArchivePropertyPage() {
                 {photos.map((p, i) => (
                   <div key={i} style={{ position: 'relative' }}>
                     <img
-                      src={p.url}
+                      src={p.proxy_url}
                       alt={`Property photo ${i + 1}`}
                       style={{
                         width: '180px', height: '120px', objectFit: 'cover',
@@ -553,8 +555,19 @@ export default function ArchivePropertyPage() {
 
         {/* ── Recent Events (Phase 8) ── */}
         {(() => {
-          const events = rv(desc?.recent_events);
-          if (!events || events.length === 0) return null;
+          const allEvents = rv(desc?.recent_events);
+          if (!allEvents || allEvents.length === 0) return null;
+          const TWO_YEARS_MS = 2 * 365 * 24 * 60 * 60 * 1000;
+          const events = allEvents.filter(e => {
+            const d = new Date(e.date);
+            return !isNaN(d.getTime()) && Date.now() - d.getTime() < TWO_YEARS_MS;
+          });
+          if (events.length === 0) return (
+            <div style={S.section}>
+              <div style={S.sectionTitle}>Recent Events</div>
+              <div style={{ color: '#8892b0', fontSize: '12px' }}>No events within the last 2 years.</div>
+            </div>
+          );
           const eventColor: Record<string, string> = {
             renovation: '#4ade80',
             ownership_change: '#4fc3f7',
@@ -653,7 +666,8 @@ export default function ArchivePropertyPage() {
               </div>
             </div>
 
-            {(ts.series.asking_rent.length === 0 && ts.series.avg_rent.length === 0 && ts.series.occupancy.length === 0) && (
+            {(ts.series.asking_rent.length === 0 && ts.series.avg_rent.length === 0 &&
+            ts.series.occupancy.length === 0) && (
               <div style={{ color: '#8892b0', fontSize: '12px', padding: '12px 0' }}>
                 No time-series data yet for this property. Upload T-12 or rent roll files to populate.
               </div>
@@ -706,6 +720,50 @@ export default function ArchivePropertyPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── ParsedNarrative — inline citation links ──────────────────────────────────
+
+function ParsedNarrative({ text }: { text: string }) {
+  const CITATION_RE = /\[(https?:\/\/[^\]]+)\]/g;
+  const parts: Array<{ type: 'text' | 'link'; content: string }> = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = CITATION_RE.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', content: text.slice(lastIndex, match.index) });
+    }
+    parts.push({ type: 'link', content: match[1] });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    parts.push({ type: 'text', content: text.slice(lastIndex) });
+  }
+  let citationNum = 0;
+  return (
+    <span>
+      {parts.map((p, i) => {
+        if (p.type === 'text') return <span key={i}>{p.content}</span>;
+        citationNum++;
+        const num = citationNum;
+        return (
+          <a
+            key={i}
+            href={p.content}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={p.content}
+            style={{
+              color: '#388bfd', textDecoration: 'none', fontSize: '10px',
+              verticalAlign: 'super', marginLeft: '1px',
+            }}
+          >
+            [{num}]
+          </a>
+        );
+      })}
+    </span>
   );
 }
 

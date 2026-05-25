@@ -214,7 +214,10 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     previousScore: number;
     newScore: number;
     logId?: string;
+    status?: 'complete' | 'processing';
+    jobId?: string;
   } | null>(null);
+  const [serverDqScore, setServerDqScore] = useState<number | null>(null);
   const [enrichError, setEnrichError] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
   // Per-field staged decisions (only set when user explicitly chooses).
@@ -426,21 +429,63 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         `/api/v1/properties/by-parcel/${encodeURIComponent(parcelId)}/enrich`,
       );
       const r = res.data;
+
+      if (res.status === 202) {
+        setEnrichResult({
+          fieldsEnriched: [],
+          conflicts: [],
+          previousScore: r.previousScore ?? 0,
+          newScore: r.previousScore ?? 0,
+          logId: r.jobId,
+          status: 'processing',
+          jobId: r.jobId,
+        });
+        let polls = 0;
+        const poll = async (): Promise<void> => {
+          if (polls++ > 24) return;
+          try {
+            const statusRes = await apiClient.get(
+              `/api/v1/properties/by-parcel/${encodeURIComponent(parcelId)}/enrich/status`,
+            );
+            if (statusRes.data.status === 'complete') {
+              setServerDqScore(statusRes.data.dq_score ?? null);
+              setEnrichResult(prev => prev ? { ...prev, newScore: statusRes.data.dq_score ?? prev.previousScore, status: 'complete' } : null);
+              setEnriching(false);
+              return;
+            }
+          } catch (_) {}
+          setTimeout(() => { void poll(); }, 5000);
+        };
+        void poll();
+        return;
+      }
+
+      if (r.newScore != null) setServerDqScore(r.newScore);
       setEnrichResult({
         fieldsEnriched: r.fieldsEnriched || [],
         conflicts: r.conflicts || [],
         previousScore: r.previousScore ?? 0,
         newScore: r.newScore ?? 0,
         logId: r.logId,
+        status: 'complete',
       });
       const init: Record<string, 'overwrite' | 'keep'> = {};
       for (const c of (r.conflicts || [])) init[c.field] = 'overwrite';
       setDecisions(init);
     } catch (err) {
-      const e = err as { response?: { data?: { error?: string } }; message?: string };
-      setEnrichError(e.response?.data?.error || e.message || 'Enrichment failed');
+      const e = err as { response?: { data?: { error?: string }; status?: number }; message?: string };
+      const status = e.response?.status;
+      if (status === 400) {
+        setEnrichError(`Missing required fields: ${e.response?.data?.error || 'address, city, and state are required'}`);
+      } else if (status === 429) {
+        setEnrichError('Rate limit reached — please wait a moment before trying again');
+      } else if (status === 503) {
+        setEnrichError('Enrichment service temporarily unavailable');
+      } else {
+        setEnrichError(e.response?.data?.error || e.message || 'Enrichment failed');
+      }
     } finally {
-      setEnriching(false);
+      if (!(enrichResult?.status === 'processing')) setEnriching(false);
     }
   };
 
@@ -630,7 +675,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     textTransform: 'uppercase',
   };
 
-  const dqScore = calculateDQScore();
+  const dqScore = serverDqScore ?? calculateDQScore();
   const dqColor = dqScore >= 70 ? C.green : dqScore >= 40 ? C.amber : C.red;
 
   return (

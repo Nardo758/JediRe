@@ -601,8 +601,59 @@ async function processJob(job: {
     const propertyNameForSearch = (sd.property_name as string | undefined)?.trim()
       || (sd.name as string | undefined)?.trim()
       || parcel_id;
-    await stepWebSearch(id, parcel_id, propertyNameForSearch ?? null, lookupAddress, lookupCity, lookupState);
-    await stepGooglePlaces(id, parcel_id, propertyNameForSearch ?? null, lookupAddress, lookupCity, lookupState);
+
+    if (parcel_id && (lookupAddress || propertyNameForSearch)) {
+      try {
+        const { runResearchEnrichment } = await import('../research/research-enrichment.service');
+        const enrichResult = await runResearchEnrichment({
+          parcelId: parcel_id,
+          propertyName: propertyNameForSearch ?? parcel_id,
+          address: lookupAddress,
+          city: lookupCity,
+          state: lookupState,
+        });
+        await appendLog(id, {
+          step: 'web_search',
+          status: enrichResult.web_status === 'error' ? 'error' : 'ok',
+          ts: ts(),
+          detail: {
+            articles_found: 0,
+            narrative_words: enrichResult.narrative_words,
+            events_found: 0,
+          },
+        });
+        await appendLog(id, {
+          step: 'google_places',
+          status: enrichResult.places_status === 'error' ? 'error'
+            : enrichResult.places_status === 'skipped' ? 'not_implemented'
+            : 'ok',
+          ts: ts(),
+          detail: {
+            places_status: enrichResult.places_status,
+            reviews_count: enrichResult.reviews_count,
+            photos_count: enrichResult.photos_count,
+          },
+        });
+      } catch (enrichErr: unknown) {
+        const msg = enrichErr instanceof Error ? enrichErr.message : String(enrichErr);
+        logger.warn(`[intake-worker] job ${id} Phase 8 enrichment failed: ${msg}`);
+        await appendLog(id, {
+          step: 'web_search',
+          status: 'error',
+          ts: ts(),
+          detail: { error: msg },
+        });
+        await appendLog(id, {
+          step: 'google_places',
+          status: 'error',
+          ts: ts(),
+          detail: { error: msg },
+        });
+      }
+    } else {
+      await appendLog(id, { step: 'web_search', status: 'not_implemented', ts: ts(), detail: { note: 'no address or property_name available' } });
+      await appendLog(id, { step: 'google_places', status: 'not_implemented', ts: ts(), detail: { note: 'no address or property_name available' } });
+    }
 
     // If municipal lookup found a real county parcel_id that differs from the
     // current parcel_id (which is often just the property name), update the row.

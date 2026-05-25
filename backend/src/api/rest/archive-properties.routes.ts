@@ -136,9 +136,43 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
+  // GET /api/v1/properties/places-photo
+  // Server-side proxy for Google Places photo media — keeps API key off clients.
+  // ─────────────────────────────────────────────────────────────────────────
+  router.get('/places-photo', async (req: Request, res: Response) => {
+    const photoName = req.query.name as string | undefined;
+    if (!photoName) return res.status(400).json({ error: 'name query param required' });
+
+    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'Places API not configured' });
+
+    const allowedPrefix = /^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/;
+    if (!allowedPrefix.test(photoName)) {
+      return res.status(400).json({ error: 'Invalid photo resource name' });
+    }
+
+    try {
+      const upstream = await fetch(
+        `https://places.googleapis.com/v1/${photoName}/media?maxHeightPx=800&key=${apiKey}`,
+        { redirect: 'follow' },
+      );
+      if (!upstream.ok) {
+        return res.status(upstream.status).json({ error: 'Upstream Places photo fetch failed' });
+      }
+      const contentType = upstream.headers.get('content-type') ?? 'image/jpeg';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      const buf = await upstream.arrayBuffer();
+      return res.send(Buffer.from(buf));
+    } catch (err) {
+      return res.status(502).json({ error: 'Photo proxy error' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
   // POST /api/v1/properties/by-parcel/:parcelId/enrich
   // On-demand Phase 8 research enrichment (web search + Google Places).
-  // Called by the AssetDetailModal AUTO-ENRICH button.
+  // 5-second sync window: completes within 5s → 200; otherwise → 202 + jobId.
   // ─────────────────────────────────────────────────────────────────────────
   router.post('/by-parcel/:parcelId/enrich', async (req: Request, res: Response) => {
     const rawParcelId = decodeURIComponent(req.params.parcelId);
@@ -164,39 +198,130 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
       }
 
       const asset = dlaRow.rows[0];
+
+      if (!asset.address || !asset.city || !asset.state) {
+        return res.status(400).json({
+          error: 'address, city, and state are required on the asset for research enrichment',
+          missing: [
+            ...(!asset.address ? ['address'] : []),
+            ...(!asset.city ? ['city'] : []),
+            ...(!asset.state ? ['state'] : []),
+          ],
+        });
+      }
+
       const prevScore = asset.data_quality_score ?? 0;
+      const jobId = `research_${rawParcelId.replace(/\s+/g, '_')}_${Date.now()}`;
 
       const { runResearchEnrichment } = await import('../../services/research/research-enrichment.service');
-      const result = await runResearchEnrichment({
+      const { recalculateDQScore } = await import('../../services/research/dq-recalculator.service');
+
+      const enrichPromise = runResearchEnrichment({
         parcelId: rawParcelId,
         propertyName: asset.property_name,
         address: asset.address,
         city: asset.city,
         state: asset.state,
+      }).then(async result => {
+        const newScore = await recalculateDQScore(asset.id);
+        return { result, newScore };
       });
 
-      const { recalculateDQScore } = await import('../../services/research/dq-recalculator.service');
-      const newScore = await recalculateDQScore(asset.id);
+      const SYNC_TIMEOUT_MS = 5000;
+      const raceOutcome = await Promise.race([
+        enrichPromise.then(r => ({ done: true as const, ...r })),
+        new Promise<{ done: false }>(resolve =>
+          setTimeout(() => resolve({ done: false }), SYNC_TIMEOUT_MS)
+        ),
+      ]);
 
-      return res.json({
+      if (raceOutcome.done) {
+        const { result, newScore } = raceOutcome;
+        return res.status(200).json({
+          status: 'complete',
+          parcel_id: rawParcelId,
+          asset_id: asset.id,
+          jobId,
+          fieldsEnriched: result.fields_written,
+          conflicts: [],
+          previousScore: prevScore,
+          newScore,
+          places_status: result.places_status,
+          web_status: result.web_status,
+          reviews_count: result.reviews_count,
+          photos_count: result.photos_count,
+          narrative_words: result.narrative_words,
+          logId: jobId,
+        });
+      }
+
+      res.status(202).json({
+        status: 'processing',
+        jobId,
         parcel_id: rawParcelId,
         asset_id: asset.id,
-        fieldsEnriched: result.fields_written,
-        conflicts: [],
         previousScore: prevScore,
-        newScore,
-        places_status: result.places_status,
-        web_status: result.web_status,
-        reviews_count: result.reviews_count,
-        photos_count: result.photos_count,
-        narrative_words: result.narrative_words,
-        log_entries: result.log_entries,
-        logId: `research_${rawParcelId}_${Date.now()}`,
+        message: 'Enrichment is running in the background. Poll /enrich/status/:jobId for completion.',
       });
+
+      enrichPromise.catch(err => {
+        console.error('[archive-properties] background enrich failed', {
+          parcelId: rawParcelId, error: (err as Error).message,
+        });
+      });
+
+      return;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      const statusCode = msg.includes('quota') || msg.includes('429') ? 429
+        : msg.includes('unavailable') || msg.includes('503') ? 503
+        : 500;
       console.error('[archive-properties] enrich error', { parcelId: rawParcelId, msg });
-      return res.status(500).json({ error: msg });
+      return res.status(statusCode).json({ error: msg });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // GET /api/v1/properties/by-parcel/:parcelId/enrich/status
+  // Poll enrichment status — checks if Phase 8 fields are present in property_descriptions.
+  // ─────────────────────────────────────────────────────────────────────────
+  router.get('/by-parcel/:parcelId/enrich/status', async (req: Request, res: Response) => {
+    const rawParcelId = decodeURIComponent(req.params.parcelId);
+    try {
+      const pd = await pool.query<{
+        reviews: unknown;
+        recent_events: unknown;
+        photos: unknown;
+        narrative: unknown;
+        updated_at: string;
+      }>(
+        `SELECT reviews, recent_events, photos, narrative, updated_at
+         FROM property_descriptions WHERE parcel_id = $1`,
+        [rawParcelId],
+      );
+
+      if (pd.rows.length === 0) {
+        return res.json({ status: 'pending', parcel_id: rawParcelId, has_phase8: false });
+      }
+
+      const row = pd.rows[0];
+      const hasPhase8 = !!(row.reviews || row.recent_events || row.photos || row.narrative);
+
+      const dla = await pool.query<{ data_quality_score: number | null }>(
+        `SELECT data_quality_score FROM data_library_assets WHERE property_name = $1 ORDER BY created_at DESC LIMIT 1`,
+        [rawParcelId],
+      );
+      const dqScore = dla.rows[0]?.data_quality_score ?? null;
+
+      return res.json({
+        status: hasPhase8 ? 'complete' : 'pending',
+        parcel_id: rawParcelId,
+        has_phase8: hasPhase8,
+        dq_score: dqScore,
+        updated_at: row.updated_at,
+      });
+    } catch (err) {
+      return res.status(500).json({ error: (err as Error).message });
     }
   });
 

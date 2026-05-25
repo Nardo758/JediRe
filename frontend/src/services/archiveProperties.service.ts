@@ -43,7 +43,7 @@ export interface PropertyDescription {
   flood_zone?: LayeredValue<string>;
   narrative?: LayeredValue<string>;
   amenities?: LayeredValue<string[]>;
-  photos?: LayeredValue<Array<{ url: string; attribution: string | null; width_px: number | null; height_px: number | null }>>;
+  photos?: LayeredValue<Array<{ photo_name: string; proxy_url: string; attribution: string | null; width_px: number | null; height_px: number | null }>>;
   reviews?: LayeredValue<Array<{
     author: string;
     rating: number;

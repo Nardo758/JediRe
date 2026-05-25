@@ -56,7 +56,8 @@ export interface SentimentSummary {
 }
 
 export interface PhotoRef {
-  url: string;
+  photo_name: string;
+  proxy_url: string;
   attribution: string | null;
   width_px: number | null;
   height_px: number | null;
@@ -359,14 +360,15 @@ export async function enrichWithGooglePlaces(opts: {
     authorAttributions?: Array<{ displayName?: string }>;
   }> | undefined) ?? []).slice(0, 5);
 
-  const photos: PhotoRef[] = rawPhotos.map(p => ({
-    url: p.name
-      ? `${PLACES_BASE}/${p.name}/media?maxHeightPx=800&key=${apiKey}`
-      : '',
-    attribution: p.authorAttributions?.[0]?.displayName ?? null,
-    width_px: p.widthPx ?? null,
-    height_px: p.heightPx ?? null,
-  })).filter(p => p.url !== '');
+  const photos: PhotoRef[] = rawPhotos
+    .filter(p => !!p.name)
+    .map(p => ({
+      photo_name: p.name!,
+      proxy_url: `/api/v1/properties/places-photo?name=${encodeURIComponent(p.name!)}`,
+      attribution: p.authorAttributions?.[0]?.displayName ?? null,
+      width_px: p.widthPx ?? null,
+      height_px: p.heightPx ?? null,
+    }));
 
   const overallScore = weightedSentimentScore(enrichedReviews);
   const hazardFlags = deduplicateHazards(enrichedReviews);
