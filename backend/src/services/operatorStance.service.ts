@@ -10,8 +10,10 @@
  *
  * ── IDEMPOTENCY CONTRACT ─────────────────────────────────────────────────────
  * Every re-blend (including reset to MARKET defaults) reads from the BASELINE
- * snapshot — the most-recent snapshot whose agent_run_id does NOT begin with
- * "stance_reblend_". This guarantees:
+ * snapshot — the most-recent snapshot whose agent_run_id IS NOT NULL.
+ * (agent_run_id is a UUID column; reblend snapshots store agent_run_id = NULL
+ * so they are excluded by this filter without any LIKE/NOT LIKE on a UUID type.)
+ * This guarantees:
  *
  *   - Applying CONSERVATIVE twice → same result as applying once.
  *   - Flipping CONSERVATIVE → MARKET → reset → same original values are restored.
@@ -69,7 +71,11 @@ function marketEnvToStanceEnv(market: MarketRateEnvironment): RateEnvironment {
 
 /**
  * Load the BASELINE snapshot for a deal — the most-recent snapshot whose
- * agent_run_id does NOT begin with "stance_reblend_".
+ * agent_run_id IS NOT NULL.
+ *
+ * Reblend snapshots are written with agent_run_id = NULL so they are
+ * automatically excluded by this filter (agent_run_id is a UUID column;
+ * LIKE/NOT LIKE do not apply to UUID types).
  *
  * This is the anchor for all re-blends.  Stance snapshots are ephemeral views;
  * the baseline is the immutable agent output we always apply deltas on top of.

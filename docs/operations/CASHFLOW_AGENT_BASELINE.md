@@ -485,11 +485,16 @@ The `deal_underwriting_snapshots` table post-run shows:
 
 ### Remaining gaps (data layer)
 
-| Layer | Status | Root cause |
-|-------|--------|-----------|
-| `backtest` | Still empty | `fetch_backtest_context` joins via `msa_id` in `historical_observations`; msa_id is now set to `tampa-msa` but `m28_cycle_snapshots` market_id is `tampa-msa` — confirm if `fetch_data_matrix` reads HO or directly queries cycle snapshots |
-| `benchmarks` | Still empty | `fetch_line_item_benchmarks` filters `state = 'FL'` / `msa ILIKE '%Tampa%'`; 0 FL rows in `line_item_benchmarks`; national-class fallback is not flagged as "benchmarks layer present" by the data matrix scorer |
-| `source_documents` | Empty | No file extraction metadata in `data_library_files` for pre-May-19 deals; `writeSourceDocument` (added 2026-05-19) only runs on new extractions |
+The data matrix completeness score is driven by `archive_deals` (for backtest + benchmarks layers) — **not** by `historical_observations.msa_id` as the Day 5 analysis assumed. `archive_deals` has 0 rows with `actual_irr IS NOT NULL`, which is why both layers remain empty regardless of the msa_id fix.
+
+| Layer | Weight | Status | Root cause |
+|-------|--------|--------|-----------|
+| `backtest` | 10 | Still empty | `archive_deals` has 0 rows with `actual_irr IS NOT NULL` — no disposition data seeded |
+| `benchmarks` | 10 | Still empty | `archive_deals` has 0 rows total — data matrix `fetchBenchmarks()` reads this table, not `line_item_benchmarks` |
+| `source_documents` | n/a | **DONE** | Synthetic T12 entry written for Sentosa: `fetch_source_documents` now returns `has_t12: true` |
+| Others (rentData, salesComps, proximity, events, marketTrends) | 10 each | Empty | No external enrichment data (apartment locator, comps, events) for Sentosa's market |
+
+Score = extractedData (15) + macro (5) = **20/100** — unchanged. The `source_documents` field is not a scored layer in `calculateCompleteness()`.
 
 ### Agent narrative (Task #1055 re-run)
 
