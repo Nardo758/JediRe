@@ -13,6 +13,12 @@ import { classifyEmail } from './email-classification.service';
 import { processEmailForProperty } from './email-property-automation.service';
 import { processEmailForNews } from './email-news-extraction.service';
 import { inngest } from '../lib/inngest';
+import {
+  safeEncryptToken,
+  safeDecryptToken,
+  encryptTokenOrNull,
+  decryptTokenOrNull,
+} from './gmail-sync/token-encryption';
 
 interface GmailMessage {
   id: string;
@@ -251,7 +257,9 @@ export class GmailSyncService {
   }
 
   /**
-   * Get valid access token (refresh if needed)
+   * Get valid access token (refresh if needed).
+   * account.access_token and account.refresh_token are expected to already be
+   * plaintext (decrypted at load time by syncEmails / callers).
    */
   private async getValidAccessToken(account: EmailAccount): Promise<string> {
     // Check if token is still valid (with 5 minute buffer)
@@ -271,15 +279,15 @@ export class GmailSyncService {
 
     const refreshed = await this.refreshAccessToken(account.refresh_token);
 
-    // Update token in database
+    // Encrypt the new access token before persisting
     await query(
       `UPDATE user_email_accounts 
        SET access_token = $1, token_expires_at = $2, updated_at = NOW()
        WHERE id = $3`,
-      [refreshed.accessToken, refreshed.expiresAt, account.id]
+      [safeEncryptToken(refreshed.accessToken), refreshed.expiresAt, account.id]
     );
 
-    return refreshed.accessToken;
+    return refreshed.accessToken; // return plaintext for immediate use
   }
 
   /**
@@ -395,7 +403,13 @@ export class GmailSyncService {
         throw new AppError(404, 'Email account not found');
       }
 
-      const account = accountResult.rows[0] as EmailAccount;
+      const rawAccount = accountResult.rows[0];
+      // Decrypt tokens from DB before any downstream use
+      const account: EmailAccount = {
+        ...rawAccount,
+        access_token: safeDecryptToken(rawAccount.access_token),
+        refresh_token: decryptTokenOrNull(rawAccount.refresh_token),
+      };
 
       // Get Gmail client
       const gmail = await this.getGmailClient(account);

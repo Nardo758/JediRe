@@ -4,6 +4,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
+import { safeEncryptToken, safeDecryptToken, decryptTokenOrNull } from './gmail-sync/token-encryption';
 
 export interface UnifiedContact {
   id: string;
@@ -116,9 +117,10 @@ async function getGoogleOAuth2Client(userId: string): Promise<OAuth2Client> {
   }
 
   const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+  // Decrypt tokens before passing to the OAuth2 client
   oauth2Client.setCredentials({
-    access_token: account.access_token,
-    refresh_token: account.refresh_token,
+    access_token: safeDecryptToken(account.access_token),
+    refresh_token: decryptTokenOrNull(account.refresh_token) ?? undefined,
   });
 
   const now = Date.now();
@@ -130,7 +132,8 @@ async function getGoogleOAuth2Client(userId: string): Promise<OAuth2Client> {
       if (credentials.access_token) {
         await query(
           'UPDATE user_email_accounts SET access_token = $1, token_expires_at = $2 WHERE user_id = $3 AND provider = $4',
-          [credentials.access_token, new Date(credentials.expiry_date || Date.now() + 3600000), userId, 'google']
+          // Encrypt the refreshed access token before persisting
+          [safeEncryptToken(credentials.access_token), new Date(credentials.expiry_date || Date.now() + 3600000), userId, 'google']
         );
         oauth2Client.setCredentials(credentials);
       }

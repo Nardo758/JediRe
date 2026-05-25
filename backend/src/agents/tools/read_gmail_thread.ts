@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { safeDecryptToken, decryptTokenOrNull } from '../../services/gmail-sync/token-encryption';
 
 /**
  * read_gmail_thread
@@ -95,9 +96,10 @@ export async function readGmailThread(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET
   );
+  // Decrypt tokens from DB before passing to the OAuth2 client
   oauth2.setCredentials({
-    access_token: account.access_token,
-    refresh_token: account.refresh_token ?? undefined,
+    access_token: safeDecryptToken(account.access_token),
+    refresh_token: decryptTokenOrNull(account.refresh_token) ?? undefined,
   });
 
   const gmail = google.gmail({ version: 'v1', auth: oauth2 });

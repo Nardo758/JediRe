@@ -10,6 +10,12 @@ import { gmailSyncService } from '../../services/gmail-sync.service';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { AppError } from '../../middleware/errorHandler';
+import {
+  safeEncryptToken,
+  safeDecryptToken,
+  encryptTokenOrNull,
+  decryptTokenOrNull,
+} from '../../services/gmail-sync/token-encryption';
 
 const router = Router();
 
@@ -289,13 +295,15 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
 
     if (existingResult.rows.length > 0) {
       accountId = existingResult.rows[0].id;
-      const refreshToken = tokens.refreshToken || existingResult.rows[0].refresh_token || null;
+      // Decrypt existing stored refresh_token for fallback (Google only sends it on first consent)
+      const storedRefresh = decryptTokenOrNull(existingResult.rows[0].refresh_token);
+      const refreshToken = tokens.refreshToken || storedRefresh || null;
       await query(
         `UPDATE user_email_accounts 
          SET access_token = $1, refresh_token = $2, token_expires_at = $3, 
              sync_enabled = true, updated_at = NOW()
          WHERE id = $4`,
-        [tokens.accessToken, refreshToken, tokens.expiresAt, accountId]
+        [safeEncryptToken(tokens.accessToken), encryptTokenOrNull(refreshToken), tokens.expiresAt, accountId]
       );
       logger.info(`Gmail account reconnected: ${tokens.email}`);
     } else {
@@ -304,7 +312,12 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
           user_id, provider, email_address, access_token, refresh_token, token_expires_at
         ) VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id`,
-        [userId, 'google', tokens.email, tokens.accessToken, tokens.refreshToken, tokens.expiresAt]
+        [
+          userId, 'google', tokens.email,
+          safeEncryptToken(tokens.accessToken),
+          encryptTokenOrNull(tokens.refreshToken),
+          tokens.expiresAt,
+        ]
       );
       accountId = result.rows[0].id;
       logger.info(`New Gmail account connected: ${tokens.email}`);
@@ -496,7 +509,9 @@ router.delete('/disconnect/:accountId', requireAuth, async (req: any, res: Respo
       throw new AppError(404, 'Account not found or access denied');
     }
 
-    const { email_address: emailAddress, refresh_token: refreshToken } = accountResult.rows[0];
+    const { email_address: emailAddress, refresh_token: storedRefreshToken } = accountResult.rows[0];
+    // Decrypt before revoking — Google needs the plaintext token
+    const refreshToken = decryptTokenOrNull(storedRefreshToken);
 
     // Revoke the OAuth token at Google before deleting — non-fatal if it fails
     if (refreshToken) {
