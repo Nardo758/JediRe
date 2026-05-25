@@ -24,7 +24,7 @@ async function main() {
   try {
     const result = await cashFlowAgent.execute({
       dealId: DEAL_ID,
-      userId: 'system-baseline',
+      userId: '6253ba3f-d40d-4597-86ab-270c8397a857',
       mode:   'underwrite',
     }) as CashflowAgentOutput;
 

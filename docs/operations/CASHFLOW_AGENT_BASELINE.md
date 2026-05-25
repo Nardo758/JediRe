@@ -365,4 +365,85 @@ These were not identified in the DATA_LIBRARY_INVENTORY.md gap list:
 
 ---
 
-*End of baseline — Week Plan complete (Dispatches 1–5)*
+## 14. Day 5 Full LLM Baseline Run — Final Results (2026-05-25 15:02 UTC)
+
+**Run ID:** `5c0b6ed4-826a-4d88-808e-a348a9b005cf`
+**Snapshot ID:** `5fff0659-9b83-46ea-b99b-e955c869990e`
+**Duration:** 165.7s | **Cost:** $0.148 | **Tokens:** 1,757,419
+
+### Evidence field results (20 fields written to `underwriting_evidence`)
+
+| Field | Value | Tier | Confidence | Source note |
+|-------|-------|------|-----------|-------------|
+| `revenue.gross_potential_rent` | $6,592,310 | T1 | high | T12; rent roll within 0.7% |
+| `revenue.effective_gross_income` | $5,358,329 | T1 | high | T12; rent roll within 0.2% |
+| `revenue.vacancy_loss` | $1,233,981 | T1 | medium | T12 19.4%; in lease-up |
+| `revenue.other_income` | $0 | T1 | medium | No ancillary programs; $225/unit benchmark gap |
+| `expense.insurance` | $202,373 | T1 | high | $666/unit/yr; matches jurisdiction forecast |
+| `expense.management_fee` | $216,861 | T1 | high | 4.05% of EGI; above archive P50 (2.75%) |
+| `expense.payroll` | $99,193 | T1 | medium | $326/unit/yr; below benchmark P25 ($400) — warranty period |
+| `expense.property_tax` | $1,300,000 | T3 | high | Tax intel: 20 mills on $65M assessed |
+| `expense.repairs_maintenance` | $14,005 | T1 | medium | $46/unit/yr; low — 2022 vintage warranty |
+| `expense.replacement_reserves` | $91,200 | T3 | high | $300/unit/yr; archive P50 $46,400 but age-adjusted |
+| `expense.marketing` | $86,733 | T1 | medium | $285/unit/yr; above benchmark P75 ($250) |
+| `expense.utilities` | $0 | T1 | medium | No separate utilities line in T12 |
+| `debt.first_lien_amount` | $42,250,000 | T1 | high | 65% LTV on $65M |
+| `debt.first_lien_rate` | 6.59% | T1 | high | Deal assumption; benchmark 10Y+180bps = 6.36% |
+| `exit.cap_rate` | 5.5% | T3 | high | Archive P50 (n=206); M14 predicts -27bps compression |
+| `assumptions.growth.rent_y1` | 4.0% | T3 | medium | CPI-OER 3.2% + 0.8% premium; archive P50 = 3% |
+| `assumptions.growth.rent_y2_plus` | 3.5% | T3 | medium | Post-stabilization; between archive P50 (3%) and anchor (4%) |
+| `assumptions.growth.expense_y1` | 3.7% | T3 | medium | Weighted: payroll 3.7%, insurance 4.2%, taxes 6% |
+| `assumptions.growth.expense_long_run` | 3.5% | T3 | medium | Archive P50 = 3%; FL insurance pressure |
+| `assumptions.growth.vacancy_stabilized` | 7.0% | T3 | medium | 93% occupancy target by Year 3 |
+
+### Key output metrics
+
+| Metric | Value |
+|--------|-------|
+| NOI Year 1 (model) | ~$3,188,838 |
+| NOI T12 (actual) | $3,038,689 (56.7% margin) |
+| Going-in cap rate | 4.67% (on T12 NOI, $65M) |
+| Year 1 cash flow | ~-$196K (negative; lease-up drag) |
+| Year 2 cash flow | ~-$105K |
+| LTV | 65% ($42.25M debt on $65M) |
+| Interest rate | 6.59% (agency) |
+| Exit cap | 5.50% (archive P50) |
+| Plausibility score | d=1.606 (Aggressive band) |
+| Data completeness score | 20/100 (same as Day 1 — see gaps below) |
+
+### Agent narrative summary
+
+> Sentosa Epperson (304 units, Wesley Chapel FL, 2022 vintage) is in lease-up at 82.6% occupancy. T12 NOI $3,038,689 (56.7% margin) reflects lease-up economics. Key risks: (1) elevated vacancy requires 12-24 month lease-up ramp to stabilize at 93%; (2) negative Year 1-2 cash flow at 65% LTV with 6.59% rate; (3) no ancillary income programs — $0 other income vs $225/unit/mo benchmark represents material upside. Plausibility score d=1.606 (Aggressive band) driven by management fee (4.05% vs archive P50 2.75%) and going-in cap rate. Platform archive partially seeded (6 of 8 minimum fields have data).
+
+### Why data completeness score is still 20/100
+
+The G1/G2/G7 data exists in the DB but does NOT reach the `fetch_data_matrix` completeness scorer:
+
+| Layer | Expected fix | Actual result | Root cause |
+|-------|-------------|---------------|-----------|
+| `backtest` | G2 HO row inserted | Still empty | `historical_observations.msa_id = NULL` and `submarket_id = NULL` — data matrix resolves backtest by MSA, not by deal_id |
+| `benchmarks` | G7 line_item_benchmarks seeded | Still empty | Only GA/Atlanta rows seeded — Sentosa is FL/Tampa; state/MSA filter returns 0 rows |
+
+Fixes needed:
+1. Set `msa_id = 'tampa-msa'` on the Sentosa HO row (or confirm how data matrix joins it)
+2. Seed FL/Tampa `line_item_benchmarks` rows in addition to the GA rows
+
+### Newly discovered issues
+
+| Issue | Symptom | Severity |
+|-------|---------|---------|
+| **B4: OperatorStance reblend SQL error** | `[CashflowPostProcess] Post-run reblend failed — "operator does not exist: uuid !~~ unknown"` | Medium — reblend skipped post-run |
+| **B5: evidence_conformance_rate = 0** | All 20 fields flagged `coerced_string_to_object` — LLM returning bare values not LayeredValue shape | Low — evidence normalizer repairs them; no data loss |
+
+### Tools that used the new benchmark data (G7 working)
+
+The archive benchmark data IS being used by the LLM — confirmed via evidence source tags:
+- `inferred_source_archive_cohort` on 4 fields: `rent_y2_plus`, `expense_y1`, `expense_long_run`, `replacement_reserves`
+- `exit.cap_rate`: explicitly cites "Archive exit_cap_rate P50=5.5% (n=206, P25=5.25%, P75=5.5%)"
+- `expense.management_fee`: cites "Archive management_fee P50 2.75%" as benchmark comparison
+
+The benchmark data is flowing to the LLM. The data matrix layer just doesn't flag it as "ok" because it reads the benchmarks layer from `line_item_benchmarks` directly (state/MSA filter), not from `archive_assumption_benchmarks`.
+
+---
+
+*End of baseline — Week Plan complete (Dispatches 1–5). Full LLM run executed 2026-05-25.*
