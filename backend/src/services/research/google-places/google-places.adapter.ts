@@ -105,13 +105,15 @@ function getApiKey(): string {
   return key;
 }
 
-async function placesPost(path: string, body: unknown, apiKey: string): Promise<unknown> {
+async function placesPost(path: string, body: unknown, apiKey: string, fieldMask?: string): Promise<unknown> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Goog-Api-Key': apiKey,
+  };
+  if (fieldMask) headers['X-Goog-FieldMask'] = fieldMask;
   const res = await fetch(`${PLACES_BASE}${path}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
-    },
+    headers,
     body: JSON.stringify(body),
   });
   if (res.status === 429) throw new PlacesQuotaError();
@@ -280,7 +282,7 @@ export async function enrichWithGooglePlaces(opts: {
         textQuery: query,
         maxResultCount: 1,
         rankPreference: 'RELEVANCE',
-      }, apiKey)
+      }, apiKey, 'places.id,places.displayName')
     ) as { places?: Array<{ id?: string; name?: string }> };
 
     const firstPlace = searchResp.places?.[0];

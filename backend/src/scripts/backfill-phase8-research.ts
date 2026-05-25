@@ -18,8 +18,8 @@
  */
 
 import { Pool } from 'pg';
-import { runResearchEnrichment } from '../src/services/research/research-enrichment.service';
-import { recalculateDQScore } from '../src/services/research/dq-recalculator.service';
+import { runResearchEnrichment } from '../services/research/research-enrichment.service';
+import { recalculateDQScore } from '../services/research/dq-recalculator.service';
 
 function parseFlag(flag: string, defaultVal: string | null = null): string | null {
   const arg = process.argv.find(a => a.startsWith(`--${flag}=`));

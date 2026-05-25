@@ -1,0 +1,130 @@
+PHASE 8 — REPORT PULL + API KEY VERIFICATION
+
+Two items before Phase 8 marks complete:
+
+═══════════════════════════════════════════════════════════════════
+ITEM 1 — SURFACE THE THRESHOLD RECALIBRATION REPORT
+═══════════════════════════════════════════════════════════════════
+
+The Task-1041 dispatch Step 2.3 specified a threshold recalibration 
+report — before/after pass-rate analysis for the three downstream 
+consumers, plus proposed new threshold values to preserve current 
+semantics.
+
+Surface the report to Leon for review. Specifically:
+
+A. Locate the report. Expected location: somewhere in 
+   docs/operations/ — possibly THRESHOLD_RECALIBRATION.md, 
+   PHASE_8_DQ_THRESHOLDS.md, or embedded in PHASE_8_COMPLETION_
+   CLOSING.md.
+
+B. If the report exists:
+   - Paste its current content here, or
+   - Provide the exact file path and confirm it's complete
+
+C. If the report does NOT exist (was deferred or skipped):
+   - Run the analysis now per Task-1041 Step 2.3A
+   - For each of the three threshold consumers, compute:
+     | Consumer | Old threshold | Old formula pass count | New formula pass count | Proposed new threshold |
+     | archive-benchmark-aggregator.ts:86 | >= 50 | ? | ? | ? |
+     | archive-benchmark-aggregator.ts:579 | >= 40 | ? | ? | ? |
+     | auto-enrichment.service.ts:601 | caller | ? | ? | recommended caller value |
+   - Generate the report at docs/operations/THRESHOLD_RECALIBRATION_REPORT.md
+   - Surface to Leon
+
+DO NOT apply any threshold value changes. This is report-only. 
+Leon will review proposed values and approve before any threshold 
+code is touched.
+
+═══════════════════════════════════════════════════════════════════
+ITEM 2 — VERIFY GOOGLE_PLACES_API_KEY + RUN BACKFILL
+═══════════════════════════════════════════════════════════════════
+
+Leon has added GOOGLE_PLACES_API_KEY to Replit secrets.
+
+A. VERIFY THE KEY WORKS
+   - Confirm process.env.GOOGLE_PLACES_API_KEY is accessible
+   - Run a single test Places API call (FindPlace by a known 
+     Atlanta address) to confirm the key is valid and not 
+     rate-limited
+   - If the call fails: report the error (key invalid, key 
+     restricted to wrong API, rate limit) and STOP — don't 
+     proceed to backfill
+
+B. IF KEY VERIFIES:
+   - Run the archive backfill per Task-1040 Step 10 / Task-1041 
+     Step 2.2D
+   - 296 archive properties
+   - Stagger at 2-3 requests per second to respect Places API 
+     rate limits
+   - Progress checkpoint every 50 properties processed
+   - Final report:
+     * Total processed
+     * Per-field coverage % (narrative populated, amenities 
+       populated, photos populated, reviews populated, sentiment 
+       populated, recent_events populated, regulatory_constraints 
+       populated)
+     * Actual API cost incurred
+     * Properties that failed (and why — Places no match, 
+       network error, etc.)
+
+C. PAIRED-READ VERIFICATION (Task-1040 Step 11 + Task-1041 
+   verification gates)
+   
+   Pick 5 properties from the backfilled set:
+   - Mix of metros (Atlanta + at least 2 other states from the 
+     296)
+   - Mix of asset class if classification known
+   - At least 1 with rich pre-existing OM data, at least 1 with 
+     sparse pre-existing data
+   
+   For each:
+   a. Show intake_jobs.enrichment_log entries (literal JSON)
+   b. Show property_descriptions Phase 8 fields (literal JSON)
+   c. Confirm intake_jobs.status = 'awaiting_review' if pending_web 
+      populated
+   d. Confirm property visible in Data Library → Inbox tab
+   e. Open Asset Detail Modal — confirm Apply/Discard buttons 
+      visible
+   f. Test Apply on one property → confirm pending_web promotes 
+      to web layer, DQ recomputes, status moves to complete
+   g. Test Discard on one property → confirm pending_web clears, 
+      resolved values unchanged, status moves to complete
+   h. Open /archive/properties/:parcelId — confirm Phase 8 fields 
+      render (with pending visual indicator before Apply, normal 
+      rendering after)
+   i. Narrative quality spot-check: click each citation link, 
+      verify source URL supports claim. Look for hallucinations.
+
+D. IF ANY VERIFICATION FAILS:
+   - STOP. Don't mark Phase 8 complete.
+   - Report which property failed and which check failed.
+   - Surface for Leon's review before continuing.
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE
+═══════════════════════════════════════════════════════════════════
+
+Update docs/operations/PHASE_8_FINAL_CLOSING.md with:
+
+(a) Threshold recalibration report status (surfaced or generated; 
+    not applied)
+(b) GOOGLE_PLACES_API_KEY verification result
+(c) Backfill summary: total processed, per-field coverage, API 
+    cost, failure breakdown
+(d) Paired-read verification: 5 properties with literal JSON, 
+    Apply/Discard test results, narrative quality spot-check 
+    findings
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Apply threshold value changes (Step 2.3 is report-only; awaiting 
+  Leon's approval)
+- Skip the API key verification step before running backfill
+- Run backfill at full speed without rate limiting (2-3 req/sec)
+- Mark Phase 8 complete without paired-read verification passing 
+  on at least 4 of 5 sample properties
+- Skip narrative quality spot-check — fabricated citations are 
+  the single biggest risk to Cashflow Agent accuracy downstream

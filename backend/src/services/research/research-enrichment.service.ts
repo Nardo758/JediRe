@@ -199,8 +199,17 @@ export async function runResearchEnrichment(opts: {
     // For new rows: write the full pending structure.
     // For existing rows: inject ONLY the pending_web slot via jsonb_set,
     // preserving any existing resolved value and layers.web.
+    // jsonb_set cannot create nested missing paths in one step (e.g. {layers,pending_web}
+    // silently returns {} when the 'layers' key doesn't exist in the base object).
+    // Solution: ensure 'layers' exists first via || merge, then inject pending_web.
     const setClauses = pendingCols.map(col =>
-      `${col} = jsonb_set(COALESCE(property_descriptions.${col}, '{}'), '{layers,pending_web}', EXCLUDED.${col}->'layers'->'pending_web')`
+      `${col} = (
+             COALESCE(property_descriptions.${col}, '{}') ||
+             jsonb_build_object('layers',
+               COALESCE(COALESCE(property_descriptions.${col}, '{}')->'layers', '{}') ||
+               jsonb_build_object('pending_web', EXCLUDED.${col}->'layers'->'pending_web')
+             )
+           )`
     ).join(',\n           ');
     const values = [parcelId, ...Object.values(updates)];
 
