@@ -1,4 +1,4 @@
-import { inngest } from '../client';
+import { inngest } from '../../lib/inngest';
 import { apartmentLocatorSyncService } from '../../services/apartment-locator-sync.service';
 import { logger } from '../../utils/logger';
 
@@ -18,8 +18,8 @@ export const nightlyApartmentSyncCron = inngest.createFunction(
     id: 'nightly-apartment-sync',
     name: 'Nightly Apartment Locator Sync (all metros)',
     retries: 1,
+    triggers: [{ cron: '0 4 * * *' }],
   },
-  { cron: '0 4 * * *' },
   async ({ step }) => {
     const startedAt = new Date().toISOString();
 
