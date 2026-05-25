@@ -2363,13 +2363,28 @@ export async function getDealFinancials(
   const _egiForDollars = resolvedNum(lv(year1Seed, 'egi'));
   const _otherIncMul   = totalUnits > 0 ? totalUnits * 12 : null;
 
+  // PF-03 / MATH-01: Bad debt base = (NRI + other_income), NOT GPR.
+  // The EGI formula deducts bad debt from the pool of rental income after all
+  // other revenue deductions (LTL, vacancy, concessions, NRU) plus other income,
+  // so the displayed dollar amount must use that same pre-bad-debt-EGI base.
+  // Using GPR inflates the bad-debt line by ~30% for typical deal parameters.
+  const _nriResolved    = resolvedNum(lv(year1Seed, 'net_rental_income'));
+  const _oiPuResolved   = resolvedNum(lv(year1Seed, 'other_income_per_unit'));
+  const _oiAnnualForBd  = _oiPuResolved != null && totalUnits > 0
+    ? _oiPuResolved * totalUnits * 12
+    : 0;
+  // Fall back to GPR when NRI is not yet seeded (first-pass deals with no capsule).
+  const _badDebtBase    = _nriResolved != null
+    ? _nriResolved + _oiAnnualForBd
+    : _gprForDollars;
+
   const year1Rows = [
     ...REVENUE_FIELDS.map(([k, _l]) => toRow(k, _l)),
     // Canonical $-denominated revenue deductions (consumed by ProFormaSummaryTab).
     toDollarRow('loss_to_lease_pct',     'loss_to_lease',     'Loss to Lease',         _gprForDollars),
     toDollarRow('vacancy_pct',           'vacancy_loss',      'Vacancy & Credit Loss', _gprForDollars, 'vacancy_loss_dollars'),
     toDollarRow('concessions_pct',       'concessions',       'Concessions',           _gprForDollars, 'concessions'),
-    toDollarRow('bad_debt_pct',          'bad_debt',          'Bad Debt',              _gprForDollars, 'bad_debt_dollars'),
+    toDollarRow('bad_debt_pct',          'bad_debt',          'Bad Debt',              _badDebtBase,   'bad_debt_dollars'),
     toDollarRow('non_revenue_units_pct', 'non_revenue_units', 'Non-Revenue Units',     _gprForDollars),
     toDollarRow('other_income_per_unit', 'other_income',      'Other Income',          _otherIncMul, 'other_income_dollars'),
     ...OPEX_FIELDS.map(([k, _l]) => toRow(k, _l)),
