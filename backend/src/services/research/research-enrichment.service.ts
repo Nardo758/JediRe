@@ -25,19 +25,16 @@ export interface LogEntry {
 
 // ── LayeredValue helper ───────────────────────────────────────────────────────
 
-function layeredValue<T>(value: T, source: string): {
-  resolved: T;
-  source: string;
-  runAt: string;
-  layers: Record<string, { value: T; ts: string }>;
-} {
+/**
+ * Creates a staging LayeredValue that writes ONLY to layers.pending_web.
+ * The `resolved` field is intentionally omitted — pending data does not
+ * affect the resolved value until the user clicks Apply.
+ */
+function pendingLayeredValue<T>(value: T, source: string): string {
   const ts = new Date().toISOString();
-  return {
-    resolved: value,
-    source,
-    runAt: ts,
-    layers: { web: { value, ts } },
-  };
+  return JSON.stringify({
+    layers: { pending_web: { value, ts, source } },
+  });
 }
 
 // ── Result shape ──────────────────────────────────────────────────────────────
@@ -155,27 +152,27 @@ export async function runResearchEnrichment(opts: {
   const updates: Record<string, unknown> = {};
 
   if (webResult?.narrative) {
-    updates.narrative = layeredValue(webResult.narrative, 'web:search_synthesis');
+    updates.narrative = pendingLayeredValue(webResult.narrative, 'web:search_synthesis');
     fieldsWritten.push('narrative');
   }
 
   if (placesResult && placesResult.reviews.length > 0) {
-    updates.reviews = layeredValue(placesResult.reviews, 'web:google_places');
+    updates.reviews = pendingLayeredValue(placesResult.reviews, 'web:google_places');
     fieldsWritten.push('reviews');
   }
 
   if (placesResult && placesResult.photos.length > 0) {
-    updates.photos = layeredValue(placesResult.photos, 'web:google_places');
+    updates.photos = pendingLayeredValue(placesResult.photos, 'web:google_places');
     fieldsWritten.push('photos');
   }
 
   if (placesResult?.sentiment_summary) {
-    updates.sentiment_summary = layeredValue(placesResult.sentiment_summary, 'web:google_places');
+    updates.sentiment_summary = pendingLayeredValue(placesResult.sentiment_summary, 'web:google_places');
     fieldsWritten.push('sentiment_summary');
   }
 
   if (webResult && webResult.recent_events.length > 0) {
-    updates.recent_events = layeredValue(webResult.recent_events, 'web:search_synthesis');
+    updates.recent_events = pendingLayeredValue(webResult.recent_events, 'web:search_synthesis');
     fieldsWritten.push('recent_events');
   }
 
@@ -191,22 +188,29 @@ export async function runResearchEnrichment(opts: {
     };
     for (const [flagKey, col] of Object.entries(flagMap)) {
       if (flags[flagKey as keyof typeof flags]) {
-        updates[col] = layeredValue(true, 'web:google_places');
+        updates[col] = pendingLayeredValue(true, 'web:google_places');
         fieldsWritten.push(col);
       }
     }
   }
 
   if (Object.keys(updates).length > 0) {
-    const setClauses = Object.keys(updates).map((col, i) => `${col} = $${i + 2}`).join(', ');
-    const values = [parcelId, ...Object.values(updates).map(v => JSON.stringify(v))];
+    const pendingCols = Object.keys(updates);
+    // For new rows: write the full pending structure.
+    // For existing rows: inject ONLY the pending_web slot via jsonb_set,
+    // preserving any existing resolved value and layers.web.
+    const setClauses = pendingCols.map(col =>
+      `${col} = jsonb_set(COALESCE(property_descriptions.${col}, '{}'), '{layers,pending_web}', EXCLUDED.${col}->'layers'->'pending_web')`
+    ).join(',\n           ');
+    const values = [parcelId, ...Object.values(updates)];
 
     try {
       await dbQuery(
-        `INSERT INTO property_descriptions (parcel_id, ${Object.keys(updates).join(', ')}, updated_at)
-         VALUES ($1, ${Object.keys(updates).map((_, i) => `$${i + 2}`).join(', ')}, NOW())
+        `INSERT INTO property_descriptions (parcel_id, ${pendingCols.join(', ')}, updated_at)
+         VALUES ($1, ${pendingCols.map((_, i) => `$${i + 2}::jsonb`).join(', ')}, NOW())
          ON CONFLICT (parcel_id) DO UPDATE SET
-           ${setClauses}, updated_at = NOW()`,
+           ${setClauses},
+           updated_at = NOW()`,
         values,
       );
       logEntries.push({

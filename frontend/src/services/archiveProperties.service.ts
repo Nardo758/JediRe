@@ -1,11 +1,18 @@
 import { apiClient } from './api.client';
 
+export interface LayeredValueLayer<T = unknown> {
+  value: T;
+  ts: string;
+  source?: string;
+}
+
 export interface LayeredValue<T = unknown> {
   resolved: T | null;
   layers?: {
     om?: { value: T; source_file_id?: string; confidence?: number; extracted_at?: string };
     municipal?: { value: T; source?: string; fetched_at?: string; api_endpoint?: string };
     web?: { value: T; source_url?: string; fetched_at?: string };
+    pending_web?: { value: T; ts: string; source: string };
     manual?: { value: T; user?: string; entered_at?: string; note?: string };
   };
   resolution_rule?: string;

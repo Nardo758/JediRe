@@ -328,3 +328,27 @@ Exposed in `/api/v1/calibration/coefficients/:dealId` response via `meta.subject
 Toggle button: `SUBJ·{tier}` in teal — uses `SUBJ_TEAL = '#2DD4BF'` color.
 `F9SubjectHistory` type is in `frontend/src/pages/development/financial-engine/types.ts`.
 `SourceBadge` supports `subject_history:s1|s2|s3|s4` via `LayeredValueSource` union.
+
+---
+
+## Standing Principles (Phase 8, Task #1041)
+
+These apply to all future agents working on this codebase.
+
+### P1 — Single Canonical DQ Formula
+The server is the ONLY place DQ is computed. `recalculateDQScore()` runs after every write that could affect DQ fields. Clients never compute DQ and never include `data_quality_score` in PATCH payloads. The client-side `calculateDQScore()` function in the modal is a display-only preview; it does NOT write to the DB.
+
+### P2 — Threshold Recalibration Is a Separate Explicit Change
+Any change to DQ gate thresholds (`>= 50`, `>= 40`, etc.) requires: (a) document the before-state with exact counts, (b) propose specific new values with rationale, (c) get explicit approval before applying. Never silently slide a threshold.
+
+### P3 — Apply/Discard Is the Default for Enrichment
+All automated enrichment writes go to `layers.pending_web` first. The `resolved` field is only updated when the operator explicitly clicks APPLY. The `PHASE8_COLS` constant in `archive-properties.routes.ts` must be kept in sync with any new enrichment fields added to `property_descriptions`.
+
+### P4 — Schema Errors Must Surface
+Never swallow DB errors with `.catch(logger.warn)` or silent fallbacks in enrichment/recalculation paths. If a column doesn't exist, the error should propagate and fail loudly. Silent swallowing hides schema drift (e.g., `deal_type` vs `data_type` bug found in Phase 8).
+
+### P5 — Stale-Reference Sweep Before Changing Field Semantics
+Before changing the name, type, or meaning of any field used by a data pipeline, grep every reader across backend + frontend. Document the full reader list in the PR or dispatch. Phase 8 example: `data_quality_score` readers audited in the closing doc before removing the client write path.
+
+### P6 — Paired-Read Verification Before Marking Complete
+After any data pipeline change, explicitly verify that (a) the writer produces the correct value, (b) every downstream reader receives and interprets the new value correctly, and (c) no reader has a stale cached copy. Record the verification in the closing doc.

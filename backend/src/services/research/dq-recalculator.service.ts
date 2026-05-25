@@ -28,7 +28,7 @@ export async function recalculateDQScore(assetId: string): Promise<number> {
     dbQuery<Record<string, unknown>>(
       `SELECT property_name, city, state, property_type, asset_class, unit_count,
               year_built, avg_rent, occupancy_rate, cap_rate, noi,
-              asking_price, sale_price, deal_type, data_quality_score
+              asking_price, sale_price, data_type, data_quality_score
        FROM data_library_assets WHERE id = $1`,
       [assetId],
     ).then(r => r.rows[0] ?? null),
@@ -62,7 +62,7 @@ export async function recalculateDQScore(assetId: string): Promise<number> {
   if (safeFloat(dlaRow.occupancy_rate) != null) raw += 10;
   if (safeFloat(dlaRow.cap_rate) != null || safeFloat(dlaRow.noi) != null) raw += 10;
   if (safeFloat(dlaRow.asking_price) != null || safeFloat(dlaRow.sale_price) != null) raw += 10;
-  if (dlaRow.deal_type) raw += 10;
+  if (dlaRow.data_type) raw += 10;
 
   // ── Phase 8 fields from property_descriptions (max 30 pts) ───────────────────
 
@@ -99,4 +99,20 @@ export async function recalculateDQScore(assetId: string): Promise<number> {
 
   logger.debug('[dq-recalculator] score updated', { assetId, raw, score });
   return score;
+}
+
+/**
+ * Convenience wrapper: looks up assetId from parcelId (property_name column),
+ * then delegates to recalculateDQScore.
+ */
+export async function recalculateDQScoreByParcelId(parcelId: string): Promise<number> {
+  const lookup = await dbQuery<{ id: string }>(
+    `SELECT id FROM data_library_assets WHERE property_name = $1 ORDER BY created_at DESC LIMIT 1`,
+    [parcelId],
+  );
+  if (!lookup.rows[0]) {
+    logger.warn('[dq-recalculator] no asset found for parcel_id', { parcelId });
+    return 0;
+  }
+  return recalculateDQScore(lookup.rows[0].id);
 }

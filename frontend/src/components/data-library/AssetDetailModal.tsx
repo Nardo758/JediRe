@@ -212,9 +212,9 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     fieldsEnriched: string[];
     conflicts: Array<{ field: string; existingValue: unknown; enrichedValue: unknown; source: string }>;
     previousScore: number;
-    newScore: number;
+    newScore?: number;
     logId?: string;
-    status?: 'complete' | 'processing';
+    status?: 'complete' | 'processing' | 'pending_review' | 'applied' | 'no_match';
     jobId?: string;
   } | null>(null);
   const [serverDqScore, setServerDqScore] = useState<number | null>(null);
@@ -247,6 +247,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         // loaded "91" (no forced decimals — user-entered precision is preserved).
         const occPct = fractionToPercentString(a.occupancy_rate);
         const capPct = fractionToPercentString(a.cap_rate);
+        setServerDqScore(a.data_quality_score ?? null);
         setDetails({
           propertyName: a.property_name || customLabel || '',
           address: a.address || '',
@@ -451,12 +452,11 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
               `/api/v1/properties/by-parcel/${encodeURIComponent(parcelId)}/enrich/status`,
               { params: { jobId: r.jobId } },
             );
-            if (statusRes.data.status === 'complete' || statusRes.data.status === 'no_match' || statusRes.data.status === 'error') {
-              setServerDqScore(statusRes.data.dq_score ?? null);
+            if (statusRes.data.status === 'pending_review' || statusRes.data.status === 'no_match' || statusRes.data.status === 'error') {
               setEnrichResult(prev => prev ? {
                 ...prev,
-                newScore: statusRes.data.dq_score ?? prev.previousScore,
-                status: 'complete',
+                status: statusRes.data.status === 'pending_review' ? 'pending_review'
+                  : statusRes.data.status === 'no_match' ? 'no_match' : 'complete',
               } : null);
               setEnriching(false);
               return;
@@ -468,14 +468,12 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         return;
       }
 
-      if (r.newScore != null) setServerDqScore(r.newScore);
       setEnrichResult({
         fieldsEnriched: r.fieldsEnriched || [],
         conflicts: r.conflicts || [],
         previousScore: r.previousScore ?? 0,
-        newScore: r.newScore ?? 0,
         logId: r.logId,
-        status: 'complete',
+        status: r.status === 'pending_review' ? 'pending_review' : r.status === 'no_match' ? 'no_match' : 'complete',
       });
       const init: Record<string, 'overwrite' | 'keep'> = {};
       for (const c of (r.conflicts || [])) init[c.field] = 'overwrite';
@@ -539,31 +537,22 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     setDecisions(next);
   };
 
-  // Apply enrichment with the staged decisions. Single network call. If there
-  // are no conflicts at all (e.g. only missing-field fills), this still works:
-  // we send {accept: true} which applies every proposed field.
+  // Apply — promotes pending_web → web layer on the server, then recomputes DQ.
   const handleApply = async () => {
-    if (!enrichResult?.logId) return;
+    const parcelId = details.propertyName || customLabel;
+    if (!parcelId) return;
     setResolving(true);
     try {
-      const hasConflicts = enrichResult.conflicts.length > 0;
-      if (hasConflicts) {
-        await apiClient.post(`/api/v1/property-discovery/enrichment-log/${enrichResult.logId}/resolve`, {
-          resolutions: decisions,
-        });
-      } else {
-        await apiClient.post(`/api/v1/property-discovery/enrichment-log/${enrichResult.logId}/resolve`, {
-          accept: true,
-        });
-      }
-      const acceptedConflictFields = enrichResult.conflicts
-        .filter(c => decisions[c.field] === 'overwrite')
-        .map(c => c.field);
+      const res = await apiClient.post(
+        `/api/v1/properties/by-parcel/${encodeURIComponent(parcelId)}/enrichment/apply`,
+      );
+      setServerDqScore(res.data.new_dq_score ?? null);
       setEnrichResult(prev => prev ? {
         ...prev,
+        status: 'applied',
+        newScore: res.data.new_dq_score ?? prev.newScore,
         conflicts: [],
-        fieldsEnriched: [...prev.fieldsEnriched, ...acceptedConflictFields],
-      } : prev);
+      } : null);
       setDecisions({});
       await refreshAssetAfterApply();
     } catch (err) {
@@ -574,14 +563,15 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     }
   };
 
-  // Discard the proposal entirely. Server marks the log rejected; no asset writes.
+  // Discard — removes pending_web layer from all Phase 8 columns. Resolved unchanged.
   const handleDiscard = async () => {
-    if (!enrichResult?.logId) return;
+    const parcelId = details.propertyName || customLabel;
+    if (!parcelId) return;
     setResolving(true);
     try {
-      await apiClient.post(`/api/v1/property-discovery/enrichment-log/${enrichResult.logId}/resolve`, {
-        accept: false,
-      });
+      await apiClient.post(
+        `/api/v1/properties/by-parcel/${encodeURIComponent(parcelId)}/enrichment/discard`,
+      );
       setEnrichResult(null);
       setDecisions({});
     } catch (err) {
@@ -623,7 +613,6 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         sale_price: details.soldPrice ? parseFloat(details.soldPrice) : null,
         sale_date: details.soldDate || null,
         noi: details.noi ? parseFloat(details.noi) : null,
-        data_quality_score: serverDqScore ?? calculateDQScore(),
       };
 
       // Calculate vintage band
@@ -783,10 +772,12 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
             {enrichResult && (
               <div style={{ fontSize: 10, color: C.secondary, fontFamily: MONO }}>
                 Enriched <strong style={{ color: C.cyan }}>{enrichResult.fieldsEnriched.length}</strong> field(s);
-                DQ <strong style={{ color: C.cyan }}>{enrichResult.previousScore}</strong> → <strong style={{ color: dqColor }}>{enrichResult.newScore}</strong>
-                {enrichResult.conflicts.length > 0 && (
-                  <> · <span style={{ color: '#FCD34D' }}>{enrichResult.conflicts.length} conflict(s) need review</span></>
-                )}
+                DQ <strong style={{ color: C.cyan }}>{enrichResult.previousScore}</strong>
+                {enrichResult.newScore != null ? (
+                  <> → <strong style={{ color: dqColor }}>{enrichResult.newScore}</strong></>
+                ) : enrichResult.status === 'pending_review' ? (
+                  <> → <strong style={{ color: '#f59e0b' }}>? (pending review)</strong></>
+                ) : null}
               </div>
             )}
             {enrichResult && enrichResult.status === 'processing' && (
@@ -794,13 +785,13 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                 Running in background — polling for completion…
               </div>
             )}
-            {enrichResult && enrichResult.status === 'complete' && enrichResult.fieldsEnriched.length > 0 && (
+            {enrichResult && enrichResult.status === 'applied' && enrichResult.fieldsEnriched.length > 0 && (
               <div style={{
                 marginTop: 4, padding: '6px 10px', border: `1px solid #10B98144`,
                 background: '#10B98110', display: 'flex', alignItems: 'center', gap: 8,
               }}>
                 <span style={{ fontSize: 10, color: '#10B981', fontFamily: MONO }}>
-                  ✓ Written: [{enrichResult.fieldsEnriched.join(', ')}]
+                  ✓ Applied: [{enrichResult.fieldsEnriched.join(', ')}]
                 </span>
                 <button
                   onClick={() => { setEnrichResult(null); setEnrichError(null); }}
@@ -814,7 +805,43 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                 </button>
               </div>
             )}
-            {enrichResult && (enrichResult.status === 'no_match' || (enrichResult.status === 'complete' && enrichResult.fieldsEnriched.length === 0)) && (
+            {enrichResult && enrichResult.status === 'pending_review' && enrichResult.fieldsEnriched.length > 0 && (
+              <div style={{
+                marginTop: 4, padding: '8px 10px', border: `1px solid #f59e0b44`,
+                background: '#f59e0b0d', display: 'flex', flexDirection: 'column', gap: 6,
+              }}>
+                <div style={{ fontSize: 10, color: '#f59e0b', fontFamily: MONO }}>
+                  ⏳ PENDING REVIEW — [{enrichResult.fieldsEnriched.join(', ')}]
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    onClick={handleApply}
+                    disabled={resolving}
+                    style={{
+                      padding: '3px 12px', fontSize: 10, fontWeight: 700,
+                      background: '#10B98122', color: '#10B981',
+                      border: '1px solid #10B98166',
+                      cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
+                    }}
+                  >
+                    {resolving ? 'APPLYING…' : 'APPLY'}
+                  </button>
+                  <button
+                    onClick={handleDiscard}
+                    disabled={resolving}
+                    style={{
+                      padding: '3px 12px', fontSize: 10, fontWeight: 700,
+                      background: '#e06c7522', color: '#e06c75',
+                      border: '1px solid #e06c7566',
+                      cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
+                    }}
+                  >
+                    {resolving ? 'DISCARDING…' : 'DISCARD'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {enrichResult && (enrichResult.status === 'no_match' || (enrichResult.status === 'applied' && enrichResult.fieldsEnriched.length === 0)) && (
               <div style={{ marginTop: 4, fontSize: 10, color: C.secondary, fontFamily: MONO }}>
                 No new Phase 8 data found for this property.
               </div>

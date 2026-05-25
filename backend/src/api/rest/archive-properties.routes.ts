@@ -252,7 +252,6 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
       const jobId = `research_${rawParcelId.replace(/\s+/g, '_')}_${Date.now()}`;
 
       const { runResearchEnrichment } = await import('../../services/research/research-enrichment.service');
-      const { recalculateDQScore } = await import('../../services/research/dq-recalculator.service');
 
       const enrichPromise = runResearchEnrichment({
         parcelId: rawParcelId,
@@ -260,10 +259,7 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
         address: asset.address,
         city: asset.city,
         state: asset.state,
-      }).then(async result => {
-        const newScore = await recalculateDQScore(asset.id);
-        return { result, newScore };
-      });
+      }).then(result => ({ result }));
 
       const SYNC_TIMEOUT_MS = 5000;
       const raceOutcome = await Promise.race([
@@ -274,16 +270,16 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
       ]);
 
       if (raceOutcome.done) {
-        const { result, newScore } = raceOutcome;
+        const { result } = raceOutcome;
+        const enrichStatus = result.fields_written.length === 0 ? 'no_match' : 'pending_review';
         return res.status(200).json({
-          status: 'complete',
+          status: enrichStatus,
           parcel_id: rawParcelId,
           asset_id: asset.id,
           jobId,
           fieldsEnriched: result.fields_written,
           conflicts: [],
           previousScore: prevScore,
-          newScore,
           places_status: result.places_status,
           web_status: result.web_status,
           reviews_count: result.reviews_count,
@@ -305,9 +301,9 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
       });
 
       enrichPromise
-        .then(({ result, newScore }) => {
-          const finalStatus = result.fields_written.length === 0 ? 'no_match' : 'complete';
-          setJobState(jobId, { status: finalStatus, dq_score: newScore, updated_at: new Date().toISOString() });
+        .then(({ result }) => {
+          const finalStatus = result.fields_written.length === 0 ? 'no_match' : 'pending_review';
+          setJobState(jobId, { status: finalStatus, updated_at: new Date().toISOString() });
         })
         .catch(err => {
           const msg = (err as Error).message;
@@ -367,22 +363,94 @@ export function createArchivePropertiesRouter(pool: Pool): Router {
       }
 
       const row = pd.rows[0];
-      const hasPhase8 = !!(row.reviews || row.recent_events || row.photos || row.narrative);
-
-      const dla = await pool.query<{ data_quality_score: number | null }>(
-        `SELECT data_quality_score FROM data_library_assets WHERE property_name = $1 ORDER BY created_at DESC LIMIT 1`,
-        [rawParcelId],
+      type LVObj = { layers?: { pending_web?: unknown } } | null;
+      const hasPendingWeb = [row.reviews, row.recent_events, row.photos, row.narrative].some(
+        v => v && typeof v === 'object' && (v as LVObj)?.layers?.pending_web != null
       );
-      const dqScore = dla.rows[0]?.data_quality_score ?? null;
+      const hasApplied = !hasPendingWeb && !!(row.reviews || row.recent_events || row.photos || row.narrative);
+      const enrichStatus = hasPendingWeb ? 'pending_review' : hasApplied ? 'complete' : 'no_match';
 
       return res.json({
-        status: hasPhase8 ? 'complete' : 'no_match',
+        status: enrichStatus,
         parcel_id: rawParcelId,
-        dq_score: dqScore,
         updated_at: row.updated_at,
       });
     } catch (err) {
       return res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Phase 8 columns that carry pending_web enrichment data
+  // ─────────────────────────────────────────────────────────────────────────
+  const PHASE8_COLS = [
+    'narrative', 'photos', 'reviews', 'sentiment_summary', 'recent_events',
+    'has_pool', 'has_fitness', 'has_clubhouse', 'has_concierge',
+    'has_business_center', 'has_dog_park',
+  ];
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // POST /api/v1/properties/by-parcel/:parcelId/enrichment/apply
+  // Promotes pending_web → web layer, sets resolved, recomputes DQ.
+  // ─────────────────────────────────────────────────────────────────────────
+  router.post('/by-parcel/:parcelId/enrichment/apply', async (req: Request, res: Response) => {
+    const rawParcelId = decodeURIComponent(req.params.parcelId);
+    try {
+      const applySetClauses = PHASE8_COLS.map(col => `
+        ${col} = CASE
+          WHEN ${col}->'layers'->'pending_web' IS NOT NULL THEN
+            jsonb_set(
+              jsonb_set(
+                ${col} #- '{layers,pending_web}',
+                '{layers,web}',
+                ${col}->'layers'->'pending_web'
+              ),
+              '{resolved}',
+              ${col}->'layers'->'pending_web'->'value'
+            )
+          ELSE ${col}
+        END`).join(',');
+
+      await pool.query(
+        `UPDATE property_descriptions SET ${applySetClauses}, updated_at = NOW() WHERE parcel_id = $1`,
+        [rawParcelId],
+      );
+
+      const { recalculateDQScoreByParcelId } = await import('../../services/research/dq-recalculator.service');
+      const newDqScore = await recalculateDQScoreByParcelId(rawParcelId);
+
+      return res.json({ status: 'applied', parcel_id: rawParcelId, new_dq_score: newDqScore });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('[archive-properties] enrichment/apply failed', { parcelId: rawParcelId, error: msg });
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // POST /api/v1/properties/by-parcel/:parcelId/enrichment/discard
+  // Removes the pending_web layer from all Phase 8 columns. Resolved stays.
+  // ─────────────────────────────────────────────────────────────────────────
+  router.post('/by-parcel/:parcelId/enrichment/discard', async (req: Request, res: Response) => {
+    const rawParcelId = decodeURIComponent(req.params.parcelId);
+    try {
+      const discardSetClauses = PHASE8_COLS.map(col => `
+        ${col} = CASE
+          WHEN ${col}->'layers'->'pending_web' IS NOT NULL THEN
+            ${col} #- '{layers,pending_web}'
+          ELSE ${col}
+        END`).join(',');
+
+      await pool.query(
+        `UPDATE property_descriptions SET ${discardSetClauses}, updated_at = NOW() WHERE parcel_id = $1`,
+        [rawParcelId],
+      );
+
+      return res.json({ status: 'discarded', parcel_id: rawParcelId });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('[archive-properties] enrichment/discard failed', { parcelId: rawParcelId, error: msg });
+      return res.status(500).json({ error: msg });
     }
   });
 

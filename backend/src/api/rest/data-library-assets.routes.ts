@@ -237,7 +237,7 @@ export function createDataLibraryAssetsRoutes(pool: Pool): Router {
         'noi', 'noi_per_unit', 'expense_ratio', 'noi_as_of_date',
         'asking_price',
         'sale_price', 'sale_date', 'price_per_unit', 'price_per_sqft', 'cap_rate', 'buyer', 'seller',
-        'notes', 'tags', 'data_quality_score',
+        'notes', 'tags',
       ];
 
       const updates: string[] = [];
@@ -267,7 +267,10 @@ export function createDataLibraryAssetsRoutes(pool: Pool): Router {
         return res.status(404).json({ error: 'Asset not found' });
       }
 
-      res.json(result.rows[0]);
+      const { recalculateDQScore } = await import('../../services/research/dq-recalculator.service');
+      const newDqScore = await recalculateDQScore(req.params.id);
+
+      res.json({ ...result.rows[0], data_quality_score: newDqScore });
     } catch (err: any) {
       console.error('Data library asset update error:', err);
       res.status(500).json({ error: err.message });
