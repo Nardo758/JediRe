@@ -1,0 +1,189 @@
+POST-BASELINE CLEANUP — MSA + FL/TAMPA BENCHMARKS + B4 + G8
+
+CONTEXT
+The Day 5 CashFlow Agent baseline re-run on Sentosa Epperson 
+surfaced four new findings, all small. This dispatch closes them 
+together.
+
+1. Sentosa HO row has msa_id = NULL → fetch_backtest_context 
+   returns empty (data matrix resolves by MSA, not deal_id)
+2. line_item_benchmarks has only GA/Atlanta rows → no match for 
+   Sentosa (FL/Tampa)
+3. B4: OperatorStance reblend crashes with "operator does not 
+   exist: uuid !~~ unknown" (post-run; doesn't block output)
+4. G8 (new): deals.deal_data->'source_documents' empty on all 
+   pre-May-19 deals (when writeSourceDocument was added)
+
+Each item is a separate independent fix. Bundled here for 
+efficiency but the bot should report each independently.
+
+═══════════════════════════════════════════════════════════════════
+ITEM 1 — SET MSA_ID ON SENTOSA HO ROW
+═══════════════════════════════════════════════════════════════════
+
+A. Identify Sentosa Epperson's MSA:
+   - Tampa-St. Petersburg-Clearwater MSA
+   - Confirm the msa_id used elsewhere in the system for this MSA
+   - Sample other Tampa-MSA assets to confirm the id format
+
+B. Update the Sentosa HO row:
+   UPDATE historical_observations 
+   SET msa_id = '<verified-tampa-msa-id>',
+       submarket_id = '<if-resolvable>'
+   WHERE deal_id = '3d96f62d-...'
+     AND parcel_id = 'fa526821-...';
+
+C. Verify:
+   - fetch_backtest_context for Sentosa now returns the row
+   - Document the new resolution path
+
+D. AUDIT: are there other HO rows with NULL msa_id that should 
+   have a value? 
+   - SELECT count(*) FROM historical_observations WHERE 
+     msa_id IS NULL
+   - If significant, surface for separate decision (don't fix 
+     in this dispatch)
+
+═══════════════════════════════════════════════════════════════════
+ITEM 2 — SEED FL/TAMPA ROWS IN LINE_ITEM_BENCHMARKS
+═══════════════════════════════════════════════════════════════════
+
+A. Find data sources for FL/Tampa per-unit benchmarks:
+   - data_library_assets with state='FL' and asset_class 
+     appropriate
+   - Deal underwriting snapshots for FL/Tampa deals
+   - Whatever pattern was used for the GA/Atlanta seed
+
+B. If FL/Tampa source data is sufficient (≥3 samples per line 
+   item per bucket):
+   - Replicate the GA/Atlanta seed pattern for FL/Tampa
+   - Seed line_item_benchmarks rows: GPR per-unit, payroll, 
+     insurance, utilities, R&M, management_fee, replacement 
+     reserves, property_tax
+   - Document N samples per row
+
+C. If FL/Tampa source data is insufficient:
+   - Document the gap explicitly
+   - Don't fabricate; report what's missing
+   - Recommendation: which deals/assets would need to populate 
+     to fill the gap
+
+D. Verify:
+   - Re-run fetch_line_item_benchmarks for Sentosa-applicable 
+     bucket
+   - Confirm rows returned (or document explicit gap)
+
+═══════════════════════════════════════════════════════════════════
+ITEM 3 — FIX B4 OPERATORSTANCE REBLEND SQL TYPE MISMATCH
+═══════════════════════════════════════════════════════════════════
+
+A. Locate the OperatorStance reblend code path (fires post-run)
+
+B. Investigate the SQL error:
+   - "operator does not exist: uuid !~~ unknown"
+   - !~~ is the NOT LIKE operator; receiving a uuid where it 
+     expects text
+   - Likely a query that uses LIKE on a UUID column
+
+C. Fix the query:
+   - Either cast the uuid to text explicitly
+   - Or change the LIKE to a direct equality comparison
+   - Or fix the parameter binding
+
+D. Verify:
+   - Trigger another CashFlow Agent run on any deal
+   - Confirm OperatorStance reblend completes without error
+   - Confirm reblend output (if any) lands correctly
+
+═══════════════════════════════════════════════════════════════════
+ITEM 4 — G8: BACKFILL deals.deal_data->'source_documents'
+═══════════════════════════════════════════════════════════════════
+
+A. INVESTIGATION
+   - Find writeSourceDocument() — the function added 2026-05-19
+   - Document its expected payload shape for the source_documents 
+     JSONB
+   - Sample 464 Bishop's deals.deal_data->'source_documents' for 
+     reference (this is the one deal that has it populated)
+   - Document the structure
+
+B. IDENTIFY DEALS NEEDING BACKFILL
+   - SELECT id, name, created_at FROM deals 
+     WHERE created_at < '2026-05-19' 
+       AND (deal_data IS NULL OR NOT (deal_data ? 'source_documents'))
+   - For each such deal, find associated files in data_library_files
+     (now using the asset_id linkage from G1)
+
+C. CONSTRUCT BACKFILL PAYLOAD
+   For each deal:
+   - For each linked file: build the source_documents entry from 
+     data_library_files columns + corpus data
+   - The structure should match what writeSourceDocument writes 
+     (per Step A)
+
+D. APPLY BACKFILL IN BATCHES OF 50
+   - Transaction per batch
+   - Track progress: N deals updated, N entries written
+   - Report any deals where backfill failed
+
+E. VERIFY
+   - fetch_source_documents for Sentosa now returns entries
+   - fetch_source_documents for at least 3 other previously-empty 
+     archive deals returns entries
+   - 464 Bishop (the reference deal) still returns its 12 entries 
+     unchanged
+
+═══════════════════════════════════════════════════════════════════
+PAIRED-READ VERIFICATION
+═══════════════════════════════════════════════════════════════════
+
+After all four items land:
+
+A. Re-run CashFlow Agent baseline on Sentosa Epperson (small 
+   re-run, expect ~165s, $0.15)
+
+B. Compare evidence trail:
+   - fetch_backtest_context: previously empty, now expect Sentosa 
+     HO row
+   - fetch_line_item_benchmarks: previously empty, now expect 
+     FL/Tampa rows (or explicit gap documentation)
+   - fetch_source_documents: previously empty, now expect Sentosa's 
+     file inventory
+   - OperatorStance reblend: previously errored, now expect clean 
+     completion
+
+C. Measure completeness score delta:
+   - Previous run: 20/100
+   - New run: ?
+   - Document which previously-empty layers now have data
+
+D. If completeness score still hasn't moved meaningfully, identify 
+   what's still missing — but don't try to fix it in this dispatch
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE in docs/operations/POST_BASELINE_CLEANUP.md
+═══════════════════════════════════════════════════════════════════
+
+For each item:
+(a) What was done
+(b) Verification result
+(c) Any surfaced sub-issues for future dispatches
+
+Plus a section comparing pre/post completeness on the Sentosa 
+re-run.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Address B5 (coerced string→object on evidence fields) — that's 
+  a separate investigation about LLM output shape vs normalizer 
+  behavior. Worth its own dispatch when convenient.
+- Backfill msa_id on the broader HO table (Item 1D is audit only)
+- Build new line item buckets if FL data is insufficient — 
+  document the gap, don't fabricate
+- Modify the writeSourceDocument function (only backfill historical 
+  data that predates its existence)
+- "While I'm here" cleanups
+- Skip the comparative baseline re-run — that's the proof the 
+  fixes worked
