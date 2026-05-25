@@ -1,0 +1,185 @@
+SUPPLY/DEMAND — PRESS RELEASE + SEC FILING INGEST DESIGN
+
+CONTEXT
+The announcement stage of CRE deals (often 6-18 months before 
+permits) shows up in press releases distributed via wire services 
+and in SEC filings by public REITs and developers.
+
+This dispatch designs the ingest pipeline. No implementation. 
+Output is a structured plan for what to integrate, what to 
+extract, and how the extracted entities link to platform data.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — PRESS RELEASE WIRE SERVICES
+═══════════════════════════════════════════════════════════════════
+
+A. Investigate access patterns for major wire services:
+
+| Service | Free RSS? | Filter capabilities | Latency |
+|---------|-----------|-------------------|---------|
+| PR Newswire | ? | ? | ? |
+| BusinessWire | ? | ? | ? |
+| GlobeNewswire | ? | ? | ? |
+| Reuters wire (PR-style) | ? | ? | ? |
+
+B. For each:
+   - RSS feed URL pattern (subject-filtered or industry-filtered 
+     if possible)
+   - Volume estimate (releases per day relevant to CRE)
+   - Whether full release body is in RSS or just headline + link
+   - Whether commercial use is permitted (read their ToS)
+
+C. Filter strategy for CRE relevance:
+   - Keyword filters (multifamily, apartment, development, 
+     groundbreak, etc.)
+   - Geographic filters (target metros)
+   - Entity filters (known developer/REIT names)
+   - Recommended approach to keep volume manageable
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — SEC EDGAR INTEGRATION
+═══════════════════════════════════════════════════════════════════
+
+A. 8-K filing types relevant to CRE supply pipeline:
+   - Item 1.01 Material Definitive Agreement (acquisitions, 
+     development agreements)
+   - Item 2.01 Completion of Acquisition or Disposition
+   - Item 7.01 Regulation FD Disclosure (often material 
+     announcements)
+   - Item 8.01 Other Events
+
+B. 10-K and 10-Q sections relevant:
+   - Development pipeline tables (most REIT 10-Ks include this)
+   - Property schedules with acquired/disposed properties
+   - Capital expenditure forecasts
+
+C. Access mechanism:
+   - SEC EDGAR full-text search API
+   - RSS feed for recent filings
+   - Filter strategy: focus on REIT SIC codes + public CRE 
+     developers
+
+D. Extraction complexity:
+   - 8-K text is semi-structured; LLM extraction is feasible
+   - 10-K development pipeline tables are often structured 
+     (extractable as tables)
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — DEVELOPMENT ANNOUNCEMENT SCHEMA
+═══════════════════════════════════════════════════════════════════
+
+A. Design the structured entity that extractions produce:
+
+```typescript
+   type DevelopmentAnnouncement = {
+     // Identification
+     source_url: string
+     source_publication: string
+     published_at: Date
+     ingested_at: Date
+     
+     // Developer
+     developer_name: string | null
+     developer_type: 'public_reit' | 'private' | 'institutional' | 
+                     'jv' | 'unknown'
+     
+     // Location  
+     property_name: string | null
+     address: string | null
+     city: string
+     state: string
+     msa: string | null
+     submarket: string | null
+     
+     // Project
+     property_type: 'multifamily' | 'mixed_use' | 'commercial' | 
+                    'industrial' | 'other'
+     unit_count: number | null
+     total_sqft: number | null
+     stories: number | null
+     building_type: 'garden' | 'mid_rise' | 'high_rise' | 'other' | null
+     
+     // Timing
+     stage: 'announced' | 'land_acquired' | 'planning_filed' | 
+            'permit_filed' | 'under_construction' | 'unknown'
+     expected_groundbreaking: Date | null
+     expected_completion: Date | null
+     
+     // Financials
+     total_project_cost: number | null
+     cost_per_unit: number | null
+     land_acquisition_price: number | null
+     
+     // Capital
+     equity_partners: string[] | null
+     lenders: string[] | null
+     
+     // Positioning
+     market_segment: 'luxury' | 'market_rate' | 'workforce' | 
+                     'affordable' | null
+     amenities_mentioned: string[] | null
+     
+     // Provenance
+     extraction_confidence: number  // 0-1
+     fields_with_explicit_mention: string[]  // which fields cite 
+                                              // explicit article text
+     fields_inferred: string[]  // which fields are LLM inference
+     supporting_passages: { field: string, passage: string }[]
+   }
+```
+
+B. Adjust the schema based on what's actually extractable from 
+   real press releases (sample 10-20 real CRE announcements and 
+   test schema fit).
+
+C. Linkage to existing platform data:
+   - How does a DevelopmentAnnouncement link to data_library_assets?
+   - To deals?
+   - To submarket records?
+   - What's the matching key (address + city + state? Property 
+     name + state?)
+   - How to handle duplicate announcements (different sources 
+     covering same deal)?
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — STORAGE + DOWNSTREAM CONSUMPTION
+═══════════════════════════════════════════════════════════════════
+
+A. Propose a new table: development_announcements
+   - Schema based on the entity above
+   - Indexes on city, state, msa, submarket, expected_completion
+   - JSONB column for raw extraction artifacts
+
+B. Downstream consumers:
+   - Traffic Engine (M07): forward supply pipeline by submarket
+   - Cashflow Agent: market context for underwriting (X units of 
+     new supply coming online within 18 months)
+   - Operator alerts: "competitor announced 300 units in your 
+     submarket"
+   - Cohort Rollup: identify which announcements eventually 
+     materialize as actual deliveries
+
+═══════════════════════════════════════════════════════════════════
+CLOSING REPORT in docs/operations/PRESS_RELEASE_SEC_DESIGN.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Wire service access patterns + ToS analysis
+(b) SEC EDGAR integration plan
+(c) Sample extraction tests on 10-20 real CRE announcements
+(d) Final DevelopmentAnnouncement schema with sample populated 
+    instances
+(e) Storage table design
+(f) Downstream consumer wiring plan
+(g) Recommended implementation phasing
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Build any ingest code
+- Create the development_announcements table
+- Modify Traffic Engine or Cashflow Agent to consume new data
+- Implement LLM extraction prompts (design only; testing on 
+  samples for schema validation is fine, but don't deploy)
+- Sign up for paid wire service accounts
+- "While I'm here" cleanups

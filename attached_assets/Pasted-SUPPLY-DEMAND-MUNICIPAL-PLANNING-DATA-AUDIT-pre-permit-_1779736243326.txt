@@ -1,0 +1,137 @@
+SUPPLY/DEMAND — MUNICIPAL PLANNING DATA AUDIT (pre-permit stage)
+
+CONTEXT
+The platform has assessor adapters for Atlanta-metro counties and 
+Florida counties. Planning department data — pre-permit pipeline 
+signals (zoning applications, site plan submissions, planning 
+commission agendas) — is a separate data publisher and currently 
+not integrated.
+
+This dispatch audits what's publicly accessible for each metro 
+where we have assessor adapters. No code changes. Output is a 
+gap analysis informing future integration dispatches.
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+Metros to audit (one section per metro):
+- City of Atlanta + Fulton County (separate jurisdictions)
+- DeKalb County
+- Cobb County
+- Gwinnett County
+- Cherokee County
+- Clayton County
+- Henry County (per prior probe — reachable but limited)
+- Miami-Dade County
+- Broward County
+- (any additional FL counties with active adapter work)
+
+═══════════════════════════════════════════════════════════════════
+PER-METRO INVESTIGATION
+═══════════════════════════════════════════════════════════════════
+
+For each metro:
+
+A. ACCESS MECHANISM
+   - Planning department portal URL
+   - Platform type (ArcGIS Hub, Accela Civic Platform, Granicus, 
+     proprietary, scraped HTML)
+   - Is there a public API? Direct download?
+   - Auth required? Rate limits?
+
+B. STAGES OF PIPELINE CAPTURED
+   For each metro, document which of these stages have public 
+   data:
+   - Zoning amendment applications (pending + recently approved)
+   - Site plan / development plan submissions
+   - Pre-application meetings (calendared)
+   - Variance applications
+   - Planning commission agendas (next 60 days)
+   - Planning commission minutes (last 12 months)
+   - Public hearing notices
+   - Council agenda items mentioning development
+   
+   For each: structured (queryable) vs unstructured (PDF minutes 
+   requiring extraction)
+
+C. DATA FRESHNESS
+   - How often is the source updated?
+   - Is there a feed (RSS, webhook) or only polling?
+   - Typical lag between filing and public visibility?
+
+D. ENTITY LINKAGE
+   - What identifiers does the planning data use?
+   - Parcel number/ID (and does it match the assessor adapter's 
+     parcel_id?)
+   - Address?
+   - Developer/applicant name?
+   - Cross-reference key to data_library_assets / property_descriptions
+
+E. RELEVANT FIELDS
+   For each application/filing record, what fields are typically 
+   available?
+   - Project name
+   - Applicant/developer name + contact
+   - Property address + parcel
+   - Proposed use (multifamily? mixed-use? commercial?)
+   - Proposed unit count / sqft / stories
+   - Current zoning + requested zoning (for amendments)
+   - Submission date
+   - Status (filed / under review / approved / denied / withdrawn)
+   - Scheduled hearing date
+   - Staff report / recommendation (often PDF)
+
+F. EXTRACTION COMPLEXITY
+   For each metro, rate:
+   - GREEN: structured API with clean fields, direct query
+   - YELLOW: portal with parseable HTML or downloadable CSV
+   - ORANGE: PDF-based; requires OCR or LLM extraction
+   - RED: no public access; would require FOIA or in-person requests
+
+═══════════════════════════════════════════════════════════════════
+GAP ANALYSIS
+═══════════════════════════════════════════════════════════════════
+
+A. For the 9-10 metros audited, produce a summary table:
+
+| Metro | Access | Stages captured | Linkage | Extraction | Recommended priority |
+|-------|--------|-----------------|---------|------------|---------------------|
+| City of Atlanta | (e.g., ArcGIS) | Zoning + site plan + agenda | parcel_id match | GREEN | High |
+| ... | ... | ... | ... | ... | ... |
+
+B. Prioritize by:
+   - Volume of multifamily activity in the metro (Atlanta + Miami 
+     likely top)
+   - Ease of integration (GREEN before ORANGE)
+   - Alignment with platform's existing assessor adapter coverage
+   - Lead-time value: how early in the pipeline can we catch deals?
+
+C. Identify cross-metro patterns:
+   - Are multiple metros on the same vendor platform (e.g., 
+     Accela)? If so, one integration covers multiple
+   - Are there state-level aggregators (e.g., FL state planning 
+     data clearinghouses)?
+
+═══════════════════════════════════════════════════════════════════
+CLOSING REPORT in docs/operations/PLANNING_DATA_AUDIT.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Per-metro investigation (Section A through F per metro)
+(b) Gap analysis table
+(c) Cross-metro patterns identified
+(d) Recommended integration sequence (which metros first, what 
+    stages to capture)
+(e) Estimated effort per metro for the first integration
+(f) Open questions requiring Leon's input
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Build any integration code
+- Scrape planning portals to populate the platform
+- Touch existing assessor adapters
+- Skip a metro because it looks hard — document and rate as RED 
+  if needed
+- "While I'm here" cleanups
