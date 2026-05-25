@@ -400,6 +400,7 @@ import { correlationRollingComputeCron } from './inngest/functions/correlation-r
 import { nightlyEventExtractionCron } from './inngest/functions/nightly-event-extraction';
 import { nightlyApartmentSyncCron } from './inngest/functions/nightly-apartment-sync';
 import { calibrationRealizationCron } from './inngest/functions/calibrationRealizationCron';
+import { macroSignalsMonthly } from './inngest/functions/macro-signals-monthly';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -441,6 +442,8 @@ app.use(
       nightlyApartmentSyncCron,
       // M38: nightly realization ingestion + pairing so drift detection activates (Task #587)
       calibrationRealizationCron,
+      // Task #1050: monthly FRED + BLS macro signals → historical_observations (2nd of month, 09:00 UTC)
+      macroSignalsMonthly,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,

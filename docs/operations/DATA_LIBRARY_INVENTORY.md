@@ -475,7 +475,7 @@ The following stored inputs are **reachable only via the REST API**, not by the 
 |-------------|-------|--------|
 | `msa_employment_total`, `msa_employment_growth_yoy`, `msa_avg_wage`, `msa_wage_growth_yoy`, `msa_unemployment_rate`, `msa_population`, `msa_household_growth_yoy`, `msa_in_migration_net` | `historical_observations` | All NULL — LODES/QCEW ingestion is pending (G6) |
 | `commute_shed_workers`, `commute_shed_wage_pct`, `mobility_visits_monthly`, `mobility_unique_visitors` | `historical_observations` | All NULL — Veraset mobility feed pending (G6) |
-| `msa_treasury_10y`, `msa_fed_funds_rate` | `historical_observations` | All NULL — FRED ingestion pending (G6); `fetch_rate_environment` reads FRED directly at runtime instead |
+| `msa_treasury_10y`, `msa_fed_funds_rate` | `historical_observations` | **Populated (2026-05-25)** — FRED backfill seeded 16 monthly rows per MSA (Dec 2024 – Mar 2026); `CorpusMacroIngestor` + monthly Inngest cron (`macro-signals-monthly`) maintain going-forward; G6 FRED portion CLOSED |
 
 ---
 
@@ -580,7 +580,7 @@ REALIZED OUTPUTS BACKFILL
 | G3 | `CorpusQueryService.coverage()` returns stub data until corpus has populated rows | Coverage report always shows "low" confidence |
 | G4 | `ingestPropertyPerformance()` (old path) marked `@deprecated`; some callers may still use it with `parcelId=''` | Corpus rows with empty parcel_id are unreachable |
 | G5 | M36, M37, M38 listed as corpus consumers but not yet active | Listed in comment only; no actual SQL queries dispatched |
-| G6 | External signal ingestion (LODES, QCEW, FRED, Veraset) all show `status: 'pending'` in coverage report | MSA-level corpus columns (`msa_employment_total`, `commute_shed_workers`, etc.) are all NULL |
+| G6 | **PARTIALLY CLOSED (2026-05-25)** — FRED rates (`msa_treasury_10y`, `msa_fed_funds_rate`) and BLS employment (`msa_employment_total`, `msa_unemployment_rate`) now populated for Atlanta/Charlotte MSAs. LODES/QCEW deeper employment detail and Veraset mobility signals remain pending. `CorpusQueryService.coverage()` now returns `confidence: 'medium'` when macro signals present. | Seed script: `backend/src/scripts/seed-macro-signals.ts`; Inngest cron: `backend/src/inngest/functions/macro-signals-monthly.ts` |
 | G7 | **CLOSED (2026-05-25)** — `line_item_benchmarks` seeded: 263 rows (14 line items × 3 classes at national level; + vintage-band stratification for Class B at national level: pre-1990/1990-2005/2006-2015/2016+; + Class B at top-10 MSAs). `archive_assumption_benchmarks`: 209 rows including canonical `vacancy_pct`, `concessions_pct`, `bad_debt_pct`, `management_fee_pct`. Closed-deal derivation path wired — activates automatically as platform accumulates ≥ 5 closed deals per cohort. `fetch_line_item_benchmarks` returns non-empty for Class B garden deals. Seed script: `backend/src/scripts/seed-opex-benchmarks.ts` | |
 
 ---
@@ -630,7 +630,7 @@ The agent runs and produces output today. However, the output quality is materia
 | CoStar submarket data ingested | Not loaded for Wesley Chapel | `fetch_peer_comp_noi_metrics` returns data; submarket rent/vacancy anchored |
 | Subject deal has OM uploaded | None attached for Sentosa Epperson | `detect_collision` gets sponsor-stated figures; evidence tier improves |
 | `historical_observations` populated for submarket | 0 rows for Wesley Chapel | M35, M07, M36 become active; data completeness score rises from 20 → ~40 |
-| External macro signals ingested (LODES/QCEW/Veraset) | All pending (G6) | MSA macro columns become non-null; corpus query quality improves |
+| External macro signals ingested (LODES/QCEW/Veraset) | FRED/BLS seeded ✓; LODES/QCEW/Veraset pending | MSA macro columns become non-null; corpus query quality improves |
 
 ### Minimum viable dispatch checklist
 

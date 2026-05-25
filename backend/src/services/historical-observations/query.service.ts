@@ -270,8 +270,52 @@ export class CorpusQueryService {
       );
     }
 
-    // If we have real data, return it; otherwise return stub
+    // If we have real data, probe macro signal columns and build actual status
     if (totalMonths > 0) {
+      // Check which macro signal columns are populated for this geography
+      let fredStatus: 'available' | 'partial' | 'pending' = 'pending';
+      let blsStatus: 'available' | 'partial' | 'pending' = 'pending';
+      let fredThrough: Date | null = null;
+      let blsThrough: Date | null = null;
+
+      try {
+        const params: unknown[] = [];
+        const geoWhere = buildGeographyWhere(geography, params);
+        if (geoWhere) {
+          const sigResult = await query(
+            `SELECT
+               COUNT(msa_treasury_10y)   AS has_rates,
+               COUNT(msa_employment_total) AS has_emp,
+               MAX(observation_date) FILTER (WHERE msa_treasury_10y IS NOT NULL)   AS rates_through,
+               MAX(observation_date) FILTER (WHERE msa_employment_total IS NOT NULL) AS emp_through
+             FROM historical_observations
+             WHERE ${geoWhere}`,
+            params,
+          );
+          const sig = sigResult.rows[0] || {};
+          const hasRates = Number(sig.has_rates) || 0;
+          const hasEmp = Number(sig.has_emp) || 0;
+
+          if (hasRates > 0) {
+            fredStatus = hasRates >= 6 ? 'available' : 'partial';
+            fredThrough = sig.rates_through ? new Date(sig.rates_through) : null;
+          }
+          if (hasEmp > 0) {
+            blsStatus = hasEmp >= 6 ? 'available' : 'partial';
+            blsThrough = sig.emp_through ? new Date(sig.emp_through) : null;
+          }
+        }
+      } catch {
+        // Non-fatal: fall back to 'pending' already set above
+      }
+
+      const hasMacro = fredStatus !== 'pending' || blsStatus !== 'pending';
+      const confidence = totalMonths >= 36 && hasMacro
+        ? 'high'
+        : totalMonths >= 12 || hasMacro
+          ? 'medium'
+          : 'low';
+
       return {
         msaId,
         submarketId,
@@ -288,13 +332,13 @@ export class CorpusQueryService {
           dateRange: { earliest: null, latest: lastUpload },
         },
         externalSignals: [
-          { name: 'LODES (commute-shed)', status: 'pending', throughDate: null, note: 'Awaiting ingestion Phase 4' },
-          { name: 'QCEW (employment)', status: 'pending', throughDate: null, note: 'Awaiting ingestion Phase 4' },
-          { name: 'FRED (rates)', status: 'pending', throughDate: null, note: 'Awaiting ingestion Phase 4' },
-          { name: 'M35 events', status: 'pending', throughDate: null, note: 'Awaiting ingestion Phase 4' },
-          { name: 'Veraset mobility', status: 'pending', throughDate: null, note: 'Awaiting subscription' },
+          { name: 'LODES (commute-shed)', status: 'pending' as const, throughDate: null, note: 'Awaiting ingestion Phase 4' },
+          { name: 'BLS CES (employment)', status: blsStatus, throughDate: blsThrough, note: blsStatus === 'pending' ? 'Run seed-macro-signals.ts to populate' : undefined },
+          { name: 'FRED (rates)', status: fredStatus, throughDate: fredThrough, note: fredStatus === 'pending' ? 'Run seed-macro-signals.ts to populate' : undefined },
+          { name: 'M35 events', status: 'pending' as const, throughDate: null, note: 'Awaiting ingestion Phase 4' },
+          { name: 'Veraset mobility', status: 'pending' as const, throughDate: null, note: 'Awaiting subscription' },
         ],
-        confidence: totalMonths >= 36 ? 'high' : totalMonths >= 12 ? 'medium' : 'low',
+        confidence,
       };
     }
 
