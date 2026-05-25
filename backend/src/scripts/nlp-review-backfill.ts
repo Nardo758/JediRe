@@ -15,12 +15,13 @@
  * Usage:
  *   cd backend && npx ts-node --transpile-only src/scripts/nlp-review-backfill.ts
  *
- * Flags:
- *   --dry-run         Print what would be sent; no API calls, no DB writes
- *   --limit=N         Process at most N reviews total (default: all)
- *   --concurrency=N   Parallel DeepSeek calls (default: 5)
+ * Flags (both space-separated and = are accepted):
+ *   --dry-run           Print what would be sent; no API calls, no DB writes
+ *   --limit N           Process at most N reviews total (default: all)
+ *   --concurrency N     Parallel DeepSeek calls (default: 5)
  *
- * Cost: ~$0.17 for all 1,350 reviews using deepseek-chat at $0.27/M input + $1.10/M output.
+ * Rate: capped at 10 reviews/second (sliding-window limiter), independent of concurrency.
+ * Cost: ~$0.17 for all 1,350 reviews using deepseek-chat.
  * All calls use triggered_by: 'cron' — cost is platform-absorbed, not charged to any user.
  */
 
@@ -29,9 +30,25 @@ import { deepseekAdapter } from '../agents/runtime/DeepSeekMeteringAdapter';
 
 // ── CLI flags ─────────────────────────────────────────────────────────────────
 
+/**
+ * Parses a named flag that carries a value.
+ * Accepts both:
+ *   --flag=value   (equals-separated)
+ *   --flag value   (space-separated — looks at the element immediately after the flag)
+ */
 function parseFlag(flag: string, defaultVal: string | null = null): string | null {
-  const arg = process.argv.find(a => a.startsWith(`--${flag}=`));
-  return arg ? (arg.split('=')[1] ?? defaultVal) : defaultVal;
+  const args = process.argv;
+  for (let i = 0; i < args.length; i++) {
+    // --flag=value form
+    if (args[i].startsWith(`--${flag}=`)) {
+      return args[i].split('=')[1] ?? defaultVal;
+    }
+    // --flag value form (space-separated)
+    if (args[i] === `--${flag}` && i + 1 < args.length && !args[i + 1].startsWith('--')) {
+      return args[i + 1];
+    }
+  }
+  return defaultVal;
 }
 
 function hasFlag(flag: string): boolean {
@@ -41,6 +58,7 @@ function hasFlag(flag: string): boolean {
 const DRY_RUN = hasFlag('dry-run');
 const LIMIT = parseInt(parseFlag('limit', '0') ?? '0', 10);
 const CONCURRENCY = parseInt(parseFlag('concurrency', '5') ?? '5', 10);
+const MAX_RPS = 10; // hard cap: 10 reviews/second regardless of concurrency
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -61,15 +79,33 @@ interface PendingWebLayer {
   source: string;
 }
 
-interface PropertyDescriptionRow {
-  parcel_id: string;
-  pending_web: PendingWebLayer;
-}
-
 interface NlpResult {
   named_entities: string[];
   hazard_mentions: string[];
   amenity_mentions: string[];
+}
+
+// ── Rate limiter — sliding-window 10 RPS ─────────────────────────────────────
+// Tracks timestamps of the last MAX_RPS calls within a 1-second window.
+// If the window is full, waits until the oldest timestamp is > 1000ms ago.
+
+const callTimestamps: number[] = [];
+
+async function rateLimitAcquire(): Promise<void> {
+  while (true) {
+    const now = Date.now();
+    // Evict timestamps older than 1 second
+    while (callTimestamps.length > 0 && callTimestamps[0] < now - 1000) {
+      callTimestamps.shift();
+    }
+    if (callTimestamps.length < MAX_RPS) {
+      callTimestamps.push(now);
+      return;
+    }
+    // Window full — wait until the oldest slot expires
+    const waitMs = 1000 - (now - callTimestamps[0]);
+    await new Promise(res => setTimeout(res, Math.max(1, waitMs)));
+  }
 }
 
 // ── NLP prompt ────────────────────────────────────────────────────────────────
@@ -89,7 +125,7 @@ Rules (STRICT):
    Only include if a specific physical hazard or safety condition is literally described.
 
 3. amenity_mentions: Specific amenity features explicitly mentioned.
-   Example: "pool", "dog park", "gym", "business center", "lash lift" (only if it is a property amenity).
+   Example: "pool", "dog park", "gym", "business center".
    Do NOT include: general praise words like "amenities are great" with no specifics.
 
 CRITICAL: If something is not literally written in the review text, do not include it.
@@ -100,7 +136,9 @@ Respond with JSON only:
 
 // ── DeepSeek call ─────────────────────────────────────────────────────────────
 
-async function extractNlp(reviewText: string, parcelId: string): Promise<NlpResult> {
+async function extractNlp(reviewText: string, runId: string): Promise<NlpResult> {
+  await rateLimitAcquire();
+
   const resp = await deepseekAdapter.createMessage({
     model: 'deepseek-chat',
     messages: [
@@ -113,7 +151,7 @@ async function extractNlp(reviewText: string, parcelId: string): Promise<NlpResu
     metadata: {
       triggered_by: 'cron',
       actor_id: 'nlp-review-backfill',
-      agent_run_id: `nlp-backfill-${Date.now()}`,
+      agent_run_id: runId,
     },
   });
 
@@ -125,9 +163,51 @@ async function extractNlp(reviewText: string, parcelId: string): Promise<NlpResu
       amenity_mentions: Array.isArray(parsed.amenity_mentions) ? parsed.amenity_mentions.map(String) : [],
     };
   } catch {
-    console.warn(`  [nlp] JSON parse failed for ${parcelId} — defaulting to empty arrays`);
+    console.warn(`  [nlp] JSON parse failed (runId=${runId}) — defaulting to empty arrays`);
     return { named_entities: [], hazard_mentions: [], amenity_mentions: [] };
   }
+}
+
+// ── Per-review indexed DB write using jsonb_set ───────────────────────────────
+// Uses jsonb_set with the literal array index baked into the path so only
+// the three NLP fields at position <reviewIdx> are touched — no other reviews
+// or other fields (ts, source, rating, etc.) are overwritten.
+// reviewIdx is a TypeScript integer (not user input) — safe to interpolate.
+
+async function writeNlpToReview(
+  pool: Pool,
+  parcelId: string,
+  reviewIdx: number,
+  nlp: NlpResult,
+): Promise<void> {
+  const idx = String(reviewIdx); // numeric string for jsonb_set path
+  await pool.query(
+    `UPDATE property_descriptions
+     SET reviews = jsonb_set(
+       jsonb_set(
+         jsonb_set(
+           reviews,
+           '{layers,pending_web,value,${idx},named_entities}',
+           $2::jsonb,
+           true
+         ),
+         '{layers,pending_web,value,${idx},hazard_mentions}',
+         $3::jsonb,
+         true
+       ),
+       '{layers,pending_web,value,${idx},amenity_mentions}',
+       $4::jsonb,
+       true
+     ),
+     updated_at = NOW()
+     WHERE parcel_id = $1`,
+    [
+      parcelId,
+      JSON.stringify(nlp.named_entities),
+      JSON.stringify(nlp.hazard_mentions),
+      JSON.stringify(nlp.amenity_mentions),
+    ],
+  );
 }
 
 // ── p-limit helper ────────────────────────────────────────────────────────────
@@ -160,7 +240,7 @@ async function main() {
   });
 
   console.log(`\n[nlp-review-backfill] Starting NLP review backfill`);
-  console.log(`  dry-run: ${DRY_RUN}, limit: ${LIMIT || 'all'}, concurrency: ${CONCURRENCY}`);
+  console.log(`  dry-run: ${DRY_RUN}, limit: ${LIMIT || 'all'}, concurrency: ${CONCURRENCY}, max-rps: ${MAX_RPS}`);
 
   // Fetch all rows with reviews in pending_web
   const { rows } = await pool.query<{ parcel_id: string; reviews_json: string }>(`
@@ -172,14 +252,11 @@ async function main() {
 
   console.log(`\n[nlp-review-backfill] Found ${rows.length} properties with pending_web reviews`);
 
-  // Flatten into individual (parcel_id, reviewIndex, reviewText) tuples
-  // keeping only reviews that still need NLP (all 3 arrays empty)
+  // Flatten into (parcel_id, reviewIdx) tuples — only reviews needing NLP
   type ReviewTask = {
     parcel_id: string;
     reviewIdx: number;
     text: string;
-    pendingWeb: PendingWebLayer;
-    allReviews: ReviewObject[];
   };
 
   const allTasks: ReviewTask[] = [];
@@ -199,20 +276,13 @@ async function main() {
     for (let i = 0; i < reviewList.length; i++) {
       const review = reviewList[i];
       if (!review?.text) continue;
-      // Only process reviews that still need NLP
       const needsNlp =
         review.named_entities.length === 0 &&
         review.hazard_mentions.length === 0 &&
         review.amenity_mentions.length === 0;
       if (!needsNlp) continue;
 
-      allTasks.push({
-        parcel_id: row.parcel_id,
-        reviewIdx: i,
-        text: review.text,
-        pendingWeb,
-        allReviews: reviewList,
-      });
+      allTasks.push({ parcel_id: row.parcel_id, reviewIdx: i, text: review.text });
     }
   }
 
@@ -226,106 +296,68 @@ async function main() {
   }
 
   if (DRY_RUN) {
-    console.log('\n[nlp-review-backfill] DRY RUN — sample prompts:');
+    console.log('\n[nlp-review-backfill] DRY RUN — sample prompts (no API calls, no DB writes):');
     const sample = tasksToRun.slice(0, 3);
     for (const task of sample) {
-      console.log(`\n  parcel_id: ${task.parcel_id} [review ${task.reviewIdx}]`);
+      console.log(`\n  parcel_id=${task.parcel_id} [review index ${task.reviewIdx}]`);
       console.log(`  text (${task.text.length} chars): "${task.text.slice(0, 120)}..."`);
-      console.log(`  system prompt: ${SYSTEM_PROMPT.slice(0, 80)}...`);
+      console.log(`  DB write path: {layers,pending_web,value,${task.reviewIdx},named_entities} etc.`);
     }
     console.log(`\n[nlp-review-backfill] Would send ${tasksToRun.length} DeepSeek calls.`);
+    console.log(`  Rate: max ${MAX_RPS} RPS (sliding window), concurrency ${CONCURRENCY}.`);
     console.log(`  Estimated cost: ~$${(tasksToRun.length * 0.000126).toFixed(4)} USD`);
     await pool.end();
     return;
   }
 
-  // Group tasks by parcel_id so we can do one DB write per property
-  // after all its reviews have been processed.
-  const byParcel = new Map<
-    string,
-    { pendingWeb: PendingWebLayer; allReviews: ReviewObject[]; tasks: ReviewTask[] }
-  >();
-
-  for (const task of tasksToRun) {
-    if (!byParcel.has(task.parcel_id)) {
-      byParcel.set(task.parcel_id, {
-        pendingWeb: task.pendingWeb,
-        allReviews: task.allReviews,
-        tasks: [],
-      });
-    }
-    byParcel.get(task.parcel_id)!.tasks.push(task);
-  }
-
   let totalProcessed = 0;
-  let totalUpdated = 0;
-  let totalFailed = 0;
+  let totalNlpOk = 0;
+  let totalNlpFailed = 0;
+  let totalDbFailed = 0;
+  const runId = `nlp-backfill-${Date.now()}`;
   const startTime = Date.now();
 
-  // Build flat task list for p-limit execution
   const execTasks = tasksToRun.map(task => async () => {
+    let nlp: NlpResult;
     try {
-      const nlp = await extractNlp(task.text, task.parcel_id);
-      // Mutate in place — allReviews is shared reference per parcel
-      task.allReviews[task.reviewIdx].named_entities = nlp.named_entities;
-      task.allReviews[task.reviewIdx].hazard_mentions = nlp.hazard_mentions;
-      task.allReviews[task.reviewIdx].amenity_mentions = nlp.amenity_mentions;
-      totalUpdated++;
+      nlp = await extractNlp(task.text, runId);
+      totalNlpOk++;
     } catch (err) {
-      console.error(`  [nlp] FAILED parcel=${task.parcel_id} review=${task.reviewIdx}: ${(err as Error).message}`);
-      totalFailed++;
-    } finally {
+      console.error(`  [nlp] DeepSeek FAILED parcel=${task.parcel_id} review=${task.reviewIdx}: ${(err as Error).message}`);
+      totalNlpFailed++;
       totalProcessed++;
-      if (totalProcessed % 100 === 0) {
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`  [checkpoint] ${totalProcessed}/${tasksToRun.length} reviews — ${elapsed}s elapsed, ${totalFailed} failed`);
-      }
+      return;
+    }
+
+    // Immediately write back to the specific indexed fields via jsonb_set
+    try {
+      await writeNlpToReview(pool, task.parcel_id, task.reviewIdx, nlp);
+    } catch (err) {
+      console.error(`  [nlp] DB write FAILED parcel=${task.parcel_id} review=${task.reviewIdx}: ${(err as Error).message}`);
+      totalDbFailed++;
+    }
+
+    totalProcessed++;
+    if (totalProcessed % 100 === 0) {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const rps = (totalProcessed / ((Date.now() - startTime) / 1000)).toFixed(1);
+      console.log(`  [checkpoint] ${totalProcessed}/${tasksToRun.length} reviews — ${elapsed}s elapsed, ${rps} rps, ${totalNlpFailed} nlp-failed, ${totalDbFailed} db-failed`);
     }
   });
 
-  console.log(`\n[nlp-review-backfill] Running ${execTasks.length} DeepSeek calls (concurrency=${CONCURRENCY})...`);
+  console.log(`\n[nlp-review-backfill] Running ${execTasks.length} DeepSeek calls (concurrency=${CONCURRENCY}, max ${MAX_RPS} RPS)...`);
   await pLimit(execTasks, CONCURRENCY);
-
-  // Write updated review arrays back to DB, one UPDATE per parcel
-  console.log(`\n[nlp-review-backfill] Writing ${byParcel.size} properties back to DB...`);
-  let dbSuccess = 0;
-  let dbFailed = 0;
-
-  for (const [parcelId, entry] of byParcel) {
-    if (entry.tasks.length === 0) continue;
-    try {
-      const updatedPendingWeb: PendingWebLayer = {
-        ...entry.pendingWeb,
-        value: entry.allReviews,
-      };
-      await pool.query(
-        `UPDATE property_descriptions
-         SET reviews = reviews ||
-           jsonb_build_object('layers',
-             COALESCE(reviews->'layers', '{}') ||
-             jsonb_build_object('pending_web', $2::jsonb)
-           ),
-           updated_at = NOW()
-         WHERE parcel_id = $1`,
-        [parcelId, JSON.stringify(updatedPendingWeb)],
-      );
-      dbSuccess++;
-    } catch (err) {
-      console.error(`  [nlp] DB write failed for parcel_id=${parcelId}: ${(err as Error).message}`);
-      dbFailed++;
-    }
-  }
 
   await pool.end();
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`\n[nlp-review-backfill] Complete in ${elapsed}s`);
-  console.log(`  ✓ NLP extracted: ${totalUpdated}`);
-  console.log(`  ✗ NLP failed:    ${totalFailed}`);
-  console.log(`  ✓ DB updated:    ${dbSuccess} properties`);
-  console.log(`  ✗ DB failed:     ${dbFailed} properties`);
-  console.log(`\n  Estimated cost: ~$${(totalUpdated * 0.000126).toFixed(4)} USD`);
-  console.log(`  Check ai_usage_log for actual cost: SELECT SUM(credits_consumed) FROM ai_usage_log WHERE agent_id = 'nlp-review-backfill';`);
+  const rps = (totalProcessed / ((Date.now() - startTime) / 1000)).toFixed(1);
+  console.log(`\n[nlp-review-backfill] Complete in ${elapsed}s (avg ${rps} rps)`);
+  console.log(`  ✓ NLP extracted: ${totalNlpOk}`);
+  console.log(`  ✗ NLP failed:    ${totalNlpFailed}`);
+  console.log(`  ✗ DB failed:     ${totalDbFailed}`);
+  console.log(`\n  Check actual cost:`);
+  console.log(`  SELECT SUM(credits_consumed) FROM ai_usage_log WHERE agent_id = 'nlp-review-backfill';`);
 }
 
 main().catch(err => {
