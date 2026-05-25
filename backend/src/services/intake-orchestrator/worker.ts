@@ -549,8 +549,10 @@ async function processJob(job: {
   id: string;
   parcel_id: string | null;
   source_data: Record<string, unknown> | null;
+  source_type: string | null;
+  file_id: string | null;
 }): Promise<void> {
-  const { id, source_data } = job;
+  const { id, source_data, source_type, file_id } = job;
   let parcel_id = job.parcel_id;
 
   try {
@@ -579,6 +581,40 @@ async function processJob(job: {
         extracted_from_source: !job.parcel_id && !!parcel_id,
       },
     });
+
+    // ── Document parsing (data_library_upload only) ───────────────────────────
+    // Parse the actual file content (PDF → OM pipeline; XLSX/CSV → extractor)
+    // before the standard enrichment chain. Failure is non-fatal: the job
+    // continues through enrichment so the status chip can still resolve.
+    if (source_type === 'data_library_upload' && file_id) {
+      try {
+        const { processDataLibraryUploadFile } = await import('./data-library-upload-processor');
+        const parseResult = await processDataLibraryUploadFile(file_id, source_data ?? {});
+        await appendLog(id, {
+          step: 'document_parsing',
+          status: parseResult.success ? 'ok' : 'error',
+          ts: ts(),
+          detail: {
+            parser_used:   parseResult.parserUsed,
+            document_type: parseResult.documentType,
+            ...(parseResult.error ? { error: parseResult.error } : {}),
+          },
+        });
+        logger.info(
+          `[intake-worker] job ${id} document parsed — type=${parseResult.documentType} ` +
+          `parser=${parseResult.parserUsed} ok=${parseResult.success}`,
+        );
+      } catch (parseErr: any) {
+        const msg = parseErr?.message ?? String(parseErr);
+        logger.warn(`[intake-worker] job ${id} document parsing failed (non-fatal): ${msg}`);
+        await appendLog(id, {
+          step: 'document_parsing',
+          status: 'error',
+          ts: ts(),
+          detail: { error: msg },
+        });
+      }
+    }
 
     // ── State: enriching ──────────────────────────────────────────────────────
     await setState(id, 'enriching');
@@ -804,8 +840,14 @@ async function poll(): Promise<void> {
       [MAX_ATTEMPTS],
     );
 
-    const res = await query<{ id: string; parcel_id: string | null; source_data: Record<string, unknown> | null }>(
-      `SELECT id, parcel_id, source_data
+    const res = await query<{
+      id: string;
+      parcel_id: string | null;
+      source_data: Record<string, unknown> | null;
+      source_type: string | null;
+      file_id: string | null;
+    }>(
+      `SELECT id, parcel_id, source_data, source_type, file_id
        FROM intake_jobs
        WHERE state = 'pending'
        ORDER BY created_at ASC
