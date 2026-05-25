@@ -1,0 +1,344 @@
+PHASE 8 — RESEARCH AGENT ENRICHMENT (Web + Google Places, real impl)
+
+CONTEXT
+Phase 8 replaces the orchestrator's web search and Google Places 
+stubs with real implementations. Output feeds property_descriptions: 
+narrative description, amenity flags, photos, reviews, sentiment 
+signals.
+
+CRITICAL FRAMING: This is the input pipeline for Cashflow Agent 
+accuracy. The Cashflow Agent depends on:
+- Amenity flags for rent premium adjustments  
+- Reviews + sentiment for F52 buy-signal detection
+- Photos for visual quality grading
+- Narrative for strategy arbitrage context
+- Recent news for risk adjustments
+
+Sloppy or hallucinated outputs degrade Cashflow Agent accuracy. 
+The data quality bar is structural reliability, not just presence.
+
+Scope: ALL resolvable properties. Archive backfill prioritized 
+(296 properties are the Cashflow Agent validation cohort).
+
+═══════════════════════════════════════════════════════════════════
+PRINCIPLES
+═══════════════════════════════════════════════════════════════════
+
+1. STRUCTURED OUTPUT, NOT FREE TEXT. Every Research Agent output 
+   field has a defined schema. Amenity flags are booleans, not 
+   narrative mentions. Reviews are extracted entities with sentiment 
+   scores, not raw text. Narrative is the only free-form field, 
+   and it's bounded (length cap, citation requirement).
+
+2. CITATIONS MANDATORY. Every claim in the narrative is traceable 
+   to a source URL. No claim without citation. The web search 
+   results are the citation set; if no source supports a claim, 
+   the claim is omitted.
+
+3. EXTRACTION OVER GENERATION. Where possible, extract structured 
+   facts (amenities, reviews, photos) directly rather than letting 
+   the LLM synthesize. Synthesis is reserved for narrative only.
+
+4. STANDING PRINCIPLES FROM PRIOR DISPATCHES APPLY:
+   - Producer/reader contract: writes to property_descriptions 
+     must update every field readers display
+   - Schema errors surface (no .catch(logger.warn) swallowing)
+   - Paired-read verification before complete
+
+5. INVESTIGATION FIRST. The current stubs return 
+   not_yet_implemented. The shape of what replaces them depends 
+   on what each data source actually returns. Step 1 establishes 
+   the real shape.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INVESTIGATION (no code yet)
+═══════════════════════════════════════════════════════════════════
+
+A. CURRENT STUB AUDIT
+   - Locate the current web_search and google_places stubs in the 
+     orchestrator enrichment chain
+   - Document the call signature each stub presents to the chain  
+   - Document what enrichment_log entries the stubs currently 
+     produce  
+   - Confirm the chain handles 'not_yet_implemented' return values 
+     correctly (was verified in M02 dispatch; re-confirm)
+
+B. GOOGLE PLACES API SETUP
+   - Confirm Google Places API key is available (env var? secret?)
+   - If not configured: stop and request from Leon before continuing
+   - Confirm API quota and pricing assumptions:
+     * 296 archive backfill = ~296 Places "Find Place" calls 
+     * Plus 296 "Place Details" calls for amenity/review data
+     * Plus 296 "Photos" calls for thumbnails
+     * Estimated total: $5-15 for backfill
+   - Pricing reality check: pass actual current pricing to Leon 
+     before backfill executes
+
+C. WEB SEARCH INFRASTRUCTURE
+   - Identify what web search capability is available to the 
+     orchestrator (existing web_search tool? Brave Search API? 
+     SerpAPI?)
+   - Document call signature, rate limits, cost
+
+D. PROPERTY_DESCRIPTIONS SCHEMA AUDIT
+   - List every field that Phase 8 will write to:
+     * narrative (jsonb LayeredValue<string>)
+     * amenities (jsonb — booleans for known amenity types, plus 
+       custom array)
+     * photos (jsonb LayeredValue<PhotoRef[]>)
+     * reviews (jsonb LayeredValue<Review[]>)
+     * sentiment_summary (jsonb LayeredValue<SentimentSummary>)
+     * recent_events (jsonb LayeredValue<Event[]>)
+   - Identify which fields already exist vs need migration
+   - Propose migration for missing fields
+
+E. CASHFLOW AGENT DEPENDENCY CHECK
+   - Read the current Cashflow Agent code (if it exists in 
+     repository) to understand what fields it reads from 
+     property_descriptions
+   - Confirm Phase 8 output fields match what Cashflow Agent will 
+     consume
+   - If Cashflow Agent doesn't yet exist: document the expected 
+     consumption pattern based on the spec's M-module wiring 
+     blueprint
+
+REPORT FINDINGS. STOP GATE.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — SCHEMA ADDITIONS
+═══════════════════════════════════════════════════════════════════
+
+Based on Step 1D, add any missing columns to property_descriptions 
+as LayeredValue<T> jsonb fields:
+
+ALTER TABLE property_descriptions
+  ADD COLUMN IF NOT EXISTS narrative          jsonb,
+  ADD COLUMN IF NOT EXISTS amenities          jsonb,  
+  ADD COLUMN IF NOT EXISTS photos             jsonb,
+  ADD COLUMN IF NOT EXISTS reviews            jsonb,
+  ADD COLUMN IF NOT EXISTS sentiment_summary  jsonb,
+  ADD COLUMN IF NOT EXISTS recent_events      jsonb;
+
+Reversible migration. Indexes only where query patterns warrant.
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — GOOGLE PLACES ADAPTER
+═══════════════════════════════════════════════════════════════════
+
+Location: src/services/research/google-places/
+
+A. Call sequence per property:
+   1. Find Place by name + address → place_id
+   2. Place Details lookup → name, formatted_address, 
+      formatted_phone_number, website, types, rating, user_ratings_
+      total, opening_hours
+   3. Place Reviews → up to 5 most relevant + most recent reviews 
+      with sentiment
+   4. Place Photos → up to 5 photo references
+
+B. STRUCTURED EXTRACTION
+   - Amenity flags: parse the `types` array + photo captions for 
+     known amenity signals. Maintain a mapping table of Places 
+     types → amenity boolean fields.
+   - Reviews: each review extracted as { author, rating, text, 
+     time, sentiment_score, named_entities, hazard_mentions, 
+     amenity_mentions }
+   - Sentiment summary: aggregate review sentiment, weighted by 
+     recency
+
+C. NLP PASS ON REVIEWS
+   - Second NLP pass on review text extracts:
+     * Named entities (named amenities, neighborhood landmarks)
+     * Hazard mentions (crime, noise, pests, parking issues, 
+       management complaints)
+     * Amenity gaps (complaints about missing features)
+   - These feed F52 sentiment-rent divergence detection
+
+D. ERROR HANDLING
+   - API errors (rate limit, quota exceeded) → fail the step 
+     explicitly, record in enrichment_log, do NOT swallow
+   - No match found → success with empty result + 
+     enrichment_log entry noting "no_places_match"
+   - Place ID retrieval failure for downstream calls → partial 
+     success, log which sub-call failed
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — WEB SEARCH ADAPTER
+═══════════════════════════════════════════════════════════════════
+
+Location: src/services/research/web-search/
+
+A. Call sequence per property:
+   1. Search query: "<property_name> <city> <state>"
+   2. Search query: "<property_address> apartment"
+   3. Search query: "<property_name> management OR ownership"
+   4. Search query: "<property_name> news OR announcement"
+
+B. RESULT EXTRACTION (structured, not free-text)
+   - Property website URL (if found)
+   - ApartmentRatings / ApartmentList / similar review aggregator 
+     URLs
+   - News articles in last 2 years (title, URL, summary, date)
+   - Recent events (renovations, ownership changes, capex 
+     announcements)
+   - Citation set built from result URLs
+
+C. NARRATIVE GENERATION (single LLM call, bounded)
+   - Input: property name, address, structured facts from Places, 
+     web search results
+   - Output: 2-3 paragraph description with inline citations
+   - Constraints:
+     * Length cap: 300 words max
+     * Every claim cites a source URL from the search results
+     * No claims without supporting source
+     * Tone: factual, no marketing language
+   - The LLM is given strict instructions: "Do not invent. Cite 
+     or omit."
+
+D. SAME ERROR HANDLING DISCIPLINE AS PLACES
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — WIRE INTO ORCHESTRATOR
+═══════════════════════════════════════════════════════════════════
+
+A. Replace the web_search and google_places stubs in the orchestrator 
+   enrichment chain with real adapter calls.
+
+B. Update property-writeback.ts to map Research Agent outputs to 
+   property_descriptions:
+   - narrative → narrative
+   - amenities → amenities  
+   - photos → photos
+   - reviews → reviews
+   - sentiment summary → sentiment_summary
+   - recent events → recent_events
+   - All with LayeredValue { value, source, runAt } shape
+   - Layer 'web' with source tag identifying the specific provider 
+     (e.g., 'web:google_places', 'web:search_synthesis')
+
+C. PARSER_STATUS / RUN STATE
+   - Per the recent column-rename audit fix discipline: every 
+     async write surfaces schema errors (no .catch(logger.warn))
+   - enrichment_log entries structured per the standing pattern
+
+═══════════════════════════════════════════════════════════════════
+STEP 6 — ARCHIVE BACKFILL (priority workload)
+═══════════════════════════════════════════════════════════════════
+
+A. Identify all 296 archive properties
+   - Have a parcel_id
+   - Have property_descriptions entry (created via prior dispatches)
+
+B. Re-queue them through the orchestrator:
+   - Reset intake_jobs.status from 'complete' → 'pending' for the 
+     orchestrator job tied to each archive property
+   - OR create new intake_jobs entries with source='backfill'
+   - Decide which approach is cleaner; document the choice
+
+C. Process the backfill:
+   - Orchestrator picks up pending jobs on next poll cycle
+   - Each property gets Places + web search enrichment
+   - Results written to property_descriptions
+
+D. RATE LIMITING
+   - Don't blast Google Places API at full speed
+   - Stagger: 2-3 requests per second max
+   - Total backfill duration estimate: 296 × 3 calls × 0.5s = 
+     ~7-8 minutes minimum
+   - Add jitter to avoid burst patterns
+
+E. PROGRESS REPORTING
+   - Periodic checkpoint: every 50 properties processed, log 
+     summary (N succeeded, N partial, N failed)
+   - Final report: total processed, success rate, API cost actual
+
+═══════════════════════════════════════════════════════════════════
+STEP 7 — PAIRED-READ VERIFICATION (the gate)
+═══════════════════════════════════════════════════════════════════
+
+Pick 5 archive properties from the backfilled set:
+- Mix of metros (Atlanta + at least 2 other states from the 296)  
+- Mix of class (A, B, C if classification known)
+- At least 1 with rich pre-existing data (OM-parsed) and at least 
+  1 with sparse pre-existing data
+
+For each:
+a. Show the intake_jobs.enrichment_log entries from the Research 
+   Agent step (literal JSON — both Places result and web result)
+b. Show property_descriptions.{narrative, amenities, photos, 
+   reviews, sentiment_summary, recent_events} — literal JSON
+c. Hit GET /api/v1/properties/by-parcel/:parcelId/summary
+d. Confirm all fields visible in API response with correct 
+   provenance tags
+e. Open /archive/properties/:parcelId in the browser
+f. Confirm narrative visible on the page
+g. Confirm at least one photo renders (if Places returned any)
+h. Confirm amenity tags visible
+i. Spot-check narrative quality:
+   - Are claims citable? Click a citation; does the source URL 
+     support the claim?
+   - Are there any obvious hallucinations? (Look for specific 
+     numbers, dates, owner names — verify against the citations)
+
+VERIFICATION FAILURE MODES — any of these means STOP:
+- Narrative present but no citations
+- Narrative claims something the cited source doesn't support
+- Amenity flag set true without supporting source data
+- API returns data but per-property page doesn't show it (producer/
+  reader drift)
+- Less than 4 of 5 sample properties pass all checks
+
+═══════════════════════════════════════════════════════════════════
+STEP 8 — CASHFLOW AGENT READINESS CHECK
+═══════════════════════════════════════════════════════════════════
+
+A. Document for the future Cashflow Agent dispatch:
+   - Which property_descriptions fields are now reliably populated 
+     after Phase 8 ships
+   - Coverage rate across the 296 archive properties (% with each 
+     field populated)
+   - Known data quality issues (e.g., Places returned no match for 
+     X% of properties — those properties have sparse Places data 
+     even after Phase 8)
+   - Sample of "high-quality profile" property (all fields populated) 
+     and "minimal profile" property (Places no-match) so Cashflow 
+     Agent design can plan for both
+
+B. This is documentation, not a Cashflow Agent dispatch. Cashflow 
+   Agent is separate work — but it'll consume what Phase 8 produces, 
+   so the closing note prepares for that handoff.
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE in docs/operations/PHASE_8_RESEARCH_AGENT_CLOSING.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Investigation findings (Step 1)
+(b) Schema migration applied (new columns)
+(c) Google Places adapter implementation diff + sample call response
+(d) Web search adapter implementation diff + sample synthesized 
+    narrative with citations
+(e) Backfill results — 296 properties processed:
+    * Total successful, partial, failed
+    * Coverage % per field type
+    * Actual API cost incurred
+(f) Paired-read verification — 5 properties with literal JSON, 
+    narrative quality spot-check
+(g) Cashflow Agent readiness summary (Step 8)
+(h) Pending: Cashflow Agent dispatch (separate scope)
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Build the Cashflow Agent in this dispatch — separate scope
+- Wire Phase 8 outputs into M03/M08/M09/M25 — those are downstream 
+  consumer modules, separate dispatches
+- Allow narrative claims without citations
+- Generate amenity flags without supporting source data
+- Mark complete without paired-read verification on 5 sample 
+  properties passing all checks
+- Use .catch(logger.warn) on any async DB write — schema errors 
+  must surface
+- "While I'm here" cleanups
+- Backfill all properties at once if it would exceed API rate limits 
+  — stagger appropriately

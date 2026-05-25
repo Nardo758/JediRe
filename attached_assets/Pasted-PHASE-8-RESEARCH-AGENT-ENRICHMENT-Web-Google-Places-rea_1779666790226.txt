@@ -1,0 +1,605 @@
+PHASE 8 — RESEARCH AGENT ENRICHMENT
+(Web + Google Places real impl + Modal integration + DQ recalc)
+
+CONTEXT
+Phase 8 replaces the orchestrator's web search and Google Places 
+stubs with real implementations, producing narrative, amenities, 
+photos, reviews, sentiment, and recent events for properties.
+
+CRITICAL FRAMING: This is the input pipeline for Cashflow Agent 
+accuracy. The Cashflow Agent depends on amenity flags for rent 
+premium adjustments, reviews/sentiment for F52 buy-signal detection, 
+photos for visual quality grading, narrative for strategy arbitrage 
+context, and recent events for risk adjustments. Sloppy or 
+hallucinated outputs degrade Cashflow Agent accuracy. The data 
+quality bar is structural reliability, not just presence.
+
+SCOPE LOCKED:
+- Phase 8 output fields render on the PER-PROPERTY PAGE only 
+  (/archive/properties/:parcelId). The Asset Detail Modal stays 
+  the same in terms of displayed fields.
+- DQ score recalculated to include Phase 8 fields as point-
+  contributing. User clicks AUTO-ENRICH on modal, DQ moves up 
+  even though new fields are not visible in the modal itself.
+- AUTO-ENRICH button is hybrid: synchronous for fast enrichment 
+  (<5s wall time), async with status badge for longer runs.
+- All resolvable properties (not just Atlanta). Archive backfill 
+  prioritized (296 properties = Cashflow Agent validation cohort).
+
+═══════════════════════════════════════════════════════════════════
+PRINCIPLES
+═══════════════════════════════════════════════════════════════════
+
+1. STRUCTURED OUTPUT, NOT FREE TEXT. Amenity flags are booleans, 
+   not narrative mentions. Reviews are extracted entities with 
+   sentiment scores, not raw text dumps. Narrative is the only 
+   free-form field, and it's bounded.
+
+2. CITATIONS MANDATORY. Every claim in the narrative is traceable 
+   to a source URL. If no source supports a claim, the claim is 
+   omitted. The LLM does not invent.
+
+3. EXTRACTION OVER GENERATION. Where possible, extract structured 
+   facts (amenities from Places types, reviews verbatim from 
+   Places API). Synthesis is reserved for narrative only.
+
+4. STANDING PRINCIPLES (from prior dispatches):
+   a. Producer/reader contract: any write to property_descriptions 
+      must update every field readers display (modal + per-property 
+      page + DQ score calc)
+   b. Schema errors surface; no .catch(logger.warn) swallowing 
+      DB writes. Use the error-handling policy from the recent 
+      column-rename fixes
+   c. Column-rename sweep: this dispatch adds new columns — verify 
+      no stale references creep in
+   d. Paired-read verification before declaring complete; UI 
+      verification includes filter toggles and interactions, not 
+      just "page loads"
+
+5. INVESTIGATION FIRST. The current stubs return not_yet_implemented. 
+   The shape of the modal and the per-property page's data fetch 
+   paths must be confirmed before integration code is written.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INVESTIGATION (no code yet)
+═══════════════════════════════════════════════════════════════════
+
+A. CURRENT STUB AUDIT
+   - Locate the web_search and google_places stubs in the 
+     orchestrator enrichment chain
+   - Document the call signature each stub presents to the chain
+   - Confirm the chain handles 'not_yet_implemented' return values 
+     correctly (was verified in M02 dispatch; re-confirm)
+
+B. GOOGLE PLACES API SETUP
+   - Confirm Google Places API key is available in env (likely 
+     GOOGLE_PLACES_API_KEY)
+   - If not configured: STOP and request from Leon before continuing
+   - Confirm API quota and pricing for the backfill:
+     * 296 archive backfill = ~296 Find Place calls
+     * Plus 296 Place Details calls
+     * Plus 296 Place Photos calls (max 5 photos each)
+     * Plus 296 Place Reviews calls (within Place Details)
+     * Estimated total: $5-15 for the backfill
+   - Pass current pricing back to Leon before backfill executes
+
+C. WEB SEARCH INFRASTRUCTURE
+   - Identify what web search capability is available to the 
+     orchestrator: existing web_search tool, Brave Search API, 
+     SerpAPI, etc.
+   - Document call signature, rate limits, cost
+
+D. PROPERTY_DESCRIPTIONS SCHEMA AUDIT
+   - List every field Phase 8 will write to:
+     * narrative              — LayeredValue<string>
+     * amenities              — jsonb (boolean flags + custom array)
+     * photos                 — LayeredValue<PhotoRef[]>
+     * reviews                — LayeredValue<Review[]>
+     * sentiment_summary      — LayeredValue<SentimentSummary>
+     * recent_events          — LayeredValue<Event[]>
+   - Identify which fields exist (some may have been added by 
+     prior Task B work) vs need migration
+   - Propose migration for missing fields
+
+E. PER-PROPERTY PAGE AUDIT
+   - Locate the per-property page component 
+     (/archive/properties/:parcelId)
+   - Document the data fetch path (what API does it call, what 
+     fields does it render)
+   - Identify which Phase 8 output fields will need new UI 
+     sections added
+   - Note any existing sections that look like placeholders for 
+     these fields
+
+F. MODAL INTEGRATION AUDIT
+   - Locate the Asset Detail Modal component
+   - Document:
+     * Where AUTO-ENRICH button currently lives in code
+     * What action it currently fires (likely a no-op or stub)
+     * DQ score calculation: where it lives, what fields it 
+       counts
+     * Save/commit path: where do user edits write to (which 
+       LayeredValue layer)
+   - Confirm the modal's edit-save path writes to 
+     property_descriptions.<field>.layers.manual_override
+     (not to the source-specific layers)
+
+G. CASHFLOW AGENT DEPENDENCY CHECK
+   - Read the current Cashflow Agent code (if it exists)
+   - Document what fields it reads from property_descriptions
+   - Confirm Phase 8 output fields match what Cashflow Agent 
+     will consume
+   - If Cashflow Agent doesn't yet exist: document the expected 
+     consumption pattern based on spec's M-module wiring blueprint
+
+REPORT ALL FINDINGS TO LEON. STOP GATE.
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — SCHEMA ADDITIONS
+═══════════════════════════════════════════════════════════════════
+
+Based on Step 1D, add any missing columns to property_descriptions:
+
+ALTER TABLE property_descriptions
+  ADD COLUMN IF NOT EXISTS narrative          jsonb,
+  ADD COLUMN IF NOT EXISTS amenities          jsonb,
+  ADD COLUMN IF NOT EXISTS photos             jsonb,
+  ADD COLUMN IF NOT EXISTS reviews            jsonb,
+  ADD COLUMN IF NOT EXISTS sentiment_summary  jsonb,
+  ADD COLUMN IF NOT EXISTS recent_events      jsonb;
+
+Reversible migration. Indexes where query patterns warrant
+(e.g., GIN on amenities for amenity-based search later).
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — GOOGLE PLACES ADAPTER
+═══════════════════════════════════════════════════════════════════
+
+Location: src/services/research/google-places/
+
+A. Call sequence per property:
+   1. Find Place by name + address → place_id
+   2. Place Details lookup → name, formatted_address, 
+      formatted_phone_number, website, types, rating, 
+      user_ratings_total, opening_hours, business_status
+   3. Place Reviews (within Details) → up to 5 most relevant + 
+      most recent reviews
+   4. Place Photos → up to 5 photo references
+
+B. STRUCTURED EXTRACTION
+   - Amenity flags: parse the `types` array + photo captions for 
+     known amenity signals. Maintain a mapping table:
+     Places type → amenity boolean field
+     (e.g., 'gym' → fitness, 'park' → outdoor_space, etc.)
+   - Reviews: each extracted as { author, rating, text, time, 
+     sentiment_score, named_entities, hazard_mentions, 
+     amenity_mentions }
+   - Sentiment summary: aggregate review sentiment, weighted 
+     by recency
+
+C. NLP PASS ON REVIEWS
+   Second pass extracts:
+   - Named entities (named amenities, neighborhood landmarks)
+   - Hazard mentions (crime, noise, pests, parking, management 
+     complaints)
+   - Amenity gaps (complaints about missing features)
+   These feed the F52 sentiment-rent divergence formula 
+   downstream.
+
+D. ERROR HANDLING
+   - API errors (rate limit, quota exceeded) → fail explicitly, 
+     record in enrichment_log, do NOT swallow
+   - No match found → success with empty result + enrichment_log 
+     entry noting 'no_places_match'
+   - Place ID retrieval failure for downstream calls → partial 
+     success, log which sub-call failed
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — WEB SEARCH ADAPTER
+═══════════════════════════════════════════════════════════════════
+
+Location: src/services/research/web-search/
+
+A. Call sequence per property:
+   1. "<property_name> <city> <state>"
+   2. "<property_address> apartment"
+   3. "<property_name> management OR ownership"
+   4. "<property_name> news OR announcement" (last 2 years)
+
+B. RESULT EXTRACTION (structured)
+   - Property website URL
+   - ApartmentRatings / ApartmentList / similar aggregator URLs
+   - News articles in last 2 years (title, URL, summary, date)
+   - Recent events: renovations, ownership changes, capex 
+     announcements
+   - Citation set built from result URLs
+
+C. NARRATIVE GENERATION (single LLM call, bounded)
+   - Input: property name, address, structured facts from Places, 
+     web search results
+   - Output: 2-3 paragraph description with inline citations
+   - Constraints:
+     * Length cap: 300 words max
+     * Every claim cites a source URL from search results
+     * No claims without supporting source
+     * Tone: factual, no marketing language
+   - LLM instruction: "Do not invent. Cite or omit."
+
+D. ERROR HANDLING — same discipline as Places adapter
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — WIRE INTO ORCHESTRATOR
+═══════════════════════════════════════════════════════════════════
+
+A. Replace web_search and google_places stubs in the enrichment 
+   chain with real adapter calls.
+
+B. Update property-writeback.ts to map Research Agent outputs:
+   - narrative → narrative
+   - amenities → amenities
+   - photos → photos
+   - reviews → reviews
+   - sentiment summary → sentiment_summary
+   - recent events → recent_events
+   - All with LayeredValue { value, source, runAt } shape
+   - Layer 'web' with source tag identifying provider:
+     'web:google_places' or 'web:search_synthesis'
+
+C. PARSER_STATUS / ERROR HANDLING
+   - Schema errors surface (no .catch(logger.warn) per recent 
+     column-rename audit lesson)
+   - enrichment_log entries follow standing pattern
+
+═══════════════════════════════════════════════════════════════════
+STEP 6 — PER-PROPERTY PAGE RENDERING
+═══════════════════════════════════════════════════════════════════
+
+Add sections to /archive/properties/:parcelId page rendering 
+the new Phase 8 fields:
+
+A. DESCRIPTION section
+   - Narrative paragraph (300 word cap, with citation links)
+   - Click any citation → opens source URL in new tab
+
+B. AMENITIES section
+   - Visual tags/chips for each amenity flag set true
+   - Custom amenities (non-standard) shown as additional chips
+   - "Source: Google Places + Web" footer
+
+C. PHOTOS section
+   - Grid of photo thumbnails (5 max)
+   - Click → opens full-size in lightbox
+   - Source: Google Places attribution required by Places ToS
+
+D. REVIEWS & SENTIMENT section
+   - Sentiment summary line (e.g., "Mostly positive · 4.2★ · 
+     127 reviews")
+   - Top 3 reviews displayed with author, rating, snippet
+   - Hazard mentions highlighted (color-coded for visibility)
+   - Amenity gaps highlighted
+
+E. RECENT EVENTS section
+   - Timeline of events from last 2 years
+   - Each event: title, date, summary, source URL
+   - Empty state if no events found
+
+F. REGULATORY CONSTRAINTS section (if M02 has populated this 
+   for the property)
+   - Zone code, density, FAR, height, setbacks, permitted uses
+   - "Source: <jurisdiction>" footer
+   - This section already exists per M02 dispatch — verify it 
+     renders, don't rebuild
+
+═══════════════════════════════════════════════════════════════════
+STEP 7 — MODAL: AUTO-ENRICH BUTTON WIRING (HYBRID)
+═══════════════════════════════════════════════════════════════════
+
+A. Make AUTO-ENRICH button invoke the Research Agent for the 
+   current property:
+
+   Endpoint: POST /api/v1/properties/by-parcel/:parcelId/enrich
+   
+   Behavior:
+   1. Validate: property has address + city + state (button is 
+      disabled otherwise — already enforced in UI)
+   2. Trigger Research Agent enrichment chain for this property
+   3. Set a soft timeout: 5 seconds wall time
+   4. If completes within 5s: return enriched result inline 
+      (synchronous mode)
+   5. If exceeds 5s: detach, continue async, return job_id with 
+      status='enriching' (asynchronous mode)
+
+B. UI behavior — synchronous mode (<5s):
+   - Button shows spinner immediately on click
+   - On completion: modal refreshes, DQ score updates, 
+     success toast
+   - User sees updated values in modal where applicable
+   - Per-property page (when navigated to) shows full new data
+
+C. UI behavior — asynchronous mode (>5s):
+   - Button changes to "Enriching..." badge with subtle pulse
+   - Modal remains usable; user can edit other fields, close 
+     modal
+   - Backend continues enrichment in background
+   - When job completes: 
+     * If modal still open: refresh values + DQ score, show 
+       success toast
+     * If modal closed: next time it opens for this property, 
+       show enriched data + "Recently enriched" indicator
+   - WebSocket or polling (whichever pattern the codebase uses) 
+     for status updates
+
+D. ERROR STATES
+   - API key missing: button shows "Configure Places API" with 
+     link to settings
+   - Quota exceeded: error toast "Enrichment quota reached today"
+   - Property not found in Places: toast "No Places match found" 
+     + log; web search may still have populated narrative/events
+   - Network failure: retryable error with "Try again" action
+
+═══════════════════════════════════════════════════════════════════
+STEP 8 — DQ SCORE RECALCULATION
+═══════════════════════════════════════════════════════════════════
+
+A. Locate the current DQ score formula (likely in a service 
+   like dataQualityScorer.ts or similar).
+
+B. Document current formula:
+   - Which fields are point-contributing
+   - Point weight per field
+   - Maximum possible score
+
+C. Update formula to include Phase 8 output fields:
+   
+   New point-contributing fields and weights (proposed; 
+   adjustable):
+   - narrative populated: 5 points
+   - amenities populated (at least 1 flag true): 5 points
+   - photos populated (at least 1): 3 points
+   - reviews populated (at least 1): 5 points
+   - sentiment_summary populated: 3 points
+   - recent_events populated (at least 1): 2 points
+   - regulatory_constraints.zone_code populated: 7 points
+   
+   Total new: 30 points.
+   
+   If old max was 60, new max is 90. Adjust scaling so the 
+   score remains 0-100 (normalize, or extend the max — Leon's 
+   preference noted in closing).
+
+D. Re-score all 296 archive properties using the new formula 
+   AFTER backfill completes (Step 10). Backfill before re-scoring 
+   so the new fields are populated.
+
+E. Verify the modal displays the updated DQ score correctly. 
+   Test: enrich a property via AUTO-ENRICH → DQ score visibly 
+   moves up.
+
+═══════════════════════════════════════════════════════════════════
+STEP 9 — REVIEW-ON-ADD WORKFLOW
+═══════════════════════════════════════════════════════════════════
+
+When a new asset is added to the Data Library (via Apartment 
+Locator scrape, Data Library upload, or manual entry), the modal 
+should open in "review mode" showing the auto-generated profile 
+for user review before commit.
+
+A. Trigger points:
+   - Apartment Locator daily scrape completes → for each newly 
+     added property, the orchestrator runs Research Agent → 
+     property is flagged for review
+   - Data Library upload via the upload UI → after files attached 
+     and orchestrator processes them, property flagged for review
+   - User clicks "Add Asset" manually → modal opens; on save, 
+     orchestrator triggered → modal shows results for review
+
+B. Review mode UI state:
+   - Modal banner: "Profile auto-generated. Review and edit 
+     before committing."
+   - All fields shown editable
+   - "Commit Profile" button (replaces standard Save)
+   - "Reject and Re-enrich" button (alternate action — clears 
+     auto-generated values and re-runs enrichment)
+
+C. Commit flow:
+   - User edits any field → those edits write to 
+     property_descriptions.<field>.layers.manual_override
+   - Untouched fields remain in their source layers (orchestrator-
+     written)
+   - On Commit Profile: property marked as user-reviewed 
+     (intake_jobs status updates from a new 'awaiting_review' 
+     state to 'complete')
+   - DQ score recalculated post-commit
+
+D. Reject flow:
+   - User clicks "Reject and Re-enrich"
+   - Clears layers.web, layers.places (NOT manual_override)
+   - Resets intake_job status to 'pending'
+   - Orchestrator picks up on next poll, re-runs enrichment
+   - User notified when re-enrichment completes
+
+E. Skip-review option for power users:
+   - Setting in user preferences: "Auto-commit new profiles" 
+     (default: false — review-on-add is the default)
+   - When enabled: modal doesn't open automatically; profiles 
+     commit as-is from orchestrator output
+
+═══════════════════════════════════════════════════════════════════
+STEP 10 — ARCHIVE BACKFILL (priority workload)
+═══════════════════════════════════════════════════════════════════
+
+A. Identify all 296 archive properties:
+   - Have parcel_id
+   - Have property_descriptions entry
+
+B. Re-queue them through the orchestrator:
+   - Create new intake_jobs entries with source='backfill_phase_8' 
+     (or reset existing complete jobs to pending — Step 1 
+     investigation should determine cleanest approach)
+
+C. Process the backfill:
+   - Orchestrator picks up pending jobs
+   - Each property gets Places + web search enrichment
+   - Results written to property_descriptions
+
+D. RATE LIMITING
+   - Don't blast Google Places API at full speed
+   - Stagger: 2-3 requests per second max
+   - Backfill duration estimate: ~7-10 minutes for 296 properties
+   - Add jitter to avoid burst patterns
+
+E. PROGRESS REPORTING
+   - Periodic checkpoint every 50 properties: log summary 
+     (N succeeded, N partial, N failed)
+   - Final report: total processed, success rate, actual API 
+     cost incurred
+
+F. POST-BACKFILL DQ RE-SCORING
+   - After all 296 properties enriched, run DQ recalculation 
+     across all (per Step 8D)
+   - Report DQ distribution before vs after
+
+═══════════════════════════════════════════════════════════════════
+STEP 11 — PAIRED-READ VERIFICATION (THE GATE)
+═══════════════════════════════════════════════════════════════════
+
+Pick 5 archive properties from the backfilled set:
+- Mix of metros (Atlanta + at least 2 other states from the 296)
+- Mix of asset class if classification known
+- At least 1 with rich pre-existing data (OM-parsed) and at 
+  least 1 with sparse pre-existing data
+
+For each property:
+
+A. Backend verification:
+   - Show intake_jobs.enrichment_log entries from the Research 
+     Agent step (literal JSON — both Places and web results)
+   - Show property_descriptions.{narrative, amenities, photos, 
+     reviews, sentiment_summary, recent_events} (literal JSON)
+   - Hit GET /api/v1/properties/by-parcel/:parcelId/summary
+   - Confirm all fields visible in API response with correct 
+     provenance tags
+
+B. Per-property page verification:
+   - Open /archive/properties/:parcelId in browser
+   - Confirm DESCRIPTION section shows narrative with citation 
+     links
+   - Confirm AMENITIES section shows tags
+   - Confirm PHOTOS section renders at least one photo (if 
+     Places returned any)
+   - Confirm REVIEWS section shows aggregated sentiment + 
+     individual reviews
+   - Confirm RECENT EVENTS section shows entries (or empty 
+     state if no events found)
+   - Confirm REGULATORY CONSTRAINTS section shows M02 data 
+     if populated
+
+C. Modal verification:
+   - Open Asset Detail Modal for the property
+   - Confirm DQ score reflects new calculation (not the old 
+     formula)
+   - Confirm AUTO-ENRICH button is present and clickable
+   - Test AUTO-ENRICH on a property with sparse data:
+     * Click button → spinner appears
+     * Watch for sync vs async behavior
+     * Confirm DQ score updates on completion
+     * Confirm per-property page reflects new data
+
+D. Narrative quality spot-check:
+   - For each of the 5 narratives, click each citation link
+   - Confirm the source URL actually exists and supports the 
+     claim
+   - Look for hallucinations: specific numbers, dates, names — 
+     verify against citations
+   - If any narrative has a claim without supporting source, 
+     STOP and report
+
+E. Modal edit workflow verification:
+   - On one property, edit a field in the modal (e.g., change 
+     Units from 240 to 245)
+   - Save
+   - Confirm: property_descriptions.units.layers.manual_override 
+     = 245
+   - Confirm: property_descriptions.units.layers.municipal still 
+     = 240 (preserved, not overwritten)
+   - Confirm: resolved value = 245 (manual_override wins per 
+     resolution rule)
+
+VERIFICATION FAILURE MODES — any of these means STOP:
+- Narrative with claims unsupported by citations
+- AUTO-ENRICH button click doesn't change anything
+- DQ score doesn't move after enrichment
+- Modal edit writes to source layer instead of manual_override
+- Per-property page doesn't render new fields
+- Less than 4 of 5 sample properties pass all checks
+
+═══════════════════════════════════════════════════════════════════
+STEP 12 — CASHFLOW AGENT READINESS DOCUMENTATION
+═══════════════════════════════════════════════════════════════════
+
+In docs/operations/PHASE_8_CASHFLOW_AGENT_READINESS.md:
+
+A. Document which property_descriptions fields are now reliably 
+   populated after Phase 8 ships:
+   * Coverage rate across the 296 archive properties (% with 
+     each field populated)
+   * Known data quality issues (e.g., Places returned no match 
+     for X% of properties)
+   * Sample of "high-quality profile" (all fields populated) 
+     and "minimal profile" (Places no-match)
+
+B. Cashflow Agent consumption contract (proposed):
+   - Document field-by-field what Cashflow Agent will read
+   - Note any data quality minimums (e.g., "rent premium 
+     adjustment requires at least 3 amenity flags")
+   - Flag fallback behavior when fields are sparse
+
+This is documentation, not a Cashflow Agent dispatch. Cashflow 
+Agent is separate work — but it'll consume what Phase 8 produces.
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE in docs/operations/PHASE_8_RESEARCH_AGENT_CLOSING.md
+═══════════════════════════════════════════════════════════════════
+
+(a) Investigation findings (Step 1) including modal/per-property 
+    page audit results
+(b) Schema migration applied (new columns)
+(c) Google Places adapter implementation diff + sample call 
+    response
+(d) Web search adapter implementation diff + sample synthesized 
+    narrative with citations (literal)
+(e) Per-property page rendering — diff + screenshots of new 
+    sections
+(f) Modal changes — AUTO-ENRICH wiring (sync/async behavior 
+    documented), DQ score formula update (before/after)
+(g) Review-on-add workflow implementation
+(h) Backfill results — 296 properties processed, coverage % per 
+    field, actual API cost incurred
+(i) Paired-read verification — 5 properties with literal JSON, 
+    narrative quality spot-check results, modal edit verification
+(j) Cashflow Agent readiness documentation
+(k) Pending: Cashflow Agent dispatch (separate scope)
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Build the Cashflow Agent in this dispatch — separate scope
+- Wire Phase 8 outputs into M03/M08/M09/M25 — those are downstream 
+  consumer modules, separate dispatches
+- Display Phase 8 fields in the Asset Detail Modal — modal stays 
+  the same for displayed fields. Only AUTO-ENRICH wiring + DQ 
+  score + review-on-add workflow change in the modal.
+- Allow narrative claims without citations
+- Generate amenity flags without supporting source data
+- Mark complete without paired-read verification passing on 5 
+  sample properties
+- Use .catch(logger.warn) on any async DB write — schema errors 
+  must surface
+- "While I'm here" cleanups beyond the explicit scope
+- Backfill all properties at once if it would exceed API rate 
+  limits — stagger appropriately per Step 10D
+- Skip the modal edit workflow verification — that's the override 
+  layer write path test
+- Refactor the existing per-property page beyond adding the new 
+  sections
