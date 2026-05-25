@@ -1,0 +1,115 @@
+PHASE 8 — QUOTA TOP-UP + COMPLETION ENRICHMENT
+
+CONTEXT
+Leon is topping up both Tavily and Anthropic to complete full 
+Phase 8 enrichment. Need:
+1. Cost estimate for both before Leon commits payment
+2. Inventory of what's missing
+3. Execution plan to complete enrichment after top-up
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INVENTORY GAPS
+═══════════════════════════════════════════════════════════════════
+
+A. NARRATIVE COVERAGE (Tavily dependent)
+   - SELECT count(*) FROM property_descriptions 
+     WHERE narrative IS NULL OR narrative->>'value' IS NULL
+   - SELECT count(*) FROM property_descriptions
+     WHERE (narrative->'layers'->>'pending_web') IS NOT NULL
+       AND (narrative->'layers'->>'pending_web')::jsonb ? 'value'
+   - Report:
+     * Total archive properties: 298
+     * Properties with narrative populated (any layer): N
+     * Properties missing narrative entirely: N
+     * Properties with narrative in pending_web awaiting review: N
+   - Confirm which subset is missing due to Tavily exhaustion vs 
+     other failure modes
+
+B. NLP REVIEW PASS COVERAGE (Anthropic dependent)
+   - For each property with reviews in pending_web:
+     SELECT each review's named_entities and hazard_mentions arrays
+   - Report:
+     * Total reviews backfilled: ~1,300 (estimate from 273 × 4.9)
+     * Reviews with named_entities populated: N
+     * Reviews with hazard_mentions populated: N
+     * Reviews with both empty: N (these need the NLP pass)
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — COST ESTIMATE
+═══════════════════════════════════════════════════════════════════
+
+A. TAVILY
+   - Approximate searches needed: missing_narrative_count × 
+     4 queries per property
+   - Tavily pricing tier needed (Basic / Pro / Enterprise based 
+     on volume)
+   - Estimated dollar cost for completion
+   - Recommended top-up amount with margin
+
+B. ANTHROPIC
+   - Approximate tokens for NLP pass: 
+     reviews_needing_nlp × avg_review_length × ~3 (input + 
+     output expansion) × Claude Sonnet 4.5 pricing
+   - Estimated dollar cost
+   - Recommended top-up amount with margin
+
+C. Surface both estimates to Leon BEFORE attempting top-up. 
+   Top-up itself is a Leon-side ops task (Tavily account, 
+   Anthropic console) — the bot can't add credits.
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — POST-TOP-UP COMPLETION EXECUTION
+═══════════════════════════════════════════════════════════════════
+
+After Leon confirms top-up is done:
+
+A. RUN MISSING NARRATIVES
+   - Command: backfill-phase8-research.ts --force --skip-places
+   - Scope: only properties currently missing narrative
+   - Rate-limit appropriately for Tavily (check current Tavily 
+     rate limits at paid tier)
+   - Progress checkpoint every 50 properties
+
+B. RUN NLP REVIEW PASS
+   - For each review missing named_entities or hazard_mentions:
+     * Single Claude call extracting structured outputs
+     * Output schema: { named_entities: string[], 
+       hazard_mentions: string[], amenity_mentions: string[] }
+     * Strict prompt: extract only what's literally mentioned, 
+       no synthesis
+   - Run as a backfill script, not inline with orchestrator
+   - Rate-limit per Anthropic recommended limits
+   - Progress checkpoint every 100 reviews
+
+C. PAIRED-READ VERIFICATION
+   For 5 sample properties:
+   - Confirm narrative now populated where it was missing
+   - Confirm at least 3 reviews per property have named_entities 
+     and hazard_mentions populated
+   - Spot-check NLP quality: does the extracted hazard_mention 
+     "loud parking lot at night" actually appear in the review 
+     text? Don't accept fabricated extractions.
+
+═══════════════════════════════════════════════════════════════════
+CLOSING NOTE
+═══════════════════════════════════════════════════════════════════
+
+Update docs/operations/PHASE_8_FINAL_CLOSING.md:
+(a) Gap inventory (Step 1)
+(b) Cost estimates (Step 2)
+(c) Top-up confirmation (when Leon confirms)
+(d) Completion execution results (Step 3): coverage % after 
+    completion, actual costs incurred
+(e) NLP quality spot-check findings
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Attempt to top up credits directly (Leon-side ops)
+- Run completion until Leon confirms top-up is done
+- Skip NLP quality spot-check — F52 sentiment-rent divergence 
+  depends on accurate hazard_mentions
+- Run Tavily at full speed without rate limit check
+- Fabricate or synthesize NLP extractions — only literal mentions
+- "While I'm here" cleanups
