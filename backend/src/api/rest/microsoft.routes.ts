@@ -511,7 +511,7 @@ router.post('/emails/:emailId/link-property', requireAuth, async (req: Authentic
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           userId,
-          null, // email_account_id is UUID (user_email_accounts); Microsoft uses integer email_accounts — set NULL until migration in task #1069
+          null, // email_account_id references user_email_accounts (UUID); Microsoft emails have no Gmail account row, so NULL is correct
           email.id,
           email.subject,
           email.from.name,

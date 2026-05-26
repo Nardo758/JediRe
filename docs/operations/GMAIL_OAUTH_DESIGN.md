@@ -317,25 +317,24 @@ userinfo.email     ← only these two are enforced
 
 ---
 
-## 4. Known Schema Bug — Type Mismatch
+## 4. Schema Bug — Type Mismatch
 
-**Severity: Medium** — functional workaround exists but is fragile.
+**Status: ✅ FIXED (Task #1067 + #1069, 2026-05-26)**
 
-`user_email_accounts.id` is `UUID` but `emails.email_account_id` is `INTEGER`. This is a type mismatch.
+`emails.email_account_id` has been migrated from `INTEGER` to `UUID` and now carries a proper FK to `user_email_accounts(id) ON DELETE SET NULL`.
 
-The `/emails` query works today with an explicit cast:
-```sql
-JOIN user_email_accounts a ON e.email_account_id::text = a.id::text
-```
-This cast prevents index use on the join column and will fail silently if a UUID is stored in an integer column (PostgreSQL will reject the insert).
+Migration applied: `backend/src/database/migrations/20260612_emails_account_id_uuid.sql`
 
-The fix is a migration to change `emails.email_account_id` from `INTEGER` to `UUID`:
-```sql
-ALTER TABLE emails ALTER COLUMN email_account_id TYPE UUID USING email_account_id::uuid;
-```
-This requires that all existing `emails` rows have valid UUID-castable values in `email_account_id`. Given the live count of 230 rows with no connected Gmail accounts, these rows have no real FK linkage and the migration is safe.
+What was done:
+1. Dropped the old FK to the legacy `email_accounts` (integer) table
+2. Nulled all legacy integer IDs (230 demo rows with no real Gmail linkage)
+3. Changed column type to `UUID` (all-NULL at cast time, trivially safe)
+4. Added new FK to `user_email_accounts(id) ON DELETE SET NULL`
+5. Rebuilt `idx_emails_account` as a UUID btree index
 
-**Estimate:** 30 minutes (migration + update query in `/emails` route to remove the cast).
+The `::text = ::text` cast workaround in the `/emails` JOIN has been removed. The join now uses native UUID equality, which is index-eligible.
+
+**Non-Gmail write paths (PST backflow, Microsoft mail):** these legitimately set `email_account_id = NULL` because they have no `user_email_accounts` row. This is correct permanent behavior, not a workaround.
 
 ---
 

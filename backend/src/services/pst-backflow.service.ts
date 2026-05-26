@@ -18,8 +18,8 @@ export async function backflowPstToEmails(uploadId: string, userId: string): Pro
 
   const accountId = accountResult.rows[0].id;
 
-  // email_account_id is UUID (user_email_accounts); PST uses integer email_accounts.
-  // Pass NULL until task #1069 unifies the account tables.
+  // email_account_id references user_email_accounts (UUID). PST imports have no Gmail account row,
+  // so NULL is the correct permanent value — not a workaround.
   const result = await query(
     `INSERT INTO emails (
       email_account_id, user_id, external_id, subject, from_name, from_address,
