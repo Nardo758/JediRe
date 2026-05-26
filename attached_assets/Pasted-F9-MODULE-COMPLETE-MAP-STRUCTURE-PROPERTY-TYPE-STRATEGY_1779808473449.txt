@@ -1,0 +1,254 @@
+F9 MODULE COMPLETE MAP — STRUCTURE × PROPERTY TYPE × STRATEGY
+
+CONTEXT
+Map F9 itself as the authoritative source for proforma inputs, 
+structured across two dimensions:
+
+PROPERTY TYPE (use): multifamily, single-family rental, office, 
+retail, industrial, hospitality, mixed-use
+STRATEGY: Build-to-Sell, Flip, Rental (long-term hold), STR
+
+Each property type has fundamentally different proforma structure 
+(per-unit vs per-sqft, lease structures, OpEx categories, KPIs).
+Each strategy modifies the proforma within a property type. The 
+map must capture both dimensions explicitly.
+
+This dispatch produces canonical F9 module documentation. No code 
+changes. Output is foundation for Phase 2 derivation logic and 
+Phase 3 implementation mapping.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — F9 MODULE STRUCTURE
+═══════════════════════════════════════════════════════════════════
+
+A. Locate F9 module entry point(s) in the codebase
+B. Map full structure:
+   - All sub-screens
+   - Tabs within each sub-screen (built-in)
+   - Custom tabs system (reference PROFORMA_TAB_EXTENSIBILITY.md)
+   - Sections within each tab
+   - Modes / view variants
+
+C. Produce structural outline:
+   F9
+     └─ Sub-screen X
+         ├─ Tab 1: <name>
+         │    ├─ Section A: <name>
+         │    └─ ...
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — PROPERTY TYPE COVERAGE
+═══════════════════════════════════════════════════════════════════
+
+A. Document which property types F9 currently supports:
+   - Multifamily — explicitly supported / partially / not at all
+   - Single-family rental (SFR) — same
+   - Office — same
+   - Retail — same
+   - Industrial — same
+   - Hospitality — same
+   - Mixed-use — same
+
+   "Supported" means: F9 renders fields appropriate to this 
+   property type and the underlying calculation template handles 
+   it. "Partially" means some fields exist but the model is 
+   incomplete (e.g., shows per-unit fields when per-sqft is 
+   needed). "Not at all" means selecting this property type 
+   either errors, defaults to multifamily incorrectly, or has 
+   no path through F9.
+
+B. Document HOW property type is selected:
+   - Field in deal metadata?
+   - Toggle in F9?
+   - Inferred from data?
+   - Required at deal creation?
+
+C. Document how F9 behavior changes by property type:
+   - Different sections rendered?
+   - Different field sets within sections?
+   - Different KPIs in summary?
+   - Different calculation formulas?
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — FIELD INVENTORY PER SECTION × PROPERTY TYPE
+═══════════════════════════════════════════════════════════════════
+
+For each section in the structural outline, for each property 
+type supported:
+
+A. Enumerate every field visible to users:
+   - field_name (machine readable)
+   - display_name (human readable)
+   - data_type (currency / percentage / count / date / text / enum)
+   - units (per_unit / per_sqft / per_key / per_door / annual / 
+     monthly / one_time)
+   - granularity (deal-level / unit-type / line-item / year-N / 
+     tenant-level)
+   - input_mode (manual / dropdown / computed display / toggle)
+   - required (yes / no / conditional)
+   - validation rules
+   - layer ('assumption' | 'calculated_output' | 'metadata_input')
+
+B. Document property-type-specific fields explicitly:
+   - Multifamily: unit count, unit mix, avg rent per unit type, 
+     RUBS, vacancy by unit type, etc.
+   - SFR: home count, per-home revenue, scattered-site vs 
+     concentrated portfolio metrics, etc.
+   - Office: rentable sqft, lease structure type, weighted avg 
+     lease term, tenant rollover schedule, TI allowance, LC, 
+     CAM recovery
+   - Retail: NRA + GLA, anchor/inline split, percentage rent, 
+     co-tenancy clauses, CAM/tax/insurance recoveries
+   - Industrial: GLA, clear height, dock doors, lease term, 
+     NNN structure, escalations
+   - Hospitality: room count (keys), ADR, occupancy, RevPAR, 
+     F&B revenue split, GOP margin, management fee structure
+
+C. Cross-reference with PROFORMA_CALCULATION_TEMPLATE.md:
+   - Which template entries are property-type-universal?
+   - Which are multifamily-specific?
+   - Which property types have NO template coverage?
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — STRATEGY VARIATION WITHIN PROPERTY TYPE
+═══════════════════════════════════════════════════════════════════
+
+For each property type × strategy combination that F9 supports:
+
+A. Document which sub-screens / tabs / sections are:
+   - Visible in this combination
+   - Hidden in this combination
+   - Modified (different defaults, different fields shown)
+
+B. Document strategy-specific fields per property type:
+   - Multifamily Build-to-Sell: construction costs, lease-up, 
+     stabilization
+   - Multifamily Flip: renovation capex, hold period short, 
+     lease-trade-out
+   - Multifamily Rental: long-term hold params, refi assumptions
+   - Multifamily STR: nightly rate, seasonality, platform fees, 
+     regulatory premium
+   - Office Build-to-Sell: TI buildout costs, anchor tenant 
+     pre-leasing, etc.
+   - Office Rental: rollover schedule, mark-to-market, downtime 
+     assumptions
+   - Etc. for each combination
+
+C. Document conditional logic:
+   - Fields appearing/disappearing based on other inputs
+   - Defaults changing based on strategy and/or property type
+   - Validation rules changing
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — SOURCE PRIORITY PER PROPERTY TYPE × STRATEGY × STATE
+═══════════════════════════════════════════════════════════════════
+
+For each assumption field, document expected source priority 
+based on CLAUDE.md P7 state-conditional epistemology:
+
+A. For each field × property type × strategy combination, identify 
+   the typical asset state(s):
+   - Stabilized / Lease-Up / Repositioning / New Construction / 
+     Distressed
+
+B. For each, document source priority:
+   - Multifamily Rental Stabilized: Trailing primary, Platform 
+     validation
+   - Multifamily Build-to-Sell New Construction: Platform 
+     stabilized multifamily cohort primary, Broker projection 
+     as opinion
+   - Office Rental Stabilized: Trailing primary, but rollover 
+     schedule needs lease-level detail not just T-12 aggregate
+   - Office Repositioning: Platform stabilized office cohort at 
+     target + Trailing for current degraded state
+   - Etc.
+
+C. Note where the same field has different priority depending on 
+   property type AND strategy AND state.
+
+═══════════════════════════════════════════════════════════════════
+STEP 6 — COMPUTED DISPLAYS + KPIs PER PROPERTY TYPE
+═══════════════════════════════════════════════════════════════════
+
+For each property type × strategy combination, document headline 
+KPIs:
+
+A. Multifamily headline KPIs (common): IRR, equity multiple, 
+   cash-on-cash, yield-on-cost, DSCR
+B. SFR headline KPIs: portfolio IRR, per-home cash flow, 
+   stabilized cap rate
+C. Office headline KPIs: stabilized cap rate, weighted avg lease 
+   term remaining, IRR with rollover risk
+D. Retail headline KPIs: occupancy cost ratio, sales/sqft 
+   reporting, anchor-stabilized cap rate
+E. Industrial headline KPIs: yield to cost, IRR, mark-to-market 
+   upside
+F. Hospitality headline KPIs: RevPAR growth, GOP margin, 
+   stabilized yield, IRR
+
+G. Identify KPIs computed by the LLM that should move to 
+   deterministic runner per two-layer principle.
+
+═══════════════════════════════════════════════════════════════════
+STEP 7 — STATISTICS + OPEN QUESTIONS
+═══════════════════════════════════════════════════════════════════
+
+A. Property type coverage matrix:
+   - For each property type × strategy combination: Supported / 
+     Partial / Not Supported
+   - Total fields per property type
+   - Strategy-specific fields per property type
+
+B. Gap analysis:
+   - Property types where F9 has UI but template doesn't cover
+   - Template entries with no F9 representation
+   - Strategy × property type combinations that seem incomplete
+
+C. Open questions for review:
+   - Property types that look multifamily-shaped but used for 
+     other uses (orphan fields, wrong granularity)
+   - Whether F9 is genuinely multi-property-type or 
+     multifamily-with-aspirations
+   - Where calculation template needs expansion to cover 
+     non-multifamily property types
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/F9_MODULE_MAP.md
+
+Structure:
+1. Executive summary (counts, property type coverage, key findings)
+2. F9 structural outline (Step 1)
+3. Property type coverage matrix (Step 2)
+4. Field inventory per section × property type (Step 3)
+5. Strategy variation within property type (Step 4)
+6. Source priority per property type × strategy × state (Step 5)
+7. Computed displays + KPIs per property type (Step 6)
+8. Statistics + open questions (Step 7)
+
+This document becomes the canonical F9 reference. Phase 2 
+derivation logic attaches to its assumption entries per property 
+type × strategy. Phase 3 implementation mapping uses it as ground 
+truth.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Document derivation logic per field (Phase 2 work)
+- Map fields to specific agent tools (Phase 3 work)
+- Implement any code changes
+- Modify F9 module or any tabs
+- Filter fields by importance — completeness over judgment
+- Skip property types that look thin — document what exists and 
+  flag as open question
+- Collapse property-type-specific overlays into universal view
+- Assume property types are supported because the UI mentions 
+  them — verify the underlying model handles them
+- "While I'm here" cleanups
+
+If a property type's F9 surface is partially built or stubbed, 
+flag explicitly in Open Questions; document what exists, not what 
+should exist.
