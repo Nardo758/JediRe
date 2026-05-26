@@ -19,6 +19,7 @@ JEDI RE is an AI-powered B2B real estate intelligence platform designed for inve
 ## Operational scripts
 
 - **Property proximity enrichment** (activates COR-23 transit + COR-24 crime): `cd backend && npx ts-node --transpile-only scripts/enrich-property-proximity.ts --city=Atlanta`. Iterates `properties` rows with lat/lng, computes proximity scores via `ProximityService`, and persists `city/state/county`, `transit_score`, and a per-property `crime_index` (= incidents-within-1mi ÷ city mean × 100, sourced from the public Atlanta PD `OpenDataWebsite_Crime_view` ArcGIS layer). Re-runnable; upserts on `property_id`. Flags: `--skip-crime` (no crime fetch), `--radius=1.0`. The legacy `atlanta-pd-crime.service.ts` points at a feature server that returns 400 — not used by this script.
+- **Rent roll bed/bath backfill** (Task #1184): `cd backend && npx ts-node --transpile-only scripts/backfill-rent-roll-bed-bath.ts`. One-time script that enriches `deals.deal_data->'extraction_rent_roll'->'floor_plan_mix'` entries that predate Task #1150 and are missing `bedrooms`/`bathrooms` counts. Infers both values from the plan-name key using the same heuristics as the parser. Safe to re-run (only touches entries where `bedrooms` is absent). Supports `--dry-run`.
 
 ## Where things live
 
