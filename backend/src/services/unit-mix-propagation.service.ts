@@ -222,6 +222,10 @@ function parseUnitMixData(rawData: any): UnitMixBreakdown {
   };
 
   if (Array.isArray(program)) {
+    // Accumulate weighted sum-of-SF per tier so we can compute correct avgSF
+    // when multiple floorplan rows share the same bedroom bucket.
+    const sumSF: Record<string, number> = { studio: 0, oneBR: 0, twoBR: 0, threeBR: 0 };
+
     program.forEach((item: any) => {
       const count = Number(item.count || item.units || 0);
       const avgSF = Number(item.avgSF || item.averageSF || item.avg_sqft || item.sf || 0);

@@ -156,6 +156,103 @@ router.post('/:dealId/unit-mix/set', async (req: Request, res: Response) => {
 });
 
 /**
+ * PUT /api/v1/deals/:dealId/unit-mix/types
+ * Save the full unit type array directly to deal_assumptions.unit_mix
+ * and propagate to all dependent modules.
+ * Used by the manual build-from-scratch UX in UnitMixTab (development deals).
+ */
+router.put('/:dealId/unit-mix/types', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const { dealId } = req.params;
+    const { types } = req.body as { types: Array<{
+      type: string;
+      count: number;
+      avg_sqft: number | null;
+      in_place_rent: number | null;
+      market_rent: number | null;
+      bedrooms: number | null;
+      bathrooms: number | null;
+      notes?: string | null;
+    }> };
+
+    if (!Array.isArray(types)) {
+      return res.status(400).json({ success: false, error: 'types must be an array' });
+    }
+
+    const dealCheck = await query(
+      'SELECT id, name, target_units FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, userId]
+    );
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
+    }
+
+    logger.info('Saving manual unit mix types:', { userId, dealId, count: types.length });
+
+    const totalCount = types.reduce((s, t) => s + (t.count ?? 0), 0);
+
+    // 1. Upsert deal_assumptions.unit_mix — primary source for proforma GPR
+    await query(
+      `INSERT INTO deal_assumptions (deal_id, unit_mix, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (deal_id) DO UPDATE
+         SET unit_mix = $2::jsonb, updated_at = NOW()`,
+      [dealId, JSON.stringify(types)]
+    );
+
+    // 2. Write to module_outputs.unitMixOverride in the shape that
+    //    getAuthoritativeUnitMix() / parseUnitMixData() expect, so the
+    //    upcoming propagateUnitMix() call fans out the correct mix.
+    //    Also update target_units in the same statement to prevent a
+    //    double-write race between this and the propagation step.
+    const unitMixOverride = {
+      program: types.map(t => ({
+        unitType: t.type,
+        count: t.count ?? 0,
+        avgSF: t.avg_sqft ?? 0,
+        sf: t.avg_sqft ?? 0,
+        // Carry explicit bedroom count so parseUnitMixData() can classify by
+        // bedrooms first rather than relying on label-text heuristics.
+        bedrooms: t.bedrooms ?? null,
+      })),
+      updatedAt: new Date().toISOString(),
+    };
+    await query(
+      `UPDATE deals
+       SET module_outputs = jsonb_set(
+             COALESCE(module_outputs, '{}'::jsonb),
+             '{unitMixOverride}',
+             $1::jsonb
+           ),
+           target_units = $2,
+           updated_at = NOW()
+       WHERE id = $3`,
+      [JSON.stringify(unitMixOverride), totalCount > 0 ? totalCount : dealCheck.rows[0].target_units, dealId]
+    );
+
+    // 3. Propagate to financial model, 3D design, dev capacity, etc.
+    //    getAuthoritativeUnitMix() will now find the override written above.
+    const result = await propagateUnitMix(dealId, 'manual');
+
+    res.json({
+      success: result.success,
+      data: {
+        dealId,
+        dealName: dealCheck.rows[0].name,
+        typesCount: types.length,
+        totalUnits: totalCount,
+        propagation: result,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error: any) {
+    logger.error('Save unit mix types error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to save unit mix types' });
+  }
+});
+
+/**
  * POST /api/v1/deals/:dealId/development-path/select
  * Select development path and propagate unit mix
  */

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   RefreshCw, Loader2, Activity, TrendingUp, TrendingDown, Minus,
   Info, Zap, Edit3, Check, X, AlertTriangle, ChevronDown, ChevronRight,
-  RotateCcw, Plus, Trash2,
+  RotateCcw, Plus, Trash2, Save,
 } from 'lucide-react';
 import { BT } from '../bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
@@ -1226,6 +1226,381 @@ function CellOverrideDisplay({
   );
 }
 
+// ─── Derive bed/bath count from a floor-plan label ───────────────────────────
+/**
+ * Parse the bedroom count out of a type label so server-sourced rows carry
+ * accurate bedroom metadata when re-saved via the manual builder.
+ * Matches common formats: "Studio", "1BR/1BA", "2 Bedroom", "3BR+Den", etc.
+ */
+function bedsFromLabel(label: string): number {
+  const t = (label ?? '').trim().toLowerCase();
+  if (t.includes('studio') || t.startsWith('stu')) return 0;
+  const m = t.match(/^(\d)/);
+  if (m) return Math.min(parseInt(m[1], 10), 4);
+  return 1; // safe default
+}
+
+function bathsFromLabel(label: string): number {
+  const t = (label ?? '').trim().toLowerCase();
+  // Match "2BA", "2 bath", "/2", or single "1BA" patterns
+  const baM = t.match(/[\/\s](\d)\s*ba/);
+  if (baM) return parseInt(baM[1], 10);
+  const beds = bedsFromLabel(label);
+  return beds === 0 ? 1 : beds >= 3 ? 2 : beds;
+}
+
+// ─── Platform defaults by bedroom type (spec §4A) ────────────────────────────
+const PLATFORM_DEFAULTS: Record<number, { avg_sqft: number; in_place_rent: number }> = {
+  0: { avg_sqft: 550,  in_place_rent: 1200 },  // Studio
+  1: { avg_sqft: 750,  in_place_rent: 1500 },  // 1BR
+  2: { avg_sqft: 1050, in_place_rent: 2000 },  // 2BR
+  3: { avg_sqft: 1400, in_place_rent: 2600 },  // 3BR
+  4: { avg_sqft: 1800, in_place_rent: 3200 },  // 4BR+
+};
+
+// ─── Build ManualUnitType rows from F3 % splits + total unit count ──────────
+/**
+ * Converts F3 Programming tab unit-mix % splits (studio/1BR/2BR/3BR) and an
+ * M03/deal target unit count into ManualUnitType rows seeded with platform
+ * default sqft and rent for each bedroom tier. Rows with 0 computed units are
+ * omitted so the mix stays clean for small unit counts.
+ */
+function buildF3PrefillTypes(
+  mix: { studio: number; oneBed: number; twoBed: number; threeBed: number },
+  totalUnits: number,
+): ManualUnitType[] {
+  const tiers: Array<{ label: string; bedrooms: number; pct: number }> = [
+    { label: 'Studio',  bedrooms: 0, pct: mix.studio },
+    { label: '1BR/1BA', bedrooms: 1, pct: mix.oneBed },
+    { label: '2BR/2BA', bedrooms: 2, pct: mix.twoBed },
+    { label: '3BR/2BA', bedrooms: 3, pct: mix.threeBed },
+  ];
+  const rows: ManualUnitType[] = [];
+  let remaining = totalUnits;
+  tiers.forEach((t, i) => {
+    const isLast = i === tiers.length - 1;
+    // Last row absorbs rounding remainder so sum == totalUnits exactly
+    const raw = (t.pct / 100) * totalUnits;
+    const count = isLast ? remaining : Math.round(raw);
+    if (count <= 0) return;
+    remaining -= count;
+    const def = PLATFORM_DEFAULTS[t.bedrooms];
+    rows.push({
+      _id: Math.random().toString(36).slice(2),
+      type: t.label,
+      bedrooms: t.bedrooms,
+      bathrooms: t.bedrooms === 0 ? 1 : t.bedrooms >= 3 ? 2 : t.bedrooms,
+      count,
+      avg_sqft: def.avg_sqft,
+      in_place_rent: def.in_place_rent,
+      market_rent: null,
+      notes: 'Prefilled from F3 program',
+    });
+  });
+  return rows;
+}
+
+// ─── Manual unit type shape ───────────────────────────────────────────────────
+export interface ManualUnitType {
+  _id: string;
+  type: string;
+  bedrooms: number;
+  bathrooms: number;
+  count: number;
+  avg_sqft: number | null;
+  in_place_rent: number | null;
+  market_rent: number | null;
+  notes: string;
+}
+
+function emptyType(): ManualUnitType {
+  return {
+    _id: Math.random().toString(36).slice(2),
+    type: '',
+    bedrooms: 1,
+    bathrooms: 1,
+    count: 0,
+    avg_sqft: PLATFORM_DEFAULTS[1].avg_sqft,
+    in_place_rent: PLATFORM_DEFAULTS[1].in_place_rent,
+    market_rent: null,
+    notes: '',
+  };
+}
+
+// ─── Add / Edit Unit Type Modal ───────────────────────────────────────────────
+function AddEditUnitTypeModal({
+  initial,
+  allTypes,
+  targetUnits,
+  onSave,
+  onClose,
+}: {
+  initial: ManualUnitType | null;
+  allTypes: ManualUnitType[];
+  targetUnits: number | null;
+  onSave: (t: ManualUnitType) => void;
+  onClose: () => void;
+}) {
+  const isEdit = initial !== null;
+  const [form, setForm] = useState<ManualUnitType>(initial ?? emptyType());
+
+  const set = (k: keyof ManualUnitType, v: unknown) =>
+    setForm(f => ({ ...f, [k]: v }));
+
+  // When bedrooms changes, pre-fill platform defaults if the fields are
+  // still at their prior default values (non-destructive prefill).
+  const handleBedsChange = (beds: number) => {
+    const def = PLATFORM_DEFAULTS[beds] ?? PLATFORM_DEFAULTS[4];
+    setForm(f => ({
+      ...f,
+      bedrooms: beds,
+      avg_sqft: f.avg_sqft === (PLATFORM_DEFAULTS[f.bedrooms] ?? PLATFORM_DEFAULTS[4]).avg_sqft
+        ? def.avg_sqft
+        : f.avg_sqft,
+      in_place_rent: f.in_place_rent === (PLATFORM_DEFAULTS[f.bedrooms] ?? PLATFORM_DEFAULTS[4]).in_place_rent
+        ? def.in_place_rent
+        : f.in_place_rent,
+    }));
+  };
+
+  // Running total of all types (excluding the one being edited)
+  const othersSum = allTypes
+    .filter(t => t._id !== form._id)
+    .reduce((s, t) => s + (t.count || 0), 0);
+  const runningTotal = othersSum + (form.count || 0);
+  const delta = targetUnits != null ? runningTotal - targetUnits : null;
+
+  const labelConflict = allTypes.some(
+    t => t._id !== form._id && t.type.trim().toLowerCase() === form.type.trim().toLowerCase(),
+  );
+  const valid =
+    form.type.trim() !== '' &&
+    !labelConflict &&
+    form.count > 0 &&
+    (form.in_place_rent ?? 0) > 0 &&
+    (form.avg_sqft ?? 0) > 0;
+
+  const sfWarn = form.avg_sqft != null && (form.avg_sqft < 200 || form.avg_sqft > 4000);
+
+  const overlay: React.CSSProperties = {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
+    zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  };
+  const panel: React.CSSProperties = {
+    background: C.panel, border: `1px solid ${C.borderHi}`, borderRadius: 8,
+    width: 520, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+  };
+  const inp = (extra?: React.CSSProperties): React.CSSProperties => ({
+    width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 4,
+    padding: '6px 8px', fontFamily: MONO, fontSize: 11, color: C.text,
+    outline: 'none', boxSizing: 'border-box', ...extra,
+  });
+  const lbl: React.CSSProperties = {
+    fontFamily: LABEL, fontSize: 9, color: C.muted, letterSpacing: '0.06em',
+    marginBottom: 4, display: 'block',
+  };
+  const row: React.CSSProperties = { display: 'flex', gap: 10, marginBottom: 12 };
+
+  return (
+    <div style={overlay} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={panel}>
+        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontFamily: LABEL, fontSize: 11, fontWeight: 700, color: C.cyan, letterSpacing: '0.08em' }}>
+            {isEdit ? 'EDIT UNIT TYPE' : 'ADD UNIT TYPE'}
+          </span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 2 }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        <div style={{ padding: '16px 18px' }}>
+          {/* Label */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={lbl}>LABEL <span style={{ color: C.red }}>*</span></label>
+            <input
+              style={{ ...inp(), borderColor: labelConflict ? C.red : C.border }}
+              placeholder="e.g. 1BR/1BA, Studio+Den, 2BR/2BA-A"
+              value={form.type}
+              onChange={e => set('type', e.target.value)}
+            />
+            {labelConflict && (
+              <span style={{ fontFamily: LABEL, fontSize: 8, color: C.red, marginTop: 3, display: 'block' }}>
+                Label already exists in this deal
+              </span>
+            )}
+          </div>
+
+          {/* Bedrooms / Bathrooms */}
+          <div style={row}>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>BEDROOMS <span style={{ color: C.red }}>*</span></label>
+              <select
+                style={{ ...inp(), cursor: 'pointer' }}
+                value={form.bedrooms}
+                onChange={e => handleBedsChange(Number(e.target.value))}
+              >
+                <option value={0}>Studio (0)</option>
+                <option value={1}>1 Bedroom</option>
+                <option value={2}>2 Bedrooms</option>
+                <option value={3}>3 Bedrooms</option>
+                <option value={4}>4+ Bedrooms</option>
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>BATHROOMS <span style={{ color: C.red }}>*</span></label>
+              <select
+                style={{ ...inp(), cursor: 'pointer' }}
+                value={form.bathrooms}
+                onChange={e => set('bathrooms', Number(e.target.value))}
+              >
+                {[1, 1.5, 2, 2.5, 3].map(v => (
+                  <option key={v} value={v}>{v} Bath{v !== 1 ? 's' : ''}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Unit count / avg sqft */}
+          <div style={row}>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>UNIT COUNT <span style={{ color: C.red }}>*</span></label>
+              <input
+                type="number" min={1} step={1}
+                style={{ ...inp(), borderColor: form.count <= 0 ? C.red : C.border }}
+                value={form.count || ''}
+                onChange={e => set('count', Math.max(0, Math.round(Number(e.target.value))))}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>AVG SQ FT <span style={{ color: C.red }}>*</span></label>
+              <input
+                type="number" min={1} step={1}
+                style={{ ...inp(), borderColor: sfWarn ? C.amber : C.border }}
+                value={form.avg_sqft ?? ''}
+                onChange={e => set('avg_sqft', e.target.value === '' ? null : +e.target.value)}
+              />
+              {sfWarn && (
+                <span style={{ fontFamily: LABEL, fontSize: 8, color: C.amber, marginTop: 3, display: 'block' }}>
+                  Unusual size — verify before saving
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Projected rent / Market rent */}
+          <div style={row}>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>PROJECTED RENT $/MO <span style={{ color: C.red }}>*</span></label>
+              <input
+                type="number" min={0} step={1}
+                style={{ ...inp(), borderColor: (form.in_place_rent ?? 0) <= 0 ? C.red : C.border }}
+                value={form.in_place_rent ?? ''}
+                onChange={e => set('in_place_rent', e.target.value === '' ? null : +e.target.value)}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>MARKET RENT $/MO <span style={{ color: C.muted }}>optional</span></label>
+              <input
+                type="number" min={0} step={1}
+                style={inp()}
+                placeholder={form.in_place_rent != null ? String(form.in_place_rent) : '—'}
+                value={form.market_rent ?? ''}
+                onChange={e => set('market_rent', e.target.value === '' ? null : +e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>NOTES <span style={{ color: C.muted }}>optional</span></label>
+            <input
+              style={inp()}
+              placeholder="Penthouse tier, corner unit, accessible, etc."
+              value={form.notes}
+              onChange={e => set('notes', e.target.value)}
+            />
+          </div>
+
+          {/* Live unit count validator */}
+          <div style={{
+            background: C.panelAlt, border: `1px solid ${delta != null && delta !== 0 ? C.amber : C.green}44`,
+            borderRadius: 5, padding: '8px 12px', marginBottom: 16,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontFamily: LABEL, fontSize: 9, color: C.muted }}>RUNNING TOTAL</span>
+              <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: delta != null && delta !== 0 ? C.amber : C.green }}>
+                {runningTotal} units
+              </span>
+            </div>
+            {targetUnits != null && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                <span style={{ fontFamily: LABEL, fontSize: 8, color: C.muted }}>vs target ({targetUnits})</span>
+                <span style={{ fontFamily: LABEL, fontSize: 8, color: delta === 0 ? C.green : C.amber, fontWeight: 700 }}>
+                  {delta === 0 ? '✓ matches target' : delta! > 0 ? `+${delta} over` : `${delta} under`}
+                </span>
+              </div>
+            )}
+            {targetUnits == null && (
+              <div style={{ fontFamily: LABEL, fontSize: 8, color: C.dim, marginTop: 4 }}>
+                No target set — sum will become the deal unit count on save
+              </div>
+            )}
+          </div>
+
+          {/* Platform defaults note */}
+          <div style={{ fontFamily: LABEL, fontSize: 8, color: C.dim, marginBottom: 16 }}>
+            PLATFORM DEFAULTS · {form.bedrooms === 0 ? 'Studio' : `${form.bedrooms}BR`}: {(PLATFORM_DEFAULTS[form.bedrooms] ?? PLATFORM_DEFAULTS[4]).avg_sqft} sf / ${(PLATFORM_DEFAULTS[form.bedrooms] ?? PLATFORM_DEFAULTS[4]).in_place_rent.toLocaleString()}/mo projected — labeled as starting points only
+          </div>
+        </div>
+
+        <div style={{ padding: '12px 18px', borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button
+            onClick={onClose}
+            style={{ fontFamily: LABEL, fontSize: 9, padding: '6px 14px', borderRadius: 4, background: 'none', border: `1px solid ${C.border}`, color: C.muted, cursor: 'pointer', letterSpacing: '0.05em' }}
+          >
+            CANCEL
+          </button>
+          <button
+            onClick={() => valid && onSave({ ...form, market_rent: form.market_rent ?? form.in_place_rent })}
+            disabled={!valid}
+            style={{
+              fontFamily: LABEL, fontSize: 9, padding: '6px 14px', borderRadius: 4,
+              background: valid ? C.cyan : C.dim, color: valid ? C.bg : C.muted,
+              border: 'none', cursor: valid ? 'pointer' : 'not-allowed',
+              fontWeight: 700, letterSpacing: '0.05em',
+            }}
+          >
+            {isEdit ? 'SAVE CHANGES' : 'ADD TYPE'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Confirm Delete Dialog ────────────────────────────────────────────────────
+function ConfirmDeleteDialog({
+  label,
+  onConfirm,
+  onCancel,
+}: { label: string; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: C.panel, border: `1px solid ${C.red}66`, borderRadius: 8, padding: '20px 24px', width: 360 }}>
+        <div style={{ fontFamily: LABEL, fontSize: 11, fontWeight: 700, color: C.red, marginBottom: 10 }}>DELETE UNIT TYPE</div>
+        <div style={{ fontFamily: LABEL, fontSize: 10, color: C.text, marginBottom: 18 }}>
+          Remove <strong style={{ color: C.cyan }}>{label}</strong> from the unit mix?
+          <br /><span style={{ color: C.muted, fontSize: 9 }}>This cannot be undone. Save to persist.</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={onCancel} style={{ fontFamily: LABEL, fontSize: 9, padding: '5px 12px', borderRadius: 4, background: 'none', border: `1px solid ${C.border}`, color: C.muted, cursor: 'pointer' }}>CANCEL</button>
+          <button onClick={onConfirm} style={{ fontFamily: LABEL, fontSize: 9, padding: '5px 12px', borderRadius: 4, background: C.red, color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 700 }}>DELETE</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Unit Mix tab inside the F9 Financial Engine. Accepts the standard
  * `FinancialEngineTabProps` shape so it composes cleanly with the other F9 tabs;
@@ -1274,22 +1649,49 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   const [useUnitMixForGpr, setUseUnitMixForGpr] = useState<boolean>(false);
   const [togglingUnitMixGpr, setTogglingUnitMixGpr] = useState(false);
 
-  const [showAddModal, setShowAddModal]       = useState(false);
-  const [editingEntry, setEditingEntry]       = useState<Partial<ManualUnitType> | null>(null);
-  const [deletingType, setDeletingType]       = useState<string | null>(null);
-  const [savingUnitMix, setSavingUnitMix]     = useState(false);
-  const [unitMixError, setUnitMixError]       = useState<string | null>(null);
-
-  const dealRaw = deal as Record<string, any> | undefined;
-  const targetUnits: number | null = dealRaw?.target_units ?? null;
-  const m03TargetUnits: number | null =
-    dealRaw?.module_outputs?.developmentCapacity?.targetUnits ?? null;
-  const zoningMaxGfa: number | null =
-    dealRaw?.module_outputs?.developmentCapacity?.maxGfa ?? null;
+  // ── Manual unit type builder (Task #1146) ─────────────────────────────────
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingType, setEditingType] = useState<ManualUnitType | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ManualUnitType | null>(null);
+  const [localTypes, setLocalTypes] = useState<ManualUnitType[]>([]);
+  const [savingTypes, setSavingTypes] = useState(false);
+  const [typesSaveError, setTypesSaveError] = useState<string | null>(null);
+  const [typesSaved, setTypesSaved] = useState(false);
+  const [unitMixError, setUnitMixError] = useState<string | null>(null);
 
   // F3 Programming tab unit mix percentages (studio/oneBed/twoBed/threeBed)
   const f3UnitMix = useDesignProgramStore(s => s.program.unitMix ?? null);
   const f3IsDirty = useDesignProgramStore(s => s.isDirty);
+
+  const dealRaw = deal as Record<string, any> | undefined;
+  const targetUnits: number | null = dealRaw?.target_units ?? null;
+  const m03TargetUnits: number | null = (() => {
+    const mo = dealRaw?.module_outputs;
+    return mo?.developmentCapacity?.total ?? mo?.developmentCapacity?.targetUnits ?? null;
+  })();
+  const zoningMaxGfa: number | null = dealRaw?.module_outputs?.developmentCapacity?.maxGfa ?? null;
+
+  // When server data loads, initialise localTypes from the server unit mix.
+  // This keeps edit-in-progress state stable across refreshes.
+  const lastLoadSigRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    const sig = JSON.stringify(data.rentRollSummary?.unitMix ?? []);
+    if (lastLoadSigRef.current === sig) return;
+    lastLoadSigRef.current = sig;
+    const serverMix = data.rentRollSummary?.unitMix ?? [];
+    setLocalTypes(serverMix.map((u, i) => ({
+      _id: `srv-${i}-${u.type}`,
+      type: u.type,
+      bedrooms: bedsFromLabel(u.type),
+      bathrooms: bathsFromLabel(u.type),
+      count: u.count,
+      avg_sqft: u.avgSf,
+      in_place_rent: u.inPlaceRent,
+      market_rent: u.marketRent,
+      notes: '',
+    })));
+  }, [data?.rentRollSummary?.unitMix]);
 
   const load = useCallback(async () => {
     try {
@@ -1311,73 +1713,40 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
 
   useEffect(() => { load(); }, [load]);
 
-  const buildCurrentManualMix = useCallback((): ManualUnitType[] => {
-    return (unitMix ?? []).map((u, i) => ({
-      id: (u as any).id ?? String(i),
-      type: u.type,
-      bedrooms: (u as any).bedrooms ?? 0,
-      bathrooms: (u as any).bathrooms ?? 1,
-      count: u.count,
-      avg_sqft: u.avgSf ?? 0,
-      in_place_rent: u.inPlaceRent ?? 0,
-      market_rent: u.marketRent ?? null,
-      notes: (u as any).notes ?? null,
-      source: 'manual' as const,
-    }));
-  }, [unitMix]);
-
-  const persistUnitMix = useCallback(async (newMix: ManualUnitType[]): Promise<boolean> => {
-    setSavingUnitMix(true);
-    setUnitMixError(null);
+  // Primary save: PUT /unit-mix/types (Task #1146 — new endpoint, supports manual builder)
+  const saveTypes = useCallback(async (types: ManualUnitType[]) => {
+    setSavingTypes(true);
+    setTypesSaveError(null);
+    setTypesSaved(false);
     try {
-      await apiClient.patch(`/api/v1/deals/${dealId}/unit-mix`, { unitMix: newMix });
+      await apiClient.put(`/api/v1/deals/${dealId}/unit-mix/types`, {
+        types: types.map(t => ({
+          type: t.type,
+          bedrooms: t.bedrooms,
+          bathrooms: t.bathrooms,
+          count: t.count,
+          avg_sqft: t.avg_sqft,
+          in_place_rent: t.in_place_rent,
+          market_rent: t.market_rent ?? t.in_place_rent,
+          notes: t.notes || null,
+        })),
+      });
+      setTypesSaved(true);
+      setTimeout(() => setTypesSaved(false), 2500);
+      onF9Refresh?.();
       await load();
-      try { onF9Refresh?.(); } catch { /* noop */ }
-      return true;
-    } catch (err: any) {
-      const msg: string = err?.response?.data?.error ?? err?.message ?? 'Failed to save unit mix';
-      setUnitMixError(msg);
-      return false;
+    } catch (e: any) {
+      setTypesSaveError(e?.response?.data?.error ?? e?.message ?? 'Save failed');
     } finally {
-      setSavingUnitMix(false);
+      setSavingTypes(false);
     }
   }, [dealId, load, onF9Refresh]);
 
-  const handleSaveUnitType = useCallback(async (entry: ManualUnitType) => {
-    const current = buildCurrentManualMix();
-    const idx = current.findIndex(u => u.id === entry.id);
-    const next = idx >= 0
-      ? current.map(u => u.id === entry.id ? entry : u)
-      : [...current, entry];
-    const ok = await persistUnitMix(next);
-    if (ok) {
-      setShowAddModal(false);
-      setEditingEntry(null);
-    }
-  }, [buildCurrentManualMix, persistUnitMix]);
-
-  const handleDeleteUnitType = useCallback(async (typeLabel: string) => {
-    const current = buildCurrentManualMix();
-    const next = current.filter(u => u.type !== typeLabel);
-    // Deletion always persists; balance is advisory. Show informational warning when unbalanced.
-    if (targetUnits != null && targetUnits > 0) {
-      const newSum = next.reduce((s, u) => s + u.count, 0);
-      if (newSum !== targetUnits) {
-        setUnitMixError(
-          `"${typeLabel}" deleted — mix is now ${newSum < targetUnits ? targetUnits - newSum + ' units short of' : (newSum - targetUnits) + ' over'} ` +
-          `target (${targetUnits}). Adjust another floor plan to balance before changes propagate.`
-        );
-      }
-    }
-    const ok = await persistUnitMix(next);
-    if (ok) setDeletingType(null);
-  }, [buildCurrentManualMix, persistUnitMix, targetUnits]);
-
-  // One-click prefill: create 4 unit types from F3 % splits × M03 target count.
+  // One-click prefill: create unit types from F3 % splits × M03/target count.
   // Adjusts last entry's count so sum === target_units exactly (avoids rounding drift).
   const handlePrefillFromM03F3 = useCallback(async () => {
     if (!m03TargetUnits || !f3UnitMix) return;
-    const total = targetUnits ?? m03TargetUnits;  // prefer deal target_units if set
+    const total = targetUnits ?? m03TargetUnits;
     const bedroomMap = [
       { br: 0, pct: f3UnitMix.studio },
       { br: 1, pct: f3UnitMix.oneBed },
@@ -1390,25 +1759,24 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
       if (count <= 0) continue;
       const d = PLATFORM_DEFAULTS[br] ?? PLATFORM_DEFAULTS[1];
       entries.push({
-        id: crypto.randomUUID(),
+        _id: crypto.randomUUID(),
         type: d.label,
         bedrooms: br,
         bathrooms: br === 0 ? 1 : br,
         count,
-        avg_sqft: d.avgSqft,
-        in_place_rent: d.projectedRent,
+        avg_sqft: d.avg_sqft,
+        in_place_rent: d.in_place_rent,
         market_rent: null,
         notes: `Prefilled from F3 (${pct}% of ${total} units)`,
-        source: 'manual',
       });
     }
     if (entries.length === 0) return;
-    // Correct rounding drift: adjust last entry so sum === total exactly
     const currentSum = entries.reduce((s, e) => s + e.count, 0);
     const diff = total - currentSum;
     if (diff !== 0) entries[entries.length - 1].count += diff;
-    await persistUnitMix(entries);
-  }, [m03TargetUnits, f3UnitMix, persistUnitMix, targetUnits]);
+    await saveTypes(entries);
+  }, [m03TargetUnits, f3UnitMix, saveTypes, targetUnits]);
+
 
   // Persist a rent edit to the backend (unit_mix:{idx}:in_place_rent or :market_rent),
   // then refetch /financials so the Pro Forma GPR view stays in sync. Pass `value: null`
@@ -1781,6 +2149,23 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
             </div>
           </div>
 
+          {/* ── M03 advisory banner (shown when live unit count diverges >5%) ── */}
+          {(() => {
+            if (!isDevelopment) return null;
+            const localSum = localTypes.reduce((s, t) => s + (t.count || 0), 0);
+            if (m03TargetUnits == null || localSum === 0) return null;
+            const pctDiff = Math.abs(localSum - m03TargetUnits) / m03TargetUnits;
+            if (pctDiff <= 0.05) return null;
+            return (
+              <div style={{ background: C.amberDim, border: `1px solid ${C.amber}44`, borderRadius: 6, padding: '8px 12px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <AlertTriangle size={12} color={C.amber} />
+                <span style={{ fontFamily: LABEL, fontSize: 9, color: C.amber }}>
+                  M03 ADVISORY — Your unit count ({localSum}) differs from M03 dev capacity output ({m03TargetUnits}) by {(pctDiff * 100).toFixed(1)}%. Confirm this is intentional.
+                </span>
+              </div>
+            );
+          })()}
+
           {unitMixError && (
             <div style={{
               marginBottom: 8, padding: '8px 12px', borderRadius: 4,
@@ -1803,9 +2188,10 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                   {m03TargetUnits != null && m03TargetUnits > 0 && (
                     <div style={{ background: C.cyanDim, border: `1px solid ${C.cyan}44`, borderRadius: 4, padding: '8px 12px', marginBottom: 14, fontFamily: LABEL, fontSize: 9, color: C.cyan }}>
                       M03 capacity suggests <strong>{m03TargetUnits}</strong> total units — add floor plan types below that sum to this target.
-                      {f3UnitMix && f3IsDirty && (
+                      {f3UnitMix && (
                         <div style={{ marginTop: 6, fontFamily: LABEL, fontSize: 8, color: C.cyan }}>
                           F3 program: Studio {f3UnitMix.studio}% · 1BR {f3UnitMix.oneBed}% · 2BR {f3UnitMix.twoBed}% · 3BR {f3UnitMix.threeBed}%
+                          {' '}({m03TargetUnits} units from M03)
                         </div>
                       )}
                     </div>
@@ -1816,23 +2202,8 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-                    {m03TargetUnits != null && m03TargetUnits > 0 && f3UnitMix && (
-                      <button
-                        onClick={() => { void handlePrefillFromM03F3(); }}
-                        disabled={savingUnitMix}
-                        style={{
-                          fontFamily: LABEL, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
-                          background: C.cyanDim, border: `1px solid ${C.cyan}55`, color: C.cyan, borderRadius: 4,
-                          padding: '8px 16px', cursor: savingUnitMix ? 'wait' : 'pointer',
-                          display: 'inline-flex', alignItems: 'center', gap: 6, opacity: savingUnitMix ? 0.6 : 1,
-                        }}
-                      >
-                        {savingUnitMix ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Zap size={12} />}
-                        PREFILL FROM M03 + F3
-                      </button>
-                    )}
                     <button
-                      onClick={() => setShowAddModal(true)}
+                      onClick={() => { setEditingType(null); setShowAddModal(true); }}
                       style={{
                         fontFamily: LABEL, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
                         background: C.cyan, border: 'none', color: C.bg, borderRadius: 4,
@@ -1841,6 +2212,22 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                     >
                       <Plus size={12} /> ADD FIRST UNIT TYPE
                     </button>
+                    {m03TargetUnits != null && m03TargetUnits > 0 && f3UnitMix && (
+                      <button
+                        onClick={() => { void handlePrefillFromM03F3(); }}
+                        disabled={savingTypes}
+                        title={`Seed ${m03TargetUnits} units from F3 Programming % splits`}
+                        style={{
+                          fontFamily: LABEL, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
+                          padding: '8px 16px', borderRadius: 4, border: `1px solid ${C.purple}66`,
+                          background: '#1a0a2a', color: C.purple, cursor: savingTypes ? 'not-allowed' : 'pointer',
+                          display: 'inline-flex', alignItems: 'center', gap: 6, opacity: savingTypes ? 0.6 : 1,
+                        }}
+                      >
+                        {savingTypes ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={12} />}
+                        IMPORT FROM F3 PROGRAM
+                      </button>
+                    )}
                   </div>
                 </>
               ) : (
@@ -1848,6 +2235,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                   <div style={{ fontFamily: LABEL, fontSize: 10, color: C.muted, marginBottom: 6 }}>NO UNIT MIX DATA</div>
                   <div style={{ fontFamily: LABEL, fontSize: 9, color: C.dim }}>Upload and process a rent roll document to populate unit mix</div>
                 </>
+              
               )}
             </div>
           ) : (
@@ -1859,38 +2247,68 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                     VALUE-ADD · EDIT STABILIZED RENTS
                   </span>
                 )}
-                <button
-                  onClick={() => { setEditingEntry(null); setShowAddModal(true); }}
-                  disabled={savingUnitMix}
-                  title="Add a new floor plan type"
-                  style={{
-                    marginLeft: 'auto', background: C.cyanDim, border: `1px solid ${C.cyan}44`,
-                    borderRadius: 3, padding: '3px 8px', cursor: 'pointer',
-                    display: 'inline-flex', alignItems: 'center', gap: 4,
-                    fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: C.cyan,
-                    opacity: savingUnitMix ? 0.5 : 1,
-                  }}
-                >
-                  {savingUnitMix ? <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} /> : <Plus size={10} />}
-                  ADD TYPE
-                </button>
-                {isDevelopment && m03TargetUnits != null && m03TargetUnits > 0 && (
-                  <span style={{ fontFamily: LABEL, fontSize: 8, color: Math.abs(totalUnits - m03TargetUnits) / m03TargetUnits > 0.05 ? C.amber : C.green }}>
-                    M03: {m03TargetUnits} units
-                  </span>
-                )}
-                {isDevelopment && targetUnits != null && targetUnits > 0 && (
-                  <span style={{
-                    fontFamily: LABEL, fontSize: 8, fontWeight: 700,
-                    color: totalUnits === targetUnits ? C.green : C.amber,
-                    background: totalUnits === targetUnits ? `${C.green}18` : `${C.amber}18`,
-                    border: `1px solid ${totalUnits === targetUnits ? C.green : C.amber}44`,
-                    borderRadius: 3, padding: '2px 6px',
-                  }}>
-                    {totalUnits}/{targetUnits} allocated
-                    {totalUnits !== targetUnits && ` (${totalUnits < targetUnits ? '-' : '+'}${Math.abs(totalUnits - targetUnits)})`}
-                  </span>
-                )}
+                {/* Add / Save / Error controls — merged from HEAD (M03 badge) + task (save status) */}
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {isDevelopment && m03TargetUnits != null && m03TargetUnits > 0 && (
+                    <span style={{ fontFamily: LABEL, fontSize: 8, color: Math.abs(totalUnits - m03TargetUnits) / m03TargetUnits > 0.05 ? C.amber : C.green }}>
+                      M03: {m03TargetUnits}u
+                    </span>
+                  )}
+                  {isDevelopment && targetUnits != null && targetUnits > 0 && (
+                    <span style={{
+                      fontFamily: LABEL, fontSize: 8, fontWeight: 700,
+                      color: totalUnits === targetUnits ? C.green : C.amber,
+                      background: totalUnits === targetUnits ? `${C.green}18` : `${C.amber}18`,
+                      border: `1px solid ${totalUnits === targetUnits ? C.green : C.amber}44`,
+                      borderRadius: 3, padding: '2px 6px',
+                    }}>
+                      {totalUnits}/{targetUnits}
+                      {totalUnits !== targetUnits && ` (${totalUnits < targetUnits ? '-' : '+'}${Math.abs(totalUnits - targetUnits)})`}
+                    </span>
+                  )}
+                  {typesSaveError && (
+                    <span style={{ fontFamily: LABEL, fontSize: 8, color: C.red }}>{typesSaveError}</span>
+                  )}
+                  {typesSaved && (
+                    <span style={{ fontFamily: LABEL, fontSize: 8, color: C.green, letterSpacing: '0.05em' }}>SAVED</span>
+                  )}
+                  {savingTypes && (
+                    <Loader2 size={11} color={C.muted} style={{ animation: 'spin 1s linear infinite' }} />
+                  )}
+                  {/* F3 + M03 prefill button — also available when mix has rows (replace / merge) */}
+                  {designProgramMix != null && (m03TargetUnits ?? dealTargetUnits) != null && (m03TargetUnits ?? dealTargetUnits)! > 0 && (
+                    <button
+                      disabled={savingTypes}
+                      onClick={() => {
+                        const total = (m03TargetUnits ?? dealTargetUnits)!;
+                        const rows = buildF3PrefillTypes(designProgramMix, total);
+                        if (rows.length === 0) return;
+                        void saveTypes(rows);
+                      }}
+                      title={`Replace mix with F3 program ${designProgramMix.studio}/${designProgramMix.oneBed}/${designProgramMix.twoBed}/${designProgramMix.threeBed}% across ${(m03TargetUnits ?? dealTargetUnits)} units`}
+                      style={{
+                        fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
+                        padding: '3px 10px', borderRadius: 3, border: `1px solid ${C.purple}55`,
+                        background: '#1a0a2a', color: C.purple, cursor: savingTypes ? 'not-allowed' : 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 4, opacity: savingTypes ? 0.6 : 1,
+                      }}
+                    >
+                      <Save size={9} /> F3 PROGRAM
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setEditingType(null); setShowAddModal(true); }}
+                    title="Add a new unit type"
+                    style={{
+                      fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
+                      padding: '3px 10px', borderRadius: 3, border: 'none',
+                      background: C.cyan, color: C.bg, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 4,
+                    }}
+                  >
+                    <Plus size={10} /> ADD TYPE
+                  </button>
+                </div>
               </div>
               {unitMixError && (
                 <div style={{
@@ -1918,7 +2336,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                       <th style={th(true)}>OCC %</th>
                       <th style={th()}>LEASE EXP</th>
                       <th style={th(true)}>ANNUAL GPR</th>
-                      <th style={th()}></th>
+                      <th style={th()}>ACTIONS</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2083,30 +2501,61 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                             />
                           </td>
                           <td style={td(true, false, C.green)}>{fmt$(gpr)}</td>
-                          <td style={{ ...td(), width: 56, whiteSpace: 'nowrap' }}>
-                            {isDevelopment && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <button
-                                  title="Edit this floor plan type"
-                                  onClick={e => { e.stopPropagation(); setEditingEntry(buildCurrentManualMix().find(m => m.type === u.type) ?? { type: u.type, count: u.count, avg_sqft: u.avgSf ?? 0, in_place_rent: u.inPlaceRent ?? 0, market_rent: u.marketRent ?? null }); setShowAddModal(true); }}
-                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: C.dim, lineHeight: 0 }}
-                                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.cyan; }}
-                                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.dim; }}
-                                >
-                                  <Edit3 size={10} />
-                                </button>
-                                <button
-                                  title="Delete this floor plan type"
-                                  onClick={e => { e.stopPropagation(); setDeletingType(u.type); }}
-                                  disabled={savingUnitMix}
-                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: C.dim, lineHeight: 0 }}
-                                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.red; }}
-                                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.dim; }}
-                                >
-                                  <Trash2 size={10} />
-                                </button>
-                              </div>
-                            )}
+                          {/* Edit / delete affordances */}
+                          <td style={{ ...td(), width: 60 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <button
+                                title="Edit unit type"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  const lt = localTypes.find(t => t.type === u.type);
+                                  if (lt) {
+                                    setEditingType(lt);
+                                    setShowAddModal(true);
+                                  } else {
+                                    // Build a ManualUnitType from the server row, deriving bed/bath from label
+                                    const newLt: ManualUnitType = {
+                                      _id: `srv-${idx}-${u.type}`,
+                                      type: u.type,
+                                      bedrooms: bedsFromLabel(u.type),
+                                      bathrooms: bathsFromLabel(u.type),
+                                      count: u.count,
+                                      avg_sqft: u.avgSf,
+                                      in_place_rent: u.inPlaceRent,
+                                      market_rent: u.marketRent,
+                                      notes: '',
+                                    };
+                                    setEditingType(newLt);
+                                    setShowAddModal(true);
+                                  }
+                                }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: C.dim, lineHeight: 0 }}
+                                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.cyan; }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.dim; }}
+                              >
+                                <Edit3 size={10} />
+                              </button>
+                              <button
+                                title="Delete unit type"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  const lt = localTypes.find(t => t.type === u.type) ?? {
+                                    _id: `srv-${idx}-${u.type}`,
+                                    type: u.type,
+                                    bedrooms: bedsFromLabel(u.type),
+                                    bathrooms: bathsFromLabel(u.type),
+                                    count: u.count, avg_sqft: u.avgSf,
+                                    in_place_rent: u.inPlaceRent, market_rent: u.marketRent, notes: '',
+                                  };
+                                  setPendingDelete(lt);
+                                }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: C.dim, lineHeight: 0 }}
+                                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.red; }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.dim; }}
+                              >
+                                <Trash2 size={10} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                         {isExpanded && rentRollUnits && (
@@ -2427,6 +2876,38 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
           </div>
         </div>
       </div>
+
+      {/* ── Add / Edit Unit Type Modal ── */}
+      {showAddModal && (
+        <AddEditUnitTypeModal
+          initial={editingType}
+          allTypes={localTypes}
+          targetUnits={dealTargetUnits ?? m03TargetUnits}
+          onClose={() => { setShowAddModal(false); setEditingType(null); }}
+          onSave={(updated: ManualUnitType) => {
+            const next = localTypes.some(t => t._id === updated._id)
+              ? localTypes.map(t => t._id === updated._id ? updated : t)
+              : [...localTypes, updated];
+            setLocalTypes(next);
+            setShowAddModal(false);
+            setEditingType(null);
+            void saveTypes(next);
+          }}
+        />
+      )}
+
+      {/* ── Confirm Delete Dialog ── */}
+      {pendingDelete && (
+        <ConfirmDeleteDialog
+          label={pendingDelete.type}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            const next = localTypes.filter(t => t._id !== pendingDelete!._id && t.type !== pendingDelete!.type);
+            setPendingDelete(null);
+            void saveTypes(next);
+          }}
+        />
+      )}
     </div>
 
     {/* Add / Edit unit type modal */}
