@@ -33,28 +33,44 @@ export function Design3DShellPage({ dealId: propDealId, deal }: Design3DShellPag
 
   // Read design targets from store (program + zoning envelope auto-combined)
   const designTargets = useDesignTargets();
+  const hydrateStatus = useDesignProgramStore((s) => s.hydrateStatus);
+  const isLoading = hydrateStatus === 'loading' || hydrateStatus === null;
 
   // Derive metrics from design targets for the header panel
-  const headerMetrics = useMemo(() => [
-    {
-      l: `FAR ${designTargets.program.targetFAR.toFixed(1)}`,
-      c: BT.text.purple,
-    },
-    {
-      l: `${designTargets.program.targetUnits} UNITS`,
-      c: BT.text.cyan,
-    },
-    {
-      l: `${designTargets.program.targetFloors} FL`,
-      c: BT.text.amber,
-    },
-    {
-      l: designTargets.zoningEnvelope
-        ? `${designTargets.zoningEnvelope.bindingConstraint.toUpperCase()}`
-        : 'NO ZONING',
-      c: BT.met.financial,
-    },
-  ], [designTargets]);
+  const headerMetrics = useMemo(() => {
+    if (isLoading) {
+      return [
+        { l: 'FAR —', c: BT.text.purple },
+        { l: '— UNITS', c: BT.text.cyan },
+        { l: '— FL', c: BT.text.amber },
+        { l: '—', c: BT.met.financial },
+      ];
+    }
+    return [
+      {
+        l: `FAR ${designTargets.program.targetFAR.toFixed(1)}`,
+        c: BT.text.purple,
+      },
+      {
+        l: `${designTargets.program.targetUnits} UNITS`,
+        c: BT.text.cyan,
+      },
+      {
+        l: `${designTargets.program.targetFloors} FL`,
+        c: BT.text.amber,
+      },
+      {
+        l: designTargets.zoningEnvelope
+          ? `${designTargets.zoningEnvelope.bindingConstraint.toUpperCase()}`
+          : 'NO ZONING',
+        c: BT.met.financial,
+      },
+    ];
+  }, [designTargets, isLoading]);
+
+  const headerSubtitle = isLoading
+    ? 'M03: BUILDING ENVELOPE + MASSING + METRICS  |  LOADING…'
+    : `M03: BUILDING ENVELOPE + MASSING + METRICS  |  ${designTargets.program.targetUnits}u / ${Math.round(designTargets.program.targetGFA / 1000)}K GFA`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
@@ -62,7 +78,7 @@ export function Design3DShellPage({ dealId: propDealId, deal }: Design3DShellPag
 
       <PanelHeader
         title="3D DESIGN & MASSING"
-        subtitle={`M03: BUILDING ENVELOPE + MASSING + METRICS  |  ${designTargets.program.targetUnits}u / ${Math.round(designTargets.program.targetGFA / 1000)}K GFA`}
+        subtitle={headerSubtitle}
         borderColor={BT.text.purple}
         metrics={headerMetrics}
       />
