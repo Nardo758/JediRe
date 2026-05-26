@@ -58,6 +58,8 @@ interface DrilldownInfo {
   rowLabel: string;
   rowKey: keyof ProjYear;
   year: number;
+  /** Optional override for the "YR {year}" suffix in the drawer header. */
+  yearLabel?: string;
   value: string;
   entries: DrilldownEntry[];
 }
@@ -395,7 +397,7 @@ function DrilldownDrawer({
       {/* Row label + value */}
       <div style={{ padding: '8px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
         <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 2 }}>
-          {info.rowLabel} · YR {info.year}
+          {info.rowLabel}{info.yearLabel != null ? ` · ${info.yearLabel}` : ` · YR ${info.year}`}
         </div>
         <div style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700, color: BT.met.financial }}>{info.value}</div>
       </div>
@@ -587,6 +589,137 @@ function buildDrilldown(
   }
 
   return { rowLabel: row.label, rowKey: row.key, year: proj.year, value: display, entries };
+}
+
+// ─── Build drilldown info for a custom user-defined income line ────────────
+// Opens when the analyst clicks a FLAT/RAMP sub-row label in the Projections
+// tab.  Shows the line's full assumption detail (monthly rate, note, ramp
+// schedule) and links back to the Assumptions tab where the line was defined.
+function buildUserLineDrilldown(
+  line: {
+    id: string;
+    label: string;
+    monthly: number;
+    note?: string;
+    adoption?: {
+      ramp_start_period: number;
+      ramp_duration_months: number;
+      steady_state_monthly: number;
+      probability_adopted: number;
+    } | null;
+  },
+  annualYears: number[],
+): DrilldownInfo {
+  const isRamping = line.adoption != null && line.adoption.ramp_duration_months > 0;
+  const entries: DrilldownEntry[] = [];
+
+  entries.push({
+    label: 'Monthly Base Rate',
+    value: `${fmt$(line.monthly)}/mo`,
+    sourceTab: 'ASSUMPTIONS',
+    tabIndex: 1,
+  });
+
+  if (!isRamping) {
+    entries.push({
+      label: 'Annual Total (flat)',
+      value: fmt$(line.monthly * 12),
+      sourceTab: 'ASSUMPTIONS',
+      tabIndex: 1,
+      formula: 'monthly × 12',
+    });
+  }
+
+  if (line.note) {
+    entries.push({
+      label: 'Note',
+      value: line.note,
+      sourceTab: 'ASSUMPTIONS',
+      tabIndex: 1,
+    });
+  }
+
+  if (isRamping && line.adoption) {
+    const a = line.adoption;
+    entries.push({
+      label: 'Ramp Start (month)',
+      value: `Month ${a.ramp_start_period}`,
+      sourceTab: 'ASSUMPTIONS',
+      tabIndex: 1,
+    });
+    entries.push({
+      label: 'Ramp Duration',
+      value: `${a.ramp_duration_months} months`,
+      sourceTab: 'ASSUMPTIONS',
+      tabIndex: 1,
+    });
+    entries.push({
+      label: 'Steady-State Monthly',
+      value: `${fmt$(a.steady_state_monthly)}/mo`,
+      sourceTab: 'ASSUMPTIONS',
+      tabIndex: 1,
+      formula: 'Full revenue once fully ramped',
+    });
+    entries.push({
+      label: 'Probability Adopted',
+      value: `${(a.probability_adopted * 100).toFixed(0)}%`,
+      sourceTab: 'ASSUMPTIONS',
+      tabIndex: 1,
+      formula: 'Applied to steady-state value',
+    });
+    entries.push({
+      label: 'Steady-State Annual (at full prob.)',
+      value: fmt$(a.steady_state_monthly * 12 * a.probability_adopted),
+      sourceTab: 'ASSUMPTIONS',
+      tabIndex: 1,
+      formula: 'steady_state_monthly × 12 × probability_adopted',
+    });
+  }
+
+  // ── Year-by-year calculated outputs ──────────────────────────────────────
+  annualYears.forEach(yr => {
+    const yearIndex = yr - 1;
+    let annualVal: number;
+    let formula: string;
+
+    if (isRamping && line.adoption) {
+      annualVal = computeRampAwareAnnual(line.monthly, line.adoption, yearIndex);
+      const midpoint = yearIndex * 12 + 6;
+      const rampStart = line.adoption.ramp_start_period;
+      const rampEnd   = rampStart + line.adoption.ramp_duration_months;
+      const phase = midpoint < rampStart ? 'pre-ramp' : midpoint >= rampEnd ? 'steady-state' : 'ramping';
+      const rampFrac = phase === 'ramping'
+        ? Math.round(((midpoint - rampStart) / line.adoption.ramp_duration_months) * 100)
+        : null;
+      formula = phase === 'pre-ramp'
+        ? `Pre-ramp (starts month ${rampStart})`
+        : phase === 'steady-state'
+          ? `Fully ramped · steady_state × 12 × ${(line.adoption.probability_adopted * 100).toFixed(0)}%`
+          : `Ramping ${rampFrac}% of steady-state · × prob`;
+    } else {
+      annualVal = line.monthly * 12;
+      formula = 'monthly × 12';
+    }
+
+    entries.push({
+      label: `YR ${yr} Annual Total`,
+      value: fmt$(annualVal),
+      sourceTab: 'PROJECTIONS',
+      tabIndex: 3,
+      formula,
+    });
+  });
+
+  return {
+    rowLabel: line.label,
+    rowKey: 'otherIncome' as keyof ProjYear,
+    year: 0,
+    yearLabel: isRamping ? 'RAMP LINE' : 'FLAT LINE',
+    value: isRamping
+      ? `${fmt$(line.adoption!.steady_state_monthly)}/mo steady`
+      : `${fmt$(line.monthly)}/mo`,
+    entries,
+  };
 }
 
 // ─── Sub-period columns for monthly/quarterly views ───────────────────────
@@ -2088,7 +2221,9 @@ export function ProjectionsTab({
                             return (
                               <tr
                                 key={`__userline_${line.id}__`}
-                                style={{ background: subRowBg, borderBottom: `1px solid ${BT.border.subtle}` }}
+                                style={{ background: subRowBg, borderBottom: `1px solid ${BT.border.subtle}`, cursor: 'pointer' }}
+                                title="Click for assumption detail"
+                                onClick={() => setDrilldown(buildUserLineDrilldown(line, annualYears))}
                               >
                                 <td
                                   style={{ padding: '3px 8px 3px 28px', color: BT.text.secondary, fontWeight: 400, position: 'sticky', left: 0, background: subRowBg, zIndex: 1 }}
