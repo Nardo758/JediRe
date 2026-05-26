@@ -941,6 +941,9 @@ const PLATFORM_DEFAULTS_MANUAL: Record<number, { avg_sqft: number; in_place_rent
 };
 
 // ─── Build ManualUnitType rows from F3 % splits + total unit count ──────────
+/** Normalized labels for the four standard F3 bedroom tiers. */
+const F3_STANDARD_LABELS = new Set(['studio', '1br/1ba', '2br/2ba', '3br/2ba']);
+
 /**
  * Converts F3 Programming tab unit-mix % splits (studio/1BR/2BR/3BR) and an
  * M03/deal target unit count into ManualUnitType rows seeded with platform
@@ -980,6 +983,25 @@ function buildF3PrefillTypes(
     });
   });
   return rows;
+}
+
+/**
+ * Merge mode: keeps rows whose labels don't match the standard F3 tiers, then
+ * fills the remainder with F3 % splits applied to (totalUnits − customCount).
+ * Returns custom rows first, followed by the F3-derived standard tiers.
+ */
+function buildF3MergeTypes(
+  mix: { studio: number; oneBed: number; twoBed: number; threeBed: number },
+  totalUnits: number,
+  existingRows: ManualUnitType[],
+): ManualUnitType[] {
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '');
+  const customRows = existingRows.filter(r => !F3_STANDARD_LABELS.has(norm(r.type)));
+  const customCount = customRows.reduce((s, r) => s + (r.count || 0), 0);
+  const remaining = Math.max(0, totalUnits - customCount);
+  if (remaining === 0) return [...customRows];
+  const f3Rows = buildF3PrefillTypes(mix, remaining);
+  return [...customRows, ...f3Rows];
 }
 
 // ─── Manual unit type shape ───────────────────────────────────────────────────
@@ -1283,6 +1305,95 @@ function ConfirmDeleteDialog({
   );
 }
 
+// ─── F3 Import Mode Dialog ─────────────────────────────────────────────────────
+function F3ImportDialog({
+  f3UnitMix,
+  totalUnits,
+  existingRows,
+  onReplace,
+  onMerge,
+  onClose,
+}: {
+  f3UnitMix: { studio: number; oneBed: number; twoBed: number; threeBed: number };
+  totalUnits: number;
+  existingRows: ManualUnitType[];
+  onReplace: () => void;
+  onMerge: () => void;
+  onClose: () => void;
+}) {
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '');
+  const customRows = existingRows.filter(r => !F3_STANDARD_LABELS.has(norm(r.type)));
+  const customCount = customRows.reduce((s, r) => s + (r.count || 0), 0);
+  const remaining = Math.max(0, totalUnits - customCount);
+  const hasMergeable = customRows.length > 0;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: C.panel, border: `1px solid ${C.purple}66`, borderRadius: 8, padding: '24px 28px', width: 460 }}>
+        <div style={{ fontFamily: LABEL, fontSize: 11, fontWeight: 700, color: C.purple, marginBottom: 8, letterSpacing: '0.07em' }}>
+          F3 PROGRAM IMPORT
+        </div>
+        <div style={{ fontFamily: LABEL, fontSize: 9, color: C.muted, marginBottom: 20 }}>
+          You have {existingRows.length} existing unit type{existingRows.length !== 1 ? 's' : ''}. Choose how to apply the F3 percentages ({f3UnitMix.studio}/{f3UnitMix.oneBed}/{f3UnitMix.twoBed}/{f3UnitMix.threeBed}% across {totalUnits} units):
+        </div>
+
+        {/* Replace option */}
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: '14px 16px', marginBottom: 12, background: C.panelAlt }}>
+          <div style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.text, letterSpacing: '0.05em', marginBottom: 4 }}>
+            REPLACE ALL ROWS
+          </div>
+          <div style={{ fontFamily: LABEL, fontSize: 8, color: C.dim, marginBottom: 12 }}>
+            Removes all existing unit types and seeds {totalUnits} units from F3 % splits (Studio / 1BR / 2BR / 3BR). Existing custom tiers will be lost.
+          </div>
+          <button
+            onClick={onReplace}
+            style={{
+              fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
+              padding: '5px 14px', borderRadius: 4, border: `1px solid ${C.red}55`,
+              background: '#2a0a0a', color: C.red, cursor: 'pointer',
+            }}
+          >
+            REPLACE ALL
+          </button>
+        </div>
+
+        {/* Merge option */}
+        <div style={{ border: `1px solid ${hasMergeable ? C.purple + '55' : C.border}`, borderRadius: 6, padding: '14px 16px', marginBottom: 20, background: hasMergeable ? '#1a0a2a' : C.panelAlt, opacity: hasMergeable ? 1 : 0.5 }}>
+          <div style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: hasMergeable ? C.purple : C.dim, letterSpacing: '0.05em', marginBottom: 4 }}>
+            MERGE — KEEP CUSTOM TYPES
+          </div>
+          <div style={{ fontFamily: LABEL, fontSize: 8, color: C.dim, marginBottom: 12 }}>
+            {hasMergeable
+              ? `Keeps ${customRows.length} custom row${customRows.length !== 1 ? 's' : ''} (${customCount} units). Re-distributes F3 percentages across the remaining ${remaining} unit${remaining !== 1 ? 's' : ''}.`
+              : 'No custom (non-standard) rows detected — all existing rows match standard F3 tiers. Merge is the same as Replace here.'}
+          </div>
+          <button
+            onClick={onMerge}
+            disabled={!hasMergeable}
+            style={{
+              fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
+              padding: '5px 14px', borderRadius: 4, border: `1px solid ${C.purple}55`,
+              background: hasMergeable ? C.purple : C.dim, color: hasMergeable ? '#fff' : C.bg,
+              cursor: hasMergeable ? 'pointer' : 'not-allowed',
+            }}
+          >
+            MERGE
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            style={{ fontFamily: LABEL, fontSize: 9, padding: '5px 14px', borderRadius: 4, background: 'none', border: `1px solid ${C.border}`, color: C.muted, cursor: 'pointer' }}
+          >
+            CANCEL
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Unit Mix tab inside the F9 Financial Engine. Accepts the standard
  * `FinancialEngineTabProps` shape so it composes cleanly with the other F9 tabs;
@@ -1333,6 +1444,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
 
   // ── Manual unit type builder (Task #1146) ─────────────────────────────────
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showF3Dialog, setShowF3Dialog] = useState(false);
   const [editingType, setEditingType] = useState<ManualUnitType | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ManualUnitType | null>(null);
   const [localTypes, setLocalTypes] = useState<ManualUnitType[]>([]);
@@ -1934,17 +2046,12 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                   {savingTypes && (
                     <Loader2 size={11} color={C.muted} style={{ animation: 'spin 1s linear infinite' }} />
                   )}
-                  {/* F3 + M03 prefill button — also available when mix has rows (replace / merge) */}
+                  {/* F3 + M03 prefill button — opens Replace/Merge dialog when mix has rows */}
                   {f3UnitMix != null && (targetUnits ?? m03TargetUnits) != null && (targetUnits ?? m03TargetUnits)! > 0 && (
                     <button
                       disabled={savingTypes}
-                      onClick={() => {
-                        const total = (targetUnits ?? m03TargetUnits)!;
-                        const rows = buildF3PrefillTypes(f3UnitMix, total);
-                        if (rows.length === 0) return;
-                        void saveTypes(rows);
-                      }}
-                      title={`Replace mix with F3 program ${f3UnitMix.studio}/${f3UnitMix.oneBed}/${f3UnitMix.twoBed}/${f3UnitMix.threeBed}% across ${(targetUnits ?? m03TargetUnits)} units`}
+                      onClick={() => { setShowF3Dialog(true); }}
+                      title={`Import F3 program ${f3UnitMix.studio}/${f3UnitMix.oneBed}/${f3UnitMix.twoBed}/${f3UnitMix.threeBed}% across ${(targetUnits ?? m03TargetUnits)} units — choose Replace or Merge`}
                       style={{
                         fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
                         padding: '3px 10px', borderRadius: 3, border: `1px solid ${C.purple}55`,
@@ -2590,6 +2697,30 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
             const next = localTypes.filter(t => t._id !== pendingDelete!._id && t.type !== pendingDelete!.type);
             setPendingDelete(null);
             void saveTypes(next);
+          }}
+        />
+      )}
+
+      {/* ── F3 Import Mode Dialog ── */}
+      {showF3Dialog && f3UnitMix != null && (targetUnits ?? m03TargetUnits) != null && (
+        <F3ImportDialog
+          f3UnitMix={f3UnitMix}
+          totalUnits={(targetUnits ?? m03TargetUnits)!}
+          existingRows={localTypes}
+          onClose={() => setShowF3Dialog(false)}
+          onReplace={() => {
+            const total = (targetUnits ?? m03TargetUnits)!;
+            const rows = buildF3PrefillTypes(f3UnitMix, total);
+            setShowF3Dialog(false);
+            if (rows.length === 0) return;
+            void saveTypes(rows);
+          }}
+          onMerge={() => {
+            const total = (targetUnits ?? m03TargetUnits)!;
+            const rows = buildF3MergeTypes(f3UnitMix, total, localTypes);
+            setShowF3Dialog(false);
+            if (rows.length === 0) return;
+            void saveTypes(rows);
           }}
         />
       )}
