@@ -6,6 +6,7 @@
 
 import * as XLSX from 'xlsx';
 import type { DealFinancials } from './proforma-adjustment.service';
+import { computeUserLineAnnual } from './proforma-seeder.service';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -145,7 +146,7 @@ export function buildProjectionsForExport(
   // lines so each projection year gets the correct ramped value.
   type AdoptionBlock = { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null | undefined;
   const _exportUserLines: Array<{ monthly: number; adoption?: AdoptionBlock }> =
-    Array.isArray(f.otherIncomeUserLines) ? (f.otherIncomeUserLines as Array<{ monthly: number; adoption?: AdoptionBlock }>) : [];
+    Array.isArray((f as any).otherIncomeUserLines) ? ((f as any).otherIncomeUserLines as Array<{ monthly: number; adoption?: AdoptionBlock }>) : [];
   let _computeULAExport: ((l: { monthly: number; adoption?: AdoptionBlock }, yi: number) => number) | null = null;
   const getULAExport = (l: { monthly: number; adoption?: AdoptionBlock }, yr0: number): number => {
     if (!_computeULAExport) {
@@ -532,8 +533,16 @@ function buildProFormaSheet(
   const N = holdYears;
   const yearCols = Array.from({ length: N }, (_, i) => i + 1);
 
+  // ── Per-line ramp detail sub-rows (Task #1172) ────────────────────────────
+  // Ramping user lines each get their own Excel row immediately below the
+  // "Other Income" summary row. Flat lines (no adoption block) are excluded.
+  type UserLine = { label: string; monthly: number; adoption?: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null };
+  const allUserLines: UserLine[] = Array.isArray((f as any).otherIncomeUserLines) ? ((f as any).otherIncomeUserLines as UserLine[]) : [];
+  const rampingLines = allUserLines.filter(l => l.adoption != null);
+  const rampOffset   = rampingLines.length; // extra rows inserted between OTH and EGI
+
   // Build AoA — initialize with empty rows
-  const totalRows = 55;
+  const totalRows = 55 + rampOffset;
   const aoa: (string | number | null)[][] = Array.from({ length: totalRows }, () => []);
 
   // Title
@@ -543,17 +552,17 @@ function buildProFormaSheet(
   // Headers row
   aoa[R.HDRS] = ['OPERATING STATEMENT', ...yearCols.map(y => `YR ${y}`)];
 
-  // Section label rows
-  aoa[13]  = [''];
-  aoa[14]  = ['EXPENSES'];
-  aoa[27]  = [''];
-  aoa[31]  = [''];
-  aoa[32]  = ['DEBT SERVICE'];
-  aoa[36]  = [''];
-  aoa[39]  = [''];
-  aoa[40]  = ['METRICS'];
-  aoa[46]  = [''];
-  aoa[47]  = ['EXIT / REVERSION'];
+  // Section label rows — rows after OTH are shifted by rampOffset
+  aoa[13]                = [''];
+  aoa[14 + rampOffset]   = ['EXPENSES'];
+  aoa[27 + rampOffset]   = [''];
+  aoa[31 + rampOffset]   = [''];
+  aoa[32 + rampOffset]   = ['DEBT SERVICE'];
+  aoa[36 + rampOffset]   = [''];
+  aoa[39 + rampOffset]   = [''];
+  aoa[40 + rampOffset]   = ['METRICS'];
+  aoa[46 + rampOffset]   = [''];
+  aoa[47 + rampOffset]   = ['EXIT / REVERSION'];
 
   type NumRow = [string, ...number[]];
 
@@ -565,6 +574,7 @@ function buildProFormaSheet(
     ...projs.map(p => (p[key] as number | null) ?? 0),
   ];
 
+  // Income rows — R.OTH and above are not shifted
   aoa[R.GPR]     = mkRow('GROSS POTENTIAL RENT', 'gpr');
   aoa[R.VAC]     = mkRow('  Vacancy Loss', 'vacancyLoss');
   aoa[R.LTL]     = mkRow('  Loss to Lease', 'lossToLease');
@@ -573,102 +583,113 @@ function buildProFormaSheet(
   aoa[R.NRU]     = mkRow('  Non-Revenue Units', 'nru');
   aoa[R.NRI]     = mkRow('NET RENTAL INCOME', 'nri');
   aoa[R.OTH]     = mkRow('  Other Income', 'otherIncome');
-  aoa[R.EGI]     = mkRow('EFFECTIVE GROSS INCOME', 'egi');
-  aoa[R.PAYROLL] = mkRow('  Payroll / Personnel', 'payroll');
-  aoa[R.REPAIRS] = mkRow('  Repairs & Maintenance', 'repairs');
-  aoa[R.TURNOVER]= mkRow('  Turnover / Make-Ready', 'turnover');
-  aoa[R.CONTRACT]= mkRow('  Contract Services', 'contractSvc');
-  aoa[R.MKTG]    = mkRow('  Marketing & Leasing', 'marketing');
-  aoa[R.UTIL]    = mkRow('  Utilities', 'utilities');
-  aoa[R.GANDA]   = mkRow('  G&A / Administrative', 'gAndA');
-  aoa[R.MGMT]    = mkRow('  Management Fee', 'mgmtFee');
-  aoa[R.INS]     = mkRow('  Insurance', 'insurance');
-  aoa[R.RETAX]   = mkRow('  Real Estate Taxes', 'reTaxes');
-  aoa[R.RESV]    = mkRow('  Replacement Reserves', 'reserves');
-  aoa[R.TOPEX]   = mkRow('TOTAL OPERATING EXPENSES', 'totalOpex');
-  aoa[R.NOI]     = mkRow('NET OPERATING INCOME', 'noi');
-  aoa[R.OPMARGIN]= ['  Operating Margin %', ...projs.map(p => p.opMargin ?? 0)];
-  aoa[R.NOIPU]   = ['  NOI / Unit', ...projs.map(p => p.noiPerUnit ?? 0)];
-  aoa[R.INTEREST]= mkRow('  Interest', 'interest');
-  aoa[R.PRINC]   = mkRow('  Principal Paydown', 'principal');
-  aoa[R.TOTALDS] = mkRow('TOTAL DEBT SERVICE', 'annualDS');
-  aoa[R.CAPEX]   = mkRow('  (–) CapEx Draw', 'capexDraw');
-  aoa[R.CFBT]    = mkRow('CASH FLOW BEFORE TAX', 'cfbt');
-  aoa[R.NETCF]   = mkRow('  Net Cash Flow', 'netCF');
-  aoa[R.COC]     = ['  Cash-on-Cash Return', ...projs.map(p => p.coc ?? 0)];
-  aoa[R.DSCR]    = ['  DSCR', ...projs.map(p => p.dscr ?? 0)];
-  aoa[R.DY]      = ['  Debt Yield', ...projs.map(p => p.debtYield ?? 0)];
-  aoa[R.OCC]     = ['  Occupancy %', ...projs.map(p => p.occupancy ?? 0)];
-  aoa[R.CEM]     = ['  Cumulative Equity Multiple', ...projs.map(p => p.cumulativeEM ?? 0)];
-  aoa[R.EXNOI]   = mkRow('  Forward NOI (Exit)', 'exitNoi');
-  aoa[R.EXCAP]   = ['  Exit Cap Rate', ...projs.map(p => p.exitCap ?? 0)];
-  aoa[R.GROSSSALE]= mkRow('  Gross Sale Value', 'grossSaleValue');
-  aoa[R.SELLING] = mkRow('  (–) Selling Costs (1.5%)', 'sellingCosts');
-  aoa[R.LOANPAY] = mkRow('  (–) Loan Payoff', 'loanPayoff');
-  aoa[R.NETSALE] = mkRow('NET SALE PROCEEDS', 'netSaleProceeds');
+
+  // Per-line ramp detail rows immediately after Other Income (Task #1172)
+  for (let li = 0; li < rampingLines.length; li++) {
+    const line = rampingLines[li];
+    aoa[R.OTH + 1 + li] = [
+      `    ${line.label} — RAMP`,
+      ...projs.map((_, yi) => Math.round(computeUserLineAnnual(line, yi))),
+    ];
+  }
+
+  // All rows after OTH shifted by rampOffset
+  aoa[R.EGI      + rampOffset] = mkRow('EFFECTIVE GROSS INCOME', 'egi');
+  aoa[R.PAYROLL  + rampOffset] = mkRow('  Payroll / Personnel', 'payroll');
+  aoa[R.REPAIRS  + rampOffset] = mkRow('  Repairs & Maintenance', 'repairs');
+  aoa[R.TURNOVER + rampOffset] = mkRow('  Turnover / Make-Ready', 'turnover');
+  aoa[R.CONTRACT + rampOffset] = mkRow('  Contract Services', 'contractSvc');
+  aoa[R.MKTG     + rampOffset] = mkRow('  Marketing & Leasing', 'marketing');
+  aoa[R.UTIL     + rampOffset] = mkRow('  Utilities', 'utilities');
+  aoa[R.GANDA    + rampOffset] = mkRow('  G&A / Administrative', 'gAndA');
+  aoa[R.MGMT     + rampOffset] = mkRow('  Management Fee', 'mgmtFee');
+  aoa[R.INS      + rampOffset] = mkRow('  Insurance', 'insurance');
+  aoa[R.RETAX    + rampOffset] = mkRow('  Real Estate Taxes', 'reTaxes');
+  aoa[R.RESV     + rampOffset] = mkRow('  Replacement Reserves', 'reserves');
+  aoa[R.TOPEX    + rampOffset] = mkRow('TOTAL OPERATING EXPENSES', 'totalOpex');
+  aoa[R.NOI      + rampOffset] = mkRow('NET OPERATING INCOME', 'noi');
+  aoa[R.OPMARGIN + rampOffset] = ['  Operating Margin %', ...projs.map(p => p.opMargin ?? 0)];
+  aoa[R.NOIPU    + rampOffset] = ['  NOI / Unit', ...projs.map(p => p.noiPerUnit ?? 0)];
+  aoa[R.INTEREST + rampOffset] = mkRow('  Interest', 'interest');
+  aoa[R.PRINC    + rampOffset] = mkRow('  Principal Paydown', 'principal');
+  aoa[R.TOTALDS  + rampOffset] = mkRow('TOTAL DEBT SERVICE', 'annualDS');
+  aoa[R.CAPEX    + rampOffset] = mkRow('  (–) CapEx Draw', 'capexDraw');
+  aoa[R.CFBT     + rampOffset] = mkRow('CASH FLOW BEFORE TAX', 'cfbt');
+  aoa[R.NETCF    + rampOffset] = mkRow('  Net Cash Flow', 'netCF');
+  aoa[R.COC      + rampOffset] = ['  Cash-on-Cash Return', ...projs.map(p => p.coc ?? 0)];
+  aoa[R.DSCR     + rampOffset] = ['  DSCR', ...projs.map(p => p.dscr ?? 0)];
+  aoa[R.DY       + rampOffset] = ['  Debt Yield', ...projs.map(p => p.debtYield ?? 0)];
+  aoa[R.OCC      + rampOffset] = ['  Occupancy %', ...projs.map(p => p.occupancy ?? 0)];
+  aoa[R.CEM      + rampOffset] = ['  Cumulative Equity Multiple', ...projs.map(p => p.cumulativeEM ?? 0)];
+  aoa[R.EXNOI    + rampOffset] = mkRow('  Forward NOI (Exit)', 'exitNoi');
+  aoa[R.EXCAP    + rampOffset] = ['  Exit Cap Rate', ...projs.map(p => p.exitCap ?? 0)];
+  aoa[R.GROSSSALE+ rampOffset] = mkRow('  Gross Sale Value', 'grossSaleValue');
+  aoa[R.SELLING  + rampOffset] = mkRow('  (–) Selling Costs (1.5%)', 'sellingCosts');
+  aoa[R.LOANPAY  + rampOffset] = mkRow('  (–) Loan Payoff', 'loanPayoff');
+  aoa[R.NETSALE  + rampOffset] = mkRow('NET SALE PROCEEDS', 'netSaleProceeds');
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
 
-  // ── Overlay formula cells ─────────────────────────────────────────────────
+  // ── Overlay formula cells (post-OTH rows shifted by rampOffset) ───────────
   for (let y = 0; y < N; y++) {
     const col = y + 1;         // col 0=A (labels), col 1=B (YR1)...
     const C   = colLetter(col);
 
-    // NRI = GPR - VAC - LTL - CONC - BADDEBT - NRU
+    // NRI = GPR - VAC - LTL - CONC - BADDEBT - NRU (no shift — rows ≤ OTH)
     ws[addr(R.NRI, col)] = {
       t: 'n',
       f: `=${C}${R.GPR+1}-${C}${R.VAC+1}-${C}${R.LTL+1}-${C}${R.CONC+1}-${C}${R.BADDEBT+1}-${C}${R.NRU+1}`,
       v: projs[y].nri,
     };
-    // EGI = NRI + OtherIncome
-    ws[addr(R.EGI, col)] = {
+    // EGI = NRI + OtherIncome (EGI shifted; OTH and NRI not shifted)
+    ws[addr(R.EGI + rampOffset, col)] = {
       t: 'n',
       f: `=${C}${R.NRI+1}+${C}${R.OTH+1}`,
       v: projs[y].egi,
     };
-    // Total OpEx = SUM(PAYROLL:RESV)
-    ws[addr(R.TOPEX, col)] = {
+    // Total OpEx = SUM(PAYROLL:RESV) — both bounds shifted
+    ws[addr(R.TOPEX + rampOffset, col)] = {
       t: 'n',
-      f: `=SUM(${C}${R.PAYROLL+1}:${C}${R.RESV+1})`,
+      f: `=SUM(${C}${R.PAYROLL+rampOffset+1}:${C}${R.RESV+rampOffset+1})`,
       v: projs[y].totalOpex,
     };
-    // NOI = EGI - TOPEX
-    ws[addr(R.NOI, col)] = {
+    // NOI = EGI - TOPEX — both shifted
+    ws[addr(R.NOI + rampOffset, col)] = {
       t: 'n',
-      f: `=${C}${R.EGI+1}-${C}${R.TOPEX+1}`,
+      f: `=${C}${R.EGI+rampOffset+1}-${C}${R.TOPEX+rampOffset+1}`,
       v: projs[y].noi,
     };
-    // Op Margin = NOI / EGI
-    ws[addr(R.OPMARGIN, col)] = {
+    // Op Margin = NOI / EGI — both shifted
+    ws[addr(R.OPMARGIN + rampOffset, col)] = {
       t: 'n',
-      f: `=${C}${R.NOI+1}/${C}${R.EGI+1}`,
+      f: `=${C}${R.NOI+rampOffset+1}/${C}${R.EGI+rampOffset+1}`,
       v: projs[y].opMargin ?? 0,
       z: '0.00%',
     };
     // NOI/Unit = NOI / totalUnits
     if (f.totalUnits > 0) {
-      ws[addr(R.NOIPU, col)] = {
+      ws[addr(R.NOIPU + rampOffset, col)] = {
         t: 'n',
-        f: `=${C}${R.NOI+1}/${f.totalUnits}`,
+        f: `=${C}${R.NOI+rampOffset+1}/${f.totalUnits}`,
         v: projs[y].noiPerUnit ?? 0,
       };
     }
-    // Total DS = INTEREST + PRINC
-    ws[addr(R.TOTALDS, col)] = {
+    // Total DS = INTEREST + PRINC — both shifted
+    ws[addr(R.TOTALDS + rampOffset, col)] = {
       t: 'n',
-      f: `=${C}${R.INTEREST+1}+${C}${R.PRINC+1}`,
+      f: `=${C}${R.INTEREST+rampOffset+1}+${C}${R.PRINC+rampOffset+1}`,
       v: projs[y].annualDS,
     };
-    // CFBT = NOI - DS - CapEx Draw (formula now consistent with TS engine computation)
-    ws[addr(R.CFBT, col)] = {
+    // CFBT = NOI - DS - CapEx Draw — all shifted
+    ws[addr(R.CFBT + rampOffset, col)] = {
       t: 'n',
-      f: `=${C}${R.NOI+1}-${C}${R.TOTALDS+1}-${C}${R.CAPEX+1}`,
+      f: `=${C}${R.NOI+rampOffset+1}-${C}${R.TOTALDS+rampOffset+1}-${C}${R.CAPEX+rampOffset+1}`,
       v: projs[y].cfbt,
     };
-    // Net Sale Proceeds = GrossSale - Selling - LoanPayoff
-    ws[addr(R.NETSALE, col)] = {
+    // Net Sale Proceeds = GrossSale - Selling - LoanPayoff — all shifted
+    ws[addr(R.NETSALE + rampOffset, col)] = {
       t: 'n',
-      f: `=${C}${R.GROSSSALE+1}-${C}${R.SELLING+1}-${C}${R.LOANPAY+1}`,
+      f: `=${C}${R.GROSSSALE+rampOffset+1}-${C}${R.SELLING+rampOffset+1}-${C}${R.LOANPAY+rampOffset+1}`,
       v: projs[y].netSaleProceeds ?? 0,
     };
 
@@ -712,7 +733,7 @@ function buildProFormaSheet(
 
   // Set column widths
   ws['!cols'] = [
-    { wch: 32 },                                              // Label column
+    { wch: 36 },                                              // Label column (wider for ramp labels)
     ...Array.from({ length: N }, () => ({ wch: 14 })),       // Year columns
   ];
 
@@ -727,14 +748,21 @@ function buildProFormaSheet(
   styleRow(ws, R.SUBTITLE, N, S.title);
   styleRow(ws, R.HDRS,    N, S.header);
 
-  // Section headers
-  for (const secRow of [14, 32, 40, 47]) {
+  // Section headers (adjusted for rampOffset)
+  for (const secRow of [14 + rampOffset, 32 + rampOffset, 40 + rampOffset, 47 + rampOffset]) {
     styleRow(ws, secRow, N, S.section);
   }
   styleCell(ws, addr(R.GPR, 0), S.section);
 
+  // Ramp detail rows — input style to distinguish from summary row
+  for (let li = 0; li < rampingLines.length; li++) {
+    for (let c = 0; c <= N; c++) {
+      styleCell(ws, addr(R.OTH + 1 + li, c), S.input);
+    }
+  }
+
   // Formula/derived rows (black bold): NRI, EGI, TOPEX, NOI, TOTALDS, CFBT, NETSALE
-  for (const fRow of [R.NRI, R.EGI, R.TOPEX, R.NOI, R.TOTALDS, R.CFBT, R.NETSALE]) {
+  for (const fRow of [R.NRI, R.EGI + rampOffset, R.TOPEX + rampOffset, R.NOI + rampOffset, R.TOTALDS + rampOffset, R.CFBT + rampOffset, R.NETSALE + rampOffset]) {
     for (let c = 0; c <= N; c++) {
       styleCell(ws, addr(fRow, c), S.formula);
     }
@@ -750,13 +778,22 @@ function buildProFormaSheet(
   }
 
   // User override cells (blue): any cell where userOverrides[field][year] is set
+  // Rows after OTH use rampOffset-adjusted indices
   const rowFieldMap: Record<number, string> = {
     [R.GPR]: 'gpr', [R.VAC]: 'vacancy_pct', [R.LTL]: 'loss_to_lease_pct',
     [R.CONC]: 'concessions_pct', [R.BADDEBT]: 'bad_debt_pct', [R.NRU]: 'non_revenue_units_pct',
-    [R.OTH]: 'other_income_per_unit', [R.PAYROLL]: 'payroll', [R.REPAIRS]: 'repairs_maintenance',
-    [R.TURNOVER]: 'turnover', [R.CONTRACT]: 'contract_services', [R.MKTG]: 'marketing',
-    [R.UTIL]: 'utilities', [R.GANDA]: 'g_and_a', [R.MGMT]: 'management_fee_pct',
-    [R.INS]: 'insurance', [R.RETAX]: 'real_estate_tax', [R.RESV]: 'replacement_reserves',
+    [R.OTH]: 'other_income_per_unit',
+    [R.PAYROLL  + rampOffset]: 'payroll',
+    [R.REPAIRS  + rampOffset]: 'repairs_maintenance',
+    [R.TURNOVER + rampOffset]: 'turnover',
+    [R.CONTRACT + rampOffset]: 'contract_services',
+    [R.MKTG     + rampOffset]: 'marketing',
+    [R.UTIL     + rampOffset]: 'utilities',
+    [R.GANDA    + rampOffset]: 'g_and_a',
+    [R.MGMT     + rampOffset]: 'management_fee_pct',
+    [R.INS      + rampOffset]: 'insurance',
+    [R.RETAX    + rampOffset]: 'real_estate_tax',
+    [R.RESV     + rampOffset]: 'replacement_reserves',
   };
   for (const [rowStr, field] of Object.entries(rowFieldMap)) {
     const rowIdx = Number(rowStr);
@@ -896,7 +933,15 @@ function buildProjectionsSheet(
 ): XLSX.WorkSheet {
   const N = holdYears;
   const yearCols = Array.from({ length: N }, (_, i) => i + 1);
-  const totalRows = 55;
+
+  // Mirror the same ramp-row logic as Pro Forma so row indices stay in sync
+  // for cross-sheet formula references (Task #1172).
+  type UserLine = { label: string; monthly: number; adoption?: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null };
+  const allUserLines: UserLine[] = Array.isArray((f as any).otherIncomeUserLines) ? ((f as any).otherIncomeUserLines as UserLine[]) : [];
+  const rampingLines = allUserLines.filter(l => l.adoption != null);
+  const rampOffset   = rampingLines.length;
+
+  const totalRows = 55 + rampOffset;
   const aoa: (string | number | null)[][] = Array.from({ length: totalRows }, () => []);
 
   // Use same row layout as Pro Forma so column letters align for cross-sheet refs.
@@ -917,54 +962,72 @@ function buildProjectionsSheet(
   aoa[R.NRU]     = mkRow('  (–) Non-Revenue Units', 'nru');
   aoa[R.NRI]     = mkRow('Net Rental Income', 'nri');
   aoa[R.OTH]     = mkRow('  Other Income', 'otherIncome');
-  aoa[R.EGI]     = mkRow('EFFECTIVE GROSS INCOME', 'egi');
-  aoa[14]        = [''];
-  aoa[14]        = ['EXPENSES'];
-  aoa[R.PAYROLL] = mkRow('  Payroll & Benefits', 'payroll');
-  aoa[R.REPAIRS] = mkRow('  R&M / Make-Ready', 'repairs');
-  aoa[R.TURNOVER]= mkRow('  Turnover / Make-Ready', 'turnover');
-  aoa[R.CONTRACT]= mkRow('  Contract Services', 'contractSvc');
-  aoa[R.MKTG]    = mkRow('  Marketing & Leasing', 'marketing');
-  aoa[R.UTIL]    = mkRow('  Utilities', 'utilities');
-  aoa[R.GANDA]   = mkRow('  G&A / Administrative', 'gAndA');
-  aoa[R.MGMT]    = mkRow('  Management Fee', 'mgmtFee');
-  aoa[R.INS]     = mkRow('  Insurance', 'insurance');
-  aoa[R.RETAX]   = mkRow('  Real Estate Taxes', 'reTaxes');
-  aoa[R.RESV]    = mkRow('  Replacement Reserves', 'reserves');
-  aoa[R.TOPEX]   = mkRow('TOTAL OPERATING EXPENSES', 'totalOpex');
-  aoa[R.NOI]     = mkRow('NET OPERATING INCOME', 'noi');
-  aoa[R.INTEREST]= mkRow('  Interest', 'interest');
-  aoa[R.PRINC]   = mkRow('  Principal Paydown', 'principal');
-  aoa[R.TOTALDS] = mkRow('TOTAL DEBT SERVICE', 'annualDS');
-  aoa[R.CAPEX]   = mkRow('  (–) CapEx Draw', 'capexDraw');
-  aoa[R.CFBT]    = mkRow('CASH FLOW BEFORE TAX', 'cfbt');
-  aoa[R.NETCF]   = mkRow('  Net Cash Flow', 'netCF');
+
+  // Per-line ramp detail rows (Task #1172) — mirrors Pro Forma layout exactly
+  for (let li = 0; li < rampingLines.length; li++) {
+    const line = rampingLines[li];
+    aoa[R.OTH + 1 + li] = [
+      `    ${line.label} — RAMP`,
+      ...projs.map((_, yi) => Math.round(computeUserLineAnnual(line, yi))),
+    ];
+  }
+
+  aoa[R.EGI      + rampOffset] = mkRow('EFFECTIVE GROSS INCOME', 'egi');
+  aoa[14 + rampOffset]         = ['EXPENSES'];
+  aoa[R.PAYROLL  + rampOffset] = mkRow('  Payroll & Benefits', 'payroll');
+  aoa[R.REPAIRS  + rampOffset] = mkRow('  R&M / Make-Ready', 'repairs');
+  aoa[R.TURNOVER + rampOffset] = mkRow('  Turnover / Make-Ready', 'turnover');
+  aoa[R.CONTRACT + rampOffset] = mkRow('  Contract Services', 'contractSvc');
+  aoa[R.MKTG     + rampOffset] = mkRow('  Marketing & Leasing', 'marketing');
+  aoa[R.UTIL     + rampOffset] = mkRow('  Utilities', 'utilities');
+  aoa[R.GANDA    + rampOffset] = mkRow('  G&A / Administrative', 'gAndA');
+  aoa[R.MGMT     + rampOffset] = mkRow('  Management Fee', 'mgmtFee');
+  aoa[R.INS      + rampOffset] = mkRow('  Insurance', 'insurance');
+  aoa[R.RETAX    + rampOffset] = mkRow('  Real Estate Taxes', 'reTaxes');
+  aoa[R.RESV     + rampOffset] = mkRow('  Replacement Reserves', 'reserves');
+  aoa[R.TOPEX    + rampOffset] = mkRow('TOTAL OPERATING EXPENSES', 'totalOpex');
+  aoa[R.NOI      + rampOffset] = mkRow('NET OPERATING INCOME', 'noi');
+  aoa[R.INTEREST + rampOffset] = mkRow('  Interest', 'interest');
+  aoa[R.PRINC    + rampOffset] = mkRow('  Principal Paydown', 'principal');
+  aoa[R.TOTALDS  + rampOffset] = mkRow('TOTAL DEBT SERVICE', 'annualDS');
+  aoa[R.CAPEX    + rampOffset] = mkRow('  (–) CapEx Draw', 'capexDraw');
+  aoa[R.CFBT     + rampOffset] = mkRow('CASH FLOW BEFORE TAX', 'cfbt');
+  aoa[R.NETCF    + rampOffset] = mkRow('  Net Cash Flow', 'netCF');
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
 
   // ── Year 1 cross-sheet references for the 5 key line items ───────────────
   // 'Pro Forma' column B (col index 1) = Year 1. Row index +1 = Excel row number.
+  // Rows after OTH use rampOffset-adjusted indices to match Pro Forma sheet.
   const Y1_COL = 'B';
-  const crossRef = (rowIdx: number) => `='Pro Forma'!${Y1_COL}${rowIdx + 1}`;
-  for (const rowIdx of [R.GPR, R.EGI, R.NOI, R.TOPEX, R.CFBT]) {
-    ws[addr(rowIdx, 1)] = { t: 'n', f: crossRef(rowIdx), v: projs[0]?.[
-      ({ [R.GPR]: 'gpr', [R.EGI]: 'egi', [R.NOI]: 'noi', [R.TOPEX]: 'totalOpex', [R.CFBT]: 'cfbt' } as Record<number, keyof ProjYearExport>)[rowIdx]
-    ] as number ?? 0 };
+  const crossRefRows: Array<[number, keyof ProjYearExport]> = [
+    [R.GPR,                'gpr'],
+    [R.EGI    + rampOffset, 'egi'],
+    [R.NOI    + rampOffset, 'noi'],
+    [R.TOPEX  + rampOffset, 'totalOpex'],
+    [R.CFBT   + rampOffset, 'cfbt'],
+  ];
+  for (const [rowIdx, projKey] of crossRefRows) {
+    ws[addr(rowIdx, 1)] = {
+      t: 'n',
+      f: `='Pro Forma'!${Y1_COL}${rowIdx + 1}`,
+      v: (projs[0]?.[projKey] as number) ?? 0,
+    };
   }
 
-  // ── Y2-YN formula cells (same pattern as Pro Forma sheet) ────────────────
+  // ── Y2-YN formula cells (same pattern as Pro Forma sheet, with rampOffset) ──
   for (let y = 1; y < N; y++) {    // y=0 is Year 1, already handled above
     const col = y + 1;
     const C   = colLetter(col);
-    ws[addr(R.NRI,   col)] = { t: 'n', f: `=${C}${R.GPR+1}-${C}${R.VAC+1}-${C}${R.LTL+1}-${C}${R.CONC+1}-${C}${R.BADDEBT+1}-${C}${R.NRU+1}`, v: projs[y].nri };
-    ws[addr(R.EGI,   col)] = { t: 'n', f: `=${C}${R.NRI+1}+${C}${R.OTH+1}`, v: projs[y].egi };
-    ws[addr(R.TOPEX, col)] = { t: 'n', f: `=SUM(${C}${R.PAYROLL+1}:${C}${R.RESV+1})`, v: projs[y].totalOpex };
-    ws[addr(R.NOI,   col)] = { t: 'n', f: `=${C}${R.EGI+1}-${C}${R.TOPEX+1}`, v: projs[y].noi };
-    ws[addr(R.TOTALDS,col)]= { t: 'n', f: `=${C}${R.INTEREST+1}+${C}${R.PRINC+1}`, v: projs[y].annualDS };
-    ws[addr(R.CFBT,  col)] = { t: 'n', f: `=${C}${R.NOI+1}-${C}${R.TOTALDS+1}-${C}${R.CAPEX+1}`, v: projs[y].cfbt };
+    ws[addr(R.NRI,              col)] = { t: 'n', f: `=${C}${R.GPR+1}-${C}${R.VAC+1}-${C}${R.LTL+1}-${C}${R.CONC+1}-${C}${R.BADDEBT+1}-${C}${R.NRU+1}`, v: projs[y].nri };
+    ws[addr(R.EGI + rampOffset, col)] = { t: 'n', f: `=${C}${R.NRI+1}+${C}${R.OTH+1}`, v: projs[y].egi };
+    ws[addr(R.TOPEX+rampOffset, col)] = { t: 'n', f: `=SUM(${C}${R.PAYROLL+rampOffset+1}:${C}${R.RESV+rampOffset+1})`, v: projs[y].totalOpex };
+    ws[addr(R.NOI + rampOffset, col)] = { t: 'n', f: `=${C}${R.EGI+rampOffset+1}-${C}${R.TOPEX+rampOffset+1}`, v: projs[y].noi };
+    ws[addr(R.TOTALDS+rampOffset,col)]= { t: 'n', f: `=${C}${R.INTEREST+rampOffset+1}+${C}${R.PRINC+rampOffset+1}`, v: projs[y].annualDS };
+    ws[addr(R.CFBT+rampOffset,  col)] = { t: 'n', f: `=${C}${R.NOI+rampOffset+1}-${C}${R.TOTALDS+rampOffset+1}-${C}${R.CAPEX+rampOffset+1}`, v: projs[y].cfbt };
   }
 
-  ws['!cols'] = [{ wch: 32 }, ...Array.from({ length: N }, () => ({ wch: 14 }))];
+  ws['!cols'] = [{ wch: 36 }, ...Array.from({ length: N }, () => ({ wch: 14 }))];
   ws['!ref']  = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: totalRows - 1, c: N } });
   return ws;
 }
