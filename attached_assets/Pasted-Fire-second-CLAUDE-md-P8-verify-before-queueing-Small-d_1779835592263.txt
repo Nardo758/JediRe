@@ -1,0 +1,116 @@
+Fire second — CLAUDE.md P8 (verify before queueing)
+Small dispatch, ~15 min:
+CLAUDE.md AMENDMENT — ADD STANDING PRINCIPLE P8
+
+Add this standing principle to CLAUDE.md alongside the existing 
+P1-P7:
+
+P8 — VERIFY BEFORE QUEUEING
+When a dispatch produces a closing note that informs the scope of 
+subsequent work, that closing note must be verified before 
+downstream dispatches fire.
+
+Verification steps:
+1. Confirm the document exists at the expected path and is 
+   complete per its dispatch spec
+2. Spot-check 3-5 source citations against the actual codebase
+3. Verify cross-fix integration sections are substantive (not 
+   placeholder)
+4. Classify open questions as BLOCKING / IMPORTANT / INFORMATIONAL
+5. Identify gaps — what the investigation should have covered but 
+   didn't
+
+Output: append a verification section to the original 
+investigation file. Verdict: APPROVED FOR DOWNSTREAM WORK / NEEDS 
+AMENDMENT / NEEDS REWORK.
+
+Rationale: Investigations produce documents that subsequent 
+dispatches treat as authoritative. If an investigation has 
+incomplete citations, missing cross-fix integration, or 
+unaddressed gaps, downstream dispatches inherit those problems. 
+Verification catches issues before propagation. A related failure 
+mode: dispatches that were drafted but never fired can be 
+confused with dispatches that landed. The verification step 
+catches "the closing note doesn't exist" as a finding.
+
+DO NOT
+- Skip verification for "small" investigations
+- Verify your own work as the sole check (operator review of the 
+  verification is required)
+- Treat parallel firing as acceptable for dependency-linked work
+
+Fire third — STR/Flip/Land Hold "not yet supported" notice
+Small dispatch, ~1 day of work. The investigation surfaced this gap; the fix is small and operator-visible. Worth shipping early:
+STR / FLIP / LAND HOLD — "NOT YET SUPPORTED" NOTICE IN SELECTOR
+
+CONTEXT
+Per STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md, these three 
+strategies have zero dedicated F9 UI today:
+- str_shortterm (ADR, RevPAR, seasonal occupancy not rendered)
+- flip (short-hold exit timing not rendered)
+- land_hold (income rows shown for a no-income strategy)
+
+Operators who select these strategies get the multifamily-existing 
+layout, which is structurally wrong for their use case. Per Leon's 
+decision, full UI support for these strategies is deferred. This 
+dispatch adds an explicit "not yet supported" treatment so 
+operators get an honest signal rather than a broken display.
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+A. Locate the strategy selector(s) in:
+   - DealTermsTab.tsx (investmentStrategy dropdown)
+   - Deal creation flow (deal_type selector if separate)
+   - Any other surface that lets operators pick STR/Flip/Land Hold
+
+B. For each surface, add visual treatment:
+   - STR / Flip / Land Hold options shown with badge: 
+     "Not yet supported — full UI coming in future release"
+   - On selection, surface a confirmation modal: "You've selected 
+     [strategy]. Full UI support is not yet built — the platform 
+     will render a multifamily-existing layout. Continue?"
+   - Confirmation persists; modal doesn't re-appear on subsequent 
+     edits within the same deal
+
+C. Persist the selection (don't disable it entirely — operators 
+   may want to mark a deal as STR even without full UI, for 
+   tagging/categorization purposes)
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Implementation in:
+- DealTermsTab.tsx (strategy selector + badge + modal)
+- Deal creation flow if applicable
+- Documentation note in docs/operations/STRATEGY_SCOPE_NOTICE.md 
+  explaining what's deferred and the roadmap
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Build any STR/Flip/Land Hold actual UI (that's the deferred work)
+- Remove the strategy options from the selector entirely
+- Modify the underlying calculation templates
+- "While I'm here" cleanups
+This is small but operator-visible. Ships product clarity in ~1 day.
+
+Suggested firing order
+
+Fire P8 (CLAUDE.md) — small, foundational, ~15 min
+Fire A1 vs A2 investigation — 1-2 hours, produces decision document
+Fire "not yet supported" notice — ~1 day, operator-visible quick win
+
+These three can run in parallel. None depend on each other.
+After A1 vs A2 investigation closes:
+4. Verify it (per P8)
+5. Make the A decision
+6. Fire the canonical migration dispatch (whichever you chose)
+After A migration lands:
+7. Fire B (Mandate lift)
+8. Fire Phase 1 UI fixes (Unit Mix split, Validation Grid using existing data)
+After Phase 1 lands:
+9. Fire Phase 2 derivation logic for multifamily-existing
