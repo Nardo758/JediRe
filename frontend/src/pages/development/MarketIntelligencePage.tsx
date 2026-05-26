@@ -595,7 +595,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   const renderProgramTab = () => (
     <div style={{ display: 'flex', height: '100%' }}>
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        <ProgrammingTab />
+        <ProgrammingTab dealId={dealId} />
       </div>
       <div style={{ width: 420, overflowY: 'auto', borderLeft: '1px solid #1e2a3d' }}>
         <ProgramDevPanel program={umProgram} computed={umComputed} zoning={umZoning} comps={umComps} gaps={umGaps} onProgramChange={handleProgramChange} onZoningChange={setUmZoning} />

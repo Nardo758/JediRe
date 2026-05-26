@@ -6,11 +6,15 @@
  *
  * Independent from dealStore to avoid circular deps. Reads developmentEnvelope
  * from dealStore as a passive subscriber.
+ *
+ * Persistence: loadProgram(dealId) hydrates from the backend on mount.
+ * saveProgram(dealId) writes back (called debounced by ProgrammingTab on change).
  */
 
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { useDealStore } from './dealStore';
+import { apiClient } from '../services/api.client';
 import type { ProgramTargets, DesignTargets, ApprovedAmenity, UnitMixTarget } from '../types/designTargets.types';
 import { DEFAULT_DESIGN_TARGETS } from '../types/designTargets.types';
 
@@ -23,6 +27,10 @@ export interface DesignProgramState {
   isDirty: boolean;
   /** When the program was last updated */
   lastUpdated: number;
+  /** Hydration status — null = not attempted, 'loading', 'loaded', 'error' */
+  hydrateStatus: null | 'loading' | 'loaded' | 'error';
+  /** The dealId that was last successfully hydrated — guards against cross-deal stale data */
+  hydratedDealId: string | null;
 }
 
 export interface DesignProgramActions {
@@ -52,6 +60,15 @@ export interface DesignProgramActions {
   buildDesignTargets: () => DesignTargets;
   /** Reset to defaults */
   reset: () => void;
+  /**
+   * Hydrate the store from the backend for the given deal.
+   * No-ops if already loaded for the same dealId.
+   */
+  loadProgram: (dealId: string) => Promise<void>;
+  /**
+   * Persist the current program to the backend for the given deal.
+   */
+  saveProgram: (dealId: string) => Promise<void>;
 }
 
 export type DesignProgramStore = DesignProgramState & DesignProgramActions;
@@ -60,6 +77,8 @@ const DEFAULT_STATE: DesignProgramState = {
   program: { ...DEFAULT_DESIGN_TARGETS },
   isDirty: false,
   lastUpdated: Date.now(),
+  hydrateStatus: null,
+  hydratedDealId: null,
 };
 
 // ─── Store ──────────────────────────────────────────────────────────────────
@@ -184,11 +203,10 @@ export const useDesignProgramStore = create<DesignProgramStore>()(
           maxUnits: env.max_units,
           maxGFA: maxGfa,
           maxStories: env.max_stories,
-          maxHeight: env.max_stories * 12, // approximate: 12ft/floor
+          maxHeight: env.max_stories * 12,
           maxFAR: maxGfa > 0 ? (state.program.targetGFA || maxGfa) / maxGfa : 0,
           bindingConstraint: env.binding_constraint,
         };
-        // Also clamp program targets to zoning maxes
         designTargets.program.targetUnits = Math.min(
           state.program.targetUnits,
           env.max_units,
@@ -207,6 +225,46 @@ export const useDesignProgramStore = create<DesignProgramStore>()(
     },
 
     reset: () => set({ ...DEFAULT_STATE, lastUpdated: Date.now() }),
+
+    loadProgram: async (dealId: string) => {
+      if (!dealId) return;
+      const current = get();
+      // Skip only if we are currently loading OR if this exact deal is already loaded.
+      // When the user switches deals (hydratedDealId !== dealId), always re-fetch.
+      if (current.hydrateStatus === 'loading') return;
+      if (current.hydrateStatus === 'loaded' && current.hydratedDealId === dealId) return;
+
+      set({ hydrateStatus: 'loading', hydratedDealId: null });
+      try {
+        const res = await apiClient.get<{ success: boolean; data: ProgramTargets | null }>(
+          `/api/v1/deals/${dealId}/f3-program`,
+        );
+        const saved = res.data?.data;
+        if (saved && typeof saved === 'object') {
+          set({
+            program: { ...DEFAULT_DESIGN_TARGETS, ...saved },
+            isDirty: false,
+            lastUpdated: Date.now(),
+            hydrateStatus: 'loaded',
+            hydratedDealId: dealId,
+          });
+        } else {
+          set({ hydrateStatus: 'loaded', hydratedDealId: dealId });
+        }
+      } catch {
+        set({ hydrateStatus: 'error', hydratedDealId: null });
+      }
+    },
+
+    saveProgram: async (dealId: string) => {
+      if (!dealId) return;
+      const { program } = get();
+      try {
+        await apiClient.put(`/api/v1/deals/${dealId}/f3-program`, { program });
+      } catch {
+        // non-fatal: user still sees data in-memory
+      }
+    },
   })),
 );
 
@@ -214,7 +272,6 @@ export const useDesignProgramStore = create<DesignProgramStore>()(
 
 export function useDesignTargets(): DesignTargets {
   const build = useDesignProgramStore((s) => s.buildDesignTargets);
-  // Re-run when program or developmentEnvelope changes
   useDesignProgramStore((s) => s.lastUpdated);
   useDealStore.subscribe((state) => state.developmentEnvelope);
   return build();

@@ -344,4 +344,74 @@ router.post('/:dealId/development-path/select', async (req: Request, res: Respon
   }
 });
 
+/**
+ * GET /api/v1/deals/:dealId/f3-program
+ * Return the saved F3 Programming tab program targets.
+ */
+router.get('/:dealId/f3-program', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const { dealId } = req.params;
+
+    const dealCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, userId]
+    );
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
+    }
+
+    const result = await query(
+      'SELECT f3_design_program FROM deal_assumptions WHERE deal_id = $1',
+      [dealId]
+    );
+
+    const program = result.rows[0]?.f3_design_program ?? null;
+
+    return res.json({ success: true, data: program });
+  } catch (error: any) {
+    logger.error('GET f3-program error:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Failed to get F3 program' });
+  }
+});
+
+/**
+ * PUT /api/v1/deals/:dealId/f3-program
+ * Persist the F3 Programming tab program targets.
+ */
+router.put('/:dealId/f3-program', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const { dealId } = req.params;
+    const { program } = req.body;
+
+    if (!program || typeof program !== 'object') {
+      return res.status(400).json({ success: false, error: 'program object required' });
+    }
+
+    const dealCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, userId]
+    );
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
+    }
+
+    await query(
+      `INSERT INTO deal_assumptions (deal_id, f3_design_program, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (deal_id) DO UPDATE
+         SET f3_design_program = $2::jsonb, updated_at = NOW()`,
+      [dealId, JSON.stringify(program)]
+    );
+
+    logger.info('Saved F3 design program:', { userId, dealId });
+
+    return res.json({ success: true });
+  } catch (error: any) {
+    logger.error('PUT f3-program error:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Failed to save F3 program' });
+  }
+});
+
 export default router;

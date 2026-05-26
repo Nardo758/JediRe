@@ -9,6 +9,11 @@
  *
  * These targets flow into F7 DesignTargetsPanel sidebar.
  *
+ * Persistence: on mount, hydrates from the backend via loadProgram(dealId).
+ * On any change, debounces a PUT call via saveProgram(dealId) so the program
+ * survives page refresh and the "Import from F3" button in UnitMixTab always
+ * reflects the latest saved data.
+ *
  * Layout (minimalist, matches Bloomberg terminal aesthetic):
  * ┌─── TARGETS ───────────────────────────────────────────────┐
  * │  Units      [ 280  ]  max 320 from zoning                │
@@ -31,7 +36,7 @@
  * │  Budget Status:  Within range ▲                           │
  * └────────────────────────────────────────────────────────────┘
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDesignProgramStore } from '../../stores/designProgram.store';
 import { useDealStore } from '../../stores/dealStore';
 import type { ApprovedAmenity, AmenityCategory } from '../../types/designTargets.types';
@@ -133,12 +138,47 @@ function AmenityRow({
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 
-export const ProgrammingTab: React.FC = () => {
+interface ProgrammingTabProps {
+  dealId?: string;
+}
+
+export const ProgrammingTab: React.FC<ProgrammingTabProps> = ({ dealId }) => {
   const { program, setTargetUnits, setTargetGFA, setTargetFAR, setTargetFloors,
     setTargetHeight, setTargetParkingRatio, setUnitMix, upsertAmenity,
-    removeAmenity, setBudget } = useDesignProgramStore();
+    removeAmenity, setBudget, loadProgram, saveProgram, lastUpdated, hydrateStatus } = useDesignProgramStore();
 
   const env = useDealStore((s) => s.developmentEnvelope);
+
+  // ── Hydrate on mount / dealId change ──────────────────────────────────────
+  useEffect(() => {
+    if (dealId) {
+      loadProgram(dealId);
+    }
+  }, [dealId]);
+
+  // ── Debounce-save on every program change ─────────────────────────────────
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    // Skip the very first render (initial load / hydration)
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    // Also skip while still loading from DB to avoid overwriting with defaults
+    if (hydrateStatus === 'loading') return;
+    if (!dealId) return;
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveProgram(dealId);
+    }, 800);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [lastUpdated]);
 
   // Track which presets are enabled
   const [amenityStates, setAmenityStates] = useState<Record<string, boolean>>(() => {
@@ -146,6 +186,15 @@ export const ProgrammingTab: React.FC = () => {
     program.approvedAmenities.forEach((a) => { states[a.name] = true; });
     return states;
   });
+
+  // Sync amenity checkbox state when program is hydrated from DB
+  useEffect(() => {
+    if (hydrateStatus === 'loaded') {
+      const states: Record<string, boolean> = {};
+      program.approvedAmenities.forEach((a) => { states[a.name] = true; });
+      setAmenityStates(states);
+    }
+  }, [hydrateStatus]);
 
   const [showCustom, setShowCustom] = useState(false);
   const [customName, setCustomName] = useState('');
@@ -185,6 +234,10 @@ export const ProgrammingTab: React.FC = () => {
 
   return (
     <div className="bg-gray-900 p-4 text-sm space-y-5 overflow-y-auto" style={{ height: '100%' }}>
+      {hydrateStatus === 'loading' && (
+        <div className="text-xs text-gray-500 italic">Loading saved program…</div>
+      )}
+
       {/* ── TARGETS ── */}
       <section>
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">📐 Program Targets</h3>

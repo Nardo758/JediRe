@@ -1456,6 +1456,13 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   // F3 Programming tab unit mix percentages (studio/oneBed/twoBed/threeBed)
   const f3UnitMix = useDesignProgramStore(s => s.program.unitMix ?? null);
   const f3IsDirty = useDesignProgramStore(s => s.isDirty);
+  const loadF3Program = useDesignProgramStore(s => s.loadProgram);
+
+  // Hydrate F3 program from DB so "Import from F3" always reflects persisted data,
+  // even when the user lands on Unit Mix without having opened the F3 Programming tab.
+  useEffect(() => {
+    if (dealId) loadF3Program(dealId);
+  }, [dealId]);
 
   const dealRaw = deal as Record<string, any> | undefined;
   const targetUnits: number | null = dealRaw?.target_units ?? null;
