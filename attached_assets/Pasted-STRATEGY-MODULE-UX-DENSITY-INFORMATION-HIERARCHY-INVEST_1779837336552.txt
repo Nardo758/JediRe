@@ -1,0 +1,189 @@
+STRATEGY MODULE — UX DENSITY & INFORMATION HIERARCHY 
+INVESTIGATION
+
+CONTEXT
+The Inventory & Complexity investigation (STRATEGY_MODULE_INVESTIGATION.md)
+revealed that the Strategy Module is already evidence-heavy (76% 
+evidence-backed display surface, 47% always-populated). The 
+"too complicated to look at" complaint isn't about too many 
+input fields — the module is appropriately evidence-rich.
+
+The remaining hypothesis: the complexity is in visual density 
+and information hierarchy. Operators are shown a lot of real 
+information across many blocks, and the navigation/visual 
+treatment may make it hard to find what matters.
+
+This investigation maps the visual surface and proposes a 
+hierarchy-based redesign, no field reduction.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — VISUAL INVENTORY OF EACH SUB-TAB AND BLOCK
+═══════════════════════════════════════════════════════════════════
+
+A. For each of the three sub-tabs in StrategyArbitragePage 
+   (M08 v2 ANALYSIS, SIGNAL MATRIX, CUSTOM SCREENS):
+   - Map the visual hierarchy: which blocks are shown, in what 
+     order, at what visual weight (size, position, prominence)
+   - Identify how many distinct interactive elements exist 
+     (buttons, dropdowns, toggles, hover triggers)
+   - Estimate the "first-glance information count" — how many 
+     pieces of information an operator must process when the 
+     view first loads
+
+B. For the M08 v2 ANALYSIS sub-tab specifically (the heart of 
+   the module):
+   - DetectionBanner: visual weight + space consumed
+   - SubStrategyComparison: card count + visual density per card
+   - EvidenceReportBlock: 4 blocks (A/B/C/D) + Expected Return 
+     tile; document per-block density
+   - CorrelationTimingPanel: Golden Chain + active alerts + 
+     3 indicator lists
+   - PlanDocument: 7 sections (entry, hold, valueCreation, 
+     capitalSequencing, exit, monitoring, pivotConditions)
+   - BuyerTargetingPanel: traffic quadrant + institutional 
+     activity + buyer types
+   - Coordinator Narrative
+
+C. Per-block, document:
+   - What the operator's likely first question is when seeing 
+     this block ("What's my strategy?", "What's the gate?", 
+     "What evidence supports this?")
+   - Whether the block answers that question quickly or buries 
+     it
+   - Whether the block's purpose is clear from its visual 
+     treatment alone
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — INFORMATION HIERARCHY ANALYSIS
+═══════════════════════════════════════════════════════════════════
+
+A. Identify what an operator most needs to know about a deal's 
+   strategy:
+   - The recommended strategy (1-2 word answer)
+   - The confidence in that recommendation (high/medium/low)
+   - The headline evidence (1-3 facts that justify the strategy)
+   - The financial summary (IRR, hold period)
+   - The risks/concerns
+
+B. Compare this to current visual hierarchy:
+   - Are these answers immediately visible at the top of the 
+     module?
+   - Or are they buried inside expandable blocks?
+   - How many clicks/scrolls before the operator has the 
+     headline answer?
+
+C. Identify "evidence depth tiers":
+   - TIER 1 (headline): What strategy, how confident, 1-line why
+   - TIER 2 (operator review): Sub-strategy comparison, metric 
+     stack, plan entry
+   - TIER 3 (analyst depth): Math trail, correlation alerts, 
+     pivot conditions, monitoring items
+   - TIER 4 (deep dive): Full evidence report, Signal Matrix tab
+
+D. Map current blocks to tiers and identify mismatches:
+   - Blocks that should be TIER 1 but are currently buried
+   - Blocks that are visible at TIER 1 but belong at TIER 3+
+   - Blocks at the right tier but with wrong visual weight
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — DENSITY HOTSPOTS
+═══════════════════════════════════════════════════════════════════
+
+A. Identify visual density hotspots — blocks where too much 
+   information competes for attention:
+   - Block A (Metric Stack): N rows × M columns; assess
+   - Block C (Comp Evidence): scatter + visualization + 
+     selectionCriteria + comp table
+   - PlanDocument: 7 sections in single panel
+   - CorrelationTimingPanel: Golden Chain + alerts + 3 indicator 
+     lists
+
+B. For each hotspot, evaluate:
+   - Is the density essential (every element does work)?
+   - Or is it accidental (legacy accumulation of features)?
+   - What's the minimum density that preserves the block's 
+     purpose?
+
+C. Identify simplification opportunities:
+   - Collapsible sections that should default-collapsed
+   - Inline summaries that could replace expanded blocks at 
+     first glance
+   - Side panels that could move from always-visible to 
+     on-demand
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — NAVIGATION AND FLOW
+═══════════════════════════════════════════════════════════════════
+
+A. Document the operator's likely workflow within the module:
+   - Land on page → first task → next task → exit
+   - Is the visual flow aligned with the workflow?
+   - Are there decision points that should be visible 
+     immediately but aren't?
+
+B. Sub-tab usage:
+   - M08 v2 ANALYSIS is the primary view
+   - SIGNAL MATRIX serves analyst depth
+   - CUSTOM SCREENS serves screening workflow
+   - Are operators ever confused about which sub-tab to use?
+   - Could any of these be consolidated or relabeled?
+
+C. The relationship to other modules:
+   - Strategy Module exists alongside F9 (Pro Forma), F3 
+     (Market), M22, etc.
+   - Should the Strategy Module's headline answer be visible 
+     from F9 (deal summary surface)?
+   - Or is it appropriate that operators navigate to the 
+     Strategy tab specifically?
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — REDESIGN RECOMMENDATIONS
+═══════════════════════════════════════════════════════════════════
+
+Based on Steps 1-4, recommend specific UX changes:
+
+A. Information hierarchy restructure:
+   - What goes in TIER 1 (always visible, top of view)
+   - What goes in TIER 2 (visible but not headline)
+   - What collapses to TIER 3 (expand-on-demand)
+   - What moves to TIER 4 (separate sub-tab or deep view)
+
+B. Density reduction:
+   - Per hotspot, specific reduction approach
+   - Default-collapsed vs always-visible decisions
+   - Inline summary patterns
+
+C. Visual treatment:
+   - Use existing Bloomberg design tokens (T)
+   - Specific color/weight/position changes
+   - Maintain the dark Bloomberg aesthetic
+
+D. Comparison to other modules:
+   - How F9, F3, F7 handle their density
+   - Patterns the Strategy Module should adopt for consistency
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/STRATEGY_MODULE_UX_INVESTIGATION.md
+
+Structure:
+1. Visual inventory by sub-tab (Step 1)
+2. Information hierarchy analysis with tier mapping (Step 2)
+3. Density hotspot analysis (Step 3)
+4. Navigation and flow (Step 4)
+5. Redesign recommendations (Step 5)
+6. Open questions for Leon's design input
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Implement any UI changes
+- Modify components
+- Recommend field removal (that's been investigated; not the 
+  issue)
+- Recommend architectural changes (covered by 
+  STRATEGY_MODULE_INVESTIGATION.md)
+- "While I'm here" cleanups

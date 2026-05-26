@@ -1,0 +1,107 @@
+PLATFORM-WIDE "APPLY TO F9" PATTERN INVESTIGATION
+
+CONTEXT
+Per Leon: the Strategy Module's "APPLY TO PRO FORMA" button is 
+broken, but the same pattern exists in F3 Programming tab (and 
+possibly other modules). Before fixing them individually, 
+investigate the broader pattern so a coherent design emerges 
+rather than scattered ad-hoc implementations.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INVENTORY ALL "APPLY TO F9" BUTTONS / ACTIONS
+═══════════════════════════════════════════════════════════════════
+
+A. Grep the frontend for patterns suggesting "apply to deal," 
+   "apply to proforma," "push to assumptions," etc:
+   grep -r -i "apply.*proforma\|apply.*to.*deal\|push.*assumption\|applyTo" frontend/src/
+
+B. For each result:
+   - Component name + file path + line number
+   - What button label appears in the UI
+   - What endpoint it calls
+   - Whether that endpoint exists in the backend
+   - What it's supposed to write (which fields, with what source)
+
+C. Modules to check specifically:
+   - Strategy Module: "APPLY TO PRO FORMA" (known stub)
+   - F3 Programming tab: similar pattern (per Leon)
+   - M22 Post-Close Intelligence: any apply button
+   - M07 Traffic Engine / LVE: any apply button
+   - M03 Dev Capacity: any apply button
+   - Renovation tier picker: apply
+   - Comp set: apply for cap rate validation
+   - Any others
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — INFRASTRUCTURE FOR MULTI-SOURCE WRITES
+═══════════════════════════════════════════════════════════════════
+
+A. Document the existing LayeredValue<T> infrastructure:
+   - How is source provenance tracked?
+   - How does a module write a value with its source tag?
+   - What happens when two modules write the same field?
+   - What happens when a user override exists and a module 
+     wants to write?
+   - Is there a "last applied by" audit trail?
+
+B. Document the existing patch endpoints:
+   - PATCH /deals/:dealId/assumptions/:fieldPath/override
+   - PATCH /deals/:dealId/assumptions/strategy
+   - Others
+   - Which ones support source tagging?
+
+C. Identify the gap:
+   - Are modules currently bypassing the LayeredValue 
+     infrastructure with direct writes?
+   - Is there a canonical "module apply" pattern, or is each 
+     module ad-hoc?
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — DESIGN PROPOSAL
+═══════════════════════════════════════════════════════════════════
+
+Propose a coherent pattern for modules writing to F9:
+
+A. Single canonical endpoint:
+   POST /deals/:dealId/assumptions/apply
+   Body: { source: 'strategy_module' | 'programming' | etc., 
+           fields: [{ fieldPath, value, evidence }] }
+
+B. Source-aware write behavior:
+   - If user override exists: don't overwrite; surface conflict
+   - If different module last applied: surface "X module last 
+     applied this value"
+   - Always update LayeredValue source/layer/timestamp
+
+C. UI pattern for the "apply" action:
+   - Standard button treatment across modules
+   - Conflict resolution UI when overrides exist
+   - Audit trail in the EvidencePanel showing apply history
+
+D. Migration path:
+   - Per existing "apply" button, document migration to the 
+     canonical pattern
+   - Identify which buttons can be fixed quickly vs which need 
+     more work
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/MODULE_APPLY_PATTERN_INVESTIGATION.md
+
+Structure:
+1. "Apply" button inventory across all modules
+2. Existing infrastructure analysis
+3. Design proposal for canonical pattern
+4. Migration path per existing button
+5. Open questions
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Implement any code changes
+- Fix individual "apply" buttons
+- Modify endpoints
+- "While I'm here" cleanups
