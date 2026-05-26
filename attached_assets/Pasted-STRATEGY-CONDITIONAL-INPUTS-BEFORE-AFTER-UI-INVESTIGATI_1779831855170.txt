@@ -1,0 +1,185 @@
+STRATEGY-CONDITIONAL INPUTS + BEFORE/AFTER UI — INVESTIGATION
+(Re-fire with verification findings folded in)
+
+CONTEXT
+The previous attempt at this investigation (docs/operations/
+STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md) was never produced. 
+A verification pass on the expected document surfaced this gap 
+plus several substantive findings from spot-checked code review. 
+This dispatch re-fires the investigation with those verification 
+findings as explicit investigation focus areas.
+
+The investigation must address all original Steps 1-4 PLUS the 
+amendments below. Source citations required for every claim.
+
+═══════════════════════════════════════════════════════════════════
+AMENDMENTS — VERIFICATION FINDINGS TO INTEGRATE
+═══════════════════════════════════════════════════════════════════
+
+AMENDMENT 1: investmentStrategy ↔ deal_type DISCONNECT (BLOCKING)
+
+The codebase has three separate fields that should be coherent but 
+aren't:
+- investmentStrategy: LayeredValue<string|null> in Deal Terms
+- deal_type: DB column on deals table, set at deal creation
+- ProFormaTemplateId: blueprint constant derived from M08
+
+Pattern B routing (RegimeExpand visibility) uses deal_type, NOT 
+investmentStrategy. Operator changes to investmentStrategy do not 
+propagate to deal_type. The investigation MUST:
+
+A. Document the current state of all three fields across the 
+   codebase
+B. Trace which UI elements use which signal
+C. Identify the operator-perceived behavior gap (what happens when 
+   strategy is changed but deal_type isn't)
+D. Recommend a reconciliation approach:
+   - Option A: investmentStrategy becomes the canonical signal; 
+     deal_type derived/deprecated
+   - Option B: deal_type remains canonical; investmentStrategy 
+     becomes a UI selection that triggers deal_type update
+   - Option C: Different framing
+E. Flag downstream impact on Validation Grid (source priority 
+   logic) and Unit Mix work (pre/post split decision)
+
+AMENDMENT 2: STRATEGY TEMPLATES DO NOT DRIVE F9 UI VISIBILITY
+
+The 7 ProFormaTemplateId values (acquisition_stabilized, 
+acquisition_value_add, development_ground_up, redevelopment, flip, 
+str_shortterm, land_hold) exist in proforma-blueprint.ts but DO 
+NOT drive React rendering. They feed the LLM prompt only.
+
+Specifically, the verification confirmed:
+- str_shortterm has zero dedicated F9 UI (no ADR, RevPAR, cleaning 
+  fee, platform fee, furnishing budget entry points)
+- flip has zero dedicated F9 UI (no short-hold-specific fields)
+- land_hold has zero dedicated F9 UI (no holding cost entry points)
+
+The investigation MUST:
+A. Confirm or refute the verification's finding via independent 
+   code trace
+B. Document what UI surface (if any) would need to exist for each 
+   of the three "missing UI" templates to be operator-usable
+C. Recommend whether template-driven UI visibility should be 
+   implemented (likely yes given multi-model architecture decision) 
+   and what the implementation pattern looks like
+D. Flag any strategy/template combinations that have implementation 
+   in code paths the verification didn't reach
+
+AMENDMENT 3: M07 LVE → POST-RENOVATION SIDE IS INDIRECT
+
+The verification found that M07 LVE does NOT directly feed the 
+post_stabilization slot in regimeDataByField. M07 feeds the 
+cashflow agent's prompt; the agent decides how to use it; the 
+agent writes regimeData via write_underwriting.
+
+The investigation MUST:
+A. Confirm or refute this finding via code trace
+B. Document the actual data flow for post-renovation projections 
+   (M07 → agent → regimeDataByField, NOT M07 → regimeDataByField 
+   directly)
+C. Identify whether direct M07 → regimeData wiring should be 
+   built, or whether the agent-mediated path is correct
+D. Flag what this means for the before/after UI design — 
+   specifically, whether the post-renovation column is reliable 
+   without an agent run
+
+AMENDMENT 4: ALREADY-BUILT BEFORE/AFTER SURFACES TO INVENTORY
+
+The verification flagged that the investigation must inventory 
+existing before/after surfaces in the codebase, not design a new 
+one from scratch:
+
+- RegimeExpand (in ProFormaSummaryTab.tsx, lines 1396, 1462, 1728) 
+  — inline per-row pre/post sub-rows for Pattern B fields
+- StabilizedPotentialView component (rendered in 
+  ProFormaSummaryTab.tsx)
+- CompareHubTab (COMPARE + WALKTHROUGH sub-tabs) — uses CompareTab 
+  + UnderwritingWalkthrough.tsx
+- m09_line_item_patterns.ts — Pattern B/C routing matrix
+
+The investigation MUST:
+A. Document each of these surfaces in detail — what they show, 
+   when they're active, what data they consume
+B. Identify gaps where these surfaces don't yet implement what 
+   value-add/redevelopment underwriting actually needs
+C. Recommend whether the new before/after design extends these 
+   existing surfaces or supersedes them
+D. Specifically: is RegimeExpand (inline row expansion) the right 
+   pattern, or should there be a full split-screen view? These 
+   are architecturally different choices.
+
+AMENDMENT 5: 7×3 MATRIX COVERAGE
+
+The original dispatch asked for coverage of 7 strategy templates 
+× 3 deal types = 21 combinations. The verification noted these 
+two taxonomies don't map 1:1 — DealTypeKey has 6 values 
+(value_add, redevelopment, development, lease_up, stabilized, 
+existing) while ProFormaTemplateId has 7 (acquisition_stabilized, 
+acquisition_value_add, development_ground_up, redevelopment, 
+flip, str_shortterm, land_hold).
+
+The investigation MUST:
+A. Produce the full matrix mapping ProFormaTemplateId × 
+   DealTypeKey (or document why they don't map)
+B. For each cell in the matrix, document:
+   - Is this combination semantically valid? (e.g., 
+     'flip' × 'stabilized' may be nonsensical)
+   - What field set is rendered today?
+   - What field set should be rendered?
+   - What's the gap?
+
+═══════════════════════════════════════════════════════════════════
+STEPS 1-4 (FROM ORIGINAL DISPATCH, UNCHANGED)
+═══════════════════════════════════════════════════════════════════
+
+[Original Steps 1-4 from the previous Dispatch 1 draft remain in 
+effect. Conduct those steps in addition to the amendments above.]
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md
+(This file does NOT currently exist — this dispatch creates it.)
+
+Structure:
+1. Per-strategy field visibility — current state (full 7×3 matrix)
+2. Before/after UI — existing surfaces inventory (RegimeExpand, 
+   StabilizedPotentialView, CompareHubTab, etc.)
+3. Three architectural findings (from verification amendments)
+   a. investmentStrategy ↔ deal_type ↔ ProFormaTemplateId
+   b. Templates don't drive UI; missing UI for str/flip/land_hold
+   c. M07 → regimeData is indirect (agent-mediated)
+4. Integration touchpoints — INCLUDING cross-fix integration with 
+   UNIT_MIX_OTHER_INCOME_INVESTIGATION.md and 
+   VALIDATION_GRID_AND_SALE_COMPS_INVESTIGATION.md
+5. Design recommendations
+6. Implementation phasing recommendation
+7. Open questions classified BLOCKING / IMPORTANT / INFORMATIONAL
+
+═══════════════════════════════════════════════════════════════════
+SOURCE CITATIONS REQUIRED
+═══════════════════════════════════════════════════════════════════
+
+Every factual claim in the investigation document must cite:
+- File path and (where applicable) line number
+- A brief excerpt confirming the claim
+
+The verification pass has already done partial citation work — 
+build on it, don't repeat it unnecessarily, but verify any claim 
+that wasn't already verified.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Implement any code changes
+- Modify strategy template configurations
+- Build before/after UI components
+- Speculate beyond what's in the codebase
+- Skip the cross-fix integration step (Step 4 in deliverable)
+- Skip the 7×3 matrix coverage (Amendment 5)
+- "While I'm here" cleanups
+- Treat the verification's findings as confirmed without 
+  independent verification — confirm each via code trace
