@@ -105,6 +105,36 @@ function computeRampAwareAnnual(
   return steadyMo * rampFraction * 12 * prob;
 }
 
+// ── Ramp formula for a single month (0-indexed monthOffset from hold start) ──
+// Used by quarterly/monthly projection sub-rows.
+function computeRampAwareMonthly(
+  monthly: number,
+  adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null | undefined,
+  monthOffset: number,
+): number {
+  if (!adoption) return monthly;
+  const steadyMo  = Number.isFinite(adoption.steady_state_monthly)  ? adoption.steady_state_monthly  : monthly;
+  const rampStart = Number.isFinite(adoption.ramp_start_period)     ? adoption.ramp_start_period     : 0;
+  const rampDur   = Number.isFinite(adoption.ramp_duration_months)  ? adoption.ramp_duration_months  : 0;
+  const prob      = Number.isFinite(adoption.probability_adopted)   ? adoption.probability_adopted   : 1;
+  const m = monthOffset + 1; // convert to 1-indexed period month
+  if (m < rampStart) return 0;
+  if (rampDur <= 0 || m >= rampStart + rampDur) return steadyMo * prob;
+  const rampFraction = (m - rampStart) / rampDur;
+  return steadyMo * rampFraction * prob;
+}
+
+// ── Ramp formula for a quarter (3-month sum, yearIndex + quarterIndex both 0-based) ──
+function computeRampAwareQuarterly(
+  monthly: number,
+  adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null | undefined,
+  yearIndex: number,
+  quarterIndex: number,
+): number {
+  const baseOffset = yearIndex * 12 + quarterIndex * 3;
+  return [0, 1, 2].reduce((sum, i) => sum + computeRampAwareMonthly(monthly, adoption, baseOffset + i), 0);
+}
+
 // ── Build ramp tooltip string for a given year cell ──────────────────────────
 function buildRampTooltip(
   adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number },
@@ -2209,8 +2239,7 @@ export function ProjectionsTab({
                       // badge and display monthly × 12 in every year column.
                       if (
                         section.key === 'revenue' &&
-                        row.key === 'otherIncome' &&
-                        isAnnual
+                        row.key === 'otherIncome'
                       ) {
                         const allUserLines = financials?.otherIncomeUserLines ?? [];
 
@@ -2218,6 +2247,123 @@ export function ProjectionsTab({
                           const subRowBg = `${BT.text.cyan}06`;
                           const subRows = allUserLines.map(line => {
                             const isRamping = line.adoption != null && line.adoption.ramp_duration_months > 0;
+
+                            const labelCell = (
+                              <td
+                                style={{ padding: '3px 8px 3px 28px', color: BT.text.secondary, fontWeight: 400, position: 'sticky', left: 0, background: subRowBg, zIndex: 1 }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <span style={{ fontFamily: MONO, fontSize: 9 }}>{line.label}</span>
+                                  {isRamping ? (
+                                    <span style={{
+                                      fontSize: 7, fontWeight: 700, color: BT.text.cyan,
+                                      background: `${BT.text.cyan}18`,
+                                      border: `1px solid ${BT.text.cyan}40`,
+                                      borderRadius: 2, padding: '0 4px', letterSpacing: '0.05em',
+                                    }}>
+                                      RAMP
+                                    </span>
+                                  ) : (
+                                    <span style={{
+                                      fontSize: 7, fontWeight: 700, color: BT.text.muted,
+                                      background: `${BT.text.muted}18`,
+                                      border: `1px solid ${BT.text.muted}40`,
+                                      borderRadius: 2, padding: '0 4px', letterSpacing: '0.05em',
+                                    }}>
+                                      FLAT
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                            );
+
+                            let dataCells: React.ReactNode;
+
+                            if (isAnnual) {
+                              dataCells = annualYears.map(yr => {
+                                const yearIndex = yr - 1;
+                                let val: number;
+                                let tooltip: string | undefined;
+                                let cellColor: string;
+
+                                if (isRamping) {
+                                  val = computeRampAwareAnnual(line.monthly, line.adoption!, yearIndex);
+                                  tooltip = buildRampTooltip(line.adoption!, yearIndex);
+                                  const midpoint = yearIndex * 12 + 6;
+                                  const isAtSteadyState = midpoint >= line.adoption!.ramp_start_period + line.adoption!.ramp_duration_months;
+                                  const isPreRamp = midpoint < line.adoption!.ramp_start_period;
+                                  cellColor = isPreRamp ? BT.text.muted : isAtSteadyState ? BT.text.cyan : BT.text.primary;
+                                } else {
+                                  val = line.monthly * 12;
+                                  tooltip = `${line.label}: $${line.monthly.toLocaleString()}/mo × 12`;
+                                  cellColor = BT.text.secondary;
+                                }
+
+                                const display = val > 0 ? fmt$(val) : '$0';
+                                return (
+                                  <td
+                                    key={yr}
+                                    style={{ padding: '3px 8px', textAlign: 'right', color: cellColor, fontWeight: 400, cursor: 'default', fontFamily: MONO, fontSize: 9 }}
+                                    title={tooltip}
+                                  >
+                                    {display}
+                                  </td>
+                                );
+                              });
+                            } else {
+                              dataCells = subCols.map(c => {
+                                const periodMatch = /^[QM](\d+)Y(\d+)$/.exec(c.periodKey);
+                                const periodIdx = periodMatch ? parseInt(periodMatch[1], 10) : 1;
+                                const yr        = periodMatch ? parseInt(periodMatch[2], 10) : 1;
+                                const yearIndex = yr - 1;
+
+                                let val: number;
+                                let tooltip: string | undefined;
+                                let cellColor: string;
+
+                                if (viewMode === 'quarterly') {
+                                  const quarterIndex = periodIdx - 1;
+                                  if (isRamping) {
+                                    val = computeRampAwareQuarterly(line.monthly, line.adoption!, yearIndex, quarterIndex);
+                                    const midMonthOffset = yearIndex * 12 + quarterIndex * 3 + 1;
+                                    const isAtSteadyState = (midMonthOffset + 1) >= line.adoption!.ramp_start_period + line.adoption!.ramp_duration_months;
+                                    const isPreRamp = (midMonthOffset + 1) < line.adoption!.ramp_start_period;
+                                    cellColor = isPreRamp ? BT.text.muted : isAtSteadyState ? BT.text.cyan : BT.text.primary;
+                                    tooltip = `${line.label}: ramp-aware Q${periodIdx} YR${yr}`;
+                                  } else {
+                                    val = line.monthly * 3;
+                                    tooltip = `${line.label}: $${line.monthly.toLocaleString()}/mo × 3`;
+                                    cellColor = BT.text.secondary;
+                                  }
+                                } else {
+                                  const monthOffset = yearIndex * 12 + (periodIdx - 1);
+                                  if (isRamping) {
+                                    val = computeRampAwareMonthly(line.monthly, line.adoption!, monthOffset);
+                                    const m = monthOffset + 1;
+                                    const isAtSteadyState = m >= line.adoption!.ramp_start_period + line.adoption!.ramp_duration_months;
+                                    const isPreRamp = m < line.adoption!.ramp_start_period;
+                                    cellColor = isPreRamp ? BT.text.muted : isAtSteadyState ? BT.text.cyan : BT.text.primary;
+                                    tooltip = `${line.label}: ramp-aware M${periodIdx} YR${yr}`;
+                                  } else {
+                                    val = line.monthly;
+                                    tooltip = `${line.label}: $${line.monthly.toLocaleString()}/mo`;
+                                    cellColor = BT.text.secondary;
+                                  }
+                                }
+
+                                const display = val > 0 ? fmt$(val) : '$0';
+                                return (
+                                  <td
+                                    key={c.periodKey}
+                                    style={{ padding: '3px 6px', textAlign: 'right', color: cellColor, fontWeight: 400, cursor: 'default', fontFamily: MONO, fontSize: 8 }}
+                                    title={tooltip}
+                                  >
+                                    {display}
+                                  </td>
+                                );
+                              });
+                            }
+
                             return (
                               <tr
                                 key={`__userline_${line.id}__`}
@@ -2225,62 +2371,8 @@ export function ProjectionsTab({
                                 title="Click for assumption detail"
                                 onClick={() => setDrilldown(buildUserLineDrilldown(line, annualYears))}
                               >
-                                <td
-                                  style={{ padding: '3px 8px 3px 28px', color: BT.text.secondary, fontWeight: 400, position: 'sticky', left: 0, background: subRowBg, zIndex: 1 }}
-                                >
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <span style={{ fontFamily: MONO, fontSize: 9 }}>{line.label}</span>
-                                    {isRamping ? (
-                                      <span style={{
-                                        fontSize: 7, fontWeight: 700, color: BT.text.cyan,
-                                        background: `${BT.text.cyan}18`,
-                                        border: `1px solid ${BT.text.cyan}40`,
-                                        borderRadius: 2, padding: '0 4px', letterSpacing: '0.05em',
-                                      }}>
-                                        RAMP
-                                      </span>
-                                    ) : (
-                                      <span style={{
-                                        fontSize: 7, fontWeight: 700, color: BT.text.muted,
-                                        background: `${BT.text.muted}18`,
-                                        border: `1px solid ${BT.text.muted}40`,
-                                        borderRadius: 2, padding: '0 4px', letterSpacing: '0.05em',
-                                      }}>
-                                        FLAT
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                                {annualYears.map(yr => {
-                                  const yearIndex = yr - 1;
-                                  let val: number;
-                                  let tooltip: string | undefined;
-                                  let cellColor: string;
-
-                                  if (isRamping) {
-                                    val = computeRampAwareAnnual(line.monthly, line.adoption!, yearIndex);
-                                    tooltip = buildRampTooltip(line.adoption!, yearIndex);
-                                    const midpoint = yearIndex * 12 + 6;
-                                    const isAtSteadyState = midpoint >= line.adoption!.ramp_start_period + line.adoption!.ramp_duration_months;
-                                    const isPreRamp = midpoint < line.adoption!.ramp_start_period;
-                                    cellColor = isPreRamp ? BT.text.muted : isAtSteadyState ? BT.text.cyan : BT.text.primary;
-                                  } else {
-                                    val = line.monthly * 12;
-                                    tooltip = `${line.label}: $${line.monthly.toLocaleString()}/mo × 12`;
-                                    cellColor = BT.text.secondary;
-                                  }
-
-                                  const display = val > 0 ? fmt$(val) : '$0';
-                                  return (
-                                    <td
-                                      key={yr}
-                                      style={{ padding: '3px 8px', textAlign: 'right', color: cellColor, fontWeight: 400, cursor: 'default', fontFamily: MONO, fontSize: 9 }}
-                                      title={tooltip}
-                                    >
-                                      {display}
-                                    </td>
-                                  );
-                                })}
+                                {labelCell}
+                                {dataCells}
                               </tr>
                             );
                           });
