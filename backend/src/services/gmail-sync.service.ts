@@ -641,7 +641,13 @@ export class GmailSyncService {
       throw new AppError(404, 'Email account not found');
     }
 
-    const account = accountResult.rows[0] as EmailAccount;
+    const rawAccount = accountResult.rows[0];
+    // Decrypt tokens from DB before any downstream use
+    const account: EmailAccount = {
+      ...rawAccount,
+      access_token: safeDecryptToken(rawAccount.access_token),
+      refresh_token: decryptTokenOrNull(rawAccount.refresh_token),
+    };
     const gmail = await this.getGmailClient(account);
 
     // Create email message

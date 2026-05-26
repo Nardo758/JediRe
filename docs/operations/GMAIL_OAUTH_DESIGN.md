@@ -42,8 +42,8 @@ Everything else documented here describes the existing design, known gaps, and t
 | `user_id` | UUID | FK → users |
 | `provider` | VARCHAR | Default `'google'` |
 | `email_address` | VARCHAR | Connected Gmail address |
-| `access_token` | TEXT | Plaintext — security gap (see §5) |
-| `refresh_token` | TEXT | Plaintext — security gap |
+| `access_token` | TEXT | AES-256-GCM encrypted (`enc:v1:` prefix) — see §3, Decision 1 |
+| `refresh_token` | TEXT | AES-256-GCM encrypted (`enc:v1:` prefix) — see §3, Decision 1 |
 | `token_expires_at` | TIMESTAMPTZ | For 5-minute buffer refresh |
 | `is_primary` | BOOLEAN | Default `false` |
 | `sync_enabled` | BOOLEAN | Default `true` |
@@ -164,21 +164,32 @@ Concurrency: limit 3 per `user_id`. Retries: 3.
 
 ### Decision 1 — Token Encryption at Rest
 
-**Current state:** `access_token` and `refresh_token` stored as plaintext TEXT columns in PostgreSQL.
+**Status: ✅ DONE (Task #1068, 2026-05-26)**
 
-**Risk:** A database dump or SQL injection attack exposes all user Gmail refresh tokens. A refresh token is indefinitely valid (until revoked) and grants full access to the user's Gmail account within the granted scopes.
+**Former state:** `access_token` and `refresh_token` stored as plaintext TEXT columns in PostgreSQL.
 
-**Options:**
+**Risk mitigated:** A database dump or SQL injection attack previously exposed all user Gmail refresh tokens. A refresh token is indefinitely valid (until revoked) and grants full access to the user's Gmail account within the granted scopes.
 
-| Option | Effort | Security |
-|---|---|---|
-| A. Keep plaintext (current) | 0 | Low — full token exposure on DB breach |
-| B. Application-layer AES-256 encryption with a `GMAIL_TOKEN_ENCRYPTION_KEY` env secret | 2 days | High — DB breach yields ciphertext only |
-| C. HashiCorp Vault / AWS KMS envelope encryption | 1–2 weeks | Very high — key never in memory beyond decrypt window |
+**Implemented:** Option B — Application-layer AES-256-GCM encryption.
 
-**Recommendation:** Option B. Add a `GMAIL_TOKEN_ENCRYPTION_KEY` 32-byte secret, encrypt/decrypt in `GmailSyncService.getValidAccessToken()` and `exchangeCodeForTokens()`. The added complexity is low and the protection is meaningful. Scoped to `user_email_accounts` only.
+| Detail | Value |
+|---|---|
+| Algorithm | AES-256-GCM (authenticated encryption) |
+| IV | 12 bytes (random per encryption) |
+| Auth tag | 16 bytes |
+| Storage format | `enc:v1:<base64(IV \| tag \| ciphertext)>` |
+| Key env var | `GMAIL_TOKEN_ENCRYPTION_KEY` (32-byte, base64-encoded) |
+| Backward compat | Values without `enc:v1:` prefix treated as legacy plaintext (safe rollout) |
 
-**Estimate:** ~1 day + migration to re-encrypt existing rows.
+**Files changed:**
+- `backend/src/services/gmail-sync/token-encryption.ts` — new encryption module
+- `backend/src/services/gmail-sync.service.ts` — decrypt on load (`syncEmails`, `sendEmail`), encrypt on write (`getValidAccessToken`)
+- `backend/src/api/rest/gmail.routes.ts` — encrypt on INSERT/UPDATE, decrypt for revocation
+- `backend/src/agents/tools/read_gmail_thread.ts` — decrypt before OAuth2 client setup
+- `backend/src/services/contacts-sync.service.ts` — decrypt on load, encrypt on refresh write
+- `backend/src/scripts/encrypt-gmail-tokens.ts` — idempotent re-encryption script for existing rows
+
+**Re-encryption:** Run `cd backend && npx ts-node --transpile-only src/scripts/encrypt-gmail-tokens.ts` to encrypt any pre-existing plaintext rows. Safe to re-run (skips already-encrypted rows).
 
 ---
 
@@ -332,7 +343,7 @@ This requires that all existing `emails` rows have valid UUID-castable values in
 
 | Area | Current State | Risk | Mitigation |
 |---|---|---|---|
-| Token storage | Plaintext in DB | DB breach → all user Gmail tokens compromised | AES-256 app-layer encryption (Decision 1) |
+| Token storage | ~~Plaintext in DB~~ AES-256-GCM encrypted | DB breach yields ciphertext only | ✅ Done — Task #1068 |
 | Token revocation | Not implemented on disconnect | Revoked accounts can still be used via stale tokens | Add revocation call (Decision 4) |
 | Callback URL | Falls back to request origin | SSRF / redirect_uri_mismatch in production | Set `GOOGLE_GMAIL_CALLBACK_URL` explicitly (Decision 5) |
 | State parameter | base64url JSON with userId | No HMAC signature — state could be forged | Consider HMAC-signing state for CSRF protection |
@@ -424,7 +435,7 @@ GOOGLE_CALLBACK_URL       = https://<production-domain>/api/v1/auth/google/callb
 
 | # | Task | Effort |
 |---|---|---|
-| P2-1 | AES-256 token encryption in `user_email_accounts` | 1 day |
+| P2-1 | AES-256 token encryption in `user_email_accounts` | ✅ DONE (Task #1068, 2026-05-26) |
 | P2-2 | HMAC-sign OAuth state parameter (CSRF protection) | 2 hours |
 | P2-3 | Inngest cron job to renew scheduler (replace `setInterval` with Inngest cron for restart-safe scheduling) | 1 day |
 | P2-4 | Alerting on sync failures (`email_sync_logs WHERE sync_status='failed'`) | 4 hours |
