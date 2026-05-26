@@ -1408,13 +1408,30 @@ function InlineLineForm({
               <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim, marginTop: 2 }}>1.0 = certain to launch</span>
             </div>
 
-            {/* Visual summary */}
+            {/* Visual summary — income ramp chart */}
             <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', paddingBottom: 2 }}>
-              <AdoptionTimelinePreview
-                rampStart={parseFloat(form.rampStartPeriod) || 0}
-                rampDuration={parseFloat(form.rampDurationMonths) || 0}
-                probability={parseFloat(form.probabilityAdopted) || 1}
-              />
+              {(() => {
+                const flatMonthly = form.useQtyRate
+                  ? (() => {
+                      const qty  = parseFloat(form.qty)  || 0;
+                      const rate = parseFloat(form.rate) || 0;
+                      return form.frequency === 'annual' ? (qty * rate) / 12 : qty * rate;
+                    })()
+                  : (parseFloat(form.monthly) || 0);
+                const steadyMo = form.steadyStateMonthly.trim() !== ''
+                  ? (parseFloat(form.steadyStateMonthly) || 0)
+                  : flatMonthly;
+                const rawProb = parseFloat(form.probabilityAdopted);
+                const prob = Math.min(1, Math.max(0, Number.isFinite(rawProb) ? rawProb : 1));
+                return (
+                  <IncomeRampChart
+                    rampStart={parseFloat(form.rampStartPeriod) || 0}
+                    rampDuration={parseFloat(form.rampDurationMonths) || 0}
+                    steadyMonthly={steadyMo}
+                    probability={prob}
+                  />
+                );
+              })()}
             </div>
           </div>
         )}
@@ -1423,65 +1440,131 @@ function InlineLineForm({
   );
 }
 
-// ── Inline visual preview of the ramp schedule ──────────────────────────────
-function AdoptionTimelinePreview({
-  rampStart, rampDuration, probability,
+// ── Income ramp bar chart — Y1–Y5 annual income preview ─────────────────────
+// Replaces the old 160px AdoptionTimelinePreview bar. Shows computed dollar
+// amounts per year so analysts can see the full adoption curve before saving.
+function IncomeRampChart({
+  rampStart, rampDuration, steadyMonthly, probability,
 }: {
   rampStart: number;
   rampDuration: number;
+  steadyMonthly: number;
   probability: number;
 }) {
-  const HOLD = 60; // 5-year / 60-month display window
-  const BAR_W = 160;
-  const BAR_H = 18;
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
-  const startPct  = Math.min(1, rampStart / HOLD);
-  const endPct    = Math.min(1, (rampStart + rampDuration) / HOLD);
-  const pct = Math.round(probability * 100);
+  const CHART_W = 210;
+  const CHART_H = 72;
+  const LABEL_H = 14;  // reserved at bottom for Y-axis labels
+  const BAR_AREA_H = CHART_H - LABEL_H;
+  const NUM_BARS = 5;
+  const BAR_GAP = 5;
+  const BAR_W = Math.floor((CHART_W - BAR_GAP * (NUM_BARS - 1)) / NUM_BARS);
+  const LABELS = ['Y1', 'Y2', 'Y3', 'Y4', 'Y5'];
+
+  // Build a synthetic adoption block for computeRampAwareAnnual
+  const adoption: AdoptionBlock = {
+    ramp_start_period:    rampStart,
+    ramp_duration_months: rampDuration,
+    steady_state_monthly: steadyMonthly,
+    probability_adopted:  probability,
+  };
+
+  const values = LABELS.map((_, i) =>
+    computeRampAwareAnnual(steadyMonthly, adoption, i)
+  );
+  const maxVal = Math.max(...values, 1); // avoid div-by-zero
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim, letterSpacing: '0.05em' }}>
-        60-MO RAMP PREVIEW · {pct}% PROB
+      <span style={{ fontFamily: LABEL, fontSize: 7, color: C.teal, letterSpacing: '0.05em' }}>
+        ANNUAL INCOME · Y1–Y5
       </span>
-      <div style={{ position: 'relative', width: BAR_W, height: BAR_H, background: '#0a1018', border: `1px solid ${C.teal}33`, borderRadius: 3, overflow: 'hidden' }}>
-        {/* Zero zone (before ramp start) */}
-        {startPct > 0 && (
+      <div style={{ position: 'relative', width: CHART_W }}>
+        {/* Hover tooltip */}
+        {hoveredIdx !== null && (
           <div style={{
-            position: 'absolute', left: 0, top: 0,
-            width: `${startPct * 100}%`, height: '100%',
-            background: C.dim + '40',
-          }} />
+            position: 'absolute',
+            bottom: CHART_H + 2,
+            left: Math.min(
+              hoveredIdx * (BAR_W + BAR_GAP) + BAR_W / 2 - 28,
+              CHART_W - 60,
+            ),
+            background: C.panel,
+            border: `1px solid ${C.teal}66`,
+            borderRadius: 3,
+            padding: '2px 7px',
+            fontFamily: MONO,
+            fontSize: 9,
+            color: C.teal,
+            whiteSpace: 'nowrap',
+            zIndex: 10,
+            pointerEvents: 'none',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+          }}>
+            {fmt$(values[hoveredIdx])}
+          </div>
         )}
-        {/* Ramp zone */}
-        {endPct > startPct && (
-          <div style={{
-            position: 'absolute', left: `${startPct * 100}%`, top: 0,
-            width: `${(endPct - startPct) * 100}%`, height: '100%',
-            background: `linear-gradient(to right, ${C.teal}20, ${C.teal}80)`,
-          }} />
-        )}
-        {/* Steady state zone */}
-        {endPct < 1 && (
-          <div style={{
-            position: 'absolute', left: `${endPct * 100}%`, top: 0,
-            width: `${(1 - endPct) * 100}%`, height: '100%',
-            background: C.teal + '80',
-          }} />
-        )}
-        {/* Tick marks at year boundaries */}
-        {[12, 24, 36, 48].map(m => (
-          <div key={m} style={{
-            position: 'absolute', left: `${(m / HOLD) * 100}%`, top: 0,
-            width: 1, height: '100%', background: C.border,
-          }} />
-        ))}
+
+        <svg
+          width={CHART_W}
+          height={CHART_H}
+          style={{ display: 'block', overflow: 'visible' }}
+        >
+          {/* Subtle baseline */}
+          <line
+            x1={0} y1={BAR_AREA_H}
+            x2={CHART_W} y2={BAR_AREA_H}
+            stroke={C.border} strokeWidth={1}
+          />
+
+          {values.map((v, i) => {
+            const barH = maxVal > 0
+              ? Math.max(2, Math.round((v / maxVal) * (BAR_AREA_H - 4)))
+              : 2;
+            const x = i * (BAR_W + BAR_GAP);
+            const y = BAR_AREA_H - barH;
+            const isHovered = hoveredIdx === i;
+            const isZero = v === 0;
+            const fill = isZero
+              ? C.dim + '55'
+              : isHovered
+                ? C.teal
+                : C.teal + 'aa';
+
+            return (
+              <g
+                key={i}
+                onMouseEnter={() => setHoveredIdx(i)}
+                onMouseLeave={() => setHoveredIdx(null)}
+                style={{ cursor: 'default' }}
+              >
+                {/* Bar */}
+                <rect
+                  x={x} y={y}
+                  width={BAR_W} height={barH}
+                  fill={fill}
+                  rx={2}
+                />
+                {/* Y-axis label */}
+                <text
+                  x={x + BAR_W / 2}
+                  y={CHART_H - 2}
+                  textAnchor="middle"
+                  fill={isHovered ? C.teal : C.dim}
+                  fontSize={7}
+                  fontFamily={LABEL}
+                >
+                  {LABELS[i]}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', width: BAR_W }}>
-        {['Y1', 'Y2', 'Y3', 'Y4', 'Y5'].map(y => (
-          <span key={y} style={{ fontFamily: LABEL, fontSize: 6, color: C.dim }}>{y}</span>
-        ))}
-      </div>
+      <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>
+        hover bar for dollar amount · {Math.round(probability * 100)}% prob
+      </span>
     </div>
   );
 }
