@@ -352,3 +352,11 @@ Before changing the name, type, or meaning of any field used by a data pipeline,
 
 ### P6 — Paired-Read Verification Before Marking Complete
 After any data pipeline change, explicitly verify that (a) the writer produces the correct value, (b) every downstream reader receives and interprets the new value correctly, and (c) no reader has a stale cached copy. Record the verification in the closing doc.
+
+### P7 — Two-Layer Model: LLM Reasons, Deterministic Functions Calculate
+All proforma and financial engine work is split into exactly two layers:
+
+- **Layer 1 — Calculations:** Deterministic math only. NOI, EGI, IRR, DSCR, equity multiple, exit value, sensitivity grids, cash flows. No LLM involvement. Given the same inputs, always produces the same outputs. Implemented as pure TypeScript functions.
+- **Layer 2 — Assumptions:** Values the LLM reasons about and operators can override. Rent per unit type, vacancy %, OpEx line items, growth rates, exit cap rate, debt terms, hold period. Stored as `LayeredValue<T>` with provenance. The LLM proposes; the operator confirms; Layer 1 then calculates.
+
+**Standing rule:** never put arithmetic inside an LLM prompt, and never let an LLM output a value that should be the result of a formula. Phase 2 derivation logic (generating / refining assumption values) applies only to `layer: 'assumption'` entries. `layer: 'calculated_output'` entries are never sent to the LLM for derivation — they are always computed from their upstream assumptions.

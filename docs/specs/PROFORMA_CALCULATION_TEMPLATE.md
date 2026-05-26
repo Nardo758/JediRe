@@ -25,6 +25,7 @@ Each row describes one Pro Forma line item. Every entry uses the same schema:
 - **Display format** — UI number formatting
 - **Sign convention** — `+` = income or additive; `−` = cost or deduction
 - **Phase flag** — `ALL`, `EXISTING`, `LEASE_UP`, or `DEVELOPMENT` (see Phase 1/2 mapping below)
+- **Layer** — two-layer model classification (P7): `assumption` = LLM-reasoned or operator-set input stored as `LayeredValue`; `calculated_output` = deterministic math over upstream assumptions, never sent to LLM for derivation; `metadata_input` = structural deal parameter (unit count, strategy, hold period) that gates which assumptions apply
 - **Broker path** — how broker/OM value reaches `year1.FIELD.om`; live value for 464 Bishop noted
 - **Platform path** — how platform value reaches `year1.FIELD.platform`; all are null (BUG-01)
 - **User path** — how operator override reaches `year1.FIELD.override`; live value noted
@@ -70,6 +71,7 @@ the field slots exist in Phase 1.
 | **Display format** | `$N,NNN,NNN` |
 | **Sign convention** | + (income) |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.stabilizedGpr` → `year1.gpr.om`. **BUG-11: mapping absent; `year1.gpr.om = null` despite stabilizedGpr = $4,901,400 in capsule.** |
 | **Platform path** | `platform.gpr_per_unit_per_month × totalUnits × 12` → `year1.gpr.platform`. **BUG-01: always null.** |
 | **User path** | `PATCH /api/v1/deals/:dealId/financials/override` body `{ field: 'gpr', value: N }` → `year1.gpr.override`. Live (464 Bishop): $4,901,400. |
@@ -88,6 +90,7 @@ the field slots exist in Phase 1.
 | **Display format** | `($NNN,NNN)` |
 | **Sign convention** | − (deduction from GPR) |
 | **Phase flag** | ALL |
+| **Layer** | `calculated_output` |
 | **Broker path** | Derived from REV-002a; `year1.loss_to_lease_pct.om = 0` → dollar broker = $0 |
 | **Platform path** | null (BUG-01) |
 | **User path** | Via REV-002a |
@@ -106,6 +109,7 @@ the field slots exist in Phase 1.
 | **Display format** | `N.NN%` |
 | **Sign convention** | + (rate applied as − in REV-002) |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.lossToLease` → `year1.loss_to_lease_pct.om`. Live: 0 (OM claims no LTL). |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.loss_to_lease_pct.override`. Live: null (resolves to T12 = 0.35%). |
@@ -124,6 +128,7 @@ the field slots exist in Phase 1.
 | **Display format** | `($N,NNN,NNN)` |
 | **Sign convention** | − (deduction from GPR) |
 | **Phase flag** | ALL |
+| **Layer** | `calculated_output` |
 | **Broker path** | Derived from REV-003a; `year1.vacancy_pct.om = 0.05` → broker vacancy loss = $245,070 vs resolved $971,887 |
 | **Platform path** | null (BUG-01) |
 | **User path** | Via REV-003a |
@@ -142,6 +147,7 @@ the field slots exist in Phase 1.
 | **Display format** | `NN.N%` |
 | **Sign convention** | + (rate; applied as − via REV-003) |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.stabilizedVacancy` → `year1.vacancy_pct.om`. Live: 0.05 (5%). |
 | **Platform path** | M07 `calibrated.vacancyPct` used as floor only; direct `platform` slot null (BUG-01). |
 | **User path** | `year1.vacancy_pct.override`. Live: null (resolves to rent_roll = 19.83%). |
@@ -161,6 +167,7 @@ the field slots exist in Phase 1.
 | **Display format** | `($NNN,NNN)` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `calculated_output` |
 | **Broker path** | Derived from REV-004a; `year1.concessions_pct.om = 0` → broker concessions = $0 vs resolved $381,280 (BUG-06: not flagged) |
 | **Platform path** | null (BUG-01) |
 | **User path** | Via REV-004a |
@@ -179,6 +186,7 @@ the field slots exist in Phase 1.
 | **Display format** | `N.NN%` |
 | **Sign convention** | + (rate) |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.concessionsPct` → `year1.concessions_pct.om`. Live: 0 (OM claims none). |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.concessions_pct.override`. Live: null (resolves to T12 = 7.78%). |
@@ -198,6 +206,7 @@ the field slots exist in Phase 1.
 | **Display format** | `($NNN,NNN)` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `calculated_output` |
 | **Broker path** | `year1.bad_debt_pct.om = null` (OM did not provide) → no broker bad debt value |
 | **Platform path** | null (BUG-01) |
 | **User path** | Via REV-005a |
@@ -216,6 +225,7 @@ the field slots exist in Phase 1.
 | **Display format** | `N.NN%` |
 | **Sign convention** | + (rate) |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.badDebtPct` → `year1.bad_debt_pct.om`. Live: null (OM did not include). |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.bad_debt_pct.override`. Live: null (resolves to T12 = 3.34%). |
@@ -234,6 +244,7 @@ the field slots exist in Phase 1.
 | **Display format** | `($NNN,NNN)` |
 | **Sign convention** | − |
 | **Phase flag** | ALL — Phase 2 feature (often 0) |
+| **Layer** | `calculated_output` |
 | **Broker path** | `year1.non_revenue_units_pct.om = null` (OM did not include). |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.non_revenue_units_pct.override`. Live: null (resolves to T12 = 0% → $0). |
@@ -252,6 +263,7 @@ the field slots exist in Phase 1.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | + |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.stabilizedOtherIncomeAnnual ÷ totalUnits ÷ 12` → `year1.other_income_per_unit.om`. Live: $307.76/unit/yr ($71,400/yr annualized). |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.other_income_per_unit.override`. Live: null (resolves to rent_roll = $75.34/unit/yr → $209,749/yr). |
@@ -271,6 +283,7 @@ the field slots exist in Phase 1.
 | **Display format** | `$N,NNN,NNN` |
 | **Sign convention** | + |
 | **Phase flag** | ALL |
+| **Layer** | `calculated_output` |
 | **Broker path** | `year1.net_rental_income.om = null` (no direct OM slot). Implied broker NRI = $4,902,400 − $0 − $245,070 − $0 − $0 − $0 ≈ $4,657,330. |
 | **Platform path** | null (BUG-01) |
 | **User path** | No direct override — indirectly via component overrides |
@@ -290,6 +303,7 @@ the field slots exist in Phase 1.
 | **Display format** | `$N,NNN,NNN` (highlighted row) |
 | **Sign convention** | + |
 | **Phase flag** | ALL |
+| **Layer** | `calculated_output` |
 | **Broker path** | Not stored as `year1.egi.om`; implied from broker components. Broker stabilizedEgi = $4,998,237 (reported in capsule). Resolved = $3,615,849 — delta −$1,382,388 (−27.7%), not flagged (BUG-06). |
 | **Platform path** | null (BUG-01) |
 | **User path** | No direct override; indirectly via component overrides |
@@ -318,6 +332,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.repairsMaintenanceAnnual` → `year1.repairs_maintenance.om`. Live: $69,600. |
 | **Platform path** | `platform.opex_per_unit_annual.maintenance × totalUnits` → `year1.repairs_maintenance.platform`. Live: null (BUG-01). |
 | **User path** | `year1.repairs_maintenance.override`. Live: $69,600. T12 = $4,090 (partial year). |
@@ -336,6 +351,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.contractServicesAnnual` → `year1.contract_services.om`. Live: **null** (OM did not break out contract services). |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.contract_services.override`. Live: $28,680 (operator override; T12 = $19,640). |
@@ -354,6 +370,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `year1.landscaping.om`. Live: **null** (OM did not provide). |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.landscaping.override`. Live: **null** — no data for this deal in any tier; resolved = null. |
@@ -372,6 +389,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.payrollAnnual` → `year1.payroll.om`. Live: $324,800. |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.payroll.override`. Live: $324,800. T12 = $29,125 (partial year or miscategorised). |
@@ -390,6 +408,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.marketingAnnual` → `year1.marketing.om`. Live: $69,600. |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.marketing.override`. Live: $69,600. |
@@ -408,6 +427,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.gAndAAnnual` → `year1.g_and_a.om`. Live: $69,600. |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.g_and_a.override`. Live: $69,600. |
@@ -426,6 +446,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.turnoverAnnual` → `year1.turnover.om`. Live: $41,760. |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.turnover.override`. Live: $41,760. T12 = $1,540 (partial year). |
@@ -448,6 +469,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `year1.water_sewer.om`. Live: **null** — OM provided a combined `utilitiesAnnual=$187,094` that was not decomposed into sub-lines. |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.water_sewer.override`. Live: **null** — no data in any tier; resolved = null. |
@@ -466,6 +488,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `year1.electric.om`. Live: **null** (OM combined utilities not decomposed). |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.electric.override`. Live: **null** — resolved = null. |
@@ -484,6 +507,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `year1.gas_fuel.om`. Live: **null** (OM combined utilities not decomposed). |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.gas_fuel.override`. Live: **null** — resolved = null. |
@@ -502,6 +526,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.utilitiesAnnual` → `year1.utilities.om`. Live: $187,094. |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.utilities.override`. Live: $187,094. T12 = $936 (partial year). |
@@ -521,6 +546,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.insuranceAnnual` → `year1.insurance.om`. Live: $46,400. |
 | **Platform path** | `platform.opex_per_unit_annual.insurance × totalUnits` → `year1.insurance.platform`. Live: **null** — no benchmark data (BUG-01, BUG-09). |
 | **User path** | `year1.insurance.override`. Live: $46,400. T12 = null. |
@@ -540,6 +566,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$N,NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.realEstateTaxesAnnual` → `year1.real_estate_tax.om`. Live: **null** (OM did not include RE tax). |
 | **Platform path** | `taxService.forecast()` result → `year1.real_estate_tax.platform`. Live: **null** — taxService not called for P&L line (BUG-05). |
 | **User path** | `year1.real_estate_tax.override`. Live: null (resolves to T12 = $1,127,126; tax_bill = $20,731). |
@@ -559,6 +586,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `calculated_output` |
 | **Broker path** | Derived from NCTRL-006a; OM rate 2.75% × broker EGI ≈ $137K vs resolved $90,396 |
 | **Platform path** | null (BUG-01) |
 | **User path** | Via NCTRL-006a |
@@ -578,6 +606,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `N.NN%` |
 | **Sign convention** | + (rate; applied as − via NCTRL-006) |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.managementFeePct` → `year1.management_fee_pct.om`. Live: 0.0275 (2.75%). |
 | **Platform path** | null (BUG-01) |
 | **User path** | `year1.management_fee_pct.override`. Live: 0.0250 (2.50% — operator reduced from OM). |
@@ -601,6 +630,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `($N,NNN,NNN)` (highlighted section total) |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `calculated_output` |
 | **Broker path** | Not stored in `year1.total_opex.om`. Broker implied OpEx = $1,998,673 (from broker components) vs resolved $3,129,741 — **+$1,131,068 / +56.6% collision not flagged (BUG-06)**. |
 | **Platform path** | null (BUG-01) |
 | **User path** | No direct override — controlled via component row overrides |
@@ -622,6 +652,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN` (highlighted, blue) |
 | **Sign convention** | + |
 | **Phase flag** | ALL |
+| **Layer** | `calculated_output` |
 | **Broker path** | `year1.noi.om = $2,999,564`. Resolved = $486,108. **CRITICAL COLLISION: −$2,513,456 / −83.8% — not flagged (BUG-06)**. |
 | **Platform path** | null (BUG-01) |
 | **User path** | No direct override; indirectly via component overrides |
@@ -643,6 +674,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `NN.N%` |
 | **Sign convention** | + |
 | **Phase flag** | ALL |
+| **Layer** | `calculated_output` |
 | **Broker path** | Implied broker margin = $2,999,564 / $4,998,237 = 60.0% vs resolved 13.4% |
 | **Platform path** | null |
 | **User path** | No override |
@@ -666,6 +698,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$NNN,NNN ($NNN/unit)` |
 | **Sign convention** | − |
 | **Phase flag** | ALL |
+| **Layer** | `assumption` |
 | **Broker path** | `broker_claims.proforma.replacementReservesPerUnit × totalUnits` → `year1.replacement_reserves.om`. Live: $46,400 ($200/unit). |
 | **Platform path** | `platform.replacement_reserves_per_unit × totalUnits` → `year1.replacement_reserves.platform`. Live: **null** (BUG-01). |
 | **User path** | `year1.replacement_reserves.override`. Live: $58,000 ($250/unit). |
@@ -685,6 +718,7 @@ All `platform` slots null (BUG-01). All `benchmarkPosition` null.
 | **Display format** | `$N,NNN,NNN` |
 | **Sign convention** | − |
 | **Phase flag** | DEVELOPMENT, REDEVELOPMENT |
+| **Layer** | `assumption` |
 | **Broker path** | Not typically in OM capsule |
 | **Platform path** | null |
 | **User path** | `year1.capex_per_unit.override` |
@@ -710,6 +744,7 @@ Current assembly state documented per row.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | + |
 | **Phase flag** | ALL |
+| **Layer** | `calculated_output` |
 | **Expected value (464 Bishop)** | $486,108 − $58,000 = **$428,108** |
 | **Live DB `year1.noi_after_reserves`** | **null** — not assembled as OperatingStatementRow |
 | **Where computed today** | Projection engine: `proforma-adjustment.service.ts:3393` as `const reservesY1 = ry1('replacement_reserves') || (totalUnits × 350)` — per-year only, not surfaced in year1 |
@@ -733,6 +768,7 @@ Current assembly state documented per row.
 | **Display format** | `($NNN,NNN)` |
 | **Sign convention** | − |
 | **Phase flag** | ALL (0 when no debt) |
+| **Layer** | `calculated_output` |
 | **Live DB year1 value** | null — not assembled in year1 OperatingStatementRow[] |
 | **Where computed today** | Per-year in projection loop |
 | **Broker path** | Not applicable |
@@ -753,6 +789,7 @@ Current assembly state documented per row.
 | **Display format** | `$NNN,NNN` |
 | **Sign convention** | + or − depending on leverage |
 | **Phase flag** | ALL |
+| **Layer** | `calculated_output` |
 | **Live DB year1 value** | null — not in year1 OperatingStatementRow[] |
 | **Where computed today** | Per-year projection loop; also `frontend/src/services/proFormaGenerator.ts:314` (`noi - debtService`) for 3D design model |
 | **Per v31 spec** | "Cash Flow Before Tax — in Projections tab, not summary Pro Forma." **CFBD correctly belongs in Projections, not the Pro Forma surface.** Only BELOW-001 (NOI After Reserves) is a Pro Forma surface gap. |
@@ -766,13 +803,13 @@ Current assembly state documented per row.
 
 Separate system — `proforma_assumptions` table. No P&L line items here.
 
-| ID | Display label | Formula | Source | Format | Sign | Phase | Broker path | Platform path | User path | Live value |
-|---|---|---|---|---|---|---|---|---|---|---|
-| SCA-001 | Rent Growth | `effective = COALESCE(rent_growth_override, rent_growth_current, rent_growth_baseline)` | M35 → current; `getMarketBaseline()` → baseline (hardcoded 3.5% — BUG-03) | `N.N%` | + | ALL | None | Hardcoded 3.5% | `proforma_assumptions.rent_growth_override` | baseline=3.5%, current=3.5%, effective=3.5% |
-| SCA-002 | Vacancy | `effective = COALESCE(vacancy_override, vacancy_current, vacancy_baseline)` | M35 → current; hardcoded 5.0% → baseline (BUG-03) | `N.N%` | + | ALL | None | Hardcoded 5.0% | `proforma_assumptions.vacancy_override` | baseline=5.0%, current=5.0%, effective=5.0% |
-| SCA-003 | OpEx Growth | `effective = COALESCE(opex_growth_override, opex_growth_current, opex_growth_baseline)` | M35 → current; hardcoded 2.8% → baseline (BUG-03) | `N.N%` | + | ALL | None | Hardcoded 2.8% | `proforma_assumptions.opex_growth_override` | baseline=2.8%, current=2.8%, effective=2.8% |
-| SCA-004 | Exit Cap Rate | `effective = COALESCE(exit_cap_override, exit_cap_current, exit_cap_baseline)` | M35 → current; hardcoded 5.5% → baseline (BUG-03) | `N.NN%` | + | ALL | None | Hardcoded 5.5% | `proforma_assumptions.exit_cap_override` | baseline=5.5%, current=5.5%, effective=5.5% |
-| SCA-005 | Absorption | `effective = COALESCE(absorption_override, absorption_current, absorption_baseline)` | M35 → current; hardcoded 8.0 leases/mo → baseline (BUG-03) | `N.N leases/mo` | + | LEASE_UP | None | Hardcoded 8.0 | `proforma_assumptions.absorption_override` | baseline=8.0, current=8.0, effective=8.0 |
+| ID | Display label | Formula | Source | Format | Sign | Phase | Layer | Broker path | Platform path | User path | Live value |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| SCA-001 | Rent Growth | `effective = COALESCE(rent_growth_override, rent_growth_current, rent_growth_baseline)` | M35 → current; `getMarketBaseline()` → baseline (hardcoded 3.5% — BUG-03) | `N.N%` | + | ALL | `assumption` | None | Hardcoded 3.5% | `proforma_assumptions.rent_growth_override` | baseline=3.5%, current=3.5%, effective=3.5% |
+| SCA-002 | Vacancy | `effective = COALESCE(vacancy_override, vacancy_current, vacancy_baseline)` | M35 → current; hardcoded 5.0% → baseline (BUG-03) | `N.N%` | + | ALL | `assumption` | None | Hardcoded 5.0% | `proforma_assumptions.vacancy_override` | baseline=5.0%, current=5.0%, effective=5.0% |
+| SCA-003 | OpEx Growth | `effective = COALESCE(opex_growth_override, opex_growth_current, opex_growth_baseline)` | M35 → current; hardcoded 2.8% → baseline (BUG-03) | `N.N%` | + | ALL | `assumption` | None | Hardcoded 2.8% | `proforma_assumptions.opex_growth_override` | baseline=2.8%, current=2.8%, effective=2.8% |
+| SCA-004 | Exit Cap Rate | `effective = COALESCE(exit_cap_override, exit_cap_current, exit_cap_baseline)` | M35 → current; hardcoded 5.5% → baseline (BUG-03) | `N.NN%` | + | ALL | `assumption` | None | Hardcoded 5.5% | `proforma_assumptions.exit_cap_override` | baseline=5.5%, current=5.5%, effective=5.5% |
+| SCA-005 | Absorption | `effective = COALESCE(absorption_override, absorption_current, absorption_baseline)` | M35 → current; hardcoded 8.0 leases/mo → baseline (BUG-03) | `N.N leases/mo` | + | LEASE_UP | `assumption` | None | Hardcoded 8.0 | `proforma_assumptions.absorption_override` | baseline=8.0, current=8.0, effective=8.0 |
 
 ---
 
