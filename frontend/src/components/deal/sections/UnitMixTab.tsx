@@ -1250,12 +1250,12 @@ function bathsFromLabel(label: string): number {
 }
 
 // ─── Platform defaults by bedroom type (spec §4A) ────────────────────────────
-const PLATFORM_DEFAULTS: Record<number, { avg_sqft: number; in_place_rent: number }> = {
-  0: { avg_sqft: 550,  in_place_rent: 1200 },  // Studio
-  1: { avg_sqft: 750,  in_place_rent: 1500 },  // 1BR
-  2: { avg_sqft: 1050, in_place_rent: 2000 },  // 2BR
-  3: { avg_sqft: 1400, in_place_rent: 2600 },  // 3BR
-  4: { avg_sqft: 1800, in_place_rent: 3200 },  // 4BR+
+const PLATFORM_DEFAULTS_MANUAL: Record<number, { avg_sqft: number; in_place_rent: number; label: string }> = {
+  0: { avg_sqft: 550,  in_place_rent: 1200, label: 'Studio' },
+  1: { avg_sqft: 750,  in_place_rent: 1500, label: '1BR' },
+  2: { avg_sqft: 1050, in_place_rent: 2000, label: '2BR' },
+  3: { avg_sqft: 1400, in_place_rent: 2600, label: '3BR' },
+  4: { avg_sqft: 1800, in_place_rent: 3200, label: '4BR+' },
 };
 
 // ─── Build ManualUnitType rows from F3 % splits + total unit count ──────────
@@ -1284,7 +1284,7 @@ function buildF3PrefillTypes(
     const count = isLast ? remaining : Math.round(raw);
     if (count <= 0) return;
     remaining -= count;
-    const def = PLATFORM_DEFAULTS[t.bedrooms];
+    const def = PLATFORM_DEFAULTS_MANUAL[t.bedrooms];
     rows.push({
       _id: Math.random().toString(36).slice(2),
       type: t.label,
@@ -1320,8 +1320,8 @@ function emptyType(): ManualUnitType {
     bedrooms: 1,
     bathrooms: 1,
     count: 0,
-    avg_sqft: PLATFORM_DEFAULTS[1].avg_sqft,
-    in_place_rent: PLATFORM_DEFAULTS[1].in_place_rent,
+    avg_sqft: PLATFORM_DEFAULTS_MANUAL[1].avg_sqft,
+    in_place_rent: PLATFORM_DEFAULTS_MANUAL[1].in_place_rent,
     market_rent: null,
     notes: '',
   };
@@ -1350,14 +1350,14 @@ function AddEditUnitTypeModal({
   // When bedrooms changes, pre-fill platform defaults if the fields are
   // still at their prior default values (non-destructive prefill).
   const handleBedsChange = (beds: number) => {
-    const def = PLATFORM_DEFAULTS[beds] ?? PLATFORM_DEFAULTS[4];
+    const def = PLATFORM_DEFAULTS_MANUAL[beds] ?? PLATFORM_DEFAULTS_MANUAL[4];
     setForm(f => ({
       ...f,
       bedrooms: beds,
-      avg_sqft: f.avg_sqft === (PLATFORM_DEFAULTS[f.bedrooms] ?? PLATFORM_DEFAULTS[4]).avg_sqft
+      avg_sqft: f.avg_sqft === (PLATFORM_DEFAULTS_MANUAL[f.bedrooms] ?? PLATFORM_DEFAULTS_MANUAL[4]).avg_sqft
         ? def.avg_sqft
         : f.avg_sqft,
-      in_place_rent: f.in_place_rent === (PLATFORM_DEFAULTS[f.bedrooms] ?? PLATFORM_DEFAULTS[4]).in_place_rent
+      in_place_rent: f.in_place_rent === (PLATFORM_DEFAULTS_MANUAL[f.bedrooms] ?? PLATFORM_DEFAULTS_MANUAL[4]).in_place_rent
         ? def.in_place_rent
         : f.in_place_rent,
     }));
@@ -1549,7 +1549,7 @@ function AddEditUnitTypeModal({
 
           {/* Platform defaults note */}
           <div style={{ fontFamily: LABEL, fontSize: 8, color: C.dim, marginBottom: 16 }}>
-            PLATFORM DEFAULTS · {form.bedrooms === 0 ? 'Studio' : `${form.bedrooms}BR`}: {(PLATFORM_DEFAULTS[form.bedrooms] ?? PLATFORM_DEFAULTS[4]).avg_sqft} sf / ${(PLATFORM_DEFAULTS[form.bedrooms] ?? PLATFORM_DEFAULTS[4]).in_place_rent.toLocaleString()}/mo projected — labeled as starting points only
+            PLATFORM DEFAULTS · {form.bedrooms === 0 ? 'Studio' : `${form.bedrooms}BR`}: {(PLATFORM_DEFAULTS_MANUAL[form.bedrooms] ?? PLATFORM_DEFAULTS_MANUAL[4]).avg_sqft} sf / ${(PLATFORM_DEFAULTS_MANUAL[form.bedrooms] ?? PLATFORM_DEFAULTS_MANUAL[4]).in_place_rent.toLocaleString()}/mo projected — labeled as starting points only
           </div>
         </div>
 
@@ -1757,7 +1757,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
     for (const { br, pct } of bedroomMap) {
       const count = Math.round((pct / 100) * total);
       if (count <= 0) continue;
-      const d = PLATFORM_DEFAULTS[br] ?? PLATFORM_DEFAULTS[1];
+      const d = PLATFORM_DEFAULTS_MANUAL[br] ?? PLATFORM_DEFAULTS_MANUAL[1];
       entries.push({
         _id: crypto.randomUUID(),
         type: d.label,

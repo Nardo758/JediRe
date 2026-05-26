@@ -1548,6 +1548,45 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           <span style={{ fontSize: 9, color: BT.text.muted, fontFamily: MONO, textTransform: 'uppercase' }}>
             {resolvedDealType}
           </span>
+          {(() => {
+            const mixRows = f9Financials?.rentRollSummary?.unitMix ?? [];
+            const mixTotal = f9Financials?.totalUnits ?? 0;
+            const targetUnits = (propDeal as Record<string, unknown> | null | undefined)?.target_units as number | null | undefined;
+            const hasMixData = mixRows.length > 0;
+            const hasTarget = targetUnits != null && (targetUnits as number) > 0;
+            if (!hasMixData && !hasTarget) return null;
+            const isMatch = hasTarget && hasMixData && mixTotal === (targetUnits as number);
+            const isMismatch = hasTarget && hasMixData && mixTotal !== (targetUnits as number);
+            const color = isMatch ? BT.text.green : isMismatch ? BT.text.amber : BT.text.muted;
+            const label = isMatch
+              ? `UNITS: ${mixTotal} ✓`
+              : hasTarget
+                ? `UNITS: ${hasMixData ? mixTotal : '—'} / ${targetUnits} target`
+                : `UNITS: ${mixTotal}`;
+            const handleUnitPillClick = () => {
+              setActiveTab(1);
+              setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('fe-console-subtab', { detail: { subTab: 'unitmix' } }));
+              }, 50);
+            };
+            return (
+              <button
+                onClick={handleUnitPillClick}
+                title={isMismatch ? `Unit mix total (${mixTotal}) does not match deal target (${targetUnits}). Click to open Unit Mix tab.` : 'Click to open Unit Mix tab'}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                  padding: '1px 6px', borderRadius: 2,
+                  background: `${color}18`,
+                  border: `1px solid ${color}44`,
+                  cursor: 'pointer',
+                  fontFamily: MONO, fontSize: 8, color,
+                  letterSpacing: 0.5,
+                }}
+              >
+                {label}
+              </button>
+            );
+          })()}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
