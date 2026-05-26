@@ -1309,6 +1309,98 @@ router.delete('/:dealId/financials/other-income/user-lines/:lineId', requireAuth
   }
 });
 
+/**
+ * PATCH /:dealId/financials/other-income/category-overrides
+ *
+ * Saves a user override for a single other-income category's resolved value.
+ * Task #1145 — OtherIncomeTab editable categories.
+ *
+ * Body: { category: string, value: number | null }
+ *   category — one of the CATS keys: parking | pet | storage | laundry | rubs | fees | insurance_admin | other
+ *   value    — annual $/yr override, or null to clear (restores seeder-reconciled value)
+ *
+ * Persists to deal_assumptions.year1.other_income_overrides[category].
+ * The financials-composer reads this map and applies user_override resolution.
+ */
+const VALID_OI_CATEGORIES = new Set(['parking','pet','storage','laundry','rubs','fees','insurance_admin','other']);
+
+router.patch('/:dealId/financials/other-income/category-overrides', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { category, value } = req.body as { category: string; value: number | null };
+    const userId = req.user?.userId ?? 'unknown';
+
+    if (!category || typeof category !== 'string' || !VALID_OI_CATEGORIES.has(category)) {
+      return res.status(400).json({ error: `category must be one of: ${[...VALID_OI_CATEGORIES].join(', ')}` });
+    }
+    if (value !== null && (typeof value !== 'number' || !Number.isFinite(value) || value < 0)) {
+      return res.status(400).json({ error: 'value must be a non-negative number or null' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const own = await client.query(
+        `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+        [dealId, userId]
+      );
+      if (own.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Not authorized for this deal' });
+      }
+
+      const res2 = await client.query(
+        `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 FOR UPDATE`,
+        [dealId]
+      );
+      if (res2.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'deal_assumptions not seeded for this deal yet' });
+      }
+
+      const year1 = typeof res2.rows[0].year1 === 'string'
+        ? JSON.parse(res2.rows[0].year1)
+        : res2.rows[0].year1;
+
+      if (!year1) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'deal_assumptions.year1 is empty' });
+      }
+
+      // Mutate the overrides map in-place
+      if (!year1.other_income_overrides || typeof year1.other_income_overrides !== 'object') {
+        year1.other_income_overrides = {};
+      }
+      if (value === null) {
+        delete year1.other_income_overrides[category];
+        // Remove the key entirely when empty to keep the JSONB clean
+        if (Object.keys(year1.other_income_overrides).length === 0) {
+          delete year1.other_income_overrides;
+        }
+      } else {
+        year1.other_income_overrides[category] = value;
+      }
+
+      await client.query(
+        `UPDATE deal_assumptions SET year1 = $1::jsonb, updated_at = NOW() WHERE deal_id = $2`,
+        [JSON.stringify(year1), dealId]
+      );
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    res.json({ success: true, data: { dealId, category, value } });
+  } catch (error: any) {
+    logger.error('Error saving other income category override:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 function computeReturns(params: {
   landCost: number;
   units: number;

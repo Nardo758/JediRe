@@ -24,6 +24,7 @@ import React, { useState, useEffect } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { AssumptionsTab } from './AssumptionsTab';
 import { UnitMixTab } from '../../../components/deal/sections/UnitMixTab';
+import { OtherIncomeTab } from './OtherIncomeTab';
 import { TaxesTab } from './TaxesTab';
 import { StanceTab } from './StanceTab';
 import { DealTermsTab } from './DealTermsTab';
@@ -32,7 +33,7 @@ import type { FinancialEngineTabProps } from './types';
 const MONO = BT.font.mono;
 const AMBER = BT.text.amber;
 
-type SubTab = 'stance' | 'deal-terms' | 'inputs' | 'unitmix' | 'tax';
+type SubTab = 'stance' | 'deal-terms' | 'inputs' | 'unitmix' | 'otherincome' | 'tax';
 
 interface SubTabDef {
   id: SubTab;
@@ -41,11 +42,12 @@ interface SubTabDef {
 }
 
 const SUB_TABS: SubTabDef[] = [
-  { id: 'stance',     label: 'STANCE',     icon: '◈' },
-  { id: 'deal-terms', label: 'DEAL TERMS', icon: '◇' },
-  { id: 'inputs',     label: 'INPUTS',     icon: '⊕' },
-  { id: 'unitmix',    label: 'UNIT MIX',   icon: '⊞' },
-  { id: 'tax',        label: 'TAX',        icon: '$' },
+  { id: 'stance',      label: 'STANCE',       icon: '◈' },
+  { id: 'deal-terms',  label: 'DEAL TERMS',   icon: '◇' },
+  { id: 'inputs',      label: 'INPUTS',       icon: '⊕' },
+  { id: 'unitmix',     label: 'UNIT MIX',     icon: '⊞' },
+  { id: 'otherincome', label: 'OTHER INCOME', icon: '⊛' },
+  { id: 'tax',         label: 'TAX',          icon: '$' },
 ];
 
 export function ConsoleHubTab(props: FinancialEngineTabProps) {
@@ -126,8 +128,9 @@ export function ConsoleHubTab(props: FinancialEngineTabProps) {
         )}
         {subTab === 'deal-terms' && <DealTermsTab {...props} />}
         {subTab === 'inputs'     && <AssumptionsTab {...props} />}
-        {subTab === 'unitmix'    && <UnitMixTab {...props} />}
-        {subTab === 'tax'        && <TaxesTab {...props} />}
+        {subTab === 'unitmix'     && <UnitMixTab {...props} />}
+        {subTab === 'otherincome' && <OtherIncomeTab {...props} />}
+        {subTab === 'tax'         && <TaxesTab {...props} />}
       </div>
     </div>
   );

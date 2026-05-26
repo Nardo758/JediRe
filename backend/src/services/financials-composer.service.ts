@@ -1115,17 +1115,31 @@ export function composeOtherIncomeBreakdown(
     return Math.abs(a - b) / denom > 0.15;
   };
 
+  // User category overrides written by OtherIncomeTab (Task #1145).
+  // Keyed by category; value is annual $/yr; null entry = cleared override.
+  const userCatOverrides = (year1Data?.other_income_overrides &&
+    typeof year1Data.other_income_overrides === 'object')
+    ? year1Data.other_income_overrides as Record<string, number | null>
+    : null;
+
   const rows: OtherIncomeBreakdownRow[] = CATS.map(({ cat, rr, om }) => {
     const rrV = annualRR(rrOI, rr);
     const omV = annualOM(omOI, om);
     const seed = seedBreakdown?.[cat];
-    const resolved = typeof seed?.resolved === 'number' ? seed.resolved : null;
-    const resolution = typeof seed?.resolution === 'string' ? seed.resolution : 'unseeded';
+    const seedResolved = typeof seed?.resolved === 'number' ? seed.resolved : null;
+    const seedResolution = typeof seed?.resolution === 'string' ? seed.resolution : 'unseeded';
     // T-12 has no per-category data in the source extraction. The seeder
     // routes the T-12 aggregate into the `other` bucket as a fallback when
     // RR/OM are empty (Task #519 post-review fix), so surface seed.t12 when
     // it's populated.
     const t12V = typeof seed?.t12 === 'number' && Number.isFinite(seed.t12) ? seed.t12 : null;
+
+    // Apply user category override (Task #1145 — OtherIncomeTab edits).
+    // A present non-null entry wins over the seeder-reconciled value.
+    const userOvr = userCatOverrides?.[cat] ?? null;
+    const resolved   = userOvr != null ? userOvr   : seedResolved;
+    const resolution = userOvr != null ? 'user_override' : seedResolution;
+
     return {
       category: cat,
       rent_roll: rrV,

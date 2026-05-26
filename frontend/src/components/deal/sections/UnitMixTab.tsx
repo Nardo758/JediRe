@@ -1591,19 +1591,15 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
             </div>
           )}
 
-          {/* ── Ancillary Income Breakdown (multi-source — Task #519) ──
-              Renders the seeder-reconciled view (RR / T-12 / OM / RESOLVED)
-              so this tab agrees with the Pro Forma tab. Hidden only when
-              every source is empty AND no user-added line exists. */}
+          {/* ── Other Income summary link (Task #1145) ──
+              AncillaryPanel moved to its own OTHER INCOME sub-tab.
+              Show a compact one-liner that deep-links there. */}
           {(() => {
-            const breakdown = data?.otherIncomeBreakdown ?? null;
-            const userLines = data?.otherIncomeUserLines ?? [];
-            // Presence-based visibility: render whenever ANY source supplied
-            // data — even a legitimate $0 (e.g. PM tracks Pet Rent but no
-            // pets this period). Only hide when every source is null AND no
-            // user lines exist. Positivity checks would re-hide deals where
-            // the rent roll explicitly reports zeros.
-            const hasAnySource = !!breakdown && (
+            const breakdown      = data?.otherIncomeBreakdown ?? null;
+            const userLines      = data?.otherIncomeUserLines ?? [];
+            const userLinesAnnual= userLines.reduce((s, l) => s + l.monthly * 12, 0);
+            const grandTotal     = (breakdown?.total.resolved ?? 0) + userLinesAnnual;
+            const hasAnySource   = !!breakdown && (
               breakdown.total.rent_roll != null ||
               breakdown.total.t12 != null ||
               breakdown.total.om != null ||
@@ -1611,13 +1607,46 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                 r.rent_roll != null || r.t12 != null || r.om != null || r.resolved != null
               )
             );
-            if (!breakdown || (!hasAnySource && userLines.length === 0)) return null;
+            if (!hasAnySource && userLines.length === 0) return null;
             return (
-              <AncillaryPanel
-                totalUnits={totalUnits}
-                breakdown={breakdown}
-                userLines={userLines}
-              />
+              <div
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent('fe-console-subtab', { detail: { subTab: 'otherincome' } })
+                  )
+                }
+                style={{
+                  marginTop: 12,
+                  background: C.amberDim,
+                  border: `1px solid ${C.amber}44`,
+                  borderRadius: 6,
+                  padding: '8px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  cursor: 'pointer',
+                  transition: 'border-color 0.15s',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = C.amber; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = `${C.amber}44`; }}
+                title="Open OTHER INCOME sub-tab"
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.amber }} />
+                  <span style={{ fontFamily: LABEL, fontSize: 9, color: C.amber, fontWeight: 700 }}>
+                    OTHER INCOME
+                  </span>
+                  <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim }}>
+                    {userLines.length > 0 ? `${breakdown?.rows.length ?? 0} categories + ${userLines.length} custom line${userLines.length !== 1 ? 's' : ''}` : `${breakdown?.rows.length ?? 0} categories`}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: C.amber }}>
+                    {fmt$(grandTotal)}/yr
+                  </span>
+                  <span style={{ fontFamily: LABEL, fontSize: 9, color: C.amber, opacity: 0.7 }}>→</span>
+                </div>
+              </div>
             );
           })()}
 
