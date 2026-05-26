@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   BT, BT_CSS,
@@ -7,7 +7,7 @@ import {
 import { Building3DEditor } from '../../components/design/Building3DEditor';
 import { ThreeDErrorBoundary } from '../../components/3DErrorBoundary';
 import { geoJsonToParcelBoundary } from '../../utils/geoJsonToParcel';
-import { useDesignTargets } from '../../stores/designProgram.store';
+import { useDesignTargets, useDesignProgramStore } from '../../stores/designProgram.store';
 
 interface Design3DShellPageProps {
   dealId?: string;
@@ -21,6 +21,15 @@ export function Design3DShellPage({ dealId: propDealId, deal }: Design3DShellPag
 
   const rawGeom = deal?.parcel_geometry ?? deal?.geometry ?? deal?.boundary ?? null;
   const parcelGeometry = rawGeom != null ? geoJsonToParcelBoundary(rawGeom) : undefined;
+
+  // Hydrate the F3 program from the backend on mount (cold-start guard).
+  // hydrateStatus guard inside loadProgram prevents duplicate calls when F3 is also open.
+  const loadProgram = useDesignProgramStore((s) => s.loadProgram);
+  useEffect(() => {
+    if (resolvedDealId) {
+      loadProgram(resolvedDealId);
+    }
+  }, [resolvedDealId, loadProgram]);
 
   // Read design targets from store (program + zoning envelope auto-combined)
   const designTargets = useDesignTargets();
