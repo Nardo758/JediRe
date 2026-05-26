@@ -363,6 +363,33 @@ function inferBedrooms(unitType: string): string {
   return 'Unknown';
 }
 
+/** Convert an inferred bedroom-category string to a numeric bedroom count. */
+function bedroomCountFromCategory(category: string): number {
+  if (category === 'Studio') return 0;
+  if (category === '1BR') return 1;
+  if (category === '2BR') return 2;
+  if (category === '3BR') return 3;
+  if (category === '4BR+') return 4;
+  return 1; // safe default for Unknown
+}
+
+/**
+ * Infer bathroom count from a unit-type label.
+ * Handles formats like "2BR/2BA", "1/1", "2 bath", or falls back to
+ * beds-based heuristic (studio→1, 1BR→1, 2BR→2, 3BR+→2).
+ */
+function inferBathrooms(unitType: string, beds: number): number {
+  const t = unitType.toLowerCase();
+  // Explicit BA pattern: "/2BA", "2ba", "2 bath"
+  const baM = t.match(/[\/\s](\d)\s*ba/) ?? t.match(/(\d)\s*ba/);
+  if (baM) return parseInt(baM[1], 10);
+  // Slash-separated "beds/baths" pattern e.g. "1/1", "2/2"
+  const slashM = t.match(/\d+\s*\/\s*(\d+)/);
+  if (slashM) return parseInt(slashM[1], 10);
+  // Heuristic fallback
+  return beds === 0 ? 1 : beds >= 3 ? 2 : beds;
+}
+
 export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResult & { layout?: RentRollLayout; capsuleExtras?: Record<string, unknown> } {
   const warnings: string[] = [];
 
@@ -551,15 +578,19 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
     const floorPlanMix: Record<string, {
       count: number; avg_sqft: number; total_sqft: number;
       avg_market_rent: number; avg_effective_rent: number; occupancy_pct: number;
+      bedrooms: number; bathrooms: number;
       expiration_curve: { months_0_3: number; months_3_6: number; months_6_12: number; months_12_plus: number; mtm: number; unknown: number };
       expiration_extraction_status: ExpStatus;
     }> = {};
     for (const u of currentUnits) {
       const fp = u.unitType || 'unknown';
       if (!floorPlanMix[fp]) {
+        const beds = bedroomCountFromCategory(inferBedrooms(fp));
+        const baths = inferBathrooms(fp, beds);
         floorPlanMix[fp] = {
           count: 0, avg_sqft: 0, total_sqft: 0,
           avg_market_rent: 0, avg_effective_rent: 0, occupancy_pct: 0,
+          bedrooms: beds, bathrooms: baths,
           expiration_curve: { months_0_3: 0, months_3_6: 0, months_6_12: 0, months_12_plus: 0, mtm: 0, unknown: 0 },
           expiration_extraction_status: 'ok',
         };

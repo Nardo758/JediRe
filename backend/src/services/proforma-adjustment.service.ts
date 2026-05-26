@@ -1528,6 +1528,10 @@ export interface RentRollUnitType {
   marketRent: number | null;
   occupancyPct: number | null;
   concessionPct: number | null;
+  /** Bedroom count parsed/inferred from the floor-plan label. */
+  bedrooms?: number | null;
+  /** Bathroom count parsed/inferred from the floor-plan label. */
+  bathrooms?: number | null;
   /** Pre-override values, present only when the user has overridden a rent. Lets the
    *  frontend render an "override" badge and offer a one-click reset on that cell. */
   inPlaceRentOriginal?: number | null;
@@ -3241,6 +3245,8 @@ export async function getDealFinancials(
             in_place_rent:  d.avg_effective_rent ?? null,
             market_rent:    (d.avg_market_rent != null && +d.avg_market_rent > 0) ? d.avg_market_rent : null,
             occupancy_pct:  d.occupancy_pct ?? null,
+            bedrooms:       d.bedrooms ?? null,
+            bathrooms:      d.bathrooms ?? null,
           } as RawUnitMixEntry;
         });
       }
@@ -3266,6 +3272,8 @@ export async function getDealFinancials(
             marketRent:     e.market_rent != null ? +e.market_rent : null,
             occupancyPct:   e.occupancy_pct != null ? +e.occupancy_pct : null,
             concessionPct:  e.concession_pct != null ? +e.concession_pct : null,
+            bedrooms:       e.bedrooms != null ? +e.bedrooms : null,
+            bathrooms:      e.bathrooms != null ? +e.bathrooms : null,
           } as RentRollUnitType,
         }))
         .filter(({ row }) => row.count > 0)

@@ -55,6 +55,10 @@ interface RentRollUnitType {
   marketRent: number | null;
   occupancyPct: number | null;
   concessionPct: number | null;
+  /** Bedroom count parsed by the extraction pipeline; present for server-extracted rows. */
+  bedrooms?: number | null;
+  /** Bathroom count parsed by the extraction pipeline; present for server-extracted rows. */
+  bathrooms?: number | null;
   /** Pre-override values from the backend; present only when overridden */
   inPlaceRentOriginal?: number | null;
   marketRentOriginal?: number | null;
@@ -1361,8 +1365,8 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
     setLocalTypes(serverMix.map((u, i) => ({
       _id: `srv-${i}-${u.type}`,
       type: u.type,
-      bedrooms: bedsFromLabel(u.type),
-      bathrooms: bathsFromLabel(u.type),
+      bedrooms: u.bedrooms != null ? u.bedrooms : bedsFromLabel(u.type),
+      bathrooms: u.bathrooms != null ? u.bathrooms : bathsFromLabel(u.type),
       count: u.count,
       avg_sqft: u.avgSf,
       in_place_rent: u.inPlaceRent,
@@ -2168,12 +2172,12 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                                     setEditingType(lt);
                                     setShowAddModal(true);
                                   } else {
-                                    // Build a ManualUnitType from the server row, deriving bed/bath from label
+                                    // Build a ManualUnitType from the server row — prefer server bed/bath, fall back to label heuristic
                                     const newLt: ManualUnitType = {
                                       _id: `srv-${idx}-${u.type}`,
                                       type: u.type,
-                                      bedrooms: bedsFromLabel(u.type),
-                                      bathrooms: bathsFromLabel(u.type),
+                                      bedrooms: u.bedrooms != null ? u.bedrooms : bedsFromLabel(u.type),
+                                      bathrooms: u.bathrooms != null ? u.bathrooms : bathsFromLabel(u.type),
                                       count: u.count,
                                       avg_sqft: u.avgSf,
                                       in_place_rent: u.inPlaceRent,
@@ -2197,8 +2201,8 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                                   const lt = localTypes.find(t => t.type === u.type) ?? {
                                     _id: `srv-${idx}-${u.type}`,
                                     type: u.type,
-                                    bedrooms: bedsFromLabel(u.type),
-                                    bathrooms: bathsFromLabel(u.type),
+                                    bedrooms: u.bedrooms != null ? u.bedrooms : bedsFromLabel(u.type),
+                                    bathrooms: u.bathrooms != null ? u.bathrooms : bathsFromLabel(u.type),
                                     count: u.count, avg_sqft: u.avgSf,
                                     in_place_rent: u.inPlaceRent, market_rent: u.marketRent, notes: '',
                                   };
