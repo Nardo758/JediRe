@@ -17,10 +17,11 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   RefreshCw, Loader2, Plus, Edit3, Trash2, Check, X, RotateCcw,
-  AlertTriangle, ChevronDown, ChevronRight,
+  AlertTriangle, ChevronDown, ChevronRight, Lightbulb,
 } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
+import { useDesignProgramStore } from '../../../stores/designProgram.store';
 import type { FinancialEngineTabProps } from './types';
 
 const MONO  = BT.font.mono;
@@ -115,8 +116,102 @@ interface UserLine {
   rate?: number;
   frequency?: 'monthly' | 'annual';
   note?: string;
+  source_tag?: string;
   created_at: string;
 }
+
+// ── Program suggestion config ────────────────────────────────────────────────
+interface AmenitySuggestion {
+  sourceTagKey: string;
+  label: string;
+  incomeCategory: string;
+  rangeMin: number;
+  rangeMax: number;
+  rangeUnit: 'unit' | 'space';
+  note: string;
+}
+
+const AMENITY_SUGGESTION_MAP: Record<string, AmenitySuggestion> = {
+  'Pool & Sundeck': {
+    sourceTagKey: 'pool', label: 'Pool / Amenity Fee',
+    incomeCategory: 'fees', rangeMin: 15, rangeMax: 30, rangeUnit: 'unit',
+    note: 'Monthly amenity fee per unit — pool & sundeck',
+  },
+  'Fitness Center': {
+    sourceTagKey: 'fitness', label: 'Fitness Membership Fee',
+    incomeCategory: 'fees', rangeMin: 0, rangeMax: 20, rangeUnit: 'unit',
+    note: 'Optional fitness membership fee per unit',
+  },
+  'Co-Working Lounge': {
+    sourceTagKey: 'coworking', label: 'Co-Working Membership',
+    incomeCategory: 'coworking', rangeMin: 50, rangeMax: 150, rangeUnit: 'unit',
+    note: 'Monthly co-working membership per resident',
+  },
+  'Rooftop Lounge': {
+    sourceTagKey: 'lounge', label: 'Private Event / Venue Revenue',
+    incomeCategory: 'event_revenue', rangeMin: 10, rangeMax: 40, rangeUnit: 'unit',
+    note: 'Estimated rooftop lounge event bookings averaged per unit',
+  },
+  'Pet Spa': {
+    sourceTagKey: 'pet_spa', label: 'Pet Spa / Grooming Fee',
+    incomeCategory: 'pet_rent', rangeMin: 10, rangeMax: 25, rangeUnit: 'unit',
+    note: 'Additional pet-program fee beyond base pet rent',
+  },
+  'Concierge Desk': {
+    sourceTagKey: 'concierge', label: 'Concierge Service Fee',
+    incomeCategory: 'fees', rangeMin: 20, rangeMax: 50, rangeUnit: 'unit',
+    note: 'Premium concierge tier fee per unit',
+  },
+  'Resident Theater': {
+    sourceTagKey: 'theatre', label: 'Media / Theater Room Fee',
+    incomeCategory: 'fees', rangeMin: 5, rangeMax: 20, rangeUnit: 'unit',
+    note: 'Reservation-based theater room fee per unit',
+  },
+  'Outdoor Kitchen & Grills': {
+    sourceTagKey: 'outdoor', label: 'Outdoor Amenity Fee',
+    incomeCategory: 'fees', rangeMin: 5, rangeMax: 15, rangeUnit: 'unit',
+    note: 'Outdoor kitchen / grill reservation fee per unit',
+  },
+  'Package Lockers': {
+    sourceTagKey: 'package_fee', label: 'Package Locker Fee',
+    incomeCategory: 'package_fee', rangeMin: 5, rangeMax: 15, rangeUnit: 'unit',
+    note: 'Monthly package locker subscription per unit',
+  },
+  'Bike Storage': {
+    sourceTagKey: 'bike_storage', label: 'Bike Storage Fee',
+    incomeCategory: 'storage', rangeMin: 5, rangeMax: 20, rangeUnit: 'unit',
+    note: 'Monthly bike storage fee per unit',
+  },
+  'Covered Parking': {
+    sourceTagKey: 'parking', label: 'Covered Parking Revenue',
+    incomeCategory: 'parking', rangeMin: 75, rangeMax: 200, rangeUnit: 'space',
+    note: 'Monthly parking fee per covered space',
+  },
+  'EV Charging Stations': {
+    sourceTagKey: 'ev_charging', label: 'EV Charging Revenue',
+    incomeCategory: 'ev_charging', rangeMin: 20, rangeMax: 60, rangeUnit: 'space',
+    note: 'Monthly EV charging fee per station',
+  },
+};
+
+const CATEGORY_ICONS: Record<string, string> = {
+  pool: '🏊', fitness: '💪', coworking: '💼', lounge: '🍸',
+  pet: '🐾', pet_spa: '🐾', concierge: '🛎️', parking: '🅿️',
+  storage: '📦', bike_storage: '🚲', theatre: '🎬', outdoor: '🌳',
+  security: '🔒', package_fee: '📦', ev_charging: '⚡', other: '📋',
+};
+
+/**
+ * Maps a suggestion sourceTagKey to its canonical breakdown row category.
+ * Only keys with a direct match in otherIncomeBreakdown.rows are listed.
+ * Suggestions for new/incremental revenue streams (coworking, ev_charging, etc.)
+ * are not suppressed by breakdown data — they are genuinely additive.
+ */
+const SUGGESTION_BREAKDOWN_CATEGORY: Record<string, string> = {
+  parking:      'parking',
+  pet_spa:      'pet',
+  bike_storage: 'storage',
+};
 
 interface FinancialsData {
   totalUnits: number;
@@ -142,9 +237,13 @@ const emptyForm = (): LineFormState => ({
 export function OtherIncomeTab(props: FinancialEngineTabProps) {
   const { dealId, onF9Refresh } = props;
 
+  const approvedAmenities = useDesignProgramStore(s => s.program.approvedAmenities);
+
   const [data,    setData]    = useState<FinancialsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
+
+  const [addingSuggestion, setAddingSuggestion] = useState<string | null>(null);
 
   // Category override editing state — keyed by category string
   const [editingCat, setEditingCat]   = useState<string | null>(null);
@@ -273,6 +372,33 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
     }
   }, [dealId, load, onF9Refresh]);
 
+  const handleAddFromSuggestion = useCallback(async (
+    suggestion: AmenitySuggestion,
+    totalUnits: number,
+  ) => {
+    const sourceTag = `program_suggestion:${suggestion.sourceTagKey}`;
+    setAddingSuggestion(sourceTag);
+    try {
+      const midpoint = Math.round((suggestion.rangeMin + suggestion.rangeMax) / 2);
+      const monthly  = totalUnits > 0 ? midpoint * totalUnits : midpoint;
+      await apiClient.post(
+        `/api/v1/deals/${dealId}/financials/other-income/user-lines`,
+        {
+          label:      suggestion.label,
+          monthly,
+          note:       suggestion.note,
+          source_tag: sourceTag,
+        }
+      );
+      await load();
+      try { onF9Refresh?.(); } catch { /* noop */ }
+    } catch (e) {
+      console.error('Failed to add suggestion line:', e);
+    } finally {
+      setAddingSuggestion(null);
+    }
+  }, [dealId, load, onF9Refresh]);
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, background: C.bg }}>
@@ -292,6 +418,35 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
   const userLinesAnnual = userLines.reduce((s, l) => s + l.monthly * 12, 0);
   const breakdownTotal  = breakdown?.total.resolved ?? 0;
   const grandTotal      = breakdownTotal + userLinesAnnual;
+
+  // ── Program suggestions: find unaddressed amenities ──
+  // An amenity is considered "addressed" when either:
+  //   1. A user line already exists with source_tag === 'program_suggestion:<key>'
+  //   2. The canonical breakdown row for this suggestion has a non-null, non-zero
+  //      resolved value (e.g. parking revenue already in T-12/RR breakdown)
+  const breakdownByCategory: Record<string, OtherIncomeBreakdownRow> =
+    Object.fromEntries((breakdown?.rows ?? []).map(r => [r.category, r]));
+
+  const programSuggestions: Array<{ amenityName: string; suggestion: AmenitySuggestion }> =
+    approvedAmenities.flatMap(amenity => {
+      const suggestion = AMENITY_SUGGESTION_MAP[amenity.name];
+      if (!suggestion) return [];
+
+      const sourceTag = `program_suggestion:${suggestion.sourceTagKey}`;
+
+      // Check 1: user already added this suggestion (by source_tag)
+      const alreadyAddedByTag = userLines.some(l => l.source_tag === sourceTag);
+      if (alreadyAddedByTag) return [];
+
+      // Check 2: breakdown row already has meaningful resolved value for this category
+      const breakdownCat = SUGGESTION_BREAKDOWN_CATEGORY[suggestion.sourceTagKey];
+      if (breakdownCat) {
+        const row = breakdownByCategory[breakdownCat];
+        if (row && row.resolved != null && row.resolved > 0) return [];
+      }
+
+      return [{ amenityName: amenity.name, suggestion }];
+    });
 
   return (
     <div style={{ background: C.bg, minHeight: '100%', overflowY: 'auto' }}>
@@ -329,6 +484,90 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
       </div>
 
       <div style={{ padding: '0 20px 20px' }}>
+
+        {/* ── Program Suggestions Banner ── */}
+        {programSuggestions.length > 0 && (
+          <div style={{ background: '#0a1020', border: `1px solid #1e3a5f`, borderRadius: 6, overflow: 'hidden', marginBottom: 14 }}>
+            <div style={{ padding: '8px 12px', borderBottom: `1px solid #1e3a5f`, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Lightbulb size={12} color={C.cyan} />
+              <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.cyan, letterSpacing: '0.06em' }}>
+                PROGRAM SUGGESTIONS
+              </span>
+              <span style={{ fontFamily: LABEL, fontSize: 8, color: C.muted, marginLeft: 4 }}>
+                {programSuggestions.length} amenit{programSuggestions.length === 1 ? 'y' : 'ies'} from F3 Programming may generate ancillary income
+              </span>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#080c12' }}>
+                    <th style={th()}>AMENITY</th>
+                    <th style={th()}>SUGGESTED INCOME LINE</th>
+                    <th style={th()}>CATEGORY</th>
+                    <th style={th(true)}>TYPICAL $/UNIT/MO</th>
+                    <th style={th()}>ACTION</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {programSuggestions.map(({ amenityName, suggestion }, idx) => {
+                    const sourceTag   = `program_suggestion:${suggestion.sourceTagKey}`;
+                    const isAdding    = addingSuggestion === sourceTag;
+                    const icon        = CATEGORY_ICONS[suggestion.sourceTagKey] ?? '📋';
+                    const rangeLabel  = suggestion.rangeMin === 0
+                      ? `$0–$${suggestion.rangeMax}/${suggestion.rangeUnit}`
+                      : `$${suggestion.rangeMin}–$${suggestion.rangeMax}/${suggestion.rangeUnit}`;
+
+                    return (
+                      <tr key={sourceTag} style={{ background: idx % 2 === 0 ? '#0d1520' : '#080c12' }}>
+                        <td style={{ ...td(), color: C.cyan, fontWeight: 700 }}>
+                          <span style={{ marginRight: 6 }}>{icon}</span>
+                          {amenityName}
+                        </td>
+                        <td style={{ ...td(), color: C.text }}>
+                          {suggestion.label}
+                        </td>
+                        <td style={{ ...td() }}>
+                          <span style={{ fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: C.muted, background: C.panelAlt, border: `1px solid ${C.border}`, borderRadius: 3, padding: '2px 6px', letterSpacing: '0.06em' }}>
+                            {suggestion.incomeCategory.toUpperCase()}
+                          </span>
+                        </td>
+                        <td style={{ ...td(true), color: C.amber }}>
+                          {rangeLabel}
+                        </td>
+                        <td style={td()}>
+                          <button
+                            onClick={() => void handleAddFromSuggestion(suggestion, totalUnits)}
+                            disabled={isAdding}
+                            title={`Add "${suggestion.label}" as a custom income line`}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 4,
+                              background: isAdding ? C.cyanDim : C.cyanDim,
+                              border: `1px solid ${C.cyan}55`,
+                              borderRadius: 4, padding: '4px 10px', cursor: isAdding ? 'not-allowed' : 'pointer',
+                              color: C.cyan, fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.06em',
+                              opacity: isAdding ? 0.6 : 1,
+                            }}
+                          >
+                            {isAdding
+                              ? <Loader2 size={9} style={{ animation: 'spin 1s linear infinite' }} />
+                              : <Plus size={9} />}
+                            {isAdding ? 'ADDING…' : 'ADD'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ padding: '6px 12px', background: '#050a0f', borderTop: `1px solid #1e3a5f` }}>
+              <span style={{ fontFamily: LABEL, fontSize: 8, color: C.muted }}>
+                Clicking Add creates a prefilled custom line at the midpoint of the typical range — edit the value in CUSTOM INCOME LINES below.
+                Suggestions disappear once added.
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* ── Per-Category Breakdown ── */}
         <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden', marginBottom: 14 }}>

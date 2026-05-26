@@ -1170,12 +1170,15 @@ type AdoptionBlock = { ramp_start_period: number; ramp_duration_months: number; 
 router.post('/:dealId/financials/other-income/user-lines', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const { label, monthly, qty, rate, frequency, note, adoption: rawAdoption } = req.body as {
-      label: string; monthly?: number; qty?: number; rate?: number; frequency?: string; note?: string; adoption?: unknown;
+    const { label, monthly, qty, rate, frequency, note, source_tag, adoption: rawAdoption } = req.body as {
+      label: string; monthly?: number; qty?: number; rate?: number; frequency?: string; note?: string; source_tag?: string; adoption?: unknown;
     };
     if (!label || typeof label !== 'string' || !label.trim()) {
       logger.warn('User-line POST rejected: missing label', { dealId, body: req.body });
       return res.status(400).json({ error: 'label is required' });
+    }
+    if (source_tag !== undefined && (typeof source_tag !== 'string' || source_tag.length > 128)) {
+      return res.status(400).json({ error: 'source_tag must be a string ≤ 128 chars' });
     }
     const derived = deriveMonthly({ monthly, qty, rate, frequency });
     if (derived.ok === false) {
@@ -1196,6 +1199,7 @@ router.post('/:dealId/financials/other-income/user-lines', requireAuth, async (r
         ...(derived.rate != null ? { rate: derived.rate } : {}),
         ...(derived.frequency ? { frequency: derived.frequency } : {}),
         note: note?.trim() || undefined,
+        ...(source_tag ? { source_tag: source_tag.trim() } : {}),
         ...(rawAdoption !== undefined ? { adoption: adoptionResult.adoption } : {}),
         created_by: userId,
         created_at: new Date().toISOString(),
