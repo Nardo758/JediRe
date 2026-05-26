@@ -1,0 +1,195 @@
+PHASE 1 BRIEF — FOUNDATIONAL ARCHITECTURAL WORK
+
+Date: 2026-05-26
+Purpose: Scope brief for task mapping. No timeline specified — 
+produce bottom-up estimate against scope.
+
+═══════════════════════════════════════════════════════════════════
+CONTEXT
+═══════════════════════════════════════════════════════════════════
+
+Phase 1 is aggressively-scoped foundational architectural work 
+that must land before UI fixes (Unit Mix split, Validation Grid) 
+proceed and before Phase 2 derivation logic begins.
+
+Strategic anchor: JEDI RE is a leading-indicator CRE intelligence 
+platform with proprietary apartment-seeker AI signal as the moat. 
+Two-layer architecture committed: Layer 1 (deterministic 
+calculations) + Layer 2 (LLM-reasoned assumptions). LLM reasons; 
+deterministic functions calculate.
+
+Multi-model architecture committed: deal creation routes by 
+property type and strategy to property-type-specific models. 
+Phase 1 scopes to multifamily-existing first.
+
+═══════════════════════════════════════════════════════════════════
+ARCHITECTURAL DECISIONS COMMITTED (DO NOT RE-LITIGATE)
+═══════════════════════════════════════════════════════════════════
+
+- Two-layer architecture: Calculations + Assumptions (CLAUDE.md P7)
+- LLM reasons, deterministic functions calculate (CLAUDE.md P7)
+- Verify before queueing (CLAUDE.md P8 — being added)
+- Multi-model per property type
+- Multifamily-existing first; STR/Flip/Land Hold deferred
+- Strategy ↔ deal_type to be reconciled (A decision pending 
+  investigation result)
+- Single-Value Mandate to be lifted (B1) with guardrails
+- Strategy Module redesign deferred to Phase 2
+
+═══════════════════════════════════════════════════════════════════
+PHASE 1 SCOPE — 16 ITEMS
+═══════════════════════════════════════════════════════════════════
+
+GROUP A — FOUNDATIONAL DISPATCHES (small, immediate)
+
+1. CLAUDE.md P8 amendment (verify before queueing principle)
+   Dispatch ready: see CLAUDE_MD_P8_AMENDMENT.md or equivalent
+   Status: Drafted
+
+2. Verification of STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md
+   Dispatch ready: see STRATEGY_INVESTIGATION_VERIFICATION.md
+   Status: Drafted; fire first
+
+3. STR/Flip/Land Hold "not yet supported" notice
+   Dispatch ready: see STR_FLIP_LAND_HOLD_NOTICE.md
+   Status: Drafted
+
+GROUP B — STRATEGY CANONICAL DECISION
+
+4. A1 vs A2 investigation
+   Dispatch ready: see A1_VS_A2_INVESTIGATION.md
+   Status: Drafted; fire after Group A verification approves
+
+5. Strategy canonical migration (A1 or A2 implementation)
+   Status: Pending; awaits investigation + decision
+   Scope: Migrate Pattern B routing, blueprint, 
+   RenovationAssumptionsSection to read whichever field wins. 
+   May involve database trigger, derived column, or full 
+   refactor depending on decision.
+
+6. Data migration / backfill for existing deals
+   Status: Pending; couples to item 5
+   Scope: If A1 wins, backfill investmentStrategy values on 
+   deals that have deal_type set but no strategy. If A2, fill 
+   default deal_type derivations where strategy is null. 
+   Validate consistency.
+
+7. Vocabulary mapping definition (product work)
+   Status: Pending; emerges from item 4
+   Scope: Define canonical mapping between strategy values 
+   ('Rental', 'Value-Add', etc.) and deal_type values 
+   ('existing', 'value_add', etc.)
+
+GROUP C — SINGLE-VALUE MANDATE LIFT
+
+8. B1 — Lift Single-Value Mandate with guardrails
+   Status: Pending; awaits group B completion
+   Scope: Define conditions under which pre_renovation / 
+   post_stabilization sub-field writes are permitted. Build 
+   evidence requirements per sub-field. Update 9 prompt 
+   repetitions in line-item-matrix.ts. Add confidence handling 
+   for forward-looking writes. Update downstream consumers of 
+   regimeDataByField.
+
+GROUP D — UI FIXES (multifamily-existing scope only)
+
+9. Phase 1 Unit Mix work (per UNIT_MIX_OTHER_INCOME_INVESTIGATION.md)
+   Status: Pending; can begin after Group B lands
+   Scope: 4-phase plan documented in the investigation:
+   - Page separation + enable Other Income edits
+   - Manual add-unit-type UX for development deals
+   - Program tab suggestions integration
+   - Adoption timeline pattern
+
+10. Phase 1 Validation work (per VALIDATION_GRID_AND_SALE_COMPS_INVESTIGATION.md)
+    Status: Pending; Phase 1 is implied cap math (backend)
+    Scope: 4-phase plan documented in the investigation:
+    - Platform-implied cap rate computation (backend only)
+    - F3 Sale Comps enhanced display
+    - Validation Grid in F9 Console
+    - Override impact signal
+    Dependency: Phase 1 (implied cap math) blocked on market 
+    rent source — see Open Q1 in the investigation document.
+
+GROUP E — OPEN QUESTION RESOLUTION (parallel, ongoing)
+
+11. Resolve 12 open questions from UNIT_MIX_OTHER_INCOME_INVESTIGATION.md
+    Status: Pending; resolve inline as Unit Mix work surfaces 
+    each question
+
+12. Resolve 12 open questions from VALIDATION_GRID_AND_SALE_COMPS_INVESTIGATION.md
+    Status: Pending; resolve inline as Validation work surfaces 
+    each question
+    
+13. Resolve 7 open questions from STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md
+    Status: Pending; resolved as A1 vs A2 investigation lands
+
+14. Address 11 open gaps from F9_MODULE_MAP.md Section 8.2
+    Status: Pending; sweep to confirm none are unhandled Phase 1 
+    blockers
+
+GROUP F — VERIFICATION DISPATCHES (per P8)
+
+15. Verification on each Phase 1 closing note as it lands
+    Status: Ongoing; one verification dispatch per major closing 
+    note
+    Estimated: ~5-7 verifications total across Phase 1
+
+GROUP G — COMMUNICATION
+
+16. Release note / operator communication when strategy selector 
+    becomes functional
+    Status: Pending; couples to item 5
+
+═══════════════════════════════════════════════════════════════════
+EXPLICITLY OUT OF SCOPE FOR PHASE 1
+═══════════════════════════════════════════════════════════════════
+
+The following are deliberately deferred or in separate workstreams:
+
+- C1: STR/Flip/Land Hold full UI (multi-week per strategy; 
+  deferred. Item 3 handles the interim notice.)
+- D: Strategy Module redesign (Phase 2)
+- Phase 2 derivation logic (multifamily-existing × per-assumption 
+  derivation)
+- KPI-fast endpoint / auto-compute proforma (Item 1 from earlier 
+  thread)
+- Item 2 (Traffic Engine + events)
+- Item 3 (Agent fills F9 → Purchase Price)
+- Other property type models (SFR, mixed-use, office, retail, 
+  industrial)
+- Dataset persistence (amenity demand, growth indices for OppGrid 
+  integration)
+- Gmail OAuth implementation
+- Supply/demand 7-dispatch sequence (Census permits, CoStar 
+  refresh, etc.)
+
+═══════════════════════════════════════════════════════════════════
+DEPENDENCIES BETWEEN GROUPS
+═══════════════════════════════════════════════════════════════════
+
+Group A items can fire immediately and in parallel.
+
+Group B item 4 (A1 vs A2 investigation) requires Group A item 2 
+(Strategy investigation verification) to APPROVE first.
+
+Group B items 5-7 require item 4 to complete.
+
+Group C item 8 should follow Group B completion (the A migration 
+informs how the Mandate lift integrates with downstream 
+consumers).
+
+Group D items 9-10 can begin in parallel with Group C if scoped 
+to multifamily-existing only. The full Validation Phase 1 work 
+is blocked on resolving the market rent source dependency (Open 
+Q1 in its investigation).
+
+Group E items resolve continuously throughout.
+
+Group F items are paired with each closing note as it lands.
+
+Group G is a final step coupled to item 5.
+
+═══════════════════════════════════════════════════════════════════
+SUCCESS CRITERIA FOR PHASE 1 COMPLETE
+═══════════════════════════════

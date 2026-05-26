@@ -1,0 +1,60 @@
+CLAUDE.md AMENDMENT — ADD STANDING PRINCIPLE P8
+
+Add this standing principle to CLAUDE.md alongside existing P1-P7.
+
+═══════════════════════════════════════════════════════════════════
+P8 — VERIFY BEFORE QUEUEING
+═══════════════════════════════════════════════════════════════════
+
+When a dispatch produces a closing note that informs the scope of 
+subsequent work, that closing note must be verified before 
+downstream dispatches fire.
+
+Verification steps:
+1. Confirm the document exists at the expected path and is 
+   complete per its dispatch spec
+2. Spot-check 3-5 source citations against the actual codebase
+3. Verify cross-fix integration sections are substantive (not 
+   placeholder)
+4. Classify open questions as BLOCKING / IMPORTANT / INFORMATIONAL
+5. Identify gaps — what the investigation should have covered but 
+   didn't
+
+Output: append a verification section to the original 
+investigation file. Verdict: APPROVED FOR DOWNSTREAM WORK / NEEDS 
+AMENDMENT / NEEDS REWORK.
+
+Rationale:
+Investigations produce documents that subsequent dispatches treat 
+as authoritative. If an investigation has incomplete citations, 
+missing cross-fix integration, or unaddressed gaps, downstream 
+dispatches inherit those problems. Verification catches issues 
+before propagation.
+
+A related failure mode: dispatches that were drafted but never 
+fired can be confused with dispatches that landed. The verification 
+step catches "the closing note doesn't exist" as a finding.
+
+DO NOT
+- Skip verification for "small" investigations — small ones 
+  produce small documents but their findings propagate just as 
+  much
+- Verify your own work as the sole check — the bot verifying its 
+  own output is a known confirmation-bias risk. Operator review 
+  of the verification is required.
+- Treat parallel firing as acceptable for dependency-linked work. 
+  Sequential firing is the default for investigation → 
+  implementation chains; parallel only when work is genuinely 
+  independent.
+
+═══════════════════════════════════════════════════════════════════
+INSTRUCTIONS
+═══════════════════════════════════════════════════════════════════
+
+Add the P8 entry above to CLAUDE.md in the standing principles 
+section, after P7. Preserve existing P1-P7 unchanged.
+
+DO NOT
+- Modify existing P1-P7
+- Make other changes to CLAUDE.md beyond adding P8
+- "While I'm here" cleanups

@@ -1,0 +1,55 @@
+STR / FLIP / LAND HOLD — "NOT YET SUPPORTED" NOTICE IN SELECTOR
+
+CONTEXT
+Per STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md, these three 
+strategies have zero dedicated F9 UI today:
+- str_shortterm (ADR, RevPAR, seasonal occupancy not rendered)
+- flip (short-hold exit timing not rendered)
+- land_hold (income rows shown for a no-income strategy)
+
+Operators who select these strategies get the multifamily-existing 
+layout, which is structurally wrong for their use case. Full UI 
+support is deferred. This dispatch adds an explicit "not yet 
+supported" treatment so operators get an honest signal rather 
+than a broken display.
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+A. Locate the strategy selector(s) in:
+   - DealTermsTab.tsx (investmentStrategy dropdown)
+   - Deal creation flow (deal_type selector if separate)
+   - Any other surface that lets operators pick STR/Flip/Land Hold
+
+B. For each surface, add visual treatment:
+   - STR / Flip / Land Hold options shown with badge:
+     "Not yet supported — full UI coming in future release"
+   - On selection, surface a confirmation modal: "You've selected 
+     [strategy]. Full UI support is not yet built — the platform 
+     will render a multifamily-existing layout. Continue?"
+   - Confirmation persists; modal doesn't re-appear on subsequent 
+     edits within the same deal
+
+C. Persist the selection (don't disable it entirely — operators 
+   may want to mark a deal as STR even without full UI, for 
+   tagging/categorization purposes)
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Implementation in:
+- DealTermsTab.tsx (strategy selector + badge + modal)
+- Deal creation flow if applicable
+- Documentation note in docs/operations/STRATEGY_SCOPE_NOTICE.md 
+  explaining what's deferred and the roadmap
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Build any STR/Flip/Land Hold actual UI (deferred work)
+- Remove the strategy options from the selector entirely
+- Modify the underlying calculation templates
+- "While I'm here" cleanups

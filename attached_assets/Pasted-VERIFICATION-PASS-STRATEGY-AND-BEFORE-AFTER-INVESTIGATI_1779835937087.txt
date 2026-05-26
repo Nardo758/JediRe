@@ -1,0 +1,137 @@
+VERIFICATION PASS — STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md
+
+CONTEXT
+Per CLAUDE.md P8 (verify before queueing), the closing note for 
+the Strategy + Before/After investigation must be verified before 
+downstream architectural work proceeds. This is read-only 
+verification — no code changes, no new investigation. Confirm 
+what's documented is accurate and identify any gaps.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — DOCUMENT INTEGRITY
+═══════════════════════════════════════════════════════════════════
+
+A. Confirm docs/operations/STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md 
+   exists and is readable
+B. Confirm the document has all sections per the dispatch spec:
+   1. Per-strategy field visibility current state (full 7×3 matrix)
+   2. Before/after UI existing surfaces inventory
+   3. Three architectural findings (investmentStrategy ↔ deal_type,
+      regimeDataByField forbidden, missing UI for STR/Flip/Land Hold)
+   4. Cross-fix integration with UNIT_MIX_OTHER_INCOME_INVESTIGATION.md
+      and VALIDATION_GRID_AND_SALE_COMPS_INVESTIGATION.md
+   5. Design recommendations
+   6. Implementation phasing recommendation
+   7. Open questions classified BLOCKING / IMPORTANT / INFORMATIONAL
+C. Flag any section that's missing, truncated, or substantially 
+   thinner than expected
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — SOURCE CITATION SPOT-CHECKS
+═══════════════════════════════════════════════════════════════════
+
+For 5 specific factual claims in the document, verify the cited 
+source actually says what's claimed:
+
+A. Pick a claim about the PATCH /assumptions/strategy endpoint 
+   only updating investment_strategy_lv (not deal_type). Open the 
+   actual route handler and verify.
+
+B. Pick a claim about the Single-Value Mandate being repeated 9 
+   times in line-item-matrix.ts. Open the file and count.
+
+C. Pick a claim about Pattern B routing reading deal_type. Open 
+   m09_line_item_patterns.ts and verify.
+
+D. Pick a claim about regimeDataByField never being populated by 
+   any code path. Grep the backend for any writer of this field 
+   and confirm zero matches.
+
+E. Pick a claim about the 7×6 matrix coverage. Verify a randomly 
+   selected cell against the actual codebase behavior.
+
+For each verified claim, document:
+- The claim as stated in the closing note
+- The actual code/file that confirms or contradicts it
+- Verdict: CONFIRMED / PARTIAL / CONTRADICTED / NOT FOUND
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — CROSS-FIX INTEGRATION COVERAGE
+═══════════════════════════════════════════════════════════════════
+
+Verify the cross-fix integration section is substantive:
+
+A. Does it surface specific integration points with the Unit Mix 
+   investigation (pre/post unit mix split, adoption timeline 
+   anchor for value-add)?
+B. Does it surface specific integration points with the 
+   Validation Grid investigation (current state vs target state 
+   column treatment)?
+C. For each integration point, is there a recommendation or open 
+   question, not just identification?
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — OPEN QUESTIONS ASSESSMENT
+═══════════════════════════════════════════════════════════════════
+
+A. List the open questions the document surfaces
+B. Classify each:
+   - BLOCKING — implementation cannot proceed without this answered
+   - IMPORTANT — affects scope or design but doesn't block start
+   - INFORMATIONAL — nice to know, can be handled inline
+C. Flag any blocking question that depends on data or sources 
+   that don't currently exist in the platform
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — POTENTIAL GAPS
+═══════════════════════════════════════════════════════════════════
+
+Think about what's MISSING, not what's present:
+
+A. Are there strategy templates the investigation should have 
+   covered but didn't?
+B. Are there before/after surfaces in the codebase that the 
+   investigation didn't reference?
+C. Is there a strategy × deal_type matrix combination that was 
+   skipped?
+D. Are there data dependencies for the architectural fixes that 
+   weren't surfaced?
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Append a verification section to the existing investigation file:
+
+docs/operations/STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md
+Append at the end:
+
+═══════════════════════════════════════════════════════════════════
+VERIFICATION PASS — 2026-05-26
+═══════════════════════════════════════════════════════════════════
+
+(a) Document integrity check: <result>
+(b) Source citations verified (5 spot checks):
+    - Claim 1: <verdict + evidence>
+    - Claim 2: <verdict + evidence>
+    - ...
+(c) Cross-fix integration coverage: <assessment>
+(d) Open questions classification:
+    BLOCKING: <list>
+    IMPORTANT: <list>
+    INFORMATIONAL: <list>
+(e) Identified gaps in the investigation: <list>
+(f) Overall verdict: APPROVED FOR DOWNSTREAM WORK / NEEDS 
+    AMENDMENT / NEEDS REWORK
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify the existing investigation content (only append)
+- Run new investigation work outside the verification scope
+- Implement any code changes
+- Skip the source citation spot-checks
+- Skip Step 5 (gaps) — the discipline is to think about what's 
+  missing
+- "While I'm here" cleanups
