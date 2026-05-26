@@ -145,7 +145,8 @@ interface ProgrammingTabProps {
 export const ProgrammingTab: React.FC<ProgrammingTabProps> = ({ dealId }) => {
   const { program, setTargetUnits, setTargetGFA, setTargetFAR, setTargetFloors,
     setTargetHeight, setTargetParkingRatio, setUnitMix, upsertAmenity,
-    removeAmenity, setBudget, loadProgram, saveProgram, lastUpdated, hydrateStatus } = useDesignProgramStore();
+    removeAmenity, setBudget, loadProgram, saveProgram, lastUpdated, hydrateStatus,
+    saveStatus } = useDesignProgramStore();
 
   const env = useDealStore((s) => s.developmentEnvelope);
 
@@ -234,6 +235,19 @@ export const ProgrammingTab: React.FC<ProgrammingTabProps> = ({ dealId }) => {
 
   return (
     <div className="bg-gray-900 p-4 text-sm space-y-5 overflow-y-auto" style={{ height: '100%' }}>
+      {/* ── Save status indicator ── */}
+      <div className="flex items-center justify-end h-4">
+        {saveStatus === 'saving' && (
+          <span className="text-xs text-gray-400 animate-pulse">Saving…</span>
+        )}
+        {saveStatus === 'saved' && (
+          <span className="text-xs text-emerald-400">Saved ✓</span>
+        )}
+        {saveStatus === 'error' && (
+          <span className="text-xs text-red-400">Save failed</span>
+        )}
+      </div>
+
       {hydrateStatus === 'loading' && (
         <div className="text-xs text-gray-500 italic">Loading saved program…</div>
       )}

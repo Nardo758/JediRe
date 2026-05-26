@@ -31,6 +31,8 @@ export interface DesignProgramState {
   hydrateStatus: null | 'loading' | 'loaded' | 'error';
   /** The dealId that was last successfully hydrated — guards against cross-deal stale data */
   hydratedDealId: string | null;
+  /** Save status for the debounced auto-save indicator */
+  saveStatus: 'idle' | 'saving' | 'saved' | 'error';
 }
 
 export interface DesignProgramActions {
@@ -79,6 +81,7 @@ const DEFAULT_STATE: DesignProgramState = {
   lastUpdated: Date.now(),
   hydrateStatus: null,
   hydratedDealId: null,
+  saveStatus: 'idle',
 };
 
 // ─── Store ──────────────────────────────────────────────────────────────────
@@ -259,10 +262,15 @@ export const useDesignProgramStore = create<DesignProgramStore>()(
     saveProgram: async (dealId: string) => {
       if (!dealId) return;
       const { program } = get();
+      set({ saveStatus: 'saving' });
       try {
         await apiClient.put(`/api/v1/deals/${dealId}/f3-program`, { program });
+        set({ saveStatus: 'saved' });
+        setTimeout(() => {
+          if (get().saveStatus === 'saved') set({ saveStatus: 'idle' });
+        }, 2000);
       } catch {
-        // non-fatal: user still sees data in-memory
+        set({ saveStatus: 'error' });
       }
     },
   })),
