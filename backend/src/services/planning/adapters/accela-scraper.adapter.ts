@@ -406,29 +406,148 @@ function parseAccelaDate(raw: string): Date | null {
   return isNaN(iso.getTime()) ? null : iso;
 }
 
+// ── Planning-type guard filter ─────────────────────────────────────────────
+
+/**
+ * Canonical planning record types (post-normalisation).
+ * Defense-in-depth: even when the portal returns unexpected record types,
+ * only planning/zoning records reach planning_applications.
+ */
+const PLANNING_NORMALISED_TYPES = new Set([
+  'REZONING', 'SLUP', 'VARIANCE', 'SITE_PLAN',
+  'CONDITIONAL_USE', 'SUBDIVISION', 'MODIFICATION',
+]);
+
+/**
+ * Raw record-type keyword guard — catches records whose raw type contains a
+ * planning-related keyword even if normaliseType() returns an unexpected value.
+ */
+const PLANNING_RAW_KEYWORDS = [
+  'rezone', 'rezoning', 'zoning', 'slup', 'special land use',
+  'special use', 'variance', 'planning', 'site plan',
+  'site development', 'land development', 'conditional use',
+  'subdivision', 'cup', 'modification',
+];
+
+function isPlanningRecord(normalisedType: string | null, rawRecordType: string): boolean {
+  if (normalisedType && PLANNING_NORMALISED_TYPES.has(normalisedType)) return true;
+  const lower = rawRecordType.toLowerCase();
+  return PLANNING_RAW_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+// ── Per-type search helper ─────────────────────────────────────────────────
+
+/**
+ * Submit a single Accela General Search for one record-type module and paginate
+ * through all results.  Returns raw parsed rows; caller applies date + type filters.
+ *
+ * Record-type filtering uses the Accela ACA General Search `drpGSPermitType` dropdown
+ * (standard control ID) plus a shorter-name fallback, both set to `recordType`.
+ * This scopes each query to the Planning or Zoning module, preventing unrelated
+ * permit categories (Building, Fire, etc.) from polluting planning_applications.
+ */
+async function searchByRecordType(
+  session: AccelaSession,
+  initState: AspNetState,
+  recordType: string,
+  startStr: string,
+  endStr: string,
+  config: AccelaAgencyConfig,
+): Promise<AccelaRawRow[]> {
+  // Accela ACA standard field names for record-type module dropdown.
+  // We include both the long (ctl00$...) and short (drp...) naming patterns
+  // because different agency installations use different aspx control prefixes.
+  const searchForm = new URLSearchParams({
+    __EVENTTARGET:   'ctl00$PlaceHolderMain$btnNewSearch',
+    __EVENTARGUMENT: '',
+    ...initState,
+    // ── Date range ──────────────────────────────────────────────────────
+    'ctl00$PlaceHolderMain$generalSearchForm$txtGSStartDate': startStr,
+    'ctl00$PlaceHolderMain$generalSearchForm$txtGSEndDate':   endStr,
+    // Short-name aliases (older / custom Accela installations)
+    'txtGSStartDate': startStr,
+    'txtGSEndDate':   endStr,
+    // ── Record-type module filter ────────────────────────────────────────
+    // Standard: drpGSPermitType is the module-selector dropdown value.
+    // Submitting this constrains results to the named Accela module (Planning, Zoning, etc.)
+    'ctl00$PlaceHolderMain$generalSearchForm$drpGSPermitType': recordType,
+    // Alias variants across Accela versions / agency customisations
+    'ctl00$PlaceHolderMain$generalSearchForm$drpRecordCategory': recordType,
+    'drpGSPermitType': recordType,
+    'drpRecordCategory': recordType,
+    // Search button
+    'ctl00$PlaceHolderMain$btnNewSearch': 'Search',
+  });
+
+  const searchHtml = await session.post('/Cap/CapSearch.aspx', searchForm);
+  if (!searchHtml) {
+    logger.warn(`[accela/${config.agencyCode}] Search POST returned no HTML for type "${recordType}"`);
+    return [];
+  }
+
+  const rows: AccelaRawRow[] = [];
+  let currentHtml = searchHtml;
+
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const pageRows = parseResultsTable(currentHtml, config.agencyCode);
+    rows.push(...pageRows);
+    logger.debug(`[accela/${config.agencyCode}] type="${recordType}" page=${page} rows=${pageRows.length}`);
+
+    const pager = extractPagerState(currentHtml);
+    if (!pager.hasNext) break;
+
+    await sleep(RATE_LIMIT_MS);
+
+    const pageForm = new URLSearchParams({
+      __EVENTTARGET:        pager.nextEventTarget || 'ctl00$PlaceHolderMain$CapSearchResultList1$PageBar1$lbtnPageNext',
+      __EVENTARGUMENT:      '',
+      __VIEWSTATE:          pager.__VIEWSTATE,
+      __VIEWSTATEGENERATOR: pager.__VIEWSTATEGENERATOR,
+      __EVENTVALIDATION:    pager.__EVENTVALIDATION,
+      __VIEWSTATEENCRYPTED: pager.__VIEWSTATEENCRYPTED,
+    });
+
+    const nextHtml = await session.post('/Cap/CapSearch.aspx', pageForm);
+    if (!nextHtml) break;
+    currentHtml = nextHtml;
+  }
+
+  return rows;
+}
+
 // ── Main scraping function ─────────────────────────────────────────────────
 
 /**
  * Scrape one Accela agency portal for planning applications filed within
  * the last `lookbackDays` days.
  *
- * Returns all records it could extract; on total failure returns [].
+ * Runs one search per entry in `config.recordTypes` (one per planning module —
+ * e.g., "Planning", "Zoning") so the portal's own record-type filter scopes
+ * results to planning/zoning categories before we receive them.
+ *
+ * Defense-in-depth: after collection, `isPlanningRecord()` guards against any
+ * non-planning records that slipped through the portal filter.
+ *
+ * Results are deduplicated by case_number before returning.
  */
 export async function scrapeAccelaAgency(
   config: AccelaAgencyConfig,
   lookbackDays = 7,
 ): Promise<RawPlanningApplication[]> {
   const session = new AccelaSession(config);
-  const results: RawPlanningApplication[] = [];
 
   const startDate = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
   const endDate   = new Date();
   const startStr  = toAccelaDate(startDate);
   const endStr    = toAccelaDate(endDate);
 
-  logger.info(`[accela/${config.agencyCode}] Starting scrape`, { startDate: startStr, endDate: endStr });
+  logger.info(`[accela/${config.agencyCode}] Starting scrape`, {
+    startDate: startStr,
+    endDate: endStr,
+    recordTypes: config.recordTypes,
+  });
 
-  // ── Step 1: Initialise session (GET default page) ──────────────────────
+  // ── Step 1: Initialise session ─────────────────────────────────────────
   const initPaths = ['/Default.aspx', '/Welcome.aspx', '/'];
   let initHtml: string | null = null;
 
@@ -445,86 +564,62 @@ export async function scrapeAccelaAgency(
 
   const initState = extractAspNetState(initHtml);
 
-  // ── Step 2: Submit General Search ─────────────────────────────────────
-  await sleep(RATE_LIMIT_MS);
+  // ── Step 2: Search per record type ────────────────────────────────────
+  // One POST per entry in config.recordTypes — this uses the portal's own
+  // module filter so only Planning / Zoning records are returned.
+  const seenCaseNumbers = new Set<string>();
+  const results: RawPlanningApplication[] = [];
 
-  // Build the general search form post.
-  // Accela ACA uses consistent control naming across versions:
-  //   ctl00$PlaceHolderMain$generalSearchForm$txtGSStartDate
-  //   ctl00$PlaceHolderMain$generalSearchForm$txtGSEndDate
-  // Some installations use shorter names; we include both variants.
-  const searchForm = new URLSearchParams({
-    __EVENTTARGET:  'ctl00$PlaceHolderMain$btnNewSearch',
-    __EVENTARGUMENT: '',
-    ...initState,
-    // Longer control name pattern (standard ACA)
-    'ctl00$PlaceHolderMain$generalSearchForm$txtGSStartDate': startStr,
-    'ctl00$PlaceHolderMain$generalSearchForm$txtGSEndDate':   endStr,
-    // Shorter pattern (older / custom installations)
-    'txtGSStartDate': startStr,
-    'txtGSEndDate':   endStr,
-    // Search button — the value text differs by installation
-    'ctl00$PlaceHolderMain$btnNewSearch': 'Search',
-  });
+  for (const recordType of config.recordTypes) {
+    await sleep(RATE_LIMIT_MS);
 
-  const searchHtml = await session.post('/Cap/CapSearch.aspx', searchForm);
+    const rawRows = await searchByRecordType(
+      session, initState, recordType, startStr, endStr, config,
+    );
 
-  if (!searchHtml) {
-    logger.warn(`[accela/${config.agencyCode}] Search POST returned no HTML`);
-    return [];
-  }
+    for (const row of rawRows) {
+      const filedDate      = parseAccelaDate(row.filedDate);
+      const normalisedType = normaliseType(row.recordType);
 
-  // ── Step 3: Parse + paginate ───────────────────────────────────────────
-  let currentHtml = searchHtml;
-
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const rows = parseResultsTable(currentHtml, config.agencyCode);
-
-    for (const row of rows) {
-      const filedDate = parseAccelaDate(row.filedDate);
-      // Client-side date filter (portal may not honour our date range exactly)
+      // ── Client-side date filter ──────────────────────────────────────
       if (filedDate && filedDate < startDate) continue;
+
+      // ── Planning-type guard (defense-in-depth) ───────────────────────
+      if (!isPlanningRecord(normalisedType, row.recordType)) {
+        logger.debug(`[accela/${config.agencyCode}] Skipping non-planning record: "${row.recordNumber}" type="${row.recordType}"`);
+        continue;
+      }
+
+      // ── Deduplication across multiple record-type searches ───────────
+      if (seenCaseNumbers.has(row.recordNumber)) continue;
+      seenCaseNumbers.add(row.recordNumber);
 
       const raw: RawPlanningApplication = {
         case_number:      row.recordNumber,
         jurisdiction:     config.jurisdiction,
-        application_type: normaliseType(row.recordType),
-        applicant_name:   row.applicant || null,
-        property_address: row.address   || null,
+        application_type: normalisedType,
+        applicant_name:   row.applicant    || null,
+        property_address: row.address      || null,
         parcel_id:        row.parcelNumber || null,
-        current_zoning:   null,   // Accela list view rarely shows current/proposed zoning; populated in detail scrape (future)
-        proposed_zoning:  null,
-        filed_date:       filedDate,
-        status:           normaliseStatus(row.status),
-        hearing_date:     null,   // hearing date requires per-record detail fetch (future)
-        source_url:       `${config.baseUrl}/Cap/CapDetail.aspx?agencyCode=${config.agencyCode}`,
-        raw_json:         row as unknown as Record<string, unknown>,
+        // current/proposed zoning not in list view — requires per-record detail fetch (Task #1128)
+        current_zoning:  null,
+        proposed_zoning: null,
+        filed_date:      filedDate,
+        status:          normaliseStatus(row.status),
+        // hearing_date not in list view — requires per-record detail fetch (Task #1128)
+        hearing_date:    null,
+        source_url:      `${config.baseUrl}/Cap/CapDetail.aspx?agencyCode=${config.agencyCode}`,
+        raw_json:        { ...row, accela_record_type_filter: recordType } as unknown as Record<string, unknown>,
       };
       results.push(raw);
     }
 
-    logger.debug(`[accela/${config.agencyCode}] Page ${page}: parsed ${rows.length} row(s)`);
-
-    // Pagination
-    const pager = extractPagerState(currentHtml);
-    if (!pager.hasNext) break;
-
-    await sleep(RATE_LIMIT_MS);
-
-    const pageForm = new URLSearchParams({
-      __EVENTTARGET:   pager.nextEventTarget || 'ctl00$PlaceHolderMain$CapSearchResultList1$PageBar1$lbtnPageNext',
-      __EVENTARGUMENT: '',
-      __VIEWSTATE:          pager.__VIEWSTATE,
-      __VIEWSTATEGENERATOR: pager.__VIEWSTATEGENERATOR,
-      __EVENTVALIDATION:    pager.__EVENTVALIDATION,
-      __VIEWSTATEENCRYPTED: pager.__VIEWSTATEENCRYPTED,
-    });
-
-    const nextHtml = await session.post('/Cap/CapSearch.aspx', pageForm);
-    if (!nextHtml) break;
-    currentHtml = nextHtml;
+    logger.info(`[accela/${config.agencyCode}] type="${recordType}" collected ${results.length} planning record(s) so far`);
   }
 
-  logger.info(`[accela/${config.agencyCode}] Scrape complete`, { total: results.length });
+  logger.info(`[accela/${config.agencyCode}] Scrape complete`, {
+    total:      results.length,
+    recordTypes: config.recordTypes,
+  });
   return results;
 }
