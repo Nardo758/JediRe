@@ -970,7 +970,8 @@ router.get('/news', requireAuth, async (req: Request, res: Response) => {
         category,
         description                                                   AS summary,
         url,
-        tags
+        tags,
+        extracted_at
       FROM news_article_cache
       WHERE expires_at > NOW()
       ORDER BY published_at DESC NULLS LAST
@@ -1000,6 +1001,7 @@ router.get('/news', requireAuth, async (req: Request, res: Response) => {
         impact,
         summary: r.summary || null,
         url: r.url,
+        extracted_at: r.extracted_at ? new Date(r.extracted_at).toISOString() : null,
       };
     });
 

@@ -26,6 +26,7 @@ interface NewsItem {
   category: 'development' | 'transaction' | 'employment' | 'market';
   impact: 'positive' | 'negative' | 'neutral';
   summary?: string;
+  extracted_at?: string | null;
 }
 
 interface MarketAlert {
@@ -361,6 +362,43 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
                     <span>{item.source}</span>
                     <span>•</span>
                     <span>{item.timestamp}</span>
+                    {item.extracted_at ? (
+                      <span
+                        title={`Events extracted ${new Date(item.extracted_at).toLocaleString()}`}
+                        style={{
+                          padding: '2px 6px',
+                          borderRadius: 0,
+                          background: `${BT.text.cyan}18`,
+                          color: BT.text.cyan,
+                          fontWeight: 700,
+                          fontSize: 9,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                          border: `1px solid ${BT.text.cyan}33`,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        ✓ Events extracted
+                      </span>
+                    ) : (
+                      <span
+                        title="This article has not yet been processed for event extraction"
+                        style={{
+                          padding: '2px 6px',
+                          borderRadius: 0,
+                          background: `${BT.text.muted}14`,
+                          color: BT.text.muted,
+                          fontWeight: 600,
+                          fontSize: 9,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                          border: `1px solid ${BT.text.muted}22`,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Pending
+                      </span>
+                    )}
                     <span style={{
                       marginLeft: 'auto',
                       padding: '2px 6px',
