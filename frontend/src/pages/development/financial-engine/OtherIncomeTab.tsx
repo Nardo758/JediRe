@@ -133,6 +133,7 @@ interface UserLine {
   frequency?: 'monthly' | 'annual';
   note?: string;
   source_tag?: string;
+  confirmed?: boolean;
   created_at: string;
   adoption?: AdoptionBlock | null;
 }
@@ -271,6 +272,7 @@ interface LineFormState {
   rampDurationMonths: string;
   steadyStateMonthly: string;
   probabilityAdopted: string;
+  confirmed: boolean;
 }
 
 function emptyForm(isDevelopment = false, renoCompletionMonths?: number): LineFormState {
@@ -283,6 +285,7 @@ function emptyForm(isDevelopment = false, renoCompletionMonths?: number): LineFo
     rampDurationMonths: '6',
     steadyStateMonthly: '',
     probabilityAdopted: '1.0',
+    confirmed: false,
   };
 }
 
@@ -440,11 +443,13 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
           rate:      parseFloat(form.rate) || 0,
           frequency: form.frequency,
           note:      form.note.trim() || undefined,
+          confirmed: form.confirmed,
         }
       : {
           label:   form.label.trim(),
           monthly: parseFloat(form.monthly) || 0,
           note:    form.note.trim() || undefined,
+          confirmed: form.confirmed,
         };
     return { ...base, adoption };
   }, [buildAdoptionPayload]);
@@ -1086,25 +1091,42 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                                 {/* Adoption ramp summary */}
                                 <td style={{ ...td(), minWidth: 160 }}>
                                   {hasAdoption ? (
-                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                                      <AdoptionSummaryBadge adoption={line.adoption!} />
-                                      <button
-                                        onClick={() => setExpandedRampLineId(isChartExpanded ? null : line.id)}
-                                        title={isChartExpanded ? 'Hide income ramp chart' : 'Show income ramp chart'}
-                                        style={{
-                                          background: isChartExpanded ? C.tealDim : 'none',
-                                          border: `1px solid ${isChartExpanded ? C.teal : C.border}`,
-                                          borderRadius: 3,
-                                          cursor: 'pointer',
-                                          padding: '2px 4px',
-                                          color: isChartExpanded ? C.teal : C.muted,
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          flexShrink: 0,
-                                        }}
-                                      >
-                                        <BarChart2 size={10} />
-                                      </button>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                                        <AdoptionSummaryBadge adoption={line.adoption!} />
+                                        <button
+                                          onClick={() => setExpandedRampLineId(isChartExpanded ? null : line.id)}
+                                          title={isChartExpanded ? 'Hide income ramp chart' : 'Show income ramp chart'}
+                                          style={{
+                                            background: isChartExpanded ? C.tealDim : 'none',
+                                            border: `1px solid ${isChartExpanded ? C.teal : C.border}`,
+                                            borderRadius: 3,
+                                            cursor: 'pointer',
+                                            padding: '2px 4px',
+                                            color: isChartExpanded ? C.teal : C.muted,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            flexShrink: 0,
+                                          }}
+                                        >
+                                          <BarChart2 size={10} />
+                                        </button>
+                                      </div>
+                                      {line.confirmed && (
+                                        <span
+                                          title="Confirmed contract — Excel export labels this line RAMP (Confirmed)"
+                                          style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                                            fontFamily: LABEL, fontSize: 7, fontWeight: 700,
+                                            color: C.green, background: C.greenDim,
+                                            border: `1px solid ${C.green}55`,
+                                            borderRadius: 3, padding: '1px 5px',
+                                            letterSpacing: '0.06em', width: 'fit-content',
+                                          }}
+                                        >
+                                          ✓ CONFIRMED
+                                        </span>
+                                      )}
                                     </div>
                                   ) : (
                                     <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim }}>immediate / flat</span>
@@ -1138,6 +1160,7 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                                           rampDurationMonths:   a != null ? String(a.ramp_duration_months) : '6',
                                           steadyStateMonthly:   a != null ? String(a.steady_state_monthly) : String(Math.round(line.monthly)),
                                           probabilityAdopted:   a != null ? String(a.probability_adopted) : '1.0',
+                                          confirmed:            line.confirmed ?? false,
                                         });
                                       }}
                                       title="Edit line"
@@ -1405,7 +1428,7 @@ function InlineLineForm({
       {/* ── Adoption timeline section ── */}
       <div style={{ background: form.adoptionRequired ? C.tealDim : C.panelAlt, border: `1px solid ${form.adoptionRequired ? C.teal + '55' : C.border}`, borderRadius: 5, padding: '10px 12px' }}>
         {/* Toggle header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: form.adoptionRequired ? 10 : 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: form.adoptionRequired ? 10 : 0, flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={() => setForm(f => ({ ...f, adoptionRequired: !f.adoptionRequired }))}
@@ -1425,6 +1448,29 @@ function InlineLineForm({
               ? 'income ramps up from zero — configure schedule below'
               : 'income starts immediately at full rate'}
           </span>
+
+          {/* Confirmed contract toggle — only relevant when adoption ramp is on */}
+          {form.adoptionRequired && (
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, confirmed: !f.confirmed }))}
+              title={form.confirmed
+                ? 'Confirmed contract — Excel export will label this line "RAMP (Confirmed)". Click to unset.'
+                : 'Mark as confirmed contract — Excel export will label this line "RAMP (Confirmed)" instead of "RAMP (Projected)".'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                background: form.confirmed ? '#0a2010' : 'none',
+                border: `1px solid ${form.confirmed ? C.green : C.border}`,
+                borderRadius: 12, padding: '3px 10px', cursor: 'pointer',
+                color: form.confirmed ? C.green : C.muted,
+                fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.06em',
+                marginLeft: 4,
+              }}
+            >
+              <Check size={10} />
+              {form.confirmed ? 'CONFIRMED CONTRACT' : 'MARK AS CONFIRMED'}
+            </button>
+          )}
         </div>
 
         {/* Adoption fields — only when enabled */}

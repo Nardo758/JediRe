@@ -111,6 +111,7 @@ export interface ComposedFinancials {
     label: string;
     monthly: number;
     note?: string;
+    confirmed?: boolean;
     created_by?: string;
     created_at: string;
     updated_at?: string;

@@ -1170,8 +1170,8 @@ type AdoptionBlock = { ramp_start_period: number; ramp_duration_months: number; 
 router.post('/:dealId/financials/other-income/user-lines', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const { label, monthly, qty, rate, frequency, note, source_tag, adoption: rawAdoption } = req.body as {
-      label: string; monthly?: number; qty?: number; rate?: number; frequency?: string; note?: string; source_tag?: string; adoption?: unknown;
+    const { label, monthly, qty, rate, frequency, note, source_tag, confirmed, adoption: rawAdoption } = req.body as {
+      label: string; monthly?: number; qty?: number; rate?: number; frequency?: string; note?: string; source_tag?: string; confirmed?: boolean; adoption?: unknown;
     };
     if (!label || typeof label !== 'string' || !label.trim()) {
       logger.warn('User-line POST rejected: missing label', { dealId, body: req.body });
@@ -1200,6 +1200,7 @@ router.post('/:dealId/financials/other-income/user-lines', requireAuth, async (r
         ...(derived.frequency ? { frequency: derived.frequency } : {}),
         note: note?.trim() || undefined,
         ...(source_tag ? { source_tag: source_tag.trim() } : {}),
+        ...(confirmed === true ? { confirmed: true } : {}),
         ...(rawAdoption !== undefined ? { adoption: adoptionResult.adoption } : {}),
         created_by: userId,
         created_at: new Date().toISOString(),
@@ -1221,8 +1222,8 @@ class UserLineValidationError extends Error {
 router.patch('/:dealId/financials/other-income/user-lines/:lineId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId, lineId } = req.params;
-    const { label, monthly, qty, rate, frequency, note, adoption: rawAdoption } = req.body as {
-      label?: string; monthly?: number; qty?: number; rate?: number; frequency?: string; note?: string; adoption?: unknown;
+    const { label, monthly, qty, rate, frequency, note, confirmed, adoption: rawAdoption } = req.body as {
+      label?: string; monthly?: number; qty?: number; rate?: number; frequency?: string; note?: string; confirmed?: boolean; adoption?: unknown;
     };
     if (label != null && typeof label !== 'string') return res.status(400).json({ error: 'label must be a string' });
     const adoptionResult = rawAdoption !== undefined ? validateAdoption(rawAdoption) : null;
@@ -1275,6 +1276,7 @@ router.patch('/:dealId/financials/other-income/user-lines/:lineId', requireAuth,
         ...(label != null ? { label: label.trim() } : {}),
         monthly: nextMonthly,
         ...(note !== undefined ? { note: note?.trim() || undefined } : {}),
+        ...(confirmed !== undefined ? (confirmed === true ? { confirmed: true } : { confirmed: false }) : {}),
         updated_at: new Date().toISOString(),
       };
       // Apply per-unit fields explicitly: present → set, absent → drop the
