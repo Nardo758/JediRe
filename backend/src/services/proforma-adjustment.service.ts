@@ -1532,6 +1532,9 @@ export interface RentRollUnitType {
   bedrooms?: number | null;
   /** Bathroom count parsed/inferred from the floor-plan label. */
   bathrooms?: number | null;
+  /** Provenance of this row: 'manual' for operator-entered rows,
+   *  'extraction_rent_roll' for parser-produced rows, etc. */
+  source?: string;
   /** Pre-override values, present only when the user has overridden a rent. Lets the
    *  frontend render an "override" badge and offer a one-click reset on that cell. */
   inPlaceRentOriginal?: number | null;
@@ -3274,6 +3277,7 @@ export async function getDealFinancials(
             concessionPct:  e.concession_pct != null ? +e.concession_pct : null,
             bedrooms:       e.bedrooms != null ? +e.bedrooms : null,
             bathrooms:      e.bathrooms != null ? +e.bathrooms : null,
+            source:         e.source != null ? String(e.source) : undefined,
           } as RentRollUnitType,
         }))
         .filter(({ row }) => row.count > 0)

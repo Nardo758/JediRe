@@ -2165,13 +2165,14 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                               </span>
                             )}
                             {u.type}
-                            {/* BR/BA badge — only for server-extracted rows
-                                where the parser populated bedrooms. Lets
-                                analysts instantly spot mis-labelled plans
-                                (e.g. "Studio" parsed as 1BR/1BA). */}
-                            {u.source === 'extraction_rent_roll' && u.bedrooms != null && (
+                            {/* BR/BA badge — shown for any row where bedrooms
+                                is known, whether parsed by the extraction
+                                pipeline or entered manually. Lets analysts
+                                instantly spot mis-labelled plans in mixed
+                                (extracted + manual) deals. */}
+                            {u.bedrooms != null && (
                               <span
-                                title={`${u.bedrooms} bedroom${u.bedrooms !== 1 ? 's' : ''}${u.bathrooms != null ? ` / ${u.bathrooms} bathroom${u.bathrooms !== 1 ? 's' : ''}` : ''} — parsed by extraction pipeline`}
+                                title={`${u.bedrooms} bedroom${u.bedrooms !== 1 ? 's' : ''}${u.bathrooms != null ? ` / ${u.bathrooms} bathroom${u.bathrooms !== 1 ? 's' : ''}` : ''} — ${u.source === 'extraction_rent_roll' ? 'parsed by extraction pipeline' : 'manually entered'}`}
                                 style={{
                                   marginLeft: 7,
                                   display: 'inline-block',
