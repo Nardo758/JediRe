@@ -536,7 +536,14 @@ function buildProFormaSheet(
   // ── Per-line ramp detail sub-rows (Task #1172) ────────────────────────────
   // Ramping user lines each get their own Excel row immediately below the
   // "Other Income" summary row. Flat lines (no adoption block) are excluded.
-  type UserLine = { label: string; monthly: number; adoption?: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null };
+  type UserLine = { label: string; monthly: number; confirmed?: boolean; note?: string; adoption?: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null };
+  // Task #1206: confirmed lines (explicit flag or note containing "confirmed") get
+  // "— RAMP (Confirmed)"; all others get "— RAMP (Projected)" so lenders can
+  // distinguish executed contracts from best-case projections.
+  const rampSuffix = (line: UserLine): string =>
+    (line.confirmed === true || /confirmed/i.test(line.note ?? ''))
+      ? '— RAMP (Confirmed)'
+      : '— RAMP (Projected)';
   const allUserLines: UserLine[] = Array.isArray((f as any).otherIncomeUserLines) ? ((f as any).otherIncomeUserLines as UserLine[]) : [];
   const rampingLines = allUserLines.filter(l => l.adoption != null);
   const rampOffset   = rampingLines.length; // extra rows inserted between OTH and EGI
@@ -588,7 +595,7 @@ function buildProFormaSheet(
   for (let li = 0; li < rampingLines.length; li++) {
     const line = rampingLines[li];
     aoa[R.OTH + 1 + li] = [
-      `    ${line.label} — RAMP`,
+      `    ${line.label} ${rampSuffix(line)}`,
       ...projs.map((_, yi) => Math.round(computeUserLineAnnual(line, yi))),
     ];
   }
@@ -936,7 +943,11 @@ function buildProjectionsSheet(
 
   // Mirror the same ramp-row logic as Pro Forma so row indices stay in sync
   // for cross-sheet formula references (Task #1172).
-  type UserLine = { label: string; monthly: number; adoption?: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null };
+  type UserLine = { label: string; monthly: number; confirmed?: boolean; note?: string; adoption?: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null };
+  const rampSuffix = (line: UserLine): string =>
+    (line.confirmed === true || /confirmed/i.test(line.note ?? ''))
+      ? '— RAMP (Confirmed)'
+      : '— RAMP (Projected)';
   const allUserLines: UserLine[] = Array.isArray((f as any).otherIncomeUserLines) ? ((f as any).otherIncomeUserLines as UserLine[]) : [];
   const rampingLines = allUserLines.filter(l => l.adoption != null);
   const rampOffset   = rampingLines.length;
@@ -967,7 +978,7 @@ function buildProjectionsSheet(
   for (let li = 0; li < rampingLines.length; li++) {
     const line = rampingLines[li];
     aoa[R.OTH + 1 + li] = [
-      `    ${line.label} — RAMP`,
+      `    ${line.label} ${rampSuffix(line)}`,
       ...projs.map((_, yi) => Math.round(computeUserLineAnnual(line, yi))),
     ];
   }
