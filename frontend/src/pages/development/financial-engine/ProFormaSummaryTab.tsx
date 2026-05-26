@@ -1560,7 +1560,20 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
                       {/* User-added lines — read-only display; full CRUD below via panel */}
                       {userLines.map(ul => {
-                        const annual  = ul.monthly * 12;
+                        // Ramp-aware Year 1 value — mirrors backend computeUserLineAnnual (proforma-seeder §5B)
+                        const a = ul.adoption;
+                        const annual = (() => {
+                          if (!a) return ul.monthly * 12;
+                          const steadyMo  = Number.isFinite(a.steady_state_monthly) ? a.steady_state_monthly : ul.monthly;
+                          const rampStart = Number.isFinite(a.ramp_start_period)    ? a.ramp_start_period    : 0;
+                          const rampDur   = Number.isFinite(a.ramp_duration_months) ? a.ramp_duration_months : 0;
+                          const prob      = Number.isFinite(a.probability_adopted)  ? a.probability_adopted  : 1;
+                          const periodMo  = 6; // midpoint of Year 1 (yearIndex=0 → (0)*12+6)
+                          if (periodMo < rampStart) return 0;
+                          if (rampDur <= 0 || periodMo >= rampStart + rampDur) return steadyMo * 12 * prob;
+                          return steadyMo * ((periodMo - rampStart) / rampDur) * 12 * prob;
+                        })();
+                        const isRamping = a != null && annual < (a.steady_state_monthly * 12 * (a.probability_adopted ?? 1)) - 0.01;
                         const pctEgi  = egiResolved != null && egiResolved !== 0 ? annual / egiResolved : null;
                         const perUnit = totalUnits > 0 ? Math.round(annual / totalUnits) : null;
                         return (
@@ -1575,14 +1588,20 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                             <td />
                             {viewMode !== 'BROKER_VIEW' && <td />}
                             {viewMode !== 'BROKER_VIEW' && <td />}
-                            <td style={{ padding: '3px 8px', textAlign: 'right', color: '#10b981', fontWeight: 700, fontSize: 9, fontFamily: MONO }}>{fmtFull$(annual)}</td>
+                            <td style={{ padding: '3px 8px', textAlign: 'right', color: isRamping ? '#2dd4bf' : '#10b981', fontWeight: 700, fontSize: 9, fontFamily: MONO }}
+                                title={isRamping ? `Ramping — steady state: $${Math.round(a!.steady_state_monthly * 12 * (a!.probability_adopted ?? 1)).toLocaleString()}/yr` : undefined}>
+                              {fmtFull$(annual)}
+                            </td>
                             <td style={{ padding: '3px 8px', textAlign: 'right', fontSize: 8, color: '#334155', fontFamily: MONO }}>
                               {pctEgi != null ? (pctEgi * 100).toFixed(1) + '%' : '—'}
                             </td>
                             <td style={{ padding: '3px 8px', textAlign: 'right' }}>
                               <span style={{ display: 'inline-block', padding: '1px 5px', borderRadius: 2, fontFamily: MONO, fontSize: 7, color: '#10b981', background: '#0a2016' }}>USER</span>
                               {ul.adoption && (
-                                <span style={{ marginLeft: 3, display: 'inline-block', padding: '1px 4px', borderRadius: 2, fontFamily: MONO, fontSize: 7, color: '#f59e0b', background: '#1c1000', border: '1px solid #78350f' }}>RAMP</span>
+                                <span style={{ marginLeft: 3, display: 'inline-block', padding: '1px 4px', borderRadius: 2, fontFamily: MONO, fontSize: 7, color: '#2dd4bf', background: '#041818', border: '1px solid #0f4a45' }}
+                                      title={`Starts mo ${ul.adoption.ramp_start_period} · ${ul.adoption.ramp_duration_months}mo ramp · $${Math.round(ul.adoption.steady_state_monthly)}/mo steady`}>
+                                  RAMP↑
+                                </span>
                               )}
                             </td>
                             <td style={{ padding: '3px 8px', textAlign: 'right', fontSize: 8, color: '#475569', fontFamily: MONO }}>
@@ -1593,10 +1612,22 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                         );
                       })}
 
-                      {/* Total Other Income — named categories resolved + user lines annual */}
+                      {/* Total Other Income — named categories resolved + user lines annual (ramp-aware Yr1) */}
                       {/* Task #805: uses engine-corrected resolved_value when math_correction_report is available */}
                       {(() => {
-                        const userLinesAnnual = userLines.reduce((s, l) => s + l.monthly * 12, 0);
+                        // Ramp-aware Y1 totals to match what the seeder actually produces in Year 1
+                        const userLinesAnnual = userLines.reduce((s, ul) => {
+                          const a = ul.adoption;
+                          if (!a) return s + ul.monthly * 12;
+                          const steadyMo  = Number.isFinite(a.steady_state_monthly) ? a.steady_state_monthly : ul.monthly;
+                          const rampStart = Number.isFinite(a.ramp_start_period)    ? a.ramp_start_period    : 0;
+                          const rampDur   = Number.isFinite(a.ramp_duration_months) ? a.ramp_duration_months : 0;
+                          const prob      = Number.isFinite(a.probability_adopted)  ? a.probability_adopted  : 1;
+                          const periodMo  = 6;
+                          if (periodMo < rampStart) return s;
+                          if (rampDur <= 0 || periodMo >= rampStart + rampDur) return s + steadyMo * 12 * prob;
+                          return s + steadyMo * ((periodMo - rampStart) / rampDur) * 12 * prob;
+                        }, 0);
                         const engineResolution = data?.mathCorrectionReport?.hierarchical_resolutions?.['proforma.revenue.other_income'] ?? null;
                         const baseResolved = engineResolution != null
                           ? engineResolution.resolved_value

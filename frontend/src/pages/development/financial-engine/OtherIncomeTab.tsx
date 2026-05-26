@@ -1,12 +1,19 @@
 // ============================================================================
-// OtherIncomeTab — Editable ancillary / other income page (Phase 1)
+// OtherIncomeTab — Editable ancillary / other income page (Phase 1 + Phase 4)
 // Task #1145: Split Unit Mix and Other Income into separate ConsoleHubTab pages
+// Task #1153: Adoption timeline for new income sources (ramp-up schedule)
 // ============================================================================
 //
 // Hosts the AncillaryPanel content that was previously read-only inside
 // UnitMixTab. Categories are now editable inline; user-added custom lines
 // can be managed (add / edit / delete) directly here without navigating to
 // the Pro Forma tab.
+//
+// Phase 4 (Task #1153): Each custom line can optionally carry an adoption
+// timeline block (ramp_start_period, ramp_duration_months,
+// steady_state_monthly, probability_adopted). Development deals default all
+// new lines to adoption_required: true. The backend proforma-seeder applies
+// the ramp formula per year when adoption is set.
 //
 // Data flow:
 //   READ  — GET /api/v1/deals/:dealId/financials  (otherIncomeBreakdown + otherIncomeUserLines)
@@ -17,7 +24,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   RefreshCw, Loader2, Plus, Edit3, Trash2, Check, X, RotateCcw,
-  AlertTriangle, ChevronDown, ChevronRight, Lightbulb,
+  AlertTriangle, ChevronDown, ChevronRight, Lightbulb, TrendingUp,
 } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
@@ -43,6 +50,8 @@ const C = {
   redDim:   '#2a0808',
   purple:   '#a78bfa',
   purpleDim:'#1a1030',
+  teal:     '#2dd4bf',
+  tealDim:  '#0a2020',
   text:     '#e2e8f0',
   muted:    '#64748b',
   dim:      '#334155',
@@ -93,6 +102,13 @@ const SRC_BADGE: Record<string, { label: string; color: string }> = {
   unseeded:         { label: '—',     color: C.dim    },
 };
 
+interface AdoptionBlock {
+  ramp_start_period: number;
+  ramp_duration_months: number;
+  steady_state_monthly: number;
+  probability_adopted: number;
+}
+
 interface OtherIncomeBreakdownRow {
   category: string;
   rent_roll: number | null;
@@ -118,6 +134,7 @@ interface UserLine {
   note?: string;
   source_tag?: string;
   created_at: string;
+  adoption?: AdoptionBlock | null;
 }
 
 // ── Program suggestion config ────────────────────────────────────────────────
@@ -219,6 +236,26 @@ interface FinancialsData {
   otherIncomeUserLines?: UserLine[];
 }
 
+// ── Ramp formula — mirrors backend computeUserLineAnnual (proforma-seeder.service.ts §5B) ──
+// yearIndex: 0-based (0 = Year 1)
+function computeRampAwareAnnual(
+  monthly: number,
+  adoption: AdoptionBlock | null | undefined,
+  yearIndex: number,
+): number {
+  if (!adoption) return monthly * 12;
+  const steadyMo   = Number.isFinite(adoption.steady_state_monthly) ? adoption.steady_state_monthly : monthly;
+  const rampStart  = Number.isFinite(adoption.ramp_start_period)    ? adoption.ramp_start_period    : 0;
+  const rampDur    = Number.isFinite(adoption.ramp_duration_months) ? adoption.ramp_duration_months : 0;
+  const prob       = Number.isFinite(adoption.probability_adopted)  ? adoption.probability_adopted  : 1;
+  const Y = yearIndex + 1;
+  const periodMonth = (Y - 1) * 12 + 6; // midpoint of year Y
+  if (periodMonth < rampStart) return 0;
+  if (rampDur <= 0 || periodMonth >= rampStart + rampDur) return steadyMo * 12 * prob;
+  const rampFraction = (periodMonth - rampStart) / rampDur;
+  return steadyMo * rampFraction * 12 * prob;
+}
+
 // ── Inline add/edit form ───────────────────────────────────────────────────
 interface LineFormState {
   label: string;
@@ -228,14 +265,29 @@ interface LineFormState {
   frequency: 'monthly' | 'annual';
   note: string;
   useQtyRate: boolean;
+  // Adoption timeline fields
+  adoptionRequired: boolean;
+  rampStartPeriod: string;
+  rampDurationMonths: string;
+  steadyStateMonthly: string;
+  probabilityAdopted: string;
 }
-const emptyForm = (): LineFormState => ({
-  label: '', monthly: '', qty: '', rate: '',
-  frequency: 'monthly', note: '', useQtyRate: false,
-});
+
+function emptyForm(isDevelopment = false): LineFormState {
+  return {
+    label: '', monthly: '', qty: '', rate: '',
+    frequency: 'monthly', note: '', useQtyRate: false,
+    adoptionRequired: isDevelopment,
+    rampStartPeriod: isDevelopment ? '12' : '0',
+    rampDurationMonths: '6',
+    steadyStateMonthly: '',
+    probabilityAdopted: '1.0',
+  };
+}
 
 export function OtherIncomeTab(props: FinancialEngineTabProps) {
-  const { dealId, onF9Refresh } = props;
+  const { dealId, dealType, onF9Refresh } = props;
+  const isDevelopment = dealType === 'development';
 
   const approvedAmenities = useDesignProgramStore(s => s.program.approvedAmenities);
 
@@ -253,10 +305,10 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
 
   // User-lines state
   const [showAddForm,   setShowAddForm]   = useState(false);
-  const [addForm,       setAddForm]       = useState<LineFormState>(emptyForm());
+  const [addForm,       setAddForm]       = useState<LineFormState>(() => emptyForm(isDevelopment));
   const [addingLine,    setAddingLine]    = useState(false);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
-  const [editForm,      setEditForm]      = useState<LineFormState>(emptyForm());
+  const [editForm,      setEditForm]      = useState<LineFormState>(() => emptyForm(isDevelopment));
   const [savingLineId,  setSavingLineId]  = useState<string | null>(null);
   const [deletingLineId,setDeletingLineId]= useState<string | null>(null);
 
@@ -304,22 +356,66 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
   }, [dealId, load, onF9Refresh]);
 
   // ── User line mutations ─────────────────────────────────────────────────
-  const buildLinePayload = (form: LineFormState) => {
+
+  /**
+   * Derive the flat monthly value from the form for use as a steady-state
+   * fallback when steadyStateMonthly is left blank.
+   * In QTY×RATE mode compute qty * rate (or qty * rate / 12 for annual).
+   * Falls back to 0 rather than NaN so adoption is never silently dropped.
+   */
+  const deriveMonthlyFromForm = useCallback((form: LineFormState): number => {
     if (form.useQtyRate) {
-      return {
-        label:     form.label.trim(),
-        qty:       parseFloat(form.qty) || 0,
-        rate:      parseFloat(form.rate) || 0,
-        frequency: form.frequency,
-        note:      form.note.trim() || undefined,
-      };
+      const qty  = parseFloat(form.qty)  || 0;
+      const rate = parseFloat(form.rate) || 0;
+      return form.frequency === 'annual' ? (qty * rate) / 12 : qty * rate;
     }
+    return parseFloat(form.monthly) || 0;
+  }, []);
+
+  /**
+   * Build an AdoptionBlock for the API payload.
+   * Returns null  when adoption is off (clears any existing ramp on the server).
+   * Returns block when adoption is on — always succeeds; invalid numeric fields
+   * are clamped to safe defaults (0/1) rather than silently dropping the block.
+   */
+  const buildAdoptionPayload = useCallback((form: LineFormState): AdoptionBlock | null => {
+    if (!form.adoptionRequired) return null;
+    const rampStart  = Math.max(0, parseFloat(form.rampStartPeriod)    || 0);
+    const rampDur    = Math.max(0, parseFloat(form.rampDurationMonths) || 0);
+    // Derive steady-state: explicit field → flat monthly field → qty*rate computation
+    const steadyMo   = Math.max(0,
+      form.steadyStateMonthly.trim() !== ''
+        ? (parseFloat(form.steadyStateMonthly) || 0)
+        : deriveMonthlyFromForm(form)
+    );
+    const rawProb    = parseFloat(form.probabilityAdopted);
+    const prob       = Math.min(1, Math.max(0, Number.isFinite(rawProb) ? rawProb : 1));
     return {
-      label:   form.label.trim(),
-      monthly: parseFloat(form.monthly) || 0,
-      note:    form.note.trim() || undefined,
+      ramp_start_period:    rampStart,
+      ramp_duration_months: rampDur,
+      steady_state_monthly: steadyMo,
+      probability_adopted:  prob,
     };
-  };
+  }, [deriveMonthlyFromForm]);
+
+  const buildLinePayload = useCallback((form: LineFormState) => {
+    // adoption is always null (off) or a full AdoptionBlock (on) — never omitted
+    const adoption = buildAdoptionPayload(form);
+    const base = form.useQtyRate
+      ? {
+          label:     form.label.trim(),
+          qty:       parseFloat(form.qty) || 0,
+          rate:      parseFloat(form.rate) || 0,
+          frequency: form.frequency,
+          note:      form.note.trim() || undefined,
+        }
+      : {
+          label:   form.label.trim(),
+          monthly: parseFloat(form.monthly) || 0,
+          note:    form.note.trim() || undefined,
+        };
+    return { ...base, adoption };
+  }, [buildAdoptionPayload]);
 
   const handleAddLine = useCallback(async () => {
     if (!addForm.label.trim()) return;
@@ -329,7 +425,7 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
         `/api/v1/deals/${dealId}/financials/other-income/user-lines`,
         buildLinePayload(addForm)
       );
-      setAddForm(emptyForm());
+      setAddForm(emptyForm(isDevelopment));
       setShowAddForm(false);
       await load();
       try { onF9Refresh?.(); } catch { /* noop */ }
@@ -338,7 +434,7 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
     } finally {
       setAddingLine(false);
     }
-  }, [dealId, addForm, load, onF9Refresh]);
+  }, [dealId, addForm, load, onF9Refresh, isDevelopment]);
 
   const handleEditLine = useCallback(async (lineId: string) => {
     setSavingLineId(lineId);
@@ -415,7 +511,9 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
   const userLines   = data?.otherIncomeUserLines ?? [];
   const totalUnits  = data?.totalUnits ?? 0;
 
-  const userLinesAnnual = userLines.reduce((s, l) => s + l.monthly * 12, 0);
+  // Use ramp-aware Year 1 projections (same formula as backend computeUserLineAnnual, yearIndex=0)
+  // so KPI strip and totals match what the proforma-seeder will actually produce in Year 1.
+  const userLinesAnnual = userLines.reduce((s, l) => s + computeRampAwareAnnual(l.monthly, l.adoption, 0), 0);
   const breakdownTotal  = breakdown?.total.resolved ?? 0;
   const grandTotal      = breakdownTotal + userLinesAnnual;
 
@@ -448,6 +546,8 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
       return [{ amenityName: amenity.name, suggestion }];
     });
 
+  const rampingCount = userLines.filter(l => l.adoption != null).length;
+
   return (
     <div style={{ background: C.bg, minHeight: '100%', overflowY: 'auto' }}>
 
@@ -458,6 +558,11 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
           <span style={{ fontFamily: LABEL, fontSize: 9, color: C.muted, marginLeft: 12 }}>
             Ancillary revenue · RR / T-12 / OM reconciliation · custom lines
           </span>
+          {isDevelopment && (
+            <span style={{ marginLeft: 10, fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: C.teal, background: C.tealDim, border: `1px solid ${C.teal}55`, borderRadius: 3, padding: '2px 6px', letterSpacing: '0.06em' }}>
+              DEVELOPMENT · new lines default to ramp-up
+            </span>
+          )}
         </div>
         <button
           onClick={load}
@@ -474,6 +579,7 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
           { label: 'USER-ADDED LINES',   value: fmt$(userLinesAnnual), color: C.purple, sub: `${userLines.length} custom line${userLines.length !== 1 ? 's' : ''}` },
           { label: 'TOTAL ANCILLARY',    value: fmt$(grandTotal),      color: C.amber,  sub: 'feeds EGI in F9' },
           ...(totalUnits > 0 && grandTotal > 0 ? [{ label: '$/UNIT/YR', value: `$${Math.round(grandTotal / totalUnits).toLocaleString()}`, color: C.green, sub: 'blended all sources' }] : []),
+          ...(rampingCount > 0 ? [{ label: 'RAMPING LINES', value: String(rampingCount), color: C.teal, sub: 'adoption timeline set' }] : []),
         ].map(pill => (
           <div key={pill.label} style={{ background: C.panelAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: '10px 14px', minWidth: 140 }}>
             <div style={{ fontFamily: LABEL, fontSize: 8, color: C.muted, letterSpacing: '0.06em', marginBottom: 4 }}>{pill.label}</div>
@@ -803,6 +909,11 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
             <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim, marginLeft: 4 }}>
               solar revenue, cell towers, vending, co-working memberships…
             </span>
+            {rampingCount > 0 && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontFamily: LABEL, fontSize: 8, color: C.teal, background: C.tealDim, border: `1px solid ${C.teal}44`, borderRadius: 3, padding: '1px 6px', letterSpacing: '0.05em' }}>
+                <TrendingUp size={9} /> {rampingCount} RAMPING
+              </span>
+            )}
             <span style={{ fontFamily: MONO, fontSize: 10, color: C.purple, marginLeft: 'auto' }}>
               {fmt$(userLinesAnnual)}/yr
             </span>
@@ -817,26 +928,34 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                       <tr style={{ background: C.panelAlt }}>
                         <th style={th()}>LABEL</th>
                         <th style={th()}>BILLING</th>
-                        <th style={th(true)}>$/MO</th>
-                        <th style={th(true)}>$/YR</th>
-                        <th style={th(true)}>$/UNIT/YR</th>
+                        <th style={th(true)}>STEADY $/MO</th>
+                        <th style={th(true)}>PROJ $/YR 1 ↑</th>
+                        <th style={th(true)}>$/UNIT/YR 1</th>
+                        <th style={th()}>ADOPTION RAMP</th>
                         <th style={th()}>NOTE</th>
                         <th style={th()}>ACTIONS</th>
                       </tr>
                     </thead>
                     <tbody>
                       {userLines.map((line, idx) => {
-                        const annual  = line.monthly * 12;
-                        const perUnit = totalUnits > 0 ? Math.round(annual / totalUnits) : null;
+                        // Ramp-aware Year 1 projection (same formula as backend computeUserLineAnnual)
+                        const y1Annual    = computeRampAwareAnnual(line.monthly, line.adoption, 0);
+                        const steadyAnnual= line.adoption
+                          ? line.adoption.steady_state_monthly * 12 * line.adoption.probability_adopted
+                          : line.monthly * 12;
+                        const perUnit     = totalUnits > 0 ? Math.round(y1Annual / totalUnits) : null;
                         const isEditingThis = editingLineId === line.id;
                         const isSavingThis  = savingLineId  === line.id;
                         const isDeletingThis= deletingLineId=== line.id;
+                        const hasAdoption   = line.adoption != null;
+                        // For ramping lines: Year 1 may be 0 or partial; show steady-state in secondary column
+                        const isRamping     = hasAdoption && y1Annual < steadyAnnual - 0.01;
 
                         return (
                           <tr key={line.id} style={{ background: idx % 2 === 0 ? C.panel : C.panelAlt }}>
                             {isEditingThis ? (
                               <>
-                                <td style={td()} colSpan={6}>
+                                <td style={td()} colSpan={7}>
                                   <InlineLineForm
                                     form={editForm}
                                     setForm={setEditForm}
@@ -869,12 +988,31 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                                     ? `${line.qty.toLocaleString()} × $${line.rate}/${line.frequency === 'annual' ? 'yr' : 'mo'}`
                                     : 'flat monthly'}
                                 </td>
-                                <td style={td(true, false, C.text)}>${Math.round(line.monthly).toLocaleString()}</td>
-                                <td style={td(true, true, C.amber)}>{fmt$(annual)}</td>
+                                {/* Steady-state $/mo */}
+                                <td style={td(true, false, C.text)}>
+                                  ${Math.round(line.adoption?.steady_state_monthly ?? line.monthly).toLocaleString()}
+                                </td>
+                                {/* Ramp-aware Yr 1 — the actual projected value the seeder will use */}
+                                <td style={td(true, true, isRamping ? C.teal : C.amber)}>
+                                  <span title={isRamping ? `Ramping — steady state: ${fmt$(steadyAnnual)}/yr` : undefined}>
+                                    {fmt$(y1Annual)}
+                                    {isRamping && (
+                                      <TrendingUp size={9} style={{ marginLeft: 3, verticalAlign: 'middle', color: C.teal }} />
+                                    )}
+                                  </span>
+                                </td>
                                 <td style={{ ...td(true), color: C.dim, fontSize: 9 }}>
                                   {perUnit != null ? `$${perUnit.toLocaleString()}` : '—'}
                                 </td>
-                                <td style={{ ...td(), color: C.dim, fontSize: 9, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {/* Adoption ramp summary */}
+                                <td style={{ ...td(), minWidth: 160 }}>
+                                  {hasAdoption ? (
+                                    <AdoptionSummaryBadge adoption={line.adoption!} />
+                                  ) : (
+                                    <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim }}>immediate / flat</span>
+                                  )}
+                                </td>
+                                <td style={{ ...td(), color: C.dim, fontSize: 9, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   {line.note || '—'}
                                 </td>
                                 <td style={td()}>
@@ -882,6 +1020,7 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                                     <button
                                       onClick={() => {
                                         setEditingLineId(line.id);
+                                        const a = line.adoption;
                                         setEditForm({
                                           label:      line.label,
                                           monthly:    String(Math.round(line.monthly)),
@@ -890,6 +1029,11 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                                           frequency:  line.frequency ?? 'monthly',
                                           note:       line.note ?? '',
                                           useQtyRate: line.qty != null && line.rate != null,
+                                          adoptionRequired:     a != null,
+                                          rampStartPeriod:      a != null ? String(a.ramp_start_period) : '0',
+                                          rampDurationMonths:   a != null ? String(a.ramp_duration_months) : '6',
+                                          steadyStateMonthly:   a != null ? String(a.steady_state_monthly) : String(Math.round(line.monthly)),
+                                          probabilityAdopted:   a != null ? String(a.probability_adopted) : '1.0',
                                         });
                                       }}
                                       title="Edit line"
@@ -916,13 +1060,14 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                     {userLines.length > 1 && (
                       <tfoot>
                         <tr style={{ background: '#050a0f', borderTop: `2px solid ${C.borderHi}` }}>
-                          <td style={{ ...td(), fontWeight: 700, color: C.text }}>TOTAL CUSTOM</td>
+                          <td style={{ ...td(), fontWeight: 700, color: C.text }}>TOTAL CUSTOM · YR 1</td>
                           <td style={td()} />
-                          <td style={td(true, true, C.text)}>${Math.round(userLinesAnnual / 12).toLocaleString()}/mo</td>
+                          <td style={{ ...td(true), color: C.dim, fontSize: 8 }}>steady state</td>
                           <td style={td(true, true, C.purple)}>{fmt$(userLinesAnnual)}</td>
                           <td style={{ ...td(true), color: C.dim, fontSize: 8 }}>
                             {totalUnits > 0 ? `$${Math.round(userLinesAnnual / totalUnits).toLocaleString()}/yr` : '—'}
                           </td>
+                          <td style={td()} />
                           <td style={td()} />
                           <td style={td()} />
                         </tr>
@@ -956,7 +1101,7 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                       {addingLine ? '…' : 'ADD LINE'}
                     </button>
                     <button
-                      onClick={() => { setShowAddForm(false); setAddForm(emptyForm()); }}
+                      onClick={() => { setShowAddForm(false); setAddForm(emptyForm(isDevelopment)); }}
                       style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 4, padding: '5px 14px', cursor: 'pointer', color: C.muted, fontFamily: LABEL, fontSize: 9 }}
                     >
                       CANCEL
@@ -966,7 +1111,7 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
               ) : (
                 <div style={{ padding: '10px 14px', borderTop: userLines.length > 0 ? `1px solid ${C.border}` : undefined }}>
                   <button
-                    onClick={() => setShowAddForm(true)}
+                    onClick={() => { setAddForm(emptyForm(isDevelopment)); setShowAddForm(true); }}
                     style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: `1px solid ${C.purple}55`, borderRadius: 4, padding: '5px 12px', cursor: 'pointer', color: C.purple, fontFamily: LABEL, fontSize: 9 }}
                   >
                     <Plus size={11} /> ADD CUSTOM LINE
@@ -996,6 +1141,29 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
   );
 }
 
+// ── Adoption summary badge ──────────────────────────────────────────────────
+function AdoptionSummaryBadge({ adoption }: { adoption: AdoptionBlock }) {
+  const pct = Math.round(adoption.probability_adopted * 100);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <TrendingUp size={9} color={C.teal} />
+        <span style={{ fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: C.teal, letterSpacing: '0.05em' }}>
+          RAMPS MO {adoption.ramp_start_period}
+        </span>
+        {adoption.ramp_duration_months > 0 && (
+          <span style={{ fontFamily: LABEL, fontSize: 8, color: C.muted }}>
+            over {adoption.ramp_duration_months}mo
+          </span>
+        )}
+      </div>
+      <div style={{ fontFamily: MONO, fontSize: 9, color: C.dim }}>
+        ${Math.round(adoption.steady_state_monthly).toLocaleString()}/mo · {pct}% prob
+      </div>
+    </div>
+  );
+}
+
 // ── Inline form sub-component ───────────────────────────────────────────────
 function InlineLineForm({
   form, setForm, compact = false,
@@ -1016,78 +1184,271 @@ function InlineLineForm({
   const labelStyle: React.CSSProperties = {
     fontFamily: LABEL, fontSize: 8, color: C.muted, marginBottom: 3, display: 'block',
   };
+  const adoptionInputStyle: React.CSSProperties = {
+    ...inputStyle,
+    border: `1px solid ${C.teal}55`,
+  };
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: compact ? 8 : 12 }}>
-      {/* Label */}
-      <div style={{ display: 'flex', flexDirection: 'column', minWidth: compact ? 120 : 160 }}>
-        <label style={labelStyle}>LABEL *</label>
-        <input
-          type="text"
-          value={form.label}
-          onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
-          placeholder="e.g. EV Charging"
-          style={{ ...inputStyle, width: '100%' }}
-        />
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 10 : 14 }}>
 
-      {/* Billing mode toggle */}
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <label style={labelStyle}>BILLING MODE</label>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <button
-            type="button"
-            onClick={() => setForm(f => ({ ...f, useQtyRate: false }))}
-            style={{ fontFamily: LABEL, fontSize: 8, padding: '4px 8px', border: `1px solid ${!form.useQtyRate ? C.amber : C.border}`, borderRadius: 3, background: !form.useQtyRate ? C.amberDim : 'transparent', color: !form.useQtyRate ? C.amber : C.muted, cursor: 'pointer' }}
-          >
-            FLAT $/MO
-          </button>
-          <button
-            type="button"
-            onClick={() => setForm(f => ({ ...f, useQtyRate: true }))}
-            style={{ fontFamily: LABEL, fontSize: 8, padding: '4px 8px', border: `1px solid ${form.useQtyRate ? C.amber : C.border}`, borderRadius: 3, background: form.useQtyRate ? C.amberDim : 'transparent', color: form.useQtyRate ? C.amber : C.muted, cursor: 'pointer' }}
-          >
-            QTY × RATE
-          </button>
+      {/* ── Basic fields row ── */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: compact ? 8 : 12 }}>
+        {/* Label */}
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: compact ? 120 : 160 }}>
+          <label style={labelStyle}>LABEL *</label>
+          <input
+            type="text"
+            value={form.label}
+            onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
+            placeholder="e.g. EV Charging"
+            style={{ ...inputStyle, width: '100%' }}
+          />
         </div>
-      </div>
 
-      {form.useQtyRate ? (
-        <>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <label style={labelStyle}>QTY</label>
-            <input type="number" value={form.qty} onChange={e => setForm(f => ({ ...f, qty: e.target.value }))} style={{ ...inputStyle, width: 70 }} placeholder="e.g. 50" />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <label style={labelStyle}>RATE</label>
-            <input type="number" value={form.rate} onChange={e => setForm(f => ({ ...f, rate: e.target.value }))} style={{ ...inputStyle, width: 80 }} placeholder="$/unit" />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <label style={labelStyle}>FREQ</label>
-            <select
-              value={form.frequency}
-              onChange={e => setForm(f => ({ ...f, frequency: e.target.value as 'monthly' | 'annual' }))}
-              style={{ ...inputStyle, width: 90 }}
-            >
-              <option value="monthly">Monthly</option>
-              <option value="annual">Annual</option>
-            </select>
-          </div>
-        </>
-      ) : (
+        {/* Billing mode toggle */}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <label style={labelStyle}>$/MONTH</label>
-          <input type="number" value={form.monthly} onChange={e => setForm(f => ({ ...f, monthly: e.target.value }))} style={{ ...inputStyle, width: 90 }} placeholder="e.g. 1200" />
+          <label style={labelStyle}>BILLING MODE</label>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, useQtyRate: false }))}
+              style={{ fontFamily: LABEL, fontSize: 8, padding: '4px 8px', border: `1px solid ${!form.useQtyRate ? C.amber : C.border}`, borderRadius: 3, background: !form.useQtyRate ? C.amberDim : 'transparent', color: !form.useQtyRate ? C.amber : C.muted, cursor: 'pointer' }}
+            >
+              FLAT $/MO
+            </button>
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, useQtyRate: true }))}
+              style={{ fontFamily: LABEL, fontSize: 8, padding: '4px 8px', border: `1px solid ${form.useQtyRate ? C.amber : C.border}`, borderRadius: 3, background: form.useQtyRate ? C.amberDim : 'transparent', color: form.useQtyRate ? C.amber : C.muted, cursor: 'pointer' }}
+            >
+              QTY × RATE
+            </button>
+          </div>
         </div>
-      )}
 
-      {/* Note */}
-      {!compact && (
-        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 200, flex: 1 }}>
-          <label style={labelStyle}>NOTE (optional)</label>
-          <input type="text" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="Description or source" style={{ ...inputStyle, width: '100%' }} />
+        {form.useQtyRate ? (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <label style={labelStyle}>QTY</label>
+              <input type="number" value={form.qty} onChange={e => setForm(f => ({ ...f, qty: e.target.value }))} style={{ ...inputStyle, width: 70 }} placeholder="e.g. 50" />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <label style={labelStyle}>RATE</label>
+              <input type="number" value={form.rate} onChange={e => setForm(f => ({ ...f, rate: e.target.value }))} style={{ ...inputStyle, width: 80 }} placeholder="$/unit" />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <label style={labelStyle}>FREQ</label>
+              <select
+                value={form.frequency}
+                onChange={e => setForm(f => ({ ...f, frequency: e.target.value as 'monthly' | 'annual' }))}
+                style={{ ...inputStyle, width: 90 }}
+              >
+                <option value="monthly">Monthly</option>
+                <option value="annual">Annual</option>
+              </select>
+            </div>
+          </>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <label style={labelStyle}>$/MONTH</label>
+            <input type="number" value={form.monthly} onChange={e => setForm(f => ({ ...f, monthly: e.target.value }))} style={{ ...inputStyle, width: 90 }} placeholder="e.g. 1200" />
+          </div>
+        )}
+
+        {/* Note */}
+        {!compact && (
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 200, flex: 1 }}>
+            <label style={labelStyle}>NOTE (optional)</label>
+            <input type="text" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="Description or source" style={{ ...inputStyle, width: '100%' }} />
+          </div>
+        )}
+      </div>
+
+      {/* ── Adoption timeline section ── */}
+      <div style={{ background: form.adoptionRequired ? C.tealDim : C.panelAlt, border: `1px solid ${form.adoptionRequired ? C.teal + '55' : C.border}`, borderRadius: 5, padding: '10px 12px' }}>
+        {/* Toggle header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: form.adoptionRequired ? 10 : 0 }}>
+          <button
+            type="button"
+            onClick={() => setForm(f => ({ ...f, adoptionRequired: !f.adoptionRequired }))}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              background: 'none', border: `1px solid ${form.adoptionRequired ? C.teal : C.border}`,
+              borderRadius: 12, padding: '3px 10px', cursor: 'pointer',
+              color: form.adoptionRequired ? C.teal : C.muted,
+              fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.06em',
+            }}
+          >
+            <TrendingUp size={10} />
+            {form.adoptionRequired ? 'ADOPTION RAMP · ON' : 'ADOPTION RAMP · OFF'}
+          </button>
+          <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim }}>
+            {form.adoptionRequired
+              ? 'income ramps up from zero — configure schedule below'
+              : 'income starts immediately at full rate'}
+          </span>
         </div>
-      )}
+
+        {/* Adoption fields — only when enabled */}
+        {form.adoptionRequired && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+
+            {/* Ramp start period */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <label style={{ ...labelStyle, color: C.teal }}>
+                START MONTH
+                <span style={{ color: C.dim, fontWeight: 400, marginLeft: 4 }}>from acq.</span>
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  type="number"
+                  min={0}
+                  value={form.rampStartPeriod}
+                  onChange={e => setForm(f => ({ ...f, rampStartPeriod: e.target.value }))}
+                  style={{ ...adoptionInputStyle, width: 70 }}
+                  placeholder="e.g. 12"
+                />
+                <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim }}>mo</span>
+              </div>
+              <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim, marginTop: 2 }}>0 = day of closing</span>
+            </div>
+
+            {/* Ramp duration */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <label style={{ ...labelStyle, color: C.teal }}>
+                RAMP DURATION
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  type="number"
+                  min={0}
+                  value={form.rampDurationMonths}
+                  onChange={e => setForm(f => ({ ...f, rampDurationMonths: e.target.value }))}
+                  style={{ ...adoptionInputStyle, width: 70 }}
+                  placeholder="e.g. 6"
+                />
+                <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim }}>mo</span>
+              </div>
+              <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim, marginTop: 2 }}>0 = instant full rate</span>
+            </div>
+
+            {/* Steady-state monthly */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <label style={{ ...labelStyle, color: C.teal }}>
+                STEADY STATE $/MO
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontFamily: MONO, fontSize: 10, color: C.dim }}>$</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={form.steadyStateMonthly}
+                  onChange={e => setForm(f => ({ ...f, steadyStateMonthly: e.target.value }))}
+                  placeholder={form.monthly || '0'}
+                  style={{ ...adoptionInputStyle, width: 90 }}
+                />
+              </div>
+              <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim, marginTop: 2 }}>
+                full run-rate (blank = use $/mo)
+              </span>
+            </div>
+
+            {/* Probability adopted */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <label style={{ ...labelStyle, color: C.teal }}>
+                PROBABILITY
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={form.probabilityAdopted}
+                  onChange={e => setForm(f => ({ ...f, probabilityAdopted: e.target.value }))}
+                  style={{ ...adoptionInputStyle, width: 70 }}
+                  placeholder="1.0"
+                />
+                <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim }}>0–1</span>
+              </div>
+              <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim, marginTop: 2 }}>1.0 = certain to launch</span>
+            </div>
+
+            {/* Visual summary */}
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', paddingBottom: 2 }}>
+              <AdoptionTimelinePreview
+                rampStart={parseFloat(form.rampStartPeriod) || 0}
+                rampDuration={parseFloat(form.rampDurationMonths) || 0}
+                probability={parseFloat(form.probabilityAdopted) || 1}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Inline visual preview of the ramp schedule ──────────────────────────────
+function AdoptionTimelinePreview({
+  rampStart, rampDuration, probability,
+}: {
+  rampStart: number;
+  rampDuration: number;
+  probability: number;
+}) {
+  const HOLD = 60; // 5-year / 60-month display window
+  const BAR_W = 160;
+  const BAR_H = 18;
+
+  const startPct  = Math.min(1, rampStart / HOLD);
+  const endPct    = Math.min(1, (rampStart + rampDuration) / HOLD);
+  const pct = Math.round(probability * 100);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim, letterSpacing: '0.05em' }}>
+        60-MO RAMP PREVIEW · {pct}% PROB
+      </span>
+      <div style={{ position: 'relative', width: BAR_W, height: BAR_H, background: '#0a1018', border: `1px solid ${C.teal}33`, borderRadius: 3, overflow: 'hidden' }}>
+        {/* Zero zone (before ramp start) */}
+        {startPct > 0 && (
+          <div style={{
+            position: 'absolute', left: 0, top: 0,
+            width: `${startPct * 100}%`, height: '100%',
+            background: C.dim + '40',
+          }} />
+        )}
+        {/* Ramp zone */}
+        {endPct > startPct && (
+          <div style={{
+            position: 'absolute', left: `${startPct * 100}%`, top: 0,
+            width: `${(endPct - startPct) * 100}%`, height: '100%',
+            background: `linear-gradient(to right, ${C.teal}20, ${C.teal}80)`,
+          }} />
+        )}
+        {/* Steady state zone */}
+        {endPct < 1 && (
+          <div style={{
+            position: 'absolute', left: `${endPct * 100}%`, top: 0,
+            width: `${(1 - endPct) * 100}%`, height: '100%',
+            background: C.teal + '80',
+          }} />
+        )}
+        {/* Tick marks at year boundaries */}
+        {[12, 24, 36, 48].map(m => (
+          <div key={m} style={{
+            position: 'absolute', left: `${(m / HOLD) * 100}%`, top: 0,
+            width: 1, height: '100%', background: C.border,
+          }} />
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', width: BAR_W }}>
+        {['Y1', 'Y2', 'Y3', 'Y4', 'Y5'].map(y => (
+          <span key={y} style={{ fontFamily: LABEL, fontSize: 6, color: C.dim }}>{y}</span>
+        ))}
+      </div>
     </div>
   );
 }
