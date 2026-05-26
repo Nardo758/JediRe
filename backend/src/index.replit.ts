@@ -401,6 +401,7 @@ import { nightlyEventExtractionCron } from './inngest/functions/nightly-event-ex
 import { nightlyApartmentSyncCron } from './inngest/functions/nightly-apartment-sync';
 import { calibrationRealizationCron } from './inngest/functions/calibrationRealizationCron';
 import { macroSignalsMonthly } from './inngest/functions/macro-signals-monthly';
+import { syncPlanningApplicationsCron } from './inngest/functions/sync-planning-applications';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -444,6 +445,8 @@ app.use(
       calibrationRealizationCron,
       // Task #1050: monthly FRED + BLS macro signals → historical_observations (2nd of month, 09:00 UTC)
       macroSignalsMonthly,
+      // Task #1075: nightly Atlanta DPCD + Fulton County planning application ingest (01:00 UTC)
+      syncPlanningApplicationsCron,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,
