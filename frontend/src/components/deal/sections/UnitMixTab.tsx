@@ -2051,6 +2051,32 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                               </span>
                             )}
                             {u.type}
+                            {/* BR/BA badge — only for server-extracted rows
+                                where the parser populated bedrooms. Lets
+                                analysts instantly spot mis-labelled plans
+                                (e.g. "Studio" parsed as 1BR/1BA). */}
+                            {u.source === 'extraction_rent_roll' && u.bedrooms != null && (
+                              <span
+                                title={`${u.bedrooms} bedroom${u.bedrooms !== 1 ? 's' : ''}${u.bathrooms != null ? ` / ${u.bathrooms} bathroom${u.bathrooms !== 1 ? 's' : ''}` : ''} — parsed by extraction pipeline`}
+                                style={{
+                                  marginLeft: 7,
+                                  display: 'inline-block',
+                                  verticalAlign: 'middle',
+                                  fontFamily: LABEL,
+                                  fontSize: 7,
+                                  fontWeight: 600,
+                                  color: C.muted,
+                                  letterSpacing: '0.05em',
+                                  background: C.panelAlt,
+                                  border: `1px solid ${C.border}`,
+                                  borderRadius: 3,
+                                  padding: '1px 5px',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {u.bedrooms}bd{u.bathrooms != null ? ` / ${u.bathrooms}ba` : ''}
+                              </span>
+                            )}
                             {/* Provenance hint when the floor plan name itself
                                 is unknown/blank — clarifies that the mix came
                                 from an unstructured rent-roll extract that
