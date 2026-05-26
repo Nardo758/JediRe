@@ -273,12 +273,13 @@ interface LineFormState {
   probabilityAdopted: string;
 }
 
-function emptyForm(isDevelopment = false): LineFormState {
+function emptyForm(isDevelopment = false, renoCompletionMonths?: number): LineFormState {
+  const isValueAdd = !isDevelopment && renoCompletionMonths != null && renoCompletionMonths > 0;
   return {
     label: '', monthly: '', qty: '', rate: '',
     frequency: 'monthly', note: '', useQtyRate: false,
     adoptionRequired: isDevelopment,
-    rampStartPeriod: isDevelopment ? '12' : '0',
+    rampStartPeriod: isDevelopment ? '12' : isValueAdd ? String(renoCompletionMonths!) : '0',
     rampDurationMonths: '6',
     steadyStateMonthly: '',
     probabilityAdopted: '1.0',
@@ -286,8 +287,24 @@ function emptyForm(isDevelopment = false): LineFormState {
 }
 
 export function OtherIncomeTab(props: FinancialEngineTabProps) {
-  const { dealId, dealType, onF9Refresh } = props;
+  const { dealId, dealType, onF9Refresh, f9Financials } = props;
   const isDevelopment = dealType === 'development';
+
+  // For value-add deals, derive the renovation completion month from the CapEx schedule
+  // so the adoption ramp form pre-fills START MONTH automatically.
+  // Looks for 'renovation_period_years' in the proforma year-1 rows (set by the CashFlow Agent)
+  // or falls back to the user overrides map. Falls back to null (→ 0) if no capex schedule set.
+  const renoCompletionMonths = React.useMemo((): number | undefined => {
+    if (isDevelopment) return undefined;
+    // Primary: proforma year1 resolved field
+    const proformaRow = f9Financials?.proforma?.year1?.find(r => r.field === 'renovation_period_years');
+    const fromProforma = proformaRow?.resolved ?? proformaRow?.platform ?? proformaRow?.broker ?? null;
+    if (fromProforma != null && fromProforma > 0) return Math.round(fromProforma * 12);
+    // Secondary: user overrides map (year index 1 = Y1)
+    const fromOverride = f9Financials?.userOverrides?.['renovation_period_years']?.[1] ?? null;
+    if (fromOverride != null && fromOverride > 0) return Math.round(fromOverride * 12);
+    return undefined;
+  }, [isDevelopment, f9Financials]);
 
   const approvedAmenities = useDesignProgramStore(s => s.program.approvedAmenities);
 
@@ -305,10 +322,10 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
 
   // User-lines state
   const [showAddForm,   setShowAddForm]   = useState(false);
-  const [addForm,       setAddForm]       = useState<LineFormState>(() => emptyForm(isDevelopment));
+  const [addForm,       setAddForm]       = useState<LineFormState>(() => emptyForm(isDevelopment, renoCompletionMonths));
   const [addingLine,    setAddingLine]    = useState(false);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
-  const [editForm,      setEditForm]      = useState<LineFormState>(() => emptyForm(isDevelopment));
+  const [editForm,      setEditForm]      = useState<LineFormState>(() => emptyForm(isDevelopment, renoCompletionMonths));
   const [savingLineId,  setSavingLineId]  = useState<string | null>(null);
   const [deletingLineId,setDeletingLineId]= useState<string | null>(null);
 
@@ -425,7 +442,7 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
         `/api/v1/deals/${dealId}/financials/other-income/user-lines`,
         buildLinePayload(addForm)
       );
-      setAddForm(emptyForm(isDevelopment));
+      setAddForm(emptyForm(isDevelopment, renoCompletionMonths));
       setShowAddForm(false);
       await load();
       try { onF9Refresh?.(); } catch { /* noop */ }
@@ -1091,7 +1108,11 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                   <div style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.purple, marginBottom: 10 }}>
                     ADD CUSTOM LINE
                   </div>
-                  <InlineLineForm form={addForm} setForm={setAddForm} />
+                  <InlineLineForm
+                    form={addForm}
+                    setForm={setAddForm}
+                    startMonthTooltip={renoCompletionMonths != null && renoCompletionMonths > 0 ? 'Pre-filled from CapEx schedule — edit if needed' : undefined}
+                  />
                   <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                     <button
                       onClick={() => void handleAddLine()}
@@ -1101,7 +1122,7 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                       {addingLine ? '…' : 'ADD LINE'}
                     </button>
                     <button
-                      onClick={() => { setShowAddForm(false); setAddForm(emptyForm(isDevelopment)); }}
+                      onClick={() => { setShowAddForm(false); setAddForm(emptyForm(isDevelopment, renoCompletionMonths)); }}
                       style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 4, padding: '5px 14px', cursor: 'pointer', color: C.muted, fontFamily: LABEL, fontSize: 9 }}
                     >
                       CANCEL
@@ -1111,7 +1132,7 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
               ) : (
                 <div style={{ padding: '10px 14px', borderTop: userLines.length > 0 ? `1px solid ${C.border}` : undefined }}>
                   <button
-                    onClick={() => { setAddForm(emptyForm(isDevelopment)); setShowAddForm(true); }}
+                    onClick={() => { setAddForm(emptyForm(isDevelopment, renoCompletionMonths)); setShowAddForm(true); }}
                     style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: `1px solid ${C.purple}55`, borderRadius: 4, padding: '5px 12px', cursor: 'pointer', color: C.purple, fontFamily: LABEL, fontSize: 9 }}
                   >
                     <Plus size={11} /> ADD CUSTOM LINE
@@ -1166,11 +1187,12 @@ function AdoptionSummaryBadge({ adoption }: { adoption: AdoptionBlock }) {
 
 // ── Inline form sub-component ───────────────────────────────────────────────
 function InlineLineForm({
-  form, setForm, compact = false,
+  form, setForm, compact = false, startMonthTooltip,
 }: {
   form: LineFormState;
   setForm: React.Dispatch<React.SetStateAction<LineFormState>>;
   compact?: boolean;
+  startMonthTooltip?: string;
 }) {
   const inputStyle: React.CSSProperties = {
     background: '#0a1018',
@@ -1299,6 +1321,14 @@ function InlineLineForm({
               <label style={{ ...labelStyle, color: C.teal }}>
                 START MONTH
                 <span style={{ color: C.dim, fontWeight: 400, marginLeft: 4 }}>from acq.</span>
+                {startMonthTooltip && (
+                  <span
+                    title={startMonthTooltip}
+                    style={{ marginLeft: 5, color: C.teal, fontSize: 8, fontWeight: 700, cursor: 'help', opacity: 0.8 }}
+                  >
+                    ⓘ
+                  </span>
+                )}
               </label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <input
@@ -1308,10 +1338,13 @@ function InlineLineForm({
                   onChange={e => setForm(f => ({ ...f, rampStartPeriod: e.target.value }))}
                   style={{ ...adoptionInputStyle, width: 70 }}
                   placeholder="e.g. 12"
+                  title={startMonthTooltip}
                 />
                 <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim }}>mo</span>
               </div>
-              <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim, marginTop: 2 }}>0 = day of closing</span>
+              <span style={{ fontFamily: LABEL, fontSize: 7, color: startMonthTooltip ? C.teal : C.dim, marginTop: 2, opacity: startMonthTooltip ? 0.8 : 1 }}>
+                {startMonthTooltip ? 'from CapEx schedule' : '0 = day of closing'}
+              </span>
             </div>
 
             {/* Ramp duration */}
