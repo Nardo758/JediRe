@@ -9,10 +9,13 @@
  *   cd backend && npx ts-node --transpile-only src/scripts/backfill-event-extraction.ts
  *
  * Flags:
- *   --force      Re-process every cached article regardless of prior extraction
- *                (default: skip articles where extracted_at IS NOT NULL)
- *   --all        Alias for --force (backward-compat)
- *   --dry-run    Log what would be processed without calling the LLM or writing to DB
+ *   --force          Re-process every cached article regardless of prior extraction
+ *                    (default: skip articles where extracted_at IS NULL)
+ *   --all            Alias for --force (backward-compat)
+ *   --dry-run        Log what would be processed without calling the LLM or writing to DB
+ *   --stamp-existing One-shot backfill (Task #1134): stamp extracted_at = NOW() on any
+ *                    news_article_cache row that already has a market_events match but
+ *                    whose extracted_at is still NULL. No LLM calls are made. Idempotent.
  */
 
 import { getPool } from '../database/connection';
@@ -20,10 +23,41 @@ import { extractAndPersistEvents } from '../services/market-event-extraction.ser
 import { logger } from '../utils/logger';
 
 const args = process.argv.slice(2);
-const DRY_RUN  = args.includes('--dry-run');
-const FORCE_ALL = args.includes('--force') || args.includes('--all');
+const DRY_RUN        = args.includes('--dry-run');
+const FORCE_ALL      = args.includes('--force') || args.includes('--all');
+const STAMP_EXISTING = args.includes('--stamp-existing');
+
+/**
+ * Task #1134: stamp extracted_at on articles that already produced market_events.
+ * No LLM calls; pure SQL UPDATE. Idempotent.
+ */
+async function stampExisting(): Promise<void> {
+  const pool = getPool();
+
+  logger.info('[BackfillEvents] --stamp-existing mode: stamping pre-existing extracted articles …');
+
+  const result = await pool.query(`
+    UPDATE news_article_cache nac
+    SET extracted_at = NOW()
+    WHERE EXISTS (
+      SELECT 1
+      FROM market_events me
+      WHERE me.source_url = nac.url
+    )
+    AND nac.extracted_at IS NULL
+  `);
+
+  logger.info('[BackfillEvents] --stamp-existing complete', { rowsStamped: result.rowCount ?? 0 });
+
+  await pool.end();
+}
 
 async function main() {
+  if (STAMP_EXISTING) {
+    await stampExisting();
+    return;
+  }
+
   const pool = getPool();
 
   logger.info('[BackfillEvents] Starting market event backfill', { dryRun: DRY_RUN, forceAll: FORCE_ALL });
