@@ -14,9 +14,11 @@
  *     the same event.
  *
  * Architecture:
- *   Step 1 — Query unextracted articles from the last 7 days
+ *   Step 1 — Query unextracted articles from the last 7 days; also counts already-extracted
+ *             articles in the same window so monitoring can distinguish idle from broken.
  *   Step 2 — Extract and persist events for each article (sequential, LLM-rate-aware)
- *   Step 3 — Log summary
+ *   Step 3 — Log summary with structured status: 'idle' | 'processed' | 'partial_errors'
+ *             and alert_type='nightly_extraction_idle' when articles_processed === 0.
  */
 
 import { inngest } from '../../lib/inngest';
@@ -33,23 +35,38 @@ export const nightlyEventExtractionCron = inngest.createFunction(
     triggers: [{ cron: '0 3 * * *' }],
   },
   async ({ step }) => {
-    const articles = await step.run('fetch-unextracted-articles', async () => {
-      const result = await dbQuery(`
-        SELECT id, title, description, content, url, published_at
-        FROM news_article_cache
-        WHERE cached_at >= NOW() - ($1 || ' days')::interval
-          AND title IS NOT NULL
-          AND extracted_at IS NULL
-        ORDER BY cached_at DESC
-      `, [LOOKBACK_DAYS]);
+    const fetchResult = await step.run('fetch-unextracted-articles', async () => {
+      const [unextractedResult, alreadyExtractedResult] = await Promise.all([
+        dbQuery(`
+          SELECT id, title, description, content, url, published_at
+          FROM news_article_cache
+          WHERE cached_at >= NOW() - ($1 || ' days')::interval
+            AND title IS NOT NULL
+            AND extracted_at IS NULL
+          ORDER BY cached_at DESC
+        `, [LOOKBACK_DAYS]),
+        dbQuery(`
+          SELECT COUNT(*) AS already_extracted
+          FROM news_article_cache
+          WHERE cached_at >= NOW() - ($1 || ' days')::interval
+            AND extracted_at IS NOT NULL
+        `, [LOOKBACK_DAYS]),
+      ]);
 
-      logger.info('[Inngest/NightlyEventExtraction] Unextracted articles found', {
-        count: result.rows.length,
+      const newly_found = unextractedResult.rows.length;
+      const already_extracted = parseInt(alreadyExtractedResult.rows[0]?.already_extracted ?? '0', 10);
+
+      logger.info('[Inngest/NightlyEventExtraction] Article window scanned', {
+        newly_found,
+        already_extracted,
         lookback_days: LOOKBACK_DAYS,
       });
 
-      return result.rows;
+      return { rows: unextractedResult.rows, already_extracted };
     });
+
+    const articles = fetchResult.rows;
+    const already_extracted = fetchResult.already_extracted;
 
     const summary = await step.run('extract-and-persist-events', async () => {
       let totalInserted = 0;
@@ -81,22 +98,39 @@ export const nightlyEventExtractionCron = inngest.createFunction(
         }
       }
 
+      const status: 'idle' | 'processed' | 'partial_errors' =
+        articles.length === 0
+          ? 'idle'
+          : totalErrors > 0
+            ? 'partial_errors'
+            : 'processed';
+
       return {
         articles_processed: articles.length,
+        already_extracted,
         events_inserted: totalInserted,
         events_skipped_dedup: totalSkipped,
         errors: totalErrors,
+        status,
       };
     });
 
     await step.run('log-summary', async () => {
-      logger.info('[Inngest/NightlyEventExtraction] Nightly run complete', {
+      const logPayload: Record<string, unknown> = {
         articles_processed: summary.articles_processed,
+        already_extracted: summary.already_extracted,
         events_inserted: summary.events_inserted,
         events_skipped_dedup: summary.events_skipped_dedup,
         errors: summary.errors,
+        status: summary.status,
         lookback_days: LOOKBACK_DAYS,
-      });
+      };
+
+      if (summary.status === 'idle') {
+        logPayload.alert_type = 'nightly_extraction_idle';
+      }
+
+      logger.info('[Inngest/NightlyEventExtraction] Nightly run complete', logPayload);
       return summary;
     });
 
