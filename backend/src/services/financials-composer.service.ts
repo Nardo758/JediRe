@@ -1204,6 +1204,8 @@ function extractionFloorPlanToRentRollRows(
       _marketOverridden:  ov.market != null,
       _expirationCurve: fp.expiration_curve ?? null,
       _expirationExtractionStatus: fp.expiration_extraction_status ?? null,
+      bedrooms: fp.bedrooms ?? null,
+      bathrooms: fp.bathrooms ?? null,
     };
   });
 }
@@ -2016,6 +2018,8 @@ function buildRentRollSummary(
       marketRentOverridden:  r._marketOverridden === true,
       expirationCurve: r._expirationCurve ?? null,
       expirationExtractionStatus: r._expirationExtractionStatus ?? null,
+      bedrooms: r.bedrooms ?? null,
+      bathrooms: r.bathrooms ?? null,
       source: 'extraction_rent_roll',
     }));
     return {
