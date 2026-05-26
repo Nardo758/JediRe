@@ -136,6 +136,7 @@ interface UserLine {
   confirmed?: boolean;
   created_at: string;
   adoption?: AdoptionBlock | null;
+  confirmed?: boolean;
 }
 
 // ── Program suggestion config ────────────────────────────────────────────────
@@ -1066,7 +1067,30 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                               </>
                             ) : (
                               <>
-                                <td style={{ ...td(), color: C.purple, fontWeight: 700 }}>{line.label}</td>
+                                <td style={{ ...td(), color: C.purple, fontWeight: 700 }}>
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                                    {line.label}
+                                    {hasAdoption && (() => {
+                                      const isConfirmed = line.confirmed === true || /confirmed/i.test(line.note ?? '');
+                                      return (
+                                        <span style={{
+                                          fontFamily: LABEL,
+                                          fontSize: 7,
+                                          fontWeight: 700,
+                                          letterSpacing: '0.06em',
+                                          padding: '1px 5px',
+                                          borderRadius: 3,
+                                          background: isConfirmed ? C.greenDim : C.panelAlt,
+                                          border: `1px solid ${isConfirmed ? C.green + '66' : C.border}`,
+                                          color: isConfirmed ? C.green : C.muted,
+                                          flexShrink: 0,
+                                        }}>
+                                          {isConfirmed ? 'Confirmed' : 'Projected'}
+                                        </span>
+                                      );
+                                    })()}
+                                  </span>
+                                </td>
                                 <td style={{ ...td(), color: C.dim, fontSize: 9 }}>
                                   {line.qty != null && line.rate != null
                                     ? `${line.qty.toLocaleString()} × $${line.rate}/${line.frequency === 'annual' ? 'yr' : 'mo'}`
