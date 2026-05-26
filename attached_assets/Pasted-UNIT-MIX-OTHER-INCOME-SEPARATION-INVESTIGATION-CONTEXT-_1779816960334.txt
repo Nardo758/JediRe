@@ -1,0 +1,175 @@
+UNIT MIX + OTHER INCOME SEPARATION — INVESTIGATION
+
+CONTEXT
+Per Leon's UI fixes: split the current combined Unit Mix / Other 
+Income surface into two separate pages, available across all deal 
+types. Both pages need:
+
+1. Auto-population from document upload (rent roll, OM, T-12)
+2. Manual build-from-scratch path (especially for development 
+   where no rent roll exists)
+3. Unit Mix page: add leasing metrics and trends from rent roll
+4. Other Income page: integrate suggestions from Program tab + 
+   adoption timeline for new income sources
+
+Investigate current state and design the changes. No code changes.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — CURRENT STATE
+═══════════════════════════════════════════════════════════════════
+
+A. Locate the current combined Unit Mix / Other Income surface:
+   - File path
+   - Where it's mounted in F9 (which section of which tab)
+   - What sub-sections exist within it
+
+B. Document how unit mix data currently populates:
+   - From rent roll parser (Yardi RRwLC + flat layout per inventory)
+   - What fields are captured per unit type (count, sqft, avg 
+     rent, occupancy)
+   - Where the data lands (data_library_assets.unit_mix JSONB? 
+     deal_assumptions? other?)
+   - The auto-fill code path
+
+C. Document how other income currently populates:
+   - From which source (T-12 line items, OM, rent roll capsule 
+     extras)
+   - What income categories are extracted (parking, laundry, pet, 
+     utility reimbursement, late fees, misc)
+   - Where it lands
+
+D. Document the existing user editing UX:
+   - Inline editing? Modal? Bulk edit?
+   - Can users add new unit types manually today?
+   - Can users add new income categories manually today?
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — UNIT MIX PAGE DESIGN
+═══════════════════════════════════════════════════════════════════
+
+A. Auto-populate from document upload (existing — verify and 
+   document)
+
+B. Manual build-from-scratch UX:
+   - Critical for development model (no rent roll exists)
+   - Add unit type: bedrooms/bathrooms/sqft/count/projected rent
+   - Validation rules (unit type count sums to total units, 
+     avg sqft reasonable, etc.)
+   - Suggested defaults from market comps for the geography
+
+C. Leasing metrics + trends from rent roll:
+   - Identify what's available from rent roll parser per F9 map:
+     - velocity (signings/month)
+     - seasonality
+     - waterfall (current rent vs market rent by unit type)
+     - term mix (lease durations)
+     - expiration curve
+     - charge code aggregate
+   - Recommend which to surface on the Unit Mix page and how
+   - These overlap with LEASING tab — what's the right division 
+     of labor?
+
+D. Cross-tab data flow:
+   - Unit mix changes affect GPR calculation
+   - Unit mix changes affect M07 Traffic Engine demand projection
+   - How are changes propagated?
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — OTHER INCOME PAGE DESIGN
+═══════════════════════════════════════════════════════════════════
+
+A. Existing income categories:
+   - Parking, laundry, pet, utility reimbursement, late fees, 
+     misc — display each with current value
+   - Per-unit / per-month / annual representation
+   - Source provenance per category (T-12 / rent roll / OM)
+
+B. Program tab integration:
+   - Locate the Program tab in the codebase
+   - Identify which Program suggestions are relevant to other 
+     income (e.g., adding a coworking amenity → coworking 
+     membership fees; adding EV charging → EV revenue)
+   - Design the integration: how do Program suggestions surface 
+     as Other Income candidates?
+
+C. Adoption timeline for new income sources:
+   - When a new income source is added, when does it ramp up?
+   - Field design: ramp start date, ramp duration, steady-state 
+     value
+   - How does this feed the projection model?
+   - LayeredValue treatment: is this an assumption (L1)? 
+     Calculated? Hybrid?
+
+D. Per-strategy applicability:
+   - For development deals: all Other Income is forward-projected 
+     with adoption timelines
+   - For existing deals: existing income lines come from T-12; 
+     new income sources from Program tab get adoption timelines
+   - For STR: Other Income may be near-zero (revenue is in ADR); 
+     verify
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — DEVELOPMENT MODEL CONSIDERATIONS
+═══════════════════════════════════════════════════════════════════
+
+A. Development deals have no rent roll, no T-12. The manual-build 
+   path is the only path. Document:
+   - What's required for a complete unit mix from scratch?
+   - What defaults can the platform suggest (from market comps, 
+     M03 Dev Capacity output, similar developments)?
+   - How does the user override / accept / refine these?
+
+B. Validation:
+   - Unit count must match the dev capacity (M03 massing output)
+   - Per-unit sqft must be consistent with sqft constraints
+   - Rent assumptions must align with market positioning
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — ADOPTION TIMELINE PATTERN
+═══════════════════════════════════════════════════════════════════
+
+This is a new input pattern; deserves its own design consideration:
+
+A. Schema:
+   - source_name (e.g., "EV charging fees")
+   - start_period (months or year from acquisition / completion)
+   - ramp_duration (months to reach steady state)
+   - steady_state_value (per-unit per-month, or other unit)
+   - probability_adopted (confidence the program will actually 
+     be implemented)
+
+B. How it feeds projections:
+   - Year 1 may have $0 if program starts later
+   - Year 2-3 ramps to steady state
+   - Year N+ at full value × probability_adopted
+
+C. Could this pattern apply elsewhere?
+   - Lease-up timing (already handled by LVE)
+   - Capex burn (already in CapEx schedule)
+   - Concession burn-off (already in growth rates)
+   - Other? (potential for reuse)
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/UNIT_MIX_OTHER_INCOME_INVESTIGATION.md
+
+Structure:
+1. Current combined surface (Step 1)
+2. Unit Mix page design (Step 2)
+3. Other Income page design (Step 3)
+4. Development model considerations (Step 4)
+5. Adoption timeline pattern (Step 5)
+6. Implementation phasing recommendation
+7. Open questions
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Implement any code changes
+- Modify the existing combined surface
+- Build new pages
+- Wire Program tab integration
+- "While I'm here" cleanups
