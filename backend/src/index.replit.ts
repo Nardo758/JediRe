@@ -402,6 +402,7 @@ import { nightlyApartmentSyncCron } from './inngest/functions/nightly-apartment-
 import { calibrationRealizationCron } from './inngest/functions/calibrationRealizationCron';
 import { macroSignalsMonthly } from './inngest/functions/macro-signals-monthly';
 import { syncPlanningApplicationsCron } from './inngest/functions/sync-planning-applications';
+import { syncAccelaPlanningCron } from './inngest/functions/sync-accela-planning';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -447,6 +448,8 @@ app.use(
       macroSignalsMonthly,
       // Task #1075: nightly Atlanta DPCD + Fulton County planning application ingest (01:00 UTC)
       syncPlanningApplicationsCron,
+      // Task #1076: nightly Gwinnett + DeKalb + Cobb Accela planning ingest (02:00 UTC)
+      syncAccelaPlanningCron,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,
