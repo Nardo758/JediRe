@@ -2068,78 +2068,92 @@ export function ProjectionsTab({
                         );
                       }
 
-                      // ── Ramping user-line sub-rows (Task #1160) ──────────────────────────
+                      // ── Custom user-line sub-rows (Task #1160 + Task #1170) ──────────────
                       // Injected after the "Other Income" rollup row in the REVENUE section.
-                      // Only lines with adoption.ramp_duration_months > 0 get a RAMP sub-row;
-                      // flat lines are already included in the otherIncome total and need no
-                      // separate display.
+                      // Ramping lines (adoption.ramp_duration_months > 0) show a RAMP badge
+                      // and use the ramp-aware annual formula with per-year color coding.
+                      // Flat lines (no adoption or ramp_duration_months === 0) show a FLAT
+                      // badge and display monthly × 12 in every year column.
                       if (
                         section.key === 'revenue' &&
                         row.key === 'otherIncome' &&
                         isAnnual
                       ) {
-                        const rampingLines = (financials?.otherIncomeUserLines ?? [])
-                          .filter(l => l.adoption != null && l.adoption.ramp_duration_months > 0);
+                        const allUserLines = financials?.otherIncomeUserLines ?? [];
 
-                        if (rampingLines.length > 0) {
-                          const rampBg = `${BT.text.cyan}06`;
-                          const rampRows = rampingLines.map(line => (
-                            <tr
-                              key={`__ramp_${line.id}__`}
-                              style={{ background: rampBg, borderBottom: `1px solid ${BT.border.subtle}` }}
-                            >
-                              <td
-                                style={{ padding: '3px 8px 3px 28px', color: BT.text.secondary, fontWeight: 400, position: 'sticky', left: 0, background: rampBg, zIndex: 1 }}
+                        if (allUserLines.length > 0) {
+                          const subRowBg = `${BT.text.cyan}06`;
+                          const subRows = allUserLines.map(line => {
+                            const isRamping = line.adoption != null && line.adoption.ramp_duration_months > 0;
+                            return (
+                              <tr
+                                key={`__userline_${line.id}__`}
+                                style={{ background: subRowBg, borderBottom: `1px solid ${BT.border.subtle}` }}
                               >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                  <span style={{ fontFamily: MONO, fontSize: 9 }}>{line.label}</span>
-                                  <span style={{
-                                    fontSize: 7, fontWeight: 700, color: BT.text.cyan,
-                                    background: `${BT.text.cyan}18`,
-                                    border: `1px solid ${BT.text.cyan}40`,
-                                    borderRadius: 2, padding: '0 4px', letterSpacing: '0.05em',
-                                  }}>
-                                    RAMP
-                                  </span>
-                                </div>
-                              </td>
-                              {annualYears.map(yr => {
-                                const yearIndex = yr - 1;
-                                const val = computeRampAwareAnnual(line.monthly, line.adoption!, yearIndex);
-                                const display = val > 0 ? fmt$(val) : '$0';
-                                const tooltip = line.adoption
-                                  ? buildRampTooltip(line.adoption, yearIndex)
-                                  : undefined;
-                                const isAtSteadyState = line.adoption != null && (() => {
-                                  const midpoint = yearIndex * 12 + 6;
-                                  return midpoint >= line.adoption.ramp_start_period + line.adoption.ramp_duration_months;
-                                })();
-                                const isPreRamp = line.adoption != null && (() => {
-                                  const midpoint = yearIndex * 12 + 6;
-                                  return midpoint < line.adoption.ramp_start_period;
-                                })();
-                                const cellColor = isPreRamp
-                                  ? BT.text.muted
-                                  : isAtSteadyState
-                                  ? BT.text.cyan
-                                  : BT.text.primary;
-                                return (
-                                  <td
-                                    key={yr}
-                                    style={{ padding: '3px 8px', textAlign: 'right', color: cellColor, fontWeight: 400, cursor: 'default', fontFamily: MONO, fontSize: 9 }}
-                                    title={tooltip}
-                                  >
-                                    {display}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ));
+                                <td
+                                  style={{ padding: '3px 8px 3px 28px', color: BT.text.secondary, fontWeight: 400, position: 'sticky', left: 0, background: subRowBg, zIndex: 1 }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <span style={{ fontFamily: MONO, fontSize: 9 }}>{line.label}</span>
+                                    {isRamping ? (
+                                      <span style={{
+                                        fontSize: 7, fontWeight: 700, color: BT.text.cyan,
+                                        background: `${BT.text.cyan}18`,
+                                        border: `1px solid ${BT.text.cyan}40`,
+                                        borderRadius: 2, padding: '0 4px', letterSpacing: '0.05em',
+                                      }}>
+                                        RAMP
+                                      </span>
+                                    ) : (
+                                      <span style={{
+                                        fontSize: 7, fontWeight: 700, color: BT.text.muted,
+                                        background: `${BT.text.muted}18`,
+                                        border: `1px solid ${BT.text.muted}40`,
+                                        borderRadius: 2, padding: '0 4px', letterSpacing: '0.05em',
+                                      }}>
+                                        FLAT
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                {annualYears.map(yr => {
+                                  const yearIndex = yr - 1;
+                                  let val: number;
+                                  let tooltip: string | undefined;
+                                  let cellColor: string;
+
+                                  if (isRamping) {
+                                    val = computeRampAwareAnnual(line.monthly, line.adoption!, yearIndex);
+                                    tooltip = buildRampTooltip(line.adoption!, yearIndex);
+                                    const midpoint = yearIndex * 12 + 6;
+                                    const isAtSteadyState = midpoint >= line.adoption!.ramp_start_period + line.adoption!.ramp_duration_months;
+                                    const isPreRamp = midpoint < line.adoption!.ramp_start_period;
+                                    cellColor = isPreRamp ? BT.text.muted : isAtSteadyState ? BT.text.cyan : BT.text.primary;
+                                  } else {
+                                    val = line.monthly * 12;
+                                    tooltip = `${line.label}: $${line.monthly.toLocaleString()}/mo × 12`;
+                                    cellColor = BT.text.secondary;
+                                  }
+
+                                  const display = val > 0 ? fmt$(val) : '$0';
+                                  return (
+                                    <td
+                                      key={yr}
+                                      style={{ padding: '3px 8px', textAlign: 'right', color: cellColor, fontWeight: 400, cursor: 'default', fontFamily: MONO, fontSize: 9 }}
+                                      title={tooltip}
+                                    >
+                                      {display}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            );
+                          });
 
                           return (
                             <React.Fragment key={`${row.key}_frag`}>
                               {rowEl}
-                              {rampRows}
+                              {subRows}
                             </React.Fragment>
                           );
                         }
