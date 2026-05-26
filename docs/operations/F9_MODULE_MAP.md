@@ -3,6 +3,12 @@
 > Canonical reference for the F9 tab structure, per-field inventory, property-type coverage,
 > strategy template dispatch, source priority, and KPI classification.
 > All facts verified from source on 2026-05-26.
+>
+> **Primary source files:** `FinancialEnginePage.tsx`, `AssumptionsTab.tsx`, `DealTermsTab.tsx`,
+> `LeasingAssumptionsTab.tsx`, `RenovationAssumptionsSection.tsx`, `CustomTabRenderer.tsx`,
+> `leasing-fields.config.ts`, `proforma-blueprint.ts`, `proforma-seeder.service.ts`
+> (at `backend/src/services/`), `layered-growth/rent-growth.ts`,
+> `layered-growth/position-adjustment.ts`, `agent-fill-in.ts`.
 
 ---
 
@@ -10,17 +16,20 @@
 
 F9 is JEDI RE's 9–10 tab Bloomberg-style proforma engine. It is **structurally multifamily-shaped**:
 `ModelAssumptions` carries `totalUnits` and `netRentableSF` but no `propertyType` discriminator.
-Property-type awareness lives exclusively in the `assetClass` string passed to the layered-growth
-module (rent-growth anchor spreads, position-adjustment half-lives) and in the 7 strategy templates
-(STR, Flip, etc.). For commercial asset classes (office, retail, industrial), F9 can model them at
-the per-SF granularity using the `tiPerSF` / `lcPctOfRent` fields, but has no NNN lease structure,
-no tenant-by-tenant rent roll, and no WALT calculation.
+Property-type awareness lives in (a) the `assetClass` string passed to the layered-growth module
+(rent-growth anchor spreads, position-adjustment half-lives) and (b) the 7 strategy templates
+(STR, Flip, etc.). Commercial asset classes (office, retail, industrial) can be modelled using
+`tiPerSF` / `lcPctOfRent` fields, but F9 has no NNN lease structure, no WALT, and no
+tenant-by-tenant rent roll.
 
 The engine follows a **two-layer model** (CLAUDE.md P7):
-- **Layer 1** — LLM reasons about `LayeredValue<T>` assumptions (GPR, vacancy, OPEX, exit cap, hold period)
-- **Layer 2** — Deterministic functions (`runModel`, `buildProjections`) compute all KPIs: NOI, EGI, IRR, EM, CoC, DSCR, exit value, waterfall distributions
 
-The LLM never produces a KPI number. All KPI rows in the UI are Layer 2 outputs.
+- **Layer 1 (L1)** — LLM reasons about `LayeredValue<T>` assumptions (GPR, vacancy, OPEX, exit
+  cap, hold period). Sources: broker → platform → agent fill-in → user override.
+- **Layer 2 (L2)** — Deterministic functions (`runModel`, `buildProjections`) compute every KPI:
+  NOI, EGI, IRR, EM, CoC, DSCR, exit value, waterfall distributions.
+
+The LLM never produces a KPI number directly; it populates or gap-fills L1 inputs.
 
 ---
 
@@ -30,28 +39,28 @@ The LLM never produces a KPI number. All KPI rows in the UI are Layer 2 outputs.
 
 `frontend/src/pages/development/FinancialEnginePage.tsx`
 
-State orchestration: `dealType` resolution, LP/lender role default-tab logic, Opus panel,
-BUILD MODEL button, auto-build-on-mount guard (`modelBuiltRef`), stale-model badge,
-leasing cost treatment event subscriber.
+Responsibilities: `dealType` resolution, LP/lender role default-tab, Opus panel, BUILD MODEL
+button, auto-build-on-mount guard (`modelBuiltRef`), stale-model badge, leasing cost treatment
+event subscriber, custom-tab append logic.
 
 ### 2.2 Top-Level Tab Inventory
 
 Defined in `BUILTIN_TAB_LABELS`. `effectiveBuiltinCount = 10` when ROADMAP eligible, `9` otherwise.
 Custom tabs start at index `effectiveBuiltinCount`.
 
-| Index | Label | Icon | Component | Type |
-|------:|-------|------|-----------|------|
-| 0 | OVERVIEW | ⊞ | `OverviewTab` | Leaf |
-| 1 | CONSOLE | ⊕ | `ConsoleHubTab` | Hub |
-| 2 | PRO FORMA | ≡ | `ProFormaSummaryTab` | Leaf (3 519 lines) |
-| 3 | PROJECTIONS | ⋮≡ | `ProjectionsHubTab` | Hub |
-| 4 | CAPITAL | ◈ | `CapitalHubTab` | Hub |
-| 5 | RETURNS | % | `ReturnsHubTab` | Hub |
-| 6 | SCENARIOS | ◐ | `DecisionTab` | Leaf |
-| 7 | COMPARE | ⇔ | `CompareHubTab` | Hub |
-| 8 | GOAL SEEK | ⊙ | `SensitivityTab` | Leaf |
-| 9 | ROADMAP | ⊛ | `RoadmapTab` | Leaf (gated) |
-| 10+ | ✦ Custom | — | `CustomTabRenderer` | Dynamic |
+| Index | Label | Icon | Component | Type | Gate |
+|------:|-------|------|-----------|------|------|
+| 0 | OVERVIEW | ⊞ | `OverviewTab` | Leaf | always |
+| 1 | CONSOLE | ⊕ | `ConsoleHubTab` | Hub | always |
+| 2 | PRO FORMA | ≡ | `ProFormaSummaryTab` | Leaf | always |
+| 3 | PROJECTIONS | ⋮≡ | `ProjectionsHubTab` | Hub | always |
+| 4 | CAPITAL | ◈ | `CapitalHubTab` | Hub | always |
+| 5 | RETURNS | % | `ReturnsHubTab` | Hub | always |
+| 6 | SCENARIOS | ◐ | `DecisionTab` | Leaf | always |
+| 7 | COMPARE | ⇔ | `CompareHubTab` | Hub | always |
+| 8 | GOAL SEEK | ⊙ | `SensitivityTab` | Leaf | always |
+| 9 | ROADMAP | ⊛ | `RoadmapTab` | Leaf | `value-add\|rehab\|renovation\|redevelopment` |
+| 10+ | ✦ Custom | — | `CustomTabRenderer` | Dynamic | user-created via Opus |
 
 **LP / Lender role:** defaults to tab index 5 (RETURNS) on first load.
 
@@ -64,7 +73,8 @@ return /value.?add|rehab|renovation/i.test(dt);
 ### 2.3 Hub-Tab Sub-Tab Map
 
 #### CONSOLE (index 1) — `ConsoleHubTab`
-Amber active indicator. Deep-link event: `fe-console-subtab` (`{ subTab }`) dispatched by DealJourneyOverlay.
+Amber active indicator. Deep-link: `fe-console-subtab` (`{ subTab }`) dispatched by
+`DealJourneyOverlay`.
 
 | Sub-Tab ID | Label | Component |
 |------------|-------|-----------|
@@ -108,24 +118,24 @@ Financial-green active indicator.
 
 | Sub-Tab ID | Label | Component |
 |------------|-------|-----------|
-| `compare` | COMPARE | `CompareTab` |
-| `walkthrough` | WALKTHROUGH | `UnderwritingWalkthrough` |
+| `compare` | `CompareTab` | |
+| `walkthrough` | `UnderwritingWalkthrough` | |
 
 ### 2.4 AssumptionsTab (INPUTS sub-tab) — 10-Section Layout
 
-Sections 1–4 are rendered as the **KeystonePanel** (compact cards above the main grid).
-Sections 5–10 are the main scrollable grid. Section 9 redirects to the Debt Tab.
+Sections 1–4 rendered as **KeystonePanel** (compact cards above the grid).
+Sections 5–10 are the main scrollable grid. Section 9 is a pointer to Debt Tab.
 
 ```
-Section 1  KEYSTONE           — summary KPI strip (totalUnits, purchasePrice, hold, IRR, EM)
-Section 2  DEAL INFO          — deal metadata (address, city, type)
-Section 3  ACQUISITION        — purchase price, closing costs, going-in / stabilized caps
-Section 4  UNIT MIX & RENT ROLL — unit count, avg rent, occupancy from rent roll
+Section 1  KEYSTONE           — summary strip: totalUnits, purchasePrice, hold, IRR, EM
+Section 2  DEAL INFO          — address, city, dealType
+Section 3  ACQUISITION        — purchasePrice, closing costs, going-in / stabilized caps
+Section 4  UNIT MIX & RENT ROLL — unitCount, avgRent, weightedOccupancy from rent roll
 Section 5  REVENUE            — GPR through EGI + M07 Traffic Intel sub-section
 Section 6  OPERATING EXPENSES — payroll through NOI
 Section 7  CAPEX & RESERVES   — capex budget, annual draw, reserves, TI, LC
-Section 8  DISPOSITION & HOLD — hold period, exit cap, selling costs, gross / net sale
-Section 9  FINANCING          — pointer to Debt Tab (M11)
+Section 8  DISPOSITION & HOLD — hold period, exit cap, selling costs, gross/net sale
+Section 9  FINANCING          — redirect pointer to Debt Tab (M11)
 Section 10 FORWARD GROWTH RATES — per-line annual growth % + CPI anchor + concession burn-off
 ```
 
@@ -134,87 +144,95 @@ Section 10 FORWARD GROWTH RATES — per-line annual growth % + CPI anchor + conc
 ## Section 3 — Property Type Coverage Matrix
 
 `DealType = 'existing' | 'development' | 'redevelopment'` is the **deal-state** dimension.
-`assetClass` (string, not a discriminated enum) is the **property-type** dimension. These are
-separate. `ModelAssumptions` has no `propertyType` field.
-
-The table below covers the 7 canonical property types. "Supported" means F9 has dedicated fields,
-template sections, and calibrated defaults. "Partial" means F9 can model the asset class using
-generic fields but lacks property-type-specific sections. "Not at all" means the model will
-produce structurally incorrect results for that asset class.
+`assetClass` (free-form string) is the **property-type** dimension. These are separate axes.
+`ModelAssumptions` has no `propertyType` enum field.
 
 | Property Type | Coverage | What Works | What Is Missing |
 |---------------|:--------:|------------|-----------------|
-| **Multifamily** | Supported | Per-unit economics; M07 traffic engine; LEASING categories A–J; LVE; renovation tiers; state-adjusted OpEx benchmarks (CA payroll ×1.45, FL insurance ×1.5); FIELD_PRIORITIES fully calibrated | Nothing — this is the native asset class |
-| **SFR / BTR** | Partial | Per-unit model maps cleanly; STR template handles furnished SFR; state opex adjustments apply | No HOA cost line; no SFR property-management rate benchmark; no vacancy model calibrated for single-unit turnover |
-| **Office** | Partial | TI/SF and LC% fields present; `ASSET_CLASS_SPREAD_BPS.office = 0`; position half-life 3.5yr premium / 8.0yr discount | No NNN lease structure; no WALT; no tenant-by-tenant rent roll; EGI model assumes % of GPR vacancy rather than lease expiration schedule |
-| **Retail** | Partial | Same as Office; `ASSET_CLASS_SPREAD_BPS.retail = 50 bps`; TI/LC fields usable | No percentage-rent (overage) clause; no anchor-tenant risk weighting; no co-tenancy clause modeling |
-| **Industrial** | Partial | `ASSET_CLASS_SPREAD_BPS.industrial = 80 bps`; per-SF model applies | No NNN structure; no dock-door / clear-height premium fields; no industrial lease-expiration schedule |
-| **Hospitality (STR)** | Partial | Dedicated STR template: ADR, occupancy × 12-factor seasonal, RevPAR, platform fees; `ASSET_CLASS_SPREAD_BPS.str = 100 bps`; STR half-life 3.0yr/4.0yr | Long-stay hotel (ADR × 365-night model) partially covered; branded franchise cost not modeled; no flag management fee structure |
-| **Mixed-Use** | Not at all | Can approximate by running separate models per component | No multi-asset-class NOI stacking; no retail/residential apportionment; no commercial/residential blended cap rate; structural results will be misleading |
+| **Multifamily** | Supported | Per-unit economics; M07 traffic engine; LEASING Cat A–J; LVE; renovation tiers; state-adjusted OpEx norms; FIELD_PRIORITIES calibrated for apartments | Nothing — native asset class |
+| **SFR / BTR** | Partial | Per-unit model maps cleanly; STR template covers furnished SFR; state OpEx adjustments apply | No HOA cost line; no SFR vacancy model (single-unit turnover vs. portfolio); no SFR property-management rate benchmark |
+| **Office** | Partial | `tiPerSF` and `lcPctOfRent` fields present; `ASSET_CLASS_SPREAD_BPS.office = 0`; position half-life 3.5 yr / 8.0 yr | No NNN lease structure; no WALT; no tenant-by-tenant roll; vacancy model assumes % of GPR not lease-expiry schedule |
+| **Retail** | Partial | Same field set as Office; `ASSET_CLASS_SPREAD_BPS.retail = 50 bps` | No percentage-rent (overage) clause; no anchor-tenant risk; no co-tenancy modeling |
+| **Industrial** | Partial | `ASSET_CLASS_SPREAD_BPS.industrial = 80 bps`; per-SF model applies | No NNN structure; no dock-door / clear-height premium fields; no industrial lease-expiry schedule |
+| **Hospitality (STR)** | Partial | Dedicated STR template: ADR, 12-factor seasonal occupancy, RevPAR, OTA fees; `ASSET_CLASS_SPREAD_BPS.str = 100 bps`; half-life 3.0 yr / 4.0 yr | Long-stay hotel not modeled; franchise/flag management fee not modeled |
+| **Mixed-Use** | Not at all | Can approximate each component separately | No multi-asset-class NOI stacking; no blended cap rate model; structural results will be misleading |
 
-**Granularity note:** F9 uses **per-unit** granularity by default. `netRentableSF` is present in
-`ModelAssumptions` for per-SF override, but no fields auto-switch between per-unit and per-SF
-granularity based on asset class. Commercial assets modeled in F9 require the operator to manually
-enter per-SF costs scaled to the same per-unit basis as the underlying template.
+**Granularity note:** F9 defaults to **per-unit** granularity. `netRentableSF` is in
+`ModelAssumptions` for per-SF override, but no auto-switch occurs based on `assetClass`.
+Commercial assets require the operator to manually scale costs to a per-unit basis.
 
 ---
 
 ## Section 4 — Field Inventory
 
-All fields carry a **layer** column (P7):
-- **L1** — LLM-reasoned input; `LayeredValue<T>` with broker / platform / user / agent slots
-- **L2** — Deterministic computation; read-only in the UI; value produced by `runModel` / `buildProjections`
-- **L1→L2** — Field is a LayeredValue assumption whose resolved value feeds directly into the deterministic runner
+**Layer column key:**
+- `L1` — LLM-reasoned `LayeredValue<T>` input (broker / platform / user / agent slots)
+- `L2` — Deterministic computation (read-only in UI; produced by `runModel` / `buildProjections`)
+- `L1→L2` — LayeredValue input whose resolved value feeds directly into the deterministic runner
 
-Column guide: `input_mode` = how operator changes the value (override = editable cell in the UI, read-only = computed, dropdown = selection, date-picker, chips = quick-select buttons). `required` = whether the proforma template marks the field as required.
+### 4.1 OVERVIEW tab (OverviewTab)
 
-### 4.1 DEAL TERMS sub-tab (DealTermsTab)
+Read-only dashboard; no direct user inputs. All values are derived from the last model build.
+
+| Panel | Key Outputs | Layer |
+|-------|-------------|-------|
+| KPI Strip | IRR, Equity Multiple, Cash-on-Cash, Y1 NOI, DSCR | L2 |
+| Sources & Uses summary | Capital Sources, Capital Uses, LTV at Close | L2 |
+| Returns Breakdown | Deal-level, LP Returns, GP Returns (IRR, EM, Distributions, Promote) | L2 |
+| Returns by Year table | NOI, Debt Service, Cash Flow, LP/GP Dist, Cumulative EM per year | L2 |
+| Disposition Summary | Exit Value, Net Proceeds, Exit Strategy | L2 |
+| Unit Economics | GPR/unit/mo, EGI/unit/mo, OpEx/unit/mo, NOI/unit/mo, Price/Unit, Exit Cap | L2 |
+| Valuation Metrics | Price/SF, GRM, GIM, Going-in Cap, Price-to-Replacement-Cost | L2 |
+| Collision Table | Broker vs Platform vs User override comparison per field | L1+L2 |
+| JEDI Score (Insights) | Position sub-score, Mode, Confidence, Stabilization month | L2 |
+
+### 4.2 CONSOLE > DEAL TERMS sub-tab (DealTermsTab)
 
 Section A — ACQUISITION / ENTRY
 
-| field_name | display_name | data_type | units | granularity | input_mode | required | layer |
-|------------|--------------|-----------|-------|-------------|------------|---------|-------|
-| `purchasePrice` | Purchase Price | number | $ | deal | override (number) | yes | L1→L2 |
-| `closingCostsBrokerFee` | Broker Fee | number | $ | deal | override (number) | no | L1 |
-| `closingCostsLegalDD` | Legal / DD | number | $ | deal | override (number) | no | L1 |
-| `closingCostsLenderOrig` | Lender Origination | number | $ | deal | override (number) | no | L1 |
-| `closingCostsReserves` | Reserves at Close | number | $ | deal | override (number) | no | L1 |
-| `closingCostsOther` | Other Closing Costs | number | $ | deal | override (number) | no | L1 |
-| `totalClosingCosts` | Total Closing Costs | number | $ | deal | read-only | no | L2 |
-| `allInBasis` | All-In Basis | number | $ | deal | read-only | no | L2 |
-| `pricePerUnit` | Price / Unit | number | $/unit | per-unit | read-only | no | L2 |
-| `goingInCap` | Going-In Cap Rate | number | % | deal | read-only | no | L2 |
-| `stabilizedCap` | Stabilized Cap Rate | number | % | deal | read-only | no | L2 |
-| `closeDate` | Close Date | date | YYYY-MM-DD | deal | date-picker | no | L1 |
+| field_name | display_name | data_type | units | input_mode | required | layer |
+|------------|--------------|-----------|-------|------------|---------|-------|
+| `purchasePrice` | Purchase Price | number | $ | override (number) | yes | L1→L2 |
+| `closingCostsBrokerFee` | Broker Fee | number | $ | override (number) | no | L1 |
+| `closingCostsLegalDD` | Legal / DD | number | $ | override (number) | no | L1 |
+| `closingCostsLenderOrig` | Lender Origination | number | $ | override (number) | no | L1 |
+| `closingCostsReserves` | Reserves at Close | number | $ | override (number) | no | L1 |
+| `closingCostsOther` | Other Closing Costs | number | $ | override (number) | no | L1 |
+| `totalClosingCosts` | Total Closing Costs | number | $ | read-only | no | L2 |
+| `allInBasis` | All-In Basis | number | $ | read-only | no | L2 |
+| `pricePerUnit` | Price / Unit | number | $/unit | read-only | no | L2 |
+| `goingInCap` | Going-In Cap Rate | number | % | read-only | no | L2 |
+| `stabilizedCap` | Stabilized Cap Rate | number | % | read-only | no | L2 |
+| `closeDate` | Close Date | date | YYYY-MM-DD | date-picker | no | L1 |
 
 Section B — HOLD & TARGETS
 
-| field_name | display_name | data_type | units | granularity | input_mode | required | layer |
-|------------|--------------|-----------|-------|-------------|------------|---------|-------|
-| `holdYears` | Hold Period | number | years | deal | override + chips [3,5,7,10] | yes | L1→L2 |
-| `targetIrr` | Target IRR | number | % | deal | override (pct) | no | L1 |
-| `targetEm` | Target Equity Multiple | number | ×  | deal | override (number) | no | L1 |
-| `targetCoc` | Target Cash-on-Cash | number | % | deal | override (pct) | no | L1 |
+| field_name | display_name | data_type | units | input_mode | required | layer |
+|------------|--------------|-----------|-------|------------|---------|-------|
+| `holdYears` | Hold Period | number | years | override + chips [3,5,7,10] | yes | L1→L2 |
+| `targetIrr` | Target IRR | number | % | override (pct) | no | L1 |
+| `targetEm` | Target Equity Multiple | number | × | override (number) | no | L1 |
+| `targetCoc` | Target Cash-on-Cash | number | % | override (pct) | no | L1 |
 
-Section C — STRATEGY
+Section C — STRATEGY (intentionally nullable)
 
-| field_name | display_name | data_type | units | granularity | input_mode | required | layer |
-|------------|--------------|-----------|-------|-------------|------------|---------|-------|
-| `investmentStrategy` | Investment Strategy | `LayeredValue<string\|null>` | — | deal | dropdown | **no (nullable)** | L1 |
-| `exitStrategy` | Exit Strategy | `LayeredValue<string\|null>` | — | deal | dropdown | **no (nullable)** | L1 |
+| field_name | display_name | data_type | units | input_mode | required | layer |
+|------------|--------------|-----------|-------|------------|---------|-------|
+| `investmentStrategy` | Investment Strategy | `LayeredValue<string\|null>` | — | dropdown | **no** | L1 |
+| `exitStrategy` | Exit Strategy | `LayeredValue<string\|null>` | — | dropdown | **no** | L1 |
 
-Both fields are intentionally nullable. `NOT SET` badge renders when both `detected` and `override`
-slots are null. No backfill ever. See §4.2 for consumer audit.
+Both fields render a visible `NOT SET` amber badge when both `detected` and `override` are null.
+No consumer should default to `"Sale"` or `"Rental"` when null. No backfill is ever performed.
 
 Section D — EXIT / DISPOSITION
 
-| field_name | display_name | data_type | units | granularity | input_mode | required | layer |
-|------------|--------------|-----------|-------|-------------|------------|---------|-------|
-| `exitCap` | Exit Cap Rate | number | % | deal | override (pct) | yes | L1→L2 |
-| `sellingCostsPct` | Selling Costs % | number | % | deal | override (pct) | no | L1→L2 |
-| `exitDate` | Exit Date | date | YYYY-MM-DD | deal | read-only (derived) | no | L2 |
+| field_name | display_name | data_type | units | input_mode | required | layer |
+|------------|--------------|-----------|-------|------------|---------|-------|
+| `exitCap` | Exit Cap Rate | number | % | override (pct) | yes | L1→L2 |
+| `sellingCostsPct` | Selling Costs % | number | % | override (pct) | no | L1→L2 |
+| `exitDate` | Exit Date | date | YYYY-MM-DD | read-only (derived) | no | L2 |
 
-Returns KPI strip (read-only, derived from last model build):
+Returns KPI strip (read-only, from last build):
 
 | field_name | display_name | layer |
 |------------|--------------|-------|
@@ -222,112 +240,117 @@ Returns KPI strip (read-only, derived from last model build):
 | `equityMultiple` | Equity Multiple | L2 |
 | `dscr` | DSCR (Y1) | L2 |
 
-### 4.2 INPUTS sub-tab — Sections 5 & 6 (AssumptionsTab — Revenue and OpEx Grid)
+### 4.3 CONSOLE > INPUTS sub-tab — Sections 5 & 6 (AssumptionsTab Grid)
 
-All revenue and OpEx rows carry broker / platform / user / resolved columns. `patchField` is the
-camelCase key sent to `PATCH /api/v1/proforma/:dealId/assumptions`.
+`patchField` is the camelCase key sent to `PATCH /api/v1/proforma/:dealId/assumptions`.
 
 **Revenue (Section 5):**
 
-| field_name | display_name | data_type | units | granularity | input_mode | patchField | required | layer |
-|------------|--------------|-----------|-------|-------------|------------|------------|---------|-------|
-| `gpr` | Gross Potential Rent | number | $/yr | deal | override | `gpr` | yes | L1→L2 |
-| `loss_to_lease` | Loss-to-Lease | number | $/yr | deal | override | `lossToLeasePct` | no | L1→L2 |
-| `vacancy_loss` | Vacancy & Credit Loss | number | $/yr | deal | override | `vacancyPct` | yes | L1→L2 |
-| `concessions` | Concessions | number | $/yr | deal | override | `concessionsPct` | no | L1→L2 |
-| `bad_debt` | Bad Debt | number | $/yr | deal | override | `badDebtPct` | no | L1→L2 |
-| `non_revenue_units` | Non-Revenue Units | number | $/yr | deal | override | — | no | L1 |
-| `other_income` | Other Income | number | $/yr | deal | override | `otherIncomePerUnit` | no | L1→L2 |
-| `net_rental_income` | Net Rental Income | number | $/yr | deal | read-only | — | — | L2 |
-| `egi` | Effective Gross Income | number | $/yr | deal | read-only | — | — | L2 |
+| field_name | display_name | units | input_mode | patchField | required | layer |
+|------------|--------------|-------|------------|------------|---------|-------|
+| `gpr` | Gross Potential Rent | $/yr | override | `gpr` | yes | L1→L2 |
+| `loss_to_lease` | Loss-to-Lease | $/yr | override | `lossToLeasePct` | no | L1→L2 |
+| `vacancy_loss` | Vacancy & Credit Loss | $/yr | override | `vacancyPct` | yes | L1→L2 |
+| `concessions` | Concessions | $/yr | override | `concessionsPct` | no | L1→L2 |
+| `bad_debt` | Bad Debt | $/yr | override | `badDebtPct` | no | L1→L2 |
+| `non_revenue_units` | Non-Revenue Units | $/yr | override | — | no | L1 |
+| `other_income` | Other Income | $/yr | override | `otherIncomePerUnit` | no | L1→L2 |
+| `net_rental_income` | Net Rental Income | $/yr | read-only | — | — | L2 |
+| `egi` | Effective Gross Income | $/yr | read-only | — | — | L2 |
 
-**Section 5 — M07 Traffic Intel sub-section (read-only; isM07 badge):**
+Section 5 — M07 Traffic Intel sub-section (marked with `M07` badge; mostly read-only):
 
-| field_name | display_name | data_type | units | patchField | layer |
-|------------|--------------|-----------|-------|------------|-------|
-| `t01WeeklyTours` | T-01 Walk-Ins / Week | number | /wk | `t01WeeklyTours` | L1 |
-| `t05ClosingRatio` | T-05 Capture Rate % | number | % | `t05ClosingRatio` | L1 |
-| `t06WeeklyLeases` | T-06 Velocity — Net Leases/Wk | number | /wk | `t06WeeklyLeases` | L1 |
-| `derivedVacancy` | Derived Vacancy % (M07 equilibrium) | number | % | — | L2 |
-| `stabilizedOcc` | Stabilized Occupancy Target | number | % | — | L2 |
-| `leaseUpTo95` | Weeks to 95% Stabilization | number | weeks | — | L2 |
-| `renovationLift` | Renovation Traffic Lift % | number | % | — | L2 |
-| `afterRepairRent` | Target After-Repair Rent | number | $/unit/mo | — | L2 |
-| `leaseUpVelocity` | Lease-Up Velocity (leases/mo) | number | /mo | — | L2 |
-| `loss_to_lease_pct` | Loss-to-Lease % | number | % | — | L2 (mirror of LEASING Cat C) |
-| `concessions_pct` | Concession % of Rent | number | % | — | L2 (mirror of LEASING Cat D) |
+| field_name | display_name | units | patchField | layer |
+|------------|--------------|-------|------------|-------|
+| `t01WeeklyTours` | T-01 Walk-Ins / Week | /wk | `t01WeeklyTours` | L1 |
+| `t05ClosingRatio` | T-05 Capture Rate % | % | `t05ClosingRatio` | L1 |
+| `t06WeeklyLeases` | T-06 Net Leases/Wk | /wk | `t06WeeklyLeases` | L1 |
+| `derivedVacancy` | Derived Vacancy % (equilibrium) | % | — | L2 |
+| `stabilizedOcc` | Stabilized Occupancy Target | % | — | L2 |
+| `leaseUpTo95` | Weeks to 95% Stabilization | weeks | — | L2 |
+| `renovationLift` | Renovation Traffic Lift % | % | — | L2 |
+| `afterRepairRent` | Target After-Repair Rent | $/unit/mo | — | L2 |
+| `leaseUpVelocity` | Lease-Up Velocity | /mo | — | L2 |
+| `loss_to_lease_pct` | Loss-to-Lease % | % | — | L2 (mirror of LEASING Cat C) |
+| `concessions_pct` | Concession % of Rent | % | — | L2 (mirror of LEASING Cat D) |
 
 **Operating Expenses (Section 6):**
 
-| field_name | display_name | data_type | units | granularity | input_mode | patchField | required | layer |
-|------------|--------------|-----------|-------|-------------|------------|------------|---------|-------|
-| `payroll` | Payroll & Benefits | number | $/yr | deal | override | `payroll` | yes | L1→L2 |
-| `repairs_maintenance` | Repairs & Maintenance | number | $/yr | deal | override | `repairsMaintenance` | yes | L1→L2 |
-| `turnover` | Turnover / Make Ready | number | $/yr | deal | override | `turnover` | no | L1→L2 |
-| `contract_services` | Contract Services | number | $/yr | deal | override | `contractServices` | no | L1→L2 |
-| `landscaping` | Landscaping / Grounds | number | $/yr | deal | override | `landscaping` | no | L1→L2 |
-| `marketing` | Marketing | number | $/yr | deal | override | `marketing` | no | L1→L2 |
-| `utilities` | Utilities | number | $/yr | deal | override | `utilities` | no | L1→L2 |
-| `g_and_a` | G&A / Admin | number | $/yr | deal | override | `gAndA` | no | L1→L2 |
-| `management_fee` | Management Fee $ | number | $/yr | deal | read-only | — | — | L2 |
-| `management_fee_pct` | Management Fee % | number | % | deal | override | `managementFeePct` | no | L1→L2 |
-| `insurance` | Insurance | number | $/yr | deal | override | `insurance` | yes | L1→L2 |
-| `real_estate_tax` | Real Estate Taxes | number | $/yr | deal | override | `realEstateTax` | yes | L1→L2 |
-| `replacement_reserves` | Replacement Reserves | number | $/yr | deal | override | `replacementReserves` | no | L1→L2 |
-| `total_opex` | Total Operating Expenses | number | $/yr | deal | read-only | — | — | L2 |
-| `noi` | Net Operating Income | number | $/yr | deal | read-only | — | — | L2 |
+| field_name | display_name | units | input_mode | patchField | required | layer |
+|------------|--------------|-------|------------|------------|---------|-------|
+| `payroll` | Payroll & Benefits | $/yr | override | `payroll` | yes | L1→L2 |
+| `repairs_maintenance` | Repairs & Maintenance | $/yr | override | `repairsMaintenance` | yes | L1→L2 |
+| `turnover` | Turnover / Make Ready | $/yr | override | `turnover` | no | L1→L2 |
+| `contract_services` | Contract Services | $/yr | override | `contractServices` | no | L1→L2 |
+| `landscaping` | Landscaping / Grounds | $/yr | override | `landscaping` | no | L1→L2 |
+| `marketing` | Marketing | $/yr | override | `marketing` | no | L1→L2 |
+| `utilities` | Utilities | $/yr | override | `utilities` | no | L1→L2 |
+| `g_and_a` | G&A / Admin | $/yr | override | `gAndA` | no | L1→L2 |
+| `management_fee` | Management Fee $ | $/yr | read-only | — | — | L2 |
+| `management_fee_pct` | Management Fee % | % | override | `managementFeePct` | no | L1→L2 |
+| `insurance` | Insurance | $/yr | override | `insurance` | yes | L1→L2 |
+| `real_estate_tax` | Real Estate Taxes | $/yr | override | `realEstateTax` | yes | L1→L2 |
+| `replacement_reserves` | Replacement Reserves | $/yr | override | `replacementReserves` | no | L1→L2 |
+| `total_opex` | Total Operating Expenses | $/yr | read-only | — | — | L2 |
+| `noi` | Net Operating Income | $/yr | read-only | — | — | L2 |
 
-### 4.3 INPUTS sub-tab — Section 7 (CapEx & Reserves)
+### 4.4 CONSOLE > INPUTS sub-tab — Sections 7, 8, 10
 
-| field_name | display_name | data_type | units | granularity | input_mode | patchField | required | layer |
-|------------|--------------|-----------|-------|-------------|------------|------------|---------|-------|
-| `capexPerUnit` | CapEx Budget ($/unit total) | number | $/unit | per-unit | override | `capexPerUnit` | no | L1→L2 |
-| `capexYearDraw` | CapEx Annual Draw ($/unit) | number | $/unit/yr | per-unit | override | `capexPerYear` | no | L1→L2 |
-| `reserves` | Replacement Reserves ($/unit/yr) | number | $/unit/yr | per-unit | override | `replacementReserves` | no | L1→L2 |
-| `tiPerSF` | Tenant Improvements ($/SF) | number | $/SF | per-SF | override | `tiPerSF` | no | L1 |
-| `lcPctOfRent` | Leasing Commissions (% of rent) | number | % | deal | override | `lcPctOfRent` | no | L1 |
+**CapEx & Reserves (Section 7):**
 
-### 4.4 INPUTS sub-tab — Section 8 (Disposition & Hold)
+| field_name | display_name | units | patchField | required | layer |
+|------------|--------------|-------|------------|---------|-------|
+| `capexPerUnit` | CapEx Budget ($/unit total) | $/unit | `capexPerUnit` | no | L1→L2 |
+| `capexYearDraw` | CapEx Annual Draw ($/unit) | $/unit/yr | `capexPerYear` | no | L1→L2 |
+| `reserves` | Replacement Reserves ($/unit/yr) | $/unit/yr | `replacementReserves` | no | L1→L2 |
+| `tiPerSF` | Tenant Improvements ($/SF) | $/SF | `tiPerSF` | no | L1 |
+| `lcPctOfRent` | Leasing Commissions (% of rent) | % | `lcPctOfRent` | no | L1 |
 
-| field_name | display_name | data_type | units | granularity | input_mode | patchField | required | layer |
-|------------|--------------|-----------|-------|-------------|------------|------------|---------|-------|
-| `saleYear` | Target Sale Year | number | years | deal | override | `saleYear` | no | L1→L2 |
-| `exitCapRate` | Exit Cap Rate | number | % | deal | read-only (edit in DEAL TERMS) | `exitCapRate` | yes | L1→L2 |
-| `sellingCosts` | Selling Costs % | number | % | deal | override | — | no | L1→L2 |
-| `grossSalePrice` | Gross Sale Price | number | $ | deal | read-only | — | — | L2 |
-| `netSaleProceeds` | Net Sale Proceeds | number | $ | deal | read-only | — | — | L2 |
+**Disposition & Hold (Section 8):**
 
-### 4.5 INPUTS sub-tab — Section 10 (Forward Growth Rates)
+| field_name | display_name | units | input_mode | patchField | required | layer |
+|------------|--------------|-------|------------|------------|---------|-------|
+| `saleYear` | Target Sale Year | years | override | `saleYear` | no | L1→L2 |
+| `exitCapRate` | Exit Cap Rate | % | read-only (edit in DEAL TERMS) | `exitCapRate` | yes | L1→L2 |
+| `sellingCosts` | Selling Costs % | % | override | — | no | L1→L2 |
+| `grossSalePrice` | Gross Sale Price (NOI ÷ ExitCap) | $ | read-only | — | — | L2 |
+| `netSaleProceeds` | Net Sale Proceeds | $ | read-only | — | — | L2 |
 
-| field_name | display_name | data_type | units | patchField | default (platform) | required | layer |
-|------------|--------------|-----------|-------|------------|-------------------|---------|-------|
-| `growthRentPct` | Rent Growth % / yr | number | % | `rentGrowthStabilized` | 3 % | yes | L1→L2 |
-| `growthAncillaryPct` | Ancillary Income Growth % / yr | number | % | `growthAncillaryPct` | 3 % | no | L1 |
-| `growthOpexPct` | OpEx Growth % / yr | number | % | `growthOpexPct` | 2 % | yes | L1→L2 |
-| `growthUtilitiesPct` | Utilities Growth % / yr | number | % | `growthUtilitiesPct` | 2 % | no | L1 |
-| `growthInsurancePct` | Insurance Growth % / yr | number | % | `growthInsurancePct` | 3.5 % | no | L1 |
-| `growthTaxPct` | Property Tax Growth % / yr | number | % | `growthTaxPct` | 2 % | no | L1 |
-| `growthReservesPct` | Capital Reserves Growth % / yr | number | % | `growthReservesPct` | 2 % | no | L1 |
-| `cpiAssumption` | CPI Anchor % / yr | number | % | `cpiAssumption` | 2.5 % | no | L1 |
-| `concessionBurnOffPct` | Concession Burn-Off % / yr | number | % | `concessionBurnOffPct` | 0 % | no | L1 |
+**Forward Growth Rates (Section 10):**
 
-### 4.6 LEASING sub-tab (LeasingAssumptionsTab — via `leasing-fields.config.ts`)
+| field_name | display_name | units | patchField | platform default | required | layer |
+|------------|--------------|-------|------------|-----------------|---------|-------|
+| `growthRentPct` | Rent Growth % / yr | % | `rentGrowthStabilized` | 3% | yes | L1→L2 |
+| `growthAncillaryPct` | Ancillary Income Growth % / yr | % | `growthAncillaryPct` | 3% | no | L1 |
+| `growthOpexPct` | OpEx Growth % / yr | % | `growthOpexPct` | 2% | yes | L1→L2 |
+| `growthUtilitiesPct` | Utilities Growth % / yr | % | `growthUtilitiesPct` | 2% | no | L1 |
+| `growthInsurancePct` | Insurance Growth % / yr | % | `growthInsurancePct` | 3.5% | no | L1 |
+| `growthTaxPct` | Property Tax Growth % / yr | % | `growthTaxPct` | 2% | no | L1 |
+| `growthReservesPct` | Capital Reserves Growth % / yr | % | `growthReservesPct` | 2% | no | L1 |
+| `cpiAssumption` | CPI Anchor % / yr | % | `cpiAssumption` | 2.5% | no | L1 |
+| `concessionBurnOffPct` | Concession Burn-Off % / yr | % | `concessionBurnOffPct` | 0% | no | L1 |
 
-Fields are gated by `LeaseMode` (from M07 or LVE) and by user experience tier (Beginner ≤ 12 fields / Advanced / Expert). Stored as `leasingPathOverrides` keyed by `field.path`.
+### 4.5 CONSOLE > INPUTS — LEASING sub-tab (LeasingAssumptionsTab)
 
-#### Category A — Occupancy Targets
+Fields defined in `frontend/src/config/leasing-fields.config.ts § LEASING_CATEGORIES`.
+Gated by `LeaseMode` and user experience tier. Stored as `leasingPathOverrides[field.path]`.
 
-| field_id | display_name | type | visible LeaseMode | required | layer |
-|----------|--------------|------|-------------------|---------|-------|
+**LeaseMode values:** `LEASE_UP_NEW_CONSTRUCTION` | `STABILIZED_MAINTENANCE` |
+`OCCUPANCY_RECOVERY` | `VALUE_ADD` | `REDEVELOPMENT`
+
+#### Cat A — Occupancy Targets
+
+| field_id | display_name | type | visible_modes | required | layer |
+|----------|--------------|------|---------------|---------|-------|
 | `a_stabilized_occ` | Target stabilized occupancy | percent | all | yes | L1→L2 |
 | `a_stab_definition` | Stabilization definition | enum | all | no | L1 |
 | `a_current_occ` | Current occupancy (override) | percent | RECOVERY, STABILIZED | no | L1 |
 | `a_target_basis` | Target: paid vs signed | enum | all | no | L1 |
 
-#### Category B — Renewal & Turnover
+#### Cat B — Renewal & Turnover
 
-| field_id | display_name | type | visible LeaseMode | layer |
-|----------|--------------|------|-------------------|-------|
+| field_id | display_name | type | visible_modes | layer |
+|----------|--------------|------|---------------|-------|
 | `b_renewal_rate` | Renewal rate | percent | all except LEASE_UP | L1→L2 |
 | `b_turnover_rate` | Turnover rate | percent | all except LEASE_UP (read-only) | L2 |
 | `b_days_vacant` | Days vacant (median) | days | all except LEASE_UP | L1 |
@@ -335,29 +358,29 @@ Fields are gated by `LeaseMode` (from M07 or LVE) and by user experience tier (B
 | `b_rent_step_renewal` | Rent step on renewal | percent | all except LEASE_UP | L1 |
 | `b_trade_out_new` | Trade-out new | percent | all except LEASE_UP | L1 |
 
-#### Category C — Rent Growth & Loss-to-Lease
+#### Cat C — Rent Growth & Loss-to-Lease
 
-| field_id | display_name | type | visible LeaseMode | layer |
-|----------|--------------|------|-------------------|-------|
+| field_id | display_name | type | visible_modes | layer |
+|----------|--------------|------|---------------|-------|
 | `c_rent_growth` | Blended rent growth | percent | all | L1→L2 |
 | `c_loss_to_lease` | Loss-to-lease % (Y1) | percent | STABILIZED, RECOVERY | L1→L2 |
 | `c_ltl_decay` | LTL decay rate | percent | STABILIZED, RECOVERY | L1 |
 | `c_affordable_growth` | Affordable unit rent growth | percent | all | L1 |
 
-#### Category D — Concessions
+#### Cat D — Concessions
 
-| field_id | display_name | type | visible LeaseMode | layer |
-|----------|--------------|------|-------------------|-------|
+| field_id | display_name | type | visible_modes | layer |
+|----------|--------------|------|---------------|-------|
 | `d_concession_strategy` | Concession strategy | enum | all | L1 |
 | `d_new_lease_onetime` | New lease one-time | $ | all | L1→L2 |
 | `d_renewal_onetime` | Renewal one-time | $ | STABILIZED, RECOVERY | L1 |
 | `d_new_ongoing` | New lease monthly abatement | $ | LEASE_UP, RECOVERY | L1→L2 |
 | `d_renewal_ongoing` | Renewal monthly abatement | $ | RECOVERY | L1 |
-| `d_pct_new_receiving` | % of new leases with concession | percent | all | L1 |
-| `d_pct_renewals_receiving` | % of renewals with concession | percent | STABILIZED, RECOVERY | L1 |
+| `d_pct_new_receiving` | % of new leases w/ concession | percent | all | L1 |
+| `d_pct_renewals_receiving` | % of renewals w/ concession | percent | STABILIZED, RECOVERY | L1 |
 | `d_amortization_method` | Concession amortization method | enum | all | L1 |
 
-#### Category E — Lease-Up Strategy (LEASE_UP_NEW_CONSTRUCTION only)
+#### Cat E — Lease-Up Strategy (LEASE_UP_NEW_CONSTRUCTION only)
 
 | field_id | display_name | type | layer |
 |----------|--------------|------|-------|
@@ -369,42 +392,42 @@ Fields are gated by `LeaseMode` (from M07 or LVE) and by user experience tier (B
 | `e_stab_target_override` | Stabilization target month override | integer | L1 |
 | `e_absorption_type` | Absorption curve type | enum | L1→L2 |
 
-#### Category F — Recovery Strategy (OCCUPANCY_RECOVERY only)
+#### Cat F — Recovery Strategy (OCCUPANCY_RECOVERY only)
 
 | field_id | display_name | type | layer |
 |----------|--------------|------|-------|
 | `f_catchup_period` | Catch-up period (months) | months | L1 |
 | `f_locator_usage` | Locator / broker usage % | percent | L1 |
 
-#### Category G — Marketing & Costs
+#### Cat G — Marketing & Costs
 
-| field_id | display_name | type | visible LeaseMode | layer |
-|----------|--------------|------|-------------------|-------|
+| field_id | display_name | type | visible_modes | layer |
+|----------|--------------|------|---------------|-------|
 | `g_marketing_per_lease` | Marketing cost per lease | $ | all | L1 |
 | `g_marketing_base` | Marketing base cost | $ | all | L1 |
 | `g_locator_fee` | Locator fee (% of rent) | percent | all | L1 |
 | `g_locator_pct` | Locator usage % | percent | all | L1 |
 | `g_turn_cost` | Make-ready / turn cost | $ | STABILIZED, RECOVERY | L1 |
 
-#### Category H — Funnel Conversion
+#### Cat H — Funnel Conversion
 
-| field_id | display_name | type | visible LeaseMode | layer |
-|----------|--------------|------|-------------------|-------|
-| `h_prospect_to_tour` | Prospect → tour rate | percent | all | L1 |
-| `h_tour_to_app` | Tour → application rate | percent | all | L1 |
-| `h_app_to_approval` | Application → approval rate | percent | all | L1 |
-| `h_approval_to_lease` | Approval → signed lease rate | percent | all | L1 |
-| `h_overall_conversion` | Overall funnel conversion | percent | all (read-only) | L2 |
+| field_id | display_name | type | layer |
+|----------|--------------|------|-------|
+| `h_prospect_to_tour` | Prospect → tour rate | percent | L1 |
+| `h_tour_to_app` | Tour → application rate | percent | L1 |
+| `h_app_to_approval` | Application → approval rate | percent | L1 |
+| `h_approval_to_lease` | Approval → signed lease rate | percent | L1 |
+| `h_overall_conversion` | Overall funnel conversion | percent (read-only) | L2 |
 
-#### Category I — Bad Debt & Other Income
+#### Cat I — Bad Debt & Other Income
 
-| field_id | display_name | type | visible LeaseMode | layer |
-|----------|--------------|------|-------------------|-------|
-| `i_bad_debt` | Bad debt % of GPR | percent | all | L1→L2 |
-| `i_other_income_per_unit` | Other Income ($/unit/mo) | $ | all | L1→L2 |
-| `i_other_income_growth` | Other income growth % | percent | all | L1 |
+| field_id | display_name | type | layer |
+|----------|--------------|------|-------|
+| `i_bad_debt` | Bad debt % of GPR | percent | L1→L2 |
+| `i_other_income_per_unit` | Other Income ($/unit/mo) | $ | L1→L2 |
+| `i_other_income_growth` | Other income growth % | percent | L1 |
 
-#### Category J — Renovation Assumptions (VALUE_ADD, REDEVELOPMENT only)
+#### Cat J — Renovation Assumptions (VALUE_ADD, REDEVELOPMENT only)
 
 | field_id | display_name | type | layer |
 |----------|--------------|------|-------|
@@ -416,18 +439,141 @@ Fields are gated by `LeaseMode` (from M07 or LVE) and by user experience tier (B
 | `j_reno_batches_per_year` | Renovation batches per year | integer | L1 |
 | `j_reno_absorption_lag` | Post-renovation absorption lag | days | L1 |
 
-### 4.7 RENOVATION section (RenovationAssumptionsSection — non-existing dealTypes)
+### 4.6 CONSOLE > INPUTS — Renovation section (RenovationAssumptionsSection)
 
-Rendered inside INPUTS when `dealType !== 'existing'`.
+Shown when `dealType !== 'existing'`. Source: `RenovationAssumptionsSection.tsx`.
 
-| field_name | display_name | data_type | input_mode | Condition | layer |
-|------------|--------------|-----------|------------|-----------|-------|
-| `selectedTier` | Renovation Scope | enum (tiered buttons) | tier-picker | value-add / redevelopment | L1→L2 |
-| `renovationUnits` | Units Renovated | integer | display | all non-existing | L2 |
-| `rehabCostPerUnit` | Rehab Cost / Unit | $/unit | display | all non-existing | L2 |
-| `premiumRamp[yr].premiumPct` | Year-N Rent Premium | % per year | read-only chart | all non-existing | L2 |
+| field_name | display_name | input_mode | gate | layer |
+|------------|--------------|------------|------|-------|
+| `selectedTier` | Renovation Scope | tier-picker buttons | value-add / redevelopment | L1→L2 |
+| `renovationUnits` | Units Renovated | display-only | all non-existing | L2 |
+| `rehabCostPerUnit` | Rehab Cost / Unit | display-only | all non-existing | L2 |
+| `premiumRamp[yr]` | Year-N Rent Premium % | read-only bar chart | all non-existing | L2 |
+| `capexItems` table | CapEx line items (category / budgeted / actual / remaining) | display-only grid | all non-existing | L2 |
 
 For `development` dealType: Land / Hard Cost / Soft Cost / Contingency table (display-only).
+
+### 4.7 PRO FORMA tab (ProFormaSummaryTab)
+
+Sections/panels:
+
+| Panel | User Inputs | Key Outputs | Layer |
+|-------|-------------|-------------|-------|
+| Summary Bar | Active Y1 Source toggle (Broker / T12 / T6 / T3 / T1 / Rent Roll) | Conflict count, tier badges | L1 |
+| Integrity Check banners | — | INV-* hard invariant alerts | L2 |
+| Operating Statement | Cell overrides (pencil icon), cost treatment toggle (Capitalized vs. Expensed) | Year-1 P&L: GPR → EGI → OpEx → NOI; Divergence ratios; Evidence tiers (T1–T4) | L1+L2 |
+| Ancillary Income Breakdown | Ancillary line-item overrides | Parking / RUBS / Pet / Storage / Other per-category resolved values | L1 |
+| Regime Expand | — | Pre-renovation / post-stabilization sub-rows (Pattern B) — null when Cashflow Agent not run | L2 |
+| FloorPlanGrid | GPR per floor plan / unit type edits | GPR disaggregated by bed/bath/SF type; `gpr_grid.positioning_changed` event on edit | L1→L2 |
+
+All ProFormaSummaryTab values are Year-1 only (static snapshot of the seeded proforma).
+
+### 4.8 PROJECTIONS tab (ProjectionsTab)
+
+| Panel | User Inputs | Key Outputs | Layer |
+|-------|-------------|-------------|-------|
+| GPR Decomposition | — | Source waterfall: Resolved / Platform / Broker / T12 / Rent Roll | L1 |
+| Integrity Banner | — | Projection-specific data warnings | L2 |
+| AI Findings (M07) | — | Market insights, posture calibration | L1 |
+| Projections Table | Timeline selector (3/5/7/10 yr), View Mode (Annual/Quarterly/Monthly), Year 2+ cell overrides, formula drilldown | Revenue / Expenses / NOI / Debt Service / Cash Flow / After-Tax / Disposition rows per year | L1+L2 |
+| Metrics Strip (bottom) | — | OCC, DSCR, DY, CoC, EM, Cap Rate, NOI Margin, OER, Rent Growth per year | L2 |
+
+### 4.9 CAPITAL > SRC & USES sub-tab (SourcesUsesTab)
+
+| Panel | User Inputs | Key Outputs | Layer |
+|-------|-------------|-------------|-------|
+| KPI Strip | — | Total Sources, Total Uses, LTV at Close, Equity Required, Cost/Unit | L2 |
+| Sources of Funds | Senior Debt, Mezz, LP/GP Equity, Seller Financing line edits | Balance status (Balanced / Imbalance) | L1→L2 |
+| Uses of Funds | Closing Costs, CapEx, Working Capital, Pre-opening, Lease-up Reserve line edits | Effective Total Uses, LTC/LTV | L1→L2 |
+| Benchmark Peer Thresholds | — | Peer ranges for closing costs %, debt %, cost per unit | L2 |
+
+### 4.10 CAPITAL > DEBT sub-tab (DebtTab / M11)
+
+M11 is a four-sub-tab module: Advisor / Configure / Sensitivity / Exit.
+
+| Panel | User Inputs | Key Outputs | Layer |
+|-------|-------------|-------------|-------|
+| KPI Strip | — | Total Debt, Weighted Rate, Y1 DSCR, Y1 Debt Yield, Max LTV | L2 |
+| Debt Advisor | — | AI-driven financing suggestions | L1 |
+| Loan Stack | Loan Preset selector (Bridge/Agency/HUD/etc.), Rate Type (Fixed/Floating), Loan Amount, Rate, Spread, Term, Amortization, IO period, Fees, Min DSCR/DY/Occ covenants | Amortization schedule; covenant breach alerts | L1→L2 |
+| Sensitivity (4-sub-tab) | — | Rate × LTV heat map; DSCR / DY stress scenarios | L2 |
+| Exit analysis | — | Refi trigger analysis; exit-year payoff | L2 |
+
+### 4.11 CAPITAL > WATERFALL sub-tab (WaterfallTab)
+
+| Panel | User Inputs | Key Outputs | Layer |
+|-------|-------------|-------------|-------|
+| KPI Strip | — | LP IRR, LP EM, GP EM, Promote Earned | L2 |
+| Capital Stack / Tranches | Waterfall Type (American vs. European), Pref Rate, LP/GP equity %, tier configurations | Tranche definitions | L1 |
+| Waterfall Tiers | Tier IRR hurdles, splits, catch-up %, promote % | ROC → Pref → Catch-up → Promote distribution schedule | L1→L2 |
+| Fee Structure | Acquisition fee %, Asset management fee %, Disposition fee % | Fee dollar amounts per year | L1→L2 |
+| Distribution Schedule | — | Year-by-year LP/GP cash flows and crystallization at exit | L2 |
+
+### 4.12 RETURNS tab (ReturnsTab)
+
+| Panel | User Inputs | Key Outputs | Layer |
+|-------|-------------|-------------|-------|
+| Hero Tiles | Target IRR / EM / CoC hurdle inputs | LP IRR, LP EM, Pref Rate with hurdle pass/miss status | L1+L2 |
+| LP Focus Panel | — | Pref return by year, cumulative distributions, NOI haircut downside analysis | L2 |
+| Lender Focus Panel | — | DSCR by year, LTV trend, exit-cap stress scenarios | L2 |
+| Sensitivity Sparklines | — | Visual trends for key return metrics | L2 |
+
+### 4.13 SCENARIOS tab (DecisionTab)
+
+| Panel | User Inputs | Key Outputs | Layer |
+|-------|-------------|-------------|-------|
+| Deal Verdict | — | AI-generated summary (Favorable / Caution / etc.) | L1 |
+| Risk Flags | — | High / Medium / Low risk flags from integrity checks and benchmark divergences | L2 |
+| Recommended Actions | — | Prioritized next steps | L1 |
+| Deal Notes | Concession drilldown modal trigger | Benchmark position flags (GPR/NOI/EGI above/below submarket), leverage risk indicators | L2 |
+
+### 4.14 GOAL SEEK tab (SensitivityTab standalone)
+
+| Panel | User Inputs | Key Outputs | Layer |
+|-------|-------------|-------------|-------|
+| Two-Way Heat Maps | Table type selection (IRR × Exit Cap/Rent Growth, EM × Exit Cap/Hold, OpEx × Exit Cap/OpEx Growth) | Sensitivity grids with conditional formatting | L2 (currently LLM-generated — see §7.1) |
+| Goal Seek Widget | Target Metric, Target Value, Solve For variable | Backwards-solved variable value via `/api/v2/sigma/broader-goal-seek` | L1+L2 |
+
+### 4.15 ROADMAP tab (RoadmapTab)
+
+Gate: `isRoadmapEligibleDealType` (value-add / rehab / renovation / redevelopment only).
+
+| Panel | User Inputs | Key Outputs | Layer |
+|-------|-------------|-------------|-------|
+| Achievability Banner | — | Target IRR vs. Baseline vs. Roadmap IRR comparison | L2 |
+| Yearly Trajectory | — | Stacked bar: NOI lift per year, posture (Offense / Defense) | L2 |
+| Action Table | "Build Roadmap" modal (Target Metric, Hold Years, Comp selection) | Roadmap actions: Timing / Impact / Cost / Confidence | L1+L2 |
+| Evidence Side Panel | — | Archive success rates, market signal support for selected actions | L1 |
+| Comp Comparison | — | Attribution and replicability vs. reference properties; gap analysis by bucket | L2 |
+
+### 4.16 Custom Tabs (CustomTabRenderer)
+
+Custom tabs are created exclusively via Opus chat (no UI button). Opus emits a `customtab` fenced
+JSON block; the backend validates it against the `CustomTabPayload` schema and persists it.
+Source: `CustomTabRenderer.tsx`, `custom-tab-schema.ts`, `PROFORMA_TAB_EXTENSIBILITY.md`.
+
+**Block types (5):**
+
+| Block type | What it renders |
+|------------|-----------------|
+| `markdown` | Text with `{{dot.path}}` value placeholders |
+| `kpi_tile` | Single large KPI with optional comparison delta |
+| `table` | Tabular view (up to 12 columns, 60 rows) |
+| `ratio_bar` | Horizontal bar with numerator/denominator + benchmark marker |
+| `line_chart` | SVG polyline chart with primary + optional comparison series |
+
+**Field-reference catalog (22 allowed patterns across 5 surfaces):**
+
+| Prefix | References |
+|--------|-----------|
+| `assumptions.*` | purchasePrice, exitCapRate, holdPeriod, ltv, interestRate, loanType, revenue.rentGrowth, revenue.vacancy, opex.expenseGrowth, units |
+| `results.summary.*` | irr, equityMultiple, cashOnCash, noi, dscr |
+| `f9.proforma.year1[*].*` | Per P&L line (broker/platform/t12/rentRoll/resolved/perUnit/benchmarkPosition) for 9 fields |
+| `projections[*].*` | year, noi, revenue |
+| `deal.*` | name, address, city, units |
+
+Any reference outside the catalog is hard-rejected; the validator returns a Levenshtein
+"did you mean?" suggestion.
 
 ---
 
@@ -437,21 +583,21 @@ For `development` dealType: Land / Hard Cost / Soft Cost / Contingency table (di
 
 `M08 → F9` emits a `ProFormaTemplateId`. Source: `proforma-blueprint.ts § PROFORMA_TEMPLATES`.
 
-| Template ID | Triggers | Hold | Periodicity | Special Tuning |
-|-------------|----------|:----:|:-----------:|----------------|
+| Template ID | Strategy Triggers | Hold | Periodicity | Special Tuning |
+|-------------|------------------|:----:|:-----------:|----------------|
 | `acquisition_stabilized` | rental, core, core_plus | 60 mo | annual | — |
-| `acquisition_value_add` | value_add, rental_value_add | 84 mo | annual | Renovation Assumptions section enabled |
+| `acquisition_value_add` | value_add, rental_value_add | 84 mo | annual | Renovation section enabled |
 | `development_ground_up` | bts, bts_for_rent, development, ground_up | 120 mo | monthly | `growthTruncationYear: 3` |
-| `redevelopment` | redevelopment, reposition, gut_rehab | 96 mo | monthly | Renovation Assumptions section enabled |
+| `redevelopment` | redevelopment, reposition, gut_rehab | 96 mo | monthly | Renovation section enabled |
 | `flip` | flip | 18 mo | monthly | `growthTruncationYear: 1` |
-| `str_shortterm` | str, short_term_rental | 60 mo | monthly | Seasonal occupancy (12-factor); `ASSET_CLASS_SPREAD_BPS.str = 100` |
+| `str_shortterm` | str, short_term_rental | 60 mo | monthly | 12-factor seasonal occupancy; spread = 100 bps |
 | `land_hold` | land, land_hold | 60 mo | annual | Holding costs only; no revenue model |
 
 ### 5.2 Tab / Section Visibility per Template
 
-| Tab / Section | stabilized | value_add | ground_up | redevelopment | flip | str | land |
-|---------------|:----------:|:---------:|:---------:|:-------------:|:----:|:---:|:----:|
-| ROADMAP | — | ✓ | — | ✓ | — | — | — |
+| Feature | stabilized | value_add | ground_up | redevelopment | flip | str | land |
+|---------|:----------:|:---------:|:---------:|:-------------:|:----:|:---:|:----:|
+| ROADMAP tab | — | ✓ | — | ✓ | — | — | — |
 | LEASING Cat J (Renovation) | — | ✓ | — | ✓ | — | — | — |
 | Renovation Assumptions section | — | ✓ | ✓ | ✓ | ✓ | — | — |
 | CAPITAL > COST SHEET | — | ✓ | ✓ | ✓ | ✓ | — | — |
@@ -461,96 +607,104 @@ For `development` dealType: Land / Hard Cost / Soft Cost / Contingency table (di
 | Growth truncation Y3 | — | — | ✓ | — | — | — | — |
 | Growth truncation Y1 | — | — | — | — | ✓ | — | — |
 
-### 5.3 STR-Specific Fields
+### 5.3 STR-Specific Fields (str_shortterm template)
 
-The `str_shortterm` template activates a 12-factor seasonal occupancy grid in the
-`ProFormaSummaryTab`. These are all Layer 1 inputs:
+All L1 inputs; surface in `ProFormaSummaryTab` seasonal occupancy panel.
 
 | field | display | type |
 |-------|---------|------|
 | `adr` | Average Daily Rate | $/night |
-| `occupancyRate[1..12]` | Monthly occupancy % | % per month |
-| `revPar` | RevPAR | $ (derived) |
+| `occupancyRate[1..12]` | Monthly occupancy % | % × 12 |
+| `revPar` | RevPAR | $ (derived, L2) |
 | `cleaningFees` | Cleaning fees per stay | $ |
 | `platformFees` | OTA platform fee % | % |
-| `effectiveGrossIncome` | Effective Gross Income | $ (derived) |
+| `effectiveGrossIncome` | Effective Gross Income | $ (derived, L2) |
 
 ### 5.4 Growth Truncation Mechanics
 
-`growthTruncationYear` in `STRATEGY_TEMPLATE_TUNING` zero-floors rent growth and OPEX growth
-for all years strictly beyond the truncation year. Purpose:
-- **Ground-up (Y3):** BTS deals exit at stabilization (~Y3); compounding beyond that
-  overstates terminal NOI for a deal not held through full rent-growth cycle.
-- **Flip (Y1):** 12–18 mo hold; Y2+ growth is a modelling artefact, not a real holding period.
+`growthTruncationYear` in `STRATEGY_TEMPLATE_TUNING` zero-floors rent and OPEX growth for all
+years strictly beyond the truncation year:
+- **`development_ground_up` (Y3):** BTS deals exit at stabilization (~Y3); perpetual compounding overstates terminal NOI.
+- **`flip` (Y1):** 12–18 month holds; Y2+ growth is a modelling artefact.
 
 ---
 
 ## Section 6 — Source Priority by Asset State
 
-Source resolution follows the **LayeredValue waterfall**: user override → agent fill-in → T12 →
-rent roll → platform → broker. The table below shows how FIELD_PRIORITIES and SKIP_ZERO_FIELDS
-change this waterfall by asset state. Source: `proforma-seeder.service.ts`.
+Source resolution follows the `LayeredValue` waterfall: user override → agent fill-in → T12 →
+rent roll → platform → broker. Source: `backend/src/services/proforma-seeder.service.ts`.
 
-### 6.1 FIELD_PRIORITIES (canonical source order from seeder)
+### 6.1 FIELD_PRIORITIES (canonical per-field source order)
+
+Defined at `proforma-seeder.service.ts` line 297. Exported as `FIELD_PRIORITIES`.
 
 | Field | Priority Order | Notes |
 |-------|---------------|-------|
-| GPR | t12 → rent_roll | T12 is authoritative annual figure |
-| Vacancy % | rent_roll → t12 | Rent roll shows actual leased vs available |
-| Concessions % | t12 → rent_roll | T12 amortizes concessions over period |
-| Other Income | rent_roll → t12 → om | Rent roll itemizes ancillary; T12 is fallback |
-| Real Estate Tax | tax_bill → t12 | Tax bill is ground truth; T12 may lag reassessment |
-| Insurance | t12 | Only T12 has granular insurance line |
-| Management Fee | t12 | Same |
+| `gpr` | t12 → rent_roll | T12 annual figure is authoritative |
+| `vacancy_pct` | rent_roll → t12 | Rent roll shows actual leased vs. available |
+| `concessions_pct` | t12 → rent_roll | T12 amortizes concessions over period |
+| `other_income` | rent_roll → t12 → om | Rent roll itemizes ancillary; T12 is fallback |
+| `real_estate_tax` | tax_bill → t12 | Tax bill is ground truth; T12 may lag reassessment |
+| `insurance` | t12 | Only T12 has granular insurance line |
+| `management_fee` | t12 | Same |
+
+`SKIP_ZERO_FIELDS` prevents the seeder from accepting a `$0` GPR from the rent roll during early
+lease-up (when units are not yet occupied), falling through to the next source automatically.
 
 ### 6.2 Asset-State Adjustments
 
-| Asset State | GPR / Revenue Source | OPEX Source | Notes |
-|-------------|---------------------|-------------|-------|
-| **Stabilized** | T12 (authoritative) → Rent Roll | T12 → Platform benchmark | Lease-up is over; trailing actuals dominate |
-| **Lease-Up** | SKIP_ZERO_FIELDS: Rent Roll $0 ignored → Platform → Broker | Platform benchmark (no T12 actuals) | Rent Roll shows $0 GPR early in lease-up — seeder skips zero-value source; M07 LVE is primary |
-| **New Construction** | Platform (M07 rent projection) → Broker OM | Platform benchmark | No T12 or Rent Roll exists at construction close |
-| **Repositioning / Value-Add** | T12 (pre-reno in-place) → Rent Roll; M07 supplies renovation lift | T12 for current + renovation CapEx schedule | Two NOI views: current (T12-seeded) and stabilized (post-reno M07) |
-| **Distressed** | Rent Roll → T12 (may be unreliable) → Platform | Platform + manual flag | Operator expected to review and override; Protector confidence bands widen |
+| Asset State | Revenue Source | OPEX Source | Notes |
+|-------------|---------------|-------------|-------|
+| **Stabilized** | T12 (authoritative) → Rent Roll | T12 → Platform benchmark | Trailing actuals dominate |
+| **Lease-Up** | SKIP_ZERO_FIELDS: Rent Roll $0 skipped → Platform (M07) → Broker | Platform benchmark (no T12 actuals) | M07 LVE is primary revenue model |
+| **New Construction** | Platform (M07 rent projection) → Broker OM | Platform benchmark | No T12 or Rent Roll at construction close |
+| **Repositioning / Value-Add** | T12 (pre-reno in-place) + Renovation lift from M07 | T12 (current) + CapEx schedule | Two NOI views: current and stabilized (post-reno) |
+| **Distressed** | Rent Roll → T12 (may be unreliable) → Platform | Platform + manual operator review | Confidence bands widen; operator expected to override |
 
 ### 6.3 State-Adjusted OpEx Benchmarks
 
-The proforma seeder applies state multipliers to `BASE_OPEX_NORMS_PER_UNIT` (Class-B multifamily calibration):
+`BASE_OPEX_NORMS_PER_UNIT` is Class-B multifamily calibration. `STATE_ADJUSTMENTS` at
+`proforma-seeder.service.ts` line 98 applies per-state multipliers:
 
-| State | Payroll multiplier | Insurance multiplier | Notes |
-|-------|--------------------|---------------------|-------|
-| CA | ×1.45 | ×1.0 | High labor market |
-| FL | ×1.0 | ×1.5 | Hurricane/flood exposure |
-| TX | ×1.0 | ×1.0 | Baseline |
-| NY | ×1.6 | ×1.2 | Union labor + coastal |
+| State | Insurance | Payroll | Utilities | Other adjustments |
+|-------|:---------:|:-------:|:---------:|-------------------|
+| FL | ×1.50 | ×1.0 | ×1.10 | — |
+| TX | ×1.20 | ×1.0 | ×1.05 | — |
+| CA | ×1.35 | ×1.45 | ×1.15 | — |
+| NY | ×1.40 | ×1.50 | ×1.20 | — |
+| NJ | ×1.30 | ×1.35 | ×1.0 | — |
+| CO | ×1.10 | ×1.0 | ×1.0 | — |
+| AZ | ×1.0 | ×1.0 | ×1.10 | — |
+| All others | ×1.0 | ×1.0 | ×1.0 | Baseline |
 
 ### 6.4 Layered-Growth Asset-Class Anchors
 
-Source: `layered-growth/rent-growth.ts § ASSET_CLASS_SPREAD_BPS`.
-Applied in the 5-component rent growth model as the long-run CPI anchor spread.
+Source: `backend/src/services/proforma/layered-growth/rent-growth.ts § ASSET_CLASS_SPREAD_BPS`.
+Added to BLS CPI Shelter sub-index to form the long-run anchor component of the 5-component rent
+growth model.
 
 | assetClass | Spread above CPI Shelter | Calibration status |
 |------------|:------------------------:|-------------------|
-| `multifamily` | +30 bps | TBD (seed value; anchored to BLS 2010–2024) |
-| `retail` | +50 bps | TBD (seed value) |
+| `multifamily` | +30 bps | TBD seed (BLS 2010–2024 observation) |
+| `retail` | +50 bps | TBD seed |
 | `office` | 0 bps | TBD (post-2020 secular reset) |
-| `industrial` | +80 bps | TBD (seed value) |
-| `str` | +100 bps | TBD (seed value) |
+| `industrial` | +80 bps | TBD seed |
+| `str` | +100 bps | TBD seed |
 | `flip` | 0 bps | — |
 | `land` | 0 bps | — |
-| `default` | +30 bps | Fallback if assetClass unknown |
+| `default` | +30 bps | Fallback when assetClass unknown |
 
 ### 6.5 Position-Adjustment Half-Lives
 
-Source: `layered-growth/position-adjustment.ts § POSITION_HALF_LIFE_DEFAULTS`.
-How fast a property's premium / discount vs its comp-set mean-reverts to zero.
+Source: `backend/src/services/proforma/layered-growth/position-adjustment.ts §
+POSITION_HALF_LIFE_DEFAULTS`.
 
 | assetClass | Premium half-life | Discount half-life |
 |------------|:-----------------:|:-----------------:|
 | `multifamily` | 4.5 yr | 6.0 yr |
 | `office` | 3.5 yr | 8.0 yr |
 | `str` | 3.0 yr | 4.0 yr |
-| others | fallback to `multifamily` defaults | |
+| (all others) | 4.5 yr (multifamily default) | 6.0 yr |
 
 ---
 
@@ -558,37 +712,39 @@ How fast a property's premium / discount vs its comp-set mean-reverts to zero.
 
 ### 7.1 KPI Classification
 
-| KPI | Display Location | Computation | Layer | Currently LLM? | Should move to det.? |
-|-----|-----------------|-------------|-------|---------------|---------------------|
-| NOI | AssumptionsTab grid, ProFormaSummaryTab, Projections | EGI − Total OpEx | **L2** | No | Already deterministic |
-| EGI | AssumptionsTab grid, ProFormaSummaryTab | NRI + Other Income | **L2** | No | Already deterministic |
-| IRR (LP Net) | ReturnsTab, DealTermsTab strip | `runModel()` DCF | **L2** | No (LLM may also compute; deterministic wins per P7) | ✓ Fast endpoint possible |
-| Equity Multiple | ReturnsTab | `runModel()` | **L2** | No | ✓ Fast endpoint possible |
-| Cash-on-Cash | ReturnsTab | `runModel()` | **L2** | No | ✓ Fast endpoint possible |
-| DSCR | DealTermsTab strip, DebtTab | `runModel()` | **L2** | No | ✓ Fast endpoint possible |
-| Exit Value | ProFormaSummaryTab, ReturnsTab | forward NOI ÷ exit cap | **L2** | No | ✓ Fast endpoint possible |
-| Net Sale Proceeds | AssumptionsTab Sec 8, ReturnsTab | Gross × (1 − selling costs) | **L2** | No | ✓ Fast endpoint possible |
-| Waterfall distributions | ReturnsTab | `runModel()` | **L2** | No | ✓ Fast endpoint possible |
-| Sensitivity tables (5×5) | SensitivityTab (heat maps) | **Currently LLM response schema** | **L1 (should be L2)** | **Yes** | **Yes — purely formulaic** |
-| AI narrative / commentary | CommentaryPanel, AssumptionsTab narrative strip | LLM (intentional) | L1 | Yes | No — narrative is intentional LLM output |
-| Gap-fill assumptions (missing fields) | Any seeded row where agent filled | LLM via `agentFillIn` | L1 | Yes | No — agent fill-in is intentional |
+| KPI | Location | Computation | Layer | Currently LLM? | Move to det.? |
+|-----|----------|-------------|-------|---------------|--------------|
+| NOI | AssumptionsTab, ProFormaSummaryTab, Projections | EGI − Total OpEx | **L2** | No | Already det. |
+| EGI | AssumptionsTab, ProFormaSummaryTab | NRI + Other Income | **L2** | No | Already det. |
+| IRR (LP Net) | ReturnsTab, DealTermsTab strip, Overview | `runModel()` DCF | **L2** | No (LLM may also emit; det. wins per P7) | ✓ Fast endpoint |
+| Equity Multiple | ReturnsTab, Overview | `runModel()` | **L2** | No | ✓ Fast endpoint |
+| Cash-on-Cash | ReturnsTab | `runModel()` | **L2** | No | ✓ Fast endpoint |
+| DSCR | DealTermsTab strip, DebtTab, ReturnsTab | `runModel()` | **L2** | No | ✓ Fast endpoint |
+| Exit Value | ProFormaSummaryTab, ReturnsTab | forward NOI ÷ exit cap | **L2** | No | ✓ Fast endpoint |
+| Net Sale Proceeds | AssumptionsTab Sec 8, ReturnsTab | Gross × (1 − selling costs) | **L2** | No | ✓ Fast endpoint |
+| Waterfall distributions | ReturnsTab, Overview | `runModel()` | **L2** | No | ✓ Fast endpoint |
+| Sensitivity tables (5×5) | SensitivityTab | **Currently LLM response schema** | **L1 → should be L2** | **Yes** | **Yes — purely formulaic** |
+| AI narrative / commentary | CommentaryPanel, AssumptionsTab narrative | LLM (intentional) | L1 | Yes | No — intentional |
+| Gap-fill assumptions | Any seeded row with agent fill | LLM via `agentFillIn` | L1 | Yes | No — intentional |
+| Deal Verdict (SCENARIOS) | DecisionTab | LLM synthesis | L1 | Yes | No — intentional |
+| Roadmap actions | RoadmapTab | LLM + comp attribution | L1 | Yes | No — intentional |
 
 ### 7.2 KPI Protectors (Confidence Bands)
 
-Implemented in `backend/src/services/proforma/validators/confidence-bands.ts`.
-Each user override is classified against the platform P25–P75 (soft warning) and P10–P90 (hard warning) bands:
+Source: `backend/src/services/proforma/validators/confidence-bands.ts`.
 
-| Classification | Badge color | UI behavior |
-|----------------|-------------|-------------|
+| Classification | Badge | UI behavior |
+|----------------|-------|-------------|
 | `within` | none | Silent |
-| `soft_warning` | amber dot (bottom-right of cell) | Visible but non-blocking |
+| `soft_warning` | amber dot bottom-right of cell | Visible, non-blocking |
 | `hard_warning` | red dot + rationale prompt | Blocks save until operator provides justification text |
 
-### 7.3 Fast Deterministic Endpoint (Planned — PROFORMA_AUTOCOMPUTE_INVESTIGATION §6)
+### 7.3 Fast Deterministic Endpoint (Planned)
 
-Steps 7–12 of the build pipeline (irr, NOI, DSCR, CoC, EM, waterfall) run in **<15 ms** with
-zero LLM cost. Recommended path: `POST /api/v1/financial-model/compute-fast` skipping
-hash / fill-in / DB write / LLM. Live KPIs update at 800 ms debounce on any assumption change.
+Steps 7–12 of the build pipeline (irr, NOI, DSCR, CoC, EM, waterfall) are CPU-only pure functions
+completing in **<15 ms** at zero LLM cost. Planned path: `POST /api/v1/financial-model/compute-fast`
+(skip hash / fill-in / DB write / LLM). Frontend debounces at 800 ms; live KPIs update on every
+assumption change. See `docs/operations/PROFORMA_AUTOCOMPUTE_INVESTIGATION.md §6` for full spec.
 **Not yet implemented.**
 
 ---
@@ -601,38 +757,39 @@ hash / fill-in / DB write / LLM. Live KPIs update at 800 ms debounce on any assu
 |-----------|------:|
 | Built-in tabs | 10 (9 when ROADMAP ineligible) |
 | Hub tabs | 5 |
-| Leaf tabs | 4 built-in + unlimited custom |
-| Sub-tabs (total across all hubs) | 13 |
+| Leaf tabs (built-in) | 4 + unlimited custom |
+| Sub-tabs across all hubs | 13 |
 | AssumptionsTab sections | 10 |
-| Revenue fields (Section 5) | 9 OSRow fields + 11 M07 computed rows |
-| OpEx fields (Section 6) | 15 fields |
-| CapEx fields (Section 7) | 5 fields |
-| Disposition fields (Section 8) | 5 fields |
-| Growth rate fields (Section 10) | 9 fields |
+| Revenue fields (Sec 5) | 9 OSRow fields + 11 M07 rows |
+| OpEx fields (Sec 6) | 15 fields |
+| CapEx fields (Sec 7) | 5 fields |
+| Disposition fields (Sec 8) | 5 fields |
+| Growth rate fields (Sec 10) | 9 fields |
 | DealTerms fields | ~23 fields across 4 sections |
 | LEASING category fields (A–J) | 44 fields across 10 categories |
+| Renovation section fields | 5 fields |
 | ProForma templates | 7 |
 | LeaseMode values | 5 |
 | OperatorStance modulation rules | 15 |
 | Asset classes with spread calibration | 7 |
 | Custom tab block types | 5 |
-| Custom tab field-reference catalog size | 22 allowed patterns |
+| Custom tab field-reference catalog | 22 allowed patterns |
 
 ### 8.2 Open Gaps
 
 | ID | Location | Description | Priority |
 |----|----------|-------------|---------|
-| M36 | SensitivityTab OPEX axis | OPEX growth sensitivity grid wired to Section B trajectory drivers — covariance matrix pending. Cells show base IRR with OPEX axis label only. | Medium |
-| M07 | ProjectionsHubTab | Confidence bands not surfaced in LVE results panel (Deal Journey M07 pending). | Medium |
-| M35 | DealJourneyOverlay | Event path visualization (M35) pending — lever rows link to INPUTS sub-tab but do not render a causal chain diagram. | Low |
-| M38 | OperatorStance | Calibration loop (M38) pending — stance re-blend uses cached snapshot; no automated calibration cycle. | Low |
-| T#613 | DealTermsTab | `deal:strategy-changed` dispatched directly from DealTermsTab — not reconciled with the `dealStore` event pattern used by `basis.changed`. | Low |
-| T#797 | ProFormaSummaryTab | `regimeDataByField` Pattern B sub-rows (pre/post-stabilization) — null when Cashflow Agent has not run. | Medium |
-| T#451 | CustomTabRenderer | Custom tabs created via Opus inline fence — refresh tab list after every Opus reply to detect fence-created tabs. | Low |
-| KPI-fast | FinancialModelEngineService | Fast deterministic compute endpoint not yet built. Sensitivity tables still LLM-generated (should be L2). | High |
-| Property types | ProFormaSummaryTab | Mixed-use, office NNN, and industrial assets produce structurally incorrect results in F9. No property-type guard rails or warning banner. | Medium |
-| FIELD_PRIORITIES | proforma-seeder | `assetClass` passed to `agentFillIn` but `LibraryResolver` does not yet differentiate multifamily vs commercial benchmark lookups. Resolver uses generic `regional_avg_class_b_2024` for all asset classes. | Medium |
-| Calibration | layered-growth | All `ASSET_CLASS_SPREAD_BPS` and `POSITION_HALF_LIFE_DEFAULTS` are seed values pending backtest calibration against BLS CPI shelter sub-index per asset class (spec §14). | Medium |
+| KPI-fast | `financial-model-engine.service.ts` | Sensitivity tables still LLM-generated; fast deterministic endpoint not yet built | High |
+| Property types | ProFormaSummaryTab | Mixed-use, office NNN, industrial produce structurally incorrect results; no property-type guard rail or warning banner | Medium |
+| M36 | SensitivityTab OPEX axis | OPEX growth sensitivity grid wired to Section B trajectory drivers — M36 covariance matrix build pending; cells show base IRR with label only | Medium |
+| FIELD_PRIORITIES calibration | `proforma-seeder.service.ts` | `assetClass` passed to `agentFillIn` but `LibraryResolver` returns generic `regional_avg_class_b_2024` for all asset classes; no commercial class benchmarks | Medium |
+| Spread calibration | `layered-growth/rent-growth.ts` | All `ASSET_CLASS_SPREAD_BPS` values are seed-only (status: `tbd`); backtest against BLS CPI shelter sub-index per class pending (spec §14) | Medium |
+| M07 confidence bands | ProjectionsHubTab | Confidence bands not surfaced in LVE results panel (Deal Journey M07 pending) | Medium |
+| T#613 | DealTermsTab | `deal:strategy-changed` dispatched directly from DealTermsTab — not reconciled with the `dealStore` event pattern used by `basis.changed` | Low |
+| M35 | DealJourneyOverlay | Event path visualization pending — lever rows deep-link to INPUTS but do not render a causal chain diagram | Low |
+| M38 | OperatorStance | Calibration loop pending — stance re-blend uses cached snapshot but no automated calibration cycle | Low |
+| T#797 | ProFormaSummaryTab | `regimeDataByField` Pattern B sub-rows (pre/post-stabilization) null when Cashflow Agent has not run | Medium |
+| T#451 | FinancialEnginePage | Custom tab list must refresh after every Opus reply to detect `customtab` fence-created tabs | Low |
 
 ---
 
@@ -640,20 +797,23 @@ hash / fill-in / DB write / LLM. Live KPIs update at 800 ms debounce on any assu
 
 | File | Role |
 |------|------|
-| `frontend/src/pages/development/FinancialEnginePage.tsx` | F9 entry, tab strip, BUILD MODEL, Opus panel |
+| `frontend/src/pages/development/FinancialEnginePage.tsx` | F9 entry, tab strip, BUILD MODEL, Opus panel, custom-tab append |
 | `frontend/src/pages/development/financial-engine/types.ts` | `DealType`, `ModelAssumptions`, `F9DealFinancials`, `LeaseMode` |
-| `frontend/src/pages/development/financial-engine/AssumptionsTab.tsx` | INPUTS grid, FIELD_META, 10-section layout |
+| `frontend/src/pages/development/financial-engine/AssumptionsTab.tsx` | INPUTS grid, FIELD_META, 10-section layout, M07 Intel sub-section |
 | `frontend/src/pages/development/financial-engine/DealTermsTab.tsx` | DEAL TERMS — acquisition, hold, strategy, exit |
-| `frontend/src/pages/development/financial-engine/LeasingAssumptionsTab.tsx` | LEASING categories A–J |
-| `frontend/src/pages/development/financial-engine/RenovationAssumptionsSection.tsx` | Renovation tier picker + cost/premium ramp |
-| `frontend/src/pages/development/financial-engine/CustomTabRenderer.tsx` | Custom tab block renderer |
-| `frontend/src/config/leasing-fields.config.ts` | `LEASING_CATEGORIES`, `LeasingFieldDef`, `LeaseMode` |
+| `frontend/src/pages/development/financial-engine/LeasingAssumptionsTab.tsx` | LEASING categories A–J, LeaseMode gating, tier prefs |
+| `frontend/src/pages/development/financial-engine/RenovationAssumptionsSection.tsx` | Renovation tier picker, cost/premium ramp, CapEx items |
+| `frontend/src/pages/development/financial-engine/CustomTabRenderer.tsx` | Custom tab block renderer (read-only) |
+| `frontend/src/config/leasing-fields.config.ts` | `LEASING_CATEGORIES`, `LeasingFieldDef`, `LeaseMode` enum |
 | `backend/src/services/proforma/blueprint/proforma-blueprint.ts` | `FKEY_MAP`, `M09_INPUTS`, `PROFORMA_TEMPLATES`, `STRATEGY_TEMPLATE_TUNING` |
-| `backend/src/services/proforma/layered-growth/rent-growth.ts` | 5-component rent growth, `ASSET_CLASS_SPREAD_BPS` |
-| `backend/src/services/proforma/layered-growth/position-adjustment.ts` | Position mode, `POSITION_HALF_LIFE_DEFAULTS` |
+| `backend/src/services/proforma-seeder.service.ts` | `FIELD_PRIORITIES`, `SKIP_ZERO_FIELDS`, `STATE_ADJUSTMENTS`, `BASE_OPEX_NORMS_PER_UNIT` |
+| `backend/src/services/proforma/layered-growth/rent-growth.ts` | `ASSET_CLASS_SPREAD_BPS`, 5-component rent growth model |
+| `backend/src/services/proforma/layered-growth/position-adjustment.ts` | `POSITION_HALF_LIFE_DEFAULTS`, position modes |
 | `backend/src/services/proforma/agent-fill-in.ts` | `agentFillIn`, `DealContext`, `LibraryResolver` |
 | `backend/src/services/proforma/validators/confidence-bands.ts` | Protector confidence bands, `evaluateRefusal` |
 | `frontend/src/stores/dealStore.ts` | `useDealStore`, `DealContext`, `OperatorStance`, cross-tab event emitters |
+| `docs/operations/PROFORMA_AUTOCOMPUTE_INVESTIGATION.md` | Build pipeline analysis, fast-endpoint recommendation |
+| `docs/operations/PROFORMA_TAB_EXTENSIBILITY.md` | Custom tab system audit, block schema, field-ref catalog |
 
 ---
 
@@ -664,8 +824,27 @@ hash / fill-in / DB write / LLM. Live KPIs update at 800 ms debounce on any assu
 | `basis.changed` | `{}` | `dealStore.setPurchasePrice` | S&U tab, debt sizing, going-in cap; DealTermsTab |
 | `hold_period.changed` | `{ holdYears: number }` | `dealStore.emitHoldPeriodChanged` | Projections, Returns |
 | `exit_cap.changed` | `{}` | `dealStore.emitExitCapChanged` | Returns strip, net-sale-proceeds row |
-| `deal:strategy-changed` | `{ dealId, field, value }` | DealTermsTab (direct — T#613 drift) | Strategy-aware consumers |
+| `deal:strategy-changed` | `{ dealId, field, value }` | DealTermsTab direct (T#613 drift) | Strategy-aware consumers |
 | `fe-console-subtab` | `{ subTab: SubTab }` | `DealJourneyOverlay` | ConsoleHubTab (deep-link) |
 | `gpr_grid.positioning_changed` | `{}` | FloorPlanGrid (800 ms debounce) | ProjectionsHubTab → re-runs LVE |
 | `lease_velocity.output.updated` | `{}` | LVE runner | `FinancialEnginePage` → `fetchF9Financials` |
 | `leasing_cost_treatment.changed` | `{}` | AssumptionsTab PATCH | `FinancialEnginePage` → `fetchF9Financials` |
+
+---
+
+## Appendix C — DealType × Tab Visibility Matrix
+
+`DealType = 'existing' | 'development' | 'redevelopment'`
+
+| Tab | existing | development | redevelopment | value-add / rehab / renovation |
+|-----|:--------:|:-----------:|:-------------:|:------------------------------:|
+| OVERVIEW | ✓ | ✓ | ✓ | ✓ |
+| CONSOLE | ✓ | ✓ | ✓ | ✓ |
+| PRO FORMA | ✓ | ✓ | ✓ | ✓ |
+| PROJECTIONS | ✓ | ✓ | ✓ | ✓ |
+| CAPITAL | ✓ | ✓ | ✓ | ✓ |
+| RETURNS | ✓ | ✓ | ✓ | ✓ |
+| SCENARIOS | ✓ | ✓ | ✓ | ✓ |
+| COMPARE | ✓ | ✓ | ✓ | ✓ |
+| GOAL SEEK | ✓ | ✓ | ✓ | ✓ |
+| ROADMAP | — | — | ✓ | ✓ |
