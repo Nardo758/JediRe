@@ -34,6 +34,7 @@ import { apiClient } from '../../../services/api.client';
 import { useDealStore } from '../../../stores/dealStore';
 import type { FinancialEngineTabProps } from './types';
 import { SourceBadge } from './SourceBadge';
+import { SaveStatusBadge, useSaveStatus } from '../../../components/ui/SaveStatusBadge';
 
 const MONO  = BT.font.mono;
 const TEAL  = BT.text.teal;
@@ -451,6 +452,9 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   const emitExitCapChanged    = useDealStore(s => s.emitExitCapChanged);
   const setPurchasePriceStore = useDealStore(s => s.setPurchasePrice);
 
+  // Save status indicator — shared across all field saves in this tab.
+  const [saveStatus, withSave] = useSaveStatus();
+
   // Header context
   const dealName = fin?.dealName
     ?? (props.assumptions?.dealInfo?.dealName as string | undefined)
@@ -678,7 +682,7 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     // explicit save of deal_data.purchase_price when the user enters the same
     // number that happens to match the pipeline budget.
     if (lastSavedPurchasePrice.current != null && num === lastSavedPurchasePrice.current) return;
-    try {
+    await withSave(async () => {
       // Routes through the dealStore action which dual-writes both
       // deal_data.purchase_price (financial composer) and deals.budget
       // (pipeline views) in a single atomic UPDATE, then dispatches
@@ -687,134 +691,112 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
       await setPurchasePriceStore(props.dealId, num);
       lastSavedPurchasePrice.current = num;
       setPurchasePrice(fmtInputNum(num));
-    } catch (e) {
-      console.error('[DealTerms] Save purchase price failed:', e instanceof Error ? e.message : e);
-    }
+    });
   }
 
   async function saveCloseDate() {
     const next = closeDate || null;
     if (next === closeDateResolved) return;
-    try {
+    await withSave(async () => {
       // Preserve saleDate — the route nullifies any field not in the body.
       await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/dates`, {
         closeDate: next,
         saleDate:  fin?.saleDate ?? null,
       });
       props.onF9Refresh?.();
-    } catch (e) {
-      console.error('[DealTerms] Save close date failed:', e instanceof Error ? e.message : e);
-    }
+    });
   }
 
   async function saveExitCap() {
     const dec = parsePctDecimal(exitCap);
     if (dec == null) return;
     if (exitCapResolved != null && Math.abs(dec - exitCapResolved) < 1e-6) return;
-    try {
+    await withSave(async () => {
       await apiClient.patch(`/api/v1/deals/${props.dealId}/financials/override`, {
         field: 'exitCapRate', year: null, value: dec,
       });
       emitExitCapChanged();
       props.onF9Refresh?.();
-    } catch (e) {
-      console.error('[DealTerms] Save exit cap failed:', e instanceof Error ? e.message : e);
-    }
+    });
   }
 
   async function saveHoldPeriod(yr?: number) {
     const parsed = yr ?? parseInt(holdYears, 10);
     if (!Number.isFinite(parsed) || parsed < 1) return;
     if (parsed === holdYearsResolved) return;
-    try {
+    await withSave(async () => {
       await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/hold-period`, {
         holdPeriodYears: parsed,
       });
       emitHoldPeriodChanged(parsed);
       props.onF9Refresh?.();
-    } catch (e) {
-      console.error('[DealTerms] Save hold period failed:', e instanceof Error ? e.message : e);
-    }
+    });
   }
 
   async function saveTargetIrr() {
     const dec = parsePctDecimal(targetIrr);
     if (dec == null) return;
-    try {
+    await withSave(async () => {
       await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/targets`, { targetIrr: dec });
       props.onF9Refresh?.();
-    } catch (e) {
-      console.error('[DealTerms] Save target IRR failed:', e instanceof Error ? e.message : e);
-    }
+    });
   }
 
   async function saveTargetEm() {
     const val = parseFloat(targetEm);
     if (!Number.isFinite(val) || val <= 0) return;
-    try {
+    await withSave(async () => {
       await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/targets`, { targetEm: val });
       props.onF9Refresh?.();
-    } catch (e) {
-      console.error('[DealTerms] Save target EM failed:', e instanceof Error ? e.message : e);
-    }
+    });
   }
 
   async function saveTargetCoc() {
     const dec = parsePctDecimal(targetCoc);
     if (dec == null) return;
-    try {
+    await withSave(async () => {
       await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/targets`, { targetCoc: dec });
       props.onF9Refresh?.();
-    } catch (e) {
-      console.error('[DealTerms] Save target CoC failed:', e instanceof Error ? e.message : e);
-    }
+    });
   }
 
   async function saveInvestmentStrategy() {
     const val = investmentStrategy || null;
-    try {
+    await withSave(async () => {
       await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/strategy`, { investmentStrategy: val });
       props.onF9Refresh?.();
       window.dispatchEvent(new CustomEvent('deal:strategy-changed', {
         detail: { dealId: props.dealId, field: 'investmentStrategy', value: val },
       }));
-    } catch (e) {
-      console.error('[DealTerms] Save investment strategy failed:', e instanceof Error ? e.message : e);
-    }
+    });
   }
 
   async function saveExitStrategy() {
     const val = exitStrategy || null;
-    try {
+    await withSave(async () => {
       await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/strategy`, { exitStrategy: val });
       props.onF9Refresh?.();
       window.dispatchEvent(new CustomEvent('deal:strategy-changed', {
         detail: { dealId: props.dealId, field: 'exitStrategy', value: val },
       }));
-    } catch (e) {
-      console.error('[DealTerms] Save exit strategy failed:', e instanceof Error ? e.message : e);
-    }
+    });
   }
 
   async function saveClosingCosts(field: 'brokerFee' | 'legalDD' | 'lenderOrig' | 'reserves' | 'other', raw: string) {
     const val = parsePositiveDollar(raw);
-    try {
+    await withSave(async () => {
       await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/closing-costs`, { [field]: val });
       props.onF9Refresh?.();
-    } catch (e) {
-      console.error('[DealTerms] Save closing cost sub-line failed:', e instanceof Error ? e.message : e);
-    }
+    });
   }
 
   async function saveSellingCosts() {
     const dec = parsePctDecimal(sellingCosts);
     if (dec == null) return;
-    try {
+    await withSave(async () => {
       await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/selling-costs`, { sellingCostsPct: dec });
       props.onF9Refresh?.();
-    } catch (e) {
-      console.error('[DealTerms] Save selling costs failed:', e instanceof Error ? e.message : e);
-    }
+    });
   }
 
   // Hold-period quick-chip: persists immediately then triggers cross-tab
@@ -860,6 +842,7 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
 
         {/* KPI pill set — populated from f9Financials.returns when present */}
         <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
+          <SaveStatusBadge status={saveStatus} variant="inline" />
           {[
             { label: 'IRR',  v: fmtPct(irrPct, 1) },
             { label: 'EM',   v: fmtMultiple(emValue) },

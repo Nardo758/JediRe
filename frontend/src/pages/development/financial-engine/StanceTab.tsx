@@ -22,6 +22,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { useDealStore } from '../../../stores/dealStore';
 import { apiClient } from '../../../services/api.client';
+import { SaveStatusBadge, useSaveStatus } from '../../../components/ui/SaveStatusBadge';
 import type {
   OperatorStance,
   OperatorStancePatch,
@@ -500,9 +501,8 @@ export function StanceTab({
     onLvTreatmentViewChange ?? (() => {}),
   );
 
-  const [saving, setSaving]       = useState(false);
+  const [saveStatus, withSave]    = useSaveStatus();
   const [resetting, setResetting] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (dealId) fetchStance(dealId);
@@ -510,25 +510,16 @@ export function StanceTab({
 
   const handleChange = useCallback(async (patch: OperatorStancePatch) => {
     if (!dealId) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      await saveStance(dealId, patch);
-    } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : 'Save failed');
-    } finally {
-      setSaving(false);
-    }
-  }, [dealId, saveStance]);
+    await withSave(() => saveStance(dealId, patch));
+  }, [dealId, saveStance, withSave]);
 
   const handleReset = useCallback(async () => {
     if (!dealId) return;
     setResetting(true);
-    setSaveError(null);
     try {
       await resetStance(dealId);
-    } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : 'Reset failed');
+    } catch {
+      // Reset errors are non-critical; the stance simply stays unchanged.
     } finally {
       setResetting(false);
     }
@@ -568,9 +559,7 @@ export function StanceTab({
             <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
               15 modulation rules · 11 fields
             </span>
-            {saving && (
-              <span style={{ fontFamily: MONO, fontSize: 8, color: CYAN }}>SAVING...</span>
-            )}
+            <SaveStatusBadge status={saveStatus} variant="inline" />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {s.updatedAt && (
@@ -580,16 +569,16 @@ export function StanceTab({
             )}
             <button
               onClick={handleReset}
-              disabled={resetting || saving}
+              disabled={resetting || saveStatus === 'saving'}
               title="Reset all postures to MARKET defaults"
               style={{
                 background: 'transparent',
                 border: `1px solid ${BT.border.medium}`,
                 color: BT.text.muted,
                 fontFamily: MONO, fontSize: 8, padding: '3px 8px',
-                cursor: resetting || saving ? 'default' : 'pointer',
+                cursor: resetting || saveStatus === 'saving' ? 'default' : 'pointer',
                 borderRadius: 2, letterSpacing: 0.5,
-                opacity: resetting || saving ? 0.4 : 1,
+                opacity: resetting || saveStatus === 'saving' ? 0.4 : 1,
               }}
             >
               {resetting ? 'RESETTING...' : 'RESET TO MARKET'}
@@ -612,21 +601,6 @@ export function StanceTab({
           </div>
         )}
 
-        {/* Save error */}
-        {saveError && (
-          <div style={{
-            padding: '5px 14px', background: '#FF475718',
-            borderBottom: `1px solid #FF475738`,
-            fontFamily: MONO, fontSize: 9, color: '#FF4757',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          }}>
-            <span>{saveError}</span>
-            <button
-              onClick={() => setSaveError(null)}
-              style={{ background: 'transparent', border: 'none', color: '#FF4757', cursor: 'pointer', fontSize: 11 }}
-            >✕</button>
-          </div>
-        )}
 
         {/* ── Section 1: MASTER POSTURE ── */}
         <SectionHeader label="MASTER POSTURE" sub="one-dial control — modulates rent growth, exit cap, vacancy simultaneously" />
@@ -635,7 +609,7 @@ export function StanceTab({
           value={s.underwritingPosture}
           options={UNDERWRITING_OPTS}
           onChange={v => handleChange({ underwritingPosture: v })}
-          saving={saving}
+          saving={saveStatus === 'saving'}
         />
 
         {/* ── Section 2: MACRO VIEW ── */}
@@ -645,14 +619,14 @@ export function StanceTab({
           value={s.rateEnvironment}
           options={RATE_ENV_OPTS}
           onChange={v => handleChange({ rateEnvironment: v })}
-          saving={saving}
+          saving={saveStatus === 'saving'}
         />
         <PostureRow<CyclePosition>
           label="CYCLE POSITION"
           value={s.cyclePosition}
           options={CYCLE_OPTS}
           onChange={v => handleChange({ cyclePosition: v })}
-          saving={saving}
+          saving={saveStatus === 'saving'}
         />
         <StressRow
           label="RECESSION PROBABILITY"
@@ -667,7 +641,7 @@ export function StanceTab({
               : 'Above 40% — stress overlays engaged across rent & vacancy'
           }
           onChange={v => handleChange({ recessionProbability: v / 100 })}
-          saving={saving}
+          saving={saveStatus === 'saving'}
         />
 
         {/* ── Section 3: PER-DRIVER ── */}
@@ -677,14 +651,14 @@ export function StanceTab({
           value={s.concessionStrategy}
           options={CONCESSION_OPTS}
           onChange={v => handleChange({ concessionStrategy: v })}
-          saving={saving}
+          saving={saveStatus === 'saving'}
         />
         <PostureRow<MarketingIntensity>
           label="MARKETING INTENSITY"
           value={s.marketingIntensity}
           options={MARKETING_OPTS}
           onChange={v => handleChange({ marketingIntensity: v })}
-          saving={saving}
+          saving={saveStatus === 'saving'}
         />
         {/* ── LEASING COST TREATMENT — per-driver, between concession strategy and expense growth ── */}
         <div style={{ borderBottom: `1px solid ${BT.border.subtle}`, padding: '9px 14px' }}>
@@ -713,7 +687,7 @@ export function StanceTab({
           value={s.expenseGrowthPosture}
           options={EXPENSE_OPTS}
           onChange={v => handleChange({ expenseGrowthPosture: v })}
-          saving={saving}
+          saving={saveStatus === 'saving'}
         />
 
         {/* ── Section 4: STRESS OVERLAYS ── */}
@@ -731,7 +705,7 @@ export function StanceTab({
               : `−${s.stressRentGrowthHaircut}bps on Y1–Y3 rent growth`
           }
           onChange={v => handleChange({ stressRentGrowthHaircut: v })}
-          saving={saving}
+          saving={saveStatus === 'saving'}
         />
         <StressRow
           label="EXIT CAP WIDENING"
@@ -746,7 +720,7 @@ export function StanceTab({
               : `+${s.stressExitCapWiden}bps on exit cap rate`
           }
           onChange={v => handleChange({ stressExitCapWiden: v })}
-          saving={saving}
+          saving={saveStatus === 'saving'}
         />
         <StressRow
           label="VACANCY FLOOR ADD"
@@ -761,7 +735,7 @@ export function StanceTab({
               : `+${s.stressVacancyFloor}pp added to stabilized vacancy floor`
           }
           onChange={v => handleChange({ stressVacancyFloor: v })}
-          saving={saving}
+          saving={saveStatus === 'saving'}
         />
 
         {/* ── Section 6: BASE VALUES ── */}
@@ -775,7 +749,7 @@ export function StanceTab({
           currentValue={exitCapVal}
           dealId={dealId}
           field="exitCapRate"
-          saving={saving}
+          saving={saveStatus === 'saving'}
         />
         <BaseValueRow
           label="RENT GROWTH / YR"
@@ -783,7 +757,7 @@ export function StanceTab({
           currentValue={rentGrowthVal}
           dealId={dealId}
           field="rentGrowthStabilized"
-          saving={saving}
+          saving={saveStatus === 'saving'}
         />
 
         <div style={{ height: 1, background: BT.border.subtle }} />
