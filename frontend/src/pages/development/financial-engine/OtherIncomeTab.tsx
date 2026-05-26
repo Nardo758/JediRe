@@ -333,6 +333,17 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
   const [breakdownCollapsed, setBreakdownCollapsed] = useState(false);
   const [userLinesCollapsed,  setUserLinesCollapsed]  = useState(false);
 
+  // Renovation period banner — dismissed per session
+  const RENO_BANNER_KEY = `reno_banner_dismissed_${dealId}`;
+  const [renoBannerDismissed, setRenoBannerDismissed] = useState<boolean>(
+    () => sessionStorage.getItem(RENO_BANNER_KEY) === '1'
+  );
+  const dismissRenoBanner = () => {
+    sessionStorage.setItem(RENO_BANNER_KEY, '1');
+    setRenoBannerDismissed(true);
+  };
+  const showRenoBanner = !isDevelopment && renoCompletionMonths === undefined && !renoBannerDismissed;
+
   const load = useCallback(async () => {
     try {
       setLoading(true);
@@ -938,6 +949,50 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
 
           {!userLinesCollapsed && (
             <>
+              {showRenoBanner && (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                  margin: '10px 12px 4px',
+                  padding: '9px 12px',
+                  background: '#0f1e2e',
+                  border: `1px solid #1e4a7a`,
+                  borderLeft: `3px solid #3b82f6`,
+                  borderRadius: 5,
+                }}>
+                  <Lightbulb size={13} color="#3b82f6" style={{ flexShrink: 0, marginTop: 1 }} />
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: '#93c5fd', letterSpacing: '0.06em' }}>
+                      RENOVATION PERIOD NOT SET
+                    </span>
+                    <span style={{ fontFamily: MONO, fontSize: 10, color: '#94a3b8', display: 'block', marginTop: 3 }}>
+                      Set <strong style={{ color: '#cbd5e1' }}>renovation_period_years</strong> in{' '}
+                      <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('fe-console-subtab', { detail: { subTab: 'inputs' } }))}
+                        style={{
+                          background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                          fontFamily: MONO, fontSize: 10, color: '#3b82f6',
+                          textDecoration: 'underline', textUnderlineOffset: 2,
+                        }}
+                      >
+                        INPUTS → CapEx
+                      </button>
+                      {' '}to auto-fill adoption ramp start months for new income lines.
+                    </span>
+                  </div>
+                  <button
+                    onClick={dismissRenoBanner}
+                    title="Dismiss"
+                    style={{
+                      background: 'none', border: 'none', padding: '0 2px',
+                      cursor: 'pointer', color: '#475569', fontSize: 14, lineHeight: 1,
+                      flexShrink: 0,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
               {userLines.length > 0 && (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
