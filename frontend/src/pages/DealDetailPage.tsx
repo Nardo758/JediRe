@@ -1480,26 +1480,6 @@ const DealDetailPage: React.FC = () => {
             );
           })}
 
-          {/* SHARES tab — owner only (Task B) */}
-          {!isRecipient && dealId && (
-            <button
-              onClick={() => setActiveTab('shares')}
-              style={{
-                fontFamily: MONO, fontSize: 10, fontWeight: 600,
-                padding: '0 12px', height: 32,
-                cursor: 'pointer',
-                background: activeTab === 'shares' ? AMBER : 'transparent',
-                color: activeTab === 'shares' ? BG_NAV : TEXT_MID,
-                border: 'none',
-                display: 'flex', alignItems: 'center', gap: 5,
-                whiteSpace: 'nowrap', flexShrink: 0,
-              }}
-            >
-              <Share2 size={12} style={{ opacity: 0.7 }} />
-              SHARES
-            </button>
-          )}
-
           {/* Right side: SHARE + JOURNEY + search */}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 }}>
             {/* SHARE — hidden in recipient mode */}
