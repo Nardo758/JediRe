@@ -1,0 +1,204 @@
+VALIDATION SOURCE GRID + SALE COMPS WITH IMPLIED CAP — INVESTIGATION
+
+CONTEXT
+Per Leon's UI fixes: build a validation source grid that surfaces 
+the multiple methods used to derive each assumption (Trailing / 
+Broker / Platform / Sales Comps / etc.), and add a Sale Comps 
+section to F3 Market Module that applies platform expense norms 
+to comps to compute implied cap rates.
+
+Strategic intent: make the agent's underwriting triangulation 
+visible to operators. The reverse-derivation of implied cap 
+rates from sale comps is a sophisticated validation method that 
+differentiates platform intelligence from commodity tools.
+
+Investigate current state and design the changes. No code changes.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — VALIDATION SOURCE GRID INVESTIGATION
+═══════════════════════════════════════════════════════════════════
+
+A. Current state of source provenance in F9:
+   - Per F9 map: ProFormaSummaryTab "Active Y1 Source toggle" 
+     (Broker / T12 / T6 / T3 / T1 / Rent Roll)
+   - Collision Table in OVERVIEW tab shows Broker vs Platform 
+     vs User comparison per field
+   - Evidence badges with provenance per cell
+
+B. Identify what's already visible:
+   - Which fields currently show source attribution?
+   - What's the visual treatment (tier badges T1-T4, colored 
+     borders, etc.)?
+   - Where do underwriting_evidence rows surface to the operator?
+
+C. Gap analysis: what's NOT visible today:
+   - Triangulation: when 2+ methods produce convergent or 
+     divergent values
+   - Confidence scores per source
+   - The reasoning chain ("agent chose Platform because Trailing 
+     is N/A for new construction")
+   - Sigma band positions for benchmark-validated fields
+
+D. Validation methods per assumption category:
+   - For revenue (rent, vacancy, concessions): Trailing T12, 
+     Rent Roll, Platform market, Broker OM, LVE projection (M07), 
+     Sale Comps implied
+   - For OpEx (per line item): Trailing T12, Platform 
+     line_item_benchmarks, State adjustments, Broker OM
+   - For cap rates (going-in, exit): Sale Comps implied, 
+     archive_assumption_benchmarks, Broker OM, M28 Cycle 
+     adjustment
+   - For growth rates: BLS CPI + asset class spread, archive 
+     benchmarks, Broker assumptions
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — IMPLIED CAP RATE FROM SALE COMPS
+═══════════════════════════════════════════════════════════════════
+
+This is the sophisticated underwriting validation method. 
+Investigation focus:
+
+A. Source data for sale comps:
+   - What sale comp tables exist? (per inventory: there are sale 
+     comp paths but coverage may vary)
+   - What fields per comp (sale price, sale date, observed cap 
+     rate disclosed, gross income, unit count, sqft, MSA, 
+     submarket, asset class, vintage)
+   - How fresh is the data?
+
+B. Platform expense norms application:
+   - line_item_benchmarks already exists with per-unit OpEx 
+     distributions (per Day 4 of last week's data quality 
+     recovery)
+   - Apply platform expense norms to each comp:
+     comp_implied_NOI = comp_GPR_estimate - 
+                         platform_OPEX_at_comp_class_geo
+   - Where comp_GPR_estimate comes from comp's reported avg 
+     rent × unit count, or other available data
+   - implied_cap = comp_implied_NOI / comp_sale_price
+
+C. Triangulation:
+   - For each comp, compute both observed_cap (when disclosed) 
+     and implied_cap (using platform norms)
+   - Divergence between them = signal about:
+     * Buyer underwrote different OpEx than platform suggests 
+       (possibly more aggressive)
+     * Buyer paid for upside / value-add potential
+     * Disclosed cap is post-tax-adjustment vs implied is 
+       pre-adjustment
+   - Surface the divergence with explanation
+
+D. Distribution from N comps:
+   - For the subject deal's submarket × asset class × vintage 
+     bucket, gather N comps
+   - Distribution of implied caps (P25/P50/P75)
+   - Surface this distribution alongside the subject's going-in 
+     cap assumption
+   - Operator can immediately see if subject is being 
+     underwritten aggressively (cap below P25) or 
+     conservatively (above P75)
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — F3 MARKET MODULE SALE COMPS SECTION
+═══════════════════════════════════════════════════════════════════
+
+A. Current state of F3 Market Module:
+   - What sections exist today?
+   - Is there any sale comp display currently?
+   - How does it integrate with the rest of the platform?
+
+B. New Sale Comps section design:
+   - Comp listing (sortable / filterable by date, distance, 
+     class, sqft, units)
+   - Per-comp display: sale price, sale date, unit count, 
+     observed cap (if disclosed), implied cap (computed), 
+     divergence
+   - Map view alongside list view (per platform's Mapbox 
+     integration)
+   - Aggregate stats: median implied cap, range, sample size
+
+C. Cross-module integration:
+   - F3 Market Sale Comps feed the validation grid in F9 for 
+     cap rate validation
+   - Same data feeds the agent's derivation of going-in cap 
+     and exit cap assumptions
+   - M22 Post-Close Intelligence cross-references closed deals 
+     to validate which comps were actually used in successful 
+     underwriting
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — VALIDATION GRID DESIGN
+═══════════════════════════════════════════════════════════════════
+
+A. Per-assumption grid layout:
+   - Rows: assumptions (the ~22-40 multifamily existing 
+     assumptions from Phase 2)
+   - Columns: validation methods (Trailing / Broker / Platform / 
+     Sale Comps / Archive Benchmarks / LVE / Manual Override)
+   - Cells: the value each method produces, with confidence 
+     score and evidence link
+   - Color coding: green when methods converge, amber when 
+     soft divergence, red when hard divergence
+
+B. Per-cell information:
+   - Method name
+   - Computed value (with units)
+   - Confidence score (0-1)
+   - Evidence reference (link to underwriting_evidence row)
+   - "Why" explanation (which sources / methods produced this)
+
+C. Reasoning visibility:
+   - For the subject's resolved value (the value actually used 
+     in the model), show which method was chosen and why
+   - Show the state-conditional rule that selected the source 
+     ("New Construction → Platform stabilized cohort primary")
+   - Allow operator to override and see the impact
+
+D. Sigma checks:
+   - For each method's value, show the position within the 
+     benchmark distribution (P25 / P50 / P75)
+   - Flag outliers explicitly
+   - Allow drill-down to see the underlying benchmark data
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — AGENT REASONING SURFACE
+═══════════════════════════════════════════════════════════════════
+
+A. The validation grid is also where the agent shows its work:
+   - For each assumption, the agent's reasoning chain is visible
+   - Operator can click any cell to see the full derivation
+   - Operator can override and the agent's reasoning persists 
+     as evidence of what it would have chosen
+
+B. Integration with the input-mapping work:
+   - Phase 2 derivation logic per assumption maps to the 
+     validation methods in the grid
+   - State-conditional source selection is visible
+   - Module context (M02, M07, M14, M22, etc.) is referenced 
+     per assumption
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/VALIDATION_GRID_AND_SALE_COMPS_INVESTIGATION.md
+
+Structure:
+1. Current source provenance state (Step 1)
+2. Implied cap rate from sale comps — full design (Step 2)
+3. F3 Market Sale Comps section design (Step 3)
+4. Validation grid design (Step 4)
+5. Agent reasoning surface integration (Step 5)
+6. Implementation phasing recommendation
+7. Open questions
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Implement any code changes
+- Compute implied cap rates on real data (design only; samples 
+  on 5-10 comps for design validation OK if available)
+- Modify F3 Market Module
+- Build the validation grid component
+- "While I'm here" cleanups
