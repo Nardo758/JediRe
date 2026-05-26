@@ -290,6 +290,9 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
   const { dealId, dealType, onF9Refresh, f9Financials } = props;
   const isDevelopment = dealType === 'development';
 
+  // Hold period from the deal's assumptions — drives IncomeRampChart year count (up to 10)
+  const holdYears = Math.min(10, Math.max(1, props.f9Financials?.assumptions?.holdYears ?? 5));
+
   // For value-add deals, derive the renovation completion month from the CapEx schedule
   // so the adoption ramp form pre-fills START MONTH automatically.
   // Looks for 'renovation_period_years' in the proforma year-1 rows (set by the CashFlow Agent)
@@ -1034,6 +1037,7 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                                   <InlineLineForm
                                     form={editForm}
                                     setForm={setEditForm}
+                                    holdYears={holdYears}
                                     compact
                                   />
                                 </td>
@@ -1220,6 +1224,7 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                   <InlineLineForm
                     form={addForm}
                     setForm={setAddForm}
+                    holdYears={holdYears}
                     startMonthTooltip={renoCompletionMonths != null && renoCompletionMonths > 0 ? 'Pre-filled from CapEx schedule — edit if needed' : undefined}
                   />
                   <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
@@ -1296,11 +1301,12 @@ function AdoptionSummaryBadge({ adoption }: { adoption: AdoptionBlock }) {
 
 // ── Inline form sub-component ───────────────────────────────────────────────
 function InlineLineForm({
-  form, setForm, compact = false, startMonthTooltip,
+  form, setForm, compact = false, holdYears = 5, startMonthTooltip,
 }: {
   form: LineFormState;
   setForm: React.Dispatch<React.SetStateAction<LineFormState>>;
   compact?: boolean;
+  holdYears?: number;
   startMonthTooltip?: string;
 }) {
   const inputStyle: React.CSSProperties = {
@@ -1538,6 +1544,7 @@ function InlineLineForm({
                     rampDuration={parseFloat(form.rampDurationMonths) || 0}
                     steadyMonthly={steadyMo}
                     probability={prob}
+                    holdYears={holdYears}
                   />
                 );
               })()}
@@ -1549,27 +1556,31 @@ function InlineLineForm({
   );
 }
 
-// ── Income ramp bar chart — Y1–Y5 annual income preview ─────────────────────
-// Replaces the old 160px AdoptionTimelinePreview bar. Shows computed dollar
-// amounts per year so analysts can see the full adoption curve before saving.
+// ── Income ramp bar chart — Y1–YN annual income preview ─────────────────────
+// Shows computed dollar amounts per year so analysts can see the full adoption
+// curve before saving. holdYears controls the number of bars (1–10, default 5).
 function IncomeRampChart({
-  rampStart, rampDuration, steadyMonthly, probability,
+  rampStart, rampDuration, steadyMonthly, probability, holdYears = 5,
 }: {
   rampStart: number;
   rampDuration: number;
   steadyMonthly: number;
   probability: number;
+  holdYears?: number;
 }) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
-  const CHART_W = 210;
+  const NUM_BARS = Math.min(10, Math.max(1, holdYears));
+  // Scale chart width so bars stay a readable size across 1–10 years
+  const CHART_W = NUM_BARS <= 5
+    ? 210
+    : NUM_BARS * 32 + (NUM_BARS - 1) * 4;
   const CHART_H = 72;
-  const LABEL_H = 14;  // reserved at bottom for Y-axis labels
+  const LABEL_H = 14;  // reserved at bottom for X-axis labels
   const BAR_AREA_H = CHART_H - LABEL_H;
-  const NUM_BARS = 5;
-  const BAR_GAP = 5;
+  const BAR_GAP = NUM_BARS <= 5 ? 5 : 4;
   const BAR_W = Math.floor((CHART_W - BAR_GAP * (NUM_BARS - 1)) / NUM_BARS);
-  const LABELS = ['Y1', 'Y2', 'Y3', 'Y4', 'Y5'];
+  const LABELS = Array.from({ length: NUM_BARS }, (_, i) => `Y${i + 1}`);
 
   // Build a synthetic adoption block for computeRampAwareAnnual
   const adoption: AdoptionBlock = {
@@ -1587,7 +1598,7 @@ function IncomeRampChart({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <span style={{ fontFamily: LABEL, fontSize: 7, color: C.teal, letterSpacing: '0.05em' }}>
-        ANNUAL INCOME · Y1–Y5
+        ANNUAL INCOME · Y1–Y{NUM_BARS}
       </span>
       <div style={{ position: 'relative', width: CHART_W }}>
         {/* Hover tooltip */}
