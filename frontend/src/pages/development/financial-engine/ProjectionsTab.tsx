@@ -54,6 +54,13 @@ interface DrilldownEntry {
   formula?: string;
 }
 
+interface RampChartBar {
+  year: number;
+  fraction: number; // 0–1, relative to steady-state annual max
+  phase: 'pre-ramp' | 'ramping' | 'steady-state';
+  annualVal: number;
+}
+
 interface DrilldownInfo {
   rowLabel: string;
   rowKey: keyof ProjYear;
@@ -62,6 +69,11 @@ interface DrilldownInfo {
   yearLabel?: string;
   value: string;
   entries: DrilldownEntry[];
+  /** Present only for RAMP user lines — drives the mini bar chart. */
+  rampChart?: {
+    bars: RampChartBar[];
+    steadyStateAnnual: number;
+  };
 }
 
 // ─── Row / section definitions ────────────────────────────────────────────
@@ -508,6 +520,69 @@ function DrilldownDrawer({
         <div style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700, color: BT.met.financial }}>{info.value}</div>
       </div>
 
+      {/* ── Ramp timeline bar chart (RAMP user lines only) ───────────────── */}
+      {info.rampChart && (
+        <div style={{
+          padding: '10px 10px 8px',
+          borderBottom: `1px solid ${BT.border.medium}`,
+          background: `${BT.bg.terminal}`,
+        }}>
+          <div style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.muted, letterSpacing: 0.8, marginBottom: 8 }}>
+            RAMP TIMELINE · {info.rampChart.bars.length}Y HOLD
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 48 }}>
+            {info.rampChart.bars.map(bar => {
+              const barH = Math.max(2, Math.round(bar.fraction * 44));
+              let barColor: string;
+              let barBg: string;
+              if (bar.phase === 'pre-ramp') {
+                barColor = BT.text.muted;
+                barBg = `${BT.text.muted}40`;
+              } else if (bar.phase === 'steady-state') {
+                barColor = BT.met.financial;
+                barBg = BT.met.financial;
+              } else {
+                // ramping — interpolate amber → financial green
+                const t = bar.fraction;
+                barColor = `color-mix(in srgb, ${BT.met.financial} ${Math.round(t * 100)}%, #F59E0B)`;
+                barBg = barColor;
+              }
+              return (
+                <div
+                  key={bar.year}
+                  title={`YR ${bar.year}: ${fmt$(bar.annualVal)} · ${bar.phase}`}
+                  style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}
+                >
+                  <div style={{
+                    width: '100%',
+                    height: barH,
+                    background: barBg,
+                    borderRadius: '2px 2px 0 0',
+                    opacity: bar.phase === 'pre-ramp' ? 0.45 : 1,
+                    transition: 'height 0.15s ease',
+                  }} />
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: barColor, lineHeight: 1 }}>
+                    {bar.year}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+            {[
+              { phase: 'pre-ramp', label: 'Pre-ramp', color: `${BT.text.muted}` },
+              { phase: 'ramping', label: 'Ramping', color: '#F59E0B' },
+              { phase: 'steady-state', label: 'Steady-state', color: BT.met.financial },
+            ].map(leg => (
+              <div key={leg.phase} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <div style={{ width: 8, height: 8, background: leg.color, borderRadius: 1, opacity: leg.phase === 'pre-ramp' ? 0.45 : 1 }} />
+                <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{leg.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Per-year override input (year 2+ editable lines only) ─────────── */}
       {canOverride && (
         <div style={{
@@ -816,6 +891,30 @@ function buildUserLineDrilldown(
     });
   });
 
+  // ── Build ramp chart bars for RAMP lines ─────────────────────────────────
+  let rampChart: DrilldownInfo['rampChart'] | undefined;
+  if (isRamping && line.adoption) {
+    const a = line.adoption;
+    const steadyStateAnnual = a.steady_state_monthly * 12 * a.probability_adopted;
+    const bars: RampChartBar[] = annualYears.map(yr => {
+      const yearIndex = yr - 1;
+      const midpoint = yearIndex * 12 + 6;
+      const rampEnd = a.ramp_start_period + a.ramp_duration_months;
+      let phase: RampChartBar['phase'];
+      if (midpoint < a.ramp_start_period) {
+        phase = 'pre-ramp';
+      } else if (midpoint >= rampEnd) {
+        phase = 'steady-state';
+      } else {
+        phase = 'ramping';
+      }
+      const annualVal = computeRampAwareAnnual(line.monthly, a, yearIndex);
+      const fraction = steadyStateAnnual > 0 ? annualVal / steadyStateAnnual : 0;
+      return { year: yr, fraction, phase, annualVal };
+    });
+    rampChart = { bars, steadyStateAnnual };
+  }
+
   return {
     rowLabel: line.label,
     rowKey: 'otherIncome' as keyof ProjYear,
@@ -825,6 +924,7 @@ function buildUserLineDrilldown(
       ? `${fmt$(line.adoption!.steady_state_monthly)}/mo steady`
       : `${fmt$(line.monthly)}/mo`,
     entries,
+    rampChart,
   };
 }
 
