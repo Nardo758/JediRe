@@ -135,6 +135,21 @@ function computeRampAwareQuarterly(
   return [0, 1, 2].reduce((sum, i) => sum + computeRampAwareMonthly(monthly, adoption, baseOffset + i), 0);
 }
 
+// ── Compute ramp fraction (0..1) for a given year cell ───────────────────────
+// Returns 0 for pre-ramp, 1 for fully-ramped, linear fraction in between.
+function computeRampFraction(
+  adoption: { ramp_start_period: number; ramp_duration_months: number } | null | undefined,
+  yearIndex: number,
+): number {
+  if (!adoption) return 1;
+  const rampStart = Number.isFinite(adoption.ramp_start_period) ? adoption.ramp_start_period : 0;
+  const rampDur   = Number.isFinite(adoption.ramp_duration_months) ? adoption.ramp_duration_months : 0;
+  const periodMonth = yearIndex * 12 + 6; // midpoint of year (yearIndex+1)
+  if (periodMonth < rampStart) return 0;
+  if (rampDur <= 0 || periodMonth >= rampStart + rampDur) return 1;
+  return (periodMonth - rampStart) / rampDur;
+}
+
 // ── Build ramp tooltip string for a given year cell ──────────────────────────
 function buildRampTooltip(
   adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number },
@@ -2372,7 +2387,62 @@ export function ProjectionsTab({
                                 onClick={() => setDrilldown(buildUserLineDrilldown(line, annualYears))}
                               >
                                 {labelCell}
-                                {dataCells}
+                                {isAnnual ? (
+                                  annualYears.map(yr => {
+                                    const yearIndex = yr - 1;
+                                    let val: number;
+                                    let tooltip: string | undefined;
+                                    let cellColor: string;
+
+                                    if (isRamping) {
+                                      val = computeRampAwareAnnual(line.monthly, line.adoption!, yearIndex);
+                                      tooltip = buildRampTooltip(line.adoption!, yearIndex);
+                                      const fraction = computeRampFraction(line.adoption, yearIndex);
+                                      const isPreRamp = fraction === 0;
+                                      const isAtSteadyState = fraction === 1;
+                                      cellColor = isPreRamp ? BT.text.muted : isAtSteadyState ? BT.text.cyan : BT.text.primary;
+                                      const showBar = !isPreRamp && !isAtSteadyState;
+                                      const barOpacity = 0.35 + fraction * 0.65;
+                                      const display = val > 0 ? fmt$(val) : '$0';
+                                      return (
+                                        <td
+                                          key={yr}
+                                          style={{ padding: '3px 8px 1px 8px', textAlign: 'right', color: cellColor, fontWeight: 400, cursor: 'default', fontFamily: MONO, fontSize: 9, position: 'relative' }}
+                                          title={tooltip}
+                                        >
+                                          {display}
+                                          {showBar && (
+                                            <div style={{ position: 'absolute', bottom: 0, left: 0, height: 2, width: '100%', background: `${BT.text.muted}30`, borderRadius: 1 }}>
+                                              <div style={{ height: '100%', width: `${fraction * 100}%`, background: BT.text.cyan, opacity: barOpacity, borderRadius: 1, transition: 'width 0.2s ease' }} />
+                                            </div>
+                                          )}
+                                          {isPreRamp && (
+                                            <div style={{ position: 'absolute', bottom: 0, left: 0, height: 2, width: '100%', background: `${BT.text.muted}20`, borderRadius: 1 }} />
+                                          )}
+                                          {isAtSteadyState && (
+                                            <div style={{ position: 'absolute', bottom: 0, left: 0, height: 2, width: '100%', background: BT.text.cyan, opacity: 0.5, borderRadius: 1 }} />
+                                          )}
+                                        </td>
+                                      );
+                                    } else {
+                                      val = line.monthly * 12;
+                                      tooltip = `${line.label}: $${line.monthly.toLocaleString()}/mo × 12`;
+                                      cellColor = BT.text.secondary;
+                                      const display = val > 0 ? fmt$(val) : '$0';
+                                      return (
+                                        <td
+                                          key={yr}
+                                          style={{ padding: '3px 8px', textAlign: 'right', color: cellColor, fontWeight: 400, cursor: 'default', fontFamily: MONO, fontSize: 9 }}
+                                          title={tooltip}
+                                        >
+                                          {display}
+                                        </td>
+                                      );
+                                    }
+                                  })
+                                ) : (
+                                  dataCells
+                                )}
                               </tr>
                             );
                           });

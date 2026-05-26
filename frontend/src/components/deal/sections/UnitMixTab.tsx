@@ -934,9 +934,9 @@ function bathsFromLabel(label: string): number {
 // ─── Platform defaults by bedroom type (spec §4A) ────────────────────────────
 const PLATFORM_DEFAULTS_MANUAL: Record<number, { avg_sqft: number; in_place_rent: number; label: string }> = {
   0: { avg_sqft: 550,  in_place_rent: 1200, label: 'Studio' },
-  1: { avg_sqft: 750,  in_place_rent: 1500, label: '1BR' },
-  2: { avg_sqft: 1050, in_place_rent: 2000, label: '2BR' },
-  3: { avg_sqft: 1400, in_place_rent: 2600, label: '3BR' },
+  1: { avg_sqft: 750,  in_place_rent: 1500, label: '1BR/1BA' },
+  2: { avg_sqft: 1050, in_place_rent: 2000, label: '2BR/2BA' },
+  3: { avg_sqft: 1400, in_place_rent: 2600, label: '3BR/2BA' },
   4: { avg_sqft: 1800, in_place_rent: 3200, label: '4BR+' },
 };
 
