@@ -828,6 +828,147 @@ function buildUserLineDrilldown(
   };
 }
 
+// ─── Year-specific drilldown for a single cell on a custom user-line sub-row ──
+// Opened when an analyst clicks a year-value cell (not the row label).
+// Shows: year index, ramp phase, ramp months elapsed at mid-year, % of
+// steady-state applied, effective monthly rate, and the resulting annual total.
+function buildUserLineYearDrilldown(
+  line: {
+    id: string;
+    label: string;
+    monthly: number;
+    note?: string;
+    adoption?: {
+      ramp_start_period: number;
+      ramp_duration_months: number;
+      steady_state_monthly: number;
+      probability_adopted: number;
+    } | null;
+  },
+  yr: number, // 1-indexed year
+): DrilldownInfo {
+  const yearIndex = yr - 1;
+  const isRamping = line.adoption != null && line.adoption.ramp_duration_months > 0;
+  const entries: DrilldownEntry[] = [];
+
+  const annualTotal = isRamping && line.adoption
+    ? computeRampAwareAnnual(line.monthly, line.adoption, yearIndex)
+    : line.monthly * 12;
+
+  type Phase = 'pre-ramp' | 'ramping' | 'steady-state';
+  let phase: Phase = 'steady-state';
+  let effectiveMonthly: number;
+  let rampMonthsElapsed: number | null = null;
+  let steadyStatePct: number | null = null;
+
+  if (isRamping && line.adoption) {
+    const a = line.adoption;
+    const midpoint = yearIndex * 12 + 6; // mid-year period month (1-indexed equivalent)
+    const rampEnd = a.ramp_start_period + a.ramp_duration_months;
+    if (midpoint < a.ramp_start_period) {
+      phase = 'pre-ramp';
+      effectiveMonthly = 0;
+    } else if (midpoint >= rampEnd) {
+      phase = 'steady-state';
+      effectiveMonthly = a.steady_state_monthly * a.probability_adopted;
+    } else {
+      phase = 'ramping';
+      rampMonthsElapsed = midpoint - a.ramp_start_period;
+      steadyStatePct = Math.round((rampMonthsElapsed / a.ramp_duration_months) * 100);
+      effectiveMonthly = a.steady_state_monthly * (rampMonthsElapsed / a.ramp_duration_months) * a.probability_adopted;
+    }
+  } else {
+    phase = 'steady-state';
+    effectiveMonthly = line.monthly;
+  }
+
+  const phaseLabel: Record<Phase, string> = {
+    'pre-ramp': 'PRE-RAMP',
+    'ramping': 'RAMPING',
+    'steady-state': 'STEADY-STATE',
+  };
+
+  entries.push({
+    label: 'Year Index',
+    value: `YR ${yr} of hold`,
+    sourceTab: 'PROJECTIONS',
+    tabIndex: 3,
+  });
+
+  entries.push({
+    label: 'Ramp Phase',
+    value: phaseLabel[phase],
+    sourceTab: 'ASSUMPTIONS',
+    tabIndex: 1,
+    formula: phase === 'pre-ramp'
+      ? `Revenue not yet active — ramp starts month ${line.adoption?.ramp_start_period}`
+      : phase === 'steady-state'
+        ? isRamping
+          ? `Fully ramped — 100% of steady-state × ${(line.adoption!.probability_adopted * 100).toFixed(0)}% prob`
+          : 'Flat line — full rate every year'
+        : `${rampMonthsElapsed} of ${line.adoption?.ramp_duration_months} ramp months elapsed at mid-year`,
+  });
+
+  if (phase === 'ramping' && rampMonthsElapsed != null && steadyStatePct != null && line.adoption) {
+    entries.push({
+      label: 'Ramp Months Elapsed (mid-yr)',
+      value: `${rampMonthsElapsed} mo of ${line.adoption.ramp_duration_months}`,
+      sourceTab: 'ASSUMPTIONS',
+      tabIndex: 1,
+      formula: 'Sampled at month 6 of the year (mid-year)',
+    });
+    entries.push({
+      label: '% of Steady-State Applied',
+      value: `${steadyStatePct}%`,
+      sourceTab: 'ASSUMPTIONS',
+      tabIndex: 1,
+      formula: 'ramp_months_elapsed ÷ ramp_duration_months',
+    });
+  }
+
+  entries.push({
+    label: 'Effective Monthly (mid-yr)',
+    value: `${fmt$(effectiveMonthly)}/mo`,
+    sourceTab: 'PROJECTIONS',
+    tabIndex: 3,
+    formula: phase === 'pre-ramp'
+      ? '$0 — not yet active'
+      : phase === 'steady-state'
+        ? isRamping
+          ? `${fmt$(line.adoption!.steady_state_monthly)}/mo × ${(line.adoption!.probability_adopted * 100).toFixed(0)}% prob`
+          : `${fmt$(line.monthly)}/mo (flat)`
+        : `${fmt$(line.adoption!.steady_state_monthly)}/mo × ${steadyStatePct}% ramp × ${(line.adoption!.probability_adopted * 100).toFixed(0)}% prob`,
+  });
+
+  entries.push({
+    label: 'Annual Total',
+    value: fmt$(annualTotal),
+    sourceTab: 'PROJECTIONS',
+    tabIndex: 3,
+    formula: isRamping
+      ? 'steady_state × ramp_fraction × prob × 12 (mid-year sampling)'
+      : `${fmt$(line.monthly)}/mo × 12`,
+  });
+
+  if (line.note) {
+    entries.push({
+      label: 'Note',
+      value: line.note,
+      sourceTab: 'ASSUMPTIONS',
+      tabIndex: 1,
+    });
+  }
+
+  return {
+    rowLabel: line.label,
+    rowKey: 'otherIncome' as keyof ProjYear,
+    year: yr,
+    yearLabel: `YR ${yr} · ${phaseLabel[phase]}`,
+    value: fmt$(annualTotal),
+    entries,
+  };
+}
+
 // ─── Sub-period columns for monthly/quarterly views ───────────────────────
 interface SubColHeader {
   label: string;
@@ -2468,8 +2609,9 @@ export function ProjectionsTab({
                                       return (
                                         <td
                                           key={yr}
-                                          style={{ padding: '3px 8px 1px 8px', textAlign: 'right', color: cellColor, fontWeight: 400, cursor: 'default', fontFamily: MONO, fontSize: 9, position: 'relative' }}
-                                          title={tooltip}
+                                          onClick={(e) => { e.stopPropagation(); setDrilldown(buildUserLineYearDrilldown(line, yr)); }}
+                                          style={{ padding: '3px 8px 1px 8px', textAlign: 'right', color: cellColor, fontWeight: 400, cursor: 'pointer', fontFamily: MONO, fontSize: 9, position: 'relative' }}
+                                          title="Click for year detail"
                                         >
                                           {display}
                                           {showBar && (
@@ -2493,8 +2635,9 @@ export function ProjectionsTab({
                                       return (
                                         <td
                                           key={yr}
-                                          style={{ padding: '3px 8px', textAlign: 'right', color: cellColor, fontWeight: 400, cursor: 'default', fontFamily: MONO, fontSize: 9 }}
-                                          title={tooltip}
+                                          onClick={(e) => { e.stopPropagation(); setDrilldown(buildUserLineYearDrilldown(line, yr)); }}
+                                          style={{ padding: '3px 8px', textAlign: 'right', color: cellColor, fontWeight: 400, cursor: 'pointer', fontFamily: MONO, fontSize: 9 }}
+                                          title="Click for year detail"
                                         >
                                           {display}
                                         </td>
