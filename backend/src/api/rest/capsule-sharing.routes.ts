@@ -36,6 +36,7 @@ import { NotificationType } from '../../types/notification.types';
 import * as crypto from 'crypto';
 import * as XLSX from 'xlsx';
 import PDFDocument from 'pdfkit';
+import { computeUserLineAnnual } from '../../services/proforma-seeder.service';
 
 const router = Router();
 
@@ -574,7 +575,7 @@ router.get('/shares/:shortcode/export/pdf', async (req: Request, res: Response) 
     const { capsule_id: capsuleId, company_name, logo_url } = shareResult.rows[0];
     const result = await pool.query(
       `SELECT property_address, asset_class, jedi_score, collision_score,
-              deal_data, platform_intel, created_at
+              deal_data, platform_intel, module_outputs, created_at
        FROM deal_capsules WHERE id = $1 LIMIT 1`,
       [capsuleId]
     );
@@ -687,6 +688,9 @@ router.get('/shares/:shortcode/export/pdf', async (req: Request, res: Response) 
 
     doc.fillColor(MID_SC).font('Helvetica').fontSize(8)
       .text(`${companyName} · JEDI RE Platform · ${new Date().toLocaleDateString()}`, 50, H - 50, { width: W - 100, align: 'center' });
+
+    drawRampSchedulePage(doc, capsule.deal_data as Record<string, unknown>, (capsule.module_outputs ?? {}) as Record<string, unknown>, dd, companyName, address,
+      { NAVY: NAVY_SC, AMBER: AMBER_SC, SLATE: SLATE_SC, WHITE: WHITE_SC, LIGHT: LIGHT_SC, MID: MID_SC });
 
     doc.end();
     return;
@@ -1865,6 +1869,151 @@ function jsonToKVRows(obj: Record<string, unknown>): (string | number | null)[][
     .map(([k, v]) => [humanizeKey(k), typeof v === 'number' ? v : String(v ?? '')]);
 }
 
+// ── Ramp Schedule PDF helper (Task #1205) ────────────────────────────────────
+// Appends a new page to `doc` showing the year-by-year Other Income ramp
+// schedule.  Skipped silently when no otherIncomeUserLines are present.
+
+type _RampAdoption = {
+  ramp_start_period: number;
+  ramp_duration_months: number;
+  steady_state_monthly: number;
+  probability_adopted: number;
+} | null;
+type _UserLine = { label?: string; monthly: number; adoption?: _RampAdoption };
+
+// Probe multiple paths to locate otherIncomeUserLines across different capsule
+// snapshot shapes (camelCase/snake_case, top-level/nested under year1 or f9).
+function _extractUserLines(
+  rawDealData: Record<string, unknown>,
+  rawModuleOutputs: Record<string, unknown>,
+): _UserLine[] {
+  const dd = rawDealData as any;
+  const mo = rawModuleOutputs as any;
+  const candidates: unknown[] = [
+    dd.otherIncomeUserLines,
+    dd.other_income_user_lines,
+    dd.year1?.other_income_user_lines,
+    dd.year1?.otherIncomeUserLines,
+    dd.assumptions?.year1?.other_income_user_lines,
+    dd.assumptions?.year1?.otherIncomeUserLines,
+    mo.otherIncomeUserLines,
+    mo.other_income_user_lines,
+    mo.year1?.other_income_user_lines,
+    mo.year1?.otherIncomeUserLines,
+    mo.cashflow?.year1?.other_income_user_lines,
+    mo.cashflow?.year1?.otherIncomeUserLines,
+    mo.f9?.otherIncomeUserLines,
+    mo.f9?.other_income_user_lines,
+  ];
+  for (const c of candidates) {
+    if (Array.isArray(c) && c.length > 0) return c as _UserLine[];
+  }
+  return [];
+}
+
+function drawRampSchedulePage(
+  doc: InstanceType<typeof PDFDocument>,
+  rawDealData: Record<string, unknown>,
+  rawModuleOutputs: Record<string, unknown>,
+  ddFlat: Record<string, unknown>,
+  companyName: string,
+  address: string,
+  colors: { NAVY: string; AMBER: string; SLATE: string; WHITE: string; LIGHT: string; MID: string },
+): void {
+  const userLines: _UserLine[] = _extractUserLines(rawDealData, rawModuleOutputs);
+  if (userLines.length === 0) return;
+
+  const holdYears = Math.min(
+    Math.max(parseInt(String(ddFlat.hold_period ?? ddFlat.holdPeriod ?? '5'), 10) || 5, 1),
+    10,
+  );
+
+  const { NAVY, AMBER, WHITE, LIGHT, MID } = colors;
+  const W = 595.28;
+  const H = 841.89;
+
+  doc.addPage();
+  doc.rect(0, 0, W, H).fill(WHITE);
+  doc.rect(0, 0, W, 8).fill(AMBER);
+  doc.rect(0, 8, W, 50).fill(NAVY);
+
+  doc.fillColor(AMBER).font('Helvetica-Bold').fontSize(13)
+    .text('ANCILLARY INCOME — RAMP SCHEDULE', 50, 22);
+  doc.fillColor(LIGHT).font('Helvetica').fontSize(9)
+    .text(address, 50, 40);
+
+  const COL_START_X = 50;
+  const availW = W - 100;
+  const COL_LABEL_W = 150;
+  const COL_TYPE_W = 38;
+  const yearColW = Math.floor((availW - COL_LABEL_W - COL_TYPE_W) / holdYears);
+
+  let ty = 76;
+
+  // Header row
+  doc.rect(COL_START_X, ty, availW, 20).fill(NAVY);
+  doc.fillColor(AMBER).font('Helvetica-Bold').fontSize(8)
+    .text('INCOME LINE', COL_START_X + 4, ty + 6, { width: COL_LABEL_W - 8 });
+  doc.fillColor(AMBER).font('Helvetica-Bold').fontSize(8)
+    .text('TYPE', COL_START_X + COL_LABEL_W + 4, ty + 6, { width: COL_TYPE_W - 8 });
+  for (let yr = 0; yr < holdYears; yr++) {
+    const xPos = COL_START_X + COL_LABEL_W + COL_TYPE_W + yr * yearColW;
+    doc.fillColor(AMBER).font('Helvetica-Bold').fontSize(8)
+      .text(`YR${yr + 1}`, xPos, ty + 6, { width: yearColW, align: 'right' });
+  }
+  ty += 20;
+
+  const fmtAmt = (v: number): string => {
+    if (!Number.isFinite(v)) return '—';
+    if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
+    if (Math.abs(v) >= 1_000) return `$${Math.round(v / 1_000)}k`;
+    return `$${Math.round(v)}`;
+  };
+
+  userLines.forEach((line, i) => {
+    const isRamping = line.adoption != null;
+    const rowBg = i % 2 === 0 ? '#F8F9FA' : WHITE;
+    doc.rect(COL_START_X, ty, availW, 22).fill(rowBg);
+
+    const lineLabel = line.label ?? `Line ${i + 1}`;
+    doc.fillColor('#333333').font('Helvetica').fontSize(8)
+      .text(lineLabel, COL_START_X + 4, ty + 7, { width: COL_LABEL_W - 8 });
+
+    doc.fillColor(isRamping ? AMBER : MID).font('Helvetica-Bold').fontSize(7)
+      .text(isRamping ? 'RAMP' : 'FLAT', COL_START_X + COL_LABEL_W + 4, ty + 7, { width: COL_TYPE_W - 8 });
+
+    for (let yr = 0; yr < holdYears; yr++) {
+      const xPos = COL_START_X + COL_LABEL_W + COL_TYPE_W + yr * yearColW;
+      const annualVal = computeUserLineAnnual(line, yr);
+      doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(8)
+        .text(fmtAmt(annualVal), xPos, ty + 7, { width: yearColW, align: 'right' });
+    }
+    ty += 22;
+  });
+
+  // Totals row
+  doc.rect(COL_START_X, ty, availW, 22).fill(NAVY + '22');
+  doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(8)
+    .text('TOTAL OTHER INCOME', COL_START_X + 4, ty + 7, { width: COL_LABEL_W - 8 });
+  for (let yr = 0; yr < holdYears; yr++) {
+    const xPos = COL_START_X + COL_LABEL_W + COL_TYPE_W + yr * yearColW;
+    const total = userLines.reduce((sum, l) => sum + computeUserLineAnnual(l, yr), 0);
+    doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(8)
+      .text(fmtAmt(total), xPos, ty + 7, { width: yearColW, align: 'right' });
+  }
+  ty += 22;
+
+  // Caption
+  doc.fillColor(MID).font('Helvetica').fontSize(7)
+    .text(
+      'RAMP lines are adoption-phased; values shown are projected annual totals at year midpoint.  FLAT lines are constant across all hold years.',
+      COL_START_X, ty + 8, { width: availW },
+    );
+
+  doc.fillColor(MID).font('Helvetica').fontSize(8)
+    .text(`${companyName} · JEDI RE Platform · ${new Date().toLocaleDateString()}`, 50, H - 50, { width: W - 100, align: 'center' });
+}
+
 function buildCapsuleWorkbook(capsule: {
   property_address: string | null;
   asset_class: string | null;
@@ -2226,6 +2375,9 @@ router.get('/:capsuleId/export/pdf', requireAuth, async (req: AuthenticatedReque
     doc.fillColor(MID).font('Helvetica').fontSize(8)
       .text(`${companyName} · CONFIDENTIAL · ${new Date().toLocaleDateString()}`, 50, H - 50, { width: W - 100, align: 'center' });
 
+    drawRampSchedulePage(doc, capsule.deal_data as Record<string, unknown>, (capsule.module_outputs ?? {}) as Record<string, unknown>, dd, companyName, address,
+      { NAVY, AMBER: AMBER_PDF, SLATE, WHITE, LIGHT, MID });
+
     doc.end();
     return;
   } catch (err: any) {
@@ -2307,7 +2459,7 @@ router.get('/capsule-links/:accessToken/export/pdf', async (req: Request, res: R
     const { capsule_id: capsuleId, company_name, logo_url } = shareResult.rows[0];
     const result = await pool.query(
       `SELECT property_address, asset_class, jedi_score, collision_score,
-              deal_data, platform_intel, created_at
+              deal_data, platform_intel, module_outputs, created_at
        FROM deal_capsules WHERE id = $1 LIMIT 1`,
       [capsuleId]
     );
@@ -2420,6 +2572,9 @@ router.get('/capsule-links/:accessToken/export/pdf', async (req: Request, res: R
 
     doc.fillColor(MID_ST).font('Helvetica').fontSize(8)
       .text(`${companyName} · JEDI RE Platform · ${new Date().toLocaleDateString()}`, 50, H - 50, { width: W - 100, align: 'center' });
+
+    drawRampSchedulePage(doc, capsule.deal_data as Record<string, unknown>, (capsule.module_outputs ?? {}) as Record<string, unknown>, dd, companyName, address,
+      { NAVY: NAVY_ST, AMBER: AMBER_ST, SLATE: SLATE_ST, WHITE: WHITE_ST, LIGHT: LIGHT_ST, MID: MID_ST });
 
     doc.end();
     return;
