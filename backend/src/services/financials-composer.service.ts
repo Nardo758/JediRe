@@ -114,6 +114,12 @@ export interface ComposedFinancials {
     created_by?: string;
     created_at: string;
     updated_at?: string;
+    adoption?: {
+      ramp_start_period: number;
+      ramp_duration_months: number;
+      steady_state_monthly: number;
+      probability_adopted: number;
+    } | null;
   }>;
   /**
    * Concession amortization recognition schedule — populated by the

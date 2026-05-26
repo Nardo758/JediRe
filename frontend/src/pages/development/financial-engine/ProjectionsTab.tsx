@@ -83,6 +83,46 @@ interface SectionDef {
   rows: RowDef[];
 }
 
+// ── Ramp formula — mirrors backend computeUserLineAnnual (proforma-seeder.service.ts §5B / Task #1160) ──
+// yearIndex: 0-based (0 = Year 1)
+function computeRampAwareAnnual(
+  monthly: number,
+  adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null | undefined,
+  yearIndex: number,
+): number {
+  if (!adoption) return monthly * 12;
+  const steadyMo  = Number.isFinite(adoption.steady_state_monthly)  ? adoption.steady_state_monthly  : monthly;
+  const rampStart = Number.isFinite(adoption.ramp_start_period)     ? adoption.ramp_start_period     : 0;
+  const rampDur   = Number.isFinite(adoption.ramp_duration_months)  ? adoption.ramp_duration_months  : 0;
+  const prob      = Number.isFinite(adoption.probability_adopted)   ? adoption.probability_adopted   : 1;
+  const Y = yearIndex + 1;
+  const periodMonth = (Y - 1) * 12 + 6; // midpoint of year Y
+  if (periodMonth < rampStart) return 0;
+  if (rampDur <= 0 || periodMonth >= rampStart + rampDur) return steadyMo * 12 * prob;
+  const rampFraction = (periodMonth - rampStart) / rampDur;
+  return steadyMo * rampFraction * 12 * prob;
+}
+
+// ── Build ramp tooltip string for a given year cell ──────────────────────────
+function buildRampTooltip(
+  adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number },
+  yearIndex: number,
+): string {
+  const rampStart = adoption.ramp_start_period;
+  const rampDur   = adoption.ramp_duration_months;
+  const prob      = adoption.probability_adopted;
+  const periodMonth = (yearIndex) * 12 + 6; // midpoint of year (yearIndex+1)
+  if (periodMonth < rampStart) {
+    return `Pre-ramp · starts month ${rampStart} · prob ${(prob * 100).toFixed(0)}%`;
+  }
+  if (rampDur <= 0 || periodMonth >= rampStart + rampDur) {
+    return `Fully ramped · 100% steady state · prob ${(prob * 100).toFixed(0)}%`;
+  }
+  const rampMonthsIn = periodMonth - rampStart;
+  const pct = Math.round((rampMonthsIn / rampDur) * 100);
+  return `Ramp month ${Math.round(rampMonthsIn)} of ${rampDur} · ${pct}% steady state · prob ${(prob * 100).toFixed(0)}%`;
+}
+
 const fmtCell = (
   val: number | null | undefined,
   fmt: RowDef['fmt'] = 'dollar',
@@ -2026,6 +2066,83 @@ export function ProjectionsTab({
                             {recognizedRowEl}
                           </React.Fragment>
                         );
+                      }
+
+                      // ── Ramping user-line sub-rows (Task #1160) ──────────────────────────
+                      // Injected after the "Other Income" rollup row in the REVENUE section.
+                      // Only lines with adoption.ramp_duration_months > 0 get a RAMP sub-row;
+                      // flat lines are already included in the otherIncome total and need no
+                      // separate display.
+                      if (
+                        section.key === 'revenue' &&
+                        row.key === 'otherIncome' &&
+                        isAnnual
+                      ) {
+                        const rampingLines = (financials?.otherIncomeUserLines ?? [])
+                          .filter(l => l.adoption != null && l.adoption.ramp_duration_months > 0);
+
+                        if (rampingLines.length > 0) {
+                          const rampBg = `${BT.text.cyan}06`;
+                          const rampRows = rampingLines.map(line => (
+                            <tr
+                              key={`__ramp_${line.id}__`}
+                              style={{ background: rampBg, borderBottom: `1px solid ${BT.border.subtle}` }}
+                            >
+                              <td
+                                style={{ padding: '3px 8px 3px 28px', color: BT.text.secondary, fontWeight: 400, position: 'sticky', left: 0, background: rampBg, zIndex: 1 }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <span style={{ fontFamily: MONO, fontSize: 9 }}>{line.label}</span>
+                                  <span style={{
+                                    fontSize: 7, fontWeight: 700, color: BT.text.cyan,
+                                    background: `${BT.text.cyan}18`,
+                                    border: `1px solid ${BT.text.cyan}40`,
+                                    borderRadius: 2, padding: '0 4px', letterSpacing: '0.05em',
+                                  }}>
+                                    RAMP
+                                  </span>
+                                </div>
+                              </td>
+                              {annualYears.map(yr => {
+                                const yearIndex = yr - 1;
+                                const val = computeRampAwareAnnual(line.monthly, line.adoption!, yearIndex);
+                                const display = val > 0 ? fmt$(val) : '$0';
+                                const tooltip = line.adoption
+                                  ? buildRampTooltip(line.adoption, yearIndex)
+                                  : undefined;
+                                const isAtSteadyState = line.adoption != null && (() => {
+                                  const midpoint = yearIndex * 12 + 6;
+                                  return midpoint >= line.adoption.ramp_start_period + line.adoption.ramp_duration_months;
+                                })();
+                                const isPreRamp = line.adoption != null && (() => {
+                                  const midpoint = yearIndex * 12 + 6;
+                                  return midpoint < line.adoption.ramp_start_period;
+                                })();
+                                const cellColor = isPreRamp
+                                  ? BT.text.muted
+                                  : isAtSteadyState
+                                  ? BT.text.cyan
+                                  : BT.text.primary;
+                                return (
+                                  <td
+                                    key={yr}
+                                    style={{ padding: '3px 8px', textAlign: 'right', color: cellColor, fontWeight: 400, cursor: 'default', fontFamily: MONO, fontSize: 9 }}
+                                    title={tooltip}
+                                  >
+                                    {display}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ));
+
+                          return (
+                            <React.Fragment key={`${row.key}_frag`}>
+                              {rowEl}
+                              {rampRows}
+                            </React.Fragment>
+                          );
+                        }
                       }
 
                       return rowEl;

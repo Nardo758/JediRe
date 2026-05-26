@@ -529,6 +529,24 @@ export interface F9DealFinancials {
    *   subject_history update, fiscal_year_start_month change.
    */
   concessionRecognition?: F9ConcessionRecognition | null;
+  /**
+   * User-added other income lines — passed through from the proforma seed so
+   * the Projections tab can render per-line ramp schedules (Task #1160).
+   * Adoption block included so the frontend can compute year-by-year values
+   * using the same formula as the backend proforma-seeder (computeUserLineAnnual).
+   */
+  otherIncomeUserLines?: Array<{
+    id: string;
+    label: string;
+    monthly: number;
+    note?: string;
+    adoption?: {
+      ramp_start_period: number;
+      ramp_duration_months: number;
+      steady_state_monthly: number;
+      probability_adopted: number;
+    } | null;
+  }>;
 }
 
 /**
