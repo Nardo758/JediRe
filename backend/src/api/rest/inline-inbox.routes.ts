@@ -247,7 +247,7 @@ router.post('/accounts/:id/sync', requireAuth, async (req: AuthenticatedRequest,
               body_preview, body_text, is_read, has_attachments, received_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
             [
-              null, // email_account_id is UUID (user_email_accounts); Microsoft uses integer email_accounts — set NULL until task #1069 unifies the account tables
+              null, // email_account_id references user_email_accounts (UUID); Microsoft emails have no Gmail account row, so NULL is correct
               userId, externalId,
               msg.subject || '(no subject)', fromName, fromAddress,
               msg.bodyPreview || '', msg.body?.content || '',
