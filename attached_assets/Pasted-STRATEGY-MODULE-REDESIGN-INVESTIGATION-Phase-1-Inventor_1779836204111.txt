@@ -1,0 +1,206 @@
+STRATEGY MODULE REDESIGN — INVESTIGATION (Phase 1 — Inventory & 
+Complexity Assessment)
+
+CONTEXT
+Per Leon: the Strategy Module is "too complicated to look at" — 
+specifically too many fields/inputs to fill out. This investigation 
+maps the current Strategy Module's surface area, classifies each 
+input by necessity and derivation potential, and identifies which 
+fields could be platform-derived rather than user-entered. No 
+redesign work in this dispatch; redesign prompt drafted separately 
+after findings.
+
+Strategic anchor: the Strategy Module's purpose is to provide 
+EVIDENCE for a strategy choice (e.g., for a value-add strategy, 
+show the rent delta vs comps that supports the play). It is NOT 
+primarily a control surface where operators specify the strategy. 
+The redesign should reframe it from control-heavy to evidence-rich.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — LOCATE AND MAP THE STRATEGY MODULE
+═══════════════════════════════════════════════════════════════════
+
+A. Find every UI surface in the codebase referenced as "Strategy 
+   Module" or that handles strategy selection / evidence:
+   grep -r -i "strategy.module\|StrategyModule\|strategy.tab\|
+              strategy.section\|strategyEvidence" frontend/src/
+
+B. Map all relevant components:
+   - Component file paths
+   - Where they're mounted (which page/tab)
+   - Parent/child component relationships
+   - Whether there's a single "Strategy Module" surface or multiple 
+     overlapping ones
+
+C. Document the user journey:
+   - When does an operator land on the Strategy Module?
+   - What decisions are they making there?
+   - What comes before it in the workflow?
+   - What comes after?
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — COMPLETE FIELD INVENTORY
+═══════════════════════════════════════════════════════════════════
+
+For every input field, dropdown, toggle, checkbox, or selector in 
+the Strategy Module surface(s):
+
+A. Per-field documentation:
+   - field_name (machine-readable, from code)
+   - display_label (what operator sees)
+   - input_type (text / number / dropdown / toggle / multi-select / 
+     date / etc.)
+   - required (yes / no / conditional)
+   - validation rules (if any)
+   - help text or tooltip content (if any)
+   - what entity it writes to (deal_assumptions, deals, 
+     m08_strategy_outputs, etc.)
+   - what field it maps to in the schema
+
+B. Group fields by section/visual cluster as they appear in the UI
+
+C. Count the total. This is the baseline against which "simpler" 
+   is measured.
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — FIELD CLASSIFICATION BY DERIVATION POTENTIAL
+═══════════════════════════════════════════════════════════════════
+
+For each field, classify by whether it MUST be user-entered, COULD 
+be platform-derived, or is currently asked but probably shouldn't 
+be:
+
+CLASSIFICATION A — TRUE OPERATOR INPUT
+Operator-specific intent or judgment that cannot be derived. 
+Examples: "What's your target IRR?" "What's your hold period 
+preference?"
+
+CLASSIFICATION B — DERIVABLE FROM DEAL DATA
+Platform can compute or infer from data already collected. Examples: 
+"Subject property's avg rent" (already in unit mix data), "Market 
+position vs comps" (computable from comp set), "Vintage band" 
+(derivable from year_built).
+
+CLASSIFICATION C — DERIVABLE FROM STRATEGY CHOICE
+If operator selects "Value-Add," many downstream fields can be 
+inferred from that selection. Examples: typical hold period for 
+value-add, typical exit multiple expectations, typical capex 
+intensity.
+
+CLASSIFICATION D — REDUNDANT WITH OTHER MODULES
+Fields that duplicate inputs the operator already provided in F9 
+Deal Terms, M02 Zoning, M03 Dev Capacity, M07 Traffic Engine, or 
+elsewhere. These are double-entry friction.
+
+CLASSIFICATION E — QUESTIONABLE NECESSITY
+Fields that may not actually affect downstream behavior. Are they 
+read anywhere? Do they change any computation, prompt, or display?
+
+For each field, produce:
+- classification (A/B/C/D/E)
+- reasoning
+- if B, C, or D: identify the source the platform could pull from
+- if E: identify whether the field is actually used anywhere 
+  downstream
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — EVIDENCE VS CONTROL RATIO
+═══════════════════════════════════════════════════════════════════
+
+The Strategy Module's intended purpose is evidence-rich, not 
+control-heavy. Assess the current state:
+
+A. Count fields that are CONTROL (operator must input)
+B. Count surfaces that are EVIDENCE (platform shows information 
+   supporting the strategy: rent delta comps, market signals, 
+   demand evidence, etc.)
+C. Compute the ratio. A healthy evidence-surface should be 
+   evidence-heavy, control-light.
+
+D. For each strategy variant (Value-Add, Stabilized, Development, 
+   etc.), document what evidence the module currently shows vs 
+   what evidence would be valuable but isn't shown.
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — REDUNDANCY WITH OTHER F9 / PLATFORM SURFACES
+═══════════════════════════════════════════════════════════════════
+
+For each control field, check whether the same input exists 
+elsewhere:
+
+A. Deal Terms tab (investmentStrategy, targetIrr, holdYears, etc.)
+B. M02 Zoning module
+C. M03 Dev Capacity / Programming tab
+D. M07 Traffic Engine
+E. Other F9 sections
+
+For each duplicated input, document:
+- Which surface is "authoritative"
+- Whether changes in one propagate to the other
+- Whether the duplication is intentional or accidental
+
+═══════════════════════════════════════════════════════════════════
+STEP 6 — COMPLEXITY HEAT MAP
+═══════════════════════════════════════════════════════════════════
+
+Produce a complexity heat map of the Strategy Module:
+
+A. Per section: field count + classification mix
+B. Identify "complexity hotspots" — sections with the most 
+   classification-D (redundant) or classification-E (questionable) 
+   fields
+C. Identify "evidence gaps" — sections that should have evidence 
+   but only have controls
+
+═══════════════════════════════════════════════════════════════════
+STEP 7 — REDESIGN OPPORTUNITY ASSESSMENT
+═══════════════════════════════════════════════════════════════════
+
+Based on Steps 1-6, identify specific simplification opportunities:
+
+A. Fields that should be removed entirely (Classification E, no 
+   downstream use)
+B. Fields that should be moved to another module (duplicated, 
+   wrong home)
+C. Fields that should become platform-derived (Classifications B 
+   or C with clear derivation path)
+D. Fields that should remain operator-entered (Classification A)
+E. Evidence surfaces that should be added (not currently rendered 
+   but valuable for the strategy's intended evidence role)
+
+Estimate the field count reduction achievable:
+- Current total: N fields
+- After simplification: N' fields (target)
+- Evidence surfaces added: M new surfaces
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/STRATEGY_MODULE_INVESTIGATION.md
+
+Structure:
+1. Strategy Module location and component map (Step 1)
+2. Complete field inventory (Step 2)
+3. Field classification by derivation potential (Step 3)
+4. Evidence vs control ratio (Step 4)
+5. Redundancy with other surfaces (Step 5)
+6. Complexity heat map (Step 6)
+7. Redesign opportunity assessment (Step 7)
+8. Open questions for Leon's input before redesign prompt is drafted
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Implement any redesign
+- Modify the Strategy Module code
+- Build new components
+- Skip Step 5 (redundancy check) — this is where the biggest 
+  simplifications usually live
+- Skip Step 4 (evidence vs control ratio) — this reframes the 
+  module's purpose
+- Speculate beyond what's in the codebase — document what exists
+- Treat every field as necessary — be honest about Classification 
+  E (questionable necessity)
+- "While I'm here" cleanups
