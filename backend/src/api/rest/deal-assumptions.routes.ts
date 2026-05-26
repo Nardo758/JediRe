@@ -1136,11 +1136,41 @@ function deriveMonthly(input: {
   return { ok: true, monthly: input.monthly };
 }
 
+/**
+ * Validates and normalises an optional adoption block. Returns { ok: true, adoption }
+ * on success (adoption may be null to clear it), or { ok: false, error } on bad input.
+ * Task #1147.
+ */
+function validateAdoption(raw: unknown): { ok: true; adoption: AdoptionBlock | null } | { ok: false; error: string } {
+  if (raw === undefined) return { ok: true, adoption: undefined as any }; // not provided — leave as-is
+  if (raw === null) return { ok: true, adoption: null }; // explicit null → clear ramp
+  if (typeof raw !== 'object') return { ok: false, error: 'adoption must be an object or null' };
+  const a = raw as Record<string, unknown>;
+  if (typeof a.ramp_start_period !== 'number' || !Number.isFinite(a.ramp_start_period) || a.ramp_start_period < 0)
+    return { ok: false, error: 'adoption.ramp_start_period must be a non-negative number' };
+  if (typeof a.ramp_duration_months !== 'number' || !Number.isFinite(a.ramp_duration_months) || a.ramp_duration_months < 0)
+    return { ok: false, error: 'adoption.ramp_duration_months must be a non-negative number' };
+  if (typeof a.steady_state_monthly !== 'number' || !Number.isFinite(a.steady_state_monthly) || a.steady_state_monthly < 0)
+    return { ok: false, error: 'adoption.steady_state_monthly must be a non-negative number' };
+  if (typeof a.probability_adopted !== 'number' || !Number.isFinite(a.probability_adopted) || a.probability_adopted < 0 || a.probability_adopted > 1)
+    return { ok: false, error: 'adoption.probability_adopted must be a number between 0 and 1' };
+  return {
+    ok: true,
+    adoption: {
+      ramp_start_period:    a.ramp_start_period    as number,
+      ramp_duration_months: a.ramp_duration_months as number,
+      steady_state_monthly: a.steady_state_monthly as number,
+      probability_adopted:  a.probability_adopted  as number,
+    },
+  };
+}
+type AdoptionBlock = { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null;
+
 router.post('/:dealId/financials/other-income/user-lines', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const { label, monthly, qty, rate, frequency, note } = req.body as {
-      label: string; monthly?: number; qty?: number; rate?: number; frequency?: string; note?: string;
+    const { label, monthly, qty, rate, frequency, note, adoption: rawAdoption } = req.body as {
+      label: string; monthly?: number; qty?: number; rate?: number; frequency?: string; note?: string; adoption?: unknown;
     };
     if (!label || typeof label !== 'string' || !label.trim()) {
       logger.warn('User-line POST rejected: missing label', { dealId, body: req.body });
@@ -1151,6 +1181,9 @@ router.post('/:dealId/financials/other-income/user-lines', requireAuth, async (r
       logger.warn('User-line POST rejected by deriveMonthly', { dealId, body: req.body, reason: derived.error });
       return res.status(400).json({ error: derived.error });
     }
+    const adoptionResult = validateAdoption(rawAdoption);
+    if (!adoptionResult.ok) return res.status(400).json({ error: adoptionResult.error });
+
     const userId = req.user?.userId ?? 'unknown';
     const result = await mutateUserLines(dealId, userId, (lines) => [
       ...lines,
@@ -1162,6 +1195,7 @@ router.post('/:dealId/financials/other-income/user-lines', requireAuth, async (r
         ...(derived.rate != null ? { rate: derived.rate } : {}),
         ...(derived.frequency ? { frequency: derived.frequency } : {}),
         note: note?.trim() || undefined,
+        ...(rawAdoption !== undefined ? { adoption: adoptionResult.adoption } : {}),
         created_by: userId,
         created_at: new Date().toISOString(),
       },
@@ -1182,10 +1216,12 @@ class UserLineValidationError extends Error {
 router.patch('/:dealId/financials/other-income/user-lines/:lineId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId, lineId } = req.params;
-    const { label, monthly, qty, rate, frequency, note } = req.body as {
-      label?: string; monthly?: number; qty?: number; rate?: number; frequency?: string; note?: string;
+    const { label, monthly, qty, rate, frequency, note, adoption: rawAdoption } = req.body as {
+      label?: string; monthly?: number; qty?: number; rate?: number; frequency?: string; note?: string; adoption?: unknown;
     };
     if (label != null && typeof label !== 'string') return res.status(400).json({ error: 'label must be a string' });
+    const adoptionResult = rawAdoption !== undefined ? validateAdoption(rawAdoption) : null;
+    if (adoptionResult && !adoptionResult.ok) return res.status(400).json({ error: adoptionResult.error });
     const userId = req.user?.userId ?? 'unknown';
     // Determine the user's INTENT from which fields were posted:
     //   • any of {qty, rate, frequency} present → per-unit mode (merge with
@@ -1241,6 +1277,11 @@ router.patch('/:dealId/financials/other-income/user-lines/:lineId', requireAuth,
       if (nextQty  != null) updated.qty       = nextQty;       else delete updated.qty;
       if (nextRate != null) updated.rate      = nextRate;      else delete updated.rate;
       if (nextFreq != null) updated.frequency = nextFreq;      else delete updated.frequency;
+      // Adoption block: explicitly null → clear; present object → replace; absent → preserve.
+      if (adoptionResult) {
+        if (adoptionResult.adoption === null) delete updated.adoption;
+        else updated.adoption = adoptionResult.adoption;
+      }
       lines[idx] = updated;
       return lines;
     });

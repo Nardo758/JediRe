@@ -156,6 +156,13 @@ interface DealFinancials {
     frequency?: 'monthly' | 'annual';
     note?: string;
     created_at: string;
+    /** Adoption / ramp-up timeline. When set, income ramps instead of flat. Task #1147. */
+    adoption?: {
+      ramp_start_period: number;
+      ramp_duration_months: number;
+      steady_state_monthly: number;
+      probability_adopted: number;
+    } | null;
   }>;
 }
 

@@ -140,6 +140,24 @@ export function buildProjectionsForExport(
   const badDebtPctY1     = y1('bad_debt_pct') ?? 0;
   const nruPctY1         = y1('non_revenue_units_pct') ?? 0;
   const otherIncY1       = y1('other_income_per_unit') ?? 0;
+
+  // Adoption-ramp support (Task #1147): separate per-unit breakdown from user
+  // lines so each projection year gets the correct ramped value.
+  type AdoptionBlock = { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null | undefined;
+  const _exportUserLines: Array<{ monthly: number; adoption?: AdoptionBlock }> =
+    Array.isArray(f.otherIncomeUserLines) ? (f.otherIncomeUserLines as Array<{ monthly: number; adoption?: AdoptionBlock }>) : [];
+  let _computeULAExport: ((l: { monthly: number; adoption?: AdoptionBlock }, yi: number) => number) | null = null;
+  const getULAExport = (l: { monthly: number; adoption?: AdoptionBlock }, yr0: number): number => {
+    if (!_computeULAExport) {
+      try { _computeULAExport = require('./proforma-seeder.service').computeUserLineAnnual; }
+      catch { return (Number.isFinite(l.monthly) ? l.monthly : 0) * 12; }
+    }
+    return _computeULAExport!(l, yr0);
+  };
+  const userLinesTotalY1Export = _exportUserLines.reduce((s, l) => s + getULAExport(l, 0), 0);
+  // breakdownOtherY1 = total annual other income Y1 minus user lines contribution (per unit/month breakdown)
+  const totalOtherY1Export = otherIncY1 * totalUnits * 12;
+  const breakdownOtherY1Export = totalOtherY1Export - userLinesTotalY1Export;
   const mgmtFeePctY1     = y1('management_fee_pct') ?? 0.05;
   const payrollY1        = y1('payroll') ?? 0;
   const repairsY1        = y1('repairs_maintenance') ?? 0;
@@ -263,7 +281,9 @@ export function buildProjectionsForExport(
     const nru         = Math.round(gpr * nruPctY1);
     const nri         = gpr - vacancyLoss - lossToLease - concessions - badDebt - nru;
 
-    const otherIncome = Math.round(otherIncY1 * rentMult * totalUnits * 12);
+    // Adoption ramp: breakdown grows with rent; user lines get per-year ramp values. Task #1147.
+    const userLinesThisYrExport = _exportUserLines.reduce((s, l) => s + getULAExport(l, yr - 1), 0);
+    const otherIncome = Math.round(breakdownOtherY1Export * rentMult + userLinesThisYrExport);
     const egi         = nri + otherIncome;
 
     const payroll    = Math.round(payrollY1    * opexMult);

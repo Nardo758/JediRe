@@ -144,6 +144,13 @@ interface DealFinancials {
     frequency?: 'monthly' | 'annual';
     note?: string;
     created_at: string;
+    /** Adoption / ramp-up timeline. When set, income ramps up instead of flat. Task #1147. */
+    adoption?: {
+      ramp_start_period: number;
+      ramp_duration_months: number;
+      steady_state_monthly: number;
+      probability_adopted: number;
+    } | null;
   }>;
   /** ISO date of deal close — used to map Year 1 → calendar year window. */
   closeDate?: string | null;
@@ -1574,6 +1581,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                             </td>
                             <td style={{ padding: '3px 8px', textAlign: 'right' }}>
                               <span style={{ display: 'inline-block', padding: '1px 5px', borderRadius: 2, fontFamily: MONO, fontSize: 7, color: '#10b981', background: '#0a2016' }}>USER</span>
+                              {ul.adoption && (
+                                <span style={{ marginLeft: 3, display: 'inline-block', padding: '1px 4px', borderRadius: 2, fontFamily: MONO, fontSize: 7, color: '#f59e0b', background: '#1c1000', border: '1px solid #78350f' }}>RAMP</span>
+                              )}
                             </td>
                             <td style={{ padding: '3px 8px', textAlign: 'right', fontSize: 8, color: '#475569', fontFamily: MONO }}>
                               {perUnit != null ? `$${perUnit}` : '—'}
@@ -1631,6 +1641,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                             userLines={userLines}
                             onChange={load}
                             hideCategoryTable
+                            isDevelopment={dealType === 'development'}
                           />
                         </td>
                       </tr>
@@ -2537,7 +2548,24 @@ const SRC_BADGE: Record<string, { label: string; color: string }> = {
   unseeded: { label: '—', color: '#475569' },
 };
 
-function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onChange, hideCategoryTable }: {
+/** Adoption state collected during "add line" flow. Task #1147. */
+type AddingAdoption = {
+  enabled: boolean;
+  ramp_start: string;
+  ramp_duration: string;
+  steady_monthly: string;
+  probability: string;
+};
+
+const DEFAULT_ADOPTION: AddingAdoption = {
+  enabled: false,
+  ramp_start: '6',
+  ramp_duration: '12',
+  steady_monthly: '',
+  probability: '1',
+};
+
+function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onChange, hideCategoryTable, isDevelopment }: {
   totalUnits: number;
   dealId: string;
   breakdown: DealFinancials['otherIncomeBreakdown'];
@@ -2545,6 +2573,8 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
   onChange: () => Promise<void> | void;
   /** When true, hides the category reconciliation table and only shows user-line management. */
   hideCategoryTable?: boolean;
+  /** When true, new lines default to adoption enabled (development deals). Task #1147. */
+  isDevelopment?: boolean;
 }) {
   const [editing, setEditing] = useState<
     | { kind: 'cat'; cat: string; val: string }
@@ -2555,10 +2585,18 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
   // collects qty + $/unit/mo and the server derives `monthly` (e.g. cable
   // billed to 200 of 232 units @ $30/mo → 6,000/mo).
   const [adding, setAdding] = useState<
-    | { mode: 'flat'; label: string; monthly: string }
-    | { mode: 'per_unit'; label: string; qty: string; rate: string }
+    | { mode: 'flat'; label: string; monthly: string; adoption: AddingAdoption }
+    | { mode: 'per_unit'; label: string; qty: string; rate: string; adoption: AddingAdoption }
     | null
   >(null);
+  // Adoption edit for existing lines: { id, fields }
+  const [adoptionEdit, setAdoptionEdit] = useState<{
+    id: string;
+    ramp_start: string;
+    ramp_duration: string;
+    steady_monthly: string;
+    probability: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const rows = breakdown?.rows ?? [];
@@ -2585,6 +2623,23 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
 
   const [addError, setAddError] = useState<string | null>(null);
 
+  /** Build adoption body from AddingAdoption state, or undefined if not enabled. */
+  const buildAdoptionBody = (adp: AddingAdoption, fallbackMonthly: number | null): Record<string, number> | null | undefined => {
+    if (!adp.enabled) return undefined;
+    const rampStart    = parseFloat(adp.ramp_start);
+    const rampDuration = parseFloat(adp.ramp_duration);
+    const steadyMonthly = adp.steady_monthly !== '' ? parseFloat(adp.steady_monthly) : fallbackMonthly;
+    const probability  = adp.probability !== '' ? parseFloat(adp.probability) : 1;
+    if (!Number.isFinite(rampStart) || !Number.isFinite(rampDuration) || !Number.isFinite(steadyMonthly) || !Number.isFinite(probability)) return undefined;
+    if (steadyMonthly == null || !Number.isFinite(steadyMonthly)) return undefined;
+    return {
+      ramp_start_period:    Math.max(0, Math.round(rampStart)),
+      ramp_duration_months: Math.max(0, Math.round(rampDuration)),
+      steady_state_monthly: Math.max(0, steadyMonthly),
+      probability_adopted:  Math.min(1, Math.max(0, probability)),
+    };
+  };
+
   const addLine = async () => {
     if (!adding || !adding.label.trim()) return;
     let body: Record<string, unknown> | null = null;
@@ -2594,7 +2649,8 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
         setAddError('Monthly must be a non-negative number');
         return;
       }
-      body = { label: adding.label.trim(), monthly };
+      const adoption = buildAdoptionBody(adding.adoption, monthly);
+      body = { label: adding.label.trim(), monthly, ...(adoption !== undefined ? { adoption } : {}) };
     } else {
       const qty = parseFloat(adding.qty);
       const rate = parseFloat(adding.rate);
@@ -2602,8 +2658,10 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
         setAddError('Qty and rate must both be non-negative numbers');
         return;
       }
+      const derivedMonthly = qty * rate;
+      const adoption = buildAdoptionBody(adding.adoption, derivedMonthly);
       // Server derives `monthly = qty * rate` and persists all three fields.
-      body = { label: adding.label.trim(), qty, rate, frequency: 'monthly' };
+      body = { label: adding.label.trim(), qty, rate, frequency: 'monthly', ...(adoption !== undefined ? { adoption } : {}) };
     }
     setBusy(true);
     setAddError(null);
@@ -2626,7 +2684,7 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
 
   const updateLine = async (
     id: string,
-    patch: { label?: string; monthly?: number; qty?: number; rate?: number; frequency?: 'monthly' | 'annual' }
+    patch: { label?: string; monthly?: number; qty?: number; rate?: number; frequency?: 'monthly' | 'annual'; adoption?: Record<string, number> | null }
   ) => {
     setBusy(true);
     try {
@@ -2634,6 +2692,32 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
       await onChange();
     } catch (e) { console.error('Update line failed:', e); }
     finally { setBusy(false); setEditing(null); }
+  };
+
+  /** Save the inline adoption edit for an existing line. */
+  const saveAdoptionEdit = async () => {
+    if (!adoptionEdit) return;
+    const { id, ramp_start, ramp_duration, steady_monthly, probability } = adoptionEdit;
+    const rs = parseFloat(ramp_start), rd = parseFloat(ramp_duration), sm = parseFloat(steady_monthly), pb = parseFloat(probability);
+    if (!Number.isFinite(rs) || !Number.isFinite(rd) || !Number.isFinite(sm) || !Number.isFinite(pb)) return;
+    setBusy(true);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/financials/other-income/user-lines/${id}`, {
+        adoption: { ramp_start_period: Math.max(0, Math.round(rs)), ramp_duration_months: Math.max(0, Math.round(rd)), steady_state_monthly: Math.max(0, sm), probability_adopted: Math.min(1, Math.max(0, pb)) },
+      });
+      await onChange();
+    } catch (e) { console.error('Adoption save failed:', e); }
+    finally { setBusy(false); setAdoptionEdit(null); }
+  };
+
+  /** Clear the adoption block on an existing line. */
+  const clearAdoption = async (id: string) => {
+    setBusy(true);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/financials/other-income/user-lines/${id}`, { adoption: null });
+      await onChange();
+    } catch (e) { console.error('Clear adoption failed:', e); }
+    finally { setBusy(false); }
   };
 
   const deleteLine = async (id: string) => {
@@ -2661,12 +2745,12 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
           </span>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button onClick={() => setAdding({ mode: 'flat', label: '', monthly: '' })} disabled={busy || !!adding}
+          <button onClick={() => setAdding({ mode: 'flat', label: '', monthly: '', adoption: { ...DEFAULT_ADOPTION, enabled: !!isDevelopment } })} disabled={busy || !!adding}
             title="Add a line as a single $/month total"
             style={{ fontFamily: LABEL, fontSize: 9, color: '#06b6d4', background: '#062a3a', border: '1px solid #0891b2', padding: '3px 10px', borderRadius: 2, cursor: 'pointer' }}>
             + Flat $/mo
           </button>
-          <button onClick={() => setAdding({ mode: 'per_unit', label: '', qty: '', rate: '' })} disabled={busy || !!adding}
+          <button onClick={() => setAdding({ mode: 'per_unit', label: '', qty: '', rate: '', adoption: { ...DEFAULT_ADOPTION, enabled: !!isDevelopment } })} disabled={busy || !!adding}
             title="Add a line as qty × $/unit/mo (e.g. 200 units billed cable @ $30/mo)"
             style={{ fontFamily: LABEL, fontSize: 9, color: '#22d3ee', background: '#062a3a', border: '1px solid #0891b2', padding: '3px 10px', borderRadius: 2, cursor: 'pointer' }}>
             + Per-Unit Line
@@ -2843,77 +2927,173 @@ function AncillaryExpansionPanel({ totalUnits, dealId, breakdown, userLines, onC
                   </td>
                   <td style={{ padding: '3px 8px' }}>
                     <span style={{ color: '#c084fc', fontFamily: LABEL, fontSize: 8, fontWeight: 700 }}>USER</span>
+                    {l.adoption && (
+                      <span style={{ marginLeft: 4, color: '#f59e0b', fontFamily: LABEL, fontSize: 7, fontWeight: 700, background: '#1c1000', border: '1px solid #78350f', borderRadius: 2, padding: '0 3px' }}>RAMP</span>
+                    )}
                   </td>
-                  <td style={{ padding: '3px 8px' }}>
+                  <td style={{ padding: '3px 8px', whiteSpace: 'nowrap' }}>
                     <button onClick={() => deleteLine(l.id)} disabled={busy} title="Delete line"
-                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 11 }}>×</button>
+                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 11, marginRight: 4 }}>×</button>
+                    {l.adoption ? (
+                      <button onClick={() => setAdoptionEdit({ id: l.id, ramp_start: String(l.adoption!.ramp_start_period), ramp_duration: String(l.adoption!.ramp_duration_months), steady_monthly: String(l.adoption!.steady_state_monthly), probability: String(l.adoption!.probability_adopted) })}
+                        disabled={busy} title="Edit adoption timeline"
+                        style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: 9, fontFamily: LABEL }}>RAMP</button>
+                    ) : (
+                      <button onClick={() => setAdoptionEdit({ id: l.id, ramp_start: '6', ramp_duration: '12', steady_monthly: String(Math.round(l.monthly)), probability: '1' })}
+                        disabled={busy} title="Add adoption timeline"
+                        style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 9, fontFamily: LABEL }}>+ramp</button>
+                    )}
                   </td>
                 </tr>
               );
             })}
+            {/* Inline adoption edit row for existing user lines. Task #1147. */}
+            {adoptionEdit && (() => {
+              const isEditingLineAdoption = userLines.some(l => l.id === adoptionEdit.id);
+              if (!isEditingLineAdoption) return null;
+              return (
+                <tr style={{ background: '#0d1c0a' }}>
+                  <td colSpan={7} style={{ padding: '4px 12px 6px 20px' }}>
+                    <span style={{ fontFamily: LABEL, fontSize: 8, color: '#f59e0b', marginRight: 12, fontWeight: 700 }}>EDIT ADOPTION TIMELINE</span>
+                    <label style={{ fontFamily: LABEL, fontSize: 8, color: '#94a3b8', marginRight: 4 }}>Ramp start (mo):</label>
+                    <input type="number" value={adoptionEdit.ramp_start} onChange={e => setAdoptionEdit({ ...adoptionEdit, ramp_start: e.target.value })}
+                      style={{ width: 44, background: '#0f172a', border: '1px solid #78350f', color: '#fcd34d', fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, marginRight: 10, textAlign: 'right' }} />
+                    <label style={{ fontFamily: LABEL, fontSize: 8, color: '#94a3b8', marginRight: 4 }}>Ramp duration (mo):</label>
+                    <input type="number" value={adoptionEdit.ramp_duration} onChange={e => setAdoptionEdit({ ...adoptionEdit, ramp_duration: e.target.value })}
+                      style={{ width: 44, background: '#0f172a', border: '1px solid #78350f', color: '#fcd34d', fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, marginRight: 10, textAlign: 'right' }} />
+                    <label style={{ fontFamily: LABEL, fontSize: 8, color: '#94a3b8', marginRight: 4 }}>Steady-state $/mo:</label>
+                    <input type="number" value={adoptionEdit.steady_monthly} onChange={e => setAdoptionEdit({ ...adoptionEdit, steady_monthly: e.target.value })}
+                      style={{ width: 60, background: '#0f172a', border: '1px solid #78350f', color: '#fcd34d', fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, marginRight: 10, textAlign: 'right' }} />
+                    <label style={{ fontFamily: LABEL, fontSize: 8, color: '#94a3b8', marginRight: 4 }}>Probability (0–1):</label>
+                    <input type="number" min={0} max={1} step={0.05} value={adoptionEdit.probability} onChange={e => setAdoptionEdit({ ...adoptionEdit, probability: e.target.value })}
+                      style={{ width: 44, background: '#0f172a', border: '1px solid #78350f', color: '#fcd34d', fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, marginRight: 10, textAlign: 'right' }} />
+                    <button onClick={saveAdoptionEdit} disabled={busy} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', fontSize: 11, marginRight: 6 }}>✓ Save</button>
+                    <button onClick={() => clearAdoption(adoptionEdit.id)} disabled={busy} title="Remove ramp" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 9, fontFamily: LABEL, marginRight: 6 }}>✕ Clear</button>
+                    <button onClick={() => setAdoptionEdit(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#475569', fontSize: 9, fontFamily: LABEL }}>Cancel</button>
+                  </td>
+                </tr>
+              );
+            })()}
             {/* Add-line input row — two layouts depending on `adding.mode`.
                 Flat: single $/mo total. Per-Unit: qty × rate (server derives
                 monthly). Save button is gated on the relevant fields being
-                non-empty so users can't post a half-filled per-unit line. */}
+                non-empty so users can't post a half-filled per-unit line.
+                Adoption timeline (Task #1147) is toggled via the RAMP button. */}
             {adding && adding.mode === 'flat' && (
-              <tr style={{ background: '#0a1a26' }}>
-                <td style={{ padding: '4px 8px' }}>
-                  <input autoFocus value={adding.label} placeholder="e.g. Solar revenue"
-                    onChange={e => setAdding({ ...adding, label: e.target.value })}
-                    style={{ width: '100%', background: '#0f172a', border: '1px solid #06b6d4', color: '#e2e8f0', fontFamily: MONO, fontSize: 9, padding: '2px 4px', borderRadius: 2 }}
-                  />
-                </td>
-                <td colSpan={3} style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontStyle: 'italic' }}>flat $/mo line</td>
-                <td style={{ padding: '4px 8px', textAlign: 'right' }}>
-                  <input type="number" value={adding.monthly} placeholder="$/mo"
-                    onChange={e => setAdding({ ...adding, monthly: e.target.value })}
-                    onKeyDown={e => { if (e.key === 'Enter') addLine(); if (e.key === 'Escape') setAdding(null); }}
-                    style={{ width: 80, background: '#0f172a', border: '1px solid #06b6d4', color: '#06b6d4', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
-                  />
-                </td>
-                <td colSpan={2} style={{ padding: '4px 8px' }}>
-                  <button onClick={addLine} disabled={busy || !adding.label.trim() || !adding.monthly} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', fontSize: 11, marginRight: 4 }}>✓ Save</button>
-                  <button onClick={() => setAdding(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 11 }}>✕</button>
-                </td>
-              </tr>
+              <>
+                <tr style={{ background: '#0a1a26' }}>
+                  <td style={{ padding: '4px 8px' }}>
+                    <input autoFocus value={adding.label} placeholder="e.g. Solar revenue"
+                      onChange={e => setAdding({ ...adding, label: e.target.value })}
+                      style={{ width: '100%', background: '#0f172a', border: '1px solid #06b6d4', color: '#e2e8f0', fontFamily: MONO, fontSize: 9, padding: '2px 4px', borderRadius: 2 }}
+                    />
+                  </td>
+                  <td colSpan={3} style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontStyle: 'italic' }}>flat $/mo line</td>
+                  <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                    <input type="number" value={adding.monthly} placeholder="$/mo"
+                      onChange={e => setAdding({ ...adding, monthly: e.target.value })}
+                      onKeyDown={e => { if (e.key === 'Enter') addLine(); if (e.key === 'Escape') setAdding(null); }}
+                      style={{ width: 80, background: '#0f172a', border: '1px solid #06b6d4', color: '#06b6d4', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
+                    />
+                  </td>
+                  <td style={{ padding: '4px 8px' }}>
+                    <button onClick={() => setAdding({ ...adding, adoption: { ...adding.adoption, enabled: !adding.adoption.enabled } })}
+                      title="Toggle adoption / ramp-up timeline (Task #1147)"
+                      style={{ fontFamily: LABEL, fontSize: 8, padding: '2px 5px', borderRadius: 2, cursor: 'pointer', border: adding.adoption.enabled ? '1px solid #f59e0b' : '1px solid #1e3a5f', background: adding.adoption.enabled ? '#1c1000' : '#0a1520', color: adding.adoption.enabled ? '#f59e0b' : '#475569' }}>
+                      RAMP
+                    </button>
+                  </td>
+                  <td style={{ padding: '4px 8px' }}>
+                    <button onClick={addLine} disabled={busy || !adding.label.trim() || !adding.monthly} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', fontSize: 11, marginRight: 4 }}>✓ Save</button>
+                    <button onClick={() => setAdding(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 11 }}>✕</button>
+                  </td>
+                </tr>
+                {adding.adoption.enabled && (
+                  <tr style={{ background: '#0c1c10' }}>
+                    <td colSpan={7} style={{ padding: '4px 12px 6px 20px' }}>
+                      <span style={{ fontFamily: LABEL, fontSize: 8, color: '#f59e0b', marginRight: 12, fontWeight: 700 }}>ADOPTION TIMELINE</span>
+                      <label style={{ fontFamily: LABEL, fontSize: 8, color: '#94a3b8', marginRight: 6 }}>Ramp start (mo from acq):</label>
+                      <input type="number" value={adding.adoption.ramp_start} onChange={e => setAdding({ ...adding, adoption: { ...adding.adoption, ramp_start: e.target.value } })}
+                        style={{ width: 44, background: '#0f172a', border: '1px solid #78350f', color: '#fcd34d', fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, marginRight: 10, textAlign: 'right' }} />
+                      <label style={{ fontFamily: LABEL, fontSize: 8, color: '#94a3b8', marginRight: 6 }}>Ramp duration (mo):</label>
+                      <input type="number" value={adding.adoption.ramp_duration} onChange={e => setAdding({ ...adding, adoption: { ...adding.adoption, ramp_duration: e.target.value } })}
+                        style={{ width: 44, background: '#0f172a', border: '1px solid #78350f', color: '#fcd34d', fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, marginRight: 10, textAlign: 'right' }} />
+                      <label style={{ fontFamily: LABEL, fontSize: 8, color: '#94a3b8', marginRight: 6 }}>Steady-state $/mo <span style={{ color: '#475569' }}>(blank=same as above)</span>:</label>
+                      <input type="number" value={adding.adoption.steady_monthly} placeholder={adding.monthly || '$/mo'} onChange={e => setAdding({ ...adding, adoption: { ...adding.adoption, steady_monthly: e.target.value } })}
+                        style={{ width: 60, background: '#0f172a', border: '1px solid #78350f', color: '#fcd34d', fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, marginRight: 10, textAlign: 'right' }} />
+                      <label style={{ fontFamily: LABEL, fontSize: 8, color: '#94a3b8', marginRight: 6 }}>Probability (0–1):</label>
+                      <input type="number" min={0} max={1} step={0.05} value={adding.adoption.probability} onChange={e => setAdding({ ...adding, adoption: { ...adding.adoption, probability: e.target.value } })}
+                        style={{ width: 44, background: '#0f172a', border: '1px solid #78350f', color: '#fcd34d', fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, textAlign: 'right' }} />
+                    </td>
+                  </tr>
+                )}
+              </>
             )}
             {adding && adding.mode === 'per_unit' && (() => {
               const qN = parseFloat(adding.qty);
               const rN = parseFloat(adding.rate);
               const preview = Number.isFinite(qN) && Number.isFinite(rN) ? qN * rN : null;
               return (
-                <tr style={{ background: '#0a1a26' }}>
-                  <td style={{ padding: '4px 8px' }}>
-                    <input autoFocus value={adding.label} placeholder="e.g. Cable (200 units)"
-                      onChange={e => setAdding({ ...adding, label: e.target.value })}
-                      style={{ width: '100%', background: '#0f172a', border: '1px solid #22d3ee', color: '#e2e8f0', fontFamily: MONO, fontSize: 9, padding: '2px 4px', borderRadius: 2 }}
-                    />
-                  </td>
-                  <td style={{ padding: '4px 8px', textAlign: 'right' }}>
-                    <input type="number" value={adding.qty} placeholder="qty"
-                      onChange={e => setAdding({ ...adding, qty: e.target.value })}
-                      onKeyDown={e => { if (e.key === 'Enter') addLine(); if (e.key === 'Escape') setAdding(null); }}
-                      style={{ width: 60, background: '#0f172a', border: '1px solid #22d3ee', color: '#22d3ee', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
-                    />
-                  </td>
-                  <td style={{ padding: '4px 8px', textAlign: 'right' }}>
-                    <input type="number" value={adding.rate} placeholder="$/unit/mo"
-                      onChange={e => setAdding({ ...adding, rate: e.target.value })}
-                      onKeyDown={e => { if (e.key === 'Enter') addLine(); if (e.key === 'Escape') setAdding(null); }}
-                      style={{ width: 70, background: '#0f172a', border: '1px solid #22d3ee', color: '#22d3ee', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
-                    />
-                  </td>
-                  <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontStyle: 'italic', fontSize: 8 }}>
-                    {preview != null ? `= $${preview.toLocaleString()}/mo` : 'qty × rate'}
-                  </td>
-                  <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22c55e', fontWeight: 700 }}>
-                    {preview != null ? fmt$(preview * 12) : '—'}
-                  </td>
-                  <td colSpan={2} style={{ padding: '4px 8px' }}>
-                    <button onClick={addLine} disabled={busy || !adding.label.trim() || !adding.qty || !adding.rate} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', fontSize: 11, marginRight: 4 }}>✓ Save</button>
-                    <button onClick={() => setAdding(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 11 }}>✕</button>
-                  </td>
-                </tr>
+                <>
+                  <tr style={{ background: '#0a1a26' }}>
+                    <td style={{ padding: '4px 8px' }}>
+                      <input autoFocus value={adding.label} placeholder="e.g. Cable (200 units)"
+                        onChange={e => setAdding({ ...adding, label: e.target.value })}
+                        style={{ width: '100%', background: '#0f172a', border: '1px solid #22d3ee', color: '#e2e8f0', fontFamily: MONO, fontSize: 9, padding: '2px 4px', borderRadius: 2 }}
+                      />
+                    </td>
+                    <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                      <input type="number" value={adding.qty} placeholder="qty"
+                        onChange={e => setAdding({ ...adding, qty: e.target.value })}
+                        onKeyDown={e => { if (e.key === 'Enter') addLine(); if (e.key === 'Escape') setAdding(null); }}
+                        style={{ width: 60, background: '#0f172a', border: '1px solid #22d3ee', color: '#22d3ee', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
+                      />
+                    </td>
+                    <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                      <input type="number" value={adding.rate} placeholder="$/unit/mo"
+                        onChange={e => setAdding({ ...adding, rate: e.target.value })}
+                        onKeyDown={e => { if (e.key === 'Enter') addLine(); if (e.key === 'Escape') setAdding(null); }}
+                        style={{ width: 70, background: '#0f172a', border: '1px solid #22d3ee', color: '#22d3ee', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
+                      />
+                    </td>
+                    <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontStyle: 'italic', fontSize: 8 }}>
+                      {preview != null ? `= $${preview.toLocaleString()}/mo` : 'qty × rate'}
+                    </td>
+                    <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22c55e', fontWeight: 700 }}>
+                      {preview != null ? fmt$(preview * 12) : '—'}
+                    </td>
+                    <td style={{ padding: '4px 8px' }}>
+                      <button onClick={() => setAdding({ ...adding, adoption: { ...adding.adoption, enabled: !adding.adoption.enabled } })}
+                        title="Toggle adoption / ramp-up timeline (Task #1147)"
+                        style={{ fontFamily: LABEL, fontSize: 8, padding: '2px 5px', borderRadius: 2, cursor: 'pointer', border: adding.adoption.enabled ? '1px solid #f59e0b' : '1px solid #1e3a5f', background: adding.adoption.enabled ? '#1c1000' : '#0a1520', color: adding.adoption.enabled ? '#f59e0b' : '#475569' }}>
+                        RAMP
+                      </button>
+                    </td>
+                    <td style={{ padding: '4px 8px' }}>
+                      <button onClick={addLine} disabled={busy || !adding.label.trim() || !adding.qty || !adding.rate} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', fontSize: 11, marginRight: 4 }}>✓ Save</button>
+                      <button onClick={() => setAdding(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 11 }}>✕</button>
+                    </td>
+                  </tr>
+                  {adding.adoption.enabled && (
+                    <tr style={{ background: '#0c1c10' }}>
+                      <td colSpan={7} style={{ padding: '4px 12px 6px 20px' }}>
+                        <span style={{ fontFamily: LABEL, fontSize: 8, color: '#f59e0b', marginRight: 12, fontWeight: 700 }}>ADOPTION TIMELINE</span>
+                        <label style={{ fontFamily: LABEL, fontSize: 8, color: '#94a3b8', marginRight: 6 }}>Ramp start (mo):</label>
+                        <input type="number" value={adding.adoption.ramp_start} onChange={e => setAdding({ ...adding, adoption: { ...adding.adoption, ramp_start: e.target.value } })}
+                          style={{ width: 44, background: '#0f172a', border: '1px solid #78350f', color: '#fcd34d', fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, marginRight: 10, textAlign: 'right' }} />
+                        <label style={{ fontFamily: LABEL, fontSize: 8, color: '#94a3b8', marginRight: 6 }}>Ramp duration (mo):</label>
+                        <input type="number" value={adding.adoption.ramp_duration} onChange={e => setAdding({ ...adding, adoption: { ...adding.adoption, ramp_duration: e.target.value } })}
+                          style={{ width: 44, background: '#0f172a', border: '1px solid #78350f', color: '#fcd34d', fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, marginRight: 10, textAlign: 'right' }} />
+                        <label style={{ fontFamily: LABEL, fontSize: 8, color: '#94a3b8', marginRight: 6 }}>Steady-state $/mo <span style={{ color: '#475569' }}>(blank=computed)</span>:</label>
+                        <input type="number" value={adding.adoption.steady_monthly} placeholder={preview != null ? String(Math.round(preview)) : '$/mo'} onChange={e => setAdding({ ...adding, adoption: { ...adding.adoption, steady_monthly: e.target.value } })}
+                          style={{ width: 60, background: '#0f172a', border: '1px solid #78350f', color: '#fcd34d', fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, marginRight: 10, textAlign: 'right' }} />
+                        <label style={{ fontFamily: LABEL, fontSize: 8, color: '#94a3b8', marginRight: 6 }}>Probability (0–1):</label>
+                        <input type="number" min={0} max={1} step={0.05} value={adding.adoption.probability} onChange={e => setAdding({ ...adding, adoption: { ...adding.adoption, probability: e.target.value } })}
+                          style={{ width: 44, background: '#0f172a', border: '1px solid #78350f', color: '#fcd34d', fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, textAlign: 'right' }} />
+                      </td>
+                    </tr>
+                  )}
+                </>
               );
             })()}
             {/* Totals row */}

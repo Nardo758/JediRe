@@ -2413,6 +2413,29 @@ function buildProjections(
   const otherIncY1     = r('other_income');
   const egiY1          = r('egi');
 
+  // Adoption-ramp support (Task #1147): separate breakdown contribution from
+  // user-added lines so per-year ramp values can be applied instead of flat
+  // growth. breakdownY1 = total other income Y1 minus the user lines Y1 sum.
+  const _userLinesForProj = Array.isArray(y1?.other_income_user_lines)
+    ? (y1.other_income_user_lines as Array<{ monthly: number; adoption?: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null }>)
+    : [];
+  // Import computeUserLineAnnual lazily to avoid circular deps at module load.
+  // The helper is pure — no I/O, safe to call synchronously.
+  let _computeUserLineAnnual: ((l: { monthly: number; adoption?: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null }, yi: number) => number) | null = null;
+  const getUserLineAnnual = (l: typeof _userLinesForProj[number], yi: number): number => {
+    if (!_computeUserLineAnnual) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        _computeUserLineAnnual = require('./proforma-seeder.service').computeUserLineAnnual;
+      } catch {
+        return (Number.isFinite(l.monthly) ? l.monthly : 0) * 12;
+      }
+    }
+    return _computeUserLineAnnual!(l, yi);
+  };
+  const userLinesY1Annual = _userLinesForProj.reduce((s, l) => s + getUserLineAnnual(l, 0), 0);
+  const breakdownY1 = otherIncY1 != null ? otherIncY1 - userLinesY1Annual : null;
+
   const payrollY1     = expense('payroll');
   const repairsY1     = expense('repairs_maintenance');
   const turnoverY1    = expense('turnover');
@@ -2492,7 +2515,12 @@ function buildProjections(
     const badDebt     = scale(badDebtY1);
     const nru         = scale(nruY1);
     const nri         = scale(nriY1);
-    const otherIncome = scale(otherIncY1);
+    // Adoption ramp: breakdown portion grows with rent; user lines get per-year
+    // ramp values instead of flat growth. Task #1147.
+    const userLinesThisYear = _userLinesForProj.reduce((s, l) => s + getUserLineAnnual(l, yi), 0);
+    const otherIncome = breakdownY1 != null
+      ? (breakdownY1 * rg + userLinesThisYear)
+      : (otherIncY1 != null ? otherIncY1 * rg : null);
     const egi         = scale(egiY1);
 
     const payroll     = expenseScale(payrollY1);

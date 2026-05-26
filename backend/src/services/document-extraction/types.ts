@@ -424,6 +424,8 @@ export interface ProFormaYear1Seed {
      * supplied, the API derives `monthly = qty * rate` server-side so the
      * three fields stay in lock-step (no client-side drift). Legacy lines
      * created before per-unit pricing only carry `monthly`.
+     * When `adoption` is set, `monthly` mirrors `adoption.steady_state_monthly`
+     * for display purposes but the projection math uses the ramp formula.
      */
     monthly: number;
     /** Optional per-unit billing model (e.g. "200 of 232 units billed cable @ $30/mo"). */
@@ -433,9 +435,35 @@ export interface ProFormaYear1Seed {
     /** Whether `rate` is per-unit/month (default) or per-unit/year. */
     frequency?: 'monthly' | 'annual';
     note?: string;
+    /**
+     * Optional provenance tag (e.g. 'program_suggestion:ev_charging').
+     * Set when the line is created from a Program tab suggestion.
+     */
+    source_tag?: string;
     created_by?: string;
     created_at: string;
     updated_at?: string;
+    /**
+     * Adoption / ramp-up timeline for new income sources that don't exist
+     * at acquisition (e.g. EV charging after renovation completion).
+     * When null/absent, income is projected flat as `monthly × 12` per year.
+     * When set, the ramp formula is applied per year:
+     *   period_month = (Y - 1) * 12 + 6   // midpoint of year Y
+     *   if period_month < ramp_start_period → income = 0
+     *   elif ramping → income = steady_state_monthly × ramp_fraction × 12 × probability_adopted
+     *   else → income = steady_state_monthly × 12 × probability_adopted
+     * Task #1147.
+     */
+    adoption?: {
+      /** Months from acquisition/completion when income first appears (0 = immediately). */
+      ramp_start_period: number;
+      /** Months from first revenue to steady state (0 = instant; 12 = gradual ramp). */
+      ramp_duration_months: number;
+      /** Full run-rate $/mo at steady state — the source-of-truth for this line's ceiling. */
+      steady_state_monthly: number;
+      /** Probability 0–1 that the program is actually implemented; applied as a multiplier. */
+      probability_adopted: number;
+    } | null;
   }>;
   egi: LayeredValue<number>;
   payroll: LayeredValue<number>;

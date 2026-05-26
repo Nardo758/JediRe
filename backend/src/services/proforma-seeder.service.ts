@@ -2,6 +2,45 @@ import { Pool } from 'pg';
 import type { LayeredValue, ProFormaYear1Seed } from './document-extraction/types';
 import { logger } from '../utils/logger';
 
+/**
+ * Computes the annual income for a single user-added income line for a given
+ * projection year. When the line carries an `adoption` block, applies the
+ * ramp formula from the spec (§3C / Task #1147). Falls back to flat
+ * `monthly × 12` for legacy lines without an adoption block.
+ *
+ * @param line      - The user-added income line (from other_income_user_lines).
+ * @param yearIndex - 0-based year index (0 = Year 1, 1 = Year 2, …).
+ */
+export function computeUserLineAnnual(line: {
+  monthly: number;
+  adoption?: {
+    ramp_start_period: number;
+    ramp_duration_months: number;
+    steady_state_monthly: number;
+    probability_adopted: number;
+  } | null;
+}, yearIndex: number): number {
+  const monthly = Number.isFinite(line.monthly) ? line.monthly : 0;
+  const adoption = line.adoption;
+
+  if (!adoption) return monthly * 12;
+
+  const steadyMonthly   = Number.isFinite(adoption.steady_state_monthly)   ? adoption.steady_state_monthly   : monthly;
+  const rampStart       = Number.isFinite(adoption.ramp_start_period)       ? adoption.ramp_start_period       : 0;
+  const rampDuration    = Number.isFinite(adoption.ramp_duration_months)    ? adoption.ramp_duration_months    : 0;
+  const probability     = Number.isFinite(adoption.probability_adopted)     ? adoption.probability_adopted     : 1;
+
+  const Y = yearIndex + 1; // 1-based year
+  const periodMonth = (Y - 1) * 12 + 6; // midpoint of year Y
+
+  if (periodMonth < rampStart) return 0;
+  if (rampDuration <= 0 || periodMonth >= rampStart + rampDuration) {
+    return steadyMonthly * 12 * probability;
+  }
+  const rampFraction = (periodMonth - rampStart) / rampDuration;
+  return steadyMonthly * rampFraction * 12 * probability;
+}
+
 // ProForma Seeder: merges extraction capsules into ProFormaYear1Seed (deal_assumptions.year1).
 // Priority: override > field-specific source > platform fallback. Idempotent.
 
@@ -891,7 +930,7 @@ function buildSeed(
   const breakdownSum = Object.values(otherIncomeBreakdown)
     .reduce((s, lv) => s + (lv.resolved ?? 0), 0);
   const userLinesAnnual = (userLines ?? [])
-    .reduce((s, l) => s + (Number.isFinite(l.monthly) ? l.monthly * 12 : 0), 0);
+    .reduce((s, l) => s + computeUserLineAnnual(l, 0), 0);
   const otherIncomeForEgi = breakdownSum + userLinesAnnual;
   const egi_resolved = nri_resolved + otherIncomeForEgi;
 
@@ -2085,8 +2124,8 @@ function recomputeDerived(seed: ProFormaYear1Seed): void {
     : 0;
   const _userLines = seed.other_income_user_lines;
   const userLinesAnnual = Array.isArray(_userLines)
-    ? _userLines.reduce((s: number, l: { monthly?: unknown }) =>
-        s + (Number.isFinite(l.monthly) ? (l.monthly as number) * 12 : 0), 0)
+    ? (_userLines as Array<{ monthly: number; adoption?: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null }>)
+        .reduce((s, l) => s + computeUserLineAnnual(l, 0), 0)
     : 0;
   const otherIncome = breakdownSum + userLinesAnnual;
 
@@ -2192,7 +2231,7 @@ export function buildAssumptionsFromYear1Seed(year1: ProFormaYear1Seed, deal: De
           ? Object.values(year1.other_income_breakdown).reduce((s, lv) => s + (lv?.resolved ?? 0), 0)
           : 0;
         const userLinesAnnual = (year1.other_income_user_lines ?? [])
-          .reduce((s, l) => s + (Number.isFinite(l.monthly) ? l.monthly * 12 : 0), 0);
+          .reduce((s, l) => s + computeUserLineAnnual(l, 0), 0);
         return breakdownSum + userLinesAnnual;
       })(),
       egi: rv(year1.egi),
