@@ -533,9 +533,10 @@ function buildProFormaSheet(
   const N = holdYears;
   const yearCols = Array.from({ length: N }, (_, i) => i + 1);
 
-  // ── Per-line ramp detail sub-rows (Task #1172) ────────────────────────────
-  // Ramping user lines each get their own Excel row immediately below the
-  // "Other Income" summary row. Flat lines (no adoption block) are excluded.
+  // ── Per-line detail sub-rows (Task #1172 / #1204 / #1206) ───────────────
+  // All user income lines (flat and ramping) get their own Excel row immediately
+  // below the "Other Income" summary row. Ramping lines carry a confirmed/projected
+  // suffix (Task #1206); flat lines show their name only (Task #1204).
   type UserLine = { label: string; monthly: number; confirmed?: boolean; note?: string; adoption?: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null };
   // Task #1206: confirmed lines (explicit flag or note containing "confirmed") get
   // "— RAMP (Confirmed)"; all others get "— RAMP (Projected)" so lenders can
@@ -546,7 +547,7 @@ function buildProFormaSheet(
       : '— RAMP (Projected)';
   const allUserLines: UserLine[] = Array.isArray((f as any).otherIncomeUserLines) ? ((f as any).otherIncomeUserLines as UserLine[]) : [];
   const rampingLines = allUserLines.filter(l => l.adoption != null);
-  const rampOffset   = rampingLines.length; // extra rows inserted between OTH and EGI
+  const rampOffset   = allUserLines.length; // extra rows inserted between OTH and EGI (flat + ramping)
 
   // Build AoA — initialize with empty rows
   const totalRows = 55 + rampOffset;
@@ -591,12 +592,18 @@ function buildProFormaSheet(
   aoa[R.NRI]     = mkRow('NET RENTAL INCOME', 'nri');
   aoa[R.OTH]     = mkRow('  Other Income', 'otherIncome');
 
-  // Per-line ramp detail rows immediately after Other Income (Task #1172)
-  for (let li = 0; li < rampingLines.length; li++) {
-    const line = rampingLines[li];
+  // Per-line detail rows immediately after Other Income (Task #1172 / #1204)
+  // Ramping lines get a "— RAMP" suffix; flat lines show their name only.
+  for (let li = 0; li < allUserLines.length; li++) {
+    const line = allUserLines[li];
+    const isRamping = line.adoption != null;
     aoa[R.OTH + 1 + li] = [
-      `    ${line.label} ${rampSuffix(line)}`,
-      ...projs.map((_, yi) => Math.round(computeUserLineAnnual(line, yi))),
+      isRamping ? `    ${line.label} ${rampSuffix(line)}` : `    ${line.label}`,
+      ...projs.map((_, yi) =>
+        isRamping
+          ? Math.round(computeUserLineAnnual(line, yi))
+          : Math.round(line.monthly * 12),
+      ),
     ];
   }
 
@@ -761,8 +768,8 @@ function buildProFormaSheet(
   }
   styleCell(ws, addr(R.GPR, 0), S.section);
 
-  // Ramp detail rows — input style to distinguish from summary row
-  for (let li = 0; li < rampingLines.length; li++) {
+  // User-line detail rows (flat + ramping) — input style to distinguish from summary row
+  for (let li = 0; li < allUserLines.length; li++) {
     for (let c = 0; c <= N; c++) {
       styleCell(ws, addr(R.OTH + 1 + li, c), S.input);
     }
@@ -941,8 +948,8 @@ function buildProjectionsSheet(
   const N = holdYears;
   const yearCols = Array.from({ length: N }, (_, i) => i + 1);
 
-  // Mirror the same ramp-row logic as Pro Forma so row indices stay in sync
-  // for cross-sheet formula references (Task #1172).
+  // Mirror the same user-line row logic as Pro Forma so row indices stay in sync
+  // for cross-sheet formula references (Task #1172 / #1204 / #1206).
   type UserLine = { label: string; monthly: number; confirmed?: boolean; note?: string; adoption?: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number } | null };
   const rampSuffix = (line: UserLine): string =>
     (line.confirmed === true || /confirmed/i.test(line.note ?? ''))
@@ -950,7 +957,7 @@ function buildProjectionsSheet(
       : '— RAMP (Projected)';
   const allUserLines: UserLine[] = Array.isArray((f as any).otherIncomeUserLines) ? ((f as any).otherIncomeUserLines as UserLine[]) : [];
   const rampingLines = allUserLines.filter(l => l.adoption != null);
-  const rampOffset   = rampingLines.length;
+  const rampOffset   = allUserLines.length; // all user lines (flat + ramping) shift rows below OTH
 
   const totalRows = 55 + rampOffset;
   const aoa: (string | number | null)[][] = Array.from({ length: totalRows }, () => []);
@@ -974,12 +981,18 @@ function buildProjectionsSheet(
   aoa[R.NRI]     = mkRow('Net Rental Income', 'nri');
   aoa[R.OTH]     = mkRow('  Other Income', 'otherIncome');
 
-  // Per-line ramp detail rows (Task #1172) — mirrors Pro Forma layout exactly
-  for (let li = 0; li < rampingLines.length; li++) {
-    const line = rampingLines[li];
+  // Per-line detail rows (Task #1172 / #1204) — mirrors Pro Forma layout exactly
+  // Flat lines included alongside ramping lines so row indices stay in sync.
+  for (let li = 0; li < allUserLines.length; li++) {
+    const line = allUserLines[li];
+    const isRamping = line.adoption != null;
     aoa[R.OTH + 1 + li] = [
-      `    ${line.label} ${rampSuffix(line)}`,
-      ...projs.map((_, yi) => Math.round(computeUserLineAnnual(line, yi))),
+      isRamping ? `    ${line.label} ${rampSuffix(line)}` : `    ${line.label}`,
+      ...projs.map((_, yi) =>
+        isRamping
+          ? Math.round(computeUserLineAnnual(line, yi))
+          : Math.round(line.monthly * 12),
+      ),
     ];
   }
 
