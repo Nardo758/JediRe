@@ -48,6 +48,7 @@ import { lookupDavidsonTN, lookupDavidsonTNByParcelId }       from './adapters/d
 import { lookupDallasTX, lookupDallasTXByParcelId }           from './adapters/dallas-tx.adapter';
 import { lookupHarrisTX, lookupHarrisTXByParcelId }           from './adapters/harris-tx.adapter';
 import { lookupDuvalFL, lookupDuvalFLByParcelId }             from './adapters/duval-fl.adapter';
+import { lookupMiamiDadeFL, lookupMiamiDadeFLByFolio }       from './adapters/miami-dade-fl.adapter';
 import type { MunicipalLookupResult } from './types';
 
 export type { MunicipalLookupResult } from './types';
@@ -219,6 +220,25 @@ class MunicipalEnrichmentService {
           logger.debug(`[municipal-enrichment] FL/Duval address lookup for "${baseAddress}"`);
           return lookupDuvalFL(baseAddress);
         }
+        if (
+          normalizedCity.includes('miami') ||
+          normalizedCity.includes('miami-dade') ||
+          normalizedCity.includes('coral gables') ||
+          normalizedCity.includes('hialeah') ||
+          normalizedCity.includes('doral') ||
+          normalizedCity.includes('aventura') ||
+          normalizedCity.includes('homestead') ||
+          normalizedCity.includes('brickell') ||
+          normalizedCity.includes('kendall') ||
+          normalizedCity.includes('miami beach') ||
+          normalizedCity.includes('opa-locka') ||
+          normalizedCity.includes('opa locka') ||
+          normalizedCity.includes('cutler bay') ||
+          normalizedCity.includes('sweetwater')
+        ) {
+          logger.debug(`[municipal-enrichment] FL/Miami-Dade address lookup for "${baseAddress}"`);
+          return lookupMiamiDadeFL(baseAddress, normalizedCity);
+        }
         logger.debug(`[municipal-enrichment] FL city "${city}" not implemented`);
         return { status: 'not_implemented', state: normalizedState, source: 'stub' };
 
@@ -309,6 +329,28 @@ class MunicipalEnrichmentService {
         if (normalizedCity.includes('jacksonville')) {
           logger.debug(`[municipal-enrichment] FL/Duval parcel-id lookup for "${parcelId}"`);
           return lookupDuvalFLByParcelId(parcelId.trim());
+        }
+        if (
+          normalizedCity.includes('miami') ||
+          normalizedCity.includes('miami-dade') ||
+          normalizedCity.includes('coral gables') ||
+          normalizedCity.includes('hialeah') ||
+          normalizedCity.includes('doral') ||
+          normalizedCity.includes('aventura') ||
+          normalizedCity.includes('homestead') ||
+          normalizedCity.includes('kendall') ||
+          normalizedCity.includes('miami beach') ||
+          normalizedCity.includes('opa-locka') ||
+          normalizedCity.includes('cutler bay') ||
+          normalizedCity.includes('sweetwater') ||
+          normalizedCity === ''   // folio is globally unique within Miami-Dade; route when city unspecified
+        ) {
+          // Miami-Dade folio numbers are 13 digits — only route here when the format matches
+          const cleanId = parcelId.trim().replace(/[^0-9]/g, '');
+          if (cleanId.length >= 10 && cleanId.length <= 14) {
+            logger.debug(`[municipal-enrichment] FL/Miami-Dade folio lookup for "${parcelId}"`);
+            return lookupMiamiDadeFLByFolio(parcelId.trim());
+          }
         }
         logger.debug(`[municipal-enrichment] FL city "${city}" parcel-id not implemented`);
         return { status: 'not_implemented', state: normalizedState, source: 'stub' };

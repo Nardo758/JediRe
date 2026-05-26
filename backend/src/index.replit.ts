@@ -403,6 +403,7 @@ import { calibrationRealizationCron } from './inngest/functions/calibrationReali
 import { macroSignalsMonthly } from './inngest/functions/macro-signals-monthly';
 import { syncPlanningApplicationsCron } from './inngest/functions/sync-planning-applications';
 import { syncAccelaPlanningCron } from './inngest/functions/sync-accela-planning';
+import { syncMiamiDadePlanningCron } from './inngest/functions/sync-miami-dade-planning';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -450,6 +451,8 @@ app.use(
       syncPlanningApplicationsCron,
       // Task #1076: nightly Gwinnett + DeKalb + Cobb Accela planning ingest (02:00 UTC)
       syncAccelaPlanningCron,
+      // Task #1077: nightly Miami-Dade BCC planning application ingest (03:30 UTC)
+      syncMiamiDadePlanningCron,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,
