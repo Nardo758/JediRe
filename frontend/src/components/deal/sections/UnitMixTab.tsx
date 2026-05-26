@@ -1452,6 +1452,8 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   const [typesSaveError, setTypesSaveError] = useState<string | null>(null);
   const [typesSaved, setTypesSaved] = useState(false);
   const [unitMixError, setUnitMixError] = useState<string | null>(null);
+  const [unitMixSort, setUnitMixSort] = useState<'name' | 'beds_asc' | 'beds_desc'>('name');
+  const [brFilter, setBrFilter] = useState<number | null>(null);
 
   // F3 Programming tab unit mix percentages (studio/oneBed/twoBed/threeBed)
   const f3UnitMix = useDesignProgramStore(s => s.program.unitMix ?? null);
@@ -1625,6 +1627,25 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
 
   const unitMix = data?.rentRollSummary?.unitMix ?? [];
   const totalUnits = data?.totalUnits ?? 0;
+
+  const displayedUnitMix = useMemo(() => {
+    let rows = [...unitMix];
+    if (brFilter !== null) {
+      rows = rows.filter(u => {
+        const bd = u.bedrooms != null ? u.bedrooms : bedsFromLabel(u.type);
+        if (brFilter === 4) return bd >= 4;
+        return bd === brFilter;
+      });
+    }
+    if (unitMixSort !== 'name') {
+      rows.sort((a, b) => {
+        const bdA = a.bedrooms != null ? a.bedrooms : bedsFromLabel(a.type);
+        const bdB = b.bedrooms != null ? b.bedrooms : bedsFromLabel(b.type);
+        return unitMixSort === 'beds_asc' ? bdA - bdB : bdB - bdA;
+      });
+    }
+    return rows;
+  }, [unitMix, unitMixSort, brFilter]);
   const ls = data?.trafficProjection?.leasingSignals;
   const hasTraffic = ls != null && (ls.t06WeeklyLeases != null || ls.t07LeaseUpWeeksTo95 != null);
   const lv = data?.trafficProjection?.leasingVelocity;
@@ -2094,11 +2115,45 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                   <button onClick={() => setUnitMixError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.dim, padding: 0, lineHeight: 1 }}>✕</button>
                 </div>
               )}
+              {(() => {
+                const allBeds = unitMix.map(u => u.bedrooms != null ? u.bedrooms : bedsFromLabel(u.type));
+                const buckets: Array<{ label: string; val: number }> = [];
+                if (allBeds.some(b => b === 0)) buckets.push({ label: 'Studio', val: 0 });
+                if (allBeds.some(b => b === 1)) buckets.push({ label: '1BR', val: 1 });
+                if (allBeds.some(b => b === 2)) buckets.push({ label: '2BR', val: 2 });
+                if (allBeds.some(b => b === 3)) buckets.push({ label: '3BR', val: 3 });
+                if (allBeds.some(b => b >= 4)) buckets.push({ label: '4+', val: 4 });
+                if (buckets.length < 2) return null;
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: LABEL, fontSize: 7, color: C.muted, letterSpacing: '0.06em', marginRight: 2 }}>FILTER</span>
+                    {[{ label: 'ALL', val: null as number | null }, ...buckets.map(b => ({ ...b, val: b.val as number | null }))].map(b => (
+                      <button
+                        key={b.val ?? 'all'}
+                        onClick={() => setBrFilter(b.val === brFilter ? null : b.val)}
+                        style={{
+                          fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
+                          padding: '2px 7px', borderRadius: 3, cursor: 'pointer',
+                          border: `1px solid ${(b.val === null ? brFilter === null : brFilter === b.val) ? C.cyan : C.border}`,
+                          background: (b.val === null ? brFilter === null : brFilter === b.val) ? C.cyanDim : 'transparent',
+                          color: (b.val === null ? brFilter === null : brFilter === b.val) ? C.cyan : C.muted,
+                        }}
+                      >{b.label}</button>
+                    ))}
+                  </div>
+                );
+              })()}
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: C.panelAlt }}>
-                      <th style={th()}>TYPE</th>
+                      <th
+                        style={{ ...th(), cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => setUnitMixSort(s => s === 'name' ? 'beds_asc' : s === 'beds_asc' ? 'beds_desc' : 'name')}
+                        title={unitMixSort === 'name' ? 'Click to sort by bedroom count ↑' : unitMixSort === 'beds_asc' ? 'Click to sort by bedroom count ↓' : 'Click to restore default order'}
+                      >
+                        TYPE{unitMixSort === 'beds_asc' ? ' ↑' : unitMixSort === 'beds_desc' ? ' ↓' : ''}
+                      </th>
                       <th style={th(true)}>UNITS</th>
                       <th style={th(true)}>MIX %</th>
                       <th style={th(true)}>AVG SF</th>
@@ -2113,7 +2168,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {unitMix.map((u, idx) => {
+                    {displayedUnitMix.map((u, idx) => {
                       const effRent   = getEffectiveRent(u);
                       const mktRent   = getMarketRent(u);
                       const ltlAmt    = mktRent != null && effRent != null ? mktRent - effRent : null;
