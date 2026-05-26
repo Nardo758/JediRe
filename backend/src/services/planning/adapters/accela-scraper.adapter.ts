@@ -439,39 +439,42 @@ function isPlanningRecord(normalisedType: string | null, rawRecordType: string):
 
 /**
  * Submit a single Accela General Search for one record-type module and paginate
- * through all results.  Returns raw parsed rows; caller applies date + type filters.
+ * through all results.
  *
- * Record-type filtering uses the Accela ACA General Search `drpGSPermitType` dropdown
- * (standard control ID) plus a shorter-name fallback, both set to `recordType`.
- * This scopes each query to the Planning or Zoning module, preventing unrelated
- * permit categories (Building, Fire, etc.) from polluting planning_applications.
+ * IMPORTANT — ASP.NET token correctness:
+ *   `capSearchState` MUST come from a fresh GET of `/Cap/CapSearch.aspx` (not
+ *   the portal landing page).  Accela's ASP.NET uses page-specific __VIEWSTATE
+ *   and __EVENTVALIDATION tokens; submitting tokens from a different page will
+ *   silently produce empty / error responses.
+ *
+ * Pagination uses tokens extracted from each successive response, ensuring the
+ * state chain remains valid throughout the paging sequence.
  */
 async function searchByRecordType(
   session: AccelaSession,
-  initState: AspNetState,
+  capSearchState: AspNetState,
   recordType: string,
   startStr: string,
   endStr: string,
   config: AccelaAgencyConfig,
 ): Promise<AccelaRawRow[]> {
-  // Accela ACA standard field names for record-type module dropdown.
-  // We include both the long (ctl00$...) and short (drp...) naming patterns
-  // because different agency installations use different aspx control prefixes.
+  // Build the POST body using tokens extracted from the CapSearch page itself.
+  // We include both long (ctl00$...) and short naming patterns for portals
+  // that use customised control-ID prefixes.
   const searchForm = new URLSearchParams({
     __EVENTTARGET:   'ctl00$PlaceHolderMain$btnNewSearch',
     __EVENTARGUMENT: '',
-    ...initState,
-    // ── Date range ──────────────────────────────────────────────────────
+    ...capSearchState,
+    // ── Date range ────────────────────────────────────────────────────
     'ctl00$PlaceHolderMain$generalSearchForm$txtGSStartDate': startStr,
     'ctl00$PlaceHolderMain$generalSearchForm$txtGSEndDate':   endStr,
-    // Short-name aliases (older / custom Accela installations)
     'txtGSStartDate': startStr,
     'txtGSEndDate':   endStr,
-    // ── Record-type module filter ────────────────────────────────────────
-    // Standard: drpGSPermitType is the module-selector dropdown value.
-    // Submitting this constrains results to the named Accela module (Planning, Zoning, etc.)
+    // ── Record-type module filter ──────────────────────────────────────
+    // drpGSPermitType is the standard Accela ACA module-selector dropdown.
+    // Sending this constrains the query to Planning or Zoning, blocking
+    // Building/Fire/etc. records from entering planning_applications.
     'ctl00$PlaceHolderMain$generalSearchForm$drpGSPermitType': recordType,
-    // Alias variants across Accela versions / agency customisations
     'ctl00$PlaceHolderMain$generalSearchForm$drpRecordCategory': recordType,
     'drpGSPermitType': recordType,
     'drpRecordCategory': recordType,
@@ -493,6 +496,8 @@ async function searchByRecordType(
     rows.push(...pageRows);
     logger.debug(`[accela/${config.agencyCode}] type="${recordType}" page=${page} rows=${pageRows.length}`);
 
+    // Tokens for the next page come from the current response — never from the
+    // initial CapSearch page, which is now stale after the first POST.
     const pager = extractPagerState(currentHtml);
     if (!pager.hasNext) break;
 
@@ -521,14 +526,18 @@ async function searchByRecordType(
  * Scrape one Accela agency portal for planning applications filed within
  * the last `lookbackDays` days.
  *
- * Runs one search per entry in `config.recordTypes` (one per planning module —
- * e.g., "Planning", "Zoning") so the portal's own record-type filter scopes
- * results to planning/zoning categories before we receive them.
+ * Session flow (correct ASP.NET state chain):
+ *   1. GET landing page (/Default.aspx or /Welcome.aspx) → session cookie only
+ *   2. GET /Cap/CapSearch.aspx → __VIEWSTATE / __EVENTVALIDATION tokens for
+ *      the search form (these are page-specific and must come from CapSearch itself)
+ *   3. For each recordType: POST /Cap/CapSearch.aspx with CapSearch tokens +
+ *      record-type filter + date range → parse + paginate results
+ *   4. After each recordType search: GET /Cap/CapSearch.aspx again for fresh
+ *      tokens before the next search (stale tokens from the last response
+ *      may not be valid for a new search initiation)
  *
- * Defense-in-depth: after collection, `isPlanningRecord()` guards against any
- * non-planning records that slipped through the portal filter.
- *
- * Results are deduplicated by case_number before returning.
+ * Defense-in-depth: `isPlanningRecord()` guard blocks any non-planning records
+ * that slipped through the portal-side record-type filter.
  */
 export async function scrapeAccelaAgency(
   config: AccelaAgencyConfig,
@@ -543,82 +552,105 @@ export async function scrapeAccelaAgency(
 
   logger.info(`[accela/${config.agencyCode}] Starting scrape`, {
     startDate: startStr,
-    endDate: endStr,
+    endDate:   endStr,
     recordTypes: config.recordTypes,
   });
 
-  // ── Step 1: Initialise session ─────────────────────────────────────────
+  // ── Step 1: Initialise session via landing page ────────────────────────
+  // Purpose: establish the ASP.NET_SessionId cookie.
+  // We do NOT use ViewState from this page — it belongs to Default/Welcome, not CapSearch.
   const initPaths = ['/Default.aspx', '/Welcome.aspx', '/'];
-  let initHtml: string | null = null;
+  let landed = false;
 
   for (const path of initPaths) {
-    initHtml = await session.get(path);
-    if (initHtml) break;
+    const html = await session.get(path);
+    if (html) { landed = true; break; }
     await sleep(RATE_LIMIT_MS);
   }
 
-  if (!initHtml) {
-    logger.warn(`[accela/${config.agencyCode}] Could not reach portal — skipping`);
+  if (!landed) {
+    logger.warn(`[accela/${config.agencyCode}] Could not reach portal landing page — skipping`);
     return [];
   }
 
-  const initState = extractAspNetState(initHtml);
+  await sleep(RATE_LIMIT_MS);
 
-  // ── Step 2: Search per record type ────────────────────────────────────
-  // One POST per entry in config.recordTypes — this uses the portal's own
-  // module filter so only Planning / Zoning records are returned.
+  // ── Step 2: GET CapSearch.aspx for page-correct ViewState ─────────────
+  // ASP.NET __VIEWSTATE and __EVENTVALIDATION are page-scoped; we must extract
+  // them from the CapSearch page, not from the landing page.
+  let capSearchHtml = await session.get('/Cap/CapSearch.aspx');
+  if (!capSearchHtml) {
+    logger.warn(`[accela/${config.agencyCode}] Could not load CapSearch.aspx — skipping`);
+    return [];
+  }
+
+  // ── Step 3: One search per record type ────────────────────────────────
   const seenCaseNumbers = new Set<string>();
   const results: RawPlanningApplication[] = [];
 
-  for (const recordType of config.recordTypes) {
+  for (let typeIdx = 0; typeIdx < config.recordTypes.length; typeIdx++) {
+    const recordType    = config.recordTypes[typeIdx];
+    const capSearchState = extractAspNetState(capSearchHtml);
+
     await sleep(RATE_LIMIT_MS);
 
     const rawRows = await searchByRecordType(
-      session, initState, recordType, startStr, endStr, config,
+      session, capSearchState, recordType, startStr, endStr, config,
     );
 
     for (const row of rawRows) {
       const filedDate      = parseAccelaDate(row.filedDate);
       const normalisedType = normaliseType(row.recordType);
 
-      // ── Client-side date filter ──────────────────────────────────────
+      // Client-side date filter
       if (filedDate && filedDate < startDate) continue;
 
-      // ── Planning-type guard (defense-in-depth) ───────────────────────
+      // Planning-type guard (defense-in-depth)
       if (!isPlanningRecord(normalisedType, row.recordType)) {
         logger.debug(`[accela/${config.agencyCode}] Skipping non-planning record: "${row.recordNumber}" type="${row.recordType}"`);
         continue;
       }
 
-      // ── Deduplication across multiple record-type searches ───────────
+      // Deduplication across multiple record-type searches
       if (seenCaseNumbers.has(row.recordNumber)) continue;
       seenCaseNumbers.add(row.recordNumber);
 
-      const raw: RawPlanningApplication = {
+      results.push({
         case_number:      row.recordNumber,
         jurisdiction:     config.jurisdiction,
         application_type: normalisedType,
         applicant_name:   row.applicant    || null,
         property_address: row.address      || null,
         parcel_id:        row.parcelNumber || null,
-        // current/proposed zoning not in list view — requires per-record detail fetch (Task #1128)
+        // current/proposed zoning not in list view — per-record detail fetch deferred to Task #1128
         current_zoning:  null,
         proposed_zoning: null,
         filed_date:      filedDate,
         status:          normaliseStatus(row.status),
-        // hearing_date not in list view — requires per-record detail fetch (Task #1128)
+        // hearing_date not in list view — per-record detail fetch deferred to Task #1128
         hearing_date:    null,
         source_url:      `${config.baseUrl}/Cap/CapDetail.aspx?agencyCode=${config.agencyCode}`,
         raw_json:        { ...row, accela_record_type_filter: recordType } as unknown as Record<string, unknown>,
-      };
-      results.push(raw);
+      });
     }
 
-    logger.info(`[accela/${config.agencyCode}] type="${recordType}" collected ${results.length} planning record(s) so far`);
+    logger.info(`[accela/${config.agencyCode}] type="${recordType}" → ${results.length} planning record(s) so far`);
+
+    // ── Step 4: Refresh CapSearch state before next record-type search ──
+    // GET CapSearch.aspx again to obtain fresh page-scoped ASP.NET tokens.
+    // Tokens from the last pagination response are result-page–scoped and
+    // may not be accepted as initial state for a new search submission.
+    if (typeIdx < config.recordTypes.length - 1) {
+      await sleep(RATE_LIMIT_MS);
+      const fresh = await session.get('/Cap/CapSearch.aspx');
+      if (fresh) capSearchHtml = fresh;
+      // If the refresh fails, continue with the current HTML — the next
+      // search may fail if tokens are stale, but this is non-fatal.
+    }
   }
 
   logger.info(`[accela/${config.agencyCode}] Scrape complete`, {
-    total:      results.length,
+    total:       results.length,
     recordTypes: config.recordTypes,
   });
   return results;
