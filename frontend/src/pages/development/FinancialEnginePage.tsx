@@ -577,6 +577,11 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const [integrityBlocked, setIntegrityBlocked] = useState(false);
   // F9 DealFinancials — fetched here so F1/F8/F10 tabs can consume it
   const [f9Financials, setF9Financials] = useState<F9DealFinancials | null>(null);
+  const [unitPillOpen, setUnitPillOpen] = useState(false);
+  const [unitTargetDraft, setUnitTargetDraft] = useState('');
+  const [unitTargetSaving, setUnitTargetSaving] = useState(false);
+  const [localTargetUnits, setLocalTargetUnits] = useState<number | null>(null);
+  const unitPillRef = useRef<HTMLDivElement>(null);
   // Shared leasing-cost-treatment view override — set by either Location A
   // (Assumptions PATCH, persists to deal) or Location B (ProForma top-bar,
   // view-state only).  Stored here so all tabs receive the same value and
@@ -600,6 +605,22 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     lvTreatmentRef.current = t;
     setLvCostTreatmentView(t);
   }, [propDeal]);
+  useEffect(() => {
+    setLocalTargetUnits(null);
+    setUnitPillOpen(false);
+  }, [resolvedDealId]);
+
+  useEffect(() => {
+    if (!unitPillOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (unitPillRef.current && !unitPillRef.current.contains(e.target as Node)) {
+        setUnitPillOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [unitPillOpen]);
+
   // Evidence system — field click panel + summary bar
   const [evidenceField, setEvidenceField] = useState<{ path: string; label: string } | null>(null);
   const [evidenceSummary, setEvidenceSummary] = useState<{
@@ -1551,40 +1572,115 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           {(() => {
             const mixRows = f9Financials?.rentRollSummary?.unitMix ?? [];
             const mixTotal = f9Financials?.totalUnits ?? 0;
-            const targetUnits = (propDeal as Record<string, unknown> | null | undefined)?.target_units as number | null | undefined;
+            const propTargetUnits = (propDeal as Record<string, unknown> | null | undefined)?.target_units as number | null | undefined;
+            const targetUnits = localTargetUnits ?? propTargetUnits;
             const hasMixData = mixRows.length > 0;
             const hasTarget = targetUnits != null && (targetUnits as number) > 0;
-            if (!hasMixData && !hasTarget) return null;
             const isMatch = hasTarget && hasMixData && mixTotal === (targetUnits as number);
             const isMismatch = hasTarget && hasMixData && mixTotal !== (targetUnits as number);
             const color = isMatch ? BT.text.green : isMismatch ? BT.text.amber : BT.text.muted;
-            const label = isMatch
-              ? `UNITS: ${mixTotal} ✓`
-              : hasTarget
-                ? `UNITS: ${hasMixData ? mixTotal : '—'} / ${targetUnits} target`
-                : `UNITS: ${mixTotal}`;
-            const handleUnitPillClick = () => {
+            const label = (!hasMixData && !hasTarget)
+              ? 'SET UNITS'
+              : isMatch
+                ? `UNITS: ${mixTotal} ✓`
+                : hasTarget
+                  ? `UNITS: ${hasMixData ? mixTotal : '—'} / ${targetUnits} target`
+                  : `UNITS: ${mixTotal}`;
+            const handlePillClick = () => {
+              setUnitTargetDraft(targetUnits != null ? String(targetUnits) : '');
+              setUnitPillOpen(v => !v);
+            };
+            const handleSave = async () => {
+              const parsed = parseInt(unitTargetDraft, 10);
+              if (isNaN(parsed) || parsed < 1) return;
+              setUnitTargetSaving(true);
+              try {
+                await apiClient.patch(`/api/v1/deals/${resolvedDealId}`, { targetUnits: parsed });
+                setLocalTargetUnits(parsed);
+                setUnitPillOpen(false);
+              } catch {
+                // leave open so operator can retry
+              } finally {
+                setUnitTargetSaving(false);
+              }
+            };
+            const handleOpenUnitMix = () => {
+              setUnitPillOpen(false);
               setActiveTab(1);
               setTimeout(() => {
                 window.dispatchEvent(new CustomEvent('fe-console-subtab', { detail: { subTab: 'unitmix' } }));
               }, 50);
             };
             return (
-              <button
-                onClick={handleUnitPillClick}
-                title={isMismatch ? `Unit mix total (${mixTotal}) does not match deal target (${targetUnits}). Click to open Unit Mix tab.` : 'Click to open Unit Mix tab'}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 3,
-                  padding: '1px 6px', borderRadius: 2,
-                  background: `${color}18`,
-                  border: `1px solid ${color}44`,
-                  cursor: 'pointer',
-                  fontFamily: MONO, fontSize: 8, color,
-                  letterSpacing: 0.5,
-                }}
-              >
-                {label}
-              </button>
+              <div ref={unitPillRef} style={{ position: 'relative' }}>
+                <button
+                  onClick={handlePillClick}
+                  title="Click to set unit target"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                    padding: '1px 6px', borderRadius: 2,
+                    background: `${color}18`,
+                    border: `1px solid ${color}44`,
+                    cursor: 'pointer',
+                    fontFamily: MONO, fontSize: 8, color,
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  {label}
+                </button>
+                {unitPillOpen && (
+                  <div
+                    style={{
+                      position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 200,
+                      background: BT.bg.panel, border: `1px solid ${BT.border.medium}`,
+                      borderRadius: 3, padding: '10px 12px', minWidth: 200,
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                    }}
+                  >
+                    <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, marginBottom: 6, letterSpacing: 0.6 }}>
+                      TARGET UNITS
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
+                      <input
+                        type="number"
+                        min={1}
+                        value={unitTargetDraft}
+                        onChange={e => setUnitTargetDraft(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setUnitPillOpen(false); }}
+                        autoFocus
+                        style={{
+                          width: 80, background: BT.bg.input ?? '#111', border: `1px solid ${BT.border.medium}`,
+                          color: BT.text.primary, fontFamily: MONO, fontSize: 11,
+                          padding: '3px 6px', borderRadius: 2, outline: 'none',
+                        }}
+                      />
+                      <button
+                        onClick={handleSave}
+                        disabled={unitTargetSaving}
+                        style={{
+                          background: BT.met.financial, border: 'none', color: '#000',
+                          fontFamily: MONO, fontSize: 9, fontWeight: 700,
+                          padding: '3px 10px', borderRadius: 2, cursor: unitTargetSaving ? 'not-allowed' : 'pointer',
+                          opacity: unitTargetSaving ? 0.6 : 1,
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        {unitTargetSaving ? 'SAVING…' : 'SAVE'}
+                      </button>
+                    </div>
+                    <button
+                      onClick={handleOpenUnitMix}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        fontFamily: MONO, fontSize: 9, color: BT.text.secondary,
+                        padding: 0, textDecoration: 'underline', letterSpacing: 0.4,
+                      }}
+                    >
+                      Open Unit Mix →
+                    </button>
+                  </div>
+                )}
+              </div>
             );
           })()}
         </div>
