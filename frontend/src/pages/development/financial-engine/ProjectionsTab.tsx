@@ -170,6 +170,67 @@ function buildRampTooltip(
   return `Ramp month ${Math.round(rampMonthsIn)} of ${rampDur} · ${pct}% steady state · prob ${(prob * 100).toFixed(0)}%`;
 }
 
+// ── Build ramp tooltip string for a quarterly cell ────────────────────────────
+// yearIndex and quarterIndex are both 0-based.
+function buildRampTooltipQuarterly(
+  adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number },
+  yearIndex: number,
+  quarterIndex: number,
+): string {
+  const rampStart = adoption.ramp_start_period;
+  const rampDur   = adoption.ramp_duration_months;
+  const prob      = adoption.probability_adopted;
+  const baseOffset = yearIndex * 12 + quarterIndex * 3;
+  const firstM = baseOffset + 1; // 1-indexed hold month
+  const lastM  = baseOffset + 3;
+  const midM   = baseOffset + 2;
+  const yr = yearIndex + 1;
+  const q  = quarterIndex + 1;
+  const probStr = `${(prob * 100).toFixed(0)}%`;
+
+  if (midM < rampStart) {
+    return `Q${q} YR${yr} · months ${firstM}–${lastM} · pre-ramp · prob ${probStr}`;
+  }
+  if (rampDur <= 0 || midM >= rampStart + rampDur) {
+    return `Q${q} YR${yr} · months ${firstM}–${lastM} · fully ramped · 100% steady state · prob ${probStr}`;
+  }
+  // Average ramp fraction across the 3 months of the quarter
+  const fracs = [firstM, firstM + 1, lastM].map(m => {
+    if (m < rampStart) return 0;
+    if (m >= rampStart + rampDur) return 1;
+    return (m - rampStart) / rampDur;
+  });
+  const avgFrac = fracs.reduce((s, f) => s + f, 0) / fracs.length;
+  const avgPct = Math.round(avgFrac * 100);
+  return `Q${q} YR${yr} · months ${firstM}–${lastM} · avg ${avgPct}% steady state · prob ${probStr}`;
+}
+
+// ── Build ramp tooltip string for a monthly cell ──────────────────────────────
+// monthOffset is 0-based (0 = hold month 1).
+function buildRampTooltipMonthly(
+  adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number },
+  yearIndex: number,
+  periodIdx: number,  // 1-based month within year
+  monthOffset: number,
+): string {
+  const rampStart = adoption.ramp_start_period;
+  const rampDur   = adoption.ramp_duration_months;
+  const prob      = adoption.probability_adopted;
+  const m = monthOffset + 1; // 1-indexed hold month
+  const yr = yearIndex + 1;
+  const probStr = `${(prob * 100).toFixed(0)}%`;
+
+  if (m < rampStart) {
+    return `M${periodIdx} YR${yr} · pre-ramp · starts month ${rampStart} · prob ${probStr}`;
+  }
+  if (rampDur <= 0 || m >= rampStart + rampDur) {
+    return `M${periodIdx} YR${yr} · fully ramped · 100% steady state · prob ${probStr}`;
+  }
+  const rampMonthsIn = m - rampStart;
+  const pct = Math.round((rampMonthsIn / rampDur) * 100);
+  return `M${periodIdx} YR${yr} · ramp month ${rampMonthsIn} of ${rampDur} · ${pct}% steady state · prob ${probStr}`;
+}
+
 const fmtCell = (
   val: number | null | undefined,
   fmt: RowDef['fmt'] = 'dollar',
@@ -2344,7 +2405,7 @@ export function ProjectionsTab({
                                     const isAtSteadyState = (midMonthOffset + 1) >= line.adoption!.ramp_start_period + line.adoption!.ramp_duration_months;
                                     const isPreRamp = (midMonthOffset + 1) < line.adoption!.ramp_start_period;
                                     cellColor = isPreRamp ? BT.text.muted : isAtSteadyState ? BT.text.cyan : BT.text.primary;
-                                    tooltip = `${line.label}: ramp-aware Q${periodIdx} YR${yr}`;
+                                    tooltip = buildRampTooltipQuarterly(line.adoption!, yearIndex, quarterIndex);
                                   } else {
                                     val = line.monthly * 3;
                                     tooltip = `${line.label}: $${line.monthly.toLocaleString()}/mo × 3`;
@@ -2358,7 +2419,7 @@ export function ProjectionsTab({
                                     const isAtSteadyState = m >= line.adoption!.ramp_start_period + line.adoption!.ramp_duration_months;
                                     const isPreRamp = m < line.adoption!.ramp_start_period;
                                     cellColor = isPreRamp ? BT.text.muted : isAtSteadyState ? BT.text.cyan : BT.text.primary;
-                                    tooltip = `${line.label}: ramp-aware M${periodIdx} YR${yr}`;
+                                    tooltip = buildRampTooltipMonthly(line.adoption!, yearIndex, periodIdx, monthOffset);
                                   } else {
                                     val = line.monthly;
                                     tooltip = `${line.label}: $${line.monthly.toLocaleString()}/mo`;
