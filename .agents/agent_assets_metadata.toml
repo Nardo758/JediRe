@@ -6,3 +6,9 @@ id = "cSilTNDabhP4JlqDyNE5J"
 uri = "file://docs/route-migration-summary.md"
 type = "text"
 title = "Route Migration Summary (Task #132)"
+
+[[outputs]]
+id = "wVfb3_R-PUGkSQ4J584WR"
+uri = "file://docs/operations/UNIT_MIX_OTHER_INCOME_INVESTIGATION.md"
+type = "text"
+title = "Unit Mix + Other Income — Investigation & Design Spec"
