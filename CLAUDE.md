@@ -360,3 +360,25 @@ All proforma and financial engine work is split into exactly two layers:
 - **Layer 2 — Assumptions:** Values the LLM reasons about and operators can override. Rent per unit type, vacancy %, OpEx line items, growth rates, exit cap rate, debt terms, hold period. Stored as `LayeredValue<T>` with provenance. The LLM proposes; the operator confirms; Layer 1 then calculates.
 
 **Standing rule:** never put arithmetic inside an LLM prompt, and never let an LLM output a value that should be the result of a formula. Phase 2 derivation logic (generating / refining assumption values) applies only to `layer: 'assumption'` entries. `layer: 'calculated_output'` entries are never sent to the LLM for derivation — they are always computed from their upstream assumptions.
+
+### P8 — Verify Before Queueing
+
+When a dispatch produces a closing note that informs the scope of subsequent work, that closing note must be verified before downstream dispatches fire.
+
+**Verification steps:**
+1. Confirm the document exists at the expected path and is complete per its dispatch spec
+2. Spot-check 3–5 source citations against the actual codebase
+3. Verify cross-fix integration sections are substantive (not placeholder)
+4. Classify open questions as BLOCKING / IMPORTANT / INFORMATIONAL
+5. Identify gaps — what the investigation should have covered but didn't
+
+**Output:** Append a verification section to the original investigation file. Verdict must be one of: `APPROVED FOR DOWNSTREAM WORK` / `NEEDS AMENDMENT` / `NEEDS REWORK`.
+
+**Rationale:** Investigations produce documents that subsequent dispatches treat as authoritative. If an investigation has incomplete citations, missing cross-fix integration, or unaddressed gaps, downstream dispatches inherit those problems. Verification catches issues before propagation.
+
+A related failure mode: dispatches that were drafted but never fired can be confused with dispatches that landed. "The closing note doesn't exist" is a valid verification finding — it stops downstream work from building on a phantom document.
+
+**DO NOT:**
+- Skip verification for "small" investigations — small ones produce small documents but their findings propagate just as much
+- Verify your own work as the sole check — the agent verifying its own output is a known confirmation-bias risk; operator review of the verification is required
+- Treat parallel firing as acceptable for dependency-linked work — sequential firing is the default for investigation → implementation chains; parallel only when work is genuinely independent
