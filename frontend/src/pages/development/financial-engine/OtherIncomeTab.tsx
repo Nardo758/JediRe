@@ -1047,7 +1047,13 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                                           note:       line.note ?? '',
                                           useQtyRate: line.qty != null && line.rate != null,
                                           adoptionRequired:     a != null,
-                                          rampStartPeriod:      a != null ? String(a.ramp_start_period) : '0',
+                                          rampStartPeriod:      a != null && a.ramp_start_period > 0
+                                            ? String(a.ramp_start_period)
+                                            : isDevelopment
+                                              ? '12'
+                                              : renoCompletionMonths != null && renoCompletionMonths > 0
+                                                ? String(renoCompletionMonths)
+                                                : '0',
                                           rampDurationMonths:   a != null ? String(a.ramp_duration_months) : '6',
                                           steadyStateMonthly:   a != null ? String(a.steady_state_monthly) : String(Math.round(line.monthly)),
                                           probabilityAdopted:   a != null ? String(a.probability_adopted) : '1.0',
