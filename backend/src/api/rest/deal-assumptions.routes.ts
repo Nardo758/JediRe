@@ -32,6 +32,7 @@ import {
   type StanceModulation,
 } from '../../services/operatorStance.service';
 import type { OperatorStancePatch } from '../../types/operator-stance';
+import { propagateUnitMix } from '../../services/unit-mix-propagation.service';
 
 // ─── AI Coordinator config ────────────────────────────────────────────────────
 const ANTHROPIC_API_KEY  = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
@@ -2098,6 +2099,158 @@ router.patch('/:dealId/m22/floor-plan-positioning', requireAuth, async (req: Aut
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     logger.error(`M22 floor-plan positioning write-back failed: ${msg}`);
+    return res.status(500).json({ error: msg });
+  }
+});
+
+// ─── Manual Unit Mix CRUD ─────────────────────────────────────────────────────
+/**
+ * PATCH /:dealId/unit-mix
+ *
+ * Persists the analyst-built unit mix array for development deals (no rent roll).
+ * Replaces deal_assumptions.unit_mix with the supplied array, then fires
+ * propagateUnitMix(dealId, 'manual') so financial_models, 3D design, dev capacity,
+ * and deals.target_units all stay in sync.
+ *
+ * Body: { unitMix: Array<ManualUnitType> }
+ *
+ * ManualUnitType fields (stored as-is; the proforma service reads type/count/avg_sqft/
+ * in_place_rent/market_rent regardless of extra fields):
+ *   id           string   — client-generated UUID
+ *   type         string   — floor plan label (e.g. "1BR/1BA")
+ *   bedrooms     number   — 0 = Studio, 1, 2, 3, 4+
+ *   bathrooms    number   — 0.5 step
+ *   count        number   — unit count > 0
+ *   avg_sqft     number   — average square footage
+ *   in_place_rent number  — projected rent $/mo
+ *   market_rent  number|null
+ *   notes        string|null
+ *   source       'manual'
+ */
+router.patch('/:dealId/unit-mix', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const { unitMix } = req.body as { unitMix: unknown[] };
+
+    if (!Array.isArray(unitMix)) {
+      return res.status(400).json({ error: 'unitMix must be an array' });
+    }
+
+    const pool = getPool();
+
+    const dealCheck = await pool.query(
+      `SELECT id, target_units FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (dealCheck.rowCount === 0) {
+      return res.status(404).json({ error: 'Deal not found' });
+    }
+
+    const validated = unitMix.map((entry: any) => {
+      const count   = Number(entry.count ?? 0);
+      const avg_sqft = entry.avg_sqft != null ? Number(entry.avg_sqft) : null;
+      const in_place_rent = entry.in_place_rent != null ? Number(entry.in_place_rent) : null;
+      const market_rent   = entry.market_rent  != null ? Number(entry.market_rent)  : null;
+      // Validate numeric fields; reject rows with NaN/negative values
+      if (!Number.isFinite(count) || count <= 0)             return null;
+      if (avg_sqft     != null && (!Number.isFinite(avg_sqft)     || avg_sqft     <= 0)) return null;
+      if (in_place_rent!= null && (!Number.isFinite(in_place_rent)|| in_place_rent <= 0)) return null;
+      if (market_rent  != null && (!Number.isFinite(market_rent)  || market_rent  <= 0)) return null;
+      return {
+        id:            entry.id ?? randomUUID(),
+        type:          String(entry.type ?? entry.label ?? 'Unknown'),
+        bedrooms:      entry.bedrooms  != null ? Number(entry.bedrooms)  : null,
+        bathrooms:     entry.bathrooms != null ? Number(entry.bathrooms) : null,
+        count,
+        avg_sqft,
+        in_place_rent,
+        market_rent,
+        notes:         entry.notes ?? null,
+        source:        'manual',
+      };
+    }).filter((e): e is NonNullable<typeof e> => e !== null);
+
+    const dealTargetUnits: number | null = dealCheck.rows[0].target_units
+      ? Number(dealCheck.rows[0].target_units)
+      : null;
+    const totalCount = validated.reduce((s, e) => s + e.count, 0);
+
+    // Hard-block over-allocation: analysts can add rows incrementally (sum < target is fine),
+    // but exceeding the target corrupts downstream capacity calculations.
+    if (dealTargetUnits != null && dealTargetUnits > 0 && totalCount > dealTargetUnits) {
+      return res.status(400).json({
+        error: `Unit count (${totalCount}) exceeds deal target (${dealTargetUnits}) by ${totalCount - dealTargetUnits}. Reduce counts before saving.`,
+        code: 'UNIT_COUNT_EXCESS',
+        totalCount,
+        dealTargetUnits,
+      });
+    }
+
+    // Balanced = sum exactly equals target (or no target set)
+    const balanced = dealTargetUnits == null || dealTargetUnits <= 0
+      ? true
+      : totalCount === dealTargetUnits;
+
+    await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, unit_mix, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (deal_id) DO UPDATE
+       SET unit_mix   = $2::jsonb,
+           updated_at = NOW()`,
+      [dealId, JSON.stringify(validated)]
+    );
+
+    // Write the manual mix into deals.module_outputs.unitMixOverride so that
+    // getAuthoritativeUnitMix() (priority #1 source) picks it up before calling
+    // propagateUnitMix. Include `bedrooms` explicitly so parseUnitMixData()
+    // classifies by bedroom count rather than label heuristics — this is critical
+    // for custom labels ("Plan A") and 4BR+ units which otherwise drop from totals.
+    const overridePayload = validated.map(e => ({
+      unitType:  e.type,
+      type:      e.type,
+      bedrooms:  e.bedrooms,   // numeric classifier for parseUnitMixData()
+      count:     e.count,
+      avgSF:     e.avg_sqft ?? 0,
+      inPlaceRent: e.in_place_rent ?? null,
+      marketRent:  e.market_rent  ?? null,
+    }));
+    await pool.query(
+      `UPDATE deals
+       SET module_outputs = jsonb_set(
+         COALESCE(module_outputs, '{}'::jsonb),
+         '{unitMixOverride}',
+         $2::jsonb
+       )
+       WHERE id = $1`,
+      [dealId, JSON.stringify(overridePayload)]
+    );
+
+    logger.info(`Manual unit mix saved: deal=${dealId} rows=${validated.length} balanced=${balanced}`);
+
+    // Only propagate to downstream modules (financial model, 3D, capacity) when
+    // the mix is fully balanced — avoids partial totals corrupting target_units.
+    let propagationResult: Awaited<ReturnType<typeof propagateUnitMix>> | null = null;
+    if (balanced) {
+      propagationResult = await propagateUnitMix(dealId, 'manual');
+    }
+
+    return res.json({
+      ok: true,
+      rows: validated.length,
+      totalCount,
+      dealTargetUnits,
+      balanced,
+      ...(propagationResult ? {
+        propagation: {
+          success: propagationResult.success,
+          modulesUpdated: propagationResult.modulesUpdated,
+        },
+      } : { propagation: null }),
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error(`Manual unit mix save failed: ${msg}`);
     return res.status(500).json({ error: msg });
   }
 });

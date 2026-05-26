@@ -23,6 +23,8 @@ interface UnitMixBreakdown {
   oneBR: { count: number; avgSF: number; percent: number };
   twoBR: { count: number; avgSF: number; percent: number };
   threeBR: { count: number; avgSF: number; percent: number };
+  /** Catch-all for 4BR+ and custom-label rows that don't map to the 4 standard buckets */
+  fourPlusBR: { count: number; avgSF: number; percent: number };
   total: number;
   totalSF: number;
   avgSF: number;
@@ -175,67 +177,93 @@ async function getAuthoritativeUnitMix(dealId: string): Promise<UnitMixBreakdown
 }
 
 /**
- * Parse unit mix data into standardized format
+ * Classify a single unit-mix item into a bedroom bucket.
+ * Priority: explicit `bedrooms` number → label heuristics.
+ * Returns 'studio' | 'oneBR' | 'twoBR' | 'threeBR' | 'fourPlusBR'.
+ */
+function classifyUnitType(item: any): keyof Pick<UnitMixBreakdown, 'studio' | 'oneBR' | 'twoBR' | 'threeBR' | 'fourPlusBR'> {
+  // Use explicit bedroom count when available (manual mix always sets this)
+  if (item.bedrooms != null) {
+    const br = Number(item.bedrooms);
+    if (!Number.isFinite(br)) {/* fall through to label heuristic */}
+    else if (br === 0) return 'studio';
+    else if (br === 1) return 'oneBR';
+    else if (br === 2) return 'twoBR';
+    else if (br === 3) return 'threeBR';
+    else return 'fourPlusBR';  // 4+ bedrooms
+  }
+  // Label heuristics for legacy/non-manual sources
+  const label = (item.unitType || item.type || '').toLowerCase();
+  if (label.includes('studio') || label.includes('eff'))      return 'studio';
+  if (label.includes('4') || label.includes('five') || label.includes('5+')) return 'fourPlusBR';
+  if (label.includes('3') || label.includes('three'))         return 'threeBR';
+  if (label.includes('2') || label.includes('two'))           return 'twoBR';
+  if (label.includes('1') || label.includes('one'))           return 'oneBR';
+  // Unknown / custom label — still count toward total via fourPlusBR to avoid drops
+  return 'fourPlusBR';
+}
+
+/**
+ * Parse unit mix data into standardized format.
+ * All rows (including 4BR+ and custom labels) contribute to `total` — no rows are dropped.
  */
 function parseUnitMixData(rawData: any): UnitMixBreakdown {
-  // Handle different input formats
-  let program = rawData.program || rawData.breakdown || rawData;
-  
+  const program = rawData.program || rawData.breakdown || rawData;
+
   const breakdown: UnitMixBreakdown = {
-    studio: { count: 0, avgSF: 550, percent: 0 },
-    oneBR: { count: 0, avgSF: 750, percent: 0 },
-    twoBR: { count: 0, avgSF: 1000, percent: 0 },
-    threeBR: { count: 0, avgSF: 1600, percent: 0 },
+    studio:      { count: 0, avgSF: 550,  percent: 0 },
+    oneBR:       { count: 0, avgSF: 750,  percent: 0 },
+    twoBR:       { count: 0, avgSF: 1000, percent: 0 },
+    threeBR:     { count: 0, avgSF: 1300, percent: 0 },
+    fourPlusBR:  { count: 0, avgSF: 1600, percent: 0 },
     total: 0,
     totalSF: 0,
     avgSF: 0,
   };
-  
-  // If it's an array (from Unit Mix Intelligence)
+
   if (Array.isArray(program)) {
     program.forEach((item: any) => {
-      const type = (item.unitType || item.type || '').toLowerCase();
-      const count = item.count || item.units || 0;
-      const avgSF = item.avgSF || item.averageSF || item.sf || 0;
-      
-      if (type.includes('studio')) {
-        breakdown.studio.count = count;
-        if (avgSF) breakdown.studio.avgSF = avgSF;
-      } else if (type.includes('1') && type.includes('br')) {
-        breakdown.oneBR.count = count;
-        if (avgSF) breakdown.oneBR.avgSF = avgSF;
-      } else if (type.includes('2') && type.includes('br')) {
-        breakdown.twoBR.count = count;
-        if (avgSF) breakdown.twoBR.avgSF = avgSF;
-      } else if (type.includes('3') && type.includes('br')) {
-        breakdown.threeBR.count = count;
-        if (avgSF) breakdown.threeBR.avgSF = avgSF;
+      const count = Number(item.count || item.units || 0);
+      const avgSF = Number(item.avgSF || item.averageSF || item.avg_sqft || item.sf || 0);
+      if (!Number.isFinite(count) || count <= 0) return;
+
+      const bucket = classifyUnitType(item);
+      breakdown[bucket].count += count;
+      // Weighted-average SF accumulation: only update if we have a non-zero value
+      if (Number.isFinite(avgSF) && avgSF > 0) {
+        // Weighted average: existing_count * existing_avgSF + new_count * new_avgSF / total_count
+        const prev = breakdown[bucket];
+        const existingTotalSF = prev.count > count ? prev.avgSF * (prev.count - count) : 0;
+        breakdown[bucket].avgSF = (existingTotalSF + count * avgSF) / breakdown[bucket].count;
       }
     });
   }
-  
-  // Calculate totals and percentages
-  breakdown.total = 
-    breakdown.studio.count + 
-    breakdown.oneBR.count + 
-    breakdown.twoBR.count + 
-    breakdown.threeBR.count;
-  
+
+  // Total is the sum of ALL buckets — no rows are dropped
+  breakdown.total =
+    breakdown.studio.count +
+    breakdown.oneBR.count +
+    breakdown.twoBR.count +
+    breakdown.threeBR.count +
+    breakdown.fourPlusBR.count;
+
   if (breakdown.total > 0) {
-    breakdown.studio.percent = (breakdown.studio.count / breakdown.total) * 100;
-    breakdown.oneBR.percent = (breakdown.oneBR.count / breakdown.total) * 100;
-    breakdown.twoBR.percent = (breakdown.twoBR.count / breakdown.total) * 100;
-    breakdown.threeBR.percent = (breakdown.threeBR.count / breakdown.total) * 100;
+    breakdown.studio.percent     = (breakdown.studio.count     / breakdown.total) * 100;
+    breakdown.oneBR.percent      = (breakdown.oneBR.count      / breakdown.total) * 100;
+    breakdown.twoBR.percent      = (breakdown.twoBR.count      / breakdown.total) * 100;
+    breakdown.threeBR.percent    = (breakdown.threeBR.count    / breakdown.total) * 100;
+    breakdown.fourPlusBR.percent = (breakdown.fourPlusBR.count / breakdown.total) * 100;
   }
-  
-  breakdown.totalSF = 
-    (breakdown.studio.count * breakdown.studio.avgSF) +
-    (breakdown.oneBR.count * breakdown.oneBR.avgSF) +
-    (breakdown.twoBR.count * breakdown.twoBR.avgSF) +
-    (breakdown.threeBR.count * breakdown.threeBR.avgSF);
-  
+
+  breakdown.totalSF =
+    (breakdown.studio.count     * breakdown.studio.avgSF)    +
+    (breakdown.oneBR.count      * breakdown.oneBR.avgSF)     +
+    (breakdown.twoBR.count      * breakdown.twoBR.avgSF)     +
+    (breakdown.threeBR.count    * breakdown.threeBR.avgSF)   +
+    (breakdown.fourPlusBR.count * breakdown.fourPlusBR.avgSF);
+
   breakdown.avgSF = breakdown.total > 0 ? breakdown.totalSF / breakdown.total : 0;
-  
+
   return breakdown;
 }
 
@@ -257,33 +285,14 @@ async function updateFinancialModelUnitMix(dealId: string, unitMix: UnitMixBreak
   const model = modelResult.rows[0];
   const assumptions = model.assumptions || {};
   
-  // Update unit mix in assumptions
+  // Update unit mix in assumptions — include all buckets (4BR+ preserved)
   assumptions.unitMix = [
-    {
-      unitType: 'Studio',
-      count: unitMix.studio.count,
-      avgSF: unitMix.studio.avgSF,
-      percent: unitMix.studio.percent,
-    },
-    {
-      unitType: '1BR',
-      count: unitMix.oneBR.count,
-      avgSF: unitMix.oneBR.avgSF,
-      percent: unitMix.oneBR.percent,
-    },
-    {
-      unitType: '2BR',
-      count: unitMix.twoBR.count,
-      avgSF: unitMix.twoBR.avgSF,
-      percent: unitMix.twoBR.percent,
-    },
-    {
-      unitType: '3BR',
-      count: unitMix.threeBR.count,
-      avgSF: unitMix.threeBR.avgSF,
-      percent: unitMix.threeBR.percent,
-    },
-  ].filter(item => item.count > 0); // Only include unit types with count > 0
+    { unitType: 'Studio', count: unitMix.studio.count,     avgSF: unitMix.studio.avgSF,     percent: unitMix.studio.percent     },
+    { unitType: '1BR',    count: unitMix.oneBR.count,      avgSF: unitMix.oneBR.avgSF,      percent: unitMix.oneBR.percent      },
+    { unitType: '2BR',    count: unitMix.twoBR.count,      avgSF: unitMix.twoBR.avgSF,      percent: unitMix.twoBR.percent      },
+    { unitType: '3BR',    count: unitMix.threeBR.count,    avgSF: unitMix.threeBR.avgSF,    percent: unitMix.threeBR.percent    },
+    { unitType: '4BR+',   count: unitMix.fourPlusBR.count, avgSF: unitMix.fourPlusBR.avgSF, percent: unitMix.fourPlusBR.percent },
+  ].filter(item => item.count > 0);
   
   assumptions.totalUnits = unitMix.total;
   assumptions.totalSF = unitMix.totalSF;
@@ -333,13 +342,14 @@ async function update3DDesignUnitMix(dealId: string, unitMix: UnitMixBreakdown):
      WHERE id = $2`,
     [
       JSON.stringify({
-        studio: unitMix.studio,
-        oneBR: unitMix.oneBR,
-        twoBR: unitMix.twoBR,
-        threeBR: unitMix.threeBR,
-        total: unitMix.total,
-        totalSF: unitMix.totalSF,
-        updatedAt: new Date().toISOString(),
+        studio:     unitMix.studio,
+        oneBR:      unitMix.oneBR,
+        twoBR:      unitMix.twoBR,
+        threeBR:    unitMix.threeBR,
+        fourPlusBR: unitMix.fourPlusBR,
+        total:      unitMix.total,
+        totalSF:    unitMix.totalSF,
+        updatedAt:  new Date().toISOString(),
       }),
       design.id
     ]
@@ -364,13 +374,14 @@ async function updateDevelopmentCapacityUnitMix(dealId: string, unitMix: UnitMix
      WHERE id = $2`,
     [
       JSON.stringify({
-        studio: unitMix.studio,
-        oneBR: unitMix.oneBR,
-        twoBR: unitMix.twoBR,
-        threeBR: unitMix.threeBR,
-        total: unitMix.total,
-        totalSF: unitMix.totalSF,
-        updatedAt: new Date().toISOString(),
+        studio:     unitMix.studio,
+        oneBR:      unitMix.oneBR,
+        twoBR:      unitMix.twoBR,
+        threeBR:    unitMix.threeBR,
+        fourPlusBR: unitMix.fourPlusBR,
+        total:      unitMix.total,
+        totalSF:    unitMix.totalSF,
+        updatedAt:  new Date().toISOString(),
       }),
       dealId
     ]
