@@ -55,8 +55,10 @@ export async function ingestAtlantaNews(): Promise<AtlantaNewsIngestionResult> {
 
   // Deduplicate across queries by URL to avoid duplicate inserts
   const seen = new Set<string>();
-  // Track articles that were freshly inserted (vs. already cached) for extraction
+  // Track articles that were freshly inserted (vs. already cached) for extraction.
+  // id is the UUID of the news_article_cache row so extracted_at can be stamped.
   const toExtract: Array<{
+    id: string;
     title: string;
     description: string | null;
     content: string | null;
@@ -110,6 +112,7 @@ export async function ingestAtlantaNews(): Promise<AtlantaNewsIngestionResult> {
               // Freshly inserted — queue for event extraction
               result.inserted++;
               toExtract.push({
+                id,
                 title: article.title,
                 description: article.description ?? null,
                 content: article.content ?? null,
@@ -135,7 +138,7 @@ export async function ingestAtlantaNews(): Promise<AtlantaNewsIngestionResult> {
   // If extraction fails for one article, it is silently logged and skipped.
   for (const article of toExtract) {
     try {
-      const exResult = await extractAndPersistEvents(article);
+      const exResult = await extractAndPersistEvents(article, article.id);
       result.events_inserted += exResult.inserted;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

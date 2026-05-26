@@ -434,15 +434,35 @@ export async function insertExtractedEvents(
 /**
  * Full pipeline: extract from article + insert to DB.
  * Intended for fire-and-forget use inside news ingestion.
+ *
+ * @param article     Article content to extract events from.
+ * @param articleId   Optional UUID of the news_article_cache row. When provided,
+ *                    `extracted_at` is stamped on that row after the LLM call
+ *                    completes (regardless of whether any events were found),
+ *                    so the backfill and nightly cron never re-pay for the same call.
  */
 export async function extractAndPersistEvents(
-  article: ArticleInput
+  article: ArticleInput,
+  articleId?: string
 ): Promise<ExtractionResult> {
   const candidates = await extractMarketEvents(article);
-  if (candidates.length === 0) {
-    return { inserted: 0, skipped: 0, events: [] };
-  }
 
   const sourceDate = article.publishedAt ? new Date(article.publishedAt) : null;
-  return insertExtractedEvents(candidates, article.url, sourceDate);
+  const result = candidates.length === 0
+    ? { inserted: 0, skipped: 0, events: [] }
+    : await insertExtractedEvents(candidates, article.url, sourceDate);
+
+  // Stamp extracted_at so this article is never re-sent to the LLM.
+  // Fire-and-forget — a stamp failure must never surface to the caller.
+  if (articleId) {
+    dbQuery(
+      `UPDATE news_article_cache SET extracted_at = NOW() WHERE id = $1`,
+      [articleId]
+    ).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('[EventExtraction] Failed to stamp extracted_at', { articleId, error: msg });
+    });
+  }
+
+  return result;
 }

@@ -34,21 +34,12 @@ export const nightlyEventExtractionCron = inngest.createFunction(
   },
   async ({ step }) => {
     const articles = await step.run('fetch-unextracted-articles', async () => {
-      const result = await dbQuery<{
-        title: string;
-        description: string | null;
-        content: string | null;
-        url: string;
-        published_at: string | null;
-      }>(`
-        SELECT title, description, content, url, published_at
+      const result = await dbQuery(`
+        SELECT id, title, description, content, url, published_at
         FROM news_article_cache
         WHERE cached_at >= NOW() - ($1 || ' days')::interval
           AND title IS NOT NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM market_events
-            WHERE source_url = news_article_cache.url
-          )
+          AND extracted_at IS NULL
         ORDER BY cached_at DESC
       `, [LOOKBACK_DAYS]);
 
@@ -67,13 +58,16 @@ export const nightlyEventExtractionCron = inngest.createFunction(
 
       for (const article of articles) {
         try {
-          const result = await extractAndPersistEvents({
-            title: article.title,
-            description: article.description,
-            content: article.content,
-            url: article.url,
-            publishedAt: article.published_at ? new Date(article.published_at) : null,
-          });
+          const result = await extractAndPersistEvents(
+            {
+              title: article.title,
+              description: article.description,
+              content: article.content,
+              url: article.url,
+              publishedAt: article.published_at ? new Date(article.published_at) : null,
+            },
+            article.id,
+          );
           totalInserted += result.inserted;
           totalSkipped += result.skipped;
         } catch (err: unknown) {

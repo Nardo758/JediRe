@@ -2,15 +2,16 @@
  * Backfill Market Event Extraction (Task #372)
  *
  * One-time script that runs extractAndPersistEvents() across ALL rows in
- * news_article_cache (or only those whose URL has no matching market_events
- * row) to populate the event database with historical context.
+ * news_article_cache (or only those with extracted_at IS NULL) to populate
+ * the event database with historical context.
  *
  * Usage:
  *   cd backend && npx ts-node --transpile-only src/scripts/backfill-event-extraction.ts
  *
  * Flags:
- *   --all        Process every cached article regardless of prior extraction
- *                (default: skip articles whose URL already appears in market_events)
+ *   --force      Re-process every cached article regardless of prior extraction
+ *                (default: skip articles where extracted_at IS NOT NULL)
+ *   --all        Alias for --force (backward-compat)
  *   --dry-run    Log what would be processed without calling the LLM or writing to DB
  */
 
@@ -20,7 +21,7 @@ import { logger } from '../utils/logger';
 
 const args = process.argv.slice(2);
 const DRY_RUN  = args.includes('--dry-run');
-const FORCE_ALL = args.includes('--all');
+const FORCE_ALL = args.includes('--force') || args.includes('--all');
 
 async function main() {
   const pool = getPool();
@@ -29,43 +30,42 @@ async function main() {
 
   const articlesResult = FORCE_ALL
     ? await pool.query<{
+        id: string;
         title: string;
         description: string | null;
         content: string | null;
         url: string;
         published_at: string | null;
       }>(`
-        SELECT title, description, content, url, published_at
+        SELECT id, title, description, content, url, published_at
         FROM news_article_cache
         WHERE title IS NOT NULL
         ORDER BY cached_at ASC
       `)
     : await pool.query<{
+        id: string;
         title: string;
         description: string | null;
         content: string | null;
         url: string;
         published_at: string | null;
       }>(`
-        SELECT nac.title, nac.description, nac.content, nac.url, nac.published_at
-        FROM news_article_cache nac
-        WHERE nac.title IS NOT NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM market_events me
-            WHERE me.source_url = nac.url
-          )
-        ORDER BY nac.cached_at ASC
+        SELECT id, title, description, content, url, published_at
+        FROM news_article_cache
+        WHERE title IS NOT NULL
+          AND extracted_at IS NULL
+        ORDER BY cached_at ASC
       `);
 
   const articles = articlesResult.rows;
 
   logger.info('[BackfillEvents] Articles to process', {
     total: articles.length,
-    mode: FORCE_ALL ? 'all cached articles' : 'unextracted only',
+    mode: FORCE_ALL ? 'all cached articles' : 'unextracted only (extracted_at IS NULL)',
   });
 
   if (articles.length === 0) {
-    logger.info('[BackfillEvents] Nothing to process — all articles already have events extracted.');
+    logger.info('[BackfillEvents] Nothing to process — all articles already have extracted_at stamped.');
     await pool.end();
     return;
   }
@@ -84,13 +84,16 @@ async function main() {
     }
 
     try {
-      const result = await extractAndPersistEvents({
-        title: article.title,
-        description: article.description,
-        content: article.content,
-        url: article.url,
-        publishedAt: article.published_at ? new Date(article.published_at) : null,
-      });
+      const result = await extractAndPersistEvents(
+        {
+          title: article.title,
+          description: article.description,
+          content: article.content,
+          url: article.url,
+          publishedAt: article.published_at ? new Date(article.published_at) : null,
+        },
+        article.id,
+      );
 
       totalInserted += result.inserted;
       totalSkipped  += result.skipped;

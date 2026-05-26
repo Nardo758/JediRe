@@ -1507,17 +1507,19 @@ router.get('/snapshots', requireAuth, async (req: Request, res: Response) => {
  * POST /api/v1/georgia/extract-events
  * Manual trigger: run market event extraction over recent news articles.
  * Fetches the last N days of articles from news_article_cache, passes each
- * through extractMarketEvents(), inserts any new events into market_events.
+ * through extractAndPersistEvents(), inserts any new events into market_events,
+ * and stamps `extracted_at` on every processed row so the LLM is never called
+ * twice for the same article.
  * Owner/admin only — avoids unintentional LLM cost accumulation.
  *
- * Body: { lookbackDays?: number }
- *   - 1..30 → process articles cached within the last N days (default 7)
- *   - 0     → process ALL cached articles (full backfill, Task #372)
+ * Body:
+ *   lookbackDays?: number  — 1..30 (default 7); 0 = all cached articles
+ *   force?: boolean        — when true, re-process articles already stamped
  * Response: { inserted, skipped, events: MarketEvent[] }
  */
 router.post('/extract-events', requireAuth, requireRole('owner', 'admin'), async (req: Request, res: Response) => {
   try {
-    const { extractMarketEvents, insertExtractedEvents } = await import('../../services/market-event-extraction.service');
+    const { extractAndPersistEvents } = await import('../../services/market-event-extraction.service');
     const pool = getPool();
 
     const rawLookback = req.body?.lookbackDays;
@@ -1528,30 +1530,37 @@ router.post('/extract-events', requireAuth, requireRole('owner', 'admin'), async
       ? 0
       : Math.max(1, Math.min(parsedLookback, 30));
 
+    const forceAll = Boolean(req.body?.force || req.body?.forceAll);
+    const extractedFilter = forceAll ? '' : 'AND extracted_at IS NULL';
+
     const articlesResult = lookbackDays === 0
       ? await pool.query<{
+          id: string;
           title: string;
           description: string | null;
           content: string | null;
           url: string;
           published_at: string | null;
         }>(`
-          SELECT title, description, content, url, published_at
+          SELECT id, title, description, content, url, published_at
           FROM news_article_cache
           WHERE title IS NOT NULL
+          ${extractedFilter}
           ORDER BY cached_at DESC
         `)
       : await pool.query<{
+          id: string;
           title: string;
           description: string | null;
           content: string | null;
           url: string;
           published_at: string | null;
         }>(`
-          SELECT title, description, content, url, published_at
+          SELECT id, title, description, content, url, published_at
           FROM news_article_cache
           WHERE cached_at >= NOW() - ($1 || ' days')::interval
             AND title IS NOT NULL
+            ${extractedFilter}
           ORDER BY cached_at DESC
         `, [lookbackDays]);
 
@@ -1563,30 +1572,25 @@ router.post('/extract-events', requireAuth, requireRole('owner', 'admin'), async
 
     for (const article of articles) {
       try {
-        const candidates = await extractMarketEvents({
-          title: article.title,
-          description: article.description,
-          content: article.content,
-          url: article.url,
-          publishedAt: article.published_at ? new Date(article.published_at) : null,
-        });
-
-        if (candidates.length > 0) {
-          const insertResult = await insertExtractedEvents(
-            candidates,
-            article.url,
-            article.published_at ? new Date(article.published_at) : null
-          );
-          totalInserted += insertResult.inserted;
-          totalSkipped += insertResult.skipped;
-          for (const evt of insertResult.events) {
-            allEvents.push({
-              id: evt.id,
-              event_name: evt.event_name,
-              event_type: evt.event_type,
-              effective_date: evt.effective_date,
-            });
-          }
+        const result = await extractAndPersistEvents(
+          {
+            title: article.title,
+            description: article.description,
+            content: article.content,
+            url: article.url,
+            publishedAt: article.published_at ? new Date(article.published_at) : null,
+          },
+          article.id,
+        );
+        totalInserted += result.inserted;
+        totalSkipped += result.skipped;
+        for (const evt of result.events) {
+          allEvents.push({
+            id: evt.id,
+            event_name: evt.event_name,
+            event_type: evt.event_type,
+            effective_date: evt.effective_date,
+          });
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -1598,6 +1602,7 @@ router.post('/extract-events', requireAuth, requireRole('owner', 'admin'), async
       success: true,
       articles_processed: articles.length,
       lookback_days: lookbackDays === 0 ? 'all' : lookbackDays,
+      force: forceAll,
       inserted: totalInserted,
       skipped: totalSkipped,
       eventIds: allEvents.map(e => e.id).filter(Boolean),
