@@ -1,0 +1,135 @@
+A1 vs A2 — STRATEGY ↔ DEAL_TYPE CANONICAL DECISION INVESTIGATION
+
+CONTEXT
+Per STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md, investmentStrategy
+and deal_type are disconnected: the PATCH /assumptions/strategy
+endpoint updates investment_strategy_lv only; deal_type is never
+touched. Pattern B routing, RegimeExpand, and 
+RenovationAssumptionsSection read deal_type. The two fields use
+different vocabularies with no mapping.
+
+Leon is deciding between:
+- A1: investmentStrategy becomes canonical; deal_type derived or 
+  deprecated
+- A2 derived: deal_type stays canonical for backward compat; 
+  strategy selection auto-derives deal_type via mapping function
+- A2 event-handler: strategy change fires event that updates 
+  deal_type
+
+This dispatch produces the cost/benefit document Leon needs to 
+choose. Investigation only — no code changes.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INVENTORY ALL DEAL_TYPE CONSUMERS
+═══════════════════════════════════════════════════════════════════
+
+A. Find every code path that reads deal_type:
+   grep -r "deal_type\|dealType" backend/src/ frontend/src/ --include="*.ts" --include="*.tsx"
+
+B. For each consumer:
+   - File path + line numbers
+   - What it does with the value
+   - Whether it's a UI rendering decision, business logic, 
+     database query, or API contract
+
+C. Identify especially load-bearing consumers:
+   - Pattern B routing (m09_line_item_patterns.ts)
+   - RegimeExpand visibility (ProFormaSummaryTab.tsx)
+   - RenovationAssumptionsSection gate
+   - Proforma blueprint template selection
+   - Tab visibility (ROADMAP, etc.)
+   - Any agent prompts that branch on deal_type
+   - Any analytics/reporting that filters by deal_type
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — INVENTORY ALL INVESTMENTSTRATEGY CONSUMERS
+═══════════════════════════════════════════════════════════════════
+
+A. Find every code path that reads investmentStrategy / 
+   investment_strategy_lv:
+   grep -r "investmentStrategy\|investment_strategy_lv" backend/src/ frontend/src/ --include="*.ts" --include="*.tsx"
+
+B. For each consumer, document same as Step 1.
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — VOCABULARY MAPPING
+═══════════════════════════════════════════════════════════════════
+
+A. Enumerate all known deal_type values from the codebase
+B. Enumerate all known investmentStrategy values from the codebase
+C. Produce a mapping table:
+   investmentStrategy value → deal_type value
+   
+   Example:
+   'Rental' → 'existing'
+   'Value-Add' → 'value_add'
+   'Development' → 'development'
+   etc.
+
+D. Identify mapping issues:
+   - investmentStrategy values that map to multiple deal_types
+   - deal_type values with no investmentStrategy equivalent
+   - Vocabulary mismatches that need product decisions
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — COST/BENEFIT FOR EACH OPTION
+═══════════════════════════════════════════════════════════════════
+
+For each of the three options (A1, A2 derived, A2 event-handler):
+
+A. CODE CHANGES REQUIRED
+   - Files that need modification
+   - Estimated lines changed
+   - New code surface (mapping functions, derived columns, triggers)
+
+B. MIGRATION STORY FOR EXISTING DEALS
+   - Backfill required?
+   - Data consistency checks needed?
+   - Risk of breaking active deals during migration
+
+C. OPERATOR-VISIBLE BEHAVIOR
+   - What changes operators see immediately
+   - What changes operators see eventually
+   - Whether the strategy selector becomes functional
+
+D. STATE DRIFT RISK
+   - For each option, how can the two fields fall out of sync?
+   - What guardrails prevent drift?
+   - What detection exists for drift after the fact?
+
+E. ROLLBACK / REVERSIBILITY
+   - If the choice turns out wrong, how hard is it to reverse?
+   - What's the migration story to switch to a different option later?
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — RECOMMENDATION
+═══════════════════════════════════════════════════════════════════
+
+Based on Steps 1-4, recommend which option to choose, with 
+explicit reasoning. Acknowledge uncertainty where present.
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/STRATEGY_CANONICAL_DECISION.md
+
+Structure:
+1. deal_type consumer inventory (Step 1)
+2. investmentStrategy consumer inventory (Step 2)
+3. Vocabulary mapping (Step 3)
+4. Per-option cost/benefit (Step 4)
+5. Recommendation with reasoning (Step 5)
+6. Open questions
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Implement any of the options
+- Modify any code
+- Build a mapping function or derived column
+- Speculate beyond what the codebase shows
+- Skip vocabulary mapping (Step 3) — this is the substantive 
+  product decision underneath the technical one
+- "While I'm here" cleanups
