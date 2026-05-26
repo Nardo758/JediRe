@@ -24,7 +24,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   RefreshCw, Loader2, Plus, Edit3, Trash2, Check, X, RotateCcw,
-  AlertTriangle, ChevronDown, ChevronRight, Lightbulb, TrendingUp,
+  AlertTriangle, ChevronDown, ChevronRight, Lightbulb, TrendingUp, BarChart2,
 } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
@@ -328,6 +328,7 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
   const [editForm,      setEditForm]      = useState<LineFormState>(() => emptyForm(isDevelopment, renoCompletionMonths));
   const [savingLineId,  setSavingLineId]  = useState<string | null>(null);
   const [deletingLineId,setDeletingLineId]= useState<string | null>(null);
+  const [expandedRampLineId, setExpandedRampLineId] = useState<string | null>(null);
 
   // Collapse state for the breakdown section
   const [breakdownCollapsed, setBreakdownCollapsed] = useState(false);
@@ -1022,9 +1023,11 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                         const hasAdoption   = line.adoption != null;
                         // For ramping lines: Year 1 may be 0 or partial; show steady-state in secondary column
                         const isRamping     = hasAdoption && y1Annual < steadyAnnual - 0.01;
+                        const isChartExpanded = expandedRampLineId === line.id;
 
                         return (
-                          <tr key={line.id} style={{ background: idx % 2 === 0 ? C.panel : C.panelAlt }}>
+                          <React.Fragment key={line.id}>
+                          <tr style={{ background: idx % 2 === 0 ? C.panel : C.panelAlt }}>
                             {isEditingThis ? (
                               <>
                                 <td style={td()} colSpan={7}>
@@ -1079,7 +1082,26 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                                 {/* Adoption ramp summary */}
                                 <td style={{ ...td(), minWidth: 160 }}>
                                   {hasAdoption ? (
-                                    <AdoptionSummaryBadge adoption={line.adoption!} />
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                                      <AdoptionSummaryBadge adoption={line.adoption!} />
+                                      <button
+                                        onClick={() => setExpandedRampLineId(isChartExpanded ? null : line.id)}
+                                        title={isChartExpanded ? 'Hide income ramp chart' : 'Show income ramp chart'}
+                                        style={{
+                                          background: isChartExpanded ? C.tealDim : 'none',
+                                          border: `1px solid ${isChartExpanded ? C.teal : C.border}`,
+                                          borderRadius: 3,
+                                          cursor: 'pointer',
+                                          padding: '2px 4px',
+                                          color: isChartExpanded ? C.teal : C.muted,
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          flexShrink: 0,
+                                        }}
+                                      >
+                                        <BarChart2 size={10} />
+                                      </button>
+                                    </div>
                                   ) : (
                                     <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim }}>immediate / flat</span>
                                   )}
@@ -1132,6 +1154,32 @@ export function OtherIncomeTab(props: FinancialEngineTabProps) {
                               </>
                             )}
                           </tr>
+                          {isChartExpanded && hasAdoption && (
+                            <tr style={{ background: idx % 2 === 0 ? C.panel : C.panelAlt }}>
+                              <td
+                                colSpan={8}
+                                style={{
+                                  padding: '10px 16px 12px',
+                                  borderTop: `1px solid ${C.teal}33`,
+                                  borderBottom: `1px solid ${C.border}`,
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                  <TrendingUp size={10} color={C.teal} />
+                                  <span style={{ fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: C.teal, letterSpacing: '0.05em' }}>
+                                    INCOME RAMP · {line.label}
+                                  </span>
+                                </div>
+                                <IncomeRampChart
+                                  rampStart={line.adoption!.ramp_start_period}
+                                  rampDuration={line.adoption!.ramp_duration_months}
+                                  steadyMonthly={line.adoption!.steady_state_monthly}
+                                  probability={line.adoption!.probability_adopted}
+                                />
+                              </td>
+                            </tr>
+                          )}
+                          </React.Fragment>
                         );
                       })}
                     </tbody>
