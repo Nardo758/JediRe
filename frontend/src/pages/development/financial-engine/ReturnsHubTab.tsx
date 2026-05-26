@@ -3,6 +3,7 @@ import { BT } from '../../../components/deal/bloomberg-ui';
 import { ReturnsTab } from './ReturnsTab';
 import { SensitivityTab } from './SensitivityTab';
 import type { FinancialEngineTabProps } from './types';
+import { UnitMixMismatchBannerConnected } from './UnitMixMismatchBanner';
 
 const MONO = BT.font.mono;
 
@@ -15,6 +16,13 @@ const SECTIONS: { id: Section; label: string; icon: string }[] = [
 
 export function ReturnsHubTab(props: FinancialEngineTabProps) {
   const [section, setSection] = useState<Section>('returns');
+
+  const handleGoToUnitMix = () => {
+    props.onTabChange?.(1);
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('fe-console-subtab', { detail: { subTab: 'unitmix' } }));
+    }, 50);
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -47,6 +55,13 @@ export function ReturnsHubTab(props: FinancialEngineTabProps) {
           RETURNS · M08
         </span>
       </div>
+
+      <UnitMixMismatchBannerConnected
+        f9Financials={props.f9Financials}
+        deal={props.deal}
+        dealId={props.dealId}
+        onGoToUnitMix={handleGoToUnitMix}
+      />
 
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {section === 'returns'     && <ReturnsTab {...props} />}

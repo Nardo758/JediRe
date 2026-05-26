@@ -16,6 +16,7 @@ import type { HierarchicalResolution } from '../../../components/f9/Reconciliati
 import { SourceDocPill } from '../../../components/f9/SourceDocPill';
 import type { SourceDocument } from '../../../hooks/useSourceDocuments';
 import { isPatternB } from '../../../config/m09_line_item_patterns';
+import { UnitMixMismatchBannerConnected } from './UnitMixMismatchBanner';
 
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
@@ -428,7 +429,7 @@ function mapSourceToDocType(source: string | null | undefined): string | null {
   return null;
 }
 
-export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh, lvCostTreatmentView, onLvTreatmentViewChange, sourceDocuments }: FinancialEngineTabProps) {
+export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields, minorCollisionFields, onF9Refresh, lvCostTreatmentView, onLvTreatmentViewChange, sourceDocuments, f9Financials, onTabChange }: FinancialEngineTabProps) {
   const viewMode             = useDealStore(s => s.viewMode);
   const setViewMode          = useDealStore(s => s.setViewMode);
   // Number of columns in the table. Expansion/sub-rows use this so they
@@ -1277,6 +1278,21 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
           <StabilizedPotentialView dealId={dealId} />
         </div>
+      )}
+
+      {/* ── Unit Mix Mismatch Banner ── */}
+      {!showStabilized && (
+        <UnitMixMismatchBannerConnected
+          f9Financials={f9Financials}
+          deal={deal}
+          dealId={dealId}
+          onGoToUnitMix={() => {
+            onTabChange?.(1);
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('fe-console-subtab', { detail: { subTab: 'unitmix' } }));
+            }, 50);
+          }}
+        />
       )}
 
       {/* ── Scrollable body ── */}
