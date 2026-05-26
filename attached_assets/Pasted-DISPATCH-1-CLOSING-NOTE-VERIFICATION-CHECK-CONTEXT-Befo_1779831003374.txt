@@ -1,0 +1,170 @@
+DISPATCH 1 CLOSING NOTE — VERIFICATION CHECK
+
+CONTEXT
+Before queueing dependent work (Validation Phase 1, Unit Mix 
+Phase 1), verify the Strategy + Before/After investigation 
+closing note. This is read-only verification — no code changes, 
+no new investigation. Confirm what's been documented is 
+accurate and identify any gaps before downstream dispatches 
+build on it.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — DOCUMENT INTEGRITY
+═══════════════════════════════════════════════════════════════════
+
+A. Confirm docs/operations/STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md 
+   exists and is readable
+B. Confirm the document has all sections per the dispatch spec:
+   1. Per-strategy field visibility current state (Step 1)
+   2. Before/after UI current state + gaps (Step 2)
+   3. Integration touchpoints (Step 3) — including cross-fix 
+      integration with UNIT_MIX_OTHER_INCOME_INVESTIGATION.md and 
+      VALIDATION_GRID_AND_SALE_COMPS_INVESTIGATION.md
+   4. Design recommendations (Step 4)
+   5. Implementation phasing recommendation
+   6. Open questions
+
+C. Flag any section that's missing, truncated, or substantially 
+   thinner than expected
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — SOURCE CITATION VERIFICATION
+═══════════════════════════════════════════════════════════════════
+
+For 3-5 specific factual claims in the document, verify the cited 
+source actually says what's claimed:
+
+A. Pick a claim about which strategy templates exist + their 
+   parameters. Open backend/src/services/proforma/blueprint/proforma-blueprint.ts 
+   and verify PROFORMA_TEMPLATES matches what the document states.
+
+B. Pick a claim about RenovationAssumptionsSection. Open 
+   frontend/src/pages/development/financial-engine/RenovationAssumptionsSection.tsx 
+   and verify the fields claimed (selectedTier, renovationUnits, 
+   rehabCostPerUnit, premiumRamp, capexItems) actually exist there.
+
+C. Pick a claim about regimeDataByField / Pattern B / 
+   ProFormaSummaryTab Regime Expand section. Verify the actual 
+   ProFormaSummaryTab.tsx code matches the document's 
+   characterization.
+
+D. Pick a claim about M07 LVE integration with post-renovation 
+   side. Trace the actual code path and verify it works as 
+   described.
+
+E. Pick a claim about how strategy templates affect tab/section 
+   visibility. Verify the actual visibility logic in the codebase.
+
+For each verified claim, document:
+- The claim as stated in the closing note
+- The actual code/file that confirms or contradicts it
+- Verdict: CONFIRMED / PARTIAL / CONTRADICTED / NOT FOUND
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — CROSS-FIX INTEGRATION FINDINGS
+═══════════════════════════════════════════════════════════════════
+
+The dispatch explicitly asked for cross-fix integration with the 
+other two investigations. Verify this section exists and is 
+substantive:
+
+A. Does Step 3E surface specific integration questions between 
+   the strategy/before-after pattern and:
+   - Unit Mix page (pre-renovation vs post-renovation unit mix 
+     view)
+   - Other Income page (program suggestions adoption timeline 
+     anchor for value-add deals)
+   - Validation Grid (current state vs target state column 
+     treatment)
+
+B. For each cross-fix point, does the document identify:
+   - Whether it changes the design of the other fix
+   - Whether it changes the implementation order
+   - Whether new architectural decisions need to be made before 
+     either fix proceeds
+
+C. Flag any integration concern that isn't addressed
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — OPEN QUESTIONS ASSESSMENT
+═══════════════════════════════════════════════════════════════════
+
+A. List the open questions the document surfaces
+B. For each open question, classify:
+   - BLOCKING — implementation can't proceed without this answered
+   - IMPORTANT — affects scope or design but doesn't block start
+   - INFORMATIONAL — nice to know, can be handled inline
+C. Flag any blocking question that depends on data or sources 
+   that don't currently exist in the platform (would require 
+   upstream work before being answerable)
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — POTENTIAL GAPS IN THE INVESTIGATION
+═══════════════════════════════════════════════════════════════════
+
+Critical: this step requires you to think about what's MISSING, 
+not what's present. Consider:
+
+A. Are there strategy templates the investigation should have 
+   covered but didn't? Specifically check if str (short-term 
+   rental) and land received less attention than value_add and 
+   redevelopment.
+
+B. Are there before/after patterns elsewhere in the codebase that 
+   the investigation didn't reference? Search for any existing 
+   side-by-side or comparison UI patterns that might inform the 
+   recommended design.
+
+C. Is there a strategy × deal_type matrix that wasn't fully 
+   covered? F9 map identified 7 strategies × 3 deal_types = 21 
+   combinations. Did the investigation cover all, or skip some?
+
+D. Are there data dependencies for the before/after UI that 
+   weren't surfaced? Specifically: what data does the 
+   post-renovation/target-state side need that doesn't exist 
+   today?
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Append a verification section to the existing investigation file 
+(do NOT create a new file):
+
+docs/operations/STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md
+Append at the end:
+
+═══════════════════════════════════════════════════════════════════
+VERIFICATION PASS — 2026-05-26
+═══════════════════════════════════════════════════════════════════
+
+(a) Document integrity check: <result>
+(b) Source citations verified (3-5 spot checks):
+    - Claim 1: <verdict + actual evidence>
+    - Claim 2: <verdict + actual evidence>
+    - ...
+(c) Cross-fix integration coverage: <assessment>
+(d) Open questions classification:
+    BLOCKING: <list>
+    IMPORTANT: <list>
+    INFORMATIONAL: <list>
+(e) Identified gaps in the investigation:
+    <list of things the investigation should have covered but 
+    didn't>
+(f) Overall verdict: 
+    APPROVED FOR DOWNSTREAM WORK / NEEDS AMENDMENT / NEEDS 
+    REWORK
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify the existing investigation content (only append 
+  verification section)
+- Run new investigation work outside the verification scope
+- Implement any code changes
+- Skip the source citation spot-checks; this is the most 
+  important step
+- Skip Step 5 (gaps) — the discipline is to think about what's 
+  missing, not just confirm what's present
+- "While I'm here" cleanups
