@@ -33,328 +33,6 @@ const C = {
   dim:      '#334155',
 };
 
-interface ManualUnitType {
-  id: string;
-  type: string;
-  bedrooms: number;
-  bathrooms: number;
-  count: number;
-  avg_sqft: number;
-  in_place_rent: number;
-  market_rent: number | null;
-  notes: string | null;
-  source: 'manual';
-}
-
-const PLATFORM_DEFAULTS: Record<number, { avgSqft: number; projectedRent: number; label: string }> = {
-  0: { avgSqft: 550,  projectedRent: 1200, label: 'Studio' },
-  1: { avgSqft: 750,  projectedRent: 1500, label: '1BR' },
-  2: { avgSqft: 1050, projectedRent: 2000, label: '2BR' },
-  3: { avgSqft: 1400, projectedRent: 2600, label: '3BR' },
-  4: { avgSqft: 1800, projectedRent: 3200, label: '4BR+' },
-};
-
-function AddUnitTypeModal({
-  initial,
-  existingTypes,
-  targetUnits,
-  currentSumExcluding,
-  m03TargetUnits,
-  zoningMaxGfa,
-  f3UnitMix,
-  onSave,
-  onClose,
-  saving: savingProp = false,
-}: {
-  initial: Partial<ManualUnitType> | null;
-  existingTypes: string[];
-  targetUnits: number | null;
-  currentSumExcluding: number;
-  m03TargetUnits: number | null;
-  zoningMaxGfa: number | null;
-  f3UnitMix?: UnitMixTarget | null;
-  onSave: (entry: ManualUnitType) => Promise<void>;
-  onClose: () => void;
-  saving?: boolean;
-}) {
-  const isEdit = initial?.id != null;
-  const [label, setLabel] = useState(initial?.type ?? '');
-  const [bedrooms, setBedrooms] = useState<number>(initial?.bedrooms ?? 1);
-  const [bathrooms, setBathrooms] = useState<number>(initial?.bathrooms ?? 1);
-  const [count, setCount] = useState<string>(String(initial?.count ?? ''));
-  const [avgSqft, setAvgSqft] = useState<string>(String(initial?.avg_sqft ?? ''));
-  const [projRent, setProjRent] = useState<string>(String(initial?.in_place_rent ?? ''));
-  const [mktRent, setMktRent] = useState<string>(String(initial?.market_rent ?? ''));
-  const [notes, setNotes] = useState(initial?.notes ?? '');
-  const [saving, setSaving] = useState(false);
-  const [errors, setErrors] = useState<string[]>([]);
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const [usedPlatformDefaults, setUsedPlatformDefaults] = useState(false);
-
-  const isSaving = saving || savingProp;
-
-  // Suggested count from F3 unit mix percentages × M03 total
-  const f3SuggestedCount: number | null = (() => {
-    if (!f3UnitMix || !m03TargetUnits || m03TargetUnits <= 0) return null;
-    const pctMap: Record<number, number> = {
-      0: f3UnitMix.studio,
-      1: f3UnitMix.oneBed,
-      2: f3UnitMix.twoBed,
-      3: f3UnitMix.threeBed,
-    };
-    const pct = pctMap[Math.min(bedrooms, 3)];
-    if (!pct || pct <= 0) return null;
-    return Math.round((pct / 100) * m03TargetUnits);
-  })();
-
-  const applyDefaults = (br: number) => {
-    const d = PLATFORM_DEFAULTS[Math.min(br, 4)];
-    if (!d) return;
-    setAvgSqft(String(d.avgSqft));
-    setProjRent(String(d.projectedRent));
-    setMktRent(String(d.projectedRent));
-    if (!label) setLabel(d.label);
-    setUsedPlatformDefaults(true);
-  };
-
-  const handleBedroomsChange = (br: number) => {
-    setBedrooms(br);
-    if (!initial?.avg_sqft && !initial?.in_place_rent) applyDefaults(br);
-  };
-
-  const validate = (): boolean => {
-    const errs: string[] = [];
-    const warns: string[] = [];
-    if (!label.trim()) errs.push('Label is required');
-    const cntNum = parseInt(count, 10);
-    if (isNaN(cntNum) || cntNum <= 0) errs.push('Unit count must be a positive integer');
-    const sqftNum = parseInt(avgSqft, 10);
-    if (isNaN(sqftNum) || sqftNum <= 0) errs.push('Avg sqft is required');
-    const rentNum = parseFloat(projRent);
-    if (isNaN(rentNum) || rentNum <= 0) errs.push('Projected rent must be a positive number');
-
-    if (!isEdit && existingTypes.includes(label.trim())) {
-      errs.push(`A floor plan named "${label.trim()}" already exists`);
-    }
-
-    if (!errs.length) {
-      const newSum = currentSumExcluding + cntNum;
-      if (targetUnits != null && targetUnits > 0) {
-        if (newSum > targetUnits) {
-          // Hard block: over-allocation corrupts downstream capacity
-          errs.push(`Unit total (${newSum}) exceeds deal target (${targetUnits}) by ${newSum - targetUnits}. Reduce this count.`);
-        } else if (newSum < targetUnits) {
-          // Advisory: incremental building is fine — propagation fires when balanced
-          const remaining = targetUnits - newSum;
-          warns.push(`${remaining} unit${remaining !== 1 ? 's' : ''} still to allocate — mix will propagate to the financial model once balanced at ${targetUnits}`);
-        }
-      }
-      if (sqftNum < 200) warns.push('Avg sqft < 200 — unusually small unit');
-      if (sqftNum > 4000) warns.push('Avg sqft > 4,000 — unusually large unit');
-      const totalGfa = sqftNum * cntNum;
-      if (zoningMaxGfa != null && zoningMaxGfa > 0 && totalGfa > zoningMaxGfa) {
-        warns.push(`Sqft × count (${totalGfa.toLocaleString()} sf) exceeds zoning envelope (${zoningMaxGfa.toLocaleString()} sf)`);
-      }
-      if (m03TargetUnits != null && m03TargetUnits > 0 && Math.abs(newSum - m03TargetUnits) / m03TargetUnits > 0.05) {
-        warns.push(`Unit total (${newSum}) differs from M03 capacity output (${m03TargetUnits}) by more than 5%`);
-      }
-    }
-
-    setErrors(errs);
-    setWarnings(warns);
-    return errs.length === 0;
-  };
-
-  const handleSubmit = async () => {
-    if (!validate()) return;
-    setSaving(true);
-    try {
-      const rentNum = parseFloat(projRent);
-      const mktNum = mktRent.trim() ? parseFloat(mktRent) : null;
-      await onSave({
-        id: initial?.id ?? crypto.randomUUID(),
-        type: label.trim(),
-        bedrooms,
-        bathrooms,
-        count: parseInt(count, 10),
-        avg_sqft: parseInt(avgSqft, 10),
-        in_place_rent: rentNum,
-        market_rent: mktNum != null && !isNaN(mktNum) ? mktNum : null,
-        notes: notes.trim() || null,
-        source: 'manual',
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const applyF3Suggestion = () => {
-    if (f3SuggestedCount != null) setCount(String(f3SuggestedCount));
-  };
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%', background: C.panelAlt, border: `1px solid ${C.border}`, borderRadius: 4,
-    color: C.text, fontFamily: MONO, fontSize: 11, padding: '5px 8px', boxSizing: 'border-box',
-  };
-  const labelStyle: React.CSSProperties = {
-    fontFamily: LABEL, fontSize: 9, color: C.muted, letterSpacing: '0.06em', marginBottom: 3, display: 'block',
-  };
-  const fieldStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', marginBottom: 10 };
-
-  return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div style={{
-        background: C.panel, border: `1px solid ${C.borderHi}`, borderRadius: 8,
-        width: 480, maxWidth: '95vw', maxHeight: '90vh', overflow: 'auto',
-        boxShadow: `0 8px 40px rgba(0,0,0,0.6)`,
-      }}>
-        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontFamily: LABEL, fontSize: 10, fontWeight: 700, color: C.cyan, letterSpacing: '0.08em' }}>
-            {isEdit ? 'EDIT UNIT TYPE' : 'ADD UNIT TYPE'}
-          </span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, padding: 0, lineHeight: 0 }}>
-            <X size={14} />
-          </button>
-        </div>
-
-        <div style={{ padding: 16 }}>
-          {usedPlatformDefaults && (
-            <div style={{ background: C.cyanDim, border: `1px solid ${C.cyan}44`, borderRadius: 4, padding: '6px 10px', marginBottom: 10, fontFamily: LABEL, fontSize: 8, color: C.cyan }}>
-              Platform defaults applied — update sqft and rent to match your submarket.
-            </div>
-          )}
-
-          <div style={fieldStyle}>
-            <label style={labelStyle}>LABEL *</label>
-            <input style={inputStyle} value={label} onChange={e => setLabel(e.target.value)} placeholder='e.g. "1BR/1BA" or "Studio+Den"' />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div style={fieldStyle}>
-              <label style={labelStyle}>BEDROOMS *</label>
-              <select
-                style={{ ...inputStyle, cursor: 'pointer' }}
-                value={bedrooms}
-                onChange={e => handleBedroomsChange(Number(e.target.value))}
-              >
-                <option value={0}>Studio (0)</option>
-                <option value={1}>1 Bedroom</option>
-                <option value={2}>2 Bedrooms</option>
-                <option value={3}>3 Bedrooms</option>
-                <option value={4}>4+ Bedrooms</option>
-              </select>
-            </div>
-            <div style={fieldStyle}>
-              <label style={labelStyle}>BATHROOMS *</label>
-              <input style={inputStyle} type="number" step={0.5} min={0} value={bathrooms}
-                onChange={e => setBathrooms(Number(e.target.value))} />
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div style={fieldStyle}>
-              <label style={labelStyle}>
-                UNIT COUNT *
-                {targetUnits != null && targetUnits > 0 && (
-                  <span style={{ color: C.dim, marginLeft: 6 }}>target: {targetUnits}</span>
-                )}
-              </label>
-              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                <input style={{ ...inputStyle, flex: 1 }} type="number" min={1} step={1} value={count}
-                  onChange={e => setCount(e.target.value)} placeholder="e.g. 50" />
-                {f3SuggestedCount != null && (
-                  <button
-                    type="button"
-                    onClick={applyF3Suggestion}
-                    title={`F3 suggests ${f3SuggestedCount} units for this type`}
-                    style={{
-                      background: C.cyanDim, border: `1px solid ${C.cyan}44`, borderRadius: 3,
-                      padding: '4px 7px', cursor: 'pointer', fontFamily: LABEL, fontSize: 8,
-                      color: C.cyan, whiteSpace: 'nowrap', flexShrink: 0,
-                    }}
-                  >
-                    F3: {f3SuggestedCount}
-                  </button>
-                )}
-              </div>
-              {count && targetUnits != null && targetUnits > 0 && (
-                <span style={{ fontFamily: LABEL, fontSize: 8, color: (currentSumExcluding + parseInt(count || '0', 10)) === targetUnits ? C.green : C.red, marginTop: 2 }}>
-                  Running total: {currentSumExcluding + parseInt(count || '0', 10)} / {targetUnits}
-                </span>
-              )}
-            </div>
-            <div style={fieldStyle}>
-              <label style={labelStyle}>AVG SQFT *</label>
-              <input style={inputStyle} type="number" min={1} step={1} value={avgSqft}
-                onChange={e => setAvgSqft(e.target.value)} placeholder="e.g. 750" />
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div style={fieldStyle}>
-              <label style={labelStyle}>PROJECTED RENT $/MO *</label>
-              <input style={inputStyle} type="number" min={0} step={50} value={projRent}
-                onChange={e => setProjRent(e.target.value)} placeholder="e.g. 1500" />
-            </div>
-            <div style={fieldStyle}>
-              <label style={labelStyle}>MARKET RENT $/MO</label>
-              <input style={inputStyle} type="number" min={0} step={50} value={mktRent}
-                onChange={e => setMktRent(e.target.value)} placeholder="defaults to projected rent" />
-            </div>
-          </div>
-
-          <div style={fieldStyle}>
-            <label style={labelStyle}>NOTES</label>
-            <input style={inputStyle} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes" />
-          </div>
-
-          {errors.length > 0 && (
-            <div style={{ background: '#1a0808', border: `1px solid ${C.red}55`, borderRadius: 4, padding: '8px 10px', marginBottom: 8 }}>
-              {errors.map((e, i) => (
-                <div key={i} style={{ fontFamily: LABEL, fontSize: 9, color: C.red, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <X size={10} /> {e}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {warnings.length > 0 && (
-            <div style={{ background: C.amberDim, border: `1px solid ${C.amber}55`, borderRadius: 4, padding: '8px 10px', marginBottom: 8 }}>
-              {warnings.map((w, i) => (
-                <div key={i} style={{ fontFamily: LABEL, fontSize: 9, color: C.amber, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <AlertTriangle size={10} /> {w}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-            <button
-              onClick={onClose}
-              style={{ fontFamily: LABEL, fontSize: 9, padding: '5px 14px', borderRadius: 3, background: 'none', border: `1px solid ${C.border}`, color: C.muted, cursor: 'pointer' }}
-            >
-              CANCEL
-            </button>
-            <button
-              onClick={() => { if (validate()) void handleSubmit(); }}
-              disabled={isSaving}
-              style={{ fontFamily: LABEL, fontSize: 9, padding: '5px 14px', borderRadius: 3, background: C.cyan, border: 'none', color: C.bg, cursor: isSaving ? 'wait' : 'pointer', fontWeight: 700, opacity: isSaving ? 0.6 : 1 }}
-            >
-              {isSaving ? 'SAVING…' : isEdit ? 'SAVE CHANGES' : 'ADD UNIT TYPE'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 interface ExpirationCurve {
   months_0_3: number;
   months_3_6: number;
@@ -1743,39 +1421,16 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   }, [dealId, load, onF9Refresh]);
 
   // One-click prefill: create unit types from F3 % splits × M03/target count.
-  // Adjusts last entry's count so sum === target_units exactly (avoids rounding drift).
+  // Delegates to buildF3PrefillTypes (same logic, explicit labels, last-row
+  // rounding correction) so both paths stay consistent.
   const handlePrefillFromM03F3 = useCallback(async () => {
-    if (!m03TargetUnits || !f3UnitMix) return;
+    if (!f3UnitMix) return;
     const total = targetUnits ?? m03TargetUnits;
-    const bedroomMap = [
-      { br: 0, pct: f3UnitMix.studio },
-      { br: 1, pct: f3UnitMix.oneBed },
-      { br: 2, pct: f3UnitMix.twoBed },
-      { br: 3, pct: f3UnitMix.threeBed },
-    ];
-    const entries: ManualUnitType[] = [];
-    for (const { br, pct } of bedroomMap) {
-      const count = Math.round((pct / 100) * total);
-      if (count <= 0) continue;
-      const d = PLATFORM_DEFAULTS_MANUAL[br] ?? PLATFORM_DEFAULTS_MANUAL[1];
-      entries.push({
-        _id: crypto.randomUUID(),
-        type: d.label,
-        bedrooms: br,
-        bathrooms: br === 0 ? 1 : br,
-        count,
-        avg_sqft: d.avg_sqft,
-        in_place_rent: d.in_place_rent,
-        market_rent: null,
-        notes: `Prefilled from F3 (${pct}% of ${total} units)`,
-      });
-    }
-    if (entries.length === 0) return;
-    const currentSum = entries.reduce((s, e) => s + e.count, 0);
-    const diff = total - currentSum;
-    if (diff !== 0) entries[entries.length - 1].count += diff;
-    await saveTypes(entries);
-  }, [m03TargetUnits, f3UnitMix, saveTypes, targetUnits]);
+    if (!total || total <= 0) return;
+    const rows = buildF3PrefillTypes(f3UnitMix, total);
+    if (rows.length === 0) return;
+    await saveTypes(rows);
+  }, [m03TargetUnits, targetUnits, f3UnitMix, saveTypes]);
 
 
   // Persist a rent edit to the backend (unit_mix:{idx}:in_place_rent or :market_rent),
@@ -2212,11 +1867,11 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                     >
                       <Plus size={12} /> ADD FIRST UNIT TYPE
                     </button>
-                    {m03TargetUnits != null && m03TargetUnits > 0 && f3UnitMix && (
+                    {f3UnitMix && (targetUnits ?? m03TargetUnits) != null && (targetUnits ?? m03TargetUnits)! > 0 && (
                       <button
                         onClick={() => { void handlePrefillFromM03F3(); }}
                         disabled={savingTypes}
-                        title={`Seed ${m03TargetUnits} units from F3 Programming % splits`}
+                        title={`Seed ${targetUnits ?? m03TargetUnits} units from F3 Programming % splits`}
                         style={{
                           fontFamily: LABEL, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
                           padding: '8px 16px', borderRadius: 4, border: `1px solid ${C.purple}66`,
@@ -2276,16 +1931,16 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                     <Loader2 size={11} color={C.muted} style={{ animation: 'spin 1s linear infinite' }} />
                   )}
                   {/* F3 + M03 prefill button — also available when mix has rows (replace / merge) */}
-                  {designProgramMix != null && (m03TargetUnits ?? dealTargetUnits) != null && (m03TargetUnits ?? dealTargetUnits)! > 0 && (
+                  {f3UnitMix != null && (targetUnits ?? m03TargetUnits) != null && (targetUnits ?? m03TargetUnits)! > 0 && (
                     <button
                       disabled={savingTypes}
                       onClick={() => {
-                        const total = (m03TargetUnits ?? dealTargetUnits)!;
-                        const rows = buildF3PrefillTypes(designProgramMix, total);
+                        const total = (targetUnits ?? m03TargetUnits)!;
+                        const rows = buildF3PrefillTypes(f3UnitMix, total);
                         if (rows.length === 0) return;
                         void saveTypes(rows);
                       }}
-                      title={`Replace mix with F3 program ${designProgramMix.studio}/${designProgramMix.oneBed}/${designProgramMix.twoBed}/${designProgramMix.threeBed}% across ${(m03TargetUnits ?? dealTargetUnits)} units`}
+                      title={`Replace mix with F3 program ${f3UnitMix.studio}/${f3UnitMix.oneBed}/${f3UnitMix.twoBed}/${f3UnitMix.threeBed}% across ${(targetUnits ?? m03TargetUnits)} units`}
                       style={{
                         fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
                         padding: '3px 10px', borderRadius: 3, border: `1px solid ${C.purple}55`,
@@ -2882,7 +2537,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
         <AddEditUnitTypeModal
           initial={editingType}
           allTypes={localTypes}
-          targetUnits={dealTargetUnits ?? m03TargetUnits}
+          targetUnits={targetUnits ?? m03TargetUnits}
           onClose={() => { setShowAddModal(false); setEditingType(null); }}
           onSave={(updated: ManualUnitType) => {
             const next = localTypes.some(t => t._id === updated._id)
@@ -2909,78 +2564,6 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
         />
       )}
     </div>
-
-    {/* Add / Edit unit type modal */}
-    {showAddModal && (
-      <AddUnitTypeModal
-        initial={editingEntry ?? null}
-        existingTypes={(unitMix ?? []).map(u => u.type).filter(t => t !== (editingEntry as any)?.type)}
-        targetUnits={targetUnits}
-        currentSumExcluding={
-          editingEntry
-            ? (unitMix ?? []).filter(u => u.type !== (editingEntry as any)?.type).reduce((s, u) => s + u.count, 0)
-            : (unitMix ?? []).reduce((s, u) => s + u.count, 0)
-        }
-        m03TargetUnits={m03TargetUnits}
-        zoningMaxGfa={zoningMaxGfa}
-        f3UnitMix={f3UnitMix}
-        onSave={handleSaveUnitType}
-        onClose={() => { setShowAddModal(false); setEditingEntry(null); }}
-        saving={savingUnitMix}
-      />
-    )}
-
-    {/* Delete confirm dialog */}
-    {deletingType && (
-      <div
-        style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex',
-          alignItems: 'center', justifyContent: 'center', zIndex: 9000,
-        }}
-        onClick={() => setDeletingType(null)}
-      >
-        <div
-          style={{
-            background: C.panel, border: `1px solid ${C.redDim}`, borderRadius: 8,
-            padding: 24, width: 340, boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
-          }}
-          onClick={e => e.stopPropagation()}
-        >
-          <div style={{ fontFamily: LABEL, fontSize: 11, fontWeight: 700, color: C.red, marginBottom: 8 }}>
-            DELETE FLOOR PLAN TYPE
-          </div>
-          <div style={{ fontFamily: LABEL, fontSize: 9, color: C.muted, marginBottom: 18 }}>
-            Remove <strong style={{ color: C.text }}>{deletingType}</strong> from the unit mix?
-            This will trigger a proforma recalculation.
-          </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button
-              onClick={() => setDeletingType(null)}
-              style={{
-                fontFamily: LABEL, fontSize: 9, fontWeight: 700, background: 'none',
-                border: `1px solid ${C.border}`, color: C.muted, borderRadius: 4,
-                padding: '6px 14px', cursor: 'pointer',
-              }}
-            >
-              CANCEL
-            </button>
-            <button
-              onClick={() => handleDeleteUnitType(deletingType)}
-              disabled={savingUnitMix}
-              style={{
-                fontFamily: LABEL, fontSize: 9, fontWeight: 700, background: C.red,
-                border: 'none', color: '#fff', borderRadius: 4, padding: '6px 14px',
-                cursor: savingUnitMix ? 'wait' : 'pointer', opacity: savingUnitMix ? 0.6 : 1,
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-              }}
-            >
-              {savingUnitMix ? <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={10} />}
-              DELETE
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
     </>
   );
 }
