@@ -106,7 +106,6 @@ const DEAL_NAV = [
   { key: 'F3',  label: 'MARKET' },
   { key: 'F4',  label: 'SUPPLY' },
   { key: 'F5',  label: 'COMPS' },
-  { key: 'M27', label: 'SALE COMPS' },
   { key: 'F6',  label: 'STRATEGY' },
   { key: 'F7',  label: 'TRAFFIC' },
   { key: 'F8',  label: 'PROFORMA' },
@@ -195,7 +194,7 @@ interface FKeyNavBarProps {
   isInsideDeal: boolean;
 }
 
-const DEAL_TAB_IDS = ['overview','zoning','market','supply','competition','comps','strategy','traffic','proforma','capital','risk','execution','ai-agent'];
+const DEAL_TAB_IDS = ['overview','zoning','market','supply','competition','strategy','traffic','proforma','capital','risk','execution','ai-agent'];
 
 const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
   activePath, onNavigate, isInsideDeal,

@@ -27,6 +27,7 @@ import { TrendsAnalysisSection } from '../../components/deal/sections/TrendsAnal
 import { EventTimelineSection } from '../../components/deal/sections/EventTimelineSection';
 import OpportunityEngineSection from '../../components/deal/sections/OpportunityEngineSection';
 import DealCompAnalysisTab from '../../components/deal/sections/DealCompAnalysisTab';
+import CompsModule from '../../components/deal/sections/CompsModule';
 
 interface MetricCorrelation {
   id: number;
@@ -137,7 +138,8 @@ function getTabsForMode(mode: DealMode): Array<{ id: string; label: string }> {
         { id: 'overview', label: 'OVERVIEW' },
         { id: 'discovery', label: 'DISCOVERY' },
         { id: 'demand', label: 'DEMAND' },
-        { id: 'comps', label: 'COMPS' },
+        { id: 'comps', label: 'RENT COMPS' },
+        { id: 'sale-comps', label: 'SALE COMPS' },
         { id: 'trends', label: 'TRENDS' },
         { id: 'program', label: 'PROGRAM' },
         { id: 'events', label: 'EVENTS' },
@@ -147,7 +149,8 @@ function getTabsForMode(mode: DealMode): Array<{ id: string; label: string }> {
         { id: 'overview', label: 'OVERVIEW' },
         { id: 'discovery', label: 'DISCOVERY' },
         { id: 'positioning', label: 'POSITIONING' },
-        { id: 'comps', label: 'COMPS' },
+        { id: 'comps', label: 'RENT COMPS' },
+        { id: 'sale-comps', label: 'SALE COMPS' },
         { id: 'trends', label: 'TRENDS' },
         { id: 'repositioning', label: 'REPOSITIONING' },
         { id: 'events', label: 'EVENTS' },
@@ -157,7 +160,8 @@ function getTabsForMode(mode: DealMode): Array<{ id: string; label: string }> {
         { id: 'overview', label: 'OVERVIEW' },
         { id: 'discovery', label: 'DISCOVERY' },
         { id: 'positioning', label: 'POSITIONING' },
-        { id: 'comps', label: 'COMPS' },
+        { id: 'comps', label: 'RENT COMPS' },
+        { id: 'sale-comps', label: 'SALE COMPS' },
         { id: 'trends', label: 'TRENDS' },
         { id: 'program', label: 'PROGRAM' },
         { id: 'events', label: 'EVENTS' },
@@ -854,6 +858,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
       case 'demand': return renderDemandTab();
       case 'positioning': return renderPositioningTab();
       case 'comps': return renderCompsTab();
+      case 'sale-comps': return <CompsModule dealId={dealId} embedded={true} />;
       case 'program':
         if (dealMode === 'development') return renderProgramTab();
         return renderExistingProgramTab();
