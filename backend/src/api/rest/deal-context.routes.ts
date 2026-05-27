@@ -2,7 +2,6 @@ import { Router, Request, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { JEDIScoreService } from '../../services/jedi-score.service';
-import { scoreAndPersist } from '../../services/strategyArbitrage.service';
 import { bustM08Cache } from '../../services/m08-strategies.service';
 
 const router = Router();
@@ -296,23 +295,9 @@ router.post('/:dealId/recompute', async (req: Request, res: Response) => {
       jediScores = deriveScoresFromFinancials(financial, vacancy, exitCapRate);
     }
 
-    let strategyResult = null;
-    try {
-      const strategyScores = await scoreAndPersist(dealId);
-      const topScore = strategyScores.reduce((best, s) =>
-        s.overall_score > best.overall_score ? s : best,
-        strategyScores[0]
-      );
-      strategyResult = {
-        recommended: topScore?.strategy_name ?? 'core',
-        scores: strategyScores,
-        arbitrageGap: financial.returns.irr.value - (exitCapRate * 100),
-        arbitrageAlert: financial.returns.irr.value - (exitCapRate * 100) > 5,
-      };
-    } catch (stratErr) {
-      logger.warn(`[Recompute] Strategy service unavailable for deal ${dealId}, using derived`, stratErr);
-      strategyResult = deriveStrategyFromFinancials(financial, vacancy, exitCapRate);
-    }
+    // Strategy result: derived from financials (v1 scoreAndPersist removed in Task #1251 T7.1;
+    // full v2 analysis available via GET /api/v1/deals/:dealId/strategies separately)
+    const strategyResult = deriveStrategyFromFinancials(financial, vacancy, exitCapRate);
 
     const riskLevel = vacancy > 0.10 ? 'high'
       : exitCapRate > 0.09 ? 'elevated'

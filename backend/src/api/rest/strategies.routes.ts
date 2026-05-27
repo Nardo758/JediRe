@@ -1,5 +1,5 @@
 /**
- * M08 Strategy Arbitrage Routes
+ * Strategy Library Routes — CRUD for the strategies table
  * GET  /api/v1/strategies              — list strategies (system + org)
  * GET  /api/v1/strategies/templates    — list system templates only
  * POST /api/v1/strategies              — create custom strategy
@@ -8,13 +8,15 @@
  * DELETE /api/v1/strategies/:id       — soft-delete strategy
  * POST /api/v1/strategies/:id/clone   — clone a strategy
  * PUT  /api/v1/strategies/reorder     — reorder strategies
- * POST /api/v1/strategies/score-deal/:dealId — score deal (backward compat)
+ *
+ * Removed (Task #1251 T7.1): POST /score-deal/:dealId — used legacy v1 scoreAndPersist
+ * from strategyArbitrage.service.ts (deleted). Per-deal scoring is now exclusively handled
+ * by GET /api/v1/deals/:dealId/strategies (v2 detection-first system).
  */
 
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
-import { query, getPool } from '../../database/connection';
-import { scoreAndPersist, detectArbitrage, calculateStrategyScore, ScoreContext } from '../../services/strategyArbitrage.service';
+import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -86,29 +88,6 @@ router.put('/reorder', requireAuth, async (req: AuthenticatedRequest, res: Respo
   } catch (error: any) {
     logger.error('[M08] Error reordering:', error);
     res.status(500).json({ success: false, error: 'Failed to reorder' });
-  }
-});
-
-router.post('/score-deal/:dealId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { dealId } = req.params;
-    const userId = req.user!.userId;
-    const orgId = await getUserOrgId(userId);
-    // Verify deal access
-    const dealCheck = await query(
-      `SELECT id FROM deals WHERE id = $1 AND (user_id = $2 OR ($3::uuid IS NOT NULL AND org_id = $3))`,
-      [dealId, userId, orgId]
-    );
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    }
-    const ctx = { userId, orgId };
-    const scores = await scoreAndPersist(dealId, ctx);
-    const arbitrage = detectArbitrage(scores);
-    res.json({ success: true, data: scores, arbitrage });
-  } catch (error: any) {
-    logger.error('[M08] Error scoring deal:', error);
-    res.status(500).json({ success: false, error: 'Failed to score deal' });
   }
 });
 
