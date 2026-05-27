@@ -34,6 +34,34 @@ const MONO = BT.font.mono;
 type QualityBand    = 'STRONG' | 'WATCH' | 'WEAK' | 'UNVALIDATED';
 type ConfidenceLevel = 'high' | 'medium' | 'low' | null;
 
+// ── Override impact signal ─────────────────────────────────────────────────────
+//
+// Shown as a compact inline badge in the CURRENT VALUE cell for any row that has
+// both isOverride=true AND a resolvable platform baseline.
+//
+// Banding (based on |deltaPct| from baseline):
+//   ≤ 10%  → INFO  (cyan border)
+//   10-25% → INFO  (cyan, slightly bolder)
+//   > 25%  → CAUTION (amber border, prominent)
+//
+// IRR estimates are rule-of-thumb sensitivities for typical 5-7yr levered
+// multifamily. Labeled "(est.)" so operators know they are approximations.
+// Sensitivity source: standard partial derivative relationships for going-in
+// NOI capitalisation with moderate leverage (60-70% LTV).
+
+interface OverrideImpact {
+  /** % delta from platform baseline (signed) */
+  deltaPct: number;
+  /** Delta in basis points for rate/growth fields (signed) */
+  deltaBps?: number;
+  /** Positive = higher IRR expected; negative = lower IRR expected */
+  direction: 'positive' | 'negative';
+  /** Estimated IRR delta in basis points (signed) — undefined when not estimable */
+  estimatedIrrBps?: number;
+  /** Severity drives badge colour */
+  severity: 'info' | 'caution';
+}
+
 interface ValidationRow {
   key: string;
   assumption: string;
@@ -48,6 +76,8 @@ interface ValidationRow {
   /** For overridden rows: the platform / platform-implied baseline for comparison */
   platformBaseline?: string;
   isOverride?: boolean;
+  /** Override impact signal — present only when isOverride and baseline known */
+  overrideImpact?: OverrideImpact;
 }
 
 interface ValidationGroup {
@@ -150,6 +180,108 @@ function deriveConfidence(
   if (quality === 'WATCH')       return 'medium';
   if (quality === 'WEAK')        return 'low';
   return 'low';
+}
+
+// ── Override impact computation ────────────────────────────────────────────────
+//
+// Rule-of-thumb IRR sensitivities for levered multifamily (5-7yr hold, ~65% LTV).
+//   exit_cap:       each +1 bps exit cap → approx −2.5 bps levered IRR
+//   rent_growth_y1: each +1 bps rent growth → approx +1.8 bps levered IRR
+//   stab_occ:       each +1 pp occupancy → approx +12 bps levered IRR
+//   interest_rate:  each +1 bps rate → approx −2.0 bps levered IRR
+//   selling_costs:  directional only (depends heavily on exit value — no coefficient)
+//   hold_period:    directional only (non-linear, IRR shape varies by deal)
+//   ltv:            directional only (leverage amplification — no linear coefficient)
+//
+// All estimated IRR values are labeled "(est.)" in the badge.
+
+type SensitivityKey = 'exit_cap' | 'rent_growth_y1' | 'stab_occ' | 'interest_rate';
+const SENSITIVITY_BPS: Record<SensitivityKey, { irrBpsPerInputBps: number; higherIsBetter: boolean }> = {
+  exit_cap:        { irrBpsPerInputBps: 2.5,  higherIsBetter: false },
+  rent_growth_y1:  { irrBpsPerInputBps: 1.8,  higherIsBetter: true },
+  stab_occ:        { irrBpsPerInputBps: 0.12, higherIsBetter: true },  // per-bps (occ in 0–1 scale → ×10000)
+  interest_rate:   { irrBpsPerInputBps: 2.0,  higherIsBetter: false },
+};
+
+/**
+ * Compute the override impact signal for a row that has a platform baseline.
+ *
+ * @param fieldKey     Key matching SENSITIVITY_BPS for IRR estimation
+ * @param operator     Current operator value (decimal, e.g. 0.055 for 5.5%)
+ * @param baseline     Platform baseline value (same unit)
+ * @param preComputedDeltaBps  Optional pre-computed delta in bps (e.g. from implied-cap endpoint)
+ * @param higherIsBetterOverride  Override the direction from SENSITIVITY_BPS
+ */
+function computeOverrideImpact(
+  fieldKey: string,
+  operator: number,
+  baseline: number,
+  preComputedDeltaBps?: number | null,
+  higherIsBetterOverride?: boolean,
+): OverrideImpact | undefined {
+  if (baseline === 0) return undefined;
+  const deltaPct = ((operator - baseline) / Math.abs(baseline)) * 100;
+  if (Math.abs(deltaPct) < 0.5) return undefined;   // sub-0.5% — too small to surface
+
+  const severity: 'info' | 'caution' = Math.abs(deltaPct) > 25 ? 'caution' : 'info';
+  const sens = SENSITIVITY_BPS[fieldKey as SensitivityKey];
+  const higherIsBetter = higherIsBetterOverride ?? sens?.higherIsBetter ?? true;
+  const direction: 'positive' | 'negative' = (deltaPct > 0) === higherIsBetter ? 'positive' : 'negative';
+
+  let estimatedIrrBps: number | undefined;
+  let deltaBps: number | undefined;
+
+  if (sens) {
+    // Convert operator delta to basis points (values are in 0-1 decimal scale, so ×10000)
+    const rawDeltaBps = preComputedDeltaBps ?? Math.round((operator - baseline) * 10000);
+    deltaBps = rawDeltaBps;
+    // IRR impact = |deltaBps| × coefficient, sign follows higherIsBetter direction
+    const irrMagnitude = Math.round(Math.abs(rawDeltaBps) * sens.irrBpsPerInputBps);
+    estimatedIrrBps = direction === 'positive' ? irrMagnitude : -irrMagnitude;
+  } else if (preComputedDeltaBps != null) {
+    deltaBps = preComputedDeltaBps;
+  }
+
+  return { deltaPct, deltaBps, direction, estimatedIrrBps, severity };
+}
+
+// ── Override impact badge ──────────────────────────────────────────────────────
+
+function OverrideImpactBadge({ impact }: { impact: OverrideImpact }) {
+  const INFO_COLOR    = '#00C8FF';   // cyan — within normal band
+  const CAUTION_COLOR = BT.text.amber;
+
+  const isPos     = impact.direction === 'positive';
+  const bandColor = impact.severity === 'caution' ? CAUTION_COLOR : INFO_COLOR;
+  const arrow     = isPos ? '▲' : '▼';
+  const arrowColor = isPos ? BT.met.financial : BT.text.red;
+
+  // Build delta label: prefer bps for rate/growth fields, fall back to %
+  const deltaLabel = impact.deltaBps != null
+    ? `${impact.deltaBps > 0 ? '+' : ''}${impact.deltaBps} bps vs baseline`
+    : `${impact.deltaPct > 0 ? '+' : ''}${Math.abs(impact.deltaPct).toFixed(0)}% vs baseline`;
+
+  const irrLabel = impact.estimatedIrrBps != null
+    ? ` · est. ${impact.estimatedIrrBps > 0 ? '+' : ''}${impact.estimatedIrrBps} bps IRR`
+    : '';
+
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+      padding: '1px 5px', marginTop: 2,
+      border: `1px solid ${bandColor}55`,
+      borderRadius: 2,
+      background: `${bandColor}0a`,
+      whiteSpace: 'nowrap',
+    }}>
+      <span style={{ fontFamily: MONO, fontSize: 6, color: arrowColor, fontWeight: 700, lineHeight: 1 }}>
+        {arrow}
+      </span>
+      <span style={{ fontFamily: MONO, fontSize: 6.5, color: bandColor, fontWeight: impact.severity === 'caution' ? 700 : 600 }}>
+        {deltaLabel}{irrLabel} (est.)
+      </span>
+    </div>
+  );
 }
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
@@ -340,6 +472,9 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
       detail:          exitDetail,
       platformBaseline: exitPlatform,
       isOverride:      exitIsOverride,
+      overrideImpact:  exitIsOverride && exitCapVal != null && impliedCap?.implied_cap_rate != null
+        ? computeOverrideImpact('exit_cap', exitCapVal, impliedCap.implied_cap_rate, impliedCap.delta_bps)
+        : undefined,
     });
 
     // Hold Period
@@ -362,6 +497,9 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
       platformBaseline: holdPyo === 'Operator Override' && holdYrs !== PLATFORM_DEFAULTS.holdYears
         ? `Platform default: ${fmtYrs(PLATFORM_DEFAULTS.holdYears)}`
         : undefined,
+      overrideImpact: holdPyo === 'Operator Override' && holdYrs != null && holdYrs !== PLATFORM_DEFAULTS.holdYears
+        ? computeOverrideImpact('hold_period', holdYrs, PLATFORM_DEFAULTS.holdYears, null, true)
+        : undefined,
     });
 
     // Selling Costs
@@ -380,6 +518,9 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
         ? `Platform default: ${fmtPct(PLATFORM_DEFAULTS.sellingCosts)}`
         : undefined,
       isOverride: sellCosts != null && Math.abs(sellCosts - PLATFORM_DEFAULTS.sellingCosts) > 0.005,
+      overrideImpact: sellCosts != null && Math.abs(sellCosts - PLATFORM_DEFAULTS.sellingCosts) > 0.005
+        ? computeOverrideImpact('selling_costs', sellCosts, PLATFORM_DEFAULTS.sellingCosts, null, false)
+        : undefined,
     });
 
     groups.push({ label: 'DISPOSITION', icon: '◈', rows });
@@ -460,6 +601,9 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
       platformBaseline: rentGrPyo && rentGrowthY1 != null && Math.abs(rentGrowthY1 - PLATFORM_DEFAULTS.rentGrowthY1) > 0.005
         ? `Platform benchmark: ${fmtPct(PLATFORM_DEFAULTS.rentGrowthY1)}`
         : undefined,
+      overrideImpact: rentGrPyo && rentGrowthY1 != null && Math.abs(rentGrowthY1 - PLATFORM_DEFAULTS.rentGrowthY1) > 0.001
+        ? computeOverrideImpact('rent_growth_y1', rentGrowthY1, PLATFORM_DEFAULTS.rentGrowthY1)
+        : undefined,
     });
 
     // Stabilized Occupancy
@@ -485,6 +629,9 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
         ? `Platform default: ${(PLATFORM_DEFAULTS.occupancy * 100).toFixed(0)}%`
         : undefined,
       isOverride: !hasRROcc && occ != null && Math.abs(occ - PLATFORM_DEFAULTS.occupancy) > 0.02,
+      overrideImpact: !hasRROcc && occ != null && Math.abs(occ - PLATFORM_DEFAULTS.occupancy) > 0.005
+        ? computeOverrideImpact('stab_occ', occ, PLATFORM_DEFAULTS.occupancy)
+        : undefined,
     });
 
     // Collection / Bad Debt
@@ -505,6 +652,9 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
         ? `Platform default: ${fmtPct(PLATFORM_DEFAULTS.collectionLoss)}`
         : undefined,
       isOverride: collLoss != null && Math.abs(collLoss - PLATFORM_DEFAULTS.collectionLoss) > 0.005,
+      overrideImpact: collLoss != null && Math.abs(collLoss - PLATFORM_DEFAULTS.collectionLoss) > 0.001
+        ? computeOverrideImpact('collection_loss', collLoss, PLATFORM_DEFAULTS.collectionLoss, null, false)
+        : undefined,
     });
 
     groups.push({ label: 'REVENUE', icon: '⊕', rows });
@@ -583,6 +733,9 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
         ? `Platform default: ${(PLATFORM_DEFAULTS.ltv * 100).toFixed(0)}%`
         : undefined,
       isOverride: !hasDebt && ltvDisplay != null && Math.abs(ltvDisplay - PLATFORM_DEFAULTS.ltv) > 0.03,
+      overrideImpact: !hasDebt && ltvDisplay != null && Math.abs(ltvDisplay - PLATFORM_DEFAULTS.ltv) > 0.01
+        ? computeOverrideImpact('ltv', ltvDisplay, PLATFORM_DEFAULTS.ltv, null, true)
+        : undefined,
     });
 
     const intRate = fin?.capitalStack?.interestRate ?? assum?.financing?.interestRate ?? null;
@@ -602,6 +755,9 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
         ? `Platform default: ${fmtPct(PLATFORM_DEFAULTS.interestRate)}`
         : undefined,
       isOverride: !hasDebt && intRate != null && intRate > 0 && Math.abs(intRate - PLATFORM_DEFAULTS.interestRate) > 0.005,
+      overrideImpact: !hasDebt && intRate != null && intRate > 0 && Math.abs(intRate - PLATFORM_DEFAULTS.interestRate) > 0.001
+        ? computeOverrideImpact('interest_rate', intRate, PLATFORM_DEFAULTS.interestRate)
+        : undefined,
     });
 
     const termYrs = assum?.financing?.term ?? null;
@@ -767,6 +923,9 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
                       {row.detail}
                     </span>
                   )}
+                  {row.overrideImpact && (
+                    <OverrideImpactBadge impact={row.overrideImpact} />
+                  )}
                 </div>
 
                 {/* ③ CONFIDENCE */}
@@ -827,6 +986,8 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
         <span style={{ fontFamily: MONO, fontSize: 7, color: '#FF5252' }}>WEAK — outlier vs market</span>
         <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>UNVALIDATED — no source data</span>
         <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>↳ = platform baseline for overrides</span>
+        <span style={{ fontFamily: MONO, fontSize: 7, color: '#00C8FF', opacity: 0.8 }}>▲/▼ = est. IRR impact of override (info band)</span>
+        <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.amber, opacity: 0.8 }}>▲/▼ = est. IRR impact, &gt;25% delta (caution band)</span>
         <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
           Edit in: DEAL TERMS · INPUTS · DEBT
         </span>
