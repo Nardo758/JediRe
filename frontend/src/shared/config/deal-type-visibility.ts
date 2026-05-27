@@ -25,7 +25,7 @@ export type StationId = 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6';
 export type ModuleId =
   | 'M01' | 'M02' | 'M03' | 'M04' | 'M05' | 'M06' | 'M07' | 'M08'
   | 'M09' | 'M10' | 'M11' | 'M12' | 'M13' | 'M14' | 'M15'
-  | 'M17' | 'M18' | 'M20' | 'M21' | 'M22' | 'M29' | 'M35';
+  | 'M17' | 'M18' | 'M20' | 'M21' | 'M22' | 'M27' | 'M29' | 'M35';
 
 export type FKey =
   | 'F1' | 'F2' | 'F3' | 'F4' | 'F5' | 'F6' | 'F7' | 'F8'
@@ -468,6 +468,17 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
     parentModule: 'M09',
     showFor: { existing: 'full', development: 'full', redevelopment: 'full' },
     dealTypeNotes: 'Unit Mix is now its own peer module (M29). Sources: rent roll for existing, selected development path for ground-up, M-PIE override for redevelopment. Propagates to M09, M03, 3D design.',
+  },
+
+  {
+    moduleId: 'M27',
+    name: 'Sale Comp Intelligence',
+    fKey: null,
+    station: 'S2',
+    stationLabel: 'Market & Deal Analysis',
+    category: 'Intelligence',
+    showFor: { existing: 'full', development: 'full', redevelopment: 'full' },
+    dealTypeNotes: 'M27 Sale Comp Intelligence: transaction comps, price-per-unit benchmarking, and buyer-type pattern detection for all deal types.',
   },
 
   {

@@ -80,6 +80,7 @@ import { ProjectTimelinePage } from './development/ProjectTimelinePage';
 import { ProjectManagementSection } from '../components/deal/sections/ProjectManagementSection';
 
 import { FilesSection } from '../components/deal/sections/FilesSection';
+import CompsModule from '../components/deal/sections/CompsModule';
 
 import OpusAISection from '../components/deal/sections/OpusAISection';
 import { AIRecommendationsSection } from '../components/deal/sections/AIRecommendationsSection';
@@ -169,6 +170,9 @@ const MarketScreen = (props: ScreenProps) => (
 );
 const StrategyScreen = (props: ScreenProps) => (
   <StrategyArbitragePage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
+);
+const CompsScreen = (props: ScreenProps) => (
+  <CompsModule dealId={props.dealId} deal={props.deal} embedded={true} onUpdate={props.onUpdate} />
 );
 const FinancialEngineWrapper = (p: ScreenProps) => (
   <FinancialEnginePage
@@ -922,6 +926,7 @@ const DealDetailPage: React.FC = () => {
     { id: 'market',      moduleId: 'M05', fkey: 'F3',  code: 'M05', short: 'MARKET',     label: 'Market Intel',     icon: <TrendingUp size={14} />,      component: MarketScreen },
     { id: 'supply',      moduleId: 'M04', fkey: 'F4',  code: 'M04', short: 'SUPPLY',     label: 'Supply Pipeline',  icon: <Package size={14} />,         component: SupplyPipelineScreen },
     { id: 'strategy',    moduleId: 'M08', fkey: 'F5',  code: 'M08', short: 'STRATEGY',   label: 'Strategy',         icon: <Target size={14} />,          component: StrategyScreen },
+    { id: 'comps',       moduleId: 'M27', fkey: '',    code: 'M27', short: 'COMPS',      label: 'Sale Comps',       icon: <Building2 size={14} />,       component: CompsScreen },
     { id: 'traffic',     moduleId: 'M07', fkey: 'F6',  code: 'M07', short: 'TRAFFIC',    label: 'Traffic Intel',    icon: <Activity size={14} />,        component: TrafficScreen },
     { id: 'design-3d',   moduleId: 'M03', fkey: 'F7',  code: 'M03', short: '3D DESIGN',  label: '3D Design',        icon: <Box size={14} />,             component: Design3DScreen },
     { id: 'capital',     moduleId: 'M11', fkey: 'F8',  code: 'M11', short: 'DEBT/CAP',   label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
