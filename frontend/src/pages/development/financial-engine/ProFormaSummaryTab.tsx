@@ -942,16 +942,33 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     .sort((a, b) => NCTRL_ORDER.indexOf(a.field) - NCTRL_ORDER.indexOf(b.field));
   const noiRow   = rows.find(r => r.field === 'noi');
 
-  // Deal type — drives pattern routing (A/B/C per m09_line_item_patterns.ts)
-  const dealType: string = (deal?.['deal_type'] as string | null) ?? (deal?.['dealType'] as string | null) ?? 'existing';
-
-  // Template ID — drives template-aware row set rendering (Task #1236).
-  // Falls back gracefully: null/unrecognized → existing deal_type-based render.
+  // Template ID — primary routing signal when present (Task #1355).
+  // Computed before dealType so the template can drive pattern routing.
+  // Falls back gracefully: null/unrecognized → deal_type-based render (backward compatible).
   const proformaTemplateId: string | null = data?.proformaTemplateId ?? null;
   const isFlipTemplate     = proformaTemplateId === 'flip';
   const isStrTemplate      = proformaTemplateId === 'str_shortterm';
   const isLandHoldTemplate = proformaTemplateId === 'land_hold';
   const isSpecialTemplate  = isFlipTemplate || isStrTemplate || isLandHoldTemplate;
+
+  // Deal type — drives pattern routing (A/B/C per m09_line_item_patterns.ts).
+  // Task #1355: when proformaTemplateId is present, derive effective deal type from it
+  // so template-aware rendering is the primary signal, not deal.deal_type directly.
+  // Null/unrecognised templateId falls through to the raw deal_type column (no regression
+  // for pre-Task-#1233 deals that have deal_type but no investmentStrategy).
+  const _rawDealType: string = (deal?.['deal_type'] as string | null) ?? (deal?.['dealType'] as string | null) ?? 'existing';
+  const dealType: string = (() => {
+    switch (proformaTemplateId) {
+      case 'acquisition_stabilized':  return 'existing';
+      case 'acquisition_value_add':   return 'value_add';
+      case 'redevelopment':           return 'redevelopment';
+      case 'development_ground_up':   return 'development';
+      case 'flip':                    return 'value_add';
+      case 'str_shortterm':           return 'existing';
+      case 'land_hold':               return 'existing';
+      default:                        return _rawDealType;
+    }
+  })();
 
   // Template-aware OPEX row filtering — only carry-relevant rows for flip/land_hold (Task #1236)
   const FLIP_CARRY_CTRL   = new Set<string>(['utilities']);
