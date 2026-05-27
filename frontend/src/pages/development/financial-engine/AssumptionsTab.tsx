@@ -1614,12 +1614,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     return map;
   }, [sourceDocuments]);
 
-  const [closeDate, setCloseDate] = useState('');
-  const [saleDate,  setSaleDate]  = useState('');
-  const [csLocal, setCsLocal]     = useState<{
-    purchasePrice: string; ltcPct: string; interestRate: string;
-    ioPeriodMonths: string; amortizationYears: string; originationFeePct: string;
-  }>({ purchasePrice: '', ltcPct: '', interestRate: '', ioPeriodMonths: '', amortizationYears: '', originationFeePct: '' });
 
   // Seed from the parent's already-fetched f9Financials so the INPUTS form renders
   // immediately on first mount (no 1-2 s blank while the own fetch completes).
@@ -1724,9 +1718,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       const data: DealFinancials = res.data?.data ?? res.data;
       if (data?.proforma) {
         setFinancials(data);
-        // Hydrate close/sale dates — first-load wins; user edits are not clobbered
-        if (data.closeDate) setCloseDate((prev: string) => prev || String(data.closeDate));
-        if (data.saleDate)  setSaleDate((prev: string)  => prev || String(data.saleDate));
+        // (dates moved to DealTermsTab — Task #1367)
       }
     } catch { /* silent degradation */ }
     finally { if (tok === fetchRef.current) setLoading(false); }
@@ -1782,20 +1774,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     } catch { /* non-fatal */ }
   }, [dealId]);
 
-  // Sync capital-stack guidance inputs from freshly-loaded financials (first load only).
-  // Session edits win — if the user has already typed something we don't clobber it.
-  useEffect(() => {
-    if (!financials?.capitalStack) return;
-    const cs = financials.capitalStack;
-    setCsLocal(prev => ({
-      purchasePrice:     prev.purchasePrice     || (cs.purchasePrice     != null ? String(Math.round(cs.purchasePrice)) : ''),
-      ltcPct:            prev.ltcPct            || (cs.ltcPct            != null ? (cs.ltcPct * 100).toFixed(2)         : ''),
-      interestRate:      prev.interestRate      || (cs.interestRate      != null ? (cs.interestRate * 100).toFixed(3)   : ''),
-      ioPeriodMonths:    prev.ioPeriodMonths    || (cs.ioPeriodMonths    != null ? String(cs.ioPeriodMonths)            : ''),
-      amortizationYears: prev.amortizationYears || (cs.amortizationYears != null ? String(cs.amortizationYears)        : ''),
-      originationFeePct: prev.originationFeePct || (cs.originationFeePct != null ? (cs.originationFeePct * 100).toFixed(3) : ''),
-    }));
-  }, [financials]);
+  // (csLocal hydration moved to DealTermsTab — Task #1367)
 
   // Initial-load fetch: keyed strictly on dealId. We deliberately exclude
   // `fetchFinancials` from deps because that callback closes over
@@ -1962,13 +1941,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     }));
   }, [enqueuePatch]);
 
-  // Patch a capital-stack guidance field to the backend (year: null = deal-level).
-  const patchCapStack = useCallback((field: string, rawVal: string) => {
-    const v = parseFloat(rawVal.replace(/,/g, ''));
-    if (isNaN(v)) return;
-    const normalized = (field === 'ltcPct' || field === 'interestRate' || field === 'originationFeePct') ? +(v / 100).toFixed(6) : v;
-    enqueuePatch(field, null, normalized);
-  }, [enqueuePatch]);
+  // (patchCapStack moved to DealTermsTab — Task #1367)
 
   // ── Backend-driven row derivation from proforma.year1 ──────────────────────
   // Sections 1 & 3: rows derived from financials.proforma.year1 + FIELD_META
@@ -2604,135 +2577,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
           onAckOverride={handleAckOverride}
         />
       )}
-
-      {/* ── Section A: Deal Timeline ─────────────────────────────────────────── */}
-      <div className="px-4 py-2 bg-[#0c0c0c] border-b border-[#1e1e1e]">
-        <div className="flex items-center gap-2 mb-2">
-          <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#22d3ee', letterSpacing: '0.1em' }}>
-            A — DEAL TIMELINE
-          </span>
-          <div style={{ flex: 1, borderTop: '1px dashed #22d3ee22' }} />
-          <span style={{ fontFamily: MONO, fontSize: 7, color: '#0e7490' }}>seeds hold period · exit waterfall</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label style={{ fontFamily: MONO, fontSize: 8, color: '#64748b', letterSpacing: '0.06em' }}>CLOSE DATE</label>
-            <input
-              type="date"
-              value={closeDate}
-              onChange={e => setCloseDate(e.target.value)}
-              onBlur={e => {
-                apiClient.patch(`/api/v1/deals/${dealId}/assumptions/dates`, {
-                  closeDate: e.target.value || null, saleDate: saleDate || null,
-                }).catch(() => {});
-              }}
-              style={{
-                fontFamily: MONO, fontSize: 9, background: '#1a1a1a', color: '#e2e8f0',
-                border: '1px solid #2a2a2a', borderRadius: 3, padding: '2px 6px',
-                colorScheme: 'dark',
-              }}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label style={{ fontFamily: MONO, fontSize: 8, color: '#64748b', letterSpacing: '0.06em' }}>TARGET SALE DATE</label>
-            <input
-              type="date"
-              value={saleDate}
-              onChange={e => setSaleDate(e.target.value)}
-              onBlur={e => {
-                apiClient.patch(`/api/v1/deals/${dealId}/assumptions/dates`, {
-                  closeDate: closeDate || null, saleDate: e.target.value || null,
-                }).catch(() => {});
-              }}
-              style={{
-                fontFamily: MONO, fontSize: 9, background: '#1a1a1a', color: '#e2e8f0',
-                border: '1px solid #2a2a2a', borderRadius: 3, padding: '2px 6px',
-                colorScheme: 'dark',
-              }}
-            />
-          </div>
-          {closeDate && saleDate && (() => {
-            const ms = new Date(saleDate).getTime() - new Date(closeDate).getTime();
-            const yrs = (ms / (1000 * 60 * 60 * 24 * 365.25));
-            return yrs > 0 ? (
-              <span style={{ fontFamily: MONO, fontSize: 9, color: '#10b981' }}>
-                {yrs.toFixed(1)} yr hold
-              </span>
-            ) : null;
-          })()}
-        </div>
-      </div>
-
-      {/* ── Section B: Capital Structure Guidance ───────────────────────────── */}
-      <div className="px-4 py-2 bg-[#0c0c0c] border-b border-[#1e1e1e]">
-        <div className="flex items-center gap-2 mb-2">
-          <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#7c3aed', letterSpacing: '0.1em' }}>
-            B — CAPITAL STRUCTURE GUIDANCE
-          </span>
-          <div style={{ flex: 1, borderTop: '1px dashed #7c3aed33' }} />
-          <span style={{ fontFamily: MONO, fontSize: 7, color: '#6d28d9' }}>seeds Debt Tab · optimizer runs independently</span>
-        </div>
-        <div className="flex items-center gap-4 flex-wrap">
-          {([
-            { key: 'purchasePrice',     label: 'PURCHASE PRICE',  placeholder: '0',      suffix: '$',   hint: 'e.g. 12500000',      debtLink: false },
-            { key: 'ltcPct',            label: 'LTV %',           placeholder: '65.00',  suffix: '%',   hint: '% of purchase price', debtLink: true  },
-            { key: 'interestRate',      label: 'RATE %',          placeholder: '6.750',  suffix: '%',   hint: 'senior loan rate',    debtLink: true  },
-            { key: 'ioPeriodMonths',    label: 'I/O PERIOD',      placeholder: '24',     suffix: 'mo',  hint: 'months before amort', debtLink: true  },
-            { key: 'amortizationYears', label: 'AMORT',           placeholder: '30',     suffix: 'yr',  hint: 'amortization years',  debtLink: true  },
-            { key: 'originationFeePct', label: 'ORIG FEE %',      placeholder: '1.000',  suffix: '%',   hint: 'origination fee %',   debtLink: true  },
-          ] as Array<{ key: keyof typeof csLocal; label: string; placeholder: string; suffix: string; hint: string; debtLink: boolean }>).map(({ key, label, placeholder, suffix, hint, debtLink }) => (
-            <div key={key} className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-1">
-                <label style={{ fontFamily: MONO, fontSize: 7, color: '#475569', letterSpacing: '0.07em' }}>{label}</label>
-                {debtLink && (
-                  <button
-                    title="View / edit in Debt Tab"
-                    onClick={() => onTabChange?.(4)}
-                    style={{ fontFamily: MONO, fontSize: 6, color: '#2dd4bf', background: 'none', border: '1px solid #2dd4bf44', borderRadius: 2, padding: '0 3px', cursor: 'pointer', lineHeight: 1.5 }}
-                  >→ DEBT</button>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                {suffix === '$' && <span style={{ fontFamily: MONO, fontSize: 9, color: '#64748b' }}>$</span>}
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={csLocal[key]}
-                  placeholder={placeholder}
-                  title={hint}
-                  onChange={e => setCsLocal(prev => ({ ...prev, [key]: e.target.value }))}
-                  onBlur={e => patchCapStack(key, e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); } }}
-                  style={{
-                    fontFamily: MONO, fontSize: 10, fontWeight: 700,
-                    background: '#1a1a1a', color: '#e2e8f0',
-                    border: '1px solid #2a2a2a', borderRadius: 3,
-                    padding: '2px 5px', width: key === 'purchasePrice' ? 100 : 56,
-                    outline: 'none',
-                  }}
-                />
-                {suffix !== '$' && <span style={{ fontFamily: MONO, fontSize: 8, color: '#475569' }}>{suffix}</span>}
-              </div>
-            </div>
-          ))}
-          <div className="flex flex-col justify-end ml-2">
-            {financials?.capitalStack && (
-              <span style={{ fontFamily: MONO, fontSize: 7, color: '#334155' }}>
-                Loan: {financials.capitalStack.loanAmount != null
-                  ? '$' + (financials.capitalStack.loanAmount / 1e6).toFixed(1) + 'M'
-                  : '—'}
-                {financials.capitalStack.equityAtClose != null && (
-                  <>  ·  Equity: ${(financials.capitalStack.equityAtClose / 1e6).toFixed(1)}M</>
-                )}
-              </span>
-            )}
-            <button
-              onClick={() => onTabChange?.(4)}
-              style={{ fontFamily: MONO, fontSize: 6, color: '#2dd4bf', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0, marginTop: 2 }}
-            >▸ DEBT TAB has final say · open Debt Tab →</button>
-          </div>
-        </div>
-      </div>
 
       {/* Grid */}
       <table className="w-full border-collapse" style={{ fontFamily: MONO }}>

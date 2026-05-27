@@ -749,6 +749,11 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   const [goingInCap,     setGoingInCap]         = useState('');
   const [stabilizedCap,  setStabilizedCap]      = useState('');
   const [closeDate,      setCloseDate]          = useState('');
+  const [saleDate,       setSaleDate]           = useState('');
+  const [csLocal,        setCsLocal]            = useState<{
+    purchasePrice: string; ltcPct: string; interestRate: string;
+    ioPeriodMonths: string; amortizationYears: string; originationFeePct: string;
+  }>({ purchasePrice: '', ltcPct: '', interestRate: '', ioPeriodMonths: '', amortizationYears: '', originationFeePct: '' });
 
   // ── HOLD & TARGETS ─────────────────────────────────────────────────────────
   const [holdYears,      setHoldYears]          = useState('');
@@ -810,6 +815,7 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     if (fin.assumptions?.holdYears != null)      setHoldYears(String(fin.assumptions.holdYears));
     if (fin.assumptions?.exitCap != null)        setExitCap((fin.assumptions.exitCap * 100).toFixed(2));
     if (fin.closeDate)                           setCloseDate(fin.closeDate);
+    if ((fin as any).saleDate)                   setSaleDate((fin as any).saleDate);
     // Items 3/4/5 — return hurdles & disposition
     if ((fin.assumptions as any)?.targetIrr != null)       setTargetIrr(((fin.assumptions as any).targetIrr * 100).toFixed(2));
     if ((fin.assumptions as any)?.targetEm != null)        setTargetEm(String((fin.assumptions as any).targetEm));
@@ -828,6 +834,21 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     if (uovr.closingCostsReserves   != null) setCloseReserves(fmtInputNum(uovr.closingCostsReserves));
     if (uovr.closingCostsOther      != null) setCloseOther(fmtInputNum(uovr.closingCostsOther));
   }, [props.dealId, fin]);
+
+  // Sync capital-stack guidance inputs from freshly-loaded financials (first load only).
+  // Session edits win — if the user has already typed something we don't clobber it.
+  useEffect(() => {
+    if (!fin?.capitalStack) return;
+    const cs = fin.capitalStack;
+    setCsLocal(prev => ({
+      purchasePrice:     prev.purchasePrice     || (cs.purchasePrice     != null ? String(Math.round(cs.purchasePrice)) : ''),
+      ltcPct:            prev.ltcPct            || ((cs as any).ltcPct            != null ? ((cs as any).ltcPct * 100).toFixed(2)         : ''),
+      interestRate:      prev.interestRate      || ((cs as any).interestRate      != null ? ((cs as any).interestRate * 100).toFixed(3)   : ''),
+      ioPeriodMonths:    prev.ioPeriodMonths    || ((cs as any).ioPeriodMonths    != null ? String((cs as any).ioPeriodMonths)            : ''),
+      amortizationYears: prev.amortizationYears || ((cs as any).amortizationYears != null ? String((cs as any).amortizationYears)        : ''),
+      originationFeePct: prev.originationFeePct || ((cs as any).originationFeePct != null ? ((cs as any).originationFeePct * 100).toFixed(3) : ''),
+    }));
+  }, [fin]);
 
   // ── basis.changed subscriber ─────────────────────────────────────────────
   // Subscribes to the dealStore event bus so that any source that changes the
@@ -865,6 +886,7 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   const platformExitCap       = fin?.trafficProjection?.calibrated?.exitCap ?? null;
   const holdYearsResolved     = fin?.assumptions?.holdYears ?? null;
   const closeDateResolved     = fin?.closeDate ?? null;
+  const saleDateResolved      = (fin as any)?.saleDate ?? null;
   const goingInCapResolved    = fin?.proforma?.valuationSnapshot?.goingInCapT12
     ?? fin?.returns?.valuation?.multiples?.capRate?.goingIn ?? null;
   const stabilizedCapResolved = fin?.returns?.valuation?.multiples?.capRate?.stabilized ?? null;
@@ -1007,7 +1029,33 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
       // Preserve saleDate — the route nullifies any field not in the body.
       await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/dates`, {
         closeDate: next,
-        saleDate:  fin?.saleDate ?? null,
+        saleDate:  saleDate || null,
+      });
+      props.onF9Refresh?.();
+    });
+  }
+
+  async function saveSaleDate() {
+    const next = saleDate || null;
+    const resolved = (fin as any)?.saleDate ?? null;
+    if (next === resolved) return;
+    await withSave(async () => {
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/dates`, {
+        closeDate: closeDate || null,
+        saleDate:  next,
+      });
+      props.onF9Refresh?.();
+    });
+  }
+
+  async function patchCapStack(field: string, rawVal: string) {
+    const v = parseFloat(rawVal.replace(/,/g, ''));
+    if (isNaN(v)) return;
+    const normalized = (field === 'ltcPct' || field === 'interestRate' || field === 'originationFeePct')
+      ? +(v / 100).toFixed(6) : v;
+    await withSave(async () => {
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/financials/override`, {
+        field, year: null, value: normalized,
       });
       props.onF9Refresh?.();
     });
@@ -1423,6 +1471,21 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               resolved={closeDateResolved ?? '--'}
               source={closeDateResolved != null ? 'Override' : 'Not Provided'}
             />
+            <LvRow label="Target Sale Date"
+              hint="Operator-entered projected sale date"
+              broker={undefined} platform={undefined}
+              override={saleDate} setOverride={setSaleDate}
+              onCommit={saveSaleDate}
+              overrideKind="date"
+              resolved={saleDateResolved ?? '--'}
+              source={saleDateResolved != null ? 'Override' : 'Not Provided'}
+              derived={(() => {
+                if (!closeDateResolved || !saleDateResolved) return undefined;
+                const ms = new Date(saleDateResolved).getTime() - new Date(closeDateResolved).getTime();
+                const yrs = ms / (1000 * 60 * 60 * 24 * 365.25);
+                return yrs > 0 ? `${yrs.toFixed(1)} yr hold` : undefined;
+              })()}
+            />
 
             {/* ════════════ SECTION 2 — HOLD & TARGETS ════════════ */}
             <SectionHeader label="HOLD & TARGETS" accent={CYAN} sub="Operator decisions — N/A in extracted layers" />
@@ -1630,6 +1693,90 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
           <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 600, color: BT.text.primary }}>
             {fin?.waterfall?.gpShare != null ? `${(fin.waterfall.gpShare * 100).toFixed(0)}%` : '—'}
           </span>
+        </div>
+      </div>
+      {/* ── Capital Structure Guidance panel ─────────────────────────────── */}
+      <div style={{
+        margin: '0 14px 16px',
+        border: `1px solid #7c3aed44`,
+        borderRadius: 4,
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          padding: '5px 10px',
+          background: '#7c3aed12',
+          borderLeft: '3px solid #7c3aed',
+          borderBottom: '1px solid #7c3aed30',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: '#a78bfa', letterSpacing: 0.8 }}>
+              CAPITAL STRUCTURE GUIDANCE
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 7, color: '#6d28d9' }}>seeds Debt Tab · optimizer runs independently</span>
+          </div>
+          <span
+            style={{ fontFamily: MONO, fontSize: 8, color: '#2dd4bf', cursor: 'pointer', letterSpacing: 0.3 }}
+            onClick={() => props.onTabChange?.(4)}
+          >
+            Edit in DEBT →
+          </span>
+        </div>
+        <div style={{ padding: '8px 10px', display: 'flex', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
+          {([
+            { key: 'purchasePrice',     label: 'PURCHASE PRICE', placeholder: '0',     suffix: '$',  hint: 'e.g. 12500000',       debtLink: false },
+            { key: 'ltcPct',            label: 'LTV %',          placeholder: '65.00', suffix: '%',  hint: '% of purchase price',  debtLink: true  },
+            { key: 'interestRate',      label: 'RATE %',         placeholder: '6.750', suffix: '%',  hint: 'senior loan rate',     debtLink: true  },
+            { key: 'ioPeriodMonths',    label: 'I/O PERIOD',     placeholder: '24',    suffix: 'mo', hint: 'months before amort',  debtLink: true  },
+            { key: 'amortizationYears', label: 'AMORT',          placeholder: '30',    suffix: 'yr', hint: 'amortization years',   debtLink: true  },
+            { key: 'originationFeePct', label: 'ORIG FEE %',     placeholder: '1.000', suffix: '%',  hint: 'origination fee %',    debtLink: true  },
+          ] as Array<{ key: keyof typeof csLocal; label: string; placeholder: string; suffix: string; hint: string; debtLink: boolean }>).map(({ key, label, placeholder, suffix, hint, debtLink }) => (
+            <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontFamily: MONO, fontSize: 7, color: '#475569', letterSpacing: 0.7 }}>{label}</span>
+                {debtLink && (
+                  <button
+                    title="View / edit in Debt Tab"
+                    onClick={() => props.onTabChange?.(4)}
+                    style={{ fontFamily: MONO, fontSize: 6, color: '#2dd4bf', background: 'none', border: '1px solid #2dd4bf44', borderRadius: 2, padding: '0 3px', cursor: 'pointer', lineHeight: 1.5 }}
+                  >→ DEBT</button>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                {suffix === '$' && <span style={{ fontFamily: MONO, fontSize: 9, color: '#64748b' }}>$</span>}
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={csLocal[key]}
+                  placeholder={placeholder}
+                  title={hint}
+                  onChange={e => setCsLocal(prev => ({ ...prev, [key]: e.target.value }))}
+                  onBlur={e => void patchCapStack(key, e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); } }}
+                  style={{
+                    fontFamily: MONO, fontSize: 10, fontWeight: 700,
+                    background: BT.bg.panelAlt, color: BT.text.primary,
+                    border: `1px solid ${BT.border.subtle}`, borderRadius: 3,
+                    padding: '2px 5px', width: key === 'purchasePrice' ? 100 : 56,
+                    outline: 'none',
+                  }}
+                />
+                {suffix !== '$' && <span style={{ fontFamily: MONO, fontSize: 8, color: '#475569' }}>{suffix}</span>}
+              </div>
+            </div>
+          ))}
+          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', marginLeft: 8 }}>
+            {fin?.capitalStack && (
+              <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
+                Loan: {(fin.capitalStack as any).loanAmount != null
+                  ? '$' + ((fin.capitalStack as any).loanAmount / 1e6).toFixed(1) + 'M'
+                  : '—'}
+                {(fin.capitalStack as any).equityAtClose != null && (
+                  <>  ·  Equity: ${((fin.capitalStack as any).equityAtClose / 1e6).toFixed(1)}M</>
+                )}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </div>
