@@ -1,0 +1,107 @@
+WAVE 3 — PHASE 2 BATCH 1 IMPLEMENTATION VERIFICATION
+
+CONTEXT
+Per P8, the Batch 1 implementation closing note must be verified 
+before Wave 4 work fires.
+
+STATE VERIFICATION (per P8 corollary):
+1. docs/operations/PHASE_2_BATCH_1_IMPLEMENTATION.md exists
+2. New OpEx Derivation Protocol section in system.ts at line 688
+3. No verification section appended yet
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — DOCUMENT INTEGRITY
+═══════════════════════════════════════════════════════════════════
+
+A. Per-item implementation summary covers items 1-7 + utilities + 
+   reserves
+B. Pattern A/B/C wiring documented
+C. Tier 2 integration verified
+D. Agent prompt diff documented
+E. Testing results per asset state
+F. P9.A/P9.B confirmation
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — SOURCE CITATION SPOT-CHECKS
+═══════════════════════════════════════════════════════════════════
+
+A. PATTERN A WIRING (R&M, Turnover, Marketing, G&A, Contract 
+   Services)
+   - Open system.ts ## OpEx Derivation Protocol section
+   - Verify source priority ladder for stabilized vs repositioning
+   - Verify ±15% T12 quality gate
+   - Verify Mandate v1.3 sub-field eligibility rules per item:
+     * R&M, Marketing, Turnover: pre/post active
+     * Contract Services: conditional on amenity additions
+     * G&A: excluded from sub-field writing
+
+B. PATTERN B WIRING (Utilities)
+   - Verify Task #672 constraint documented (T12 sub-line 
+     parsing not available)
+   - Verify NMHC split ratios (national + Atlanta)
+   - Verify mandatory disclosure language requirement
+   - Verify RUBS check + double-count guard (BUG-UTIL-01)
+   - Verify all-bills-paid electric alert + gas seasonality flag
+
+C. PATTERN C WIRING (Reserves)
+   - Verify three-tier rule reference (<10yr=$200, 10-25yr=$350, 
+     25+yr=$500)
+   - Verify floor validation, OM cross-check, lender covenant 
+     cross-check
+   - Verify operator override path
+
+D. TIER 2 INTEGRATION
+   - Verify all 4 directional checks (V1-V4) fire on Batch 1 
+     assumptions
+   - Verify output.validation_warnings populates correctly
+
+E. P9.A + P9.B COMPLIANCE
+   - Agent prompt aligned to canonical (P9.A)
+   - Existing modules referenced; no math re-specification (P9.B)
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — BUG-UTIL-01 STATUS
+═══════════════════════════════════════════════════════════════════
+
+A. Confirm the agent-prompt-level guard prevents the write-side 
+   double-count
+B. Confirm the closing note acknowledges this is write-side 
+   protection only
+C. Confirm the service-layer enforcement (proforma-adjustment.
+   service.ts) is flagged for Wave 4 follow-up, not "resolved"
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — POTENTIAL GAPS
+═══════════════════════════════════════════════════════════════════
+
+A. Did any Batch 1 assumption end up with wiring that contradicts 
+   the canonical derivation logic?
+B. Are the per-item watch-outs (RUBS check, all-bills-paid, gas 
+   seasonality) operational, or just documented?
+C. Does the f9-financial-export.service.ts:172 hardcode still 
+   exist? (Wave 3 cleanup is targeting it; verify it's still there 
+   for the cleanup to operate on)
+D. Is there any Batch 1 assumption that should have shipped but 
+   didn't (the original spec was items 1-7 + utilities; verify 
+   all are wired)
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Append verification section to PHASE_2_BATCH_1_IMPLEMENTATION.md 
+with APPROVED / NEEDS AMENDMENT / NEEDS REWORK verdict.
+
+Explicit additions to verification section:
+- BUG-UTIL-01 service-layer enforcement status: confirmed as 
+  Wave 4 follow-up item
+- f9-financial-export.service.ts:172 cleanup status: confirmed 
+  as Wave 3 parallel work
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify the implementation (only append verification)
+- Fix BUG-UTIL-01 at service layer (Wave 4 work)
+- "While I'm here" cleanups

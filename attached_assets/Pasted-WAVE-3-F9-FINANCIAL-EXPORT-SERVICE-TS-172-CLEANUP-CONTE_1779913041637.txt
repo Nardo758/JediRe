@@ -1,0 +1,63 @@
+WAVE 3 — F9-FINANCIAL-EXPORT.SERVICE.TS:172 CLEANUP
+
+CONTEXT
+Per Batch 1 amendment, the $350/unit hardcode at 
+f9-financial-export.service.ts:172 was noted as "out of scope for 
+that amendment; future cleanup." With Batch 1 implementation now 
+landed and the three-tier rule wired into the derivation path 
+(plus aligned in the agent system prompt), the hardcode is dead 
+code.
+
+STATE VERIFICATION (per P8 corollary):
+1. f9-financial-export.service.ts:172 still contains the 
+   const reservesY1 = y1('replacement_reserves') ?? totalUnits * 350
+2. Batch 1 implementation has wired three-tier rule into derivation 
+   path (verify via PHASE_2_BATCH_1_IMPLEMENTATION.md closing note)
+3. The hardcode is genuinely dead — the derivation path always 
+   produces a reserves value now (verify no edge case where it 
+   could be null)
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+A. Open f9-financial-export.service.ts
+B. Locate line 172 (replacement_reserves hardcode)
+C. Verify the derivation path now always produces a value:
+   - Confirm Batch 1 implementation's Pattern C wiring covers all 
+     cases (new construction → $200, 10-25yr → $350, 25+yr → 
+     $500, operator override always)
+   - Confirm null is no longer a possible derivation outcome (the 
+     hardcode was protecting against null)
+D. Remove the hardcode:
+   - Replace `?? totalUnits * 350` fallback with explicit error 
+     or throw if reserves is null (defensive coding — surface the 
+     bug if derivation ever fails to produce a value)
+   - Or remove the fallback entirely if derivation path is 
+     verifiably non-null
+
+E. Test: run F9 export on a deal; verify the reserves value 
+   matches the three-tier rule output, not the old $350 hardcode
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Code change in f9-financial-export.service.ts.
+
+Closing note: docs/operations/F9_EXPORT_RESERVES_CLEANUP.md
+(a) Before/after of line 172
+(b) Verification that derivation path always produces a value
+(c) Testing result on F9 export
+(d) Confirmation that BUG-UTIL-01 is separate work (this dispatch 
+    only touches reserves hardcode, not utilities double-count)
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify any other part of f9-financial-export.service.ts
+- Fix BUG-UTIL-01 (Wave 4 work; separate dispatch)
+- Modify Pattern C derivation logic (this cleanup operates on the 
+  export path, not the derivation path)
+- "While I'm here" cleanups

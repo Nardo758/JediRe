@@ -1,0 +1,83 @@
+WAVE 3 — TAX REMEDIATION VERIFICATION
+
+CONTEXT
+Per P8, the Tax Gap Remediation closing note must be verified 
+before Wave 4 work fires. Standard verification pattern.
+
+STATE VERIFICATION (per P8 corollary):
+1. docs/operations/TAX_GAP_REMEDIATION.md exists at expected path
+2. The 5 gaps (TAX-01 through TAX-05) are documented as fixed
+3. No verification section has been appended yet
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — DOCUMENT INTEGRITY
+═══════════════════════════════════════════════════════════════════
+
+A. Confirm document exists; covers all 5 gaps
+B. Confirm closing summary, per-gap implementation, testing 
+   results, P9.A/P9.B confirmation
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — SOURCE CITATION SPOT-CHECKS
+═══════════════════════════════════════════════════════════════════
+
+A. TWO-TOOL PROTOCOL (TAX-01 + TAX-05)
+   - Open system.ts §Tax Math section
+   - Verify the table distinguishes fetch_tax_intel (Year 1 + tips, 
+     call first) from fetch_jurisdiction_tax_forecast (multi-year 
+     schedule)
+   - Verify Phase 4 sequence items 20/23 are restructured to 
+     match (no remaining call-order contradiction)
+
+B. UNSUPPORTED JURISDICTION FALLBACK (TAX-02)
+   - Verify §Unsupported Jurisdiction Fallback Protocol exists
+   - Confirm protocol: non-FL/TX/GA → fetch_county_tax_rules → 
+     evidence tagged generic_methodology → MEDIUM confidence
+   - Confirm the fallback is implementable (fetch_county_tax_rules 
+     accepts state-code-only invocation)
+
+C. GA 40% ASSESSMENT RATIO TRAP (TAX-03)
+   - Verify §Georgia warning exists in system.ts
+   - Verify it blocks the manual underestimation pattern 
+     specifically (not just adds the rule)
+   - Confirm the explanation is sufficient for the agent to apply 
+     correctly
+
+D. TN ADDITION (TAX-04)
+   - Open fetch_county_tax_rules.ts
+   - Verify TN entry: 40% commercial assessment ratio, 4-year 
+     cycle, Davidson/Shelby/Knox/Hamilton county probes, $0.37/$100 
+     transfer tax, $8.00/mil default
+   - Verify TN is added to supported state list in system.ts
+
+E. P9.A + P9.B COMPLIANCE
+   - Confirm: prompt updates ship with rule changes (P9.A)
+   - Confirm: Tax module math (taxService.*) untouched (P9.B)
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — POTENTIAL GAPS
+═══════════════════════════════════════════════════════════════════
+
+A. Were any gaps closed without the agent prompt being updated?
+B. Is the GA 40% trap warning robust enough? Could the agent still 
+   apply the wrong math despite the warning?
+C. Is the unsupported jurisdiction fallback going to produce 
+   reasonable output, or just "we don't know" warnings? Test on 
+   NC seed deal if available.
+D. Does the TN entry handle the property type variations (Davidson 
+   urban vs Shelby industrial vs rural counties)?
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Append verification section to TAX_GAP_REMEDIATION.md with 
+APPROVED / NEEDS AMENDMENT / NEEDS REWORK verdict.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify the implementation (only append verification)
+- Fix gaps that surface (separate dispatch if amendment needed)
+- "While I'm here" cleanups

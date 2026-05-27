@@ -169,7 +169,16 @@ export function buildProjectionsForExport(
   const gAndAY1          = y1('g_and_a') ?? 0;
   const insuranceY1      = y1('insurance') ?? 0;
   const reTaxY1          = y1('real_estate_tax') ?? 0;
-  const reservesY1       = y1('replacement_reserves') ?? totalUnits * 350;
+  const reservesRaw      = y1('replacement_reserves');
+  // Export-path last-resort. Pattern C (three-tier age rule, system.ts) should always
+  // populate replacement_reserves when the agent runs. If null here, derivation did not
+  // produce a value for this deal (pre-Batch-1 underwriting or skipped derivation).
+  // $350/unit = 10–25yr age band mid-point. NOT dead code — required for existing deals.
+  // BUG-UTIL-01 (utilities double-count) is separate Wave 4 work; not addressed here.
+  if (reservesRaw == null) {
+    console.warn('[f9-export] replacement_reserves null; Pattern C derivation absent. Using $350/unit export fallback.');
+  }
+  const reservesY1       = reservesRaw ?? totalUnits * 350;
 
   let outstandingBalance = loan;
   let cumulativeCF = 0;

@@ -193,7 +193,7 @@ const STATE_METHODOLOGIES: Record<string, {
     probes: 'AZ 5% cap limits assessment growth but does not cap the tax levy — if the tax rate increases or voters approve bonds, the actual tax bill can exceed 5%. The 18% assessment ratio applies to FULL cash value, not fractional. Verify county-specific equalization factors.',
   },
   TN: {
-    assessmentRatio: 0.25,
+    assessmentRatio: 0.40,
     assessmentRatioDesc: 'Tennessee assesses commercial and industrial property at 40% of appraised value. Residential at 25%. Multifamily (4+ units) is typically classified as commercial: 40% assessment ratio. Agricultural at 25%.',
     reassessment: 'full',
     cycleDesc: 'Tennessee law requires each county to reappraise all property at least once every 4 years (some counties every 6 years). Major counties (Davidson, Shelby, Knox, Hamilton) typically follow 4-year cycles. Sale triggers review but does NOT automatically trigger immediate full reassessment — next county cycle applies.',
