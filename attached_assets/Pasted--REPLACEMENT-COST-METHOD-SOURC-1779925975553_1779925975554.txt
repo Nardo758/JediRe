@@ -1,0 +1,122 @@
+═══════════════════════════════════════════════════════════════════
+REPLACEMENT COST METHOD — SOURCING (RESOLVED)
+═══════════════════════════════════════════════════════════════════
+
+Source resolution decision: two-layer LayeredValue, no RSMeans 
+dependency.
+
+LAYER 1 — OPERATOR UPLOAD (PRIMARY WHEN PRESENT)
+  Source: Operator uploads cost data to the data library
+    - Broker/sponsor budget
+    - GC bid
+    - Operator's own cost estimate
+    - Cost workbook attached to deal
+  Confidence: HIGH (deal-specific, operator-curated)
+  LayeredValue source tag: 'operator' or 'broker'
+  When present: this layer is authoritative for Replacement Cost
+
+LAYER 2 — PLATFORM DEFAULT (FALLBACK WHEN NO UPLOAD)
+  Composition of three free sources:
+  
+  A. BLS PPI Multifamily Construction — escalation/time-series
+     Series: PCU2362##2362## (multifamily-relevant cuts)
+     Pulled via FRED (same pipeline as DGS10/SOFR/CPIAUCSL — 
+     no new auth/cache work)
+     Use Final Demand PPI level (not Input PPI) — see PPI level 
+     decision below
+  
+  B. HUD Area Cost Factors — regional multiplier baseline
+     Source: huduser.gov/portal/publications/costindices.pdf
+     Provides per-base-city multipliers
+     Tier A (FL primary): Tampa, Orlando, Miami, Jacksonville
+     Tier B: Atlanta, Dallas
+     Tier C: other markets (national fallback)
+  
+  C. County Permit Valuations — submarket point estimates
+     Source: county-issued permit feeds (already in Research 
+     Agent pipeline)
+     New work: extract valuation field; regress $/SF and $/unit 
+     by product type × submarket
+     Coverage: FL primary markets have richest data (Hillsborough,
+     Orange, Miami-Dade, Duval already expose this); Atlanta and 
+     Dallas have less depth; other markets fall to PPI national 
+     + HUD only
+
+  Composition logic:
+    Step 1: Get base $/SF from county permit regression (where 
+            data exists) or HUD area cost (where it doesn't)
+    Step 2: Apply HUD area cost multiplier for regional 
+            adjustment
+    Step 3: Apply BLS PPI escalation for time-series adjustment 
+            to current pricing
+  
+  Confidence: 
+    Tier A markets (FL primary): HIGH on platform default
+    Tier B markets (Atlanta/Dallas): MEDIUM on platform default
+    Tier C markets (other): LOW-MEDIUM on platform default
+  LayeredValue source tag: 'platform'
+
+LAYER 3 — OPERATOR OVERRIDE (POST-DERIVATION)
+  Standard override path. Operator can override either layer with 
+  explicit value. Source tag: 'override'.
+
+EVIDENCE TRAIL REQUIREMENT
+  When platform default fires (Layer 2), evidence trail must show:
+  - PPI series used and date pulled
+  - HUD area cost factor and base city
+  - County permit regression details (where applicable): comp 
+    count, submarket, vintage band, $/SF P25/P50/P75
+  - Composition formula and intermediate values
+  Operator can drill into evidence to validate or override.
+
+═══════════════════════════════════════════════════════════════════
+PPI LEVEL DECISION
+═══════════════════════════════════════════════════════════════════
+
+Use Final Demand PPI, not Input PPI.
+
+Rationale: Final Demand PPI represents the contractor's bid 
+price to client — labor, material, equipment, overhead, and 
+profit, with labor reflecting wages and productivity. Input PPI 
+represents materials cost only.
+
+If Input PPI were used for escalation against an all-in bid 
+number, the result would systematically understate cost growth 
+(margin drift not captured). If Final Demand PPI were used for 
+escalation against a materials-only number, the result would 
+double-count overhead/profit drift.
+
+Pick a level matching the base number; document the choice in 
+evidence trail. For platform default sourcing, the base number 
+is HUD area cost + county permit regression, both of which 
+represent all-in pricing. Therefore: Final Demand PPI is the 
+correct level.
+
+Series: PCU2362##2362## family. Pull via FRED.
+
+═══════════════════════════════════════════════════════════════════
+COVERAGE TIERS (FLORIDA-FIRST)
+═══════════════════════════════════════════════════════════════════
+
+Consistent with rest of platform's Florida-primary calibration:
+
+TIER A — FL PRIMARY (Tampa, Orlando, Miami, Jacksonville)
+  Platform default: county permit regression + HUD area cost + 
+  BLS PPI Final Demand
+  Confidence: HIGH
+  Sample size: Best (county permit pipelines mature)
+
+TIER B — EXPANSION (Atlanta, Dallas)  
+  Platform default: HUD area cost + BLS PPI Final Demand
+  (county permit feeds either not integrated yet or less rich)
+  Confidence: MEDIUM
+  Operator upload more strongly recommended
+
+TIER C — OTHER MARKETS
+  Platform default: BLS PPI Final Demand national + HUD area 
+  cost (where available) or national average
+  Confidence: LOW-MEDIUM
+  Operator upload essentially required for defensible underwriting
+  Surface "platform default has limited regional data" warning
+
+═══════════════════════════════════════════════════════════════════

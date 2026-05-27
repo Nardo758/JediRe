@@ -1,0 +1,54 @@
+═══════════════════════════════════════════════════════════════════
+REVISED DISPATCH SEQUENCE
+═══════════════════════════════════════════════════════════════════
+
+V0.1 DISPATCHES (operational surface)
+
+DISPATCH 1 — Comp data schema audit
+  Inventory comp data fields currently available
+  Identify GRM/GIM/PSF coverage gaps
+  Classify each method by current operational status
+  Estimate field-coverage delta to enable each method
+  Output: audit document + field coverage matrix per method
+
+DISPATCH 2 — Valuation Grid engine design
+  Multi-method computation logic
+  Confidence scoring per method
+  Convergence/divergence detection
+  Reconciliation gap analysis
+  Recommended Purchase Price range computation
+  Output: design spec + LayeredValue integration plan
+
+DISPATCH 3 — Valuation Grid UI surface (v0.1)
+  Where it lives in F9 / F-key navigation
+  Method-by-method display with confidence indicators
+  "Method coming in vN.M" placeholders for inactive methods
+  Operator interaction patterns
+  Drill-into-evidence path per method
+  Output: UI spec + frontend implementation
+
+V1.0 DISPATCHES (extend to full method matrix)
+
+DISPATCH 4 — Sales comp integration completion
+  Fill field coverage gaps identified in Dispatch 1
+  Enable GRM, GIM where coverage allows
+  Sales comp source priority (which comp set wins when multiple 
+  available)
+  Output: data integration + agent tool extensions
+
+DISPATCH 5 — Replacement Cost Tier 2 (platform default)
+  BLS PPI Final Demand pipeline (via existing FRED integration)
+  HUD area cost factor integration
+  County permit valuation regression engine
+  Per-tier coverage (Tier A/B/C per Florida-first framing)
+  Output: replacement cost service + LayeredValue Layer 2 wiring
+
+DISPATCH 6 — Agent workflow integration + DCF reliability
+  Agent runs all available methods per deal
+  Produces reconciled output with explicit weighting
+  Writes evidence trail per LayeredValue principle
+  DCF method becomes reliable when Batches 3-7 derivation logic 
+  has landed (forward dependency on Phase 2 batches)
+  Output: agent prompt updates + full Valuation Grid v1.0 operational
+
+═══════════════════════════════════════════════════════════════════
