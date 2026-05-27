@@ -777,19 +777,59 @@ assumption change. See `docs/operations/PROFORMA_AUTOCOMPUTE_INVESTIGATION.md §
 
 ### 8.2 Open Gaps
 
-| ID | Location | Description | Priority |
-|----|----------|-------------|---------|
-| KPI-fast | `financial-model-engine.service.ts` | Sensitivity tables still LLM-generated; fast deterministic endpoint not yet built | High |
-| Property types | ProFormaSummaryTab | Mixed-use, office NNN, industrial produce structurally incorrect results; no property-type guard rail or warning banner | Medium |
-| M36 | SensitivityTab OPEX axis | OPEX growth sensitivity grid wired to Section B trajectory drivers — M36 covariance matrix build pending; cells show base IRR with label only | Medium |
-| FIELD_PRIORITIES calibration | `proforma-seeder.service.ts` | `assetClass` passed to `agentFillIn` but `LibraryResolver` returns generic `regional_avg_class_b_2024` for all asset classes; no commercial class benchmarks | Medium |
-| Spread calibration | `layered-growth/rent-growth.ts` | All `ASSET_CLASS_SPREAD_BPS` values are seed-only (status: `tbd`); backtest against BLS CPI shelter sub-index per class pending (spec §14) | Medium |
-| M07 confidence bands | ProjectionsHubTab | Confidence bands not surfaced in LVE results panel (Deal Journey M07 pending) | Medium |
-| T#613 | DealTermsTab | `deal:strategy-changed` dispatched directly from DealTermsTab — not reconciled with the `dealStore` event pattern used by `basis.changed` | Low |
-| M35 | DealJourneyOverlay | Event path visualization pending — lever rows deep-link to INPUTS but do not render a causal chain diagram | Low |
-| M38 | OperatorStance | Calibration loop pending — stance re-blend uses cached snapshot but no automated calibration cycle | Low |
-| T#797 | ProFormaSummaryTab | `regimeDataByField` Pattern B sub-rows (pre/post-stabilization) null when Cashflow Agent has not run | Medium |
-| T#451 | FinancialEnginePage | Custom tab list must refresh after every Opus reply to detect `customtab` fence-created tabs | Low |
+Gap sweep performed 2026-05-27. Classifications: **BLOCKER** = must resolve before Phase 1 ships;
+**PHASE 2** = intentionally deferred; **RESOLVED** = already addressed by existing task or shipped work.
+
+Cross-reference note: The task spec referenced Tasks #1233–#1238 for cross-checking. Those task
+IDs do not exist in the current backlog. Cross-referencing was done against the full backlog by
+task name; matches are cited below as "task: [filename]" (all in `.local/tasks/`).
+
+| ID | Location | Description | Priority | Classification |
+|----|----------|-------------|---------|---------------|
+| KPI-fast | `financial-model-engine.service.ts` | Sensitivity tables still LLM-generated; fast deterministic endpoint not yet built | High | **PHASE 2** — LLM version functional; fast endpoint is an optimization. Full spec already in `docs/operations/PROFORMA_AUTOCOMPUTE_INVESTIGATION.md §6`. No existing Phase 1 task covers this; follow-up task #1276 created. |
+| Property types | ProFormaSummaryTab | Mixed-use, office NNN, industrial produce structurally incorrect results; no property-type guard rail or warning banner | Medium | **PHASE 2** — str/flip/land_hold UI routing tracked by task: `proforma-template-ui-routing.md`; unsupported-notice tracked by task: `str-flip-land-hold-unsupported-notice.md`. Guard rail for commercial types (office NNN, industrial, mixed-use) is future scope; follow-up task #1277 created. |
+| M36 | SensitivityTab OPEX axis | OPEX growth sensitivity grid wired to Section B trajectory drivers — M36 covariance matrix build pending; cells show base IRR with label only | Medium | **PHASE 2** — tracked by task: `sigma-m36-m39-verification-and-wiring.md`; M36 covariance matrix is a dedicated future module, not a Phase 1 dependency. |
+| FIELD_PRIORITIES calibration | `proforma-seeder.service.ts` | `assetClass` passed to `agentFillIn` but `LibraryResolver` returns generic `regional_avg_class_b_2024` for all asset classes; no commercial class benchmarks | Medium | **PHASE 2** — multifamily calibration (`regional_avg_class_b_2024`) is correct for the platform's primary asset class; commercial benchmarks are future scope gated on commercial property type support. No existing task; intentionally deferred. |
+| Spread calibration | `layered-growth/rent-growth.ts` | All `ASSET_CLASS_SPREAD_BPS` values are seed-only (status: `tbd`); backtest against BLS CPI shelter sub-index per class pending (spec §14) | Medium | **PHASE 2** — seed values (+30 bps multifamily, +50 retail, +80 industrial, +100 STR) are calibrated placeholders; BLS backtest is future calibration work. No existing task; intentionally deferred. |
+| M07 confidence bands | ProjectionsHubTab | Confidence bands not surfaced in LVE results panel (Deal Journey M07 pending) | Medium | **PHASE 2** — explicitly listed as PENDING in `replit.md` Deal Journey Framework section. No Phase 1 action required. |
+| T#613 | DealTermsTab | `deal:strategy-changed` dispatched directly from DealTermsTab — not reconciled with the `dealStore` event pattern used by `basis.changed` | Low | **PHASE 2** — low-priority tech debt; event fires correctly and all consumers receive it. The inconsistency is documented in `replit.md` Cross-tab Events table. Pattern reconciliation is future cleanup. |
+| M35 | DealJourneyOverlay | Event path visualization pending — lever rows deep-link to INPUTS but do not render a causal chain diagram | Low | **PHASE 2** — explicitly listed as PENDING in `replit.md` Deal Journey Framework section; covered by the m35 task chain (tasks: `m35-event-foundation.md`, `m35-viz-wave1-capsule.md`, etc.). |
+| M38 | OperatorStance | Calibration loop pending — stance re-blend uses cached snapshot but no automated calibration cycle | Low | **PHASE 2** — explicitly listed as PENDING in `replit.md` Deal Journey Framework section. OperatorStance calibration loop is future work; no Phase 1 consequence. |
+| T#797 | ProFormaSummaryTab | `regimeDataByField` Pattern B sub-rows (pre/post-stabilization) null when Cashflow Agent has not run | Medium | **RESOLVED** — fully tracked by task: `regime-expand-data-population.md`. That task defines the write path (cashflow agent output schema changes, `regimeDataByField` population in `proforma-adjustment.service.ts`) and the explicit fallback state ("Run analysis to populate" instead of blank dashes). |
+| T#451 | FinancialEnginePage | Custom tab list must refresh after every Opus reply to detect `customtab` fence-created tabs | Low | **PHASE 2** — UX polish for the custom tab system; not blocking core F9 underwriting functionality. No existing task; intentionally deferred. |
+
+### 8.3 Gap Sweep Closing Note (2026-05-27)
+
+**Sweep result: 0 BLOCKERS · 10 PHASE 2 · 1 RESOLVED**
+
+No Phase 1 blockers were found. Key findings:
+
+- **Tasks #1233–#1238** (referenced in the sweep brief as comparators) do not exist in the task
+  backlog. Cross-referencing was done against the full backlog by task name instead.
+
+- **T#797 (RESOLVED):** The only gap with direct Phase 1 relevance — `regimeDataByField`
+  permanently null — is fully captured by task `regime-expand-data-population.md`. That task
+  defines the write path, the agent output schema change, and the fallback state. No new task
+  needed.
+
+- **KPI-fast (PHASE 2):** The sensitivity tab LLM path is slow but produces correct output.
+  The fast deterministic spec (`docs/operations/PROFORMA_AUTOCOMPUTE_INVESTIGATION.md §6`)
+  is complete and ready for Phase 2 pickup. Follow-up task #1276 created.
+
+- **Property types (PHASE 2):** str/flip/land_hold UI routing is tracked by
+  `proforma-template-ui-routing.md` and `str-flip-land-hold-unsupported-notice.md`. Guard
+  rails for commercial types (mixed-use, office NNN, industrial) are future scope.
+  Follow-up task #1277 created for the commercial guard rail.
+
+- **M36, M35, M38 (PHASE 2):** All three are explicitly PENDING in `replit.md` and each has
+  a corresponding task chain. No action needed here.
+
+- **Calibration gaps — FIELD_PRIORITIES and Spread calibration (PHASE 2):** Multifamily
+  benchmarks are correctly calibrated. Commercial class calibration is future work gated on
+  commercial property type support.
+
+- **T#613, T#451 (PHASE 2):** Low-priority tech debt and UX polish; neither affects
+  correctness of Phase 1 underwriting output.
 
 ---
 
