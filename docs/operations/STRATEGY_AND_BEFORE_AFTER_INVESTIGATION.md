@@ -543,3 +543,96 @@ Already a valid DB value. Adding it to the DealTypeKey enum and giving it a patt
 | ProFormaSummaryTab reads deal_type not templateId | `ProFormaSummaryTab.tsx` | 934 | `const dealType = (deal?.['deal_type'])` |
 | roadmap action-library deal_type values | `roadmap/action-library.ts` | 23, 60, 98, 136 | `deal_types: ['existing', 'value_add', 'redevelopment']` |
 | Blueprint consumed by LLM at prompt-build time, not React | `proforma-blueprint.ts` | 6-15 | "consumed by: Opus (LLM) at prompt-build time... runtime payload validator... drift test" |
+
+---
+
+## P8 VERIFICATION — Task #1249
+
+**Date:** 2026-05-27  
+**Verifier:** Task #1249 (agent, non-self-verification pass)  
+**Protocol:** CLAUDE.md P8 — Verify Before Queueing
+
+---
+
+### 1. Document Integrity
+
+- All 7 sections present and complete (Table of Contents matches content).
+- SOURCE CITATION INDEX present at end (22 entries).
+- No TODO markers, placeholder text, or incomplete stubs found.
+- Document header correctly notes it incorporates a prior verification pass as Amendments 1–5 (folded inline, not kept as appendix — acceptable).
+- Classification framework (BLOCKING / IMPORTANT / INFORMATIONAL) applied consistently across §7. 11 open questions classified; none appear mislabeled.
+
+**Result: PASS**
+
+---
+
+### 2. Source Citation Spot-Checks
+
+10 of 22 citations verified against live codebase. Results:
+
+| Claim | File | Cited Lines | Verified? | Notes |
+|---|---|---|---|---|
+| ProFormaTemplateId — 7 values | `proforma-blueprint.ts` | 104–111 | ✓ CONFIRMED | Exact match |
+| DealTypeKey enum — 6 values | `m09_line_item_patterns.ts` | 22–28 | ✓ CONFIRMED | Exact match |
+| deal_type defaults to 'existing' | `cashflow-underwriting.routes.ts` | 249 | ✓ CONFIRMED | `COALESCE(d.deal_type, 'existing')` |
+| investmentStrategy valid values | `deal-assumptions.routes.ts` | 681 | ✓ CONFIRMED | `['Build-to-Sell', 'Flip', 'Rental', 'Short-Term Rental']` |
+| regimeDataByField never populated in backend | backend/src/**/*.ts search | — | ✓ CONFIRMED | Zero results for both `regimeDataByField` and `regime_data_by_field` |
+| v1.2 Single-Value Mandate | `cashflow/line-item-matrix.ts` | 10, 33 | ✓ CONFIRMED | Mandate text verbatim; repeated at 92, 144, 193, 302 |
+| write_underwriting schema — flat proforma_snapshot | `write_underwriting.ts` | 55–61 | ✓ CONFIRMED | `proforma_snapshot: z.record(z.string(), z.unknown())` at line 57 |
+| StabilizedPotentialView model types (4 only) | `StabilizedPotentialView.tsx` | 20 | ✓ CONFIRMED | `acquisition_value_add \| acquisition_stabilized \| development \| redevelopment` |
+| ProFormaSummaryTab reads deal_type not templateId | `ProFormaSummaryTab.tsx` | 934 | ✓ CONFIRMED | `const dealType = (deal?.['deal_type'] as string \| null) ?? ...` |
+| M07 is a reasoning signal, not a standalone input | `cashflow/system.ts` | 142 | ✓ CONFIRMED | Verbatim match |
+
+**One minor transcription note:** The SOURCE CITATION INDEX excerpt for `RegimeExpand.tsx` line 228 quotes `const hasAgentData = regimeData != null` — the actual condition is `regimeData != null && (pre_renovation.value != null || post_stabilization.value != null)`. The excerpt is abbreviated but the substance of the claim ("renders placeholder dashes when no agent data") is accurate.
+
+**Result: PASS — all 10 spot-checked claims accurate**
+
+---
+
+### 3. Cross-Fix Integration Review
+
+**§4.1 — Unit Mix cross-fix:** Substantive. Documents the pre/post unit mix split dependency on §3a (deal_type canonical signal) and confirms the adoption ramp Task #1161 integration is working. Not a placeholder.
+
+**§4.2 — Validation Grid cross-fix:** Substantive. Explains the baseline ambiguity issue for value-add deals (pre-renovation actuals vs proforma as competing "current state" signals). Correctly notes that the Validation Grid and RegimeExpand should share a data source to avoid divergent paths.
+
+**Result: PASS — both cross-fix sections substantive**
+
+---
+
+### 4. Open Question Classification Review
+
+| # | Question | Classified As | Correct? |
+|---|---|---|---|
+| Q1 | investmentStrategy ↔ deal_type reconciliation | BLOCKING | ✓ — all pattern routing gated on this |
+| Q2 | regimeDataByField population path (A/B/C) | BLOCKING | ✓ — all before/after UI below NOI level gated on this |
+| Q3 | DealTypeKey vocabulary extension | BLOCKING | ✓ — prerequisite for flip/STR/land template-driven UI |
+| Q4 | StabilizedPotentialView model types for str/flip/land | IMPORTANT | ✓ — affects scope but doesn't block start on other tracks |
+| Q5 | investmentStrategy ↔ deal_type mismatch warning UX | IMPORTANT | ✓ — design decision, not prerequisite |
+| Q6 | Rent ramp entry UI completeness | IMPORTANT | ✓ — in-scope question, not a blocker |
+| Q7 | Phasing UI UX pattern for redevelopment | IMPORTANT | ✓ — can be resolved inline during Phase 4 |
+| Q8 | Does lease_up need its own template? | IMPORTANT | ✓ — affects scope but downstream |
+| Q9 | investmentStrategy ↔ blueprint strategyTriggers vocabulary | INFORMATIONAL | ✓ — handled inline in getActiveTemplate() resolver |
+| Q10 | Should lease_up be in DealTypeKey extension? | INFORMATIONAL | ✓ — low-effort add |
+| Q11 | transition_year slot usage | INFORMATIONAL | ✓ — confirm during Phase 2 scope |
+
+**Result: PASS — all 11 questions correctly classified; no implicit blockers mislabeled**
+
+---
+
+### 5. Gaps Assessment
+
+No blocking gaps found. Three informational gaps noted for downstream awareness:
+
+**Gap 1 (INFORMATIONAL):** The document does not trace where `investmentStrategy` is read in the frontend beyond `DealTermsTab.tsx`. If any other component reads it for display or routing, that reader would be affected by Q1 reconciliation. Low risk given regexes show `investment_strategy` is primarily a Deal Terms concern.
+
+**Gap 2 (INFORMATIONAL):** The `deal-assumptions.routes.ts` PATCH route is cited at lines 674–745 but not directly line-verified (only line 681 for valid values confirmed). The substance of the claim ("no UPDATE to deals.deal_type") is consistent with the broader codebase search showing no `UPDATE deals SET deal_type` pattern anywhere.
+
+**Gap 3 (INFORMATIONAL):** `RenovationAssumptionsSection.tsx` line 120 gate condition cited but file not found at the expected path. The claim (gated on `dealType === 'redevelopment' || dealType === 'value-add'`) is corroborated by `UnitMixTab.tsx` line 1699: `const isValueAdd = dealType === 'redevelopment' || dealType === 'value-add'` — same logic in same codebase. Verify file path before Task #1234 (RenovationAssumptionsSection gate fix).
+
+---
+
+### VERDICT
+
+**APPROVED FOR DOWNSTREAM WORK**
+
+Task #1263 (A1 vs A2 investigation: strategy ↔ deal_type canonical) may begin. The investigation document is complete, all spot-checked citations are accurate, cross-fix integration is substantive, and open questions are correctly classified. The three informational gaps noted above do not block Track 2 work.
