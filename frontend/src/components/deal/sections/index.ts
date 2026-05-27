@@ -10,7 +10,6 @@ export { FilesSection } from './FilesSection';
 export { DocumentsFilesSection } from './DocumentsFilesSection';
 export { CollaborationSection } from './CollaborationSection';
 export { ActivityFeedSection } from './ActivityFeedSection';
-export { StrategySection } from './StrategySection';
 export { DebtSection } from './DebtSection.legacy';
 export { CapitalStructureSection } from './CapitalStructureSection';
 export { CompetitionSection } from './CompetitionSection';
@@ -26,7 +25,6 @@ export { MapViewSection } from './MapViewSection';
 export { MarketIntelligenceSection } from './MarketIntelligenceSection';
 export { DebtMarketSection } from './DebtMarketSection';
 export { ContextTrackerSection } from './ContextTrackerSection';
-export { InvestmentStrategySection } from './InvestmentStrategySection';
 export { ProjectManagementSection } from './ProjectManagementSection';
 
 export { FinancialModelingSection } from './FinancialModelingSection';
