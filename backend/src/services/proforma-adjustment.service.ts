@@ -4387,6 +4387,21 @@ export async function getDealFinancials(
     const seeded = Object.keys(year1Seed).length > 0;
     if (!seeded) return [];
 
+    // ── Adoption timeline ramp for development/lease-up deals (Task #1271) ──────
+    // Reads construction_months, lease_up_months, stabilization_target_pct from
+    // deal_assumptions. When null, falls back to deterministic model runner defaults
+    // (18mo construction, 12mo lease-up, 95% stabilization target).
+    const _atRow = assumptionsRes.rows[0];
+    const _projDealTypeNorm = ((deal.deal_type as string | null) ?? '').replace(/-/g, '_').toLowerCase();
+    const _isProjDev     = _projDealTypeNorm === 'development' || _projDealTypeNorm === 'ground_up';
+    const _isProjLeaseUp = _projDealTypeNorm === 'lease_up';
+    const _needsRamp     = _isProjDev || _isProjLeaseUp;
+    const _atCm    = _atRow?.construction_months     != null ? +parseFloat(String(_atRow.construction_months))     : (_isProjDev ? 18 : 0);
+    const _atLum   = _atRow?.lease_up_months         != null ? +parseFloat(String(_atRow.lease_up_months))         : (_needsRamp ? 12 : 0);
+    const _atStab  = _atRow?.stabilization_target_pct != null ? +parseFloat(String(_atRow.stabilization_target_pct)) : 0.95;
+    const _devConstrYrs  = _isProjDev ? Math.ceil(_atCm  / 12) : 0;
+    const _devLeaseUpYrs = _needsRamp  ? Math.ceil(_atLum / 12) : 0;
+
     // Debt parameters — prefer debt_tab senior loan data
     const seniorLoanOvr = debtStack?.loans?.find(l => l.id === 'senior');
     const projLoan       = capitalStackWithOverrides.loanAmount ?? 0;
@@ -4462,6 +4477,19 @@ export async function getDealFinancials(
       const tv = trafficProjectionOut?.yearly?.find(t => t.year === yr);
       const thisYrGrowth = pv?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03;
 
+      // ── Adoption timeline ramp factor for this year (Task #1271) ──────────────
+      // Construction years: zero revenue, only property tax.
+      // Lease-up years: linear absorption from 0 → stabilizationTargetPct.
+      // Stabilized years: rampFactor = 1 (no scaling).
+      const _isConstrYr = _isProjDev && yr <= _devConstrYrs;
+      const _leasePhaseY = _isProjDev ? yr - _devConstrYrs : yr;
+      const _rampFactor: number = (() => {
+        if (_isConstrYr) return 0;
+        if (_needsRamp && _devLeaseUpYrs > 0 && _leasePhaseY > 0 && _leasePhaseY <= _devLeaseUpYrs)
+          return Math.min(1, (_leasePhaseY / _devLeaseUpYrs) * _atStab);
+        return 1;
+      })();
+
       // Growth step applied TO this year: uses the prior year's per-year growth rate.
       // Rent growth and per-line OPEX growth come from the layered engine (five-component
       // rent model + nine-line OPEX model with individual anchors). opexGrowthRate is
@@ -4510,10 +4538,13 @@ export async function getDealFinancials(
       };
 
       // Revenue — override-aware running-base compounding
-      const gprOvr      = projPyOvr('gpr');
-      const gpr         = gprOvr != null ? Math.round(gprOvr) : Math.round(runGpr * (1 + rentGrowthStep));
-      runGpr            = gpr;
-      const vacPct      = tv?.vacancyPct ?? pv?.vacancyPct ?? ry1('vacancy_pct') ?? 0.05;
+      // For development/lease-up deals, track the stabilized GPR separately so
+      // the ramp factor does not corrupt the compounding base (Task #1271).
+      const gprOvr          = projPyOvr('gpr');
+      const _stabilizedGpr  = gprOvr != null ? Math.round(gprOvr) : Math.round(runGpr * (1 + rentGrowthStep));
+      const gpr             = _isConstrYr ? 0 : Math.round(_stabilizedGpr * _rampFactor);
+      runGpr                = _stabilizedGpr; // always compound from stabilized base
+      const vacPct          = tv?.vacancyPct ?? pv?.vacancyPct ?? ry1('vacancy_pct') ?? 0.05;
       const vacancyLoss = Math.round(gpr * vacPct);
       const lossToLease = Math.round(gpr * lossToLeasePct);
       const concessions = Math.round(gpr * concPct);
@@ -4583,7 +4614,11 @@ export async function getDealFinancials(
       const reservesOvr = projPyOvr('replacement_reserves');
       const reserves    = reservesOvr != null ? Math.round(reservesOvr) : Math.round(runReserves * (1 + reservesStep));
       runReserves       = reserves;
-      const totalOpex  = payroll + repairs + turnover + contractSvc + marketing + utilities + gAndA + mgmtFee + insurance + reTaxes + reserves;
+      // During construction years the building is not operating: zero all opex
+      // except property tax (which continues to accrue). (Task #1271)
+      const totalOpex  = _isConstrYr
+        ? reTaxes
+        : payroll + repairs + turnover + contractSvc + marketing + utilities + gAndA + mgmtFee + insurance + reTaxes + reserves;
       const noi        = egi - totalOpex;
 
       // Debt service — true per-year amortization schedule
@@ -4628,7 +4663,11 @@ export async function getDealFinancials(
       const coc          = projEquity > 0 ? +(cfbt / projEquity).toFixed(4) : null;
       const dscr         = annualDS > 0 ? +(noi / annualDS).toFixed(4) : null;
       const debtYield    = projBalance > 0 ? +(noi / projBalance).toFixed(4) : null;
-      const occupancy    = tv?.occupancyPct ?? (vacPct != null ? +(1 - vacPct).toFixed(4) : null);
+      // For ramp years, occupancy reflects the absorption curve (Task #1271)
+      const occupancy    = _isConstrYr ? 0
+        : (_needsRamp && _rampFactor < 1
+            ? +(_rampFactor).toFixed(4)
+            : (tv?.occupancyPct ?? (vacPct != null ? +(1 - vacPct).toFixed(4) : null)));
       const opexRatioPct = egi > 0 ? +(totalOpex / egi).toFixed(4) : null;
       const noiMarginPct = egi > 0 ? +(noi / egi).toFixed(4) : null;
       const rentGrowthPct = thisYrGrowth;

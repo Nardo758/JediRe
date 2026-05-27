@@ -1631,14 +1631,15 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Seed adoption timeline inputs from loaded server data (Task #1271)
+  // Seed adoption timeline inputs from loaded server data (Task #1271).
+  // Always resets all four fields when adoptionTimeline changes (including on deal switch)
+  // so stale values from a previous deal never persist when the new deal has null values.
   useEffect(() => {
     const at = data?.adoptionTimeline;
-    if (!at) return;
-    if (at.constructionMonths != null)      setAtConstruction(String(at.constructionMonths));
-    if (at.leaseUpMonths != null)           setAtLeaseUp(String(at.leaseUpMonths));
-    if (at.absorptionUnitsPerMonth != null) setAtAbsorption(String(at.absorptionUnitsPerMonth));
-    if (at.stabilizationTargetPct != null)  setAtStabTarget(String((at.stabilizationTargetPct * 100).toFixed(1)));
+    setAtConstruction(at?.constructionMonths  != null ? String(at.constructionMonths)                          : '');
+    setAtLeaseUp     (at?.leaseUpMonths       != null ? String(at.leaseUpMonths)                               : '');
+    setAtAbsorption  (at?.absorptionUnitsPerMonth != null ? String(at.absorptionUnitsPerMonth)                 : '');
+    setAtStabTarget  (at?.stabilizationTargetPct != null ? String((at.stabilizationTargetPct * 100).toFixed(1)) : '');
   }, [data?.adoptionTimeline]);
 
   // Save adoption timeline to backend (Task #1271)
