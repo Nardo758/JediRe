@@ -1,0 +1,130 @@
+═══════════════════════════════════════════════════════════════════
+PHASE 2 ADDITION — VALUATION GRID (REVISED)
+═══════════════════════════════════════════════════════════════════
+
+Distinct from the Validation Grid (per-assumption source 
+triangulation, already in Phase 1 scope).
+
+VALUATION GRID = multi-methodology price triangulation surface +
+explicit reconciliation between bottom-up and top-down underwriting.
+
+For a given asset, surface 7-9 independent valuation methods, 
+each producing an indicated value with confidence:
+
+| Method | Path | Inputs | Indicated value |
+|---|---|---|---|
+| Cap Rate × NOI | Bottom-up | Agent-derived NOI ÷ market cap rate | $X |
+| Sales Comp PPU | Top-down comp | Median comp PPU × subject unit count | $Y |
+| Sales Comp PSF | Top-down comp | Median comp PSF × subject sqft | $Z |
+| GRM | Top-down comp | Median comp GRM × subject gross rent | $W |
+| GIM | Top-down comp | Median comp GIM × subject gross income | $V |
+| DCF | Bottom-up | 10-year cash flow + terminal value @ exit cap | $A |
+| Replacement Cost | Cost approach | Land + construction + soft costs | $B |
+| Per-Unit Benchmark | Top-down archive | archive PPU P50 × unit count | $C |
+| Operator Override | Manual | Direct operator entry | $D |
+
+For each method:
+- P25 / P50 / P75 indicated value (range, not point estimate)
+- Confidence score (sample size, recency, geographic relevance)
+- Comp set used (linkable to source data)
+- Source provenance per LayeredValue principle
+
+Plus reconciliation layer:
+- Convergence signal (tight spread = high confidence)
+- Divergence flags (which methods disagree and by how much)
+- Bottom-up vs top-down comparison
+- Gap analysis: "Cap-rate method says $X, GRM says $Y. Gap of 
+  12% is driven by atypical OpEx ratio (subject 38% vs cohort 
+  P50 32%)."
+- Reconciled value with explicit weighting rationale
+- Recommended Purchase Price range with confidence
+
+This is the Bloomberg-terminal-grade price triangulation surface 
+that anchors the platform's thesis. Operators see not just "the 
+price" but every method that produced it, where they agree, 
+where they don't, and the explicit reasoning bridging any gaps.
+
+═══════════════════════════════════════════════════════════════════
+ARCHITECTURAL SIGNIFICANCE
+═══════════════════════════════════════════════════════════════════
+
+The Valuation Grid isn't just a presentation surface — it's the 
+explicit reconciliation engine between two reasoning paths:
+
+PATH A (bottom-up): evidence → assumptions → NOI → cap rate → 
+indicated value. This is what the agent does today.
+
+PATH B (top-down): subject characteristics → comp set → multiple 
+ratio methods (PSF, PPU, GRM, GIM, cap rate distributions) → 
+indicated value range. This is the new capability.
+
+The agent must produce both paths and reconcile them. When 
+methods converge, the underwriting is defensible. When they 
+diverge, the agent surfaces which assumptions are bridging 
+or breaking the gap.
+
+This is what differentiates a platform with real intelligence 
+from a fancy spreadsheet. CoStar/Argus do bottom-up. Comp 
+databases do top-down. Neither does explicit reconciliation 
+with auditable gap analysis. This platform will.
+
+═══════════════════════════════════════════════════════════════════
+DEPENDS ON (must be in place before this can ship)
+═══════════════════════════════════════════════════════════════════
+
+- Sales comp lookup tool (queued in Item 3 sales-comp validation)
+- Comp set with: sale price, sale date, PPU, PSF, gross rent, 
+  gross income, cap rate, NOI per comp
+  → Sale Date matters because stale comps need haircut
+  → All fields needed because GRM/GIM/cap rate use different ones
+- Replacement cost data source (NEW — not yet sourced; possibly 
+  Marshall & Swift, RSMeans, or a per-MSA construction cost feed)
+- Per-unit / per-sqft benchmark distributions by property type 
+  × strategy × state × vintage band
+- DCF reliable (depends on Phase 2 derivation logic landing for 
+  the 22 assumption inputs)
+- Cap rate distribution by submarket × property type × vintage 
+  (already partially in archive_assumption_benchmarks)
+
+═══════════════════════════════════════════════════════════════════
+SCOPING
+═══════════════════════════════════════════════════════════════════
+
+Multi-week Phase 2 deliverable. Not a single dispatch.
+
+Probable dispatch sequence (5-6 dispatches):
+1. Comp data schema audit — what fields exist today, what's 
+   missing for GRM/GIM/PSF coverage
+2. Sales comp integration completion — fill the field coverage 
+   gaps from #1
+3. Replacement cost data source investigation — where do we get 
+   construction cost data; what's the cleanest source
+4. Valuation Grid engine design — multi-method computation, 
+   confidence scoring, convergence/divergence logic, reconciliation 
+   gap analysis
+5. Valuation Grid UI surface — where it lives in F9 / F-key 
+   navigation, how it's displayed, how operators interact
+6. Integration with agent workflow — agent runs all methods, 
+   produces reconciled output, writes evidence trail
+
+═══════════════════════════════════════════════════════════════════
+OPEN QUESTIONS (resolve when Phase 2 scoping begins)
+═══════════════════════════════════════════════════════════════════
+
+- F9 sub-tab vs standalone F-key (F11? F12?) vs Deal Capsule 
+  overview component?
+- Bottom-up + top-down reconciliation methodology: weighted average, 
+  median, operator-selected primary with cross-checks shown, 
+  or explicit "the platform recommends $X because methods 1, 3, 5 
+  agree within Y% and method 2 diverges due to Z"?
+- How are comp set selection criteria exposed? (Operator-tunable: 
+  proximity radius, vintage band, asset class match, recency window)
+- For property types where GRM is non-standard (office, industrial), 
+  is the method shown anyway with low confidence, or hidden entirely?
+- How does the Valuation Grid interact with the Validation Grid? 
+  (Probably: Validation Grid shows per-assumption source 
+  triangulation; Valuation Grid shows per-methodology price 
+  triangulation; both link to the same evidence base)
+
+QUEUED BEHIND: F9 module map (Wave 4) + Phase 2 derivation logic 
+landing on the 22 assumptions.
