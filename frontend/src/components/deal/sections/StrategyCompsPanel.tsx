@@ -5,6 +5,7 @@ import { MONO } from './strategy-v2.utils';
 
 interface CompSet {
   id: string;
+  created_at?: string;
   comp_count: number;
   median_price_per_unit: number;
   avg_price_per_unit: number;
@@ -53,6 +54,15 @@ function fmtDate(d: string): string {
     return new Date(d).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
   } catch {
     return d;
+  }
+}
+
+function fmtGeneratedDate(iso: string | undefined): string {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return '';
   }
 }
 
@@ -270,6 +280,9 @@ export function StrategyCompsPanel({ dealId }: { dealId: string }) {
               }}>
                 <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
                   3mi radius · 24mo window · arms-length only
+                  {compSet.created_at && (
+                    <> · <span style={{ color: BT.text.secondary }}>Generated: {fmtGeneratedDate(compSet.created_at)}</span></>
+                  )}
                 </span>
                 <button
                   onClick={handleViewInM27}

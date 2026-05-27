@@ -22,6 +22,7 @@ export interface CompSetCriteria {
 export interface CompSetResult {
   id: string;
   deal_id: string;
+  created_at: string;
   comp_count: number;
   median_price_per_unit: number;
   avg_price_per_unit: number;
@@ -237,7 +238,7 @@ export class CompSetService {
       ) VALUES (
         $1::uuid, $2, 'active', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
       )
-      RETURNING id
+      RETURNING id, created_at
     `, [
       deal_id,
       'Auto-Generated Comp Set',
@@ -260,6 +261,9 @@ export class CompSetService {
     ]);
 
     const compSetId = compSetResult.rows[0].id;
+    const compSetCreatedAt: string = compSetResult.rows[0].created_at instanceof Date
+      ? compSetResult.rows[0].created_at.toISOString()
+      : String(compSetResult.rows[0].created_at);
 
     // 8. Insert comp set members — Georgia comps use market_comp_id (not transaction_id FK)
     for (let i = 0; i < comps.length; i++) {
@@ -276,6 +280,7 @@ export class CompSetService {
     return {
       id: compSetId,
       deal_id,
+      created_at: compSetCreatedAt,
       comp_count: comps.length,
       median_price_per_unit: medianPricePerUnit,
       avg_price_per_unit: avgPricePerUnit,
@@ -355,6 +360,9 @@ export class CompSetService {
     return {
       id: compSet.id,
       deal_id: compSet.deal_id,
+      created_at: compSet.created_at instanceof Date
+        ? compSet.created_at.toISOString()
+        : String(compSet.created_at),
       comp_count: compSet.comp_count,
       median_price_per_unit: parseFloat(compSet.median_price_per_unit),
       avg_price_per_unit: parseFloat(compSet.avg_price_per_unit),
