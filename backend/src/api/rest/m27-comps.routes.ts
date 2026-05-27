@@ -195,8 +195,25 @@ router.delete('/deals/:dealId/comps/:compId', requireAuth, async (req: Authentic
  *   NOI  = EGI - (opex_per_unit_p50 × units)
  *   implied_cap = NOI / purchase_price
  *
- * Returns: implied_cap_rate, operator_going_in_cap, delta_bps, positioning label.
+ * Market rent source priority (Open Q1 resolution — see VALIDATION_GRID_AND_SALE_COMPS_INVESTIGATION.md):
+ *   1. market_vitals.avg_rent_per_unit (monthly × 12) — primary: 998 rows, 13 markets, location-specific
+ *   2. line_item_benchmarks (category='revenue') — fallback: global benchmarks, sparser
+ *
+ * Returns: implied_cap_rate, operator_going_in_cap, delta_bps, positioning label,
+ *          rent_source, comp_reported_cap_rate (transaction-reported median from comp set).
  */
+
+/**
+ * Normalize a full MSA name (e.g. "Atlanta-Sandy Springs-Roswell, GA") to the
+ * short market_id used in market_vitals (e.g. "atlanta").
+ * Handles the 13 seeded market_ids by lowercasing the first city token.
+ */
+function msaToMarketId(msa: string | null): string | null {
+  if (!msa) return null;
+  const match = msa.match(/^([A-Za-z]+)/);
+  return match ? match[1].toLowerCase() : null;
+}
+
 router.get('/deals/:dealId/implied-cap-rate', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
@@ -280,27 +297,56 @@ router.get('/deals/:dealId/implied-cap-rate', requireAuth, async (req: Authentic
       if (v != null && v > 0) { opexPerUnit = v; break; }
     }
 
-    // 4 — Market rent: annual GPR per unit from revenue benchmark
+    // 4 — Market rent: annual GPR per unit
+    // Priority (Open Q1 resolution): market_vitals (primary) → line_item_benchmarks (fallback)
+    // See docs/architecture/VALIDATION_GRID_AND_SALE_COMPS_INVESTIGATION.md for rationale.
     let marketRentPerUnitAnnual: number | null = null;
-    const rentBuckets = opexBuckets;
-    for (const b of rentBuckets) {
-      const r = await queryBenchmark(`
-        SELECT per_unit_p50 AS market_rent
-        FROM line_item_benchmarks
-        WHERE category   = 'revenue'
-          AND line_item  IN ('gpr', 'market_rent', 'gross_potential_rent', 'effective_gross_income')
-          AND asset_class = $1
-          AND deal_type   = $2
-          AND n_samples  >= 3
-          AND ($3::text IS NULL OR state           = $3)
-          AND ($4::text IS NULL OR msa             = $4)
-          AND ($5::text IS NULL OR vintage_band    = $5)
-          AND ($6::text IS NULL OR unit_count_band = $6)
-        ORDER BY as_of DESC
+    let rentSource: string | null = null;
+
+    // 4a — Primary: market_vitals.avg_rent_per_unit (monthly × 12), keyed by market_id
+    const marketId = msaToMarketId(msa);
+    if (marketId) {
+      const mvRow = await queryBenchmark(`
+        SELECT avg_rent_per_unit
+        FROM market_vitals
+        WHERE market_id = $1
+          AND avg_rent_per_unit IS NOT NULL
+        ORDER BY date DESC
         LIMIT 1
-      `, [assetClass, dealType, b.state, b.msa, b.vintage, b.units]);
-      const v = r?.market_rent != null ? parseFloat(String(r.market_rent)) : null;
-      if (v != null && v > 0) { marketRentPerUnitAnnual = v; break; }
+      `, [marketId]);
+      const monthlyRent = mvRow?.avg_rent_per_unit != null ? parseFloat(String(mvRow.avg_rent_per_unit)) : null;
+      if (monthlyRent != null && monthlyRent > 0) {
+        marketRentPerUnitAnnual = monthlyRent * 12;
+        rentSource = 'market_vitals';
+      }
+    }
+
+    // 4b — Fallback: line_item_benchmarks (category='revenue'), progressive bucket relaxation
+    if (marketRentPerUnitAnnual == null) {
+      const rentBuckets = opexBuckets;
+      for (const b of rentBuckets) {
+        const r = await queryBenchmark(`
+          SELECT per_unit_p50 AS market_rent
+          FROM line_item_benchmarks
+          WHERE category   = 'revenue'
+            AND line_item  IN ('gpr', 'market_rent', 'gross_potential_rent', 'effective_gross_income')
+            AND asset_class = $1
+            AND deal_type   = $2
+            AND n_samples  >= 3
+            AND ($3::text IS NULL OR state           = $3)
+            AND ($4::text IS NULL OR msa             = $4)
+            AND ($5::text IS NULL OR vintage_band    = $5)
+            AND ($6::text IS NULL OR unit_count_band = $6)
+          ORDER BY as_of DESC
+          LIMIT 1
+        `, [assetClass, dealType, b.state, b.msa, b.vintage, b.units]);
+        const v = r?.market_rent != null ? parseFloat(String(r.market_rent)) : null;
+        if (v != null && v > 0) {
+          marketRentPerUnitAnnual = v;
+          rentSource = 'line_item_benchmarks';
+          break;
+        }
+      }
     }
 
     // 5 — Vacancy: P50 from archive_assumption_benchmarks
@@ -331,14 +377,18 @@ router.get('/deals/:dealId/implied-cap-rate', requireAuth, async (req: Authentic
     let impliedCapRate: number | null = null;
     let computationMethod = 'insufficient_data';
     let opexBucketUsed: Record<string, unknown> | null = null;
+    let noiComponents: Record<string, number> | null = null;
 
     if (units != null && marketRentPerUnitAnnual != null && opexPerUnit != null && purchasePrice != null && purchasePrice > 0) {
-      const gpr    = marketRentPerUnitAnnual * units;
-      const egi    = gpr * (1 - vacancyP50);
-      const noi    = egi - (opexPerUnit * units);
+      const gpr = marketRentPerUnitAnnual * units;
+      const egi = gpr * (1 - vacancyP50);
+      const noi = egi - (opexPerUnit * units);
       impliedCapRate = noi / purchasePrice;
-      computationMethod = 'benchmark_derived';
+      computationMethod = rentSource === 'market_vitals'
+        ? 'market_vitals_rent_benchmark'
+        : 'line_item_benchmark';
       opexBucketUsed = { asset_class: assetClass, deal_type: dealType, vintage_band: vintageBand, unit_count_band: unitCountBand, state, msa };
+      noiComponents = { gpr, egi, noi, opex_total: opexPerUnit * units };
     }
 
     // 7 — Operator going-in cap (from latest underwriting snapshot or financials composer)
@@ -355,6 +405,23 @@ router.get('/deals/:dealId/implied-cap-rate', requireAuth, async (req: Authentic
       const snap = pj.proforma_fields as Record<string, unknown> | null ?? pj;
       const capVal = snap?.going_in_cap_rate ?? snap?.goingInCap ?? snap?.going_in_cap;
       if (capVal != null) operatorGoingInCap = parseFloat(String(capVal));
+    }
+
+    // 7.5 — Comp-reported cap rate: median cap rate from transaction comp set
+    // This is the median of broker/source-reported cap rates on comparable sales,
+    // distinct from the platform-implied cap (which is computed from NOI/price).
+    let compReportedCapRate: number | null = null;
+    let compCount: number | null = null;
+    const compSetRow = await queryBenchmark(`
+      SELECT median_implied_cap_rate, comp_count
+      FROM sale_comp_sets
+      WHERE deal_id = $1::uuid
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [dealId]);
+    if (compSetRow?.median_implied_cap_rate != null) {
+      compReportedCapRate = parseFloat(String(compSetRow.median_implied_cap_rate));
+      compCount = compSetRow.comp_count != null ? parseInt(String(compSetRow.comp_count), 10) : null;
     }
 
     // 8 — Delta and positioning
@@ -375,10 +442,16 @@ router.get('/deals/:dealId/implied-cap-rate', requireAuth, async (req: Authentic
         delta_bps: deltaBps,
         positioning_label: positioningLabel,
         computation_method: computationMethod,
+        rent_source: rentSource,
+        comp_reported_cap_rate: compReportedCapRate,
+        comp_count: compCount,
+        noi_components: noiComponents,
         inputs: {
           units,
           purchase_price: purchasePrice,
           market_rent_per_unit_annual: marketRentPerUnitAnnual,
+          market_rent_per_unit_monthly: marketRentPerUnitAnnual != null ? Math.round(marketRentPerUnitAnnual / 12) : null,
+          market_id: marketId,
           opex_per_unit_annual: opexPerUnit,
           vacancy_p50: vacancyP50,
           vintage_band: vintageBand,
