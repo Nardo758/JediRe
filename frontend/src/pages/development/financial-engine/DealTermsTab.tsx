@@ -129,39 +129,61 @@ function dismissStrategyReleaseNotice(dealId: string): void {
 
 function StrategyReleaseNoticeBanner({
   dealId,
+  detectedStrategy,
   onDismiss,
+  onConfirmDetected,
 }: {
   dealId: string;
+  /** Non-null when the platform detected a strategy but the operator hasn't
+   * explicitly confirmed it. Drives "confirm detected" vs "set strategy" copy. */
+  detectedStrategy: string | null;
   onDismiss: () => void;
+  /** Called when the operator clicks "Confirm [detected]" without changing it. */
+  onConfirmDetected?: () => void;
 }) {
   function handleDismiss() {
     dismissStrategyReleaseNotice(dealId);
     onDismiss();
   }
 
+  const accentColor = detectedStrategy ? AMBER : TEAL;
+
   return (
     <div style={{
       display: 'flex', alignItems: 'flex-start', gap: 12,
       padding: '10px 14px',
-      background: `${TEAL}0D`,
-      borderBottom: `1px solid ${TEAL}44`,
-      borderLeft: `3px solid ${TEAL}`,
+      background: detectedStrategy ? `${AMBER}08` : `${TEAL}0D`,
+      borderBottom: `1px solid ${accentColor}44`,
+      borderLeft: `3px solid ${accentColor}`,
       flexShrink: 0,
     }}>
       <div style={{ flex: 1 }}>
         <div style={{
           fontFamily: MONO, fontSize: 9, fontWeight: 700,
-          color: TEAL, letterSpacing: 1, marginBottom: 5,
+          color: accentColor, letterSpacing: 1, marginBottom: 5,
         }}>
-          NEW — STRATEGY SELECTOR NOW ACTIVE
+          {detectedStrategy
+            ? 'STRATEGY CONFIRMATION NEEDED'
+            : 'NEW — STRATEGY SELECTOR NOW ACTIVE'}
         </div>
         <div style={{
           fontFamily: MONO, fontSize: 9, color: BT.text.secondary,
           lineHeight: 1.65, marginBottom: 6,
         }}>
-          Investment Strategy now drives proforma routing, agent behavior, and tab availability —
-          unlocking tailored analysis for each deal type. Review your strategy for this deal
-          and confirm it below to take advantage of the full F9 experience.
+          {detectedStrategy ? (
+            <>
+              The platform detected this deal's strategy as{' '}
+              <span style={{ color: accentColor, fontWeight: 700 }}>{detectedStrategy}</span>.
+              {' '}Please confirm this is correct, or select a different strategy in the field below.
+              Confirming locks in your selection and activates tailored proforma routing and agent behavior.
+            </>
+          ) : (
+            <>
+              Investment Strategy now drives proforma routing, agent behavior, and tab availability —
+              unlocking tailored analysis for each deal type. Select and save your strategy
+              in the field below to activate full F9 support for this deal.
+            </>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
           <div>
@@ -194,21 +216,39 @@ function StrategyReleaseNoticeBanner({
           </div>
         </div>
       </div>
-      <button
-        onClick={handleDismiss}
-        title="Dismiss this notice"
-        style={{
-          fontFamily: MONO, fontSize: 9, fontWeight: 700,
-          color: BT.text.muted,
-          background: 'transparent',
-          border: `1px solid ${BT.border.subtle}`,
-          padding: '3px 10px', borderRadius: 2,
-          cursor: 'pointer', flexShrink: 0,
-          letterSpacing: 0.3,
-        }}
-      >
-        DISMISS
-      </button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+        {detectedStrategy && onConfirmDetected && (
+          <button
+            onClick={onConfirmDetected}
+            title={`Confirm "${detectedStrategy}" as your investment strategy`}
+            style={{
+              fontFamily: MONO, fontSize: 9, fontWeight: 700,
+              color: BT.bg.terminal, background: AMBER,
+              border: `1px solid ${AMBER}`,
+              padding: '3px 10px', borderRadius: 2,
+              cursor: 'pointer',
+              letterSpacing: 0.3, whiteSpace: 'nowrap',
+            }}
+          >
+            CONFIRM {detectedStrategy.toUpperCase()}
+          </button>
+        )}
+        <button
+          onClick={handleDismiss}
+          title="Remind me later"
+          style={{
+            fontFamily: MONO, fontSize: 9, fontWeight: 700,
+            color: BT.text.muted,
+            background: 'transparent',
+            border: `1px solid ${BT.border.subtle}`,
+            padding: '3px 10px', borderRadius: 2,
+            cursor: 'pointer',
+            letterSpacing: 0.3,
+          }}
+        >
+          {detectedStrategy ? 'LATER' : 'DISMISS'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1155,14 +1195,23 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
         </div>
       </div>
 
-      {/* ── Strategy release notice (Task #1243) ────────────────────────── */}
-      {/* Shown only when investmentStrategy has not been set AND the operator
-          has not yet dismissed the notice for this deal. Once the strategy is
-          set the resolved value becomes non-null and this banner auto-hides. */}
-      {!releaseNoticeDismissed && investStrategyResolved === null && (
+      {/* ── Strategy release notice (Task #1266) ────────────────────────── */}
+      {/* Shown when operator has NOT explicitly set a strategy (override == null).
+          Covers two cases:
+          (a) investStrategyResolved === null — nothing set yet → "set a strategy"
+          (b) investStrategyResolved !== null but override is null — platform-detected
+              or backfilled value → "please confirm detected strategy"
+          Auto-hides once operator saves a strategy (override becomes non-null).
+          Task #1266. */}
+      {!releaseNoticeDismissed && investmentStrategyLv?.override == null && (
         <StrategyReleaseNoticeBanner
           dealId={props.dealId}
+          detectedStrategy={investStrategyResolved}
           onDismiss={() => setReleaseNoticeDismissed(true)}
+          onConfirmDetected={investStrategyResolved ? () => {
+            setInvestmentStrategy(investStrategyResolved);
+            void saveInvestmentStrategy(investStrategyResolved);
+          } : undefined}
         />
       )}
 
