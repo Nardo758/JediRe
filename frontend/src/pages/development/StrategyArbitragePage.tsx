@@ -18,7 +18,7 @@ import { apiClient } from '../../services/api.client';
 import { PinToWorkspaceButton } from '../../components/workspace/PinToWorkspaceButton';
 
 const MONO = BT.font.mono;
-const TAB_LABELS = ['M08 v2 ANALYSIS', 'SIGNAL MATRIX', 'CUSTOM SCREENS'];
+const TAB_LABELS = ['STRATEGY ANALYSIS', 'MARKET SIGNALS', 'CUSTOM SCREENS'];
 
 // ─── Stability badge helpers ──────────────────────────────────────────────────
 

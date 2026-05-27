@@ -1159,6 +1159,7 @@ export function CorrelationTimingPanel({ goldenChain, correlationAlerts, indicat
   correlationAlerts: CorrelationAlert[];
   indicators: StrategyAnalysisV2['indicators'];
 }) {
+  const [indicatorsOpen, setIndicatorsOpen] = useState(false);
   return (
     <SectionPanel title="CORRELATION TIMING" borderColor={BT.text.teal} style={{ marginBottom: 1 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
@@ -1205,27 +1206,43 @@ export function CorrelationTimingPanel({ goldenChain, correlationAlerts, indicat
           )}
         </div>
       </div>
-      <div style={{ borderTop: `1px solid ${BT.border.subtle}`, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)' }}>
-        {(['leading', 'concurrent', 'lagging'] as const).map(type => (
-          <div key={type} style={{ padding: '6px 10px', borderRight: `1px solid ${BT.border.subtle}` }}>
-            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 4 }}>
-              {type.toUpperCase()} INDICATORS
-            </div>
-            {(indicators?.[type] || []).map((ind: Indicator, i: number) => {
-              const arr = dirArrow(ind.direction);
-              return (
-                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '2px 0' }}>
-                  <span style={{ fontFamily: MONO, fontSize: 8, color: arr.color }}>{arr.sym}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, flex: 1 }}>{ind.label}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 8, color: arr.color, fontWeight: 700 }}>{ind.value}</span>
+      <div style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+        <button
+          onClick={() => setIndicatorsOpen(o => !o)}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+            padding: '5px 10px', background: 'none', border: 'none', cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5 }}>
+            {indicatorsOpen ? '▲' : '▼'} INDICATORS
+          </span>
+        </button>
+        {indicatorsOpen && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', borderTop: `1px solid ${BT.border.subtle}` }}>
+            {(['leading', 'concurrent', 'lagging'] as const).map(type => (
+              <div key={type} style={{ padding: '6px 10px', borderRight: `1px solid ${BT.border.subtle}` }}>
+                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 4 }}>
+                  {type.toUpperCase()} INDICATORS
                 </div>
-              );
-            })}
-            {(!indicators?.[type] || indicators[type].length === 0) && (
-              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>—</span>
-            )}
+                {(indicators?.[type] || []).map((ind: Indicator, i: number) => {
+                  const arr = dirArrow(ind.direction);
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '2px 0' }}>
+                      <span style={{ fontFamily: MONO, fontSize: 8, color: arr.color }}>{arr.sym}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, flex: 1 }}>{ind.label}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 8, color: arr.color, fontWeight: 700 }}>{ind.value}</span>
+                    </div>
+                  );
+                })}
+                {(!indicators?.[type] || indicators[type].length === 0) && (
+                  <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>—</span>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
     </SectionPanel>
   );
@@ -1836,18 +1853,6 @@ export function V2FullAnalysis({
             <SubStrategyComparison subStrategies={analysis.subStrategies} arbitrage={analysis.arbitrage} />
           </BlockErrorBoundary>
 
-          <BlockErrorBoundary
-            label="SignalHeatmapPanel"
-            fallback={({ retry }) => (
-              <BlockErrorFallback
-                message="Couldn't render the signal heatmap — other panels are unaffected."
-                onRetry={retry}
-              />
-            )}
-          >
-            <SignalHeatmap subStrategies={analysis.subStrategies} signalScores={analysis.signalScores} />
-          </BlockErrorBoundary>
-
           {(analysis.subStrategies ?? []).map(ss => (
             <BlockErrorBoundary
               key={ss.key}
@@ -1862,6 +1867,18 @@ export function V2FullAnalysis({
               <EvidenceReportBlock ss={ss} defaultExpanded={ss.isDetectedPrimary} />
             </BlockErrorBoundary>
           ))}
+
+          <BlockErrorBoundary
+            label="SignalHeatmapPanel"
+            fallback={({ retry }) => (
+              <BlockErrorFallback
+                message="Couldn't render the signal heatmap — other panels are unaffected."
+                onRetry={retry}
+              />
+            )}
+          >
+            <SignalHeatmap subStrategies={analysis.subStrategies} signalScores={analysis.signalScores} />
+          </BlockErrorBoundary>
 
           <BlockErrorBoundary
             label="CorrelationTimingPanel"
