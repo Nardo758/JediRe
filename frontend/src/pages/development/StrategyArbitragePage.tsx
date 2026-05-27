@@ -283,6 +283,12 @@ interface StrategyArbitragePageProps {
   dealType?: string;
 }
 
+const UNSUPPORTED_DEAL_TYPES: Record<string, string> = {
+  flip:          'Flip',
+  str_shortterm: 'Short-Term Rental (STR)',
+  land_hold:     'Land Hold',
+};
+
 export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType }: StrategyArbitragePageProps) {
   const params = useParams<{ id?: string; dealId?: string }>();
   const resolvedDealId = dealId || params.dealId || params.id || '';
@@ -293,6 +299,9 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
   } = useStrategyAnalysisV2(resolvedDealId);
 
   const [activeTab, setActiveTab] = useState(0);
+
+  const rawDealType = (_deal?.['deal_type'] as string | null) ?? null;
+  const unsupportedLabel = rawDealType ? UNSUPPORTED_DEAL_TYPES[rawDealType] ?? null : null;
 
   const city = useDealStore(s => s.identity.city) || 'Atlanta';
   const stateName = useDealStore(s => s.identity.state) || 'GA';
@@ -330,6 +339,26 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
       />
 
       <SubTabBar tabs={TAB_LABELS} active={activeTab} setActive={setActiveTab} color={BT.text.amber} />
+
+      {/* ── Not-yet-supported notice for STR / Flip / Land Hold ── */}
+      {unsupportedLabel && (
+        <div style={{
+          flexShrink: 0, display: 'flex', alignItems: 'flex-start', gap: 10,
+          padding: '8px 12px',
+          background: '#0f0f14',
+          borderBottom: '1px solid #7c3aed55',
+          borderLeft: '3px solid #7c3aed',
+        }}>
+          <span style={{ color: '#a78bfa', fontSize: 10, fontWeight: 700, fontFamily: MONO, letterSpacing: '0.06em', flexShrink: 0, marginTop: 1 }}>
+            ⚠ LIMITED SUPPORT
+          </span>
+          <span style={{ fontFamily: 'sans-serif', fontSize: 10, color: '#94a3b8', lineHeight: 1.5 }}>
+            Strategy scoring for <strong style={{ color: '#c4b5fd' }}>{unsupportedLabel}</strong> deals is not yet fully modeled.
+            Detection and evidence collection will run, but sub-strategy scores and plan recommendations may be incomplete.
+            Full support for this deal type is planned for a future release.
+          </span>
+        </div>
+      )}
 
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {activeTab === 0 && (

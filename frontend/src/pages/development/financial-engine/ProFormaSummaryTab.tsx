@@ -1340,6 +1340,27 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         </div>
       )}
 
+      {/* ── Not-yet-supported notice (flip / STR / land_hold templates) ── */}
+      {isSpecialTemplate && (
+        <div style={{
+          flexShrink: 0, display: 'flex', alignItems: 'flex-start', gap: 10,
+          padding: '8px 12px',
+          background: '#0f0f14',
+          borderBottom: '1px solid #7c3aed55',
+          borderLeft: '3px solid #7c3aed',
+        }}>
+          <span style={{ color: '#a78bfa', fontSize: 10, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.06em', flexShrink: 0, marginTop: 1 }}>
+            ⚠ LIMITED SUPPORT
+          </span>
+          <span style={{ fontFamily: 'sans-serif', fontSize: 10, color: '#94a3b8', lineHeight: 1.5 }}>
+            {isFlipTemplate && 'Flip deals are not yet fully modeled. The rows below show the template structure — values marked NOT SET require manual input and cashflow projections are not available.'}
+            {isStrTemplate && 'Short-Term Rental (STR) deals are not yet fully modeled. ADR, RevPAR, and occupancy-based revenue rows are displayed as placeholders — cashflow projections are not available.'}
+            {isLandHoldTemplate && 'Land Hold deals are not yet fully modeled. The carry-cost and disposition rows below are structural placeholders — cashflow projections are not available.'}
+            {' '}Full modeling for this deal type is planned for a future release.
+          </span>
+        </div>
+      )}
+
       {/* ── Stabilized Potential (M09) overlay ── */}
       {showStabilized && dealId && (
         <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
