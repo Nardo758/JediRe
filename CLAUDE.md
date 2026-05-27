@@ -374,7 +374,15 @@ When a dispatch produces a closing note that informs the scope of subsequent wor
 
 **Output:** Append a verification section to the original investigation file. Verdict must be one of: `APPROVED FOR DOWNSTREAM WORK` / `NEEDS AMENDMENT` / `NEEDS REWORK`.
 
-**Rationale:** Investigations produce documents that subsequent dispatches treat as authoritative. If an investigation has incomplete citations, missing cross-fix integration, or unaddressed gaps, downstream dispatches inherit those problems. Verification catches issues before propagation.
+**Corollary — State Verification:** Before drafting any dispatch that builds on prior work, verify the current codebase state. Check:
+1. The file the prior dispatch was supposed to create or modify actually exists at the expected path
+2. The principle, rule, or section the prior dispatch was supposed to add is present in that file
+3. The feature or behavior the prior dispatch was supposed to implement is present in the running code
+4. The closing note the prior dispatch was supposed to produce exists and is substantive
+
+All four checks must pass before the dispatch fires. If any check fails, treat it as a `NEEDS REWORK` finding and surface it before proceeding.
+
+**Rationale:** Investigations produce documents that subsequent dispatches treat as authoritative. If an investigation has incomplete citations, missing cross-fix integration, or unaddressed gaps, downstream dispatches inherit those problems. Verification catches issues before propagation. Dispatches drafted on the assumption that prior decisions have already been implemented can queue work that is already done — or worse, build on top of work that was never completed.
 
 A related failure mode: dispatches that were drafted but never fired can be confused with dispatches that landed. "The closing note doesn't exist" is a valid verification finding — it stops downstream work from building on a phantom document.
 
@@ -382,3 +390,4 @@ A related failure mode: dispatches that were drafted but never fired can be conf
 - Skip verification for "small" investigations — small ones produce small documents but their findings propagate just as much
 - Verify your own work as the sole check — the agent verifying its own output is a known confirmation-bias risk; operator review of the verification is required
 - Treat parallel firing as acceptable for dependency-linked work — sequential firing is the default for investigation → implementation chains; parallel only when work is genuinely independent
+- Skip current-state verification because "we just decided this in the prior session"
