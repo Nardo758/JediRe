@@ -1127,30 +1127,38 @@ router.patch('/:dealId/assumptions/adoption-timeline', requireAuth, async (req: 
   try {
     const { dealId } = req.params;
     const userId = req.user?.userId;
-    const {
-      constructionMonths,
-      leaseUpMonths,
-      absorptionUnitsPerMonth,
-      stabilizationTargetPct,
-    } = req.body as {
-      constructionMonths?: number | null;
-      leaseUpMonths?: number | null;
-      absorptionUnitsPerMonth?: number | null;
-      stabilizationTargetPct?: number | null;
-    };
+    const body = req.body as Record<string, number | null | undefined>;
 
-    const validate = (name: string, v: number | null | undefined, min: number, max: number) => {
-      if (v == null) return null;
+    // Validate only fields that are explicitly provided (undefined = field absent = no change).
+    // Return 400 for out-of-range values rather than throwing into a 500.
+    const validateField = (name: string, v: number | null | undefined, min: number, max: number): number | null | undefined => {
+      if (v === undefined) return undefined; // absent — do not touch this column
+      if (v === null) return null;           // explicit null — clear this column
       if (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max) {
-        throw new Error(`${name} must be a finite number between ${min} and ${max}`);
+        res.status(400).json({ error: `${name} must be a finite number between ${min} and ${max}` });
+        throw Object.assign(new Error('validation'), { _sent: true });
       }
       return v;
     };
 
-    const cm  = validate('constructionMonths',       constructionMonths,       0, 120);
-    const lum = validate('leaseUpMonths',             leaseUpMonths,            0, 120);
-    const apm = validate('absorptionUnitsPerMonth',   absorptionUnitsPerMonth,  0, 10000);
-    const stp = validate('stabilizationTargetPct',    stabilizationTargetPct,   0, 1);
+    const cm  = validateField('constructionMonths',      body.constructionMonths,      0, 120);
+    const lum = validateField('leaseUpMonths',            body.leaseUpMonths,            0, 120);
+    const apm = validateField('absorptionUnitsPerMonth',  body.absorptionUnitsPerMonth,  0, 10000);
+    const stp = validateField('stabilizationTargetPct',   body.stabilizationTargetPct,   0, 1);
+
+    // Build a partial SET clause updating only columns that are present in the request
+    const setClauses: string[] = ['updated_at = NOW()'];
+    const sqlParams: (number | null | string)[] = [dealId];
+    const addCol = (col: string, val: number | null | undefined) => {
+      if (val !== undefined) {
+        sqlParams.push(val);
+        setClauses.push(`${col} = $${sqlParams.length}`);
+      }
+    };
+    addCol('construction_months',        cm);
+    addCol('lease_up_months',            lum);
+    addCol('absorption_units_per_month', apm);
+    addCol('stabilization_target_pct',   stp);
 
     const own = await pool.query(
       `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
@@ -1161,19 +1169,15 @@ router.patch('/:dealId/assumptions/adoption-timeline', requireAuth, async (req: 
     }
 
     await pool.query(
-      `INSERT INTO deal_assumptions (deal_id, construction_months, lease_up_months, absorption_units_per_month, stabilization_target_pct, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
-       ON CONFLICT (deal_id) DO UPDATE SET
-         construction_months        = $2,
-         lease_up_months            = $3,
-         absorption_units_per_month = $4,
-         stabilization_target_pct   = $5,
-         updated_at                 = NOW()`,
-      [dealId, cm, lum, apm, stp]
+      `INSERT INTO deal_assumptions (deal_id, updated_at)
+       VALUES ($1, NOW())
+       ON CONFLICT (deal_id) DO UPDATE SET ${setClauses.join(', ')}`,
+      sqlParams
     );
 
     res.json({ success: true, data: { constructionMonths: cm, leaseUpMonths: lum, absorptionUnitsPerMonth: apm, stabilizationTargetPct: stp } });
   } catch (error: any) {
+    if (error._sent) return;
     logger.error('Error patching adoption timeline:', error);
     res.status(500).json({ error: error.message });
   }

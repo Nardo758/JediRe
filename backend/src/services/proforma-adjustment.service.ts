@@ -4388,19 +4388,57 @@ export async function getDealFinancials(
     if (!seeded) return [];
 
     // ── Adoption timeline ramp for development/lease-up deals (Task #1271) ──────
-    // Reads construction_months, lease_up_months, stabilization_target_pct from
-    // deal_assumptions. When null, falls back to deterministic model runner defaults
-    // (18mo construction, 12mo lease-up, 95% stabilization target).
+    // Reads construction_months, lease_up_months, absorption_units_per_month, and
+    // stabilization_target_pct from deal_assumptions. Falls back to deterministic
+    // model runner defaults when null (18mo construction, 12mo lease-up, 95% stab).
+    //
+    // PRECISION: uses month-level averaging (12 samples per projection year) so that
+    // sub-12-month construction or lease-up periods are NOT rounded up to a full year
+    // and do not overstate revenue.
+    //
+    // ABSORPTION RATE: when absorption_units_per_month is set, occupied unit count at
+    // each month is abs_rate × leaseMonths, capped by totalUnits × stabTarget.
+    // When absent, falls back to linear ramp across leaseUpMonths.
     const _atRow = assumptionsRes.rows[0];
     const _projDealTypeNorm = ((deal.deal_type as string | null) ?? '').replace(/-/g, '_').toLowerCase();
     const _isProjDev     = _projDealTypeNorm === 'development' || _projDealTypeNorm === 'ground_up';
     const _isProjLeaseUp = _projDealTypeNorm === 'lease_up';
     const _needsRamp     = _isProjDev || _isProjLeaseUp;
-    const _atCm    = _atRow?.construction_months     != null ? +parseFloat(String(_atRow.construction_months))     : (_isProjDev ? 18 : 0);
-    const _atLum   = _atRow?.lease_up_months         != null ? +parseFloat(String(_atRow.lease_up_months))         : (_needsRamp ? 12 : 0);
-    const _atStab  = _atRow?.stabilization_target_pct != null ? +parseFloat(String(_atRow.stabilization_target_pct)) : 0.95;
-    const _devConstrYrs  = _isProjDev ? Math.ceil(_atCm  / 12) : 0;
-    const _devLeaseUpYrs = _needsRamp  ? Math.ceil(_atLum / 12) : 0;
+    const _atCm  = _atRow?.construction_months       != null ? +parseFloat(String(_atRow.construction_months))       : (_isProjDev ? 18 : 0);
+    const _atLum = _atRow?.lease_up_months            != null ? +parseFloat(String(_atRow.lease_up_months))            : (_needsRamp ? 12 : 0);
+    const _atStab = _atRow?.stabilization_target_pct  != null ? +parseFloat(String(_atRow.stabilization_target_pct))  : 0.95;
+    const _atApm = _atRow?.absorption_units_per_month != null ? +parseFloat(String(_atRow.absorption_units_per_month)) : null;
+    // Total units available for occupancy calculation; prefer totalUnits already in scope
+    const _projTotalUnits = totalUnits > 0 ? totalUnits : 1;
+
+    /**
+     * Compute the annual average occupancy fraction for a given projection year.
+     * Samples 12 months within the year (month indices 0-based from deal close).
+     * Handles sub-year construction end and lease-up end with month precision.
+     */
+    const _computeAnnualOccupancy = (yr: number): number => {
+      let sum = 0;
+      for (let mo = (yr - 1) * 12; mo < yr * 12; mo++) {
+        if (_isProjDev && mo < _atCm) {
+          // Construction: zero occupancy
+          sum += 0;
+        } else {
+          // Post-construction lease-up phase
+          const leaseMo = _isProjDev ? mo - _atCm : mo; // months since construction complete
+          if (_atApm != null && _atApm > 0) {
+            // Absorption-rate driven: units = apm × months elapsed (1-indexed)
+            const occupied = Math.min(_atApm * (leaseMo + 1), _projTotalUnits * _atStab);
+            sum += occupied / _projTotalUnits;
+          } else if (_needsRamp && _atLum > 0) {
+            // Linear ramp over leaseUpMonths
+            sum += Math.min(1, ((leaseMo + 1) / _atLum)) * _atStab;
+          } else {
+            sum += 1; // existing/stabilized — full occupancy
+          }
+        }
+      }
+      return Math.min(1, sum / 12);
+    };
 
     // Debt parameters — prefer debt_tab senior loan data
     const seniorLoanOvr = debtStack?.loans?.find(l => l.id === 'senior');
@@ -4478,17 +4516,13 @@ export async function getDealFinancials(
       const thisYrGrowth = pv?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03;
 
       // ── Adoption timeline ramp factor for this year (Task #1271) ──────────────
-      // Construction years: zero revenue, only property tax.
-      // Lease-up years: linear absorption from 0 → stabilizationTargetPct.
-      // Stabilized years: rampFactor = 1 (no scaling).
-      const _isConstrYr = _isProjDev && yr <= _devConstrYrs;
-      const _leasePhaseY = _isProjDev ? yr - _devConstrYrs : yr;
-      const _rampFactor: number = (() => {
-        if (_isConstrYr) return 0;
-        if (_needsRamp && _devLeaseUpYrs > 0 && _leasePhaseY > 0 && _leasePhaseY <= _devLeaseUpYrs)
-          return Math.min(1, (_leasePhaseY / _devLeaseUpYrs) * _atStab);
-        return 1;
-      })();
+      // Uses month-precision averaging via _computeAnnualOccupancy so sub-12-month
+      // ramp periods are handled correctly. absorptionUnitsPerMonth is used when set.
+      const _annualOcc  = _needsRamp ? _computeAnnualOccupancy(yr) : 1;
+      const _rampFactor = _needsRamp ? _annualOcc : 1;
+      // A year is "fully in construction" when every month of the year is pre-CO.
+      // Uses month-precision: all 12 months must be < constructionMonths.
+      const _isConstrYr = _isProjDev && yr * 12 <= _atCm;
 
       // Growth step applied TO this year: uses the prior year's per-year growth rate.
       // Rent growth and per-line OPEX growth come from the layered engine (five-component
