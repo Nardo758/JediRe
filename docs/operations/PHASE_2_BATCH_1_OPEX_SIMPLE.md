@@ -29,7 +29,7 @@
 1. All CTRLL items share the same source priority: `override > OM > T12 > platform`. Source priority is identical; the variation is in evidence quality per item.
 2. For value-add/repositioning deals, 4 of the 10 items have Mandate v1.3 sub-field support (R&M, Marketing, Turnover, Contract Services). Their derivation logic uses the sub-field regime.
 3. Utilities (NCTRL-001/002/003 + Trash) share a structural challenge: OM packages frequently provide a combined `utilitiesAnnual` figure rather than per-utility line items. Decomposition logic is needed.
-4. Replacement Reserves (CAPEX-001) has **no T12 source** — it falls back to OM or platform immediately. The platform default ($350/unit) is hardcoded in `proforma-adjustment.service.ts:3393`.
+4. Replacement Reserves (CAPEX-001) has **no T12 source** — it falls back to OM or platform immediately. A last-resort $350/unit fallback exists in the export path (`f9-financial-export.service.ts:172`); the committed derivation rule is the three-tier age-based default in Pattern C.
 5. `line_item_benchmarks` table exists with the right schema for sigma checks, but BUG-01 means all `platform` slots are currently null. Batch 1 derivation logic should reference benchmarks but operators should be warned when benchmark population is sparse.
 
 **Cross-batch dependencies identified (Section 5):** Property tax (Batch 2), Insurance (Batch 2), Management fee (Batch 2).
@@ -113,25 +113,40 @@ post_stabilization = line_item_benchmarks.p50 for (state, msa, target_asset_clas
 
 ### Pattern B — NCTRL Utilities (Water, Electric, Gas, Trash)
 
-**Applies to:** NCTRL-001, NCTRL-002, NCTRL-003, and Trash (if distinct NCTRL field)
+**Applies to:** NCTRL-001, NCTRL-002, NCTRL-003, and Trash (see OQ-1 resolution — routes to `contractServices` or combined `utilities` by label)
 
-**Same source priority as Pattern A**, with one critical structural difference:
+**AMENDED 2026-05-27:** T12 parser produces combined utilities only. Per `types.ts:479-484` and PHASE_2_BATCH_1_DATA_QUERIES.md Query 2 findings.
 
-**OM decomposition problem:** Broker OM packages frequently provide a single `utilitiesAnnual` figure rather than per-utility line items. The canonical P&L expects decomposed `water_sewer + electric + gas_fuel (+ trash)`. When OM is combined:
+**T12 infrastructure constraint:** The T12 parser aggregates ALL utility lines (water, electric, gas, trash, other) to a single `utilities` figure. Per `backend/src/services/document-extraction/types.ts` lines 479–484:
+> "Null from T12 today (parser aggregates to `utilities`). Task #672."
+
+Individual sub-line values (`water_sewer`, `electric`, `gas_fuel`) are never populated from T12 parsing under the current implementation. Split ratios applied to the combined `utilities` figure are the **only available derivation path** for per-utility values until Task #672 ships.
+
+**Source priority:**
 
 ```
-OM decomposition rule (when utilitiesAnnual present but sub-lines absent):
-  1. If subject's T12 has individual utility lines → use T12 for the specific line, ignore combined OM
-  2. If T12 also combined → apply platform split ratios:
-     water_sewer: 42% of combined utilities (multifamily NMHC average)
-     electric:    32% of combined utilities
-     gas_fuel:    18% of combined utilities
-     trash:        8% of combined utilities (if tracked separately)
-  3. Surface note: "Utility lines estimated via platform split ratios from OM combined figure"
-  4. Confidence: MEDIUM (split estimate); flag for operator verification
+resolved_per_utility = COALESCE(
+  override,                                -- operator-set per-utility override; always wins
+  om_itemized_value,                       -- OM sub-line if broker itemized (rare)
+  t12_combined × split_ratio,             -- T12 combined utilities × split ratio (primary path)
+  benchmark_utilities_total × split_ratio -- line_item_benchmarks.utilities_total × split ratio
+)
 ```
 
-**T12 sub-line availability:** T12 from the broker package may also be combined. In this case, `deal_monthly_actuals.utilities` is the combined field. Individual fields (`water_sewer`, `electric`, `gas_fuel`) are populated only when the T12 is itemized.
+**Split ratios (interim — NMHC averages; recalibrate post-Task #672):**
+
+```
+water_sewer:  42%  (Atlanta: 45%)
+electric:     32%  (Atlanta: 40%)
+gas_fuel:     18%  (Atlanta: 10%)
+trash:         8%  (Atlanta:  5%)  [when trash is combined into utilities, not contractServices]
+```
+
+Surface note with any split-ratio derived value: "Utility sub-lines estimated via platform split ratios from combined T12 utilities figure. Calibration pending Task #672 sub-line T12 parsing."
+
+**Confidence:** MEDIUM for all split-ratio derived values. Upgrade to HIGH only when operator provides confirmed per-utility breakdown.
+
+**Sigma validation:** Use `line_item_benchmarks.utilities_total` for sigma check on the combined utilities figure. No per-sub-line benchmarks exist (`water_sewer`, `electric`, `gas_fuel` are not separate benchmark line items). Do not sigma-check individual sub-lines independently.
 
 **Double-count guard:** NCTRL-003a (combined `utilities` field) and the decomposed sub-lines can both be populated simultaneously. Derivation logic must check whether both are set and prefer decomposed sub-lines. Do not sum both (BUG-01 note in template: "double-counting risk").
 
@@ -160,21 +175,25 @@ resolved = COALESCE(
 -- NOTE: NO T12 source. Reserves are a budget item set by policy, not a trailing actuals item.
 ```
 
-**Platform fallback:** `proforma-adjustment.service.ts:3393` hardcodes $350/unit if `year1.replacement_reserves` is null. This is the last-resort fallback, below the platform benchmark.
+**Platform fallback:** `f9-financial-export.service.ts:172` hardcodes `totalUnits × 350` when `year1.replacement_reserves` is null — in the **export path only**, not the derivation path. Cleanup dispatch needed to align the export fallback with the three-tier rule below.
 
-**Standard market ranges:**
-| Asset condition | Range | Notes |
+**COMMITTED RULE (2026-05-27) — Three-tier age-based:**
+
+| Asset age | Default $/unit/yr | Notes |
 |---|---|---|
-| Class A, post-2010 | $150–$250/unit/yr | Low near-term capital needs |
-| Class B, 1990–2009 | $250–$400/unit/yr | Moderate wear; planned replacements |
-| Class C, pre-1990 | $400–$600/unit/yr | Higher deferred maintenance risk |
-| Value-add (during reno) | $100–$200/unit/yr | CapEx budget absorbs major items |
-| Value-add (post-stabilization) | Match target class above | After renovation, benchmark to target class |
+| < 10 years old | $200/unit/yr | Modern systems; low near-term capital risk |
+| 10–25 years old | $350/unit/yr | Moderate wear; planned replacements |
+| 25+ years old | $500/unit/yr | Higher capital risk; flag if understated |
+| Value-add (during reno) | Operator override required | CapEx draw absorbs major items; no platform default applies |
+
+**Derivation:** Compute `current_year − year_built`. Apply the matching age band as the platform default. Operator override always takes precedence. Minimum floor across all bands: $150/unit/yr.
+
+**System prompt alignment:** `system.ts:459` updated to this three-tier rule. The prior two-band rule ($300 < 15yr, $500 ≥ 15yr) is superseded.
 
 **Validation:**
-1. **Sigma check:** Compare resolved $/unit vs `line_item_benchmarks` for (state, msa, asset_class). Flag if < $150/unit (likely understated) or > $600/unit (unusually high).
-2. **Broker cross-check:** OM typically states reserves as $/unit. If OM value is present but operator hasn't overridden, note "Using broker-stated reserve; verify reserve adequacy for asset age/condition."
-3. **Age factor:** `totalUnits × year_built` can be used to compute an age-adjusted reserve. If the subject was built >20 years ago and reserves < $300/unit, surface a soft warning.
+1. **Sigma check:** Compare resolved $/unit vs `line_item_benchmarks.replacement_reserves`. Flag if < $150/unit (likely understated).
+2. **Broker cross-check:** OM reserves are routinely understated to inflate NOI. If OM value < committed age-band default, surface amber flag "Broker reserves appear below age-appropriate default ($X/unit for [age-band])."
+3. **Age confirmation:** Surface in evidence trail: "Asset built [year_built]; age [N] years; applied $X/unit/yr ([<10yr / 10–25yr / 25+yr] default)."
 
 **Value-add / Repositioning:**
 - During renovation: reserves are typically reduced (CapEx budget handles capital replacement)
@@ -527,7 +546,7 @@ resolved = COALESCE(
   override,                          -- operator-set; always wins
   om_reserves,                       -- broker OM per-unit reserves
   line_item_benchmarks_p50,          -- platform benchmark for (state, msa, asset_class)
-  $350/unit                          -- hardcoded fallback (proforma-adjustment.service.ts:3393)
+  $350/unit                          -- export-path fallback only (f9-financial-export.service.ts:172); three-tier rule is canonical
 )
 ```
 
@@ -539,20 +558,21 @@ resolved = COALESCE(
 | Platform benchmark | MEDIUM (cohort data; appropriate for the asset class) |
 | $350/unit hardcoded fallback | LOW (generic default; flag prominently) |
 
-**Standard reserve bands (Phase 1):**
-| Asset class (proxy by year_built) | Reserve range | Notes |
+**COMMITTED RULE (2026-05-27) — Three-tier age-based:**
+| Asset age (current_year − year_built) | Default $/unit/yr | Notes |
 |---|---|---|
-| Class A (≥2010) | $150–$250/unit/yr | Modern systems; low near-term capital risk |
-| Class B (1995–2009) | $250–$400/unit/yr | Moderate deferred maintenance |
-| Class C (<1995) | $400–$600/unit/yr | Higher capital risk; flag if reserves are understated |
-| Value-add (during reno) | $100–$200/unit/yr | CapEx draw absorbs major replacements |
-| Value-add (post-stabilization) | Match target class | After renovation, benchmark to renovated asset class |
+| < 10 years old | $200/unit/yr | Modern systems; low near-term capital risk |
+| 10–25 years old | $350/unit/yr | Moderate wear; planned replacements |
+| 25+ years old | $500/unit/yr | Higher capital risk; flag if understated |
+| Value-add (during reno) | Operator override required | CapEx draw absorbs major items; no platform default |
+
+Operator override always takes precedence. Minimum floor across all bands: $150/unit/yr.
 
 **Agent validation:**
-1. If resolved < $150/unit: surface warning "Reserves appear understated for an operating property; minimum $150/unit recommended."
-2. If resolved < $250/unit on a Class C asset: surface warning "Asset age suggests higher reserve requirement; $400+ recommended."
-3. If OM-stated < $150/unit: surface note "Broker reserves appear optimistic; verify vs capital plan."
-4. Age-factor cross-check: `year_built` + current year = asset age. If age > 25 years AND reserves < $350/unit, surface amber flag.
+1. If resolved < $150/unit: surface warning "Reserves appear understated; minimum floor $150/unit/yr."
+2. If OM-stated < age-band default: surface amber flag "Broker reserves below age-appropriate default ($X/unit for [<10yr / 10–25yr / 25+yr] band)."
+3. Surface in evidence trail: "Asset built [year_built]; age [N] years; applied $X/unit/yr [age-band] default."
+4. If age > 25 years AND resolved < $400/unit: surface amber flag "25+ year asset; $500/unit default applies."
 
 **Value-add / Repositioning:**
 - No sub-fields (reserve policy, not T12 actuals)
@@ -572,58 +592,17 @@ resolved = COALESCE(
 
 ---
 
-## 4. Open Questions for Operator Review
+## 4. Open Questions — Resolution Status
 
-### OQ-1 — "Trash" as a Distinct Field (HIGH priority)
+All five OQs resolved. See PHASE_2_BATCH_1_DATA_QUERIES.md for full investigation findings.
 
-**Question:** Is trash/waste removal a distinct NCTRL line item in the canonical P&L, or is it tracked within Contract Services (CTRLL-002)?
-
-**Context:** The PROFORMA_CALCULATION_TEMPLATE.md defines no distinct `trash` NCTRL line item. The only utility NCTRL items are water_sewer, electric, and gas_fuel. Trash is typically either:
-- A sub-line of Contract Services (private hauler contract)
-- Part of combined utilities (municipal billing)
-- A separate small NCTRL item
-
-**Impact:** If `trash` is a distinct field, it needs to be added to `OPEX_FIELDS` in `proforma-adjustment.service.ts` and to the PROFORMA_CALCULATION_TEMPLATE.md. If it maps to Contract Services, the derivation logic above handles it correctly.
-
-**Operator decision needed:** Where does trash appear in the F9 P&L for deals where it is separately tracked?
-
-### OQ-2 — Utility Decomposition Split Ratios (MEDIUM priority)
-
-**Question:** The Pattern B decomposition rule proposes platform split ratios (water 42%, electric 32%, gas 18%, trash 8%) for cases where OM provides combined `utilitiesAnnual` only. Are these ratios appropriate for the platform's target markets (Atlanta, Charlotte, Nashville, Tampa)?
-
-**Context:** These ratios are derived from NMHC industry averages. Southeast markets typically have lower gas ratios (mild winters) and higher electric ratios (air conditioning). The correct ratios may be:
-- Atlanta: water 45%, electric 40%, gas 10%, trash 5%
-- Charlotte/Nashville: water 42%, electric 35%, gas 18%, trash 5%
-
-**Operator decision needed:** Approve or adjust the split ratios before implementation.
-
-### OQ-3 — Replacement Reserves Platform Default (MEDIUM priority)
-
-**Question:** The hardcoded `$350/unit` fallback in `proforma-adjustment.service.ts:3393` should be replaced with a more sophisticated estimate. What is the right approach?
-
-**Options:**
-- (a) Keep $350/unit as a global floor; always flag to operator when this fallback is used
-- (b) Replace with age-adjusted formula: `MAX(150, MIN(600, (current_year − year_built) × 8))` — rough linear scale
-- (c) Replace with class-based defaults (Class A: $200, Class B: $300, Class C: $450) using `year_built` proxy
-- (d) Require operator input; block resolution if no OM reserves and no override
-
-**Operator decision needed:** Choose (a), (b), (c), or (d). Recommendation: (c) — simple, defensible, and removes the incentive to understate.
-
-### OQ-4 — Contract Services Value-Add Complexity in Batch 1 (LOW priority)
-
-**Question:** Contract Services has Mandate v1.3 sub-field behavior that makes it more complex than other Batch 1 items. Should CS derivation logic be elevated to Batch 2 (complex) rather than Batch 1 (simple)?
-
-**Context:** For stabilized deals, CS follows Pattern A exactly (simple). For value-add deals, CS requires the agent to reason about amenity additions — which is LLM-driven and cannot be systematized with a simple rule. This creates a two-tier derivation: simple for stabilized, complex for value-add.
-
-**Operator decision needed:** Keep CS in Batch 1 with the "CONDITIONAL" caveat documented above, or move to Batch 2? Recommendation: keep in Batch 1 with the conditional note clearly documented.
-
-### OQ-5 — line_item_benchmarks Population Status (HIGH priority)
-
-**Question:** The Batch 1 derivation logic references `line_item_benchmarks` for sigma checks and platform fallback. BUG-01 (PROFORMA_CALCULATION_TEMPLATE.md) notes all platform slots are currently null. Are benchmarks populated for any of the Batch 1 fields?
-
-**Impact:** If benchmarks are empty, the sigma check fires "insufficient benchmark data" for all deals, and platform fallback is unavailable. Batch 1 derivation logic would still work (T12 is the primary source), but the validation layer would be non-functional.
-
-**Investigation needed:** Query `SELECT line_item, COUNT(*) FROM line_item_benchmarks GROUP BY line_item` to check population status. If empty, the benchmark population is a prerequisite for the validation logic to be functional.
+| OQ | Topic | Status | Resolution |
+|---|---|---|---|
+| OQ-1 | Trash field classification | **RESOLVED** | T12 parser routes by label: "Trash Removal" → `contractServices`; "Valet Trash"/"Trash (pickup/hauling)" → `utilities` combined. No new NCTRL field needed. Canonical complete. |
+| OQ-2 | Replacement reserves default | **COMMITTED** | Three-tier age rule: <10yr → $200/unit, 10–25yr → $350/unit, 25+yr → $500/unit. Operator override required. See Pattern C above and `system.ts:459`. |
+| OQ-3 | Utility split ratios calibration | **DEFERRED** | T12 parser aggregates to combined `utilities` only (Task #672 required for sub-line parsing). Empirical calibration impossible from current data. Interim NMHC ratios documented in Pattern B. |
+| OQ-4 | CS value-add complexity | **RESOLVED** | Keep CS in Batch 1 with CONDITIONAL caveat. Stabilized follows Pattern A exactly; value-add amenity detection remains LLM-driven with explicit Phase 1 limitation note. |
+| OQ-5 | line_item_benchmarks population | **SIGMA-PARTIAL** | 263 rows, 14 line items, 18–19 rows each across 10 MSAs. Sigma validation functional but intervals wide. `utilities_total` is the benchmark key for all utility lines (no per-sub-line benchmarks). Flag "limited sample" when fewer than 5 rows for a given (state, msa) pair. |
 
 ---
 
@@ -650,12 +629,56 @@ The `utilities` combined field (NCTRL-003a) and the decomposed sub-lines (`water
 When Batch 1 derivation logic is ready to implement, the recommended order is:
 
 1. **R&M** (CTRLL-001) — simplest, most data coverage, Mandate v1.3 already active
-2. **Marketing** (CTRLL-005) — also Mandate v1.3 active; same derivation pattern as R&M
+2. **Marketing** (CTRLL-005) — Mandate v1.3 active; same derivation pattern as R&M
 3. **Turnover** (CTRLL-007) — Mandate v1.3 active; same pattern; watch partial-year T12
 4. **G&A** (CTRLL-006) — no sub-fields; straightforward Pattern A
-5. **Replacement Reserves** (CAPEX-001) — Pattern C; requires OQ-3 resolution before implementing
-6. **Water, Electric, Gas** (NCTRL-001/002/003) — Pattern B; requires OQ-2 (split ratios) resolved
-7. **Trash** — requires OQ-1 resolved first
-8. **Contract Services** (CTRLL-002) — after OQ-4 disposition (Batch 1 or Batch 2)
+5. **Replacement Reserves** (CAPEX-001) — OQ-2 COMMITTED; three-tier rule ready; implement now
+6. **Trash** (NCTRL routing) — OQ-1 RESOLVED; parser already routes correctly; implement now
+7. **Contract Services** (CTRLL-002) — OQ-4 RESOLVED; keep in Batch 1 with CONDITIONAL caveat
+8. **Water, Electric, Gas** (NCTRL-001/002/003) — OQ-3 DEFERRED; implement with interim NMHC split ratios per Pattern B; note Task #672 dependency in evidence trail
 
-**Parallel with OQ resolution:** OQ-1 (trash field), OQ-2 (utility split ratios), OQ-3 (reserves default), and OQ-5 (benchmark population check) can all be addressed in a single operator review session before the implementation dispatch fires.
+**All OQs resolved.** No operator review session needed before implementation. Items 1–7 can proceed immediately. Item 8 ships with documented interim ratios.
+
+---
+
+## VERIFICATION PASS — 2026-05-27
+
+### (a) Document integrity
+
+COMPLETE. All 5 required sections present (Derivation Patterns, Pattern descriptions, Per-Assumption Logic, OQ Resolution, Cross-Batch Dependencies, Implementation Priority). All 10 Batch 1 assumptions covered: CTRLL-001/002/003/004/005/006/007, NCTRL-001/002/003, CAPEX-001.
+
+### (b) Source citations — 5 spot checks
+
+| Check | Target | Result |
+|---|---|---|
+| CTRLL-001 R&M | `t12.repairs_maintenance` data path | CONFIRMED — correctly cited; `deal_monthly_actuals` reference accurate |
+| NCTRL utilities Pattern B | T12 sub-line availability | AMENDED — prior text incorrectly implied `t12.water_sewer`, `t12.electric`, `t12.gas_fuel` available as primary sources. `types.ts:479-484` confirms these are null from T12 today. Pattern B rewritten to reflect combined-only T12 reality. |
+| Replacement Reserves $350 hardcode | `f9-financial-export.service.ts:172` | CONFIRMED — `const reservesY1 = y1('replacement_reserves') ?? totalUnits * 350`; export-path only; not the derivation path |
+| CAPEX-001 reserve bands | Three-tier age rule | AMENDED — prior class-based ranges (A/B/C) replaced with committed three-tier age rule (<10yr $200, 10-25yr $350, 25+yr $500). `system.ts:459` updated to match. |
+| Cross-batch dependencies | Batch 2 (insurance, tax, mgmt fee) | CONFIRMED — no speculative links; Batch 2 correctly flagged as dependency |
+
+### (c) Derivation logic consistency
+
+PASSES post-amendment. Three patterns are coherent and non-overlapping. Value-add pre/post regimes consistent. Confidence calibration consistent. Sub-field write conditions consistent with Mandate v1.3. Pattern B amended to correctly document combined-only T12 constraint.
+
+### (d) OQ resolution status
+
+UPDATED. All five OQs resolved in Section 4:
+- OQ-1: RESOLVED (code inspection)
+- OQ-2: COMMITTED (three-tier rule)
+- OQ-3: DEFERRED (Task #672)
+- OQ-4: RESOLVED (keep in Batch 1)
+- OQ-5: SIGMA-PARTIAL (functional with wide intervals)
+
+### (e) Identified gaps and dispositions
+
+| Gap | Disposition |
+|---|---|
+| Pattern B citation error (T12 sub-lines as primary) | AMENDED in this pass |
+| CAPEX-001 number mismatch (class-based vs age-based vs agent prompt) | AMENDED — three-tier rule is now canonical; agent prompt aligned |
+| Export-path $350 hardcode at `f9-financial-export.service.ts:172` | NOTED — cleanup dispatch required; out of scope for Batch 1 |
+| OQ-3 utility split calibration | DEFERRED — Task #672 required; interim NMHC ratios documented |
+
+### (f) Overall verdict
+
+**APPROVED FOR DOWNSTREAM WORK** (post-amendment). Implementation can proceed per Section 6 priority order. All OQs resolved. Pattern B and CAPEX-001 amendments applied. Agent system prompt aligned.

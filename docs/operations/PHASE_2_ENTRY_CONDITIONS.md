@@ -72,13 +72,13 @@ both_populated:                 0   (bridge not yet exercised in dev environment
 - P25/P50/P75 distribution by (MSA × class × vintage × unit_type): MISSING
 - RentCast: REMOVED (was in research agent; removed in refactor)
 
-**Path to SATISFIED:** Build `market_rent_benchmarks_v` SQL view aggregating existing ApartmentIQ tables + 1 new `fetch_market_rent_benchmark` agent tool. ~1 dispatch. No new data source ingestion.
+**Path to SATISFIED:** Build `mv_market_rent_benchmarks` materialized view aggregating existing ApartmentIQ tables + 1 new `fetch_market_rent_benchmark` agent tool. ~1 dispatch. No new data source ingestion.
 
 **Recommended source:** ApartmentIQ (platform's proprietary moat; already integrated; zero marginal cost). Do NOT reintegrate RentCast.
 
 **Blocks:** Phase 2 Batch 6 (Revenue derivation). Does NOT block Batch 1–5.
 
-**Satisfied when:** `market_rent_benchmarks_v` view created, `fetch_market_rent_benchmark` tool wired into cashflow agent, and P50 cross-check fires correctly for a representative value-add deal.
+**Satisfied when:** `mv_market_rent_benchmarks` materialized view created, `fetch_market_rent_benchmark` tool wired into cashflow agent, and P50 cross-check fires correctly for a representative value-add deal.
 
 ---
 

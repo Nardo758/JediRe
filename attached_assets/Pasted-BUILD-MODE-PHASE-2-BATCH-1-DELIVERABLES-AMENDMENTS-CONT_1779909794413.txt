@@ -1,0 +1,275 @@
+BUILD MODE — PHASE 2 BATCH 1 DELIVERABLES + AMENDMENTS
+
+CONTEXT
+Plan-mode investigative pass complete. Three documents need to be 
+written, two existing documents need amendment, and one code 
+change is required to align the agent's reserve rule with the 
+Batch 1 canonical.
+
+This dispatch executes all changes in Build mode.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. PHASE_2_BATCH_1_OPEX_SIMPLE.md exists at docs/operations/ 
+   (per prior dispatch)
+2. EC3_MARKET_RENT_SOURCE.md exists at docs/operations/
+3. PHASE_2_BATCH_1_DATA_QUERIES.md does NOT yet exist
+4. cashflow agent system.ts is at expected path with line 459 
+   containing the current "$300/unit/yr for assets < 15 years 
+   old; $500/unit/yr for 15+" rule
+5. No prior amendment has been applied to either Batch 1 or EC3 
+   documents since the verification passes
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE 1 — PHASE_2_BATCH_1_DATA_QUERIES.md (NEW)
+═══════════════════════════════════════════════════════════════════
+
+Create new file at docs/operations/PHASE_2_BATCH_1_DATA_QUERIES.md
+
+Document the Plan-mode investigative findings:
+
+1. EXECUTIVE SUMMARY
+   - Three queries investigated: OQ-1 (trash format), OQ-3 (utility 
+     split), OQ-5 (line_item_benchmarks)
+   - Results: OQ-1 resolved from code (no data query needed), 
+     OQ-3 deferred (infrastructure gap — Task #672), OQ-5 
+     sigma-partial (263 rows across 14 line items, 18-19 per 
+     item, none reach 50)
+   - Implications for Batch 1 implementation
+
+2. QUERY 1 FINDINGS — OQ-1 TRASH FORMAT (RESOLVED FROM CODE)
+   - The T12 parser (t12-parser.ts) is the authoritative source
+   - "Trash Removal" → contractServices
+   - "Valet Trash", "Trash (occupied|unoccupied|pickup|hauling)" 
+     → utilities (combined)
+   - No new NCTRL line item needed
+   - OQ-1 closed; canonical template unchanged
+
+3. QUERY 2 FINDINGS — OQ-3 UTILITY SPLIT (DEFERRED, INFRASTRUCTURE 
+   GAP)
+   - From types.ts:479-484: water_sewer, electric, gas_fuel are 
+     "Null from T12 today; parser aggregates to utilities"
+   - Task #672 was planned to add sub-line parsing; not 
+     implemented
+   - The original query (deals with both combined OM AND itemized 
+     T12 utilities) returns zero deals by definition
+   - Pattern B in Batch 1 doc needs amendment: T12 combined → 
+     split ratios → per-utility values is the only available path
+   - Interim approach: NMHC/regional ratios documented as 
+     limitation; calibrate post-Task #672
+   - OQ-3 deferred to post-Task #672 implementation
+
+4. QUERY 3 FINDINGS — OQ-5 LINE_ITEM_BENCHMARKS (SIGMA-PARTIAL)
+   - Total rows: 263
+   - Line items with data: 14
+   - Rows per Batch 1 item: 18-19 (none reach 50)
+   - States covered: AZ, CO, FL, GA, NC, TN, TX
+   - MSAs covered: 10 (Atlanta has 21 rows; others 14)
+   - Benchmark field is utilities_total — not water_sewer/electric/
+     gas_fuel individually
+   - Sigma status: PARTIAL across all Batch 1 items (functional 
+     but wide P25/P75 intervals)
+   - Recommendation: Flag "limited benchmark sample" when fewer 
+     than 5 rows exist for a given (state, MSA) pair
+   - Individual utility line sigma validation must fall back to 
+     utilities_total or fire INSUFFICIENT_DATA
+
+5. UPDATED OQ RESOLUTION STATUS
+   - OQ-1: RESOLVED (code-based; canonical complete)
+   - OQ-2: COMMITTED (three-tier rule: $200 <10 yrs, $350 10-25 yrs, 
+     $500 25+ yrs; operator override required)
+   - OQ-3: DEFERRED (Task #672 dependency)
+   - OQ-4: RESOLVED (Phase 1 limitation accepted; Phase 2 backlog 
+     for secondary signal detection)
+   - OQ-5: SIGMA-PARTIAL (functional with wide intervals; flag 
+     limited samples)
+
+6. BATCH 1 IMPLEMENTATION SEQUENCING IMPLICATIONS
+   - Pattern B utilities derivation must be rewritten before 
+     implementation
+   - CAPEX-001 reserves committed to three-tier rule
+   - Sigma validation functional but should flag low-sample warnings
+   - Implementation can proceed after Batch 1 amendments land
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE 2 — PHASE_2_BATCH_1_OPEX_SIMPLE.md AMENDMENTS + 
+VERIFICATION APPENDIX
+═══════════════════════════════════════════════════════════════════
+
+Apply two amendments to existing document, then append verification 
+section.
+
+AMENDMENT A — Pattern B (NCTRL utilities) rewrite:
+- Current text claims T12 sub-lines (water_sewer, electric, 
+  gas_fuel) are available as primary source for per-utility 
+  derivation
+- Correct text: T12 provides COMBINED utilities only (per parser 
+  design and types.ts annotation). Per-utility derivation requires 
+  split ratios applied to combined T12 figure.
+- Rewrite Pattern B to reflect this. Add explicit note about 
+  Task #672 dependency for future sub-line parsing.
+
+AMENDMENT B — CAPEX-001 reserve bands:
+- Replace existing class-based ranges with three-tier age-based rule:
+  • <10 years: $200/unit
+  • 10-25 years: $350/unit  
+  • 25+ years: $500/unit
+  • Operator override required at all tiers
+- Architectural fix: document that fallback should live in 
+  derivation path (financials-composer.service.ts), not export 
+  path (f9-financial-export.service.ts:172)
+- Note: f9-financial-export.service.ts:172 hardcode should be 
+  removed in a future cleanup dispatch (out of scope for this 
+  amendment)
+
+AMENDMENT C — OQ section update:
+- OQ-1: RESOLVED (T12 parser handles routing)
+- OQ-2: COMMITTED (three-tier rule)
+- OQ-3: DEFERRED (Task #672)
+- OQ-4: RESOLVED (Phase 1 limitation; Phase 2 backlog)
+- OQ-5: SIGMA-PARTIAL (with limited-sample flag recommendation)
+
+APPEND VERIFICATION SECTION at end of document:
+
+═══════════════════════════════════════════════════════════════════
+VERIFICATION PASS — [date]
+═══════════════════════════════════════════════════════════════════
+
+(a) Document integrity: COMPLETE — all 5 sections present, 10 
+    assumptions covered
+(b) Source citations (5 spot checks):
+    - CTRLL-001 R&M: CONFIRMED
+    - NCTRL utilities: AMENDED (Pattern B rewritten per types.ts 
+      ground truth)
+    - Replacement Reserves $350 hardcode: CONFIRMED at 
+      f9-financial-export.service.ts:172
+    - CAPEX-001 reserve bands: AMENDED (three-tier rule committed)
+    - Cross-batch dependencies: CONFIRMED
+(c) Derivation logic consistency: PASSES (post-amendment)
+(d) OQ resolution status: UPDATED to current state
+(e) Identified gaps:
+    - Pattern B citation error (AMENDED)
+    - CAPEX-001 number mismatch (AMENDED)
+    - Three sources had different reserve rules (Batch 1 doc, 
+      Leon committed, agent system prompt) — Batch 1 doc now 
+      canonical; agent system prompt updated to align 
+      (Deliverable 4)
+(f) Overall verdict: APPROVED FOR DOWNSTREAM WORK (post-amendment)
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE 3 — EC3_MARKET_RENT_SOURCE.md AMENDMENTS + 
+VERIFICATION APPENDIX
+═══════════════════════════════════════════════════════════════════
+
+Apply two amendments to existing document, then append verification 
+section.
+
+AMENDMENT A — View naming convention:
+- Current: market_rent_benchmarks_v
+- Correct: v_market_rent_benchmarks (or mv_market_rent_benchmarks 
+  if materialized)
+- Update all references throughout document
+- Recommend materialized view (mv_) pattern per existing 
+  mv_investor_summary and mv_news_provider_stats convention, 
+  with manual refresh on ApartmentIQ sync push
+
+AMENDMENT B — Per-floor-plan granularity elevation:
+- Current: tracked as OQ in document
+- Correct: documented architectural constraint in Section 5
+- The constraint: apartment_locator_properties.avg_asking_rent is 
+  single property-level average; per-bedroom decomposition 
+  (1BR/2BR/3BR) only in oppgrid_market_economics (city-level)
+- Implications for Phase 2 Batch 6 revenue derivation: per-unit-type 
+  market rent benchmarks unavailable from current data shape; 
+  building-average benchmarks available
+- This is a Phase 3 enhancement opportunity, not a Phase 2 blocker
+
+APPEND VERIFICATION SECTION at end of document:
+
+═══════════════════════════════════════════════════════════════════
+VERIFICATION PASS — [date]
+═══════════════════════════════════════════════════════════════════
+
+(a) Document integrity: COMPLETE — 7 sources inventoried
+(b) Source citations (5 spot checks):
+    - ApartmentIQ assessment: CONFIRMED
+    - RentCast removal: CONFIRMED (only doc comments remain in 
+      dealContext.ts:185/188; no integration code)
+    - YELLOW effort estimate: CONFIRMED (v_ view pattern + 
+      fetch_comp_set-style tool, bounded scope)
+    - Batch 6 dependency: CONFIRMED
+    - Architecture proposal: AMENDED (view naming corrected)
+(c) Architecture proposal soundness: PASSES (post-amendment)
+(d) Identified gaps:
+    - View naming convention error (AMENDED)
+    - Per-floor-plan granularity (AMENDED — elevated to 
+      architectural constraint)
+    - Freshness recommendation added (materialized view + manual 
+      refresh on ApartmentIQ sync)
+(e) Overall verdict: APPROVED FOR DOWNSTREAM WORK (post-amendment)
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE 4 — AGENT SYSTEM PROMPT ALIGNMENT
+═══════════════════════════════════════════════════════════════════
+
+CODE CHANGE — system.ts:459
+
+Current text (replacement reserve rule in CashFlow Agent system 
+prompt):
+"$300/unit/yr for assets < 15 years old; $500/unit/yr for 15+"
+
+New text aligned to Batch 1 three-tier rule:
+"Replacement reserves per unit per year:
+  - <10 years old: $200/unit
+  - 10-25 years old: $350/unit
+  - 25+ years old: $500/unit
+  Operator override always takes precedence."
+
+This aligns the agent's actual behavior to the canonical Batch 1 
+derivation logic. Without this change, the doc and the agent would 
+have different reserve rules.
+
+═══════════════════════════════════════════════════════════════════
+TESTING / VERIFICATION (POST-WRITE)
+═══════════════════════════════════════════════════════════════════
+
+After writes:
+A. Verify all three documents render correctly (no markdown errors)
+B. Verify the system.ts change builds clean
+C. No agent runtime testing in this dispatch (system prompt changes 
+   are effective on next agent run; existing snapshots unaffected)
+D. Document cross-references: verify Batch 1's CAPEX-001 section 
+   mentions system.ts:459 alignment
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLES SUMMARY
+═══════════════════════════════════════════════════════════════════
+
+NEW FILES:
+- docs/operations/PHASE_2_BATCH_1_DATA_QUERIES.md
+
+AMENDED FILES:
+- docs/operations/PHASE_2_BATCH_1_OPEX_SIMPLE.md (Pattern B, 
+  CAPEX-001, OQ section + verification appendix)
+- docs/operations/EC3_MARKET_RENT_SOURCE.md (view naming, 
+  per-floor-plan granularity + verification appendix)
+
+CODE CHANGES:
+- system.ts:459 (replacement reserve rule alignment)
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Implement Pattern B rewrite in code (this dispatch documents the 
+  rule; implementation is a separate dispatch)
+- Remove f9-financial-export.service.ts:172 hardcode (cleanup 
+  scope; out of this dispatch)
+- Modify dealContext.ts:185/188 RentCast comments (they're type 
+  documentation, not active code; leave for separate cleanup if 
+  desired)
+- Modify Tier 1 / Tier 2 work (Mandate, Tier 1 RegimeExpand, 
+  Tier 2 directional validation all stay as-is)
+- "While I'm here" cleanups
+- Make any agent runtime behavior changes beyond the system prompt 
+  update

@@ -1,0 +1,149 @@
+VERIFICATION PASS — PHASE_2_BATCH_1_OPEX_SIMPLE.md
+
+CONTEXT
+Per CLAUDE.md P8, the Batch 1 derivation logic document needs 
+verification before implementation. The 5 OQs have been resolved 
+(3 by operator decision, 2 pending data queries running in 
+parallel). Verification covers document integrity, source 
+citation accuracy, derivation logic consistency.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. docs/operations/PHASE_2_BATCH_1_OPEX_SIMPLE.md exists
+2. Document covers the 10 OpEx assumptions per spec
+3. No verification section has been appended yet
+4. PROFORMA_CALCULATION_TEMPLATE.md is at docs/specs/ (confirmed 
+   in prior dispatch)
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — DOCUMENT INTEGRITY
+═══════════════════════════════════════════════════════════════════
+
+A. Confirm document exists; confirm sections per spec:
+   1. Executive summary
+   2. Common derivation patterns
+   3. Per-assumption derivation logic (10 sections)
+   4. Open questions
+   5. Cross-batch dependencies
+B. Verify all 10 Batch 1 assumptions covered (R&M, Turnover, 
+   Marketing, Admin/G, Contract Services, Utilities × 4, 
+   Replacement Reserves)
+C. Flag any section thinner than expected
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — SOURCE CITATION SPOT-CHECKS
+═══════════════════════════════════════════════════════════════════
+
+For 5 spot-checks:
+
+A. CTRLL-001 (R&M) source citations
+   - The document references trailing T-12 data path. Verify the 
+     actual deal_monthly_actuals column name and accessor are 
+     cited correctly.
+   - Verify platform fallback (line_item_benchmarks) is cited 
+     with correct table reference.
+
+B. NCTRL utilities (one randomly selected)
+   - Verify the OM decomposition rule cited matches the discussed 
+     split ratio framework
+   - Verify the per-utility line items reference correct field 
+     names
+
+C. Replacement Reserves — the $350 hardcode
+   - Verify the document correctly identifies the hardcode at 
+     f9-financial-export.service.ts:172
+   - Verify the cashflow agent's system prompt rule ($300 < 15 
+     yrs, $500 ≥ 15 yrs) is cited correctly at system.ts:459
+
+D. CAPEX-001 confirmation
+   - Verify Capital reserves derivation logic is structured per 
+     the pattern Leon committed to ($200 new construction, $350 
+     10+ years, operator override required)
+
+E. Cross-batch dependency identification
+   - The document should surface dependencies on Batch 2 (OpEx 
+     complex), Batch 4 (Growth), etc.
+   - Verify any cross-batch links are accurate, not speculative
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — DERIVATION LOGIC CONSISTENCY
+═══════════════════════════════════════════════════════════════════
+
+A. Verify the three derivation patterns (CTRLL standard, NCTRL 
+   utilities, Capital reserves) are coherent and non-overlapping
+B. Verify state-conditional logic is consistent across all 10 
+   assumptions:
+   - Stabilized path: trailing primary + platform validation
+   - Repositioning path: pre/post regimes with appropriate 
+     evidence sources
+   - New construction: where applicable
+C. Verify confidence calibration is consistent:
+   - HIGH for trailing-anchored values
+   - MEDIUM for platform-anchored projections
+   - LOW for sparse-data scenarios
+D. Verify sub-field write conditions are consistent with the 
+   Mandate lift design (only fire when business plan justifies)
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — OQ RESOLUTION STATUS
+═══════════════════════════════════════════════════════════════════
+
+The 5 OQs have resolutions:
+- OQ-1 (Trash): RESOLVED — maps to utilities; agent reads T12
+- OQ-2 (Replacement Reserves): PARTIAL — numbers set, 
+  architectural fix pending
+- OQ-3 (Utility split): PENDING DATA QUERY
+- OQ-4 (CS amenity detection): RESOLVED — Phase 1 limitation 
+  accepted
+- OQ-5 (benchmarks): PENDING DATA QUERY
+
+Verify the document's OQ section is updated to reflect these 
+statuses. If not, flag as a gap.
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — POTENTIAL GAPS
+═══════════════════════════════════════════════════════════════════
+
+A. Are there derivation paths the document should cover but 
+   doesn't?
+   - Override path explicitly documented?
+   - Confidence handling for null/missing sources?
+   - Asset state transitions (when does Stabilized become 
+     Repositioning during the deal lifecycle)?
+
+B. Implementation sequencing within Batch 1:
+   - Are there inter-assumption dependencies that affect 
+     implementation order?
+   - Should some assumptions ship before others?
+
+C. Cross-reference with Mandate v1.3 and Tier 2 validation:
+   - Are sub-field write conditions consistent with Mandate?
+   - Are Tier 2 directional checks correctly referenced for 
+     each assumption?
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Append verification section to PHASE_2_BATCH_1_OPEX_SIMPLE.md:
+
+═══════════════════════════════════════════════════════════════════
+VERIFICATION PASS — [date]
+═══════════════════════════════════════════════════════════════════
+
+(a) Document integrity: <result>
+(b) Source citations (5 spot checks): <verdicts>
+(c) Derivation logic consistency: <assessment>
+(d) OQ resolution status reflects current state: <assessment>
+(e) Identified gaps: <list>
+(f) Overall verdict: APPROVED FOR DOWNSTREAM WORK / 
+    NEEDS AMENDMENT / NEEDS REWORK
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify document content (only append)
+- Resolve OQs (those are operator decisions or pending data)
+- Implement any code changes
+- "While I'm here" cleanups

@@ -1,0 +1,93 @@
+VERIFICATION PASS — EC3_MARKET_RENT_SOURCE.md
+
+CONTEXT
+Per P8, the EC3 investigation needs verification before EC3 
+implementation fires. The investigation produced YELLOW verdict 
+(single dispatch path to SATISFIED). Verification confirms the 
+effort estimate is sound and the ApartmentIQ assessment is 
+accurate.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. docs/operations/EC3_MARKET_RENT_SOURCE.md exists
+2. Document covers 7 market rent sources per spec
+3. No verification section appended yet
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — DOCUMENT INTEGRITY
+═══════════════════════════════════════════════════════════════════
+
+A. Confirm document exists; confirm sections per dispatch spec
+B. Verify 7 sources inventoried
+C. Flag any thin sections
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — SOURCE CITATION SPOT-CHECKS
+═══════════════════════════════════════════════════════════════════
+
+A. APARTMENTIQ ASSESSMENT
+   - Verify the document accurately describes ApartmentIQ's 
+     current data shape (subject rent path, cohort benchmark 
+     coverage)
+   - Verify the "data exists; aggregation view missing" framing 
+     is accurate against actual ApartmentIQ schema
+
+B. RENTCAST REMOVAL CONFIRMATION
+   - The document confirms RentCast is removed. Verify by grep 
+     that no RentCast integration code remains
+   - Verify the "not worth reintegrating" reasoning is sound
+
+C. YELLOW EFFORT ESTIMATE
+   - The document says one dispatch closes EC3 (aggregation 
+     view + fetch tool)
+   - Verify this is realistic given existing code patterns
+   - Flag if effort is closer to YELLOW-ORANGE or GREEN
+
+D. BATCH 6 (REVENUE) DEPENDENCY
+   - The document claims EC3 blocks Batch 6 but not Batches 1-5
+   - Verify this claim against revenue derivation requirements
+
+E. PROPOSED ARCHITECTURE
+   - The document recommends market_rent_benchmarks_v view
+   - Verify this naming and approach is consistent with platform 
+     patterns (verify similar v_ views exist; verify benchmark 
+     view convention)
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — POTENTIAL GAPS
+═══════════════════════════════════════════════════════════════════
+
+A. Is there a freshness requirement on market rent that the 
+   document doesn't address?
+B. How does subject rent interact with cohort rent? (subject rent 
+   exists per rent roll; cohort rent comes from ApartmentIQ — 
+   are these reconciled?)
+C. Per-floor-plan granularity: does the cohort benchmark provide 
+   per-unit-type market rent, or only building average?
+D. How does ApartmentIQ handle markets with sparse demand signal? 
+   (smaller MSAs may have insufficient rent observations)
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Append verification section to EC3_MARKET_RENT_SOURCE.md:
+
+═══════════════════════════════════════════════════════════════════
+VERIFICATION PASS — [date]
+═══════════════════════════════════════════════════════════════════
+
+(a) Document integrity: <result>
+(b) Source citations (5 spot checks): <verdicts>
+(c) Architecture proposal soundness: <assessment>
+(d) Identified gaps: <list>
+(e) Overall verdict: APPROVED FOR DOWNSTREAM WORK / 
+    NEEDS AMENDMENT / NEEDS REWORK
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify document content (only append)
+- Implement EC3 changes
+- "While I'm here" cleanups

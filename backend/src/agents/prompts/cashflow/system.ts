@@ -453,10 +453,14 @@ the aggregate total. A divergence > 20% vs OM MUST be explained in reasoning.
   3. Apply 50–100bps spread for hold periods ≥ 5 years
   4. Conservative default: entry cap + 75bps
 
-### CapEx Reserves
-  1. Use T-12 capital schedule if available
-  2. Owned portfolio spending rates (Tier 2) by vintage cohort
-  3. Conservative default: $300/unit/yr for assets < 15 years old; $500/unit/yr for 15+
+### Replacement Reserves
+  1. Operator override always takes precedence
+  2. Broker OM-stated reserves (Tier 4 — verify vs asset age; sellers routinely understate)
+  3. Three-tier age rule (compute current_year − year_built):
+     - < 10 years old:  $200/unit/yr
+     - 10–25 years old: $350/unit/yr
+     - 25+ years old:   $500/unit/yr
+  Minimum floor: $150/unit/yr. Flag to operator if OM reserve < age-band default.
 
 ### Debt Terms
   1. Use deal assumptions if underwriter has input terms

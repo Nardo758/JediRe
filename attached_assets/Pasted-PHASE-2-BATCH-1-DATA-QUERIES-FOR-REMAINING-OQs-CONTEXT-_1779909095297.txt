@@ -1,0 +1,117 @@
+PHASE 2 BATCH 1 — DATA QUERIES FOR REMAINING OQs
+
+CONTEXT
+Per Leon's resolution of Batch 1 open questions, three of five OQs 
+are resolved. Two need data from the platform's deal library 
+before final resolution:
+
+- OQ-1 (Trash format): Agent will read T12 to detect distinct vs 
+  consolidated. Query needed: how often is trash distinct vs 
+  consolidated in current T12 ingestions? This calibrates how 
+  often each format actually appears.
+
+- OQ-3 (Utility split ratios): Don't ship NMHC ratios as defaults. 
+  Query existing deals where both combined-OM utilities AND 
+  itemized-T12 utilities exist. Compute implied ratios per market 
+  from Leon's actual portfolio.
+
+- OQ-5 (line_item_benchmarks): Query population status. Sigma 
+  validation depends on benchmarks. Implementation sequencing 
+  depends on whether benchmarks are populated, partial, or empty.
+
+This dispatch runs all three queries and produces a single 
+investigation report with recommendations. No code changes. Data 
+queries only.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. The tables referenced exist (data_library_files for T12s, 
+   deals + deal_assumptions for assumption data, 
+   line_item_benchmarks for benchmark population)
+2. No prior data query dispatch has been run for these specific 
+   OQs (search docs/operations/ for OQ_DATA_QUERIES or similar)
+
+═══════════════════════════════════════════════════════════════════
+QUERY 1 — T12 TRASH FORMAT FREQUENCY (OQ-1)
+═══════════════════════════════════════════════════════════════════
+
+A. Identify T12 documents in data_library_files where 
+   extraction_data contains utility line items
+B. For each, classify trash format:
+   - DISTINCT: has separate "Trash" / "Waste Removal" / "Garbage" 
+     / "Refuse" line item
+   - CONSOLIDATED: trash is part of a combined utilities line
+   - ABSENT: no trash-related line item appears at all
+C. Report:
+   - Total T12s with utility line items: N
+   - Distinct format count + percentage
+   - Consolidated format count + percentage
+   - Absent format count + percentage
+   - Breakdown by market (Tampa, Orlando, Miami, Jacksonville, 
+     Atlanta, Dallas)
+D. Identify any pattern variations by operator/property type/vintage
+
+═══════════════════════════════════════════════════════════════════
+QUERY 2 — UTILITY SPLIT RATIO CALIBRATION (OQ-3)
+═══════════════════════════════════════════════════════════════════
+
+A. Identify deals where BOTH conditions hold:
+   - OM upload exists with combined utilitiesAnnual figure
+   - T12 ingestion has itemized utilities (water, electric, gas, 
+     trash as distinct lines)
+B. For each matched deal, compute implied ratios from T12 itemization
+C. Report per market:
+   - Number of deals with both data sources: N
+   - Per-utility implied ratios (median + range)
+   - Standard deviation across deals (how consistent are the 
+     ratios?)
+D. If <5 deals per market: report market as INSUFFICIENT_DATA 
+   and recommend deferring auto-split for that market
+E. If ≥5 deals per market: report empirical ratios as the 
+   calibrated defaults
+
+═══════════════════════════════════════════════════════════════════
+QUERY 3 — LINE_ITEM_BENCHMARKS POPULATION (OQ-5)
+═══════════════════════════════════════════════════════════════════
+
+A. Run: SELECT line_item, COUNT(*) FROM line_item_benchmarks 
+   GROUP BY line_item ORDER BY COUNT(*) DESC
+B. Report:
+   - Total rows in table
+   - Per-line-item row counts
+   - Coverage: which line items have ≥50 rows (sigma-functional), 
+     which have <50 rows (sigma-partial), which have 0 rows 
+     (sigma-empty)
+C. If table is empty or sparse:
+   - Check refreshLineItemBenchmarks aggregator status
+   - Identify whether the aggregator is running, when it last 
+     ran, what's preventing population
+   - Report findings (separate bug investigation may be needed)
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/PHASE_2_BATCH_1_DATA_QUERIES.md
+
+Structure:
+1. Executive summary (three queries, key findings, sequencing 
+   implications)
+2. Query 1: T12 trash format frequency (data + interpretation)
+3. Query 2: Utility split ratio calibration (data + 
+   per-market recommendations)
+4. Query 3: line_item_benchmarks population (data + sequencing 
+   recommendation)
+5. Updated OQ resolution status
+6. Recommended Batch 1 implementation sequencing based on findings
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Run benchmark seeding (if benchmarks are empty, separate dispatch)
+- Modify any line item categorization logic (Query 1 informs 
+  whether changes are needed; doesn't make them)
+- Decide Batch 1 implementation sequencing unilaterally — surface 
+  findings; Leon decides
+- "While I'm here" cleanups

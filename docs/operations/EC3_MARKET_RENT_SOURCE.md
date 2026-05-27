@@ -20,7 +20,7 @@ Market rent infrastructure is substantially in place. The investigation found:
 | Fine-grained cohort distribution (P25/P50/P75 by MSA × vintage × unit_type) | **MISSING** | — |
 | RentCast | **REMOVED** | Previously integrated; removed from research agent |
 
-**Path to EC3 SATISFIED:** Build a SQL view (`market_rent_benchmarks_v`) aggregating existing ApartmentIQ tables into P25/P50/P75 distribution by (city, asset_class, unit_type). No new data source ingestion needed. Estimated effort: **1 dispatch** (~1 migration + 1 new agent tool or fetch function extension).
+**Path to EC3 SATISFIED:** Build a materialized view (`mv_market_rent_benchmarks`) aggregating existing ApartmentIQ tables into P25/P50/P75 distribution by (city, asset_class). No new data source ingestion needed. Estimated effort: **1 dispatch** (~1 migration + 1 new agent tool or fetch function extension).
 
 **ApartmentIQ is the recommended primary cohort source** — it's the platform's proprietary moat, already integrated, and covers the key dimensions needed for validation.
 
@@ -193,30 +193,37 @@ However, all the underlying data to build such a table EXISTS in `apartment_loca
 
 ### Recommended Path to EC3 SATISFIED
 
-**Step 1 — Create `market_rent_benchmarks_v` database view**
+**Step 1 — Create `mv_market_rent_benchmarks` materialized view**
+
+**AMENDED 2026-05-27:** View naming corrected to platform `mv_` convention per existing `mv_investor_summary`, `mv_news_provider_stats` patterns. Materialized view recommended over live view to avoid stale reads when ApartmentIQ sync has not been run recently.
 
 ```sql
 -- Aggregates apartment_locator_properties into a distribution table
--- analogous to line_item_benchmarks for OpEx
-CREATE OR REPLACE VIEW market_rent_benchmarks_v AS
+-- analogous to line_item_benchmarks for OpEx.
+-- Refresh manually on each ApartmentIQ sync push.
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_market_rent_benchmarks AS
 SELECT
   city,
   state,
   CASE WHEN year_built >= 2010 THEN 'A'
        WHEN year_built >= 1995 THEN 'B'
        ELSE 'C' END AS asset_class,
-  bedroom_type,  -- from unit_mix decomposition if available, else null
+  NULL::text AS bedroom_type,  -- per-bedroom decomposition unavailable at property level (see architectural constraint below)
   COUNT(*) AS sample_size,
   PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY avg_asking_rent) AS p25_rent,
   PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY avg_asking_rent) AS p50_rent,
   PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY avg_asking_rent) AS p75_rent,
   AVG(avg_asking_rent) AS avg_rent,
-  MAX(snapshot_date) AS as_of
+  NOW() AS as_of
 FROM apartment_locator_properties
 WHERE avg_asking_rent IS NOT NULL AND avg_asking_rent > 0
-GROUP BY city, state, asset_class, bedroom_type
+GROUP BY city, state, asset_class
 HAVING COUNT(*) >= 3;  -- minimum sample for statistical validity
+
+CREATE UNIQUE INDEX ON mv_market_rent_benchmarks (city, state, asset_class);
 ```
+
+**Refresh pattern:** Call `REFRESH MATERIALIZED VIEW CONCURRENTLY mv_market_rent_benchmarks` at the end of the ApartmentIQ sync push endpoint (`POST /oppgrid/sync-economics` or the apartment-locator sync route). This keeps benchmarks current without blocking reads.
 
 **Step 2 — Add `fetch_market_rent_benchmark` agent tool** (or extend `fetch_comp_set`)
 
@@ -249,19 +256,36 @@ The existing.ts prompt's "cross-check against comp P50" step (line 54) would use
 
 The view above uses `year_built` proxy for asset class (A/B/C). True vintage stratification (e.g., 1980–1989, 1990–1999, 2000–2009, 2010+) is not supported by the current ApartmentIQ data shape. Phase 2 can proceed with class-level (A/B/C) granularity; vintage stratification is a Phase 3 refinement.
 
+### Architectural Constraint — Per-Unit-Type Benchmark Granularity
+
+**Elevated from OQ-1 (2026-05-27).** This is a documented Phase 2 constraint, not an open question.
+
+`apartment_locator_properties.avg_asking_rent` is a single **property-level average** — not decomposed by bedroom type. The `mv_market_rent_benchmarks` materialized view therefore provides **building-average benchmarks only** (aggregated across all unit types in the property).
+
+Per-bedroom data exists in `oppgrid_market_economics` (`avg_rent_1br`, `avg_rent_2br`, `avg_rent_3br`) but is:
+- City-level only — not stratified by property or asset class
+- Useful for directional context, not sigma-band validation
+
+**Phase 2 impact on Batch 6 (Revenue):**
+- Building-average GPR validation (P25/P50/P75 across all unit types): use `mv_market_rent_benchmarks` ✓
+- Per-unit-type market rent validation ("is projected 1BR rent within range?"): use `oppgrid_market_economics` for directional context only — no per-unit-type sigma bands available in Phase 2
+- True per-bedroom stratified benchmarks at property level: Phase 3 data enhancement (requires adding `bedroom_type` to `apartment_locator_properties` via ApartmentIQ sync schema update)
+
+**Implementation guidance for Batch 6:** Document the building-average constraint explicitly in validation output. When per-unit-type context is surfaced, label it "city-level market average" (from `oppgrid_market_economics`), not a sigma band.
+
 ---
 
 ## 6. Open Questions
 
-**OQ-1 — ApartmentIQ bedroom_type decomposition:** `apartment_locator_properties.avg_asking_rent` is a single property-level average (not per bedroom type). The `oppgrid_market_economics` table has `avg_rent_1br/2br/3br` but only at city level (not property level). For unit_type-level validation, the property-level data needs a bedroom_type column or the city-level 1BR/2BR/3BR data must be used. Decision: which to use for the benchmark view?
+**OQ-1 — ApartmentIQ bedroom_type decomposition:** ELEVATED TO ARCHITECTURAL CONSTRAINT — see Section 5 below.
 
-**OQ-2 — Market coverage outside Atlanta:** ApartmentIQ data is known to be well-populated for Atlanta. Coverage for Charlotte, Nashville, Tampa, etc. is unknown. The benchmark view includes a `HAVING COUNT(*) >= 3` gate, but for thin markets, the P50 may be unreliable. Flag for operator when `sample_size < 10`.
+**OQ-2 — Market coverage outside Atlanta:** ApartmentIQ data is known to be well-populated for Atlanta. Coverage for Charlotte, Nashville, Tampa, etc. is unknown. The `mv_market_rent_benchmarks` view includes a `HAVING COUNT(*) >= 3` gate, but for thin markets the P50 may be unreliable. Flag for operator when `sample_size < 10`.
 
-**OQ-3 — Update frequency for `market_rent_benchmarks_v`:** The view reads live from `apartment_locator_properties`. If the underlying table is not refreshed frequently, benchmarks will be stale. Consider a materialized view with scheduled refresh or use `apartment_class_rent_snapshots` (which already has snapshot history) as the base.
+**OQ-3 — Update frequency:** RESOLVED by Amendment A. Materialized view (`mv_market_rent_benchmarks`) with manual refresh on ApartmentIQ sync push. Live view approach retired.
 
-**OQ-4 — Interaction with Validation Grid (Open Q1):** The Validation Grid needs GPR estimates for sale comps that don't have market rent data. The `market_rent_benchmarks_v` view resolves Validation Grid Open Q1 (Approach A). This is a shared deliverable — the same dispatch that satisfies EC3 also closes Validation Grid Open Q1. Flag this dependency.
+**OQ-4 — Interaction with Validation Grid (Open Q1):** The Validation Grid needs GPR estimates for sale comps that don't have market rent data. The `mv_market_rent_benchmarks` view resolves Validation Grid Open Q1 (Approach A). This is a shared deliverable — the same dispatch that satisfies EC3 also closes Validation Grid Open Q1. Flag this dependency.
 
-**OQ-5 — RentCast reintegration decision:** The investigation recommends NOT reintegrating RentCast. If Leon disagrees and wants national coverage, this becomes an ORANGE effort (new API key + cost management + storage). Do not proceed without explicit operator decision.
+**OQ-5 — RentCast reintegration decision:** RESOLVED — DO NOT reintegrate. See Section 4 and verification pass. If operator disagrees, this becomes an ORANGE effort; do not proceed without explicit operator decision.
 
 ---
 
@@ -274,3 +298,37 @@ The data infrastructure exists. ApartmentIQ is the right cohort source. The miss
 **Blocks Phase 2 Batch 6 (Revenue):** Yes. Revenue derivation (GPR, vacancy, concessions) requires cohort market rent benchmarks for validation. EC3 must be SATISFIED before Batch 6 dispatches.
 
 **Does NOT block Batch 1–5:** OpEx, capital structure, growth assumptions, and exit cap derivation do not depend on market rent benchmarks. Batch 1–5 can proceed while EC3 is being implemented.
+
+---
+
+## VERIFICATION PASS — 2026-05-27
+
+### (a) Document integrity
+
+COMPLETE. 7 sources inventoried (ApartmentIQ, RentCast, `oppgrid_market_economics`, `apartment_locator_properties`, `apartment_class_rent_snapshots`, deal-level `unitMix`, `comp_set_properties`). All sections present (Source Inventory, Current Wiring, Coverage Assessment, RentCast vs ApartmentIQ, Recommendation, OQs, EC3 Status Update).
+
+### (b) Source citations — 5 spot checks
+
+| Check | Target | Result |
+|---|---|---|
+| ApartmentIQ assessment | Data shape and coverage | CONFIRMED — property-level `avg_asking_rent`, two storage tables, historical snapshots correctly described |
+| RentCast removal | `dealContext.ts:185/188` | CONFIRMED — only doc comments remain (type annotations describing former RentCast/ApartmentIQ field usage); no integration code, no API calls |
+| YELLOW effort estimate | View + tool + prompt wiring scope | CONFIRMED — `mv_` materialized view + `fetch_comp_set`-style tool is a bounded, well-defined ~1 dispatch effort |
+| Batch 6 dependency | Revenue derivation blocks | CONFIRMED — Batches 1–5 independently confirmed to not require market rent benchmarks |
+| Architecture proposal | View naming and type | AMENDED — `market_rent_benchmarks_v` corrected to `mv_market_rent_benchmarks` per platform `mv_` convention; changed from live view to materialized view |
+
+### (c) Architecture proposal soundness
+
+PASSES post-amendment. Materialized view pattern (`mv_market_rent_benchmarks`) is consistent with existing `mv_investor_summary` and `mv_news_provider_stats`. Manual refresh on ApartmentIQ sync push is the correct pattern for a sync-driven data source. Agent tool pattern follows `fetch_comp_set` precedent.
+
+### (d) Identified gaps and dispositions
+
+| Gap | Disposition |
+|---|---|
+| View naming convention error (`market_rent_benchmarks_v` → `mv_market_rent_benchmarks`) | AMENDED throughout document |
+| Per-floor-plan granularity (OQ-1) — property-level `avg_asking_rent` not decomposed by bedroom type | ELEVATED to documented architectural constraint in Section 5 |
+| Freshness recommendation — live view prone to stale reads | RESOLVED — amended to materialized view with refresh-on-sync pattern |
+
+### (e) Overall verdict
+
+**APPROVED FOR DOWNSTREAM WORK** (post-amendment). EC3 status remains YELLOW (one dispatch to SATISFIED). View naming correct. Per-bedroom constraint documented. When the implementation dispatch fires, the `mv_market_rent_benchmarks` view name and refresh pattern defined here are the canonical spec.
