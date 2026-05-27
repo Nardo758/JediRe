@@ -181,6 +181,8 @@ export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan | null | u
   const [pushing, setPushing] = useState<Record<SectionKey, boolean>>({ entry: false, exit: false });
   const [toast, setToast] = useState<ToastState | null>(null);
   const [pendingConflicts, setPendingConflicts] = useState<Partial<Record<SectionKey, ConflictItem[]>>>({});
+  const [monitoringExpanded, setMonitoringExpanded] = useState(false);
+  const [pivotExpanded, setPivotExpanded] = useState(false);
 
   if (!plan) return null;
 
@@ -540,41 +542,83 @@ export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan | null | u
           ))}
         </div>
 
-        {/* MONITORING — inline compact view */}
+        {/* MONITORING TRIGGERS — collapsible, default collapsed */}
         {(plan.monitoring || []).length > 0 && (
-          <div style={{ padding: '8px 12px', borderBottom: `1px solid ${BT.border.subtle}`, borderLeft: `2px solid ${BT.text.orange}` }}>
-            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5, display: 'block', marginBottom: 4 }}>MONITORING TRIGGERS</span>
-            {(plan.monitoring || []).map((item, i) => {
-              const sColor = sevColor(item.severity);
-              return (
-                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '2px 0', borderBottom: `1px solid ${BT.border.subtle}` }}>
-                  <Bd c={sColor}>{(item.severity ?? '').toUpperCase()}</Bd>
-                  <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.primary, flex: 1 }}>{item.metric}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>NOW: {item.currentValue}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 7, color: sColor }}>▲ {item.triggerThreshold}</span>
-                </div>
-              );
-            })}
+          <div style={{ borderBottom: `1px solid ${BT.border.subtle}`, borderLeft: `2px solid ${BT.text.orange}` }}>
+            <div
+              onClick={() => setMonitoringExpanded(e => !e)}
+              style={{ padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}
+            >
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, lineHeight: 1 }}>
+                {monitoringExpanded ? '▼' : '▶'}
+              </span>
+              <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5 }}>
+                MONITORING TRIGGERS
+              </span>
+              <span style={{
+                fontFamily: MONO, fontSize: 8, color: BT.text.orange,
+                background: `${BT.text.orange}20`, border: `1px solid ${BT.text.orange}44`,
+                padding: '0 6px', borderRadius: 2,
+              }}>
+                {(plan.monitoring || []).length} MONITORS
+              </span>
+            </div>
+            {monitoringExpanded && (
+              <div style={{ padding: '0 12px 8px' }}>
+                {(plan.monitoring || []).map((item, i) => {
+                  const sColor = sevColor(item.severity);
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '2px 0', borderBottom: `1px solid ${BT.border.subtle}` }}>
+                      <Bd c={sColor}>{(item.severity ?? '').toUpperCase()}</Bd>
+                      <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.primary, flex: 1 }}>{item.metric}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>NOW: {item.currentValue}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 7, color: sColor }}>▲ {item.triggerThreshold}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
-        {/* PIVOT CONDITIONS */}
+        {/* PIVOT CONDITIONS — collapsible, default collapsed */}
         {(plan.pivotConditions || []).length > 0 && (
-          <div style={{ padding: '8px 12px', borderLeft: `2px solid ${BT.text.purple}` }}>
-            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.purple, letterSpacing: 0.5 }}>PIVOT CONDITIONS</span>
-            {plan.pivotConditions.map((pivot, i) => (
-              <div key={i} style={{ padding: '5px 0', borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                <button style={{
-                  fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#ffffff',
-                  background: BT.text.purple, border: 'none', padding: '2px 8px', cursor: 'pointer', flexShrink: 0,
-                }}>PIVOT NOW</button>
-                <div>
-                  <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>TRIGGER: {pivot.trigger}</div>
-                  <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan }}>→ {pivot.pivotTo}</div>
-                  <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{pivot.rationale}</div>
-                </div>
+          <div style={{ borderLeft: `2px solid ${BT.text.purple}` }}>
+            <div
+              onClick={() => setPivotExpanded(e => !e)}
+              style={{ padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}
+            >
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, lineHeight: 1 }}>
+                {pivotExpanded ? '▼' : '▶'}
+              </span>
+              <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.purple, letterSpacing: 0.5 }}>
+                PIVOT CONDITIONS
+              </span>
+              <span style={{
+                fontFamily: MONO, fontSize: 8, color: BT.text.purple,
+                background: `${BT.text.purple}20`, border: `1px solid ${BT.text.purple}44`,
+                padding: '0 6px', borderRadius: 2,
+              }}>
+                {plan.pivotConditions.length} CONDITIONS
+              </span>
+            </div>
+            {pivotExpanded && (
+              <div style={{ padding: '0 12px 8px' }}>
+                {plan.pivotConditions.map((pivot, i) => (
+                  <div key={i} style={{ padding: '5px 0', borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <button style={{
+                      fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#ffffff',
+                      background: BT.text.purple, border: 'none', padding: '2px 8px', cursor: 'pointer', flexShrink: 0,
+                    }}>PIVOT NOW</button>
+                    <div>
+                      <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>TRIGGER: {pivot.trigger}</div>
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan }}>→ {pivot.pivotTo}</div>
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{pivot.rationale}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
         )}
       </SectionPanel>
