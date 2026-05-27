@@ -93,6 +93,7 @@ Custom DOM events dispatched by the F9 financial engine for non-F9 listeners
 | `hold_period.changed` | `{ holdYears: number }` | After operator saves Hold Period in Deal Terms (`dealStore.emitHoldPeriodChanged`). Projections and Returns tabs subscribe. |
 | `exit_cap.changed` | `{}` (no detail) | After operator saves Exit Cap Rate or Selling Costs % in Deal Terms (`dealStore.emitExitCapChanged`). Returns strip and net-sale-proceeds row subscribe. |
 | `deal:strategy-changed` | `{ dealId, field: 'investmentStrategy'\|'exitStrategy', value: string\|null }` | After operator saves either strategy field in Deal Terms (dispatched directly from DealTermsTab — Task #613 deviation, not yet reconciled with dealStore pattern). |
+| `assumptions.module-applied` | `{ source: string, fields: string[] }` | After a successful `POST /:dealId/assumptions/apply-from-module` call. Dispatch via `dispatchModuleApplied(source, fields)` from `frontend/src/utils/moduleEvents.ts`. F9's ProFormaTab listens, reloads the affected fields from the API, and triggers a model rebuild. `fields` uses canonical paths: `acquisition.purchasePrice`, `hold.holdPeriodYears`, `disposition.exitCapRate`, `targets.targetIrr`. |
 
 ## Pointers
 

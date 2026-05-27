@@ -235,6 +235,10 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [prepayPenalty, setPrepayPenalty] = useState(0.01);
   const [debtSource, setDebtSource] = useState<string | null>(null);
 
+  // Incremented by the assumptions.module-applied listener to trigger a model rebuild
+  // after the patched state values have settled into the next render.
+  const [rebuildAfterModuleApply, setRebuildAfterModuleApply] = useState(0);
+
   const handleScorePlausibility = useCallback(async () => {
     setPlausibilityLoading(true);
     try {
@@ -293,6 +297,57 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     window.addEventListener('assumptions:rent-updated', handler);
     return () => window.removeEventListener('assumptions:rent-updated', handler);
   }, [id, fetchRentSourceType]);
+
+  // ── assumptions.module-applied listener ──────────────────────────────────────
+  // Fired by dispatchModuleApplied() (frontend/src/utils/moduleEvents.ts) after a
+  // successful POST /:dealId/assumptions/apply-from-module call.
+  // Reloads only the affected assumption values; does NOT reset the full component.
+  useEffect(() => {
+    if (!id) return;
+    const handler = async (ev: Event) => {
+      const e = ev as CustomEvent<{ source?: string; fields?: string[] }>;
+      const fields = e.detail?.fields ?? [];
+      try {
+        // deal_assumptions scalar fields: hold_period_years, exit_cap, target_irr
+        const assumRes: any = await apiClient.get(`/api/v1/deals/${id}/assumptions`);
+        const da = assumRes?.data?.data || assumRes?.data;
+        if (fields.includes('hold.holdPeriodYears') && da?.hold_period_years != null) {
+          const v = parseFloat(da.hold_period_years);
+          if (Number.isFinite(v) && v >= 1) setHoldPeriod(Math.round(v));
+        }
+        if (fields.includes('disposition.exitCapRate') && da?.exit_cap != null) {
+          const v = parseFloat(da.exit_cap);
+          if (Number.isFinite(v) && v > 0) setExitCapRate(v);
+        }
+        // acquisition.purchasePrice is stored in deals.deal_data — fetch the deal record
+        if (fields.includes('acquisition.purchasePrice')) {
+          const dealRes: any = await apiClient.get(`/api/v1/deals/${id}`);
+          const d = dealRes?.data?.data || dealRes?.data;
+          const raw = d?.budget ?? d?.purchase_price ?? d?.deal_data?.purchase_price ?? d?.deal_data?.asking_price;
+          if (raw != null) {
+            const v = parseFloat(raw);
+            if (Number.isFinite(v) && v > 0) setPurchasePrice(v);
+          }
+        }
+      } catch (err) {
+        console.warn('[assumptions.module-applied] assumption reload failed (non-fatal):', err);
+      }
+      // Trigger model rebuild after state updates have settled into the next render
+      setRebuildAfterModuleApply(n => n + 1);
+    };
+    window.addEventListener('assumptions.module-applied', handler);
+    return () => window.removeEventListener('assumptions.module-applied', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  // Rebuild the model once the module-applied state patches have rendered.
+  // Uses a counter dep so handleBuildModel is always the fresh closure from
+  // the render that follows the set* calls above.
+  useEffect(() => {
+    if (rebuildAfterModuleApply === 0) return;
+    handleBuildModel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rebuildAfterModuleApply]);
 
   useEffect(() => {
     if (debtTerms && debtTerms.source && debtTerms.lastUpdated > lastAppliedTimestamp.current) {
