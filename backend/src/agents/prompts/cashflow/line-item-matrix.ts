@@ -1,15 +1,16 @@
 /**
- * CashFlow Agent — Line-Item Investigation Matrix (Pass 2, v1.2)
+ * CashFlow Agent — Line-Item Investigation Matrix (Pass 2, v1.3)
  *
  * Structured per-line-item investigation guidance for all 14 non-GPR Pro Forma line items.
  * Each cell defines: questions to ask, source hierarchy, regime-awareness logic,
  * comparable-filtering rules, named pitfalls, and confidence rules.
  *
- * KEY PRINCIPLE (v1.2 mandate for all non-GPR cells):
- * For every line item below, produce ONE value (the post-stabilization Pro Forma value).
- * Do NOT output pre_renovation or post_stabilization sub-fields.
- * If the deal type is value-add or redevelopment, the regime split reasoning (pre-renovation
- * rate vs post-stabilization rate) belongs in evidence.reasoning — not in a separate output key.
+ * KEY PRINCIPLE (v1.3 — conditional sub-field mandate for non-GPR cells):
+ * For every line item below, produce ONE primary value (the post-stabilization Pro Forma value).
+ * For value-add and redevelopment deals, the agent may ADDITIONALLY write pre_renovation and
+ * post_stabilization sub-fields on regime-sensitive line items, subject to minimum evidence
+ * thresholds defined in the Sub-Field Write Protocol section below. Stabilized, core, and
+ * core-plus deals are unaffected — no sub-fields are written for those deal types.
  * The Projections tab surfaces year-by-year regime trajectory; the Pro Forma column is the
  * stabilized state.
  */
@@ -28,9 +29,9 @@ Each cell gives you the investigation protocol for one line item. For every Pro 
 2. Apply the comparable filtering rules before consuming any comp.
 3. Name and avoid the common pitfalls explicitly.
 4. Apply the confidence rules to set your confidence level.
-5. Populate the output slots (single value per field, per v1.2 schema).
+5. Populate the output slots (primary value per field; eligible fields may also receive sub-fields per v1.3 Sub-Field Write Protocol).
 
-**v1.2 Single-Value Mandate:** Every non-GPR field produces exactly ONE value per Pro Forma column (the post-stabilization economics). If you are underwriting a value-add or redevelopment deal, your internal reasoning must account for the pre-renovation regime — but your output is the single post-stabilization value. Put the regime narrative (pre-reno rate, regime shift rationale, and post-stab target) in the evidence \`reasoning\` field. Do NOT populate separate pre_renovation or post_stabilization output keys for these fields.
+**v1.3 Conditional Sub-Field Mandate:** Every non-GPR field produces ONE primary value per Pro Forma column (the post-stabilization economics). For value-add and redevelopment deals, the agent may ADDITIONALLY write pre_renovation and post_stabilization sub-fields on the regime-sensitive fields defined in the Sub-Field Write Protocol — but only when minimum evidence thresholds are met. Forward-looking post_stabilization sub-field writes must include a confidence tag; 'low' confidence sub-field writes are rejected. Stabilized, core, and core-plus deals: do NOT write sub-fields under any circumstances. Always put the regime narrative in evidence.reasoning regardless of whether sub-fields are written.
 
 ---
 
@@ -89,7 +90,7 @@ The Pro Forma column shows the post-stabilization rate. Evidence reasoning must 
 - \`proforma_fields['revenue.vacancy_loss'].value\` — post-stabilization annual vacancy loss in dollars
 - \`proforma_fields['revenue.vacancy_pct'].value\` — post-stabilization vacancy rate as decimal (e.g., 0.05)
 - \`proforma_fields['revenue.vacancy_loss'].evidence\` — reasoning includes regime narrative for value-add/redevelopment
-- (no pre_renovation or post_stabilization sub-fields)
+- [VALUE-ADD/REDEVELOPMENT] May also write \`pre_renovation\` and \`post_stabilization\` sub-fields — see Sub-Field Write Protocol (Tier 1 evidence required for pre; min 'medium' confidence required for post)
 
 ---
 
@@ -141,7 +142,7 @@ The Pro Forma column shows stabilized concessions. Evidence reasoning must expla
 - \`proforma_fields['revenue.concessions'].value\` — stabilized annual concession in dollars
 - \`proforma_fields['revenue.concessions_pct'].value\` — as % of GPR (decimal)
 - \`proforma_fields['revenue.concessions'].evidence\` — reasoning includes regime narrative for value-add
-- (no pre_renovation or post_stabilization sub-fields)
+- [VALUE-ADD/REDEVELOPMENT] May also write \`pre_renovation\` and \`post_stabilization\` sub-fields — see Sub-Field Write Protocol (Tier 1 evidence required for pre; min 'medium' confidence required for post)
 
 ---
 
@@ -190,7 +191,7 @@ For value-add deals: reason about whether renovation will improve the tenant cre
 - \`proforma_fields['revenue.bad_debt'].value\` — stabilized annual bad debt in dollars
 - \`proforma_fields['revenue.bad_debt_pct'].value\` — as % of GPR (decimal)
 - \`proforma_fields['revenue.bad_debt'].evidence\` — reasoning includes tenant credit profile narrative
-- (no pre_renovation or post_stabilization sub-fields)
+- [VALUE-ADD/REDEVELOPMENT] May also write \`pre_renovation\` and \`post_stabilization\` sub-fields — see Sub-Field Write Protocol (Tier 1 evidence required for pre; min 'medium' confidence required for post)
 
 ---
 
@@ -299,7 +300,7 @@ rent roll did not contain per-category ancillary detail. Degrade to a Method 1+2
 - \`proforma_fields['revenue.other_income'].value\` — total stabilized annual other income in dollars
 - \`proforma_fields['revenue.other_income'].evidence\` — reasoning describes existing vs new programs, implementation timeline
 - Sub-category fields if available: \`proforma_fields['revenue.other_income_parking'].value\`, etc.
-- (no pre_renovation or post_stabilization sub-fields)
+- [VALUE-ADD/REDEVELOPMENT] May also write \`pre_renovation\` and \`post_stabilization\` sub-fields — see Sub-Field Write Protocol (Tier 1 required for pre when existing T12 programs exist; min 'medium' confidence for post when new programs are added)
 
 ---
 
@@ -765,7 +766,7 @@ The Pro Forma column shows the post-stabilization turnover rate and dollar cost.
 - \`proforma_fields['expense.turnover'].value\` — stabilized annual turnover cost in dollars (rate × per-turn cost × total units)
 - \`proforma_fields['expense.turnover_rate'].value\` — stabilized turnover rate as decimal (e.g., 0.35)
 - \`proforma_fields['expense.turnover'].evidence\` — pre-renovation regime described, post-stabilization target explained, stickiness vs. affordability ceiling analysis included
-- (no pre_renovation or post_stabilization sub-fields)
+- [VALUE-ADD/REDEVELOPMENT] May also write \`pre_renovation\` and \`post_stabilization\` sub-fields — see Sub-Field Write Protocol (Tier 1 turnover rate required for pre; min 'medium' confidence for post with stickiness analysis completed)
 
 ---
 
@@ -822,13 +823,13 @@ Important: distinguish "capital expenditure reserve" (the annual reserve for ong
 **Output Slots Populated**
 - \`proforma_fields['expense.replacement_reserves'].value\` — stabilized annual replacement reserve in dollars (post-renovation rate for value-add)
 - \`proforma_fields['expense.replacement_reserves'].evidence\` — renovation scope noted (what was replaced), remaining system risk identified, regime narrative included for value-add
-- (no pre_renovation or post_stabilization sub-fields)
+- [VALUE-ADD/REDEVELOPMENT] May write \`post_stabilization\` sub-field only (post-renovation reserve rate distinct from T12; pre variation is minimal) — see Sub-Field Write Protocol
 
 ---
 
 ## CROSS-CELL GUIDANCE
 
-### Regime Output Protocol (v1.2 — applies to all non-GPR cells)
+### Regime Output Protocol (v1.3 — applies to all non-GPR cells)
 
 For each non-GPR line item, apply this output protocol:
 
@@ -837,7 +838,7 @@ For each non-GPR line item, apply this output protocol:
    - The pre-renovation regime value and what drives it
    - The post-stabilization target and what drives the shift
    - The transition rationale (why does the property get from pre-reno to post-stab on this line item?)
-3. **Write ONE value to proforma_fields** — do not write separate pre_renovation or post_stabilization sub-fields.
+3. **Write ONE primary value to proforma_fields** — for stabilized/core/core-plus deals, no sub-fields. For value-add/redevelopment, also write pre_renovation and post_stabilization sub-fields on eligible fields per the Sub-Field Write Protocol when evidence thresholds are met.
 4. **Flag the Projections tab for year-by-year trajectory** — note in evidence that pre-renovation regime year-by-year values are modeled in the Projections tab.
 
 Example evidence.reasoning format for value-add turnover:
@@ -852,7 +853,77 @@ Before writing any line item to proforma_fields, verify:
 [ ] Named pitfalls were checked and avoided or explicitly addressed
 [ ] Confidence level set per confidence rules
 [ ] Evidence reasoning includes regime narrative for value-add/redevelopment
-[ ] For value-add: v1.2 single-value mandate confirmed — no pre_renovation or post_stabilization sub-keys written
+[ ] For value-add: v1.3 sub-field protocol applied — eligible fields have pre_renovation and post_stabilization sub-keys written with evidence-threshold check; confidence tag included on all post_stabilization writes; no sub-fields written for stabilized/core deals
+
+---
+
+## SUB-FIELD WRITE PROTOCOL (v1.3 — value-add and redevelopment deals only)
+
+This protocol governs when and how the agent writes pre_renovation and post_stabilization
+sub-fields alongside the primary value in proforma_fields. These sub-fields populate the
+RegimeExpand UI component so operators can see the full pre-to-post-stabilization arc.
+
+### Eligibility gate
+
+Only execute this protocol when ALL of the following are true:
+- Deal type is value-add OR redevelopment
+- The line item field is in the eligible set (see table below)
+- The regime split is material: pre and post values differ by more than 5%
+
+For stabilized, core, core-plus, and development deals: skip this protocol entirely.
+
+### Eligible fields
+
+| Field key                     | pre_renovation? | post_stabilization? | Minimum evidence for pre |
+|------------------------------|-----------------|---------------------|--------------------------|
+| revenue.vacancy_loss          | Yes             | Yes                 | Tier 1 (T12 vacancy data)|
+| revenue.concessions           | Yes             | Yes                 | Tier 1 (T12 concession history) |
+| revenue.bad_debt              | Yes             | Yes                 | Tier 1 (T12 bad debt / credit loss line) |
+| revenue.other_income          | Yes             | Yes                 | Tier 1 (T12 other income categories) |
+| expense.repairs_maintenance   | Yes             | Yes                 | Tier 1 (T12 R&M spend) |
+| expense.marketing             | Yes             | Yes                 | Tier 1 or 2 |
+| expense.contract_services     | Yes             | Yes                 | Tier 1 (T12 contract services) |
+| expense.turnover              | Yes             | Yes                 | Tier 1 (T12 turnover rate AND per-turn cost) |
+| expense.replacement_reserves  | No              | Yes                 | N/A (post only) |
+
+### Evidence threshold rules
+
+**pre_renovation sub-field:**
+- Requires Tier 1 evidence (T12 or rent roll actual for this specific line item)
+- OR Tier 2 evidence (owned-portfolio actuals for a comparable pre-renovation asset)
+- If evidence is only Tier 3 or Tier 4: do NOT write pre_renovation; include the value in evidence.reasoning only
+
+**post_stabilization sub-field:**
+- Always requires a confidence tag ('high', 'medium', or 'low')
+- Confidence 'low': do NOT write post_stabilization; keep value in evidence.reasoning only
+- Confidence 'medium' or 'high': write the sub-field
+
+### Sub-field format (write this structure under the primary field object)
+
+\`\`\`
+proforma_fields['revenue.vacancy_loss'] = {
+  value: <post-stab dollar value>,         // primary value — unchanged
+  source: "agent:cashflow",
+  evidence: { ... },                        // evidence object — unchanged
+  "pre_renovation": {
+    "value": <pre-renovation dollar amount>,
+    "confidence": "high" | "medium",        // confidence in the pre-reno estimate
+    "source": "tier1:t12" | "tier2:owned_asset" | ...,
+    "note": "<brief narrative: what drives this value, regime context>"
+  },
+  "post_stabilization": {
+    "value": <post-stabilization dollar amount>,   // should equal or closely match primary value
+    "confidence": "high" | "medium",              // REQUIRED — 'low' is rejected
+    "source": "tier3:market_comp" | "tier2:owned_asset" | ...,
+    "note": "<brief narrative: stabilization target, comp evidence, transition rationale>"
+  }
+}
+\`\`\`
+
+### Partial writes are acceptable
+
+You may write only pre_renovation, only post_stabilization, or both — based on what evidence
+supports. Do not fabricate a sub-field value to complete a pair.
 
 ---
 

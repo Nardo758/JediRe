@@ -552,6 +552,87 @@ export async function cashflowPostProcess(
           }
         }
 
+        // ── Sub-field writeback (pre_renovation / post_stabilization) ─────────
+        // For value-add and redevelopment deals, the agent may write pre/post
+        // sub-fields on eligible regime-sensitive line items (v1.3 Sub-Field Write
+        // Protocol). These are stored as separate year1 JSONB keys so that
+        // regimeDataByField in proforma-adjustment.service.ts can merge them with
+        // higher priority than the T12 baseline.
+        // Key convention: `{year1Key}__pre_renovation` / `{year1Key}__post_stabilization`
+        // Rejection rules (enforced here, mirroring prompt guardrails):
+        //   - post_stabilization with confidence 'low' is rejected
+        //   - pre_renovation without a numeric value is skipped
+        {
+          const SUB_FIELD_AGENT_TO_YEAR1: Record<string, string> = {
+            'revenue.vacancy_loss':        'vacancy_loss_dollars',
+            'revenue.concessions':         'concessions',
+            'revenue.bad_debt':            'bad_debt_dollars',
+            'revenue.other_income':        'other_income_dollars',
+            'expense.repairs_maintenance': 'repairs_maintenance',
+            'expense.marketing':           'marketing',
+            'expense.contract_services':   'contract_services',
+            'expense.turnover':            'turnover',
+            'expense.replacement_reserves':'replacement_reserves',
+          };
+
+          for (const [agentKey, year1Key] of Object.entries(SUB_FIELD_AGENT_TO_YEAR1)) {
+            const field = pfFieldsForWriteback[agentKey];
+            if (!field || typeof field !== 'object') continue;
+
+            for (const subField of ['pre_renovation', 'post_stabilization'] as const) {
+              const sub = (field as Record<string, unknown>)[subField];
+              if (!sub || typeof sub !== 'object') continue;
+              const subObj = sub as Record<string, unknown>;
+              const subVal = subObj['value'];
+              if (typeof subVal !== 'number' || !isFinite(subVal)) continue;
+
+              // Confidence gate: post_stabilization requires 'medium' or 'high'
+              const conf = subObj['confidence'] as string | undefined;
+              if (subField === 'post_stabilization' && conf === 'low') {
+                logger.debug('[CashflowPostProcess] Rejecting low-confidence post_stabilization sub-field', {
+                  dealId: ctx.dealId, agentKey,
+                });
+                continue;
+              }
+
+              const subKey = `${year1Key}__${subField}`;
+              const subPayload = JSON.stringify({
+                value:      subVal,
+                confidence: conf ?? null,
+                source:     (subObj['source'] as string | null) ?? 'agent:cashflow',
+                note:       (subObj['note'] as string | null) ?? null,
+              });
+
+              try {
+                const subScenarioRes = await query(
+                  `UPDATE deal_underwriting_scenarios
+                   SET year1 = jsonb_set(COALESCE(year1, '{}'), ARRAY[$2::text], $3::jsonb, true),
+                       updated_at = NOW()
+                   WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
+                   RETURNING id`,
+                  [ctx.dealId, subKey, subPayload]
+                );
+                if ((subScenarioRes.rowCount ?? 0) === 0) {
+                  await query(
+                    `UPDATE deal_assumptions
+                     SET year1 = jsonb_set(COALESCE(year1, '{}'), ARRAY[$2::text], $3::jsonb, true)
+                     WHERE deal_id = $1`,
+                    [ctx.dealId, subKey, subPayload]
+                  );
+                }
+                logger.debug('[CashflowPostProcess] Sub-field written', {
+                  dealId: ctx.dealId, subKey, value: subVal, confidence: conf,
+                });
+              } catch (subWriteErr) {
+                logger.warn('[CashflowPostProcess] Sub-field write failed (non-fatal)', {
+                  dealId: ctx.dealId, runId, subKey,
+                  err: subWriteErr instanceof Error ? subWriteErr.message : String(subWriteErr),
+                });
+              }
+            }
+          }
+        }
+
         // ── Derived fallbacks for high-priority badge fields ──────────────────
         // When the agent omits revenue.bad_debt, revenue.concessions, or
         // expense.turnover (all three appear in AGENT_FIELD_TO_YEAR1 but are

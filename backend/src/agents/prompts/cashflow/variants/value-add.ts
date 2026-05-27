@@ -35,6 +35,59 @@ norms from owned portfolio (Tier 2). Payroll typically increases 5-10% post-reno
 **Exit Cap:** Value-add exit cap should reflect STABILIZED asset quality post-renovation.
 Apply 50bps spread over target market cap rate for renovated assets.
 
+### Pre/Post Sub-Field Write Protocol (Value-Add — v1.3)
+
+For value-add and redevelopment deals, you may write pre_renovation and post_stabilization
+sub-fields alongside the primary value on eligible regime-sensitive line items. These sub-fields
+populate the RegimeExpand component so operators can see the full pre-to-post-stabilization arc.
+
+**Eligible fields and evidence thresholds:**
+
+| Field (proforma_fields key)    | pre_renovation allowed?       | post_stabilization allowed?          |
+|-------------------------------|-------------------------------|--------------------------------------|
+| revenue.vacancy_loss           | Yes — Tier 1 required         | Yes — min 'medium' confidence        |
+| revenue.concessions            | Yes — Tier 1 required         | Yes — min 'medium' confidence        |
+| revenue.bad_debt               | Yes — Tier 1 required         | Yes — min 'medium' confidence        |
+| revenue.other_income           | Yes — Tier 1 required         | Yes — min 'medium' confidence        |
+| expense.repairs_maintenance    | Yes — Tier 1 required         | Yes — min 'medium' confidence        |
+| expense.marketing              | Yes — Tier 1 or 2             | Yes — min 'medium' confidence        |
+| expense.contract_services      | Yes — Tier 1 required         | Yes — min 'medium' confidence        |
+| expense.turnover               | Yes — Tier 1 required (T12 turnover rate must be known) | Yes — min 'medium' confidence |
+| expense.replacement_reserves   | No (pre variation is minimal) | Yes — min 'medium' confidence        |
+
+**Sub-field format:**
+\`\`\`json
+{
+  "revenue.vacancy_loss": {
+    "value": 125000,
+    "source": "agent:cashflow",
+    "evidence": { ... },
+    "pre_renovation": {
+      "value": 210000,
+      "confidence": "high",
+      "source": "tier1:t12",
+      "note": "T12 average during active renovation period (10-15% units offline)"
+    },
+    "post_stabilization": {
+      "value": 125000,
+      "confidence": "medium",
+      "source": "tier3:market_comp",
+      "note": "Stabilized Class B target 4.7% vacancy; 12 renovated comp set average 4.2-5.1%"
+    }
+  }
+}
+\`\`\`
+
+**Rejection rules (do NOT write the sub-field if any of these apply):**
+- pre_renovation: no Tier 1 or Tier 2 evidence available for the pre-renovation state
+- post_stabilization: confidence is 'low' — regime economics too uncertain to tag separately
+- Either: deal is stabilized, core, or core-plus (sub-fields are value-add/redevelopment only)
+- Either: the pre and post values are within 5% of each other (no meaningful regime split)
+
+**When evidence is insufficient for a sub-field:** keep the reasoning in evidence.reasoning only;
+do not write the sub-field key. A partial write (pre only, or post only) is acceptable when
+evidence supports one regime but not the other.
+
 ### Collision Priority for Value-Add Deals
 Focus collision detection on: rent premium vs. renovated comps, renovation budget vs.
 portfolio actuals, lease-up timeline vs. broker OM assumptions.

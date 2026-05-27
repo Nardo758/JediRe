@@ -4755,6 +4755,22 @@ export async function getDealFinancials(
   const _dealTypeNorm = ((deal.deal_type as string | null) ?? '').replace(/-/g, '_').toLowerCase();
   const _patternBFields = _PATTERN_B_BY_DEAL_TYPE[_dealTypeNorm] ?? [];
 
+  // Maps PATTERN_B short field names → year1 JSONB sub-field storage keys written
+  // by cashflow.postprocess.ts (v1.3 Sub-Field Write Protocol). Must stay in sync
+  // with SUB_FIELD_AGENT_TO_YEAR1 in cashflow.postprocess.ts.
+  const _PATTERN_B_TO_YEAR1_KEY: Record<string, string> = {
+    vacancy_loss:         'vacancy_loss_dollars',
+    concessions:          'concessions',
+    bad_debt:             'bad_debt_dollars',
+    other_income:         'other_income_dollars',
+    repairs_maintenance:  'repairs_maintenance',
+    marketing:            'marketing',
+    contract_services:    'contract_services',
+    turnover:             'turnover',
+    utilities:            'utilities',
+    replacement_reserves: 'replacement_reserves',
+  };
+
   let regimeDataByField: DealFinancials['regimeDataByField'] = undefined;
   if (_patternBFields.length > 0) {
     const _regimeMap: NonNullable<DealFinancials['regimeDataByField']> = {};
@@ -4767,15 +4783,31 @@ export async function getDealFinancials(
       // Determine post-stabilization source label — prefer the resolution slot,
       // fall back to the row's source tag, default to 'platform'.
       const _postSrc = _row.resolution ?? _row.source ?? 'platform';
+
+      // Check for agent-written sub-fields (v1.3 Sub-Field Write Protocol).
+      // These are stored by cashflow.postprocess.ts and take priority over the
+      // T12/platform baseline when present. Shape: { value, confidence, source, note }.
+      const _year1Key = _PATTERN_B_TO_YEAR1_KEY[_field];
+      type _AgentSubField = { value?: number | null; confidence?: string | null; source?: string | null; note?: string | null };
+      const _agentPre  = _year1Key
+        ? (year1Seed[`${_year1Key}__pre_renovation`] as _AgentSubField | null | undefined)
+        : null;
+      const _agentPost = _year1Key
+        ? (year1Seed[`${_year1Key}__post_stabilization`] as _AgentSubField | null | undefined)
+        : null;
+
       _regimeMap[_field] = {
         pre_renovation: {
-          value: _preVal,
-          source: _preVal != null ? 't12' : null,
-          note:   _preVal != null ? 'trailing 12-month actual (pre-reno baseline)' : null,
+          value:      typeof _agentPre?.value  === 'number' ? _agentPre.value  : _preVal,
+          source:     (_agentPre?.source  ?? (_preVal  != null ? 't12'    : null)) as string | null,
+          confidence: (_agentPre?.confidence as 'high' | 'medium' | 'low' | null | undefined) ?? null,
+          note:       _agentPre?.note    ?? (_preVal  != null ? 'trailing 12-month actual (pre-reno baseline)' : null),
         },
         post_stabilization: {
-          value: _postVal,
-          source: _postVal != null ? _postSrc : null,
+          value:      typeof _agentPost?.value === 'number' ? _agentPost.value : _postVal,
+          source:     (_agentPost?.source ?? (_postVal != null ? _postSrc  : null)) as string | null,
+          confidence: (_agentPost?.confidence as 'high' | 'medium' | 'low' | null | undefined) ?? null,
+          note:       _agentPost?.note   ?? null,
         },
         transition_year: null,
         transition_timing_label: null,

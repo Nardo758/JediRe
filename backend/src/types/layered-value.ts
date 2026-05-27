@@ -155,10 +155,48 @@ export const EvidenceSchema = z.object({
   collision: CollisionReportSchema.nullable().optional(),
 });
 
+// ── Sub-field value (pre/post regime split) ────────────────────────────
+
+/**
+ * A regime-specific sub-field value written by the CashFlow agent for
+ * value-add and redevelopment deals. Both pre_renovation and post_stabilization
+ * sub-fields may appear alongside the primary value on eligible line items.
+ * post_stabilization writes require at minimum 'medium' confidence.
+ */
+export interface SubFieldValue {
+  value: number | null;
+  confidence: 'high' | 'medium' | 'low';
+  source: string;
+  note?: string | null;
+}
+
+export const SubFieldValueSchema = z.object({
+  value: z.number().nullable(),
+  confidence: z.enum(['high', 'medium', 'low']),
+  source: z.string(),
+  note: z.string().nullable().optional(),
+});
+
+export type SubFieldValue_ = z.infer<typeof SubFieldValueSchema>;
+
 export const UnderwritingOutputFieldSchema = z.object({
   value: z.union([z.number(), z.string(), z.null()]),
   source: z.string(),
   evidence: EvidenceSchema,
+  /**
+   * Pre-renovation regime value (value-add/redevelopment deals only).
+   * Requires Tier 1 or Tier 2 evidence; minimum 'medium' confidence.
+   * Written when the agent has sufficient evidence to distinguish the
+   * pre-renovation state from the post-stabilization Pro Forma value.
+   */
+  pre_renovation: SubFieldValueSchema.optional(),
+  /**
+   * Post-stabilization regime value (value-add/redevelopment deals only).
+   * Always requires a confidence tag; 'low' confidence writes are rejected.
+   * When present, this matches or refines the primary value field with an
+   * explicit evidence chain and forward-looking confidence rating.
+   */
+  post_stabilization: SubFieldValueSchema.optional(),
 });
 
 export const UnderwritingOutputSchema = z.object({

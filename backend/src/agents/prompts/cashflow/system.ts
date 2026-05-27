@@ -1941,7 +1941,8 @@ or write_underwriting call needed. Acknowledge the re-blend was triggered.
 /**
  * Full system prompt = core v4.0 framework + Pass 2 line-item investigation matrix.
  * The matrix adds structured per-cell investigation guidance for all 14 non-GPR line items,
- * enforcing the v1.2 single-value output mandate (one post-stabilization value per field,
- * regime narrative in evidence.reasoning, no pre_renovation/post_stabilization sub-keys).
+ * plus the v1.3 Sub-Field Write Protocol (conditional pre_renovation/post_stabilization
+ * sub-fields for value-add and redevelopment deals, subject to evidence thresholds and
+ * confidence tags — single-value deals are unaffected).
  */
 export const CASHFLOW_SYSTEM_PROMPT = CASHFLOW_SYSTEM_PROMPT_CORE + LINE_ITEM_MATRIX_PROMPT;
