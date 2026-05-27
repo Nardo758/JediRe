@@ -43,7 +43,12 @@ export type LayeredValueSource =
   | 'agent'
   | 'broker'
   | 'user'
-  | 'computed';
+  | 'computed'
+  /** Track 6 module-source literals — written by cross-module apply pipeline */
+  | 'strategy:entry'
+  | 'strategy:exit'
+  | 'event_timeline'
+  | 'goal_seek';
 
 // ── Base LayeredValue<T> ───────────────────────────────────────────
 

@@ -652,6 +652,214 @@ router.patch('/:dealId/assumptions/targets', requireAuth, async (req: Authentica
   }
 });
 
+// ── apply-from-module: field registry ──────────────────────────────────────
+
+/**
+ * Canonical field paths accepted by POST /assumptions/apply-from-module.
+ * Each entry describes where to write the value and how to validate it.
+ *
+ * storage types:
+ *   'deals_data'       — writes to deals.deal_data JSONB (+ deals.budget if dualWriteBudget)
+ *   'deal_assumptions' — writes to a named scalar column in deal_assumptions
+ *
+ * All values are expected in their canonical DB unit:
+ *   purchasePrice  — nominal dollar amount (e.g. 5_000_000)
+ *   holdPeriodYears— positive integer (e.g. 5)
+ *   exitCapRate    — decimal fraction (e.g. 0.055 for 5.5%)
+ *   targetIrr      — decimal fraction (e.g. 0.15 for 15%)
+ */
+type ModuleFieldTarget =
+  | { storage: 'deals_data';    dataKey: string; dualWriteBudget?: true }
+  | { storage: 'deal_assumptions'; column: string };
+
+const MODULE_FIELD_REGISTRY: Record<string, ModuleFieldTarget> = {
+  'acquisition.purchasePrice': { storage: 'deals_data',    dataKey: 'purchase_price', dualWriteBudget: true },
+  'hold.holdPeriodYears':      { storage: 'deal_assumptions', column: 'hold_period_years' },
+  'disposition.exitCapRate':   { storage: 'deal_assumptions', column: 'exit_cap' },
+  'targets.targetIrr':         { storage: 'deal_assumptions', column: 'target_irr' },
+};
+
+function validateModuleFieldValue(fieldPath: string, value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 'value must be a finite number or null';
+  }
+  switch (fieldPath) {
+    case 'acquisition.purchasePrice':
+      return value > 0 ? null : 'purchasePrice must be positive';
+    case 'hold.holdPeriodYears':
+      return (Number.isInteger(value) && value >= 1 && value <= 36)
+        ? null : 'holdPeriodYears must be an integer between 1 and 36';
+    case 'disposition.exitCapRate':
+      return (value > 0 && value < 1)
+        ? null : 'exitCapRate must be a decimal fraction (e.g. 0.055 for 5.5%)';
+    case 'targets.targetIrr':
+      return (value > 0 && value < 1)
+        ? null : 'targetIrr must be a decimal fraction (e.g. 0.15 for 15%)';
+    default:
+      return null;
+  }
+}
+
+/**
+ * POST /:dealId/assumptions/apply-from-module
+ *
+ * Cross-module assumption write gateway (Track 6, T6.1).
+ *
+ * Accepts a batch of field writes from a named source module (e.g. Strategy Engine,
+ * Event Timeline, Goal Seek). For each field the endpoint:
+ *   1. Checks whether the field has been locked by a user-source write
+ *      (`per_year_overrides['module:source:{fieldPath}'].source === 'user'`).
+ *      If locked and `force` is not true → field added to `conflicts[]`, skipped.
+ *   2. Writes the value to the appropriate DB storage location.
+ *   3. Records provenance metadata in `per_year_overrides['module:source:{fieldPath}']`
+ *      so subsequent reads can surface the originating module and timestamp.
+ *
+ * Body:
+ *   { source: LayeredValueSource, appliedAt: ISO-string,
+ *     fields: [{ fieldPath, value, evidence?, force? }] }
+ *
+ * Response:
+ *   { applied: [{ fieldPath, value }], conflicts: [{ fieldPath, reason, existingValue }] }
+ *
+ * Supported field paths (T6.4):
+ *   acquisition.purchasePrice  — deals.deal_data.purchase_price + deals.budget
+ *   hold.holdPeriodYears       — deal_assumptions.hold_period_years
+ *   disposition.exitCapRate    — deal_assumptions.exit_cap
+ *   targets.targetIrr          — deal_assumptions.target_irr
+ *
+ * Track 6 source literals (LayeredValueSource): strategy:entry, strategy:exit,
+ *   event_timeline, goal_seek (plus any existing source literal).
+ */
+router.post('/:dealId/assumptions/apply-from-module', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+
+    const body = req.body as {
+      source?: unknown;
+      appliedAt?: unknown;
+      fields?: unknown;
+    };
+
+    if (typeof body.source !== 'string' || body.source.trim().length === 0) {
+      return res.status(400).json({ error: 'source must be a non-empty string' });
+    }
+    if (body.appliedAt !== undefined && typeof body.appliedAt !== 'string') {
+      return res.status(400).json({ error: 'appliedAt must be an ISO timestamp string' });
+    }
+    if (!Array.isArray(body.fields) || body.fields.length === 0) {
+      return res.status(400).json({ error: 'fields must be a non-empty array' });
+    }
+
+    const source: string = body.source.trim();
+    const appliedAt: string = typeof body.appliedAt === 'string' ? body.appliedAt : new Date().toISOString();
+
+    type FieldRequest = { fieldPath: unknown; value: unknown; evidence?: unknown; force?: unknown };
+    const fieldRequests = body.fields as FieldRequest[];
+
+    for (let i = 0; i < fieldRequests.length; i++) {
+      const f = fieldRequests[i];
+      if (typeof f.fieldPath !== 'string' || f.fieldPath.trim().length === 0) {
+        return res.status(400).json({ error: `fields[${i}].fieldPath must be a non-empty string` });
+      }
+    }
+
+    const own = await pool.query(
+      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (own.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized for this deal' });
+    }
+
+    const pyRes = await pool.query(
+      `SELECT per_year_overrides FROM deal_assumptions WHERE deal_id = $1`,
+      [dealId]
+    );
+    const existingPyo = (pyRes.rows[0]?.per_year_overrides ?? {}) as Record<string, unknown>;
+
+    const applied: Array<{ fieldPath: string; value: unknown }> = [];
+    const conflicts: Array<{ fieldPath: string; reason: string; existingValue: unknown }> = [];
+    const pyPatch: Record<string, unknown> = {};
+
+    for (const f of fieldRequests) {
+      const fieldPath = (f.fieldPath as string).trim();
+      const value = f.value;
+      const force = f.force === true;
+
+      const target = MODULE_FIELD_REGISTRY[fieldPath];
+      if (!target) {
+        conflicts.push({ fieldPath, reason: 'unsupported_field_path', existingValue: null });
+        continue;
+      }
+
+      const validationError = validateModuleFieldValue(fieldPath, value);
+      if (validationError) {
+        conflicts.push({ fieldPath, reason: `invalid_value: ${validationError}`, existingValue: null });
+        continue;
+      }
+
+      const metaKey = `module:source:${fieldPath}`;
+      const existingMeta = existingPyo[metaKey] as { source?: string; value?: unknown } | undefined;
+      if (existingMeta?.source === 'user' && !force) {
+        conflicts.push({ fieldPath, reason: 'user_locked', existingValue: existingMeta.value });
+        continue;
+      }
+
+      if (target.storage === 'deals_data') {
+        const dataKey = target.dataKey;
+        if (target.dualWriteBudget) {
+          await pool.query(
+            `UPDATE deals
+               SET deal_data  = COALESCE(deal_data, '{}'::jsonb) || jsonb_build_object($2::text, $3::numeric),
+                   budget     = $3,
+                   updated_at = NOW()
+             WHERE id = $1`,
+            [dealId, dataKey, value]
+          );
+        } else {
+          await pool.query(
+            `UPDATE deals
+               SET deal_data  = COALESCE(deal_data, '{}'::jsonb) || jsonb_build_object($2::text, $3::numeric),
+                   updated_at = NOW()
+             WHERE id = $1`,
+            [dealId, dataKey, value]
+          );
+        }
+      } else {
+        const col = target.column;
+        await pool.query(
+          `INSERT INTO deal_assumptions (deal_id, ${col}, updated_at)
+           VALUES ($1, $2, NOW())
+           ON CONFLICT (deal_id) DO UPDATE SET ${col} = $2, updated_at = NOW()`,
+          [dealId, value]
+        );
+      }
+
+      pyPatch[metaKey] = { source, value, appliedAt, appliedBy: 'module', fieldPath };
+      applied.push({ fieldPath, value });
+    }
+
+    if (Object.keys(pyPatch).length > 0) {
+      const patchJson = JSON.stringify(pyPatch);
+      await pool.query(
+        `INSERT INTO deal_assumptions (deal_id, per_year_overrides, updated_at)
+         VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (deal_id) DO UPDATE
+           SET per_year_overrides = COALESCE(deal_assumptions.per_year_overrides, '{}'::jsonb) || $2::jsonb,
+               updated_at = NOW()`,
+        [dealId, patchJson]
+      );
+    }
+
+    res.json({ applied, conflicts });
+  } catch (error: any) {
+    logger.error('Error in apply-from-module:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 /**
  * PATCH /:dealId/assumptions/strategy
  *
