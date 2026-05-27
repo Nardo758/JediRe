@@ -28,12 +28,13 @@ import { OtherIncomeTab } from './OtherIncomeTab';
 import { TaxesTab } from './TaxesTab';
 import { StanceTab } from './StanceTab';
 import { DealTermsTab } from './DealTermsTab';
+import { ValidationGridTab } from './ValidationGridTab';
 import type { FinancialEngineTabProps } from './types';
 
 const MONO = BT.font.mono;
 const AMBER = BT.text.amber;
 
-type SubTab = 'stance' | 'deal-terms' | 'inputs' | 'unitmix' | 'otherincome' | 'tax';
+type SubTab = 'stance' | 'deal-terms' | 'inputs' | 'unitmix' | 'otherincome' | 'tax' | 'validation';
 
 interface SubTabDef {
   id: SubTab;
@@ -48,6 +49,7 @@ const SUB_TABS: SubTabDef[] = [
   { id: 'unitmix',     label: 'UNIT MIX',     icon: '⊞' },
   { id: 'otherincome', label: 'OTHER INCOME', icon: '⊛' },
   { id: 'tax',         label: 'TAX',          icon: '$' },
+  { id: 'validation',  label: 'VALIDATION',   icon: '✓' },
 ];
 
 export function ConsoleHubTab(props: FinancialEngineTabProps) {
@@ -126,11 +128,12 @@ export function ConsoleHubTab(props: FinancialEngineTabProps) {
             onLvTreatmentViewChange={props.onLvTreatmentViewChange}
           />
         )}
-        {subTab === 'deal-terms' && <DealTermsTab {...props} />}
-        {subTab === 'inputs'     && <AssumptionsTab {...props} />}
+        {subTab === 'deal-terms'  && <DealTermsTab {...props} />}
+        {subTab === 'inputs'      && <AssumptionsTab {...props} />}
         {subTab === 'unitmix'     && <UnitMixTab {...props} />}
         {subTab === 'otherincome' && <OtherIncomeTab {...props} />}
         {subTab === 'tax'         && <TaxesTab {...props} />}
+        {subTab === 'validation'  && <ValidationGridTab {...props} />}
       </div>
     </div>
   );
