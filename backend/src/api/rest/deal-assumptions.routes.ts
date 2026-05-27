@@ -885,17 +885,22 @@ router.post('/:dealId/assumptions/strategy-annotation', requireAuth, async (req:
     );
     if (own.rows.length === 0) return res.status(403).json({ error: 'Not authorized for this deal' });
 
-    const patch = JSON.stringify({
-      strategy_plan_annotations: {
-        [section as string]: { ...(annotations as object), savedAt: new Date().toISOString() },
-      },
+    const sectionPatch = JSON.stringify({
+      ...(annotations as object),
+      savedAt: new Date().toISOString(),
     });
+    // jsonb_set performs a nested merge so saving 'entry' never overwrites 'exit' and vice versa.
     await pool.query(
       `UPDATE deals
-         SET deal_data  = COALESCE(deal_data, '{}'::jsonb) || $1::jsonb,
+         SET deal_data  = jsonb_set(
+               COALESCE(deal_data, '{}'::jsonb),
+               ARRAY['strategy_plan_annotations', $1::text],
+               $2::jsonb,
+               true
+             ),
              updated_at = NOW()
-       WHERE id = $2`,
-      [patch, dealId],
+       WHERE id = $3`,
+      [section, sectionPatch, dealId],
     );
 
     res.json({ success: true });
