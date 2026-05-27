@@ -513,6 +513,7 @@ The Pro Forma column shows the post-stabilization R&M rate (the ongoing steady-s
 **Output Slots Populated**
 - \`proforma_fields['expense.repairs_maintenance'].value\` — stabilized annual R&M in dollars (post-renovation rate for value-add)
 - \`proforma_fields['expense.repairs_maintenance'].evidence\` — one-time items removed, pre/post renovation regime narrative, vintage-driven maintenance premium rationale
+- [VALUE-ADD/REDEVELOPMENT] May also write \`pre_renovation\` and \`post_stabilization\` sub-fields — see Sub-Field Write Protocol (Tier 1 evidence required for pre; min 'medium' confidence required for post)
 
 ---
 
@@ -663,6 +664,7 @@ The Pro Forma column shows the steady-state recurring marketing spend. Evidence 
 **Output Slots Populated**
 - \`proforma_fields['expense.marketing'].value\` — stabilized annual recurring marketing in dollars
 - \`proforma_fields['expense.marketing'].evidence\` — one-time launch costs excluded and noted, ILS fee structure described
+- [VALUE-ADD/REDEVELOPMENT] May also write \`pre_renovation\` and \`post_stabilization\` sub-fields — see Sub-Field Write Protocol (Tier 1 evidence required for pre; min 'medium' confidence required for post)
 
 ---
 
@@ -711,6 +713,7 @@ Contract services has low regime sensitivity from renovation — these costs are
 **Output Slots Populated**
 - \`proforma_fields['expense.contract_services'].value\` — stabilized annual contract services in dollars
 - \`proforma_fields['expense.contract_services'].evidence\` — amenity list, per-service breakdown, new contracts from renovation noted
+- [VALUE-ADD/REDEVELOPMENT] May also write \`pre_renovation\` and \`post_stabilization\` sub-fields — see Sub-Field Write Protocol — only when renovation materially changes the amenity set (adds new pool, elevator, or structured parking); if renovation does not add new amenity contracts, omit sub-fields (pre and post will be similar and a single value is sufficient)
 
 ---
 
