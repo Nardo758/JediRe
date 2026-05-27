@@ -1394,6 +1394,97 @@ function F3ImportDialog({
   );
 }
 
+// ─── Renovation Cohort Timeline Strip ────────────────────────────────────────
+interface RenoTimelinePlan {
+  type: string;
+  count: number;
+  inPlaceRent: number | null;
+  marketRent: number | null;
+}
+
+function RenovationTimelineStrip({ plans: rawPlans, renoMonths }: { plans: RenoTimelinePlan[]; renoMonths: number }) {
+  const plans = [...rawPlans]
+    .filter(u => (u.marketRent ?? 0) > (u.inPlaceRent ?? 0))
+    .map(u => ({ ...u, ltlAmt: (u.marketRent ?? 0) - (u.inPlaceRent ?? 0) }))
+    .sort((a, b) => b.ltlAmt - a.ltlAmt);
+
+  if (plans.length === 0) return null;
+
+  const n = plans.length;
+  const sliceMonths = Math.max(1, Math.ceil(renoMonths / n));
+  const totalMonths = sliceMonths * n;
+  const COHORT_COLORS = [C.cyan, C.green, C.purple, C.amber, '#2dd4bf', '#f472b6', '#60a5fa'];
+
+  return (
+    <div style={{ background: C.panel, border: `1px solid ${C.purple}44`, borderRadius: 6, overflow: 'hidden', marginTop: 12 }}>
+      <div style={{ padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: '#150820', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.purple, letterSpacing: '0.08em' }}>
+          RENOVATION COHORT TIMELINE
+        </span>
+        <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim }}>
+          {renoMonths}mo program · {n} cohort{n !== 1 ? 's' : ''} · highest rent upside first
+        </span>
+      </div>
+      <div style={{ padding: '12px 16px' }}>
+        {plans.map((plan, i) => {
+          const startMonth = i * sliceMonths;
+          const endMonth   = Math.min(startMonth + sliceMonths, totalMonths);
+          const color      = COHORT_COLORS[i % COHORT_COLORS.length];
+          const preWidth   = (startMonth / totalMonths) * 100;
+          const renoWidth  = ((endMonth - startMonth) / totalMonths) * 100;
+          const postWidth  = Math.max(0, 100 - preWidth - renoWidth);
+
+          return (
+            <div key={plan.type} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <div style={{ width: 90, flexShrink: 0 }}>
+                <div style={{ fontFamily: LABEL, fontSize: 8, fontWeight: 700, color, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {plan.type}
+                </div>
+                <div style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>{plan.count} units</div>
+              </div>
+              <div style={{ flex: 1, display: 'flex', height: 22, borderRadius: 3, overflow: 'hidden', border: `1px solid ${C.border}` }}>
+                {preWidth > 0 && (
+                  <div style={{ width: `${preWidth}%`, background: C.panelAlt, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {preWidth > 12 && <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim, whiteSpace: 'nowrap' }}>{fmt$(plan.inPlaceRent)}/mo</span>}
+                  </div>
+                )}
+                <div style={{ width: `${renoWidth}%`, background: `${color}33`, borderLeft: preWidth > 0 ? `1px solid ${color}55` : undefined, borderRight: postWidth > 0 ? `1px solid ${color}55` : undefined, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontFamily: LABEL, fontSize: 7, color, fontWeight: 700, whiteSpace: 'nowrap' }}>Mo {startMonth}–{endMonth}</span>
+                </div>
+                {postWidth > 0 && (
+                  <div style={{ width: `${postWidth}%`, background: C.greenDim, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {postWidth > 12 && <span style={{ fontFamily: LABEL, fontSize: 7, color: C.green, whiteSpace: 'nowrap' }}>{fmt$(plan.marketRent)}/mo</span>}
+                  </div>
+                )}
+              </div>
+              <div style={{ width: 68, flexShrink: 0, textAlign: 'right', fontFamily: MONO, fontSize: 9, color: C.purple, fontWeight: 700 }}>
+                +{fmt$(plan.ltlAmt)}
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 16, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 12, height: 8, background: C.panelAlt, border: `1px solid ${C.border}`, borderRadius: 1, flexShrink: 0 }} />
+            <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>PRE-RENO</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 12, height: 8, background: `${C.cyan}33`, border: `1px solid ${C.cyan}55`, borderRadius: 1, flexShrink: 0 }} />
+            <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>RENO WINDOW</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 12, height: 8, background: C.greenDim, border: `1px solid ${C.green}44`, borderRadius: 1, flexShrink: 0 }} />
+            <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>POST-RENO @ MARKET</span>
+          </div>
+          <span style={{ fontFamily: LABEL, fontSize: 7, color: C.muted, marginLeft: 'auto' }}>
+            Cohort durations estimated · actual schedule depends on vacancy timing
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Unit Mix tab inside the F9 Financial Engine. Accepts the standard
  * `FinancialEngineTabProps` shape so it composes cleanly with the other F9 tabs;
@@ -1454,6 +1545,14 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   const [unitMixError, setUnitMixError] = useState<string | null>(null);
   const [unitMixSort, setUnitMixSort] = useState<'name' | 'beds_asc' | 'beds_desc'>('name');
   const [brFilter, setBrFilter] = useState<number | null>(null);
+  const [dismissedF3Suggestions, setDismissedF3Suggestions] = useState<Set<string>>(new Set());
+  // Other Income inline editor state
+  const [editingOILineId, setEditingOILineId] = useState<string | null>(null);
+  const [editingOIMonthly, setEditingOIMonthly] = useState<string>('');
+  const [addingOILine, setAddingOILine] = useState(false);
+  const [newOILabel, setNewOILabel] = useState('');
+  const [newOIMonthly, setNewOIMonthly] = useState('');
+  const [savingOILine, setSavingOILine] = useState(false);
 
   // F3 Programming tab unit mix percentages (studio/oneBed/twoBed/threeBed)
   const f3UnitMix = useDesignProgramStore(s => s.program.unitMix ?? null);
@@ -1517,7 +1616,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   useEffect(() => { load(); }, [load]);
 
   // Primary save: PUT /unit-mix/types (Task #1146 — new endpoint, supports manual builder)
-  const saveTypes = useCallback(async (types: ManualUnitType[]) => {
+  const saveTypes = useCallback(async (types: ManualUnitType[]): Promise<boolean> => {
     setSavingTypes(true);
     setTypesSaveError(null);
     setTypesSaved(false);
@@ -1538,8 +1637,10 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
       setTimeout(() => setTypesSaved(false), 2500);
       onF9Refresh?.();
       await load();
+      return true;
     } catch (e: any) {
       setTypesSaveError(e?.response?.data?.error ?? e?.message ?? 'Save failed');
+      return false;
     } finally {
       setSavingTypes(false);
     }
@@ -1603,6 +1704,64 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
     void commitRentEdit(rowIdx, kind, null, unitType);
   }, [commitRentEdit]);
 
+  /** Accept a single F3-derived proposed row and merge it into the unit mix. */
+  const handleAcceptF3Row = useCallback(async (row: ManualUnitType) => {
+    const merged = [...localTypes, row];
+    const ok = await saveTypes(merged);
+    if (ok) setDismissedF3Suggestions(s => new Set([...s, row.type]));
+  }, [localTypes, saveTypes]);
+
+  /** Save an edited monthly amount for an existing user-added Other Income line. */
+  const handleSaveOILine = useCallback(async (lineId: string) => {
+    const monthly = parseFloat(editingOIMonthly);
+    if (isNaN(monthly) || monthly < 0) return;
+    setSavingOILine(true);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/financials/other-income/user-lines/${lineId}`, { monthly });
+      setEditingOILineId(null);
+      onF9Refresh?.();
+      await load();
+    } catch {
+      // leave in edit mode on failure — user can retry or cancel
+    } finally {
+      setSavingOILine(false);
+    }
+  }, [dealId, editingOIMonthly, load, onF9Refresh]);
+
+  /** Add a new user Other Income line from the quick-add form. */
+  const handleAddOILine = useCallback(async () => {
+    const label = newOILabel.trim();
+    const monthly = parseFloat(newOIMonthly);
+    if (!label || isNaN(monthly) || monthly < 0) return;
+    setSavingOILine(true);
+    try {
+      await apiClient.post(`/api/v1/deals/${dealId}/financials/other-income/user-lines`, { label, monthly });
+      setNewOILabel('');
+      setNewOIMonthly('');
+      setAddingOILine(false);
+      onF9Refresh?.();
+      await load();
+    } catch {
+      // noop — form stays open so user can retry
+    } finally {
+      setSavingOILine(false);
+    }
+  }, [dealId, newOILabel, newOIMonthly, load, onF9Refresh]);
+
+  /** Delete a user-added Other Income line. */
+  const handleDeleteOILine = useCallback(async (lineId: string) => {
+    setSavingOILine(true);
+    try {
+      await apiClient.delete(`/api/v1/deals/${dealId}/financials/other-income/user-lines/${lineId}`);
+      onF9Refresh?.();
+      await load();
+    } catch {
+      // noop
+    } finally {
+      setSavingOILine(false);
+    }
+  }, [dealId, load, onF9Refresh]);
+
   useEffect(() => {
     setUseUnitMixForGpr(data?.rentRollSummary?.useUnitMixForGpr ?? false);
   }, [data?.rentRollSummary?.useUnitMixForGpr]);
@@ -1646,6 +1805,22 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
     }
     return rows;
   }, [unitMix, unitMixSort, brFilter]);
+
+  // F3 program suggested rows — floor plan types implied by F3 % splits that
+  // are not yet present in the unit mix. Shown as proposed rows with Accept/Dismiss.
+  const f3ProposedRows = useMemo(() => {
+    if (!f3UnitMix) return [];
+    const total = targetUnits ?? m03TargetUnits;
+    if (!total || total <= 0) return [];
+    const proposed = buildF3PrefillTypes(f3UnitMix, total);
+    const existingLabels = new Set(unitMix.map(u => u.type.toLowerCase().trim()));
+    return proposed.filter(r => !existingLabels.has(r.type.toLowerCase().trim()));
+  }, [f3UnitMix, targetUnits, m03TargetUnits, unitMix]);
+
+  const visibleF3Proposals = useMemo(
+    () => f3ProposedRows.filter(r => !dismissedF3Suggestions.has(r.type)),
+    [f3ProposedRows, dismissedF3Suggestions],
+  );
   const ls = data?.trafficProjection?.leasingSignals;
   const hasTraffic = ls != null && (ls.t06WeeklyLeases != null || ls.t07LeaseUpWeeksTo95 != null);
   const lv = data?.trafficProjection?.leasingVelocity;
@@ -1698,6 +1873,18 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   const isExisting    = dealType === 'existing';
   const isValueAdd    = dealType === 'redevelopment' || dealType === 'value-add';
   const isDevelopment = dealType === 'development';
+
+  // Renovation completion months for value-add deals — used by the cohort timeline strip.
+  const renoCompletionMonths = React.useMemo((): number | null => {
+    if (!isValueAdd) return null;
+    const yr1 = props.f9Financials?.proforma?.year1 ?? [];
+    const proformaRow = yr1.find(r => r.field === 'renovation_period_years');
+    const fromProforma = proformaRow?.resolved ?? proformaRow?.platform ?? proformaRow?.broker ?? null;
+    if (fromProforma != null && (fromProforma as number) > 0) return Math.round((fromProforma as number) * 12);
+    const fromOverride = props.f9Financials?.userOverrides?.['renovation_period_years']?.[1] ?? null;
+    if (fromOverride != null && fromOverride > 0) return Math.round(fromOverride * 12);
+    return 18; // fallback: 18-month reno program
+  }, [isValueAdd, props.f9Financials]);
 
   const weightedAvgSf = totalUnits > 0 && unitMix.some(u => u.avgSf != null)
     ? Math.round(unitMix.reduce((s, u) => s + (u.avgSf ?? 0) * u.count, 0) / totalUnits)
@@ -2090,18 +2277,20 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                       <Save size={9} /> F3 PROGRAM
                     </button>
                   )}
-                  <button
-                    onClick={() => { setEditingType(null); setShowAddModal(true); }}
-                    title="Add a new unit type"
-                    style={{
-                      fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
-                      padding: '3px 10px', borderRadius: 3, border: 'none',
-                      background: C.cyan, color: C.bg, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', gap: 4,
-                    }}
-                  >
-                    <Plus size={10} /> ADD TYPE
-                  </button>
+                  {isDevelopment && (
+                    <button
+                      onClick={() => { setEditingType(null); setShowAddModal(true); }}
+                      title="Add a new unit type (development deals)"
+                      style={{
+                        fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.05em',
+                        padding: '3px 10px', borderRadius: 3, border: 'none',
+                        background: C.cyan, color: C.bg, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 4,
+                      }}
+                    >
+                      <Plus size={10} /> ADD TYPE
+                    </button>
+                  )}
                 </div>
               </div>
               {unitMixError && (
@@ -2146,6 +2335,21 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
+                    {/* ── Column section group headers: floor plan vs occupancy ── */}
+                    <tr style={{ background: '#050a0f' }}>
+                      <th
+                        colSpan={8}
+                        style={{ ...th(), borderRight: `2px solid ${C.borderHi}`, textAlign: 'center', fontSize: 7, color: C.cyan, fontWeight: 700, letterSpacing: '0.1em', padding: '3px 8px' }}
+                      >
+                        ◈  FLOOR PLAN COMPOSITION
+                      </th>
+                      <th
+                        colSpan={4}
+                        style={{ ...th(), textAlign: 'center', fontSize: 7, color: C.purple, fontWeight: 700, letterSpacing: '0.1em', padding: '3px 8px' }}
+                      >
+                        ◉  CURRENT OCCUPANCY &amp; LEASING
+                      </th>
+                    </tr>
                     <tr style={{ background: C.panelAlt }}>
                       <th
                         style={{ ...th(), cursor: 'pointer', userSelect: 'none' }}
@@ -2160,7 +2364,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                       <th style={th(true)}>IN-PLACE RENT</th>
                       <th style={th(true)}>$/SF/MO</th>
                       <th style={th(true)}>MARKET RENT</th>
-                      <th style={th(true)}>L-T-L</th>
+                      <th style={{ ...th(true), borderRight: `2px solid ${C.borderHi}` }}>L-T-L</th>
                       <th style={th(true)}>OCC %</th>
                       <th style={th()}>LEASE EXP</th>
                       <th style={th(true)}>ANNUAL GPR</th>
@@ -2419,6 +2623,72 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                         </React.Fragment>
                       );
                     })}
+
+                    {/* ── F3 Program suggested rows — proposed floor plans not yet in mix ── */}
+                    {visibleF3Proposals.length > 0 && (() => {
+                      const total = targetUnits ?? m03TargetUnits;
+                      return (
+                        <>
+                          <tr style={{ background: `${C.purple}10` }}>
+                            <td
+                              colSpan={12}
+                              style={{ ...td(), borderTop: `1px dashed ${C.purple}55`, borderBottom: `1px dashed ${C.purple}33`, fontSize: 7, color: C.purple, fontFamily: LABEL, fontWeight: 700, letterSpacing: '0.08em', padding: '4px 12px' }}
+                            >
+                              ◈ PROGRAM SUGGESTIONS FROM F3 · {visibleF3Proposals.length} proposed floor plan{visibleF3Proposals.length !== 1 ? 's' : ''} not yet in mix
+                            </td>
+                          </tr>
+                          {visibleF3Proposals.map(r => {
+                            const mixPct   = total != null && total > 0 ? r.count / total : 0;
+                            const annualGpr = r.in_place_rent != null ? r.count * r.in_place_rent * 12 : null;
+                            return (
+                              <tr key={r._id} style={{ background: `${C.purple}08`, opacity: 0.82 }}>
+                                <td style={{ ...td(), fontStyle: 'italic', color: C.purple }}>
+                                  {r.type}
+                                  <span style={{ marginLeft: 6, fontFamily: LABEL, fontSize: 7, color: C.purple, background: `${C.purple}22`, border: `1px solid ${C.purple}44`, borderRadius: 2, padding: '1px 4px' }}>
+                                    PROPOSED
+                                  </span>
+                                </td>
+                                <td style={td(true, false, C.dim)}>{r.count}</td>
+                                <td style={td(true, false, C.dim)}>{(mixPct * 100).toFixed(1)}%</td>
+                                <td style={td(true, false, C.dim)}>{r.avg_sqft != null ? r.avg_sqft.toLocaleString() : '—'}</td>
+                                <td style={td(true, false, C.dim)}>{fmt$(r.in_place_rent)}</td>
+                                <td style={td(true, false, C.dim)}>
+                                  {r.in_place_rent != null && r.avg_sqft != null && r.avg_sqft > 0
+                                    ? `$${(r.in_place_rent / r.avg_sqft).toFixed(2)}`
+                                    : '—'}
+                                </td>
+                                <td style={td(true, false, C.dim)}>{fmt$(r.market_rent ?? r.in_place_rent)}</td>
+                                <td style={{ ...td(true, false, C.dim), borderRight: `2px solid ${C.borderHi}` }}>—</td>
+                                <td style={td(true, false, C.dim)}>—</td>
+                                <td style={td(false, false, C.dim)}>—</td>
+                                <td style={td(true, false, C.dim)}>{fmt$(annualGpr)}</td>
+                                <td style={{ ...td() }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <button
+                                      title="Accept — add this floor plan to the unit mix"
+                                      onClick={() => { void handleAcceptF3Row(r); }}
+                                      disabled={savingTypes}
+                                      style={{ fontFamily: LABEL, fontSize: 7, fontWeight: 700, padding: '2px 6px', borderRadius: 3, border: 'none', background: C.purple, color: '#fff', cursor: savingTypes ? 'not-allowed' : 'pointer', letterSpacing: '0.04em', opacity: savingTypes ? 0.5 : 1 }}
+                                    >
+                                      ✓ ACCEPT
+                                    </button>
+                                    <button
+                                      title="Dismiss this suggestion"
+                                      onClick={() => setDismissedF3Suggestions(s => new Set([...s, r.type]))}
+                                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: C.dim, lineHeight: 0 }}
+                                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.red; }}
+                                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.dim; }}
+                                    >
+                                      <X size={10} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </>
+                      );
+                    })()}
                   </tbody>
                   <tfoot>
                     <tr style={{ background: '#050a0f', borderTop: `2px solid ${C.borderHi}` }}>
@@ -2470,9 +2740,9 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
             </div>
           )}
 
-          {/* ── Other Income summary link (Task #1145) ──
-              AncillaryPanel moved to its own OTHER INCOME sub-tab.
-              Show a compact one-liner that deep-links there. */}
+          {/* ── Other Income inline editor (Task #1240) ──
+              Shows extracted source categories (read-only) + user-added custom lines
+              with inline edit/delete/add. Header links to the full OTHER INCOME sub-tab. */}
           {(() => {
             const breakdown      = data?.otherIncomeBreakdown ?? null;
             const userLines      = data?.otherIncomeUserLines ?? [];
@@ -2486,45 +2756,149 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                 r.rent_roll != null || r.t12 != null || r.om != null || r.resolved != null
               )
             );
-            if (!hasAnySource && userLines.length === 0) return null;
+            const extractedRows  = breakdown?.rows.filter(r => (r.resolved ?? 0) > 0) ?? [];
+            if (!hasAnySource && userLines.length === 0 && !addingOILine) return null;
             return (
-              <div
-                onClick={() =>
-                  window.dispatchEvent(
-                    new CustomEvent('fe-console-subtab', { detail: { subTab: 'otherincome' } })
-                  )
-                }
-                style={{
-                  marginTop: 12,
-                  background: C.amberDim,
-                  border: `1px solid ${C.amber}44`,
-                  borderRadius: 6,
-                  padding: '8px 14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  cursor: 'pointer',
-                  transition: 'border-color 0.15s',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = C.amber; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = `${C.amber}44`; }}
-                title="Open OTHER INCOME sub-tab"
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ marginTop: 12, background: C.panel, border: `1px solid ${C.amber}44`, borderRadius: 6, overflow: 'hidden' }}>
+                {/* Header */}
+                <div style={{ padding: '8px 14px', borderBottom: `1px solid ${C.border}`, background: C.amberDim, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.amber }} />
-                  <span style={{ fontFamily: LABEL, fontSize: 9, color: C.amber, fontWeight: 700 }}>
-                    OTHER INCOME
-                  </span>
-                  <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim }}>
-                    {userLines.length > 0 ? `${breakdown?.rows.length ?? 0} categories + ${userLines.length} custom line${userLines.length !== 1 ? 's' : ''}` : `${breakdown?.rows.length ?? 0} categories`}
-                  </span>
+                  <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.amber, letterSpacing: '0.06em' }}>OTHER INCOME</span>
+                  {(hasAnySource || userLines.length > 0) && (
+                    <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim }}>
+                      {hasAnySource ? `${extractedRows.length} categories` : ''}
+                      {hasAnySource && userLines.length > 0 ? ' + ' : ''}
+                      {userLines.length > 0 ? `${userLines.length} custom` : ''}
+                    </span>
+                  )}
+                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: C.amber }}>{fmt$(grandTotal)}/yr</span>
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent('fe-console-subtab', { detail: { subTab: 'otherincome' } }))}
+                      title="Open full OTHER INCOME tab"
+                      style={{ fontFamily: LABEL, fontSize: 8, color: C.amber, background: 'none', border: `1px solid ${C.amber}44`, borderRadius: 3, padding: '2px 6px', cursor: 'pointer' }}
+                    >→ FULL EDITOR</button>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: C.amber }}>
-                    {fmt$(grandTotal)}/yr
-                  </span>
-                  <span style={{ fontFamily: LABEL, fontSize: 9, color: C.amber, opacity: 0.7 }}>→</span>
-                </div>
+
+                {/* Extracted categories (read-only) */}
+                {hasAnySource && extractedRows.length > 0 && (
+                  <div style={{ padding: '8px 14px', borderBottom: (userLines.length > 0 || addingOILine) ? `1px solid ${C.border}` : 'none' }}>
+                    <div style={{ fontFamily: LABEL, fontSize: 7, color: C.dim, letterSpacing: '0.06em', marginBottom: 6 }}>EXTRACTED SOURCES</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 56px', gap: '3px 8px', alignItems: 'center' }}>
+                      {extractedRows.map(row => (
+                        <React.Fragment key={row.category}>
+                          <span style={{ fontFamily: LABEL, fontSize: 8, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {row.category.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase())}
+                          </span>
+                          <span style={{ fontFamily: MONO, fontSize: 8, color: C.text, textAlign: 'right' }}>{fmt$(row.resolved)}/yr</span>
+                          <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim, textAlign: 'right' }}>{row.resolution ?? ''}</span>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* User-added lines (editable) + quick-add form */}
+                {(userLines.length > 0 || addingOILine) && (
+                  <div style={{ padding: '8px 14px' }}>
+                    <div style={{ fontFamily: LABEL, fontSize: 7, color: C.dim, letterSpacing: '0.06em', marginBottom: 6 }}>CUSTOM LINES</div>
+                    {userLines.map(line => (
+                      <div key={line.id} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        <span style={{ fontFamily: LABEL, fontSize: 8, color: C.muted, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {line.label}
+                        </span>
+                        {editingOILineId === line.id ? (
+                          <>
+                            <input
+                              type="number"
+                              value={editingOIMonthly}
+                              onChange={e => setEditingOIMonthly(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') void handleSaveOILine(line.id); if (e.key === 'Escape') setEditingOILineId(null); }}
+                              autoFocus
+                              style={{ width: 70, padding: '2px 4px', fontFamily: MONO, fontSize: 9, background: '#1a1a2a', border: `1px solid ${C.amber}66`, borderRadius: 3, color: C.text, textAlign: 'right' }}
+                            />
+                            <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim }}>/mo</span>
+                            <button
+                              onClick={() => void handleSaveOILine(line.id)}
+                              disabled={savingOILine}
+                              style={{ fontFamily: LABEL, fontSize: 7, fontWeight: 700, padding: '2px 6px', borderRadius: 3, border: 'none', background: C.amber, color: '#000', cursor: 'pointer' }}
+                            >SAVE</button>
+                            <button
+                              onClick={() => setEditingOILineId(null)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.dim, padding: 2, lineHeight: 0 }}
+                            ><X size={10} /></button>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ fontFamily: MONO, fontSize: 9, color: C.text }}>{fmt$(line.monthly)}/mo</span>
+                            <button
+                              onClick={() => { setEditingOILineId(line.id); setEditingOIMonthly(String(line.monthly)); }}
+                              title="Edit monthly amount"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.dim, padding: 2, lineHeight: 0 }}
+                            ><Edit3 size={10} /></button>
+                            <button
+                              onClick={() => void handleDeleteOILine(line.id)}
+                              disabled={savingOILine}
+                              title="Delete this line"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.dim, padding: 2, lineHeight: 0 }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.red; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.dim; }}
+                            ><Trash2 size={10} /></button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* Quick-add form */}
+                    {addingOILine ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '6px 8px', background: C.panelAlt, borderRadius: 4 }}>
+                        <input
+                          placeholder="Label (e.g. Laundry)"
+                          value={newOILabel}
+                          onChange={e => setNewOILabel(e.target.value)}
+                          style={{ flex: 1, padding: '2px 6px', fontFamily: LABEL, fontSize: 8, background: '#1a1a2a', border: `1px solid ${C.border}`, borderRadius: 3, color: C.text }}
+                        />
+                        <input
+                          type="number"
+                          placeholder="$/mo"
+                          value={newOIMonthly}
+                          onChange={e => setNewOIMonthly(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') void handleAddOILine(); if (e.key === 'Escape') { setAddingOILine(false); setNewOILabel(''); setNewOIMonthly(''); } }}
+                          style={{ width: 70, padding: '2px 4px', fontFamily: MONO, fontSize: 9, background: '#1a1a2a', border: `1px solid ${C.border}`, borderRadius: 3, color: C.text, textAlign: 'right' }}
+                        />
+                        <button
+                          onClick={() => void handleAddOILine()}
+                          disabled={savingOILine || !newOILabel.trim() || !newOIMonthly}
+                          style={{ fontFamily: LABEL, fontSize: 7, fontWeight: 700, padding: '3px 8px', borderRadius: 3, border: 'none', background: C.amber, color: '#000', cursor: 'pointer', opacity: (!newOILabel.trim() || !newOIMonthly) ? 0.5 : 1 }}
+                        >ADD</button>
+                        <button
+                          onClick={() => { setAddingOILine(false); setNewOILabel(''); setNewOIMonthly(''); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.dim, padding: 2, lineHeight: 0 }}
+                        ><X size={10} /></button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setAddingOILine(true)}
+                        style={{ fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: C.amber, background: 'none', border: `1px dashed ${C.amber}44`, borderRadius: 4, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, marginTop: 6 }}
+                      >
+                        <Plus size={10} /> ADD INCOME LINE
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* When only extracted sources exist and no custom lines yet — show add button */}
+                {hasAnySource && userLines.length === 0 && !addingOILine && (
+                  <div style={{ padding: '4px 14px 10px' }}>
+                    <button
+                      onClick={() => setAddingOILine(true)}
+                      style={{ fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: C.amber, background: 'none', border: `1px dashed ${C.amber}44`, borderRadius: 4, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                    >
+                      <Plus size={10} /> ADD INCOME LINE
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -2574,6 +2948,19 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                 </tbody>
               </table>
             </div>
+          )}
+
+          {/* ── Renovation Cohort Timeline Strip (value-add only, when plans have rent upside) ── */}
+          {isValueAdd && renoCompletionMonths != null && unitMix.length > 0 && (
+            <RenovationTimelineStrip
+              plans={unitMix.map(u => ({
+                type: u.type,
+                count: u.count,
+                inPlaceRent: getEffectiveRent(u),
+                marketRent: getMarketRent(u),
+              }))}
+              renoMonths={renoCompletionMonths}
+            />
           )}
         </div>
 
