@@ -81,6 +81,7 @@ import { ProjectManagementSection } from '../components/deal/sections/ProjectMan
 
 import { FilesSection } from '../components/deal/sections/FilesSection';
 import CompsModule from '../components/deal/sections/CompsModule';
+import DealCompAnalysisTab from '../components/deal/sections/DealCompAnalysisTab';
 
 import OpusAISection from '../components/deal/sections/OpusAISection';
 import { AIRecommendationsSection } from '../components/deal/sections/AIRecommendationsSection';
@@ -174,6 +175,50 @@ const StrategyScreen = (props: ScreenProps) => (
 const CompsScreen = (props: ScreenProps) => (
   <CompsModule dealId={props.dealId} deal={props.deal} embedded={true} onUpdate={props.onUpdate} />
 );
+
+const COMPS_SUBTABS: { id: 'sale' | 'rent'; label: string }[] = [
+  { id: 'sale', label: 'SALE COMPS' },
+  { id: 'rent', label: 'RENT COMPS' },
+];
+const BT_MONO = 'var(--bt-mono)';
+const CompsTabScreen = (props: ScreenProps) => {
+  const [activeSubTab, setActiveSubTab] = React.useState<'sale' | 'rent'>('sale');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{
+        display: 'flex', gap: 0,
+        borderBottom: `1px solid ${BT.border.medium}`,
+        background: BT.bg.panel, flexShrink: 0,
+      }}>
+        {COMPS_SUBTABS.map(t => {
+          const active = activeSubTab === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setActiveSubTab(t.id)}
+              style={{
+                padding: '7px 18px', fontSize: 9, fontFamily: BT_MONO,
+                fontWeight: 700, letterSpacing: '0.08em', cursor: 'pointer',
+                border: 'none', background: 'transparent',
+                borderBottom: active ? `2px solid ${BT.text.amber}` : '2px solid transparent',
+                color: active ? BT.text.amber : BT.text.muted,
+                transition: 'color 0.15s',
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        {activeSubTab === 'sale' && (
+          <CompsModule dealId={props.dealId} deal={props.deal} embedded={true} onUpdate={props.onUpdate} />
+        )}
+        {activeSubTab === 'rent' && <DealCompAnalysisTab />}
+      </div>
+    </div>
+  );
+};
 const FinancialEngineWrapper = (p: ScreenProps) => (
   <FinancialEnginePage
     dealId={p.dealId}
@@ -918,21 +963,21 @@ const DealDetailPage: React.FC = () => {
     window.dispatchEvent(new CustomEvent('deal-active-tab', { detail: activeTab }));
   }, [activeTab]);
 
-  // ─── 13 FLAT SCREEN DEFINITIONS (F1–F13) ── Bloomberg station-logical order ──
-  // F7 = 3D Design · F10 = Comps · F11 = Execution (Docs moved to Context Tracker)
+  // ─── 12 FLAT SCREEN DEFINITIONS (F1–F11) ── Bloomberg station-logical order ──
+  // F3 = Comps (Rent + Sale) · F8 = 3D Design · F9 = Debt & Capital · F10 = Risk
   const allDealScreens: { id: string; moduleId: ModuleId; fkey: string; code: string; short: string; label: string; icon: React.ReactNode; component: React.ComponentType<ScreenProps> }[] = [
     { id: 'overview',    moduleId: 'M01', fkey: 'F1',  code: 'M01', short: 'OVERVIEW',   label: 'Overview',         icon: <LayoutDashboard size={14} />, component: OverviewScreen },
     { id: 'zoning',      moduleId: 'M02', fkey: 'F2',  code: 'M02', short: 'ZONING',     label: 'Zoning',           icon: <Landmark size={14} />,        component: ZoningModuleSection },
-    { id: 'market',      moduleId: 'M05', fkey: 'F3',  code: 'M05', short: 'MARKET',     label: 'Market Intel',     icon: <TrendingUp size={14} />,      component: MarketScreen },
-    { id: 'supply',      moduleId: 'M04', fkey: 'F4',  code: 'M04', short: 'SUPPLY',     label: 'Supply Pipeline',  icon: <Package size={14} />,         component: SupplyPipelineScreen },
-    { id: 'strategy',    moduleId: 'M08', fkey: 'F5',  code: 'M08', short: 'STRATEGY',   label: 'Strategy',         icon: <Target size={14} />,          component: StrategyScreen },
-    { id: 'comps',       moduleId: 'M27', fkey: '',    code: 'M27', short: 'COMPS',      label: 'Sale Comps',       icon: <Building2 size={14} />,       component: CompsScreen },
-    { id: 'traffic',     moduleId: 'M07', fkey: 'F6',  code: 'M07', short: 'TRAFFIC',    label: 'Traffic Intel',    icon: <Activity size={14} />,        component: TrafficScreen },
-    { id: 'design-3d',   moduleId: 'M03', fkey: 'F7',  code: 'M03', short: '3D DESIGN',  label: '3D Design',        icon: <Box size={14} />,             component: Design3DScreen },
-    { id: 'capital',     moduleId: 'M11', fkey: 'F8',  code: 'M11', short: 'DEBT/CAP',   label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
-    { id: 'proforma',    moduleId: 'M08', fkey: 'F9',  code: 'M08', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
-    { id: 'risk',        moduleId: 'M13', fkey: 'F10', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
-    { id: 'deal-tools',  moduleId: 'M21', fkey: 'F11', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
+    { id: 'comps',       moduleId: 'M27', fkey: 'F3',  code: 'M27', short: 'COMPS',      label: 'Comps',            icon: <Building2 size={14} />,       component: CompsTabScreen },
+    { id: 'market',      moduleId: 'M05', fkey: 'F4',  code: 'M05', short: 'MARKET',     label: 'Market Intel',     icon: <TrendingUp size={14} />,      component: MarketScreen },
+    { id: 'supply',      moduleId: 'M04', fkey: 'F5',  code: 'M04', short: 'SUPPLY',     label: 'Supply Pipeline',  icon: <Package size={14} />,         component: SupplyPipelineScreen },
+    { id: 'strategy',    moduleId: 'M08', fkey: 'F6',  code: 'M08', short: 'STRATEGY',   label: 'Strategy',         icon: <Target size={14} />,          component: StrategyScreen },
+    { id: 'traffic',     moduleId: 'M07', fkey: 'F7',  code: 'M07', short: 'TRAFFIC',    label: 'Traffic Intel',    icon: <Activity size={14} />,        component: TrafficScreen },
+    { id: 'design-3d',   moduleId: 'M03', fkey: 'F8',  code: 'M03', short: '3D DESIGN',  label: '3D Design',        icon: <Box size={14} />,             component: Design3DScreen },
+    { id: 'capital',     moduleId: 'M11', fkey: 'F9',  code: 'M11', short: 'DEBT/CAP',   label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
+    { id: 'proforma',    moduleId: 'M08', fkey: 'F10', code: 'M08', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
+    { id: 'risk',        moduleId: 'M13', fkey: 'F11', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
+    { id: 'deal-tools',  moduleId: 'M21', fkey: 'F12', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
   ];
 
   const dealScreens = allDealScreens.filter((s) => config.isModuleVisible(s.moduleId));
