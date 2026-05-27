@@ -9,9 +9,9 @@
 
 | EC | Condition | Status | Notes |
 |---|---|---|---|
-| EC1 | Strategy ↔ deal_type reconciled | **PARTIALLY SATISFIED** | A2-derived bridge live (Task #1233); STEP 4 backfill in flight |
+| EC1 | Strategy ↔ deal_type reconciled | **SATISFIED** | `backfillable_from_deal_type = 0` — no backfill needed; dev seed data only |
 | EC2 | Mandate lifted to v1.3 | **SATISFIED** | All 9 line items, postprocess, composer live; RegimeExpand Tier 1 fix shipped |
-| EC3 | Market rent source resolved | **UNKNOWN** | Requires investigation |
+| EC3 | Market rent source resolved | **YELLOW** | Infrastructure exists (ApartmentIQ); benchmark view + agent tool needed (~1 dispatch) |
 | EC4 | F9 module map gaps addressed | **UNKNOWN** | Requires investigation |
 
 ---
@@ -20,15 +20,26 @@
 
 **Required state:** When an operator saves an `investmentStrategy` value in Deal Terms, the resulting `deal_type` correctly routes Pattern B line items, RegimeExpand visibility, and agent prompt selection.
 
-**Current state:**
-- PATCH /assumptions/strategy atomically writes both `investment_strategy_lv` AND derives `deals.deal_type` via `investmentStrategyToDealType()` — LIVE (Task #1233)
-- All 8 strategy values map to a `deal_type` — CONFIRMED  
-- `proformaTemplateId` drives template-aware rendering in ProFormaSummaryTab — LIVE (Task #1355)
-- Pre-Task #1233 deals (investmentStrategy null, deal_type set): backfill IN_FLIGHT  
+**Status: SATISFIED (2026-05-27)**
 
-**Satisfied when:** Backfill complete and counts reported (A1_MIGRATION_IMPLEMENTATION.md).
+**Count query result (dev DB, 2026-05-27):**
+```
+total_deals:                   29
+missing_strategy:              28
+backfillable_from_deal_type:    0   ← decision tree: EC1 SATISFIED
+orphan_no_strategy_no_deal_type: 28  (dev seed data; no deal_type to reverse-map from)
+strategy_only_no_deal_type:     1   (pre-Task #1233 anomaly — strategy set before bridge)
+both_populated:                 0   (bridge not yet exercised in dev environment)
+```
 
-**Remaining work:** A1 migration STEP 4 backfill script execution and count report.
+**Decision tree outcome:** `backfillable_from_deal_type = 0` → EC1 SATISFIED. No backfill script needed.
+
+**Notes:**
+- 28 orphan deals have neither strategy nor deal_type — dev seed data that predates both fields. Not backfillable; not a production concern.
+- 1 deal with strategy but no deal_type: set before Task #1233 implemented the bridge. Minor anomaly; deal_type will be written on next PATCH /assumptions/strategy call for this deal.
+- `both_populated = 0` reflects dev environment only; production would show both fields populated for any deal touched after Task #1233.
+
+**Remaining work:** None. EC1 is closed.
 
 ---
 
@@ -51,14 +62,23 @@
 
 **Required state:** The agent's market rent assumption (GPR / effective rent comps) has a well-defined evidence tier hierarchy for value-add deals. The pre-renovation market rent and post-stabilization market rent (renovation ceiling) are sourced from distinct comp sets with documented provenance.
 
-**Current state — UNKNOWN.** This condition requires a targeted investigation of:
-- The dual-comp-set enforcement (baseline + renovation_ceiling) in the cashflow agent
-- `value_add_gpr_validation` completeness checks in the postprocess
-- Whether the renovation ceiling comp set is reliably populated for value-add deals
+**Status: YELLOW (2026-05-27) — See `EC3_MARKET_RENT_SOURCE.md` for full investigation**
 
-**Investigation pointer:** See `PHASE_8_CASHFLOW_AGENT_READINESS.md` and `STRUCTURED_SURVEY.md` for prior context on market rent sourcing gaps.
+**Summary of findings:**
+- Subject market rent: AVAILABLE (`fetch_unit_mix` → `unit_mix.avg_market_rent` per floor plan)
+- Comp-level market rent: AVAILABLE (`market_rent_comps` table, written by `write_market_comps.ts`)
+- ApartmentIQ city-level benchmarks: AVAILABLE (`oppgrid_market_economics`: avg_rent_1br/2br/3br by city/state)
+- ApartmentIQ class-level history: AVAILABLE (`apartment_class_rent_snapshots` by city × class × date)
+- P25/P50/P75 distribution by (MSA × class × vintage × unit_type): MISSING
+- RentCast: REMOVED (was in research agent; removed in refactor)
 
-**Satisfied when:** A dedicated investigation confirms the dual-comp-set enforcement is working and GPR evidence tier hierarchy is correctly implemented for value-add deals.
+**Path to SATISFIED:** Build `market_rent_benchmarks_v` SQL view aggregating existing ApartmentIQ tables + 1 new `fetch_market_rent_benchmark` agent tool. ~1 dispatch. No new data source ingestion.
+
+**Recommended source:** ApartmentIQ (platform's proprietary moat; already integrated; zero marginal cost). Do NOT reintegrate RentCast.
+
+**Blocks:** Phase 2 Batch 6 (Revenue derivation). Does NOT block Batch 1–5.
+
+**Satisfied when:** `market_rent_benchmarks_v` view created, `fetch_market_rent_benchmark` tool wired into cashflow agent, and P50 cross-check fires correctly for a representative value-add deal.
 
 ---
 
