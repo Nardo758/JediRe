@@ -910,10 +910,9 @@ const DealDetailPage: React.FC = () => {
         return;
       }
       const fKeyMap: { [key: string]: string } = {
-        F1: 'overview',   F2: 'zoning',    F3: 'market',     F4: 'supply',
-        F5: 'strategy',   F6: 'traffic',   F7: 'design-3d',
-        F8: 'capital',    F9: 'proforma',  F10: 'risk',
-        F11: 'deal-tools', F12: 'events',
+        F1: 'overview',   F2: 'zoning',    F3: 'comps',      F4: 'market',
+        F5: 'supply',     F6: 'strategy',  F7: 'traffic',    F8: 'design-3d',
+        F9: 'capital',    F10: 'proforma', F11: 'risk',      F12: 'deal-tools',
       };
       if (fKeyMap[e.key]) {
         e.preventDefault();

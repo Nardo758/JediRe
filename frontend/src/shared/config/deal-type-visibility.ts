@@ -473,7 +473,7 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
   {
     moduleId: 'M27',
     name: 'Sale Comp Intelligence',
-    fKey: null,
+    fKey: 'F3',
     station: 'S2',
     stationLabel: 'Market & Deal Analysis',
     category: 'Intelligence',
