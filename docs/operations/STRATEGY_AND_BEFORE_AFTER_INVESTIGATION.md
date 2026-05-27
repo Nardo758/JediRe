@@ -573,7 +573,7 @@ Already a valid DB value. Adding it to the DealTypeKey enum and giving it a patt
 | Claim | File | Cited Lines | Verified? | Notes |
 |---|---|---|---|---|
 | ProFormaTemplateId — 7 values | `proforma-blueprint.ts` | 104–111 | ✓ CONFIRMED | Exact match |
-| DealTypeKey enum — 6 values | `m09_line_item_patterns.ts` | 22–28 | ✓ CONFIRMED | Exact match |
+| DealTypeKey enum — 6 values | `m09_line_item_patterns.ts` | 22–28 | ✓ CONFIRMED | Exact match. Full path: `frontend/src/config/m09_line_item_patterns.ts` (glob-verified) |
 | deal_type defaults to 'existing' | `cashflow-underwriting.routes.ts` | 249 | ✓ CONFIRMED | `COALESCE(d.deal_type, 'existing')` |
 | investmentStrategy valid values | `deal-assumptions.routes.ts` | 681 | ✓ CONFIRMED | `['Build-to-Sell', 'Flip', 'Rental', 'Short-Term Rental']` |
 | regimeDataByField never populated in backend | backend/src/**/*.ts search | — | ✓ CONFIRMED | Zero results for both `regimeDataByField` and `regime_data_by_field` |
@@ -633,6 +633,6 @@ No blocking gaps found. Three informational gaps noted for downstream awareness:
 
 ### VERDICT
 
-**APPROVED FOR DOWNSTREAM WORK**
+**APPROVED**
 
 Task #1263 (A1 vs A2 investigation: strategy ↔ deal_type canonical) may begin. The investigation document is complete, all spot-checked citations are accurate, cross-fix integration is substantive, and open questions are correctly classified. The three informational gaps noted above do not block Track 2 work.
