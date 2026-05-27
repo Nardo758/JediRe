@@ -73,7 +73,6 @@ import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysi
 import OpportunityEngineSection from '../components/deal/sections/OpportunityEngineSection';
 import { TrafficModule } from '../components/deal/sections/TrafficModule';
 import { ExitCapitalModule } from '../components/deal/sections/ExitCapitalModule';
-import { InvestorCapitalModule } from '../components/deal/sections/InvestorCapitalModule';
 
 import { StrategyArbitragePage } from './development/StrategyArbitragePage';
 import { RiskDDPage } from './development/RiskDDPage';
@@ -182,32 +181,6 @@ const PROFORMA_TABS = [{ id: 'proforma', label: 'Pro Forma', component: Financia
 const ProFormaScreen = (props: ScreenProps) => (
   <DealScreenWrapper passProps={props} tabs={PROFORMA_TABS} />
 );
-const PortfolioAssetBridge: React.FC<{ dealId: string; featureName: string }> = ({ dealId, featureName }) => {
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-  dealId ? { context: 'deal_overview', dealId } : null
-  );
-
-  const nav = useNavigate();
-  return (
-    <div className="flex flex-col items-center justify-center h-full p-12 text-center">
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-8 max-w-lg">
-        <div className="text-4xl mb-3">🏢</div>
-        <h3 className="text-lg font-semibold text-stone-800 mb-2">{featureName} — Managed in Portfolio Asset</h3>
-        <p className="text-sm text-stone-500 leading-relaxed mb-6">
-          For owned assets, <span className="font-medium text-stone-700">{featureName}</span> is consolidated
-          in the Portfolio Asset page — your post-close operational hub.
-        </p>
-        <button
-          onClick={() => nav(`/assets-owned/${dealId}/property`)}
-          className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded transition-colors"
-        >
-          Open Portfolio Asset Page →
-        </button>
-      </div>
-    </div>
-  );
-};
 const isOwnedDeal = (status?: string, pipelineStage?: string) =>
   ['owned', 'closed'].includes((status ?? '').toLowerCase()) ||
   ['closed', 'owned'].includes((pipelineStage ?? '').toLowerCase());
@@ -215,13 +188,8 @@ const isOwnedDeal = (status?: string, pipelineStage?: string) =>
 const ExitCapitalWrapper = (p: ScreenProps) => (
   <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} />
 );
-const InvestorCapitalWrapper = (p: ScreenProps) =>
-  isOwnedDeal(p.deal?.status, p.deal?.pipeline_stage)
-    ? <PortfolioAssetBridge dealId={p.dealId} featureName="Investor Capital" />
-    : <InvestorCapitalModule dealId={p.dealId} deal={p.deal} />;
 const DEBT_CAPITAL_TABS = [
-  { id: 'exit',      label: 'Exit & Debt Analysis', component: ExitCapitalWrapper },
-  { id: 'investors', label: 'Investor Capital',      component: InvestorCapitalWrapper },
+  { id: 'exit', label: 'Exit & Debt Analysis', component: ExitCapitalWrapper },
 ];
 const DebtCapitalScreen = (props: ScreenProps) => (
   <DealScreenWrapper
