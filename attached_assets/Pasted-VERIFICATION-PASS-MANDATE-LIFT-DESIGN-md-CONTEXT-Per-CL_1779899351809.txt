@@ -1,0 +1,200 @@
+VERIFICATION PASS — MANDATE_LIFT_DESIGN.md
+
+CONTEXT
+Per CLAUDE.md P8, the Mandate lift design closing note must be 
+verified before implementation can proceed. This is read-only 
+verification — no code changes, no new design. Confirm what's 
+documented is accurate and identify gaps.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. docs/operations/MANDATE_LIFT_DESIGN.md exists at expected path
+2. The document is complete per the dispatch spec (Sections 1-7 
+   per the deliverable structure)
+3. No verification section has been appended yet
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — DOCUMENT INTEGRITY
+═══════════════════════════════════════════════════════════════════
+
+A. Confirm docs/operations/MANDATE_LIFT_DESIGN.md exists and is 
+   readable
+B. Confirm the document has all sections per the dispatch spec:
+   1. Executive summary
+   2. Mandate inventory (Step 1 outputs — all 9 instances)
+   3. Downstream consumer inventory (Step 2 outputs)
+   4. Lift rules per line item (Step 3 — conditions, evidence, 
+      confidence, validation)
+   5. Prompt redesign (Step 4)
+   6. Implementation roadmap with Q1 dependency (Step 5)
+   7. Open questions for Leon's review
+C. Flag any section that's missing, truncated, or substantially 
+   thinner than expected
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — SOURCE CITATION SPOT-CHECKS
+═══════════════════════════════════════════════════════════════════
+
+For 5 specific factual claims, verify accuracy:
+
+A. MANDATE INVENTORY COMPLETENESS
+   The investigation claims to have found all 9 Mandate instances. 
+   Verify:
+   - Open line-item-matrix.ts
+   - Independently grep for the Mandate language pattern 
+     (likely "do not write pre_renovation" or "Single-Value" or 
+     similar — use the document's own quoted language)
+   - Compare hit count to the investigation's 9
+   - For each, confirm the file location and line number match
+   - Run a broader grep for similar Mandate-style language in 
+     other files (other prompts may contain the same restriction)
+
+B. DOWNSTREAM CONSUMER INVENTORY
+   The investigation lists readers of regimeDataByField. Verify:
+   - grep -rn "regimeDataByField" backend/src/ frontend/src/ 
+     --include="*.ts" --include="*.tsx"
+   - Compare hit count to the investigation's listed consumers
+   - Open RegimeExpand component and verify it's listed correctly
+   - Flag any consumer the investigation missed
+
+C. LIFT RULES STRATEGY-AWARENESS
+   The investigation specifies that lift conditions are strategy-
+   aware. Verify:
+   - The rules reference strategy explicitly (not just "value-add 
+     deals" as a hand-wave)
+   - The strategy field reference is correctly framed as 
+     dependent on Q1 (because canonical strategy field is being 
+     decided in parallel)
+   - The conditions are concrete enough to implement (not 
+     aspirational placeholders)
+
+D. EVIDENCE REQUIREMENTS COMPLETENESS
+   For each line item the Mandate currently covers, verify:
+   - The investigation specifies evidence requirements for both 
+     pre_renovation and post_stabilization writes
+   - The evidence requirements are achievable with platform's 
+     current data sources (or the gaps are flagged)
+   - Confidence calibration is concrete (high vs medium vs low 
+     with criteria, not just "lower confidence for projections")
+
+E. PROMPT REDESIGN ADEQUACY
+   The investigation produces new prompt language replacing the 
+   9 Mandate instances. Verify:
+   - The new language actually permits pre/post writes under the 
+     specified conditions
+   - The new language maintains the existing guard against 
+     fabrication
+   - The new language is implementable as a drop-in replacement 
+     (no other prompt sections need restructuring)
+
+For each verified claim, document:
+- The claim as stated
+- The actual code/file/data that confirms or contradicts it
+- Verdict: CONFIRMED / PARTIAL / CONTRADICTED / NOT FOUND
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — Q1 DEPENDENCY FRAMING
+═══════════════════════════════════════════════════════════════════
+
+The investigation explicitly notes implementation depends on Q1 
+landing first. Verify:
+
+A. The design specifies rules in strategy-agnostic terms (so 
+   either A1 or A2 outcome can implement them)
+B. The implementation roadmap section explicitly states the 
+   sequencing dependency
+C. There's no place in the design that hard-codes 
+   investment_strategy_lv or deal_type — references should be 
+   strategy-conceptual, not field-specific
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — OPEN QUESTIONS ASSESSMENT
+═══════════════════════════════════════════════════════════════════
+
+A. List the open questions the document surfaces
+B. Classify each:
+   - BLOCKING — implementation cannot proceed without this answered
+   - IMPORTANT — affects scope or design refinement
+   - INFORMATIONAL — handled inline
+C. Flag any blocking question that depends on data or sources 
+   that don't currently exist
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — POTENTIAL GAPS
+═══════════════════════════════════════════════════════════════════
+
+Think about what's MISSING:
+
+A. BACKFILL DECISION
+   - Were prior agent runs (Sentosa, others) inventoried? Their 
+     outputs lack pre/post data due to the Mandate.
+   - Should those deals be rerun after the lift?
+   - Or is forward-only acceptable?
+   - If forward-only: how do operators know which deals have 
+     populated pre/post data vs which don't?
+
+B. CONFIDENCE PROPAGATION
+   - When the agent writes a post_stabilization value with lower 
+     confidence than its pre_renovation counterpart, how does 
+     downstream consumption handle the asymmetric confidence?
+   - Specifically: does the LayeredValue confidence field on the 
+     parent assumption inherit from the lower of the two sub-fields, 
+     the higher, or stay independent?
+
+C. SIGMA ENGINE INTERACTION
+   - If post_stabilization is implausibly far from pre_renovation 
+     (e.g., 3x revenue growth claimed), does the sigma engine 
+     flag this?
+   - What's the threshold? Is it strategy-dependent (value-add 
+     can plausibly have larger deltas than stabilized)?
+
+D. OPERATOR OVERRIDE PATH
+   - Can operators override pre/post values directly?
+   - Does that override propagate through LayeredValue with source 
+     tagged 'operator'?
+   - How does that interact with subsequent agent reruns?
+
+E. MANDATE LANGUAGE IN OTHER FILES
+   - Was a search done for similar Mandate-style restrictions in 
+     other prompt files (not just line-item-matrix.ts)?
+   - Common candidates: cashflow agent system prompt, validation 
+     prompts, evidence-writer prompts
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Append a verification section to the existing design file:
+
+docs/operations/MANDATE_LIFT_DESIGN.md
+Append at the end:
+
+═══════════════════════════════════════════════════════════════════
+VERIFICATION PASS — [date]
+═══════════════════════════════════════════════════════════════════
+
+(a) Document integrity check: <result>
+(b) Source citations verified (5 spot checks):
+    - Mandate inventory completeness: <verdict + evidence>
+    - Downstream consumer inventory: <verdict + evidence>
+    - Lift rules strategy-awareness: <verdict + evidence>
+    - Evidence requirements completeness: <verdict + evidence>
+    - Prompt redesign adequacy: <verdict + evidence>
+(c) Q1 dependency framing: <assessment>
+(d) Open questions classification:
+    BLOCKING: <list>
+    IMPORTANT: <list>
+    INFORMATIONAL: <list>
+(e) Identified gaps: <list>
+(f) Overall verdict: APPROVED FOR DOWNSTREAM WORK / 
+    NEEDS AMENDMENT / NEEDS REWORK
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify the existing design content (only append)
+- Run new design work outside the verification scope
+- Implement any code changes
+- Skip Step 5 (gaps)
+- "While I'm here" cleanups

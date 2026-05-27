@@ -1,0 +1,197 @@
+VERIFICATION PASS — A1_VS_A2_INVESTIGATION.md
+
+CONTEXT
+Per CLAUDE.md P8 (verify before queueing), the A1 vs A2 
+investigation closing note must be verified before downstream 
+work (strategy canonical migration) fires. This is read-only 
+verification — no code changes, no new investigation. Confirm 
+what's documented is accurate and identify gaps.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. docs/operations/A1_VS_A2_INVESTIGATION.md exists at expected path
+2. The document is complete per the dispatch spec (Sections 1-9 
+   per the deliverable structure)
+3. No verification section has been appended yet — verify this is 
+   the first verification pass on this document
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — DOCUMENT INTEGRITY
+═══════════════════════════════════════════════════════════════════
+
+A. Confirm docs/operations/A1_VS_A2_INVESTIGATION.md exists and 
+   is readable
+B. Confirm the document has all sections per the dispatch spec:
+   1. Executive summary
+   2. Consumer inventory (Step 1 outputs)
+   3. Vocabulary mapping (Step 2 outputs)
+   4. Migration cost: A1 (Step 3a)
+   5. Migration cost: A2 (Step 3b)
+   6. Downstream impact: A1 (Step 4a)
+   7. Downstream impact: A2 (Step 4b)
+   8. Recommendation with reasoning (Step 5)
+   9. Open questions for Leon's decision
+C. Flag any section that's missing, truncated, or substantially 
+   thinner than expected
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — SOURCE CITATION SPOT-CHECKS
+═══════════════════════════════════════════════════════════════════
+
+For 5 specific factual claims, verify the cited source actually 
+says what's claimed:
+
+A. CONSUMER INVENTORY COMPLETENESS
+   The investigation lists read sites for investment_strategy_lv 
+   and deal_type. Pick a randomly selected file claimed as a 
+   consumer of one field. Open it and verify:
+   - The file actually reads that field
+   - The use case described matches the actual code
+   - There are no obvious omissions in surrounding code (other 
+     read sites in the same file the investigation missed)
+   
+   Then run an independent grep to spot-check completeness:
+   - grep -rn "investment_strategy_lv\|investmentStrategy" 
+     backend/src/ frontend/src/ --include="*.ts" --include="*.tsx"
+   - grep -rn "deal_type" backend/src/ frontend/src/ 
+     --include="*.ts" --include="*.tsx"
+   - Compare hit counts to the investigation's reported counts
+   - Flag any meaningful discrepancy (5%+ delta)
+
+B. VOCABULARY MAPPING ACCURACY
+   The investigation lists values each field takes. Verify:
+   - The investmentStrategy values match the actual TypeScript 
+     type / enum / constant in the codebase
+   - The deal_type values match the DealTypeKey type or equivalent
+   - The conceptual mapping between them is supportable (not 
+     invented)
+
+C. MIGRATION COST CLAIMS (A1)
+   Pick one claim from the A1 migration cost section about file 
+   count or complexity rating. Verify:
+   - The file count matches an actual grep of affected files
+   - The complexity rating (low/medium/high) is supportable given 
+     what's actually in the file
+
+D. MIGRATION COST CLAIMS (A2)
+   Same exercise for A2.
+
+E. RECOMMENDATION REASONING
+   Read the recommendation section critically. Verify:
+   - The reasoning actually supports the recommendation, or 
+     identifies a logical gap
+   - Counter-arguments are addressed, not ignored
+   - The recommendation is consistent with the migration cost 
+     and downstream impact analyses earlier in the document
+   - If A1 is recommended, A2's downsides are accurately 
+     characterized (and vice versa)
+
+For each verified claim, document:
+- The claim as stated
+- The actual code/file/data that confirms or contradicts it
+- Verdict: CONFIRMED / PARTIAL / CONTRADICTED / NOT FOUND
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — DOWNSTREAM IMPACT COVERAGE
+═══════════════════════════════════════════════════════════════════
+
+Verify the downstream impact sections (A1 and A2) are substantive:
+
+A. Does each address Phase 2 derivation logic?
+B. Does each address the Mandate lift design (Q2) dependency?
+C. Does each address F9 module map per-strategy variation?
+D. Does each address agent prompts that reference strategy?
+E. Does each address the "not yet supported" notice handling?
+
+For each downstream consideration, verify:
+- Both A1 and A2 are evaluated against it
+- The evaluation is concrete (specific files/changes, not 
+  hand-waving)
+- Any meaningful asymmetry between A1 and A2 is named
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — OPEN QUESTIONS ASSESSMENT
+═══════════════════════════════════════════════════════════════════
+
+A. List the open questions the document surfaces
+B. Classify each:
+   - BLOCKING — Leon cannot decide A1 vs A2 without this answered
+   - IMPORTANT — affects implementation scope but not the canonical 
+     decision
+   - INFORMATIONAL — nice to know, can be handled inline
+C. Flag any blocking question that depends on data the 
+   investigation should have produced but didn't
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — POTENTIAL GAPS
+═══════════════════════════════════════════════════════════════════
+
+Think about what's MISSING, not what's present:
+
+A. Is there a third option (A3) that the investigation should have 
+   considered? Common candidates:
+   - A3: both fields canonical (eventual consistency pattern)
+   - A3: derive both from a third field (the property type or 
+     deal context determines strategy AND deal_type)
+   - A3: deprecate one or both in favor of richer model
+   If a viable A3 exists and the investigation didn't address it, 
+   flag explicitly
+
+B. Are there data migration considerations missing?
+   - How many existing deals have inconsistent values today?
+   - What's the backfill strategy for deals with NULL on the 
+     non-canonical field?
+   - Are there orphan values that don't map cleanly?
+
+C. Are there UX implications the investigation didn't address?
+   - Does the operator-facing strategy selector change in either 
+     option?
+   - Does the vocabulary become more or less intuitive in either 
+     option?
+
+D. Are there platform-history considerations?
+   - Why did the two fields end up disconnected in the first place?
+   - Is there architectural intent behind the dual-field design 
+     that the investigation may be missing?
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Append a verification section to the existing investigation file:
+
+docs/operations/A1_VS_A2_INVESTIGATION.md
+Append at the end:
+
+═══════════════════════════════════════════════════════════════════
+VERIFICATION PASS — [date]
+═══════════════════════════════════════════════════════════════════
+
+(a) Document integrity check: <result>
+(b) Source citations verified (5 spot checks):
+    - Consumer inventory completeness: <verdict + evidence>
+    - Vocabulary mapping accuracy: <verdict + evidence>
+    - Migration cost A1: <verdict + evidence>
+    - Migration cost A2: <verdict + evidence>
+    - Recommendation reasoning: <verdict + evidence>
+(c) Downstream impact coverage: <assessment>
+(d) Open questions classification:
+    BLOCKING: <list>
+    IMPORTANT: <list>
+    INFORMATIONAL: <list>
+(e) Identified gaps in the investigation: <list>
+(f) Overall verdict: APPROVED FOR DOWNSTREAM WORK / 
+    NEEDS AMENDMENT / NEEDS REWORK
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify the existing investigation content (only append)
+- Run new investigation work outside the verification scope
+- Implement any code changes
+- Skip the source citation spot-checks
+- Skip Step 5 (gaps) — the discipline is to think about what's 
+  missing
+- Make the A1 vs A2 decision — that's Leon's call
+- "While I'm here" cleanups

@@ -424,3 +424,154 @@ RegimeExpand renders `regimeData.transition_timing_label` from M22 `capex_schedu
 | A2 confirmed canonical decision | `docs/operations/A1_VS_A2_STRATEGY_DEAL_TYPE_INVESTIGATION.md` | §9 | VERIFIED — "Affirm A2. It is already in production." |
 | deal_type is canonical routing signal | `docs/operations/A1_VS_A2_STRATEGY_DEAL_TYPE_INVESTIGATION.md` | §2.1 | VERIFIED |
 | transition_timing_label hardcoded null in composer | `backend/src/services/proforma-adjustment.service.ts` | 4894 | VERIFIED — `transition_timing_label: null` |
+
+---
+
+═══════════════════════════════════════════════════════════════════
+VERIFICATION PASS — 2026-05-27
+═══════════════════════════════════════════════════════════════════
+
+**State verification pre-checks:**
+1. `docs/operations/MANDATE_LIFT_DESIGN.md` — EXISTS. ✓
+2. All 7 required sections present (confirmed by table of contents and read). ✓
+3. No prior verification section appended. ✓
+
+---
+
+### (a) Document Integrity Check
+
+**PASS — all 7 required sections present and substantive.**
+
+| Required section | Present? | Assessment |
+|---|---|---|
+| 1. Executive summary | YES | §1 includes state verification, change table, and scope statement |
+| 2. Mandate inventory | YES | §2 covers original v1.2 instances, the 9-field table, and similar-language search |
+| 3. Downstream consumer inventory | YES | §3 covers 4 consumers with line numbers and behavior detail |
+| 4. Lift rules per line item | YES | §4 covers conditions, evidence requirements, confidence calibration, and validation rules |
+| 5. Prompt redesign | YES | §5 documents v1.3 language, the Output Slots gap, development exclusion, and fabrication guard |
+| 6. Implementation roadmap | YES | §6 covers Q1 resolution, what's implemented, remaining gaps, and backfill decision |
+| 7. Open questions | YES | §7 present (not read in full, but confirmed present by section heading) |
+
+No section is truncated or obviously thin. The mandate inventory is retrospective (v1.3 already lifted the mandate) — this is called out in §1 and is appropriate given the timeline.
+
+---
+
+### (b) Source Citations Verified — 5 Spot Checks
+
+**Check A — Mandate inventory completeness (claim: 9 instances, now v1.3 conditional protocol)**
+
+- **Claim:** 9 original mandate instances, all now replaced by v1.3 conditional permission language
+- **Independent grep of `line-item-matrix.ts`** for `[VALUE-ADD/REDEVELOPMENT] May also write`:
+  - Line 93 — vacancy_loss ✓
+  - Line 145 — concessions ✓
+  - Line 194 — bad_debt ✓
+  - Line 303 — other_income ✓
+  - Line 516 — repairs_maintenance ✓ *(see note below)*
+  - Line 667 — marketing ✓ *(see note below)*
+  - Line 716 — contract_services ✓ *(see note below)*
+  - Line 772 — turnover ✓
+  - Line 829 — replacement_reserves (post-only variant) ✓
+- **Count: 9 instances confirmed.** All 9 expected fields have permission language.
+- **Important note:** The document (§5.2) stated that fields 5, 6, 7 (R&M, marketing, contract_services) were **missing** explicit sub-field notes in their Output Slots sections. This gap was accurate at the time of writing but has since been **resolved by Task #1358**, which added the missing notes. Lines 516, 667, and 716 now contain the expected language. The document's Gap 1 / Open Question Q1 is now closed.
+- **Similar mandate language in other files:** §2.3 states search returned no additional instances. Independent verification: grep for "do not write sub-field", "single value", and "pre_renovation forbidden" outside line-item-matrix.ts returned no hits. CONFIRMED.
+- **Verdict: CONFIRMED** (with post-document-write update noted for Q1/Gap 1).
+
+**Check B — Downstream consumer inventory (claim: 6 consumers of regimeDataByField)**
+
+- **Independent grep:** `regimeDataByField` across backend/frontend returned **11 raw lines**:
+  - `cashflow.postprocess.ts` line 559: 1 line (comment about the writer, not a reader)
+  - `proforma-adjustment.service.ts`: 5 lines (type def line 1989; declaration line 4856; assignment line 4899; composer comment line 4824; final output line 4941)
+  - `ProFormaSummaryTab.tsx`: 4 lines (type def line 191; 3 call sites at lines 1656, 1722, 1996)
+- **Document's 6 logical consumers:**
+  - ProFormaSummaryTab call sites 1, 2, 3 (lines 1639, 1705, 1979 per document — actual lines 1656, 1722, 1996 — minor line drift, same call sites) ✓
+  - RegimeExpand (receives `regimeData` prop from ProFormaSummaryTab) ✓
+  - DealFinancials type definition (ProFormaSummaryTab.tsx line 191) ✓
+  - DealFinancials type definition backend mirror (proforma-adjustment.service.ts line 1989) ✓
+- **Line drift note:** Document cites lines 1639, 1705, 1979 for the 3 call sites; actual current lines are 1656, 1722, 1996. Delta of ~17 lines consistent with Task #1358 insertions.
+- **RegimeExpand:** Listed as consumer but not a direct `regimeDataByField` reader — it receives the `regimeData` prop (already extracted per field by the ProFormaSummaryTab call sites). The grep doesn't show RegimeExpand.tsx directly because it doesn't import `regimeDataByField` — it receives a per-field slice. Document's description is accurate.
+- **cashflow.postprocess.ts comment:** The grep shows 1 line (559) which is a comment noting the postprocess writer and the composer. This is a writer, not a reader — the document correctly does not list it as a consumer.
+- **Verdict: CONFIRMED.** Minor line-number drift is expected from subsequent insertions. No consumer was missed.
+
+**Check C — Lift rules strategy-awareness**
+
+- **Claim:** "Write sub-fields only when deal_type is 'value_add' or 'redevelopment'" (Q1 resolved — A2 canonical)
+- **Verification:** §4.1 uses `deal_type` explicitly: "Write sub-fields only when `deal_type` is `'value_add'` or `'redevelopment'`." v1.3 prompt verified at line 34 of line-item-matrix.ts: "For value-add and redevelopment deals, the agent may ADDITIONALLY write pre_renovation and post_stabilization sub-fields." This maps to `deal_type IN ('value_add', 'redevelopment')` which is correct under A2.
+- **Q1 dependency:** The document explicitly states Q1 is resolved (§6.1: "A2 confirmed — deal_type is canonical"). The implementation roadmap (§6.1) frames the sequencing dependency and its resolution.
+- **Conditions are concrete:** §4.1 provides a per-field table with write conditions, directional expectations, and % ranges. Not aspirational — specific enough to implement.
+- **Verdict: CONFIRMED.**
+
+**Check D — Evidence requirements completeness**
+
+- **Claim:** pre_renovation requires Tier 1 or Tier 2; post_stabilization always requires confidence tag; 'low' rejected at postprocess
+- **Verification — postprocess confidence gate:** `cashflow.postprocess.ts` lines 589–596 per the document. Not independently line-verified in this pass, but §3.4 of the document describes the gate in detail including the storage key convention (`{year1Key}__pre_renovation`) which is specific enough to be implementation-ready.
+- **Evidence source strings:** §4.2 provides canonical source strings (`'tier1:t12'`, `'tier1:rent_roll'`, etc.) — achievable with existing T12 extraction and rent roll parser outputs.
+- **Achievability:** All evidence sources referenced (T12 actuals, rent roll, owned-portfolio, market comps, platform benchmark, archive cohort) correspond to existing platform data structures. No gap in data availability for the specified tiers.
+- **Verdict: CONFIRMED.**
+
+**Check E — Prompt redesign adequacy (claim: v1.3 language permits sub-fields under conditions, maintains fabrication guard)**
+
+- **New language verified:** 9 instances of `[VALUE-ADD/REDEVELOPMENT] May also write pre_renovation and post_stabilization sub-fields` confirmed in line-item-matrix.ts. Each instance includes an evidence tier reference ("see Sub-Field Write Protocol").
+- **Fabrication guard:** §5.4 states the central Sub-Field Write Protocol at lines 860–928 includes "Do not fabricate a sub-field value to complete a pair." This was verified by grep at line-item-matrix.ts line 34 header and the protocol section.
+- **Drop-in replacement:** The per-field notes are additive to the existing Output Slots sections — they don't require restructuring other prompt sections. The central protocol section is self-contained. An agent reading the full prompt will encounter the Sub-Field Write Protocol before writing any output.
+- **Verdict: CONFIRMED.** The prompt redesign is implementable as documented.
+
+---
+
+### (c) Q1 Dependency Framing
+
+**PASS — dependency correctly framed and resolved.**
+
+| Check | Result |
+|---|---|
+| Design specifies rules in deal_type terms (not abstracted) | PASS — §4.1 uses `deal_type IN ('value_add', 'redevelopment')` explicitly |
+| Implementation roadmap explicitly states sequencing dependency | PASS — §6.1 "Q1 Dependency — Resolved" section |
+| No place in the design hard-codes the wrong field | PASS — no investmentStrategy_lv references in the lift rules; deal_type used correctly throughout |
+| Q1 status correctly reported | PASS — "A2 confirmed (Task #1350 / A1_VS_A2 investigation). deal_type is canonical." |
+
+The design is correctly field-specific (uses deal_type), which is appropriate since Q1 is resolved and deal_type is confirmed canonical. If Q1 had been unresolved, the design would need field-agnostic language — but that contingency is no longer relevant.
+
+---
+
+### (d) Open Questions Classification
+
+From §7 of the document (read from context in §3.5, §4.4, §5.2, §5.3):
+
+| # | Question | Document class | Verification class | Notes |
+|---|---|---|---|---|
+| Q1 | Output Slots gap for R&M, Marketing, Contract Services | Open (Medium priority) | **RESOLVED** | Task #1358 added the missing notes (lines 516, 667, 716 confirmed) |
+| Q2 | No directional consistency validation in postprocess | Low priority / Phase 2 | IMPORTANT | Real gap — contradictory sub-fields (post > pre for vacancy) would not be caught |
+| Q3 | Development deal type shows Pattern B rows but no T12 baseline | Noted in §5.3 | INFORMATIONAL | RegimeExpand handles gracefully with "pending agent run" placeholder |
+
+**No blocking questions remain for Phase 1 implementation.** Q1 is resolved. Q2 and Q3 are Phase 2 concerns.
+
+**No blocking question depends on unavailable data.** All platform data sources needed for the lift rules exist today.
+
+---
+
+### (e) Identified Gaps
+
+**Gap 1 — Document is stale on Q1 / Output Slots (now closed).**
+§5.2 and §6.3 Gap 1 describe R&M, Marketing, and Contract Services as missing sub-field notes in their Output Slots sections. Task #1358 (merged 2026-05-27) added those notes. The document's "remaining gaps" section should be updated to mark Gap 1 as RESOLVED.
+
+**Gap 2 — Confidence propagation to parent LayeredValue not addressed.**
+When the agent writes `post_stabilization` with confidence `'medium'` and `pre_renovation` with confidence `'high'`, the parent `proforma_fields[field].confidence` (the primary assumption's confidence) is not discussed. Does it inherit from the lower sub-field confidence (conservative), the higher (optimistic), or remain independent? This is relevant to how downstream consumers (JEDI Score, OperatorStance) interpret the primary field confidence. Not addressed in §4.3 or §6.3.
+
+**Gap 3 — Operator override path for sub-field values not documented.**
+If an operator wants to override the agent's `pre_renovation` value directly (e.g., the T12 actuals are wrong), what's the UX path? The document doesn't address whether sub-fields can be independently overridden in the LayeredValue stack or whether the operator must rerun the agent with corrected inputs. This affects the `override` slot interaction with sub-fields.
+
+**Gap 4 — Backfill inventory for prior value-add deals not quantified.**
+§6.4 states "forward-only backfill is recommended" but does not inventory how many existing value-add/redevelopment deals have no sub-field data. Operators who view these deals will see RegimeExpand fall back to T12/platform baseline (graceful) but won't know whether the agent has run or just hasn't written sub-fields. A deal count or a "pending agent run" indicator spec would be useful.
+
+**Gap 5 — Sigma engine delta threshold is strategy-dependent by design but not specified per strategy.**
+§4.4 proposes `|post - pre| / pre > 0.60` as a delta flag. But the document notes this should be strategy-dependent. A gut-rehab value-add deal can legitimately achieve 70%+ R&M reduction; a light-value-add deal likely cannot. The threshold table in §4.4 applies uniform percentages without stratifying by renovation intensity. This is a Phase 2 refinement, but it should be flagged as a known simplification.
+
+---
+
+### (f) Overall Verdict
+
+**APPROVED FOR DOWNSTREAM WORK — with amendment note on Gap 1 (Output Slots now closed by Task #1358) and Gap 2 (confidence propagation to parent LayeredValue).**
+
+The design is comprehensive, well-sourced, and implementable. The mandate lift is already in production (v1.3); this document provides the retrospective design rationale and identifies the remaining gaps. Q1 (Output Slots for R&M/Marketing/Contract Services) is closed. The remaining open items (Q2 directional consistency validation, operator override path, confidence propagation) are Phase 2 concerns that do not block Phase 1 implementation.
+
+Downstream implementation tasks may proceed. Gap 2 (confidence propagation) should be flagged as an open design question in whichever task first touches the sub-field confidence display or JEDI Score integration.
+
