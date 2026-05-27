@@ -178,6 +178,11 @@ export function bustM08Cache(dealId: string): void {
 
 async function loadDealData(pool: Pool, dealId: string): Promise<Record<string, any> | null> {
   try {
+    // T7.2 audit (Task #1251): The LEFT JOIN on strategy_analyses is safe when no row exists.
+    // Columns sa.strategy_slug, sa.assumptions, sa.roi_metrics, sa.risk_score, sa.recommended
+    // will be null in that case, but none of the v2 detection, scoring, evidence, or plan logic
+    // downstream reads them — the v2 pipeline derives everything from deals + deal_assumptions
+    // JSONB fields and the detection/signal-adapter chain. Confirmed: no upsert guard needed.
     const r = await pool.query(
       `SELECT
          d.id, d.name, d.address, d.city, d.state,

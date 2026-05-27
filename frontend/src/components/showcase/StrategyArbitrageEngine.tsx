@@ -1,36 +1,20 @@
 import React, { useState } from 'react';
 import ShowcaseDataService from '../../services/showcase.service';
-import { useStrategyAvailability, useDealType } from '../../stores/dealStore';
+
+// ── Pure mock availability helpers ───────────────────────────────────────────
+// This is a showcase/demo component; it uses only mock data and has no dependency
+// on the real deal store. Previously it imported useStrategyAvailability and
+// useDealType from the store (hybrid state — Task #1251 T7.4 fix).
+function mockGetStrengthFor(_id: string): { strength: string; description: string } {
+  return { strength: 'strong', description: 'Available for all deal types in showcase mode' };
+}
 
 export function StrategyArbitrageEngine() {
   const strategies = ShowcaseDataService.getStrategies();
   const [selectedStrategies, setSelectedStrategies] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'roi' | 'risk' | 'cost'>('roi');
 
-  // Get available strategies based on deal type × product type
-  const { availableStrategies, getStrengthFor } = useStrategyAvailability();
-  const dealType = useDealType();
-
-  // Map strategy IDs to display names for comparison
-  const strategyIdMap: Record<string, string> = {
-    BTS: 'Build-to-Sell',
-    FLIP: 'Flip',
-    RENTAL: 'Rental',
-    STR: 'Short-Term Rental',
-  };
-
   const toggleStrategy = (id: string) => {
-    // Prevent selecting unavailable strategies
-    const strategy = strategies.find(s => s.id === id);
-    if (!strategy) return;
-
-    const strategyIdUpper = strategy.id.toUpperCase();
-    const strength = getStrengthFor(strategyIdUpper);
-    if (strength.strength === 'na') {
-      console.warn(`Strategy ${strategyIdUpper} is not available for this deal type`);
-      return;
-    }
-
     if (selectedStrategies.includes(id)) {
       setSelectedStrategies(selectedStrategies.filter(s => s !== id));
     } else if (selectedStrategies.length < 4) {
@@ -38,14 +22,7 @@ export function StrategyArbitrageEngine() {
     }
   };
 
-  // Filter strategies to only show available ones (strength !== 'na')
-  const availableStrategyIds = new Set(availableStrategies);
-  const displayableStrategies = strategies.filter((s) => {
-    const strategyIdUpper = s.id.toUpperCase();
-    return availableStrategyIds.has(strategyIdUpper as any);
-  });
-
-  const sortedStrategies = [...displayableStrategies].sort((a, b) => {
+  const sortedStrategies = [...strategies].sort((a, b) => {
     switch (sortBy) {
       case 'roi': return b.projectedROI - a.projectedROI;
       case 'cost': return a.implementationCost - b.implementationCost;
@@ -71,7 +48,6 @@ export function StrategyArbitrageEngine() {
       case 'strong': return 'bg-blue-100 text-blue-800';
       case 'moderate': return 'bg-cyan-100 text-cyan-800';
       case 'weak': return 'bg-orange-100 text-orange-800';
-      case 'na': return 'bg-gray-100 text-gray-500';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -123,14 +99,13 @@ export function StrategyArbitrageEngine() {
                   <th className="text-left p-2 text-sm font-medium text-blue-800">Metric</th>
                   {selectedStrategies.map(id => {
                     const strategy = strategies.find(s => s.id === id);
-                    const strategyIdUpper = strategy?.id.toUpperCase();
-                    const strength = getStrengthFor(strategyIdUpper);
+                    const strength = mockGetStrengthFor(id);
                     return (
                       <th key={id} className="p-2 text-sm font-medium text-blue-800">
                         <div className="flex flex-col items-center gap-1">
                           <div>{strategy?.name}</div>
                           <span className={`px-2 py-0.5 text-xs rounded-full font-semibold ${getStrengthColor(strength.strength)}`}>
-                            {strength.strength === 'na' ? 'Not Available' : strength.strength}
+                            {strength.strength}
                           </span>
                         </div>
                       </th>
@@ -198,19 +173,16 @@ export function StrategyArbitrageEngine() {
       <div className="grid gap-3">
         {sortedStrategies.map(strategy => {
           const isSelected = selectedStrategies.includes(strategy.id);
-          const strategyIdUpper = strategy.id.toUpperCase();
-          const strength = getStrengthFor(strategyIdUpper);
+          const strength = mockGetStrengthFor(strategy.id);
 
           return (
             <div
               key={strategy.id}
               onClick={() => toggleStrategy(strategy.id)}
-              className={`p-4 border-2 rounded-lg transition-all ${
-                strength.strength === 'na'
-                  ? 'cursor-not-allowed opacity-50 border-gray-100 bg-gray-50'
-                  : isSelected
-                  ? 'cursor-pointer border-blue-500 bg-blue-50'
-                  : 'cursor-pointer border-gray-200 hover:border-gray-300 hover:shadow-sm'
+              className={`p-4 border-2 rounded-lg transition-all cursor-pointer ${
+                isSelected
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
               }`}
             >
               <div className="flex items-start gap-4">
@@ -222,7 +194,7 @@ export function StrategyArbitrageEngine() {
                       <div className="flex items-center gap-2">
                         <h4 className="font-semibold text-gray-900">{strategy.name}</h4>
                         <span className={`px-2 py-0.5 text-xs rounded-full font-semibold ${getStrengthColor(strength.strength)}`}>
-                          {strength.strength === 'na' ? 'Not Available' : strength.strength.charAt(0).toUpperCase() + strength.strength.slice(1)}
+                          {strength.strength.charAt(0).toUpperCase() + strength.strength.slice(1)}
                         </span>
                         {isSelected && (
                           <span className="px-2 py-0.5 text-xs rounded-full bg-blue-600 text-white">
@@ -231,9 +203,7 @@ export function StrategyArbitrageEngine() {
                         )}
                       </div>
                       <p className="text-sm text-gray-600 mt-1">{strategy.description}</p>
-                      {strength.strength !== 'na' && (
-                        <p className="text-xs text-gray-500 mt-1">{strength.description}</p>
-                      )}
+                      <p className="text-xs text-gray-500 mt-1">{strength.description}</p>
                     </div>
                     
                     <div className="text-right ml-4">
@@ -287,7 +257,7 @@ export function StrategyArbitrageEngine() {
       <div className="p-6 bg-white border border-gray-200 rounded-lg">
         <h3 className="font-semibold text-gray-900 mb-4">Risk vs. Return Heatmap</h3>
         <div className="relative h-64 bg-gradient-to-br from-green-100 via-yellow-100 to-red-100 rounded-lg p-4">
-          {strategies.slice(0, 10).map((strategy, i) => {
+          {strategies.slice(0, 10).map((strategy) => {
             const riskValue = { low: 20, medium: 50, high: 80 }[strategy.riskLevel];
             const left = (strategy.projectedROI / 45) * 100;
             const top = 100 - riskValue;

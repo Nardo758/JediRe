@@ -1,15 +1,17 @@
 /**
- * M08 Deal-Level Strategy Endpoints
- * GET  /api/v1/deals/:dealId/strategies               — M08 v2 strategy output (strategy_analyses)
- * GET  /api/v1/deals/:dealId/strategy-scores          — get cached strategy scores
- * POST /api/v1/deals/:dealId/strategy-scores/recalculate — trigger fresh scoring
- * GET  /api/v1/deals/:dealId/arbitrage                — get arbitrage result
+ * M08 Deal-Level Strategy Endpoints — v2 detection-first system only
+ * GET   /api/v1/deals/:dealId/strategies               — full v2 strategy output (strategy_analyses)
+ * PATCH /api/v1/deals/:dealId/detection-confirmation   — persist user confirmation / override
+ *
+ * Legacy v1 endpoints (strategy-scores, strategy-scores/recalculate, arbitrage) and
+ * strategyArbitrage.service.ts were removed in Task #1251 (T7.1). The corresponding
+ * DB tables (strategy_scores, strategy_arbitrage) are dropped via migration
+ * 20260527_drop_strategy_legacy_tables.sql.
  */
 
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { query, getPool } from '../../database/connection';
-import { scoreAndPersist, detectArbitrage, ScoreContext } from '../../services/strategyArbitrage.service';
 import { getStrategiesForDeal, bustM08Cache } from '../../services/m08-strategies.service';
 import { logger } from '../../utils/logger';
 
@@ -113,95 +115,6 @@ router.get('/:dealId/strategies', requireAuth, async (req: AuthenticatedRequest,
   } catch (error: any) {
     logger.error('[M08v2] Error fetching strategies:', error);
     return res.status(500).json({ success: false, error: 'Failed to fetch strategies' });
-  }
-});
-
-router.get('/:dealId/strategy-scores', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { dealId } = req.params;
-    const userId = req.user!.userId;
-    const orgId = await getUserOrgId(userId);
-
-    if (!(await checkDealAccess(dealId, userId, orgId))) {
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    }
-
-    const ctx: ScoreContext = { userId, orgId };
-    const result = await query(
-      `SELECT ss.*, s.name as strategy_name, s.is_system_template, s.sort_order
-       FROM strategy_scores ss
-       JOIN strategies s ON s.id = ss.strategy_id
-       WHERE ss.deal_id = $1
-         AND s.is_active = true
-         AND (s.is_system_template = true OR s.created_by = $2 OR ($3::uuid IS NOT NULL AND s.org_id = $3))
-       ORDER BY ss.overall_score DESC NULLS LAST`,
-      [dealId, userId, orgId]
-    );
-
-    if (result.rows.length === 0) {
-      const scores = await scoreAndPersist(dealId, ctx);
-      return res.json({ success: true, scores, freshlyCalculated: true });
-    }
-
-    res.json({ success: true, scores: result.rows });
-  } catch (error: any) {
-    logger.error('[M08] Error fetching strategy scores:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch strategy scores' });
-  }
-});
-
-router.post('/:dealId/strategy-scores/recalculate', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { dealId } = req.params;
-    const userId = req.user!.userId;
-    const orgId = await getUserOrgId(userId);
-
-    if (!(await checkDealAccess(dealId, userId, orgId))) {
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    }
-
-    const ctx: ScoreContext = { userId, orgId };
-    const scores = await scoreAndPersist(dealId, ctx);
-    const arbitrage = detectArbitrage(scores);
-    res.json({ success: true, scores, arbitrage });
-  } catch (error: any) {
-    logger.error('[M08] Error recalculating scores:', error);
-    res.status(500).json({ success: false, error: 'Failed to recalculate scores' });
-  }
-});
-
-router.get('/:dealId/arbitrage', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { dealId } = req.params;
-    const userId = req.user!.userId;
-    const orgId = await getUserOrgId(userId);
-
-    if (!(await checkDealAccess(dealId, userId, orgId))) {
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    }
-
-    const result = await query(
-      `SELECT sa.*,
-         sw.name as winning_strategy_name,
-         sr.name as runner_up_strategy_name
-       FROM strategy_arbitrage sa
-       LEFT JOIN strategies sw ON sw.id = sa.winning_strategy_id
-       LEFT JOIN strategies sr ON sr.id = sa.runner_up_strategy_id
-       WHERE sa.deal_id = $1`,
-      [dealId]
-    );
-
-    if (result.rows.length === 0) {
-      const ctx: ScoreContext = { userId, orgId };
-      const scores = await scoreAndPersist(dealId, ctx);
-      const arbitrage = detectArbitrage(scores);
-      return res.json({ success: true, arbitrage, freshlyCalculated: true });
-    }
-
-    res.json({ success: true, arbitrage: result.rows[0] });
-  } catch (error: any) {
-    logger.error('[M08] Error fetching arbitrage:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch arbitrage' });
   }
 });
 

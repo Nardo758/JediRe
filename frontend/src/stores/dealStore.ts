@@ -63,40 +63,6 @@ import type {
 // Store actions interface
 // ---------------------------------------------------------------------------
 
-// ─── M08 Strategy Score types ─────────────────────────────────────────────
-
-export interface M08StrategyScore {
-  strategy_id: string;
-  strategy_name: string;
-  strategy_type?: 'rental' | 'bts' | 'flip' | 'str' | string;
-  overall_score: number;
-  sub_scores: Record<string, number>;
-  signal_weights?: Record<string, number>;
-  gate_result: 'PASS' | 'FAIL' | 'N/A';
-  gate_failures: string[];
-  soft_penalty: number;
-  confidence: number;
-  is_system_template?: boolean;
-  sort_order?: number;
-  roi_estimate?: {
-    irr?: number;
-    yoc?: number;
-    profit_margin?: number;
-    rev_par?: number;
-  };
-}
-
-export interface M08ArbitrageResult {
-  winning_strategy_id: string | null;
-  winning_strategy_name: string | null;
-  runner_up_strategy_id: string | null;
-  runner_up_strategy_name: string | null;
-  winning_score: number;
-  runner_up_score: number;
-  delta: number;
-  arbitrage_detected: boolean;
-}
-
 // ─── M08 v2 Strategy Analysis slice ──────────────────────────────────────────
 // Re-exported from hook types; duplicated here to avoid circular deps.
 export interface StrategyAnalysisV2Slice {
@@ -126,14 +92,6 @@ interface DealStoreActions {
   isLoading: boolean;
   error: string | null;
   fetchDeals: () => Promise<void>;
-
-  // ─── M08 v1 STRATEGY ARBITRAGE ───────────────────────────────
-  strategyScores: M08StrategyScore[];
-  arbitrageResult: M08ArbitrageResult | null;
-  strategyScoresLoading: boolean;
-  fetchStrategyScores: (dealId: string) => Promise<void>;
-  recalculateStrategyScores: (dealId: string) => Promise<void>;
-  fetchArbitrage: (dealId: string) => Promise<void>;
 
   // ─── M08 v2 DETECTION-FIRST STRATEGY ANALYSIS ────────────
   strategyAnalysisV2: import('../hooks/useStrategyAnalysisV2').StrategyAnalysisV2 | null;
@@ -625,48 +583,6 @@ export const useDealStore = create<DealStore>()(
       }
     },
 
-    // ─── M08 STRATEGY ARBITRAGE ───────────────────────────────
-    strategyScores: [] as M08StrategyScore[],
-    arbitrageResult: null as M08ArbitrageResult | null,
-    strategyScoresLoading: false,
-
-    fetchStrategyScores: async (dealId: string) => {
-      set({ strategyScoresLoading: true });
-      try {
-        const res = await apiClient.get(`/api/v1/deals/${dealId}/strategy-scores`);
-        // Backend returns { success, scores: M08StrategyScore[] }
-        const scores: M08StrategyScore[] = Array.isArray(res.data?.scores) ? res.data.scores : [];
-        set({ strategyScores: scores, strategyScoresLoading: false });
-      } catch (err) {
-        console.error('[dealStore] fetchStrategyScores failed:', err);
-        set({ strategyScoresLoading: false });
-      }
-    },
-
-    recalculateStrategyScores: async (dealId: string) => {
-      set({ strategyScoresLoading: true });
-      try {
-        const res = await apiClient.post(`/api/v1/deals/${dealId}/strategy-scores/recalculate`);
-        // Backend returns { success, scores: M08StrategyScore[], arbitrage?, freshlyCalculated }
-        const scores: M08StrategyScore[] = Array.isArray(res.data?.scores) ? res.data.scores : [];
-        const arbitrageResult: M08ArbitrageResult | null = res.data?.arbitrage ?? null;
-        set({ strategyScores: scores, arbitrageResult, strategyScoresLoading: false });
-      } catch (err) {
-        console.error('[dealStore] recalculateStrategyScores failed:', err);
-        set({ strategyScoresLoading: false });
-      }
-    },
-
-    fetchArbitrage: async (dealId: string) => {
-      try {
-        const res = await apiClient.get(`/api/v1/deals/${dealId}/arbitrage`);
-        const result: M08ArbitrageResult | null = res.data?.arbitrage ?? null;
-        set({ arbitrageResult: result });
-      } catch (err) {
-        console.error('[dealStore] fetchArbitrage failed:', err);
-      }
-    },
-
     // ─── M08 v2 Detection-First Strategy Analysis ──────────────────────────
     strategyAnalysisV2: null,
     strategyAnalysisV2Loading: false,
@@ -826,9 +742,6 @@ export const useDealStore = create<DealStore>()(
     clearDeal: () => {
       set({
         ...INITIAL_CONTEXT,
-        strategyScores: [],
-        arbitrageResult: null,
-        strategyScoresLoading: false,
         strategyAnalysisV2: null,
         strategyAnalysisV2Loading: false,
         strategyAnalysisV2Recalculating: false,
@@ -2006,13 +1919,6 @@ export const useStrategyArbitrage = () =>
     isDevelopment: s.isDevelopment(),
     projectType: s.projectType,
     productType: s.productType,
-    // M08 live slices
-    strategyScores: s.strategyScores,
-    arbitrageResult: s.arbitrageResult,
-    strategyScoresLoading: s.strategyScoresLoading,
-    fetchStrategyScores: s.fetchStrategyScores,
-    recalculateStrategyScores: s.recalculateStrategyScores,
-    fetchArbitrage: s.fetchArbitrage,
   }));
 
 /** M09 ProForma — reads unit mix, assumptions, capital */
