@@ -19,7 +19,9 @@
 import { z } from 'zod';
 import { AgentRuntime } from './runtime/AgentRuntime';
 import { DeepSeekMeteringAdapter } from './runtime/DeepSeekMeteringAdapter';
+import { MeteringAdapter } from './runtime/MeteringAdapter';
 import { BudgetEnforcer } from './runtime/BudgetEnforcer';
+import { detectProvider } from './runtime/types';
 import { DEFAULT_BUDGET_CAPS } from './config/budget';
 import { query } from '../database/connection';
 import type { AgentConfig } from './runtime/types';
@@ -177,7 +179,7 @@ const ProformaFieldSchema = z.object({
   plausibility_color: z.enum(['green', 'amber', 'red']).optional().describe(
     'UI chip color: green = Realistic, amber = Stretch/Aggressive, red = Heroic/Unrealistic.'
   ),
-});
+}).passthrough();
 
 export const CashflowOutputSchema = z.object({
   // ── Primary evidence structure (matches CASHFLOW_OUTPUT_SCHEMA prompt JSON) ─
@@ -662,9 +664,24 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
 };
 
 // ── Singleton runtime ─────────────────────────────────────────────
+//
+// The LLM provider can be overridden at startup without code changes:
+//
+//   CASHFLOW_LLM_MODEL=claude-haiku-4-5 npm run dev    # use Anthropic Haiku
+//   CASHFLOW_LLM_MODEL=claude-sonnet-4-5 npm run dev   # use Anthropic Sonnet
+//   (unset)                                            # default: deepseek-chat
+//
+// Both DeepSeekMeteringAdapter and MeteringAdapter implement the same interface
+// so AgentRuntime works identically regardless of which is selected.
+
+const _cashflowModel  = process.env.CASHFLOW_LLM_MODEL ?? 'deepseek-chat';
+const _cashflowAdapter =
+  detectProvider(_cashflowModel) === 'deepseek'
+    ? new DeepSeekMeteringAdapter()
+    : new MeteringAdapter();
 
 export const cashflowRuntime = new AgentRuntime(
-  CASHFLOW_AGENT_CONFIG,
-  new DeepSeekMeteringAdapter(),
+  { ...CASHFLOW_AGENT_CONFIG, modelName: _cashflowModel },
+  _cashflowAdapter,
   new BudgetEnforcer()
 );

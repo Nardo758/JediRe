@@ -37,56 +37,104 @@ Apply 50bps spread over target market cap rate for renovated assets.
 
 ### Pre/Post Sub-Field Write Protocol (Value-Add — v1.3)
 
-For value-add and redevelopment deals, you may write pre_renovation and post_stabilization
-sub-fields alongside the primary value on eligible regime-sensitive line items. These sub-fields
-populate the RegimeExpand component so operators can see the full pre-to-post-stabilization arc.
+**MANDATORY for R&M and Marketing:** For value-add deals, you MUST write pre_renovation AND
+post_stabilization sub-fields on expense.repairs_maintenance and expense.marketing. Omitting
+these sub-fields is a PROTOCOL VIOLATION that will cause downstream RegimeExpand failures.
 
-**Eligible fields and evidence thresholds:**
+**CONDITIONAL for Contract Services:** Write pre_renovation and post_stabilization sub-fields
+on expense.contract_services ONLY when the renovation explicitly adds or removes qualifying
+amenities: new pool/pool service, elevator, or structured parking management. If the renovation
+does not change the contract services scope (interior-only units renovation, no new common
+amenities), do NOT write CS sub-fields — the flat T12 value suffices.
 
-| Field (proforma_fields key)    | pre_renovation allowed?       | post_stabilization allowed?          |
-|-------------------------------|-------------------------------|--------------------------------------|
-| revenue.vacancy_loss           | Yes — Tier 1 required         | Yes — min 'medium' confidence        |
-| revenue.concessions            | Yes — Tier 1 required         | Yes — min 'medium' confidence        |
-| revenue.bad_debt               | Yes — Tier 1 required         | Yes — min 'medium' confidence        |
-| revenue.other_income           | Yes — Tier 1 required         | Yes — min 'medium' confidence        |
-| expense.repairs_maintenance    | Yes — Tier 1 required         | Yes — min 'medium' confidence        |
-| expense.marketing              | Yes — Tier 1 or 2             | Yes — min 'medium' confidence        |
-| expense.contract_services      | Yes — Tier 1 required         | Yes — min 'medium' confidence        |
-| expense.turnover               | Yes — Tier 1 required (T12 turnover rate must be known) | Yes — min 'medium' confidence |
-| expense.replacement_reserves   | No (pre variation is minimal) | Yes — min 'medium' confidence        |
+**T12 actuals ARE the pre-renovation baseline.** The T12 operating history captures the
+pre-renovation state of the asset. You do NOT need additional evidence beyond T12 to write
+pre_renovation — T12 IS the evidence. Write the T12 value as pre_renovation unconditionally.
 
-**Sub-field format:**
+**For post_stabilization, use value-add benchmarks when explicit post-reno data is absent:**
+- expense.repairs_maintenance: T12 × 0.55 to 0.70 (renovated HVAC/appliances = low near-term maintenance)
+- expense.marketing: T12 × 0.80 to 0.90 (stabilized occupancy = less lease-up spend)
+- expense.contract_services (qualifying amenities only): T12 value ± 10% for unchanged scope,
+  or T12 + new amenity cost for added services (pool service $12-18k/yr, parking mgmt $3-6k/yr)
+- Confidence for benchmark-derived post_stabilization: always "medium"
+- Source: "benchmark:value_add_reno"
+
+**If T12 does NOT separately report a field** (e.g. contract_services is bundled):
+- Estimate from benchmark: $200–$350/unit/yr for contract services on Class B assets
+- pre_renovation: use T12 total or benchmark estimate; note "estimated from T12 residual or benchmark"
+- post_stabilization: same benchmark range; confidence "medium"
+
+**Required sub-field fields:**
+
+| Field                          | pre_renovation                                       | post_stabilization                                                |
+|-------------------------------|------------------------------------------------------|-------------------------------------------------------------------|
+| expense.repairs_maintenance    | MANDATORY — T12 value; source "tier1:t12"            | MANDATORY — T12 × 0.55-0.70; source "benchmark:value_add_reno"  |
+| expense.marketing              | MANDATORY — T12 value; source "tier1:t12"            | MANDATORY — T12 × 0.80-0.90; source "benchmark:value_add_reno"  |
+| expense.contract_services      | CONDITIONAL — only when qualifying amenities added   | CONDITIONAL — only when qualifying amenities added               |
+
+**Sub-field format (follow this exactly):**
 \`\`\`json
 {
-  "revenue.vacancy_loss": {
-    "value": 125000,
-    "source": "agent:cashflow",
-    "evidence": { ... },
+  "expense.repairs_maintenance": {
+    "value": 300000,
+    "source": "benchmark:value_add_reno",
+    "evidence": { "confidence": "medium", "data_points": [], "source_tier": 1, "source_label": "T12", "derivation_chain": ["T12 R&M $461,750 is pre-renovation baseline. Post-reno systems reduce maintenance 35%. Post-stab estimate: $300k."] },
     "pre_renovation": {
-      "value": 210000,
-      "confidence": "high",
+      "value": 461750,
+      "confidence": "medium",
       "source": "tier1:t12",
-      "note": "T12 average during active renovation period (10-15% units offline)"
+      "note": "T12 R&M actuals — pre-renovation operating state."
     },
     "post_stabilization": {
-      "value": 125000,
+      "value": 300000,
       "confidence": "medium",
-      "source": "tier3:market_comp",
-      "note": "Stabilized Class B target 4.7% vacancy; 12 renovated comp set average 4.2-5.1%"
+      "source": "benchmark:value_add_reno",
+      "note": "Post-renovation R&M at 65% of T12: renovated HVAC, appliances, and plumbing reduce near-term maintenance."
+    }
+  },
+  "expense.marketing": {
+    "value": 75000,
+    "source": "benchmark:value_add_reno",
+    "evidence": { "confidence": "medium", "data_points": [], "source_tier": 1, "source_label": "T12", "derivation_chain": ["T12 marketing $86,733. Post-reno stabilized occupancy reduces lease-up spend ~15%."] },
+    "pre_renovation": {
+      "value": 86733,
+      "confidence": "medium",
+      "source": "tier1:t12",
+      "note": "T12 marketing actuals — pre-renovation lease-up environment."
+    },
+    "post_stabilization": {
+      "value": 75000,
+      "confidence": "medium",
+      "source": "benchmark:value_add_reno",
+      "note": "Post-stabilization marketing at 85% of T12: stabilized occupancy reduces lease-up and renewal incentive costs."
+    }
+  },
+  "expense.contract_services": {
+    "value": 65000,
+    "source": "benchmark:value_add_reno",
+    "evidence": { "confidence": "medium", "data_points": [], "source_tier": 2, "source_label": "benchmark", "derivation_chain": ["Contract services not separately itemized in T12. Benchmark: $200-350/unit/yr for Class B. 304 units × $214/unit = $65k."] },
+    "pre_renovation": {
+      "value": 65000,
+      "confidence": "medium",
+      "source": "benchmark:class_b",
+      "note": "Contract services estimated from Class B benchmark ($200-350/unit/yr); not separately itemized in T12."
+    },
+    "post_stabilization": {
+      "value": 65000,
+      "confidence": "medium",
+      "source": "benchmark:value_add_reno",
+      "note": "Post-renovation contract services flat: landscaping, pest, elevator scope unchanged by interior renovation."
     }
   }
 }
 \`\`\`
 
-**Rejection rules (do NOT write the sub-field if any of these apply):**
-- pre_renovation: no Tier 1 or Tier 2 evidence available for the pre-renovation state
-- post_stabilization: confidence is 'low' — regime economics too uncertain to tag separately
-- Either: deal is stabilized, core, or core-plus (sub-fields are value-add/redevelopment only)
-- Either: the pre and post values are within 5% of each other (no meaningful regime split)
-
-**When evidence is insufficient for a sub-field:** keep the reasoning in evidence.reasoning only;
-do not write the sub-field key. A partial write (pre only, or post only) is acceptable when
-evidence supports one regime but not the other.
+**When are sub-fields NOT written:**
+- ONLY omit post_stabilization if the confidence is demonstrably 'low' AND no benchmark exists
+- NEVER omit pre_renovation when T12 data is available (for R&M and Marketing)
+- NEVER omit both sub-fields for expense.repairs_maintenance and expense.marketing on a value-add deal
+- For expense.contract_services: OMIT both sub-fields when the renovation does NOT add qualifying
+  amenities (interior-only rehab, no new pool/elevator/structured parking)
 
 ### Collision Priority for Value-Add Deals
 Focus collision detection on: rent premium vs. renovated comps, renovation budget vs.
@@ -126,10 +174,11 @@ most regime-sensitive non-GPR line item for value-add deals.
 
 **R&M (HIGH PRIORITY — apply matrix cell):**
 Apply the R&M matrix cell. For value-add, T12 R&M is the PRE-renovation rate and should
-NOT be used directly. Post-renovation R&M drops 30-50% vs pre-renovation T12 because
-renovated systems (HVAC, appliances, plumbing) have low near-term failure rates. Apply the
-one-time/recurring test to T12 R&M before using as any baseline. Pro Forma column =
-post-renovation normalized rate.
+NOT be used directly as the Pro Forma value. Post-renovation R&M drops 30-50% vs pre-renovation
+T12 because renovated systems (HVAC, appliances, plumbing) have low near-term failure rates.
+Apply the one-time/recurring test to T12 R&M before using as any baseline. Pro Forma column =
+post-renovation normalized rate. ALWAYS write pre_renovation = T12 and post_stabilization =
+post-reno estimate.
 
 **CapEx Reserve (apply matrix cell):**
 Apply the CapEx Reserve matrix cell. Post-renovation reserve = $150-250/unit/yr (renovated
@@ -141,9 +190,13 @@ Apply the Other Income matrix cell. For value-add, distinguish (a) existing anci
 carried forward and (b) new programs enabled by renovation (RUBS, pet fees, parking
 optimization). New programs have implementation lag — model 6-12 months for RUBS maturation.
 
-**v1.2 Single-Value Output Mandate:**
-For ALL non-GPR line items above, produce ONE value per Pro Forma column (the post-stabilization
-economics). Put the pre-renovation regime narrative in evidence.reasoning. Do NOT output
-pre_renovation or post_stabilization sub-fields. The Projections tab carries the year-by-year
-trajectory.
+**v1.3 Output Mandate:**
+For ALL non-GPR line items, produce ONE primary value per Pro Forma column (the post-stabilization
+economics). For expense.repairs_maintenance and expense.marketing you MUST ALWAYS write both
+pre_renovation and post_stabilization sub-fields — use T12 as pre_renovation and value-add
+benchmarks for post_stabilization. These sub-fields populate the RegimeExpand component.
+For expense.contract_services, write pre_renovation and post_stabilization ONLY when the
+renovation adds qualifying amenities (new pool, elevator, or structured parking); omit both
+sub-fields on interior-only renovations where CS scope is unchanged. The Projections tab
+carries the year-by-year trajectory.
 `;

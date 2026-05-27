@@ -47,7 +47,7 @@ const EVIDENCE_PROMPTS: Array<{
   {
     id: 'cashflow-v7.1-variant-value-add',
     promptType: 'variant:value-add',
-    version: '4.1.0',
+    version: '4.2.0',
     systemPrompt: CASHFLOW_VARIANT_VALUE_ADD,
   },
   {
@@ -65,7 +65,7 @@ const EVIDENCE_PROMPTS: Array<{
   {
     id: 'cashflow-v7.1-variant-redevelopment',
     promptType: 'variant:redevelopment',
-    version: '4.1.0',
+    version: '4.2.0',
     systemPrompt: CASHFLOW_VARIANT_REDEVELOPMENT,
   },
 ];

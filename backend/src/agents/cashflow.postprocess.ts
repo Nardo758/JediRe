@@ -759,6 +759,150 @@ export async function cashflowPostProcess(
           }
         }
 
+        // ── Sub-field synthesis fallback (value-add / redevelopment) ─────────
+        // When the LLM omits pre_renovation / post_stabilization sub-fields on
+        // the three mandatory expense lines, synthesize them from:
+        //   pre_renovation  → T12 actuals from fetch_data_matrix step payload
+        //   post_stabilization → LLM's main value (the post-reno estimate)
+        // Runs only for value_add / redevelopment deal types. Writes only when
+        // the sub-field is not already present in pfFieldsForWriteback (i.e. the
+        // LLM DID include it and the existing loop already wrote it).
+        {
+          let dealTypeForSynthesis: string | null = null;
+          try {
+            const dtRow = await query(
+              `SELECT deal_type FROM deals WHERE id = $1`,
+              [ctx.dealId]
+            );
+            dealTypeForSynthesis = (dtRow.rows[0]?.deal_type as string | null) ?? null;
+          } catch (_) { /* non-fatal */ }
+
+          const isValueAddish =
+            dealTypeForSynthesis === 'value_add' ||
+            dealTypeForSynthesis === 'value-add' ||
+            dealTypeForSynthesis === 'redevelopment';
+
+          if (isValueAddish) {
+            // Fetch T12 line items from the fetch_data_matrix tool result
+            let t12Expenses: Record<string, number> = {};
+            try {
+              const dmRow = await query(
+                `SELECT payload FROM agent_run_steps
+                 WHERE agent_run_id = $1
+                   AND step_type = 'tool_result'
+                   AND tool_name = 'fetch_data_matrix'
+                 LIMIT 1`,
+                [runId]
+              );
+              const dm = dmRow.rows[0]?.payload as Record<string, unknown> | null;
+              const extracted = (dm?.context as Record<string, unknown>)
+                ?.extractedData as Record<string, unknown> | undefined;
+              t12Expenses = (extracted?.t12 as Record<string, number> | null) ?? {};
+            } catch (_) { /* non-fatal — synthesis proceeds with no T12 line items */ }
+
+            // expense.contract_services is intentionally excluded from synthesis.
+            // CS sub-fields are only written when the LLM explicitly includes them —
+            // which happens only when renovation adds qualifying amenities (new pool,
+            // elevator, structured parking). There is no reliable server-side signal
+            // for amenity-scope changes; the LLM evaluates this from deal docs.
+            const SYNTHESIS_MAP: Array<{
+              agentKey: string;
+              year1Key: string;
+              t12Keys: string[];
+            }> = [
+              {
+                agentKey: 'expense.repairs_maintenance',
+                year1Key: 'repairs_maintenance',
+                t12Keys: ['repairsMaintenance', 'repairs_maintenance', 'repairs_and_maintenance', 'r_and_m'],
+              },
+              {
+                agentKey: 'expense.marketing',
+                year1Key: 'marketing',
+                t12Keys: ['marketing', 'marketingLeasing', 'marketing_leasing'],
+              },
+            ];
+
+            for (const { agentKey, year1Key, t12Keys } of SYNTHESIS_MAP) {
+              const field = pfFieldsForWriteback[agentKey] as Record<string, unknown> | undefined;
+              if (!field || typeof field !== 'object') continue;
+
+              const mainValue = typeof field.value === 'number' && isFinite(field.value as number)
+                ? (field.value as number)
+                : null;
+              if (mainValue === null) continue;
+
+              const alreadyHasPre  = field['pre_renovation'] != null;
+              const alreadyHasPost = field['post_stabilization'] != null;
+              if (alreadyHasPre && alreadyHasPost) continue;
+
+              // Resolve pre_renovation value — prefer T12 actuals; if unavailable
+              // and source is t12, the main value IS the T12 observation.
+              let preRenoValue: number | null = null;
+              if (!alreadyHasPre) {
+                for (const k of t12Keys) {
+                  const v = t12Expenses[k];
+                  if (typeof v === 'number' && isFinite(v) && v > 0) {
+                    preRenoValue = v;
+                    break;
+                  }
+                }
+                if (preRenoValue === null) {
+                  const src = String(field.source ?? '').toLowerCase();
+                  if (src === 't12' || src.includes('t12')) {
+                    preRenoValue = mainValue;
+                  }
+                }
+              }
+
+              // post_stabilization = the LLM's main value (that IS the post-reno
+              // estimate for value-add underwriting).
+              const postStabValue: number | null = alreadyHasPost ? null : mainValue;
+
+              for (const [subField, subVal, src] of [
+                ['pre_renovation',    preRenoValue,  'tier1:t12'],
+                ['post_stabilization', postStabValue, 'agent:cashflow'],
+              ] as const) {
+                if (subVal === null) continue;
+
+                const subKey  = `${year1Key}__${subField}`;
+                const subPayload = JSON.stringify({
+                  value:      subVal,
+                  confidence: 'medium',
+                  source:     src,
+                  note:       `Synthesized by postprocess (LLM omitted ${subField} — value-add fallback v1.3).`,
+                });
+
+                try {
+                  const res = await query(
+                    `UPDATE deal_underwriting_scenarios
+                     SET year1 = jsonb_set(COALESCE(year1, '{}'), ARRAY[$2::text], $3::jsonb, true),
+                         updated_at = NOW()
+                     WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
+                     RETURNING id`,
+                    [ctx.dealId, subKey, subPayload]
+                  );
+                  if ((res.rowCount ?? 0) === 0) {
+                    await query(
+                      `UPDATE deal_assumptions
+                       SET year1 = jsonb_set(COALESCE(year1, '{}'), ARRAY[$2::text], $3::jsonb, true)
+                       WHERE deal_id = $1`,
+                      [ctx.dealId, subKey, subPayload]
+                    );
+                  }
+                  logger.info('[CashflowPostProcess] Synthesized sub-field written (fallback)', {
+                    dealId: ctx.dealId, runId, subKey, value: subVal,
+                  });
+                } catch (synthWriteErr) {
+                  logger.warn('[CashflowPostProcess] Synthesized sub-field write failed (non-fatal)', {
+                    dealId: ctx.dealId, runId, subKey,
+                    err: synthWriteErr instanceof Error ? synthWriteErr.message : String(synthWriteErr),
+                  });
+                }
+              }
+            }
+          }
+        }
+
         // ── Derived fallbacks for high-priority badge fields ──────────────────
         // When the agent omits revenue.bad_debt, revenue.concessions, or
         // expense.turnover (all three appear in AGENT_FIELD_TO_YEAR1 but are

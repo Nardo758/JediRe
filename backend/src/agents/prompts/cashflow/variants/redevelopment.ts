@@ -109,10 +109,12 @@ Post-delivery lease-up concessions are structurally similar to development (4-8 
 for Class B, 1-2 months for Class A). Model concession burn-off as occupancy ramps.
 Apply the Concessions matrix cell.
 
-**v1.2 Single-Value Output Mandate:**
-For ALL non-GPR line items, produce ONE value per Pro Forma column (the post-delivery
-stabilized economics). The redevelopment-period and lease-up period dynamics are shown in
-the Projections tab year by year. The Pro Forma column is the stabilized state.
+**v1.3 Output Mandate:**
+For ALL non-GPR line items, produce ONE primary value per Pro Forma column (the post-delivery
+stabilized economics). For eligible regime-sensitive fields (see the Sub-Field Write Protocol
+table in the Line-Item Investigation Matrix), ALSO write pre_renovation and post_stabilization
+sub-fields when evidence thresholds are met — this populates the RegimeExpand component.
+The redevelopment-period and lease-up period dynamics are shown in the Projections tab year by year.
 Evidence reasoning must note which period (redevelopment, lease-up, stabilized) each value
 represents and why the Pro Forma value reflects the stabilized state.
 `;
