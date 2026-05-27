@@ -17,6 +17,12 @@ import { SourceDocPill } from '../../../components/f9/SourceDocPill';
 import type { SourceDocument } from '../../../hooks/useSourceDocuments';
 import { isPatternB } from '../../../config/m09_line_item_patterns';
 import { UnitMixMismatchBannerConnected } from './UnitMixMismatchBanner';
+import {
+  FLIP_BASIS_ROWS, FLIP_CAPEX_ROWS, FLIP_EXIT_ROWS,
+  STR_REVENUE_ROWS,
+  LAND_HOLD_EXIT_ROWS,
+  type TemplateRowDef,
+} from './proforma-template-row-sets';
 
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
@@ -77,6 +83,12 @@ interface DealFinancials {
   dealId: string;
   dealName: string;
   totalUnits: number;
+  /**
+   * Pro forma template ID derived server-side from investment_strategy_lv
+   * (or deal_type fallback). Drives template-aware row rendering in this tab.
+   * Null/absent → falls back to deal_type-based rendering (no regression).
+   */
+  proformaTemplateId?: string | null;
   proforma: {
     year1: OperatingStatementRow[];
     integrityChecks: IntegrityCheck[];
@@ -933,6 +945,26 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   // Deal type — drives pattern routing (A/B/C per m09_line_item_patterns.ts)
   const dealType: string = (deal?.['deal_type'] as string | null) ?? (deal?.['dealType'] as string | null) ?? 'existing';
 
+  // Template ID — drives template-aware row set rendering (Task #1236).
+  // Falls back gracefully: null/unrecognized → existing deal_type-based render.
+  const proformaTemplateId: string | null = data?.proformaTemplateId ?? null;
+  const isFlipTemplate     = proformaTemplateId === 'flip';
+  const isStrTemplate      = proformaTemplateId === 'str_shortterm';
+  const isLandHoldTemplate = proformaTemplateId === 'land_hold';
+  const isSpecialTemplate  = isFlipTemplate || isStrTemplate || isLandHoldTemplate;
+
+  // Template-aware OPEX row filtering — only carry-relevant rows for flip/land_hold (Task #1236)
+  const FLIP_CARRY_CTRL   = new Set<string>(['utilities']);
+  const FLIP_CARRY_NCTRL  = new Set<string>(['real_estate_tax', 'insurance']);
+  const LAND_HOLD_CTRL    = new Set<string>(['repairs_maintenance']);
+  const LAND_HOLD_NCTRL   = new Set<string>(['real_estate_tax', 'insurance']);
+  const templateCtrlRows  = isFlipTemplate    ? ctrlRows.filter(r => FLIP_CARRY_CTRL.has(r.field))
+                          : isLandHoldTemplate ? ctrlRows.filter(r => LAND_HOLD_CTRL.has(r.field))
+                          : ctrlRows;
+  const templateNctrlRows = isFlipTemplate    ? nctrlRows.filter(r => FLIP_CARRY_NCTRL.has(r.field))
+                          : isLandHoldTemplate ? nctrlRows.filter(r => LAND_HOLD_NCTRL.has(r.field))
+                          : nctrlRows;
+
   const egiRow       = byField['egi'];
   const totalOpexRow = byField['total_opex'];
   const aggSlot = (rs: OperatingStatementRow[], key: keyof OperatingStatementRow) =>
@@ -955,6 +987,25 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
     t1:       aggSlot(nctrlRows, 't1'),
     platform: aggSlot(nctrlRows, 'platform'),
   };
+  // Template-specific subtotals — computed over the filtered carry rows (Task #1236)
+  const tplCtrlSubtotal  = isSpecialTemplate ? {
+    resolved: templateCtrlRows.reduce((s, r) => s + (r.resolved ?? 0), 0),
+    broker:   aggSlot(templateCtrlRows, 'broker'),
+    t12:      aggSlot(templateCtrlRows, 't12'),
+    t6:       aggSlot(templateCtrlRows, 't6'),
+    t3:       aggSlot(templateCtrlRows, 't3'),
+    t1:       aggSlot(templateCtrlRows, 't1'),
+    platform: aggSlot(templateCtrlRows, 'platform'),
+  } : ctrlSubtotalRow;
+  const tplNctrlSubtotal = isSpecialTemplate ? {
+    resolved: templateNctrlRows.reduce((s, r) => s + (r.resolved ?? 0), 0),
+    broker:   aggSlot(templateNctrlRows, 'broker'),
+    t12:      aggSlot(templateNctrlRows, 't12'),
+    t6:       aggSlot(templateNctrlRows, 't6'),
+    t3:       aggSlot(templateNctrlRows, 't3'),
+    t1:       aggSlot(templateNctrlRows, 't1'),
+    platform: aggSlot(templateNctrlRows, 'platform'),
+  } : nctrlSubtotalRow;
 
   const egiResolved = egiRow?.resolved ?? null;
 
@@ -1019,6 +1070,22 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
           <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: '#f8fafc', background: '#27272a', padding: '2px 6px', borderRadius: 2, letterSpacing: 1 }}>
             AS-IS · BROKER LAYER
           </span>
+          {/* Template badge — only shown for non-standard templates */}
+          {isFlipTemplate && (
+            <span title="Flip template: acquisition basis + renovation + carrying costs + resale exit" style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#f97316', background: '#1c0a00', border: '1px solid #f9731644', padding: '2px 6px', borderRadius: 2, letterSpacing: '0.06em' }}>
+              FLIP
+            </span>
+          )}
+          {isStrTemplate && (
+            <span title="Short-Term Rental template: ADR / RevPAR / occupancy revenue model" style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#a78bfa', background: '#0d0a1c', border: '1px solid #a78bfa44', padding: '2px 6px', borderRadius: 2, letterSpacing: '0.06em' }}>
+              STR
+            </span>
+          )}
+          {isLandHoldTemplate && (
+            <span title="Land Hold template: no rental income — land carry + disposition only" style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#84cc16', background: '#0a1400', border: '1px solid #84cc1644', padding: '2px 6px', borderRadius: 2, letterSpacing: '0.06em' }}>
+              LAND HOLD
+            </span>
+          )}
           <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, color: '#f8fafc' }}>{data.dealName}</span>
           {totalUnits > 0 && (
             <span style={{ fontFamily: LABEL, fontSize: 9, color: '#64748b' }}>{totalUnits} Units</span>
@@ -1319,7 +1386,139 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             </tr>
           </thead>
           <tbody>
-            {/* ── REVENUE ── */}
+            {/* ── TEMPLATE NOTICE (flip / land_hold) — replaces Revenue section ── */}
+            {isFlipTemplate && (
+              <>
+                {/* Acquisition Basis — blueprint: flip.sections.basis[purchasePrice, closingCosts] */}
+                <SectionHeader label="Acquisition Basis" accentColor="#f97316" bg="#1c0a00" />
+                {(FLIP_BASIS_ROWS as TemplateRowDef[]).map(({ field, label, hint }) => {
+                  const row = byField[field];
+                  if (row) {
+                    return (
+                      <DataRow key={field} row={row} isEven={false} shade="warm"
+                        corrections={corrections} setCorrections={setCorrections}
+                        totalUnits={totalUnits} egiResolved={egiResolved}
+                        activePeriod={activePeriod}
+                        onSaveCorrection={handleSaveCorrection}
+                        onResetCorrection={handleResetCorrection}
+                        evidenceResolved={resolveEvidence(field, evidenceFieldMap)}
+                        sigmaTier={null} dqaAlerts={dqaByRow[field]}
+                        onDqaClick={setDqaDrawer}
+                        sourceDoc={byDocType[mapSourceToDocType(row.source) ?? ''] ?? null}
+                      />
+                    );
+                  }
+                  return (
+                    <tr key={field} style={{ background: '#0f0600', borderBottom: '1px solid #1f1200' }}>
+                      <td style={{ padding: '3px 8px', fontSize: 9, color: '#5a3a10', fontFamily: MONO, position: 'sticky', left: 0, background: '#0f0600' }}>
+                        {label}
+                        <span style={{ marginLeft: 6, fontSize: 7, color: '#3d2a00', background: '#1a1000', border: '1px solid #2a1800', borderRadius: 2, padding: '1px 4px', fontFamily: MONO }}>NOT SET · {hint ?? 'Enter in Deal Terms'}</span>
+                      </td>
+                      {Array.from({ length: tableColCount - 1 }, (_, i) => (
+                        <td key={i} style={{ padding: '3px 8px', textAlign: 'right', color: '#1f1200', fontSize: 9 }}>—</td>
+                      ))}
+                    </tr>
+                  );
+                })}
+                {/* Renovation Budget — blueprint: flip.sections.capex[hardCosts, softCosts, contingency, renovationTimelineMonths] */}
+                <SectionHeader label="Renovation Budget" accentColor="#f97316" bg="#1c0a00" />
+                <tr style={{ background: '#120800' }}>
+                  <td colSpan={tableColCount} style={{ padding: '5px 12px 5px 16px', borderLeft: '3px solid #f97316', borderBottom: '1px solid #1f1200' }}>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: '#7a4a1a', lineHeight: 1.5 }}>
+                      FLIP — no rental income. Cost stack: renovation budget + carrying costs. Returns driven by resale exit — enter budget in Deal Terms.
+                    </div>
+                  </td>
+                </tr>
+                {(FLIP_CAPEX_ROWS as TemplateRowDef[]).map(({ field, label, hint }) => {
+                  const row = byField[field];
+                  if (row) {
+                    return (
+                      <DataRow key={field} row={row} isEven={false} shade="warm"
+                        corrections={corrections} setCorrections={setCorrections}
+                        totalUnits={totalUnits} egiResolved={egiResolved}
+                        activePeriod={activePeriod}
+                        onSaveCorrection={handleSaveCorrection}
+                        onResetCorrection={handleResetCorrection}
+                        evidenceResolved={resolveEvidence(field, evidenceFieldMap)}
+                        sigmaTier={null} dqaAlerts={dqaByRow[field]}
+                        onDqaClick={setDqaDrawer}
+                        sourceDoc={byDocType[mapSourceToDocType(row.source) ?? ''] ?? null}
+                      />
+                    );
+                  }
+                  return (
+                    <tr key={field} style={{ background: '#0f0600', borderBottom: '1px solid #1f1200' }}>
+                      <td style={{ padding: '3px 8px', fontSize: 9, color: '#5a3a10', fontFamily: MONO, position: 'sticky', left: 0, background: '#0f0600' }}>
+                        {label}
+                        <span style={{ marginLeft: 6, fontSize: 7, color: '#3d2a00', background: '#1a1000', border: '1px solid #2a1800', borderRadius: 2, padding: '1px 4px', fontFamily: MONO }}>NOT SET · {hint ?? 'Enter in Deal Terms'}</span>
+                      </td>
+                      {Array.from({ length: tableColCount - 1 }, (_, i) => (
+                        <td key={i} style={{ padding: '3px 8px', textAlign: 'right', color: '#1f1200', fontSize: 9 }}>—</td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </>
+            )}
+            {isLandHoldTemplate && (
+              <>
+                <SectionHeader label="Land Hold — No Rental Income" accentColor="#84cc16" bg="#0a1400" />
+                <tr style={{ background: '#070d00' }}>
+                  <td colSpan={tableColCount} style={{ padding: '8px 12px 8px 16px', borderLeft: '3px solid #84cc16', borderBottom: '1px solid #0e1f00' }}>
+                    <div style={{ fontFamily: MONO, fontSize: 9, color: '#84cc16', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 4 }}>
+                      LAND HOLD TEMPLATE — NO INCOME SECTION
+                    </div>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: '#3a5a0a', lineHeight: 1.5 }}>
+                      Land hold deals generate no rental income. GPR, vacancy, EGI, and income rows are hidden.
+                      Expenses below represent annual holding costs (property tax, insurance, debt service).
+                      Returns are driven by land appreciation at exit — enter exit price in Deal Terms.
+                    </div>
+                  </td>
+                </tr>
+              </>
+            )}
+
+            {/* ── STR REVENUE — template-specific rows (ADR / RevPAR / occupancy) ── */}
+            {isStrTemplate && (
+            <>
+              <SectionHeader label="STR Revenue" accentColor="#a78bfa" bg="#0a051c" />
+              {/* STR Revenue rows — blueprint: str_shortterm.sections.revenue[adr, occupancyRate, revPar, cleaningFees, platformFees] */}
+              {(STR_REVENUE_ROWS as TemplateRowDef[]).map(({ field, label, hint }) => {
+                const row = byField[field];
+                if (row) {
+                  return (
+                    <DataRow key={field} row={row} isEven={false} shade="blue"
+                      corrections={corrections} setCorrections={setCorrections}
+                      totalUnits={totalUnits} egiResolved={egiResolved}
+                      activePeriod={activePeriod}
+                      onSaveCorrection={handleSaveCorrection}
+                      onResetCorrection={handleResetCorrection}
+                      evidenceResolved={resolveEvidence(field, evidenceFieldMap)}
+                      sigmaTier={null} dqaAlerts={dqaByRow[field]}
+                      onDqaClick={setDqaDrawer}
+                      sourceDoc={byDocType[mapSourceToDocType(row.source) ?? ''] ?? null}
+                    />
+                  );
+                }
+                return (
+                  <tr key={field} style={{ background: '#080416', borderBottom: '1px solid #14103a' }}>
+                    <td style={{ padding: '3px 8px', fontSize: 9, color: '#4a3a7a', fontFamily: MONO, position: 'sticky', left: 0, background: '#080416' }}>
+                      {label}
+                      <span style={{ marginLeft: 6, fontSize: 7, color: '#2a1a5a', background: '#0a0520', border: '1px solid #1a1040', borderRadius: 2, padding: '1px 4px', fontFamily: MONO }}>NOT SET · {hint ?? 'Enter in Deal Terms'}</span>
+                    </td>
+                    {Array.from({ length: tableColCount - 1 }, (_, i) => (
+                      <td key={i} style={{ padding: '3px 8px', textAlign: 'right', color: '#14103a', fontSize: 9 }}>—</td>
+                    ))}
+                  </tr>
+                );
+              })}
+              {egiRow && <SubtotalRow label="EGI" row={egiRow} color="#0f172a" textColor="#22c55e" egiResolved={egiResolved} fullFormat activePeriod={activePeriod} />}
+            </>
+            )}
+
+            {/* ── REVENUE — standard multifamily layout (hidden for flip / land_hold / str_shortterm) ── */}
+            {!isFlipTemplate && !isLandHoldTemplate && !isStrTemplate && (
+            <>
             <SectionHeader label="Revenue" accentColor="#06b6d4" bg="#051a24" />
 
             {/* GPR — Pattern A: floor-plan grid expand */}
@@ -1700,10 +1899,18 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
             {/* ── EGI SUBTOTAL ── */}
             {egiRow && <SubtotalRow label="EGI" row={egiRow} color="#0f172a" textColor="#22c55e" egiResolved={egiResolved} fullFormat activePeriod={activePeriod} />}
+            </>
+            )}
+            {/* END Revenue section conditional */}
 
-            {/* ── CONTROLLABLE EXPENSES ── */}
-            <SectionHeader label="Controllable Expenses" accentColor="#f59e0b" bg="#1a110a" cols={viewMode === 'BROKER_VIEW' ? 7 : 9} />
-            {ctrlRows.map((r, i) => {
+            {/* ── CONTROLLABLE EXPENSES / HOLDING COSTS ── */}
+            <SectionHeader
+              label={isFlipTemplate ? 'Holding Costs' : isLandHoldTemplate ? 'Annual Holding Costs' : 'Controllable Expenses'}
+              accentColor={isSpecialTemplate ? '#f97316' : '#f59e0b'}
+              bg={isSpecialTemplate ? '#1a0c00' : '#1a110a'}
+              cols={viewMode === 'BROKER_VIEW' ? 7 : 9}
+            />
+            {templateCtrlRows.map((r, i) => {
               const showPatternB = isPatternB(r.field, dealType);
               const bOpen = !!regimeExpandOpen[r.field];
               return (
@@ -1782,22 +1989,29 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               );
             })}
             <tr style={{ background: '#1a110a' }}>
-              <td style={{ padding: '4px 8px', color: '#fb923c', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#1a110a' }}>─── CONTROLLABLE OPEX ───</td>
-              <td style={{ padding: '4px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#fb923c', fontSize: 9 }}>{fmtFull$(ctrlSubtotalRow.broker)}</td>
-              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(pickY1ColValue(ctrlSubtotalRow as unknown as OperatingStatementRow, activePeriod))}</td>}
-              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtFull$(ctrlSubtotalRow.platform)}</td>}
+              <td style={{ padding: '4px 8px', color: '#fb923c', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#1a110a' }}>
+                {isFlipTemplate ? '─── CARRY COSTS ───' : isLandHoldTemplate ? '─── HOLDING COSTS ───' : '─── CONTROLLABLE OPEX ───'}
+              </td>
+              <td style={{ padding: '4px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#fb923c', fontSize: 9 }}>{fmtFull$(tplCtrlSubtotal.broker)}</td>
+              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(pickY1ColValue(tplCtrlSubtotal as unknown as OperatingStatementRow, activePeriod))}</td>}
+              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtFull$(tplCtrlSubtotal.platform)}</td>}
               <td style={{ padding: '4px 8px', textAlign: 'right', color: '#fb923c', fontWeight: 700, background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : 'rgba(0,0,0,0.3)' }}>
-                {fmtFull$(ctrlSubtotalRow.resolved || null)}
+                {fmtFull$(tplCtrlSubtotal.resolved || null)}
               </td>
               <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
-                {egiResolved && ctrlSubtotalRow.resolved ? `${((ctrlSubtotalRow.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
+                {egiResolved && tplCtrlSubtotal.resolved ? `${((tplCtrlSubtotal.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
               </td>
               <td colSpan={3} />
             </tr>
 
-            {/* ── NON-CONTROLLABLE EXPENSES ── */}
-            <SectionHeader label="Non-Controllable Expenses" accentColor="#a855f7" bg="#0d0a14" cols={viewMode === 'BROKER_VIEW' ? 7 : 9} />
-            {nctrlRows.map((r, i) => (
+            {/* ── NON-CONTROLLABLE EXPENSES / FIXED CARRY COSTS ── */}
+            <SectionHeader
+              label={isFlipTemplate ? 'Fixed Carry Costs' : isLandHoldTemplate ? 'Fixed Carry Costs' : 'Non-Controllable Expenses'}
+              accentColor={isSpecialTemplate ? '#84cc16' : '#a855f7'}
+              bg={isSpecialTemplate ? '#0a1400' : '#0d0a14'}
+              cols={viewMode === 'BROKER_VIEW' ? 7 : 9}
+            />
+            {templateNctrlRows.map((r, i) => (
               <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="purple"
                 corrections={corrections} setCorrections={setCorrections}
                 totalUnits={totalUnits} egiResolved={egiResolved}
@@ -1813,21 +2027,23 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 sourceDoc={byDocType[mapSourceToDocType(r.source) ?? ''] ?? null} />
             ))}
             <tr style={{ background: '#0d0a14' }}>
-              <td style={{ padding: '4px 8px', color: '#c084fc', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#0d0a14' }}>─── NON-CONTROLLABLE OPEX ───</td>
-              <td style={{ padding: '4px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#c084fc', fontSize: 9 }}>{fmtFull$(nctrlSubtotalRow.broker)}</td>
-              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(pickY1ColValue(nctrlSubtotalRow as unknown as OperatingStatementRow, activePeriod))}</td>}
-              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtFull$(nctrlSubtotalRow.platform)}</td>}
+              <td style={{ padding: '4px 8px', color: '#c084fc', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#0d0a14' }}>
+                {isSpecialTemplate ? '─── FIXED CARRY COSTS ───' : '─── NON-CONTROLLABLE OPEX ───'}
+              </td>
+              <td style={{ padding: '4px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#c084fc', fontSize: 9 }}>{fmtFull$(tplNctrlSubtotal.broker)}</td>
+              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtFull$(pickY1ColValue(tplNctrlSubtotal as unknown as OperatingStatementRow, activePeriod))}</td>}
+              {viewMode !== 'BROKER_VIEW' && <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtFull$(tplNctrlSubtotal.platform)}</td>}
               <td style={{ padding: '4px 8px', textAlign: 'right', color: '#c084fc', fontWeight: 700, background: viewMode === 'BROKER_VIEW' ? '#1c0f00' : 'rgba(0,0,0,0.3)' }}>
-                {fmtFull$(nctrlSubtotalRow.resolved || null)}
+                {fmtFull$(tplNctrlSubtotal.resolved || null)}
               </td>
               <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
-                {egiResolved && nctrlSubtotalRow.resolved ? `${((nctrlSubtotalRow.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
+                {egiResolved && tplNctrlSubtotal.resolved ? `${((tplNctrlSubtotal.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
               </td>
               <td colSpan={3} />
             </tr>
 
             {/* ── TOTAL OPEX ── */}
-            {totalOpexRow && (
+            {totalOpexRow && !isSpecialTemplate && (
               <tr style={{ background: '#1e1b4b', borderTop: '1px solid #312e81', borderBottom: '1px solid #312e81' }}>
                 <td style={{ padding: '5px 8px', fontWeight: 700, color: '#e2e8f0', fontFamily: LABEL, fontSize: 9, position: 'sticky', left: 0, background: '#1e1b4b' }}>═══ TOTAL OPEX ═══</td>
                 <td style={{ padding: '5px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#c4b5fd', fontSize: 9, fontWeight: viewMode === 'BROKER_VIEW' ? 700 : 400 }}>
@@ -1852,8 +2068,82 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               </tr>
             )}
 
-            {/* ── NOI ── */}
-            {noiRow && (
+            {/* ── FLIP: RESALE EXIT ─────────────────────────────────────── */}
+            {isFlipTemplate && (
+              <>
+                <SectionHeader label="Resale Exit" accentColor="#f97316" bg="#1c0a00" />
+                {/* Resale Exit rows — blueprint: flip.sections.exit[exitPrice, sellingCosts, netSaleProceeds, profitMargin, monthsHeld] */}
+                {(FLIP_EXIT_ROWS as TemplateRowDef[]).map(({ field, label, hint }) => {
+                  const row = byField[field];
+                  if (row) {
+                    return (
+                      <DataRow key={field} row={row} isEven={false} shade="warm"
+                        corrections={corrections} setCorrections={setCorrections}
+                        totalUnits={totalUnits} egiResolved={egiResolved}
+                        activePeriod={activePeriod}
+                        onSaveCorrection={handleSaveCorrection}
+                        onResetCorrection={handleResetCorrection}
+                        evidenceResolved={resolveEvidence(field, evidenceFieldMap)}
+                        sigmaTier={null} dqaAlerts={dqaByRow[field]}
+                        onDqaClick={setDqaDrawer}
+                        sourceDoc={byDocType[mapSourceToDocType(row.source) ?? ''] ?? null}
+                      />
+                    );
+                  }
+                  return (
+                    <tr key={field} style={{ background: '#0f0600', borderBottom: '1px solid #1f1200' }}>
+                      <td style={{ padding: '3px 8px', fontSize: 9, color: '#5a3a10', fontFamily: MONO, position: 'sticky', left: 0, background: '#0f0600' }}>
+                        {label}
+                        <span style={{ marginLeft: 6, fontSize: 7, color: '#3d2a00', background: '#1a1000', border: '1px solid #2a1800', borderRadius: 2, padding: '1px 4px', fontFamily: MONO }}>NOT SET · {hint ?? 'Enter in Deal Terms'}</span>
+                      </td>
+                      {Array.from({ length: tableColCount - 1 }, (_, i) => (
+                        <td key={i} style={{ padding: '3px 8px', textAlign: 'right', color: '#1f1200', fontSize: 9 }}>—</td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </>
+            )}
+
+            {/* ── LAND HOLD: DISPOSITION ────────────────────────────────── */}
+            {isLandHoldTemplate && (
+              <>
+                <SectionHeader label="Disposition" accentColor="#84cc16" bg="#0a1400" />
+                {/* Disposition rows — blueprint: land_hold.sections.exit[exitPrice, sellingCosts, netSaleProceeds, profitMargin] */}
+                {(LAND_HOLD_EXIT_ROWS as TemplateRowDef[]).map(({ field, label, hint }) => {
+                  const row = byField[field];
+                  if (row) {
+                    return (
+                      <DataRow key={field} row={row} isEven={false} shade="warm"
+                        corrections={corrections} setCorrections={setCorrections}
+                        totalUnits={totalUnits} egiResolved={egiResolved}
+                        activePeriod={activePeriod}
+                        onSaveCorrection={handleSaveCorrection}
+                        onResetCorrection={handleResetCorrection}
+                        evidenceResolved={resolveEvidence(field, evidenceFieldMap)}
+                        sigmaTier={null} dqaAlerts={dqaByRow[field]}
+                        onDqaClick={setDqaDrawer}
+                        sourceDoc={byDocType[mapSourceToDocType(row.source) ?? ''] ?? null}
+                      />
+                    );
+                  }
+                  return (
+                    <tr key={field} style={{ background: '#070d00', borderBottom: '1px solid #0e1f00' }}>
+                      <td style={{ padding: '3px 8px', fontSize: 9, color: '#3a5a0a', fontFamily: MONO, position: 'sticky', left: 0, background: '#070d00' }}>
+                        {label}
+                        <span style={{ marginLeft: 6, fontSize: 7, color: '#1e3800', background: '#0a1400', border: '1px solid #1a2800', borderRadius: 2, padding: '1px 4px', fontFamily: MONO }}>NOT SET · {hint ?? 'Enter in Deal Terms'}</span>
+                      </td>
+                      {Array.from({ length: tableColCount - 1 }, (_, i) => (
+                        <td key={i} style={{ padding: '3px 8px', textAlign: 'right', color: '#0e1f00', fontSize: 9 }}>—</td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </>
+            )}
+
+            {/* ── NOI (rental income templates only — suppressed for flip / land_hold) ── */}
+            {noiRow && !isFlipTemplate && !isLandHoldTemplate && (
               <tr style={{ background: '#042304', borderTop: '2px solid #166534', borderBottom: '2px solid #166534' }}>
                 <td style={{ padding: '7px 8px', fontWeight: 700, color: '#f8fafc', fontFamily: LABEL, letterSpacing: 1, position: 'sticky', left: 0, background: '#042304' }}>
                   ═══ NET OPERATING INCOME ═══
@@ -1889,7 +2179,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             )}
 
             {/* ── REPLACEMENT RESERVES (below-the-line) ─────────────────────── */}
-            {reservesRow && (
+            {reservesRow && !isFlipTemplate && !isLandHoldTemplate && (
               <tr style={{ background: '#0a0e14', borderTop: '1px solid #1e2a3a' }}>
                 <td style={{ padding: '4px 8px 4px 20px', fontSize: 9, color: '#94a3b8', fontFamily: MONO, position: 'sticky', left: 0, background: '#0a0e14' }}>
                   <span style={{ color: '#475569', marginRight: 5 }}>−</span>Replacement Reserves
@@ -2041,7 +2331,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             )}
 
             {/* ── NOI AFTER RESERVES ────────────────────────────────────────── */}
-            {noiAfterReserves != null && (
+            {noiAfterReserves != null && !isFlipTemplate && !isLandHoldTemplate && (
               <tr style={{ background: '#031a1a', borderTop: '1px solid #0e4040', borderBottom: '2px solid #0e4040' }}>
                 <td style={{ padding: '6px 8px', fontWeight: 700, color: '#67e8f9', fontFamily: LABEL, fontSize: 9, letterSpacing: '0.05em', position: 'sticky', left: 0, background: '#031a1a' }}>
                   ═══ NOI AFTER RESERVES ═══

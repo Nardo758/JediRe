@@ -23,6 +23,7 @@ import { buildTaxContext } from './tax/compositeResolver';
 import { composeOtherIncomeBreakdown, loadTrailingActualsMap } from './financials-composer.service';
 import { projectProforma, type ProjectionYearResult } from './proforma/proforma-projection.service';
 import { provenanced } from '../types/provenanced-value';
+import { pickTemplateForStrategy, defaultTemplateForDealType } from './proforma/blueprint/index';
 
 // ============================================================================
 // Types
@@ -1961,6 +1962,14 @@ export interface DealFinancials {
   capitalStructureDefaults: Record<string, unknown> | null;
   /** Agent-generated capital structure optimization result from optimize_capital_structure tool */
   capitalStructureOptimization: Record<string, unknown> | null;
+  /**
+   * Template ID derived from investment_strategy_lv.resolved → pickTemplateForStrategy(),
+   * falling back to defaultTemplateForDealType(deal_type). Drives template-specific row-set
+   * rendering in ProFormaSummaryTab (flip / str_shortterm / land_hold). Null when no
+   * investment strategy is set and deal_type has no default template mapping.
+   * (Task #1236)
+   */
+  proformaTemplateId: string | null;
 }
 
 /**
@@ -2130,7 +2139,7 @@ export async function getDealFinancials(
 
   const [dealRes, assumptionsRes, proformaAssumRes, trafficProjection] = await Promise.all([
     pool.query(
-      'SELECT id, name, city, state_code, target_units, budget, deal_data, operator_stance, timeline_start FROM deals WHERE id = $1',
+      'SELECT id, name, city, state_code, target_units, budget, deal_data, operator_stance, timeline_start, deal_type FROM deals WHERE id = $1',
       [dealId]
     ),
     pool.query(
@@ -3109,6 +3118,14 @@ export async function getDealFinancials(
     override:  investmentStrategyRaw?.override  ?? null,
     resolved:  investmentStrategyRaw?.override  ?? investmentStrategyRaw?.detected?.value ?? null,
   };
+
+  // Derive the pro forma template ID from the investment strategy, falling back
+  // to the deal_type column when no strategy is set. This is threaded to the
+  // frontend renderer so it can apply template-aware row sets (Task #1236).
+  const _strategyForTemplate = (investmentStrategyLv.resolved ?? '').toLowerCase().replace(/[\s-]+/g, '_');
+  const proformaTemplateId = _strategyForTemplate
+    ? pickTemplateForStrategy(_strategyForTemplate)
+    : defaultTemplateForDealType((deal.deal_type ?? 'existing') as 'existing' | 'development' | 'redevelopment');
 
   const assumptions = {
     holdYears,
@@ -4711,6 +4728,7 @@ export async function getDealFinancials(
     dealId,
     dealName: deal.name,
     totalUnits,
+    proformaTemplateId,
     proforma: { year1: year1Rows, integrityChecks: checks, unitEconomics, valuationSnapshot },
     capitalStack: capitalStackWithOverrides,
     rentRollSummary,
