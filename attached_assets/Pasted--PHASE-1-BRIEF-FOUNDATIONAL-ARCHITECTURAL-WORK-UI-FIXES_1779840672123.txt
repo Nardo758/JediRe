@@ -1,0 +1,138 @@
+# PHASE 1 BRIEF — FOUNDATIONAL ARCHITECTURAL WORK + UI FIXES
+
+**Date:** 2026-05-26
+**Purpose:** Scope brief for task mapping. No timeline specified — 
+produce bottom-up estimate against scope.
+
+═══════════════════════════════════════════════════════════════════
+CONTEXT
+═══════════════════════════════════════════════════════════════════
+
+Phase 1 is aggressively-scoped foundational work that must land 
+before Phase 2 derivation logic begins.
+
+Strategic anchor: JEDI RE is a leading-indicator CRE intelligence 
+platform with proprietary apartment-seeker AI signal as the moat. 
+Two-layer architecture committed: Layer 1 (deterministic 
+calculations) + Layer 2 (LLM-reasoned assumptions).
+
+Multi-model architecture committed: deal creation routes by 
+property type to property-type-specific models. Phase 1 scopes 
+to multifamily-existing first.
+
+═══════════════════════════════════════════════════════════════════
+ARCHITECTURAL DECISIONS COMMITTED (DO NOT RE-LITIGATE)
+═══════════════════════════════════════════════════════════════════
+
+- Two-layer architecture: Calculations + Assumptions (CLAUDE.md P7)
+- LLM reasons, deterministic functions calculate
+- Verify before queueing (CLAUDE.md P8)
+- Multi-model per property type; multifamily-existing first
+- Strategy ↔ deal_type to be reconciled (A1 leaning, pending 
+  investigation confirms)
+- Single-Value Mandate to be lifted (B1) with guardrails
+- STR/Flip/Land Hold deferred; "not yet supported" notice in interim
+- Strategy Module UX: hybrid C — Strategy Intelligence Summary 
+  block at top + primary evidence shows thesis + headline + risks 
+  (analyst depth in "FULL DETAIL" secondary collapse)
+- Apply pattern: persistent (DB-backed) with conflict detection 
+  (warn+allow with force flag)
+
+═══════════════════════════════════════════════════════════════════
+DERIVED OPEN QUESTION RESOLUTIONS (LOCKED)
+═══════════════════════════════════════════════════════════════════
+
+OQ-APPLY-3 (ENTRY apply fields): Push priceCeiling + 
+  targetHoldMonths to F9. Annotations (targetQuarter, debtStructure) 
+  stored in deal_data JSONB.
+
+OQ-APPLY-4 (conflict UX): warn+allow with force flag.
+
+OQ-APPLY-5 (button label): "PUSH TO F9 →"
+
+OQ-UX-1 (analysis vs recommendation-first): Hybrid C — Summary 
+  block first; primary evidence visible (thesis + headline + risks); 
+  analyst content collapses inside primary.
+
+OQ-UX-2 (Summary block placement): Top of M08 v2 ANALYSIS tab. 
+  Sticky bonus, not required. F9 header integration deferred.
+
+OQ-UX-3 (evidence default state): Primary expanded (thesis + 
+  Expected Return + key drivers + top risks). Analyst depth in 
+  secondary "FULL DETAIL" collapse. Alternates collapsed.
+
+OQ-UX-4 (Signal Heatmap location): Below evidence blocks.
+
+OQ-UX-5 (sub-tab sharding): Keep 3 tabs. Sub-tab relabeling: 
+  "M08 v2 ANALYSIS" → "STRATEGY ANALYSIS"; "SIGNAL MATRIX" → 
+  "MARKET SIGNALS".
+
+OQ-UX-6 (apply button treatment): Standard "PUSH TO F9 →" pattern, 
+  amber-tinted, with conflict resolution UI per OQ-APPLY-4.
+
+═══════════════════════════════════════════════════════════════════
+SCOPE — 9 TRACKS
+═══════════════════════════════════════════════════════════════════
+
+[Full Track 1-9 content from PHASE_1_TASK_MAP.md above]
+
+═══════════════════════════════════════════════════════════════════
+EXPLICITLY OUT OF SCOPE FOR PHASE 1
+═══════════════════════════════════════════════════════════════════
+
+- C1: STR/Flip/Land Hold full UI (deferred; T1.3 handles interim 
+  notice)
+- D: Strategy Module redesign beyond Hybrid C (Phase 2)
+- Phase 2 derivation logic (multifamily-existing × per-assumption 
+  derivation)
+- KPI-fast endpoint / auto-compute proforma
+- Traffic Engine + events full integration
+- Agent fills F9 → Purchase Price (depends on Phase 2)
+- Other property type models (SFR, mixed-use, office, retail, 
+  industrial)
+- Dataset persistence (OppGrid amenity demand, growth indices)
+- Gmail OAuth implementation
+- Supply/demand 7-dispatch sequence
+- Strategy Module cache scalability (T7.5)
+- F9 Deal Summary cross-module strategy headline integration
+
+═══════════════════════════════════════════════════════════════════
+SUCCESS CRITERIA — 13 CRITERIA
+═══════════════════════════════════════════════════════════════════
+
+[Full criteria list from PHASE_1_TASK_MAP.md above]
+
+═══════════════════════════════════════════════════════════════════
+INSTRUCTION TO REPLIT
+═══════════════════════════════════════════════════════════════════
+
+Map all tracks into discrete tasks. For each task:
+- Estimate effort (sessions or days)
+- Identify dependencies on other tasks
+- Note any open questions that must be resolved before the task 
+  can begin
+- Identify any task that may surface architectural surprises 
+  requiring rework
+
+Produce a bottom-up timeline estimate. Do not compress to fit 
+external timeline pressure — produce the realistic estimate the 
+work actually requires.
+
+After producing the task map, identify the critical path and 
+highlight any tasks that block multiple downstream items.
+
+Pay special attention to:
+- T2.4 (Strategy canonical migration) is the critical path — 
+  multiple downstream tracks depend on it
+- T4.2.a (Validation implied cap math) is blocked on market rent 
+  source resolution — surface this as a stall risk
+- Apply pattern (Track 6) is net-new infrastructure, not a 
+  refactor — scope accordingly
+
+DO NOT
+- Compress estimates artificially
+- Skip dependency analysis
+- Treat verification dispatches as optional — they are required 
+  per CLAUDE.md P8
+- Re-litigate the architectural decisions listed above
+- "While I'm here" scope additions

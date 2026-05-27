@@ -1,0 +1,86 @@
+# TOMORROW MORNING — FIRING ORDER
+
+Three dispatches fire immediately in parallel. They have no 
+dependencies on each other.
+
+═══════════════════════════════════════════════════════════════════
+WAVE 1 (immediate, parallel)
+═══════════════════════════════════════════════════════════════════
+
+1. T1.1 CLAUDE.md P8 amendment
+2. T1.2 Verification of STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md
+3. T1.3 STR/Flip/Land Hold "not yet supported" notice
+
+(All three drafts already exist from tonight's work.)
+
+═══════════════════════════════════════════════════════════════════
+WAVE 2 (after T1.2 verification APPROVED)
+═══════════════════════════════════════════════════════════════════
+
+4. T2.1 A1 vs A2 investigation (draft already exists)
+
+Wait for T1.2 verdict before firing this. If verdict is APPROVED, 
+fire immediately. If NEEDS AMENDMENT or NEEDS REWORK, address 
+gaps first.
+
+═══════════════════════════════════════════════════════════════════
+WAVE 3 (parallel, no dependencies on Track 2)
+═══════════════════════════════════════════════════════════════════
+
+These can fire any time after Wave 1 lands. They have no critical 
+path dependencies on the Strategy canonical migration:
+
+5. T5.1 Strategy Intelligence Summary block
+6. T5.2 EvidenceReportBlock collapse refinement
+7. T5.4 CorrelationTimingPanel density reduction
+8. T5.5 Signal Heatmap repositioning
+9. T5.6 Sub-tab relabeling
+10. T6.1 LayeredValue source tag extension
+11. T6.2 New endpoint POST /assumptions/apply-from-module
+12. T7.1 Remove legacy scoring system
+13. T7.2 Audit strategy_analyses seeding
+
+Replit can map these into a parallel execution plan after T1.x 
+completes.
+
+═══════════════════════════════════════════════════════════════════
+WAVE 4 (after T2.4 Strategy canonical migration lands)
+═══════════════════════════════════════════════════════════════════
+
+14. T3.1 Mandate lift (B1)
+15. T4.1 Unit Mix work (4 sub-phases)
+16. T4.2 Validation work (4 sub-phases; T4.2.a blocks on market 
+    rent source)
+
+═══════════════════════════════════════════════════════════════════
+WAVE 5 (after T6.3 Apply pattern infrastructure complete)
+═══════════════════════════════════════════════════════════════════
+
+17. T6.4 Strategy Module: replace stub buttons with PUSH TO F9 →
+18. T6.5 M35 Event Timeline status verification + implement
+19. T6.6 EvidencePanel audit trail integration
+20. T5.3 PlanDocument section collapse (depends on T6.4 for button 
+    treatment)
+
+═══════════════════════════════════════════════════════════════════
+WAVE 6 (cleanup, low priority)
+═══════════════════════════════════════════════════════════════════
+
+21. T7.3 Split StrategyV2Components.tsx (after T5 UX redesign 
+    settles)
+22. T7.4 Fix StrategyArbitrageEngine showcase contamination
+
+═══════════════════════════════════════════════════════════════════
+VERIFICATION PASSES (one per major closing note as it lands)
+═══════════════════════════════════════════════════════════════════
+
+Per CLAUDE.md P8, every closing note informing downstream work 
+gets verified. Expected verification dispatches:
+
+V1. STRATEGY_AND_BEFORE_AFTER_INVESTIGATION (T1.2 — Wave 1)
+V2. A1_VS_A2_INVESTIGATION (Wave 2 closes)
+V3. Each Track 2 implementation closing note
+V4. T3.1 Mandate lift closing note
+V5. T4.1 sub-phase closing notes
+V6. T4.2 sub-phase closing notes
+V7. T6 implementation closing notes

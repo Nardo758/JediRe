@@ -1,0 +1,82 @@
+# PHASE 2 ENTRY CONDITIONS
+
+**Phase 2 scope:** Multifamily Existing × per-assumption derivation 
+logic (state-conditional source priority documented per 
+field; agent prompts updated to use these rules).
+
+**Phase 2 cannot begin until Phase 1 is structurally complete.**
+
+═══════════════════════════════════════════════════════════════════
+HARD ENTRY CONDITIONS (must be met)
+═══════════════════════════════════════════════════════════════════
+
+EC1. Strategy ↔ deal_type reconciled and migrated (T2.4 complete)
+     Why: Phase 2 derivation logic is state-conditional. Asset 
+     state depends on coherent strategy classification. Cannot 
+     write state-conditional rules against a broken canonical.
+
+EC2. Single-Value Mandate lifted (T3.1 complete)
+     Why: Phase 2 includes pre_renovation / post_stabilization 
+     value derivation for value-add deals. Mandate forbids these 
+     writes. Cannot derive what the agent cannot write.
+
+EC3. Market rent source dependency resolved (T4.2.a unblocked 
+     OR explicit decision to defer Validation Phase 1)
+     Why: Phase 2 derivation logic for revenue assumptions 
+     references market rent benchmarks. Without a clean source, 
+     the derivation rules can't be fully specified.
+
+EC4. F9 Module Map open gaps addressed (T8.3 complete)
+     Why: Phase 2 derives per-assumption rules using the F9 
+     module map as ground truth. Unaddressed gaps in the map 
+     produce wrong derivation rules.
+
+═══════════════════════════════════════════════════════════════════
+SOFT ENTRY CONDITIONS (preferred but not blocking)
+═══════════════════════════════════════════════════════════════════
+
+EC5. Strategy Module UX redesign complete (Track 5)
+     Why: Phase 2 derivation logic will be visible via Strategy 
+     Module evidence surfaces. Earlier UX coherence reduces 
+     downstream churn. Not blocking — Phase 2 can ship and the 
+     UX integration follows.
+
+EC6. Apply pattern operational (Track 6)
+     Why: Phase 2 derivation logic produces values that may be 
+     pushed to F9 via the Apply pattern. Not blocking — derivation 
+     logic can be specified before the apply infrastructure 
+     completes.
+
+EC7. Phase 1 UI fixes substantially complete (T4.1, T4.2)
+     Why: Phase 2's outputs land in UI surfaces the Phase 1 fixes 
+     are creating. Earlier completion reduces friction. Not blocking.
+
+═══════════════════════════════════════════════════════════════════
+PHASE 2 STARTING POSTURE
+═══════════════════════════════════════════════════════════════════
+
+When entry conditions are met, Phase 2 begins with:
+
+P2.1 Multifamily Existing — Batch 1 (simple assumptions)
+     Bot-led, Leon-reviewed:
+     - Closing cost components
+     - Hold/return targets
+     - Replacement reserves
+     - Growth rates (CPI-anchored)
+
+P2.2 Multifamily Existing — Batch 2 (complex, state-conditional)
+     Leon-led, hybrid drafted:
+     - GPR, vacancy, concessions (state-conditional)
+     - Exit cap (asset class spread + cycle)
+     - Growth rent (layered model)
+     - Real estate tax (reassessment risk)
+     - Insurance (FL multiplier)
+
+P2.3 Multifamily Existing — Batch 3 (Leon-led, foundational)
+     - Purchase Price derivation (the platform's headline output)
+     - Management fee (operator-specific)
+     - All complex OpEx (state-conditional, operator-specific)
+
+After Multifamily Existing complete:
+- Multifamily Development (extends existing framework)
+- Other property type models (separate workstream, deferred)

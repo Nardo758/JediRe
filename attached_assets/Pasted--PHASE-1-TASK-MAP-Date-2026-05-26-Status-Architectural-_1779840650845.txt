@@ -1,0 +1,358 @@
+# PHASE 1 TASK MAP
+
+**Date:** 2026-05-26
+**Status:** Architectural decisions locked; ready for Replit task mapping
+**Sequencing:** No timeline imposed; Replit produces bottom-up estimate
+
+═══════════════════════════════════════════════════════════════════
+ARCHITECTURAL DECISIONS LOCKED
+═══════════════════════════════════════════════════════════════════
+
+D1. Two-layer architecture (CLAUDE.md P7): Calculations + 
+    Assumptions; LLM reasons, deterministic functions calculate
+D2. Multi-model architecture: deal creation routes by property 
+    type to property-type-specific models; multifamily-existing 
+    first
+D3. Verify before queueing (CLAUDE.md P8): standing principle
+D4. Strategy ↔ deal_type canonical: pending A1 vs A2 investigation; 
+    Leon leaning A1
+D5. Single-Value Mandate: lift with guardrails (B1)
+D6. STR/Flip/Land Hold: deferred; "not yet supported" notice in 
+    interim
+D7. Strategy Module redesign: hybrid C with refinement — 
+    recommendation-first Summary block + primary evidence shows 
+    thesis + headline + risks; analyst depth in "FULL DETAIL" 
+    secondary collapse
+D8. Apply pattern: persistent (DB-backed) with conflict detection
+D9. Open question resolutions: OQ-APPLY-3/4/5 and OQ-UX-2/4/5/6 
+    resolved (see Phase 1 brief)
+
+═══════════════════════════════════════════════════════════════════
+TRACK 1 — FOUNDATIONAL (small, immediate)
+═══════════════════════════════════════════════════════════════════
+
+T1.1 CLAUDE.md P8 amendment (verify before queueing)
+     Dispatch: Drafted (CLAUDE_MD_P8_AMENDMENT)
+     Dependency: None
+     Fire: Immediately
+
+T1.2 Verification of STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md
+     Dispatch: Drafted (STRATEGY_INVESTIGATION_VERIFICATION)
+     Dependency: None
+     Fire: Immediately (first, before downstream Strategy work)
+
+T1.3 STR/Flip/Land Hold "not yet supported" notice
+     Dispatch: Drafted (STR_FLIP_LAND_HOLD_NOTICE)
+     Dependency: None
+     Fire: Immediately
+
+═══════════════════════════════════════════════════════════════════
+TRACK 2 — STRATEGY CANONICAL (A1 vs A2 → migration)
+═══════════════════════════════════════════════════════════════════
+
+T2.1 A1 vs A2 investigation (cost/benefit document)
+     Dispatch: Drafted (A1_VS_A2_INVESTIGATION)
+     Dependency: T1.2 must verify APPROVED first
+     Fire: After T1.2
+
+T2.2 Verification of A1 vs A2 investigation
+     Dispatch: New — apply P8 verification pattern
+     Dependency: T2.1 closing note lands
+     Fire: After T2.1
+
+T2.3 Leon decides A1 vs A2 (or A2 derived)
+     Action: Operator decision based on verified investigation
+     Dependency: T2.2 verified APPROVED
+     Fire: After T2.2
+
+T2.4 Strategy canonical migration implementation
+     Scope: Pattern B routing, blueprint, RenovationAssumptionsSection 
+            migrated to read whichever field wins; deal_type 
+            becomes derived or deprecated
+     Dependency: T2.3
+     Fire: After T2.3
+
+T2.5 Data migration / backfill for existing deals
+     Scope: If A1, backfill investmentStrategy values on deals 
+            with deal_type set. If A2, fill default deal_type 
+            derivations where strategy is null.
+     Dependency: T2.4 in progress or complete
+     Fire: Coupled to T2.4
+
+T2.6 Vocabulary mapping definition (product work)
+     Scope: Canonical mapping between strategy values ('Rental', 
+            'Value-Add', etc.) and deal_type values ('existing', 
+            'value_add', etc.)
+     Dependency: T2.1 produces; T2.3 finalizes
+     Fire: Folded into T2.4
+
+T2.7 Release note / operator communication
+     Scope: When strategy selector becomes functional, communicate 
+            to operators
+     Dependency: T2.4 complete
+     Fire: After T2.4
+
+═══════════════════════════════════════════════════════════════════
+TRACK 3 — SINGLE-VALUE MANDATE LIFT (B1)
+═══════════════════════════════════════════════════════════════════
+
+T3.1 B1 — Lift Single-Value Mandate with guardrails
+     Scope: Define conditions for pre_renovation / post_stabilization 
+            sub-field writes. Build evidence requirements per 
+            sub-field. Update 9 prompt repetitions in 
+            line-item-matrix.ts. Add confidence handling for 
+            forward-looking writes. Update downstream consumers 
+            of regimeDataByField.
+     Dependency: T2 complete (Strategy canonical migrated)
+     Fire: After Track 2 lands
+
+═══════════════════════════════════════════════════════════════════
+TRACK 4 — UI FIXES (multifamily-existing scope only)
+═══════════════════════════════════════════════════════════════════
+
+T4.1 Phase 1 Unit Mix work (per UNIT_MIX_OTHER_INCOME_INVESTIGATION.md)
+     4 sub-phases per the investigation:
+     T4.1.a Page separation + enable Other Income edits
+     T4.1.b Manual add-unit-type UX for development deals
+     T4.1.c Program tab suggestions integration
+     T4.1.d Adoption timeline pattern
+     Dependency: Track 2 complete
+     Fire: Can begin after Track 2 lands; sub-phases sequential
+
+T4.2 Phase 1 Validation work (per VALIDATION_GRID_AND_SALE_COMPS_INVESTIGATION.md)
+     4 sub-phases per the investigation:
+     T4.2.a Platform-implied cap computation (backend only)
+            BLOCKER: Open Q1 market rent source dependency
+     T4.2.b F3 Sale Comps enhanced display
+     T4.2.c Validation Grid in F9 Console
+     T4.2.d Override impact signal
+     Dependency: Track 2 complete; T4.2.a blocked on market rent 
+                 source resolution
+     Fire: Can begin after Track 2 lands; T4.2.a stalls on market 
+           rent source
+
+═══════════════════════════════════════════════════════════════════
+TRACK 5 — STRATEGY MODULE UX REDESIGN (Hybrid C)
+═══════════════════════════════════════════════════════════════════
+
+T5.1 Strategy Intelligence Summary block (TIER 1)
+     Scope: New compact summary block at top of M08 v2 ANALYSIS tab
+            Shows: strategy name, confidence, IRR/EM/hold, 1-line 
+            thesis, top risk, entry target, price ceiling
+     Data: All from existing M08 v2 contract (no new API needed)
+     Dependency: None (independent of other tracks)
+     Fire: Can begin in parallel with Track 2/3/4
+
+T5.2 EvidenceReportBlock collapse refinement
+     Scope: Primary block default: thesis + key drivers + top risks 
+            + Expected Return tile visible. Block A (full metric 
+            stack), Block C (comps), Block D (math trail) collapse 
+            inside "▼ FULL DETAIL" secondary expand.
+            Alternate blocks: collapsed by default with 1-line 
+            headline (thesis snippet + IRR + CONF).
+     Dependency: None
+     Fire: Can begin in parallel
+
+T5.3 PlanDocument section collapse
+     Scope: MONITORING TRIGGERS and PIVOT CONDITIONS sections 
+            collapse by default with count badges. ENTRY + VALUE 
+            CREATION + EXIT visible by default.
+     Dependency: T6 (Apply pattern) for button treatment
+     Fire: Coupled to T6.4
+
+T5.4 CorrelationTimingPanel density reduction
+     Scope: Move 3 indicator lists (leading/concurrent/lagging) 
+            from primary panel to a collapsed section or to 
+            Signal Matrix tab. Keep Golden Chain + active alerts 
+            in primary view.
+     Dependency: None
+     Fire: Can begin in parallel
+
+T5.5 Signal Heatmap repositioning
+     Scope: Move from between SubStrategyComparison and 
+            EvidenceReportBlock to below evidence blocks 
+            (analyst-depth content after evidence).
+     Dependency: None
+     Fire: Can begin in parallel
+
+T5.6 Sub-tab relabeling (small)
+     Scope: "M08 v2 ANALYSIS" → "STRATEGY ANALYSIS"; "SIGNAL MATRIX" 
+            → "MARKET SIGNALS"
+     Dependency: None
+     Fire: Trivial
+
+═══════════════════════════════════════════════════════════════════
+TRACK 6 — APPLY PATTERN (persistent, cross-module)
+═══════════════════════════════════════════════════════════════════
+
+T6.1 LayeredValue source tag extension
+     Scope: Add 'strategy:entry' | 'strategy:exit' | 'event_timeline' 
+            | 'goal_seek' | etc. to LayeredValueSource literal union. 
+            Follow OperatorStance precedent (extend type without 
+            breaking existing consumers).
+     Dependency: None
+     Fire: Can begin in parallel
+
+T6.2 New endpoint: POST /deals/:dealId/assumptions/apply-from-module
+     Scope: Per investigation §3.2 — accepts {source, appliedAt, 
+            fields[]} with conflict detection (block on 
+            source:'user' overrides unless force:true)
+     Dependency: T6.1
+     Fire: After T6.1
+
+T6.3 F9 reload mechanism (assumptions.module-applied event)
+     Scope: Per investigation §3.4 — F9 listens for module-applied 
+            event, reloads assumptions, rebuilds model
+     Dependency: T6.2
+     Fire: After T6.2
+
+T6.4 Strategy Module: replace stub buttons with PUSH TO F9 →
+     Scope: ENTRY button pushes priceCeiling + targetHoldMonths
+            EXIT button pushes capRate + expectedIRR[0]
+            VALUE CREATION button: REMOVED (no numeric destination)
+            Annotations (targetQuarter, debtStructure) stored in 
+            deal_data JSONB for audit
+            Conflict UX: warn+allow with force flag
+     Dependency: T6.3
+     Fire: After T6.3
+
+T6.5 M35 Event Timeline: verify status + implement or fix
+     Scope: Per OQ-APPLY-1, read EventTimelineSection.tsx lines 
+            70-150 to determine if onProceed is wired or stub. 
+            If stub: implement per persistent pattern. If working: 
+            document and exclude.
+     Dependency: T6.3
+     Fire: After T6.3
+
+T6.6 EvidencePanel audit trail integration
+     Scope: F9 EvidencePanel shows "[strategy:entry · 2026-05-26]" 
+            badge next to assumption fields written by modules. 
+            Per investigation §3.5.
+     Dependency: T6.2 (data exists in LayeredValue)
+     Fire: After T6.2
+
+═══════════════════════════════════════════════════════════════════
+TRACK 7 — STRATEGY MODULE ARCHITECTURAL CLEANUP
+═══════════════════════════════════════════════════════════════════
+
+T7.1 Remove legacy scoring system
+     Scope: Delete strategyArbitrage.service.ts, strategy_scores 
+            table, strategy_arbitrage table, useStrategyArbitrageM08 
+            hook, and legacy strategy-scores + arbitrage endpoints 
+            in deal-strategy.routes.ts. Audit consumers of 
+            strategies table before drop.
+     Dependency: None (low risk per investigation)
+     Fire: Can begin in parallel
+
+T7.2 Audit strategy_analyses → loadDealData seeding
+     Scope: Verify whether the LEFT JOIN strategy_analyses in 
+            m08-strategies.service.ts loadDealData causes silent 
+            drift. Remove or document.
+     Dependency: None
+     Fire: Can begin in parallel
+
+T7.3 Split StrategyV2Components.tsx into focused files
+     Scope: 1704 lines → 7 single-responsibility files per 
+            investigation §7.4. Pure refactor.
+     Dependency: T5 (UX redesign) may inform exact split
+     Fire: After T5
+
+T7.4 Fix StrategyArbitrageEngine showcase contamination
+     Scope: Component imports real store + uses mock data. 
+            Isolate fully as mock OR fully as real per 
+            investigation §7.5.
+     Dependency: None
+     Fire: Can begin in parallel; low priority
+
+T7.5 Strategy Module cache scalability (deferred)
+     Scope: Process-local 15-min cache breaks at horizontal scale. 
+            Move to Redis or DB-backed with version counter.
+     Dependency: Active concern only at scale
+     Fire: Deferred — Phase 2 or later
+
+═══════════════════════════════════════════════════════════════════
+TRACK 8 — OPEN QUESTION RESOLUTION (ongoing, parallel)
+═══════════════════════════════════════════════════════════════════
+
+T8.1 Resolve 12 open questions from UNIT_MIX_OTHER_INCOME_INVESTIGATION.md
+     Scope: Inline resolution per Leon's "resolve inline" choice
+     Dependency: Couples to T4.1
+     Fire: Throughout T4.1
+
+T8.2 Resolve 12 open questions from VALIDATION_GRID_AND_SALE_COMPS_INVESTIGATION.md
+     Scope: Inline resolution; Open Q1 (market rent source) is 
+            blocking for T4.2.a
+     Dependency: Open Q1 blocks T4.2.a
+     Fire: Throughout T4.2
+
+T8.3 Address 11 open gaps from F9_MODULE_MAP.md Section 8.2
+     Scope: Sweep to confirm none are unhandled Phase 1 blockers
+     Dependency: None
+     Fire: Pre-implementation sweep
+
+═══════════════════════════════════════════════════════════════════
+TRACK 9 — VERIFICATION DISPATCHES (per P8)
+═══════════════════════════════════════════════════════════════════
+
+T9.x Verification dispatch on each closing note as it lands
+     Pattern: P8 verification — document integrity, source 
+              citation spot-checks, cross-fix integration, open 
+              question classification, gap identification
+     Dependency: Each closing note that informs downstream work
+     Fire: After each major closing note
+     Estimated: 6-8 verifications across Phase 1 lifecycle
+
+═══════════════════════════════════════════════════════════════════
+DEPENDENCY GRAPH (CRITICAL PATH)
+═══════════════════════════════════════════════════════════════════
+
+T1.1, T1.2, T1.3 fire immediately (no dependencies)
+                       │
+                       ▼ (T1.2 must verify APPROVED)
+T2.1 — A1 vs A2 investigation
+                       │
+                       ▼ (T2.2 verification)
+T2.3 — Leon decides A1 vs A2
+                       │
+                       ▼
+T2.4 — Strategy canonical migration ◄── CRITICAL PATH BLOCKER
+                       │
+                       ▼
+T3.1 — Mandate lift (B1)
+                       │
+                       ▼
+T4.1, T4.2 — UI fixes (can run in parallel with each other 
+             after Track 2 lands)
+
+PARALLEL TO CRITICAL PATH (can begin immediately):
+- T5.1, T5.2, T5.4, T5.5, T5.6 — Strategy Module UX
+- T6.1, T6.2, T6.3, T6.6 — Apply pattern infrastructure
+- T7.1, T7.2, T7.4 — Architectural cleanup
+- T8.3 — F9 module map gap sweep
+
+═══════════════════════════════════════════════════════════════════
+PHASE 1 COMPLETION CRITERIA
+═══════════════════════════════════════════════════════════════════
+
+Phase 1 is complete when:
+1. CLAUDE.md P8 in place
+2. STR/Flip/Land Hold show "not yet supported" notice
+3. Strategy ↔ deal_type reconciled; selector functional
+4. Single-Value Mandate lifted with guardrails operational
+5. RegimeExpand renders meaningful pre/post values for value-add
+6. Unit Mix and Other Income are separate pages; manual build 
+   for development
+7. F3 Sale Comps section shows platform-implied cap rates
+8. Validation Grid in F9 surfaces all assumptions × validation 
+   methods
+9. Strategy Module has Strategy Intelligence Summary block + 
+   evidence collapse refinement
+10. PUSH TO F9 endpoint operational; Strategy Module ENTRY + 
+    EXIT push correctly to F9
+11. Legacy strategy scoring removed; strategy_analyses seeding 
+    audited
+12. All major open questions resolved or explicitly deferred
+13. Each major closing note verified per P8
+
+After Phase 1: Phase 2 (Multifamily Existing derivation logic) 
+begins.
