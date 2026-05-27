@@ -409,6 +409,27 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   const impactMatrix = useMemo(() => data ? buildImpactMatrix(data) : null, [data]);
   const programRationale = useMemo(() => data ? buildProgramRationale(data, umGaps, umComps, dealMode, hasZoningContext, activeScenario) : null, [data, umGaps, umComps, dealMode, hasZoningContext, activeScenario]);
 
+  // ── Sale comp helpers — must live ABOVE early returns so hook count is stable ──
+  const saleComps = saleCompSet?.comps ?? [];
+  const saleCompCount = saleCompSet?.comp_count ?? saleComps.length;
+  const VINTAGE_BANDS = ['pre-1990', '1990-2005', '2006-2015', '2016+'];
+  function compVintageOf(c: SaleComp): string | null {
+    if (c.year_built == null) return null;
+    const y = c.year_built;
+    if (y < 1990) return 'pre-1990';
+    if (y < 2006) return '1990-2005';
+    if (y < 2016) return '2006-2015';
+    return '2016+';
+  }
+  const filteredComps = useMemo(() => {
+    let list = [...saleComps];
+    if (compVintageBand) list = list.filter(c => compVintageOf(c) === compVintageBand);
+    if (compSortField === 'ppu') list.sort((a, b) => (b.price_per_unit ?? 0) - (a.price_per_unit ?? 0));
+    else if (compSortField === 'cap') list.sort((a, b) => ((a.implied_cap_rate ?? 999) - (b.implied_cap_rate ?? 999)));
+    else list.sort((a, b) => (b.recording_date > a.recording_date ? 1 : -1));
+    return list;
+  }, [saleComps, compSortField, compVintageBand]);
+
   if (loading) return <LoadingSkeleton />;
   if (error) return <ErrorState message={error} onRetry={() => fetchData()} />;
   if (!data) return <ErrorState message="No data available" onRetry={() => fetchData()} />;
@@ -531,28 +552,6 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
     </div>
   );
 
-  const saleComps = saleCompSet?.comps ?? [];
-  const saleCompCount = saleCompSet?.comp_count ?? saleComps.length;
-
-  const VINTAGE_BANDS = ['pre-1990', '1990-2005', '2006-2015', '2016+'];
-
-  function compVintageOf(c: SaleComp): string | null {
-    if (c.year_built == null) return null;
-    const y = c.year_built;
-    if (y < 1990) return 'pre-1990';
-    if (y < 2006) return '1990-2005';
-    if (y < 2016) return '2006-2015';
-    return '2016+';
-  }
-
-  const filteredComps = useMemo(() => {
-    let list = [...saleComps];
-    if (compVintageBand) list = list.filter(c => compVintageOf(c) === compVintageBand);
-    if (compSortField === 'ppu') list.sort((a, b) => (b.price_per_unit ?? 0) - (a.price_per_unit ?? 0));
-    else if (compSortField === 'cap') list.sort((a, b) => ((a.implied_cap_rate ?? 999) - (b.implied_cap_rate ?? 999)));
-    else list.sort((a, b) => (b.recording_date > a.recording_date ? 1 : -1));
-    return list;
-  }, [saleComps, compSortField, compVintageBand]);
 
   const SALE_COMP_COLS = [
     { label: 'PROPERTY',  flex: 2.0, color: BT2.text.secondary },
