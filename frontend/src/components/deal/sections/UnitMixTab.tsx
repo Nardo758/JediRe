@@ -170,6 +170,13 @@ interface DealFinancials {
       probability_adopted: number;
     } | null;
   }>;
+  /** Task #1271 — operator-defined adoption/lease-up timeline for development deals. */
+  adoptionTimeline?: {
+    constructionMonths: number | null;
+    leaseUpMonths: number | null;
+    absorptionUnitsPerMonth: number | null;
+    stabilizationTargetPct: number | null;
+  } | null;
 }
 
 const fmt$ = (v: number | null | undefined) =>
@@ -1554,6 +1561,15 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   const [newOIMonthly, setNewOIMonthly] = useState('');
   const [savingOILine, setSavingOILine] = useState(false);
 
+  // ── Adoption timeline (Task #1271) ────────────────────────────────────────
+  const [atConstruction, setAtConstruction] = useState<string>('');
+  const [atLeaseUp, setAtLeaseUp] = useState<string>('');
+  const [atAbsorption, setAtAbsorption] = useState<string>('');
+  const [atStabTarget, setAtStabTarget] = useState<string>('');
+  const [atSaving, setAtSaving] = useState(false);
+  const [atSaved, setAtSaved] = useState(false);
+  const [atError, setAtError] = useState<string | null>(null);
+
   // F3 Programming tab unit mix percentages (studio/oneBed/twoBed/threeBed)
   const f3UnitMix = useDesignProgramStore(s => s.program.unitMix ?? null);
   const f3IsDirty = useDesignProgramStore(s => s.isDirty);
@@ -1614,6 +1630,44 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   }, [dealId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Seed adoption timeline inputs from loaded server data (Task #1271)
+  useEffect(() => {
+    const at = data?.adoptionTimeline;
+    if (!at) return;
+    if (at.constructionMonths != null)      setAtConstruction(String(at.constructionMonths));
+    if (at.leaseUpMonths != null)           setAtLeaseUp(String(at.leaseUpMonths));
+    if (at.absorptionUnitsPerMonth != null) setAtAbsorption(String(at.absorptionUnitsPerMonth));
+    if (at.stabilizationTargetPct != null)  setAtStabTarget(String((at.stabilizationTargetPct * 100).toFixed(1)));
+  }, [data?.adoptionTimeline]);
+
+  // Save adoption timeline to backend (Task #1271)
+  const saveAdoptionTimeline = useCallback(async () => {
+    setAtSaving(true);
+    setAtError(null);
+    setAtSaved(false);
+    try {
+      const cm  = atConstruction  !== '' ? parseFloat(atConstruction)  : null;
+      const lum = atLeaseUp       !== '' ? parseFloat(atLeaseUp)       : null;
+      const apm = atAbsorption    !== '' ? parseFloat(atAbsorption)    : null;
+      const stpRaw = atStabTarget !== '' ? parseFloat(atStabTarget)    : null;
+      const stp = stpRaw != null ? +(stpRaw / 100).toFixed(4) : null;
+      await apiClient.patch(`/api/v1/deals/${dealId}/assumptions/adoption-timeline`, {
+        constructionMonths:      cm,
+        leaseUpMonths:           lum,
+        absorptionUnitsPerMonth: apm,
+        stabilizationTargetPct:  stp,
+      });
+      setAtSaved(true);
+      setTimeout(() => setAtSaved(false), 2500);
+      onF9Refresh?.();
+      await load();
+    } catch (e: any) {
+      setAtError(e?.response?.data?.error ?? e?.message ?? 'Save failed');
+    } finally {
+      setAtSaving(false);
+    }
+  }, [dealId, atConstruction, atLeaseUp, atAbsorption, atStabTarget, onF9Refresh, load]);
 
   // Primary save: PUT /unit-mix/types (Task #1146 — new endpoint, supports manual builder)
   const saveTypes = useCallback(async (types: ManualUnitType[]): Promise<boolean> => {
@@ -3095,6 +3149,98 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
               )}
             </div>
           </div>
+
+          {/* Adoption Timeline Editor — development + lease-up deals only (Task #1271) */}
+          {(isDevelopment || dealType === 'lease-up' || dealType === 'lease_up') && (
+            <div style={{ background: C.panel, border: `1px solid ${C.amber}44`, borderRadius: 6, overflow: 'hidden' }}>
+              <div style={{ padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: `${C.amber}0a`, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.amber, letterSpacing: '0.06em' }}>ADOPTION TIMELINE</div>
+                  <div style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>Ramp schedule for development/lease-up income projection</div>
+                </div>
+                {atSaved && <span style={{ fontFamily: LABEL, fontSize: 7, color: C.green }}>SAVED</span>}
+              </div>
+              <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {[
+                  { label: 'CONSTRUCTION', sublabel: 'months', value: atConstruction, set: setAtConstruction, placeholder: '18', hint: 'Months from close to CO' },
+                  { label: 'LEASE-UP',     sublabel: 'months', value: atLeaseUp,       set: setAtLeaseUp,       placeholder: '12', hint: 'Months from CO to stabilization' },
+                  { label: 'ABSORPTION',   sublabel: 'units/mo', value: atAbsorption,  set: setAtAbsorption,    placeholder: String(totalUnits > 0 ? Math.ceil(totalUnits / 12) : ''), hint: 'Units absorbed per month' },
+                  { label: 'STAB. TARGET', sublabel: '%',       value: atStabTarget,  set: setAtStabTarget,    placeholder: '95', hint: 'Target occupancy at stabilization' },
+                ].map(f => (
+                  <div key={f.label}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                      <div>
+                        <span style={{ fontFamily: LABEL, fontSize: 8, color: C.muted }}>{f.label}</span>
+                        <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim, marginLeft: 4 }}>{f.sublabel}</span>
+                      </div>
+                    </div>
+                    <input
+                      type="number"
+                      value={f.value}
+                      onChange={e => f.set(e.target.value)}
+                      placeholder={f.placeholder}
+                      title={f.hint}
+                      style={{
+                        width: '100%', background: '#0d0d16', border: `1px solid ${C.border}`,
+                        borderRadius: 3, color: C.text, fontFamily: MONO, fontSize: 11,
+                        padding: '4px 8px', outline: 'none', boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                ))}
+                {atError && (
+                  <div style={{ fontFamily: LABEL, fontSize: 8, color: C.red, padding: '4px 0' }}>{atError}</div>
+                )}
+                {/* Ramp visualization bar — shows construction + lease-up durations */}
+                {(atConstruction !== '' || atLeaseUp !== '') && (() => {
+                  const cm  = parseFloat(atConstruction)  || 0;
+                  const lum = parseFloat(atLeaseUp)        || 0;
+                  const total = cm + lum;
+                  if (total <= 0) return null;
+                  const cPct  = (cm  / total) * 100;
+                  const luPct = (lum / total) * 100;
+                  return (
+                    <div style={{ marginTop: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                        <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>Mo 0 — CLOSE</span>
+                        <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>Mo {Math.round(total)} — STABILIZED</span>
+                      </div>
+                      <div style={{ height: 8, display: 'flex', borderRadius: 3, overflow: 'hidden' }}>
+                        <div title={`Construction: ${cm} months`}
+                          style={{ width: `${cPct}%`, background: `${C.amber}66`, borderRight: `1px solid ${C.amber}` }} />
+                        <div title={`Lease-up: ${lum} months`}
+                          style={{ width: `${luPct}%`, background: `${C.green}44` }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <div style={{ width: 8, height: 8, background: `${C.amber}66`, border: `1px solid ${C.amber}`, borderRadius: 1 }} />
+                          <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>CONSTR. ({cm}mo)</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <div style={{ width: 8, height: 8, background: `${C.green}44`, border: `1px solid ${C.green}44`, borderRadius: 1 }} />
+                          <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>LEASE-UP ({lum}mo)</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+                <button
+                  onClick={saveAdoptionTimeline}
+                  disabled={atSaving}
+                  style={{
+                    marginTop: 4, fontFamily: LABEL, fontSize: 8, fontWeight: 700, letterSpacing: '0.06em',
+                    background: atSaved ? C.greenDim : C.panelAlt,
+                    border: `1px solid ${atSaved ? C.green : C.amber}66`,
+                    color: atSaved ? C.green : C.amber, borderRadius: 3, padding: '6px 12px',
+                    cursor: atSaving ? 'not-allowed' : 'pointer', opacity: atSaving ? 0.6 : 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  }}
+                >
+                  {atSaving ? 'SAVING…' : atSaved ? '✓ SAVED' : 'SAVE TIMELINE'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Deal type badge */}
           <div style={{ background: C.panelAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: '10px 12px' }}>

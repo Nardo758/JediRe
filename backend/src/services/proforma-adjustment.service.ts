@@ -1563,6 +1563,13 @@ export interface DealFinancials {
   dealId: string;
   dealName: string;
   totalUnits: number;
+  /** Task #1271 — operator-defined adoption/lease-up timeline for development deals. */
+  adoptionTimeline: {
+    constructionMonths: number | null;
+    leaseUpMonths: number | null;
+    absorptionUnitsPerMonth: number | null;
+    stabilizationTargetPct: number | null;
+  } | null;
   proforma: {
     year1: OperatingStatementRow[];
     integrityChecks: IntegrityCheck[];
@@ -2165,7 +2172,9 @@ export async function getDealFinancials(
               unit_mix, unit_mix_overrides, avg_rent_per_unit, vacancy_pct,
               target_irr, target_em, target_coc,
               investment_strategy_lv, exit_strategy_lv,
-              selling_costs_pct
+              selling_costs_pct,
+              construction_months, lease_up_months, absorption_units_per_month,
+              stabilization_target_pct
          FROM deal_assumptions WHERE deal_id = $1`,
       [dealId]
     ),
@@ -4818,10 +4827,20 @@ export async function getDealFinancials(
     }
   }
 
+  // Task #1271 — adoption timeline from deal_assumptions
+  const _at = assumptionsRes.rows[0];
+  const adoptionTimeline = _at ? {
+    constructionMonths:        _at.construction_months        != null ? +parseFloat(_at.construction_months).toFixed(1)  : null,
+    leaseUpMonths:             _at.lease_up_months            != null ? +parseFloat(_at.lease_up_months).toFixed(1)       : null,
+    absorptionUnitsPerMonth:   _at.absorption_units_per_month != null ? +parseFloat(_at.absorption_units_per_month).toFixed(2) : null,
+    stabilizationTargetPct:    _at.stabilization_target_pct   != null ? +parseFloat(_at.stabilization_target_pct).toFixed(4) : null,
+  } : null;
+
   return {
     dealId,
     dealName: deal.name,
     totalUnits,
+    adoptionTimeline,
     proformaTemplateId,
     proforma: { year1: year1Rows, integrityChecks: checks, unitEconomics, valuationSnapshot },
     capitalStack: capitalStackWithOverrides,

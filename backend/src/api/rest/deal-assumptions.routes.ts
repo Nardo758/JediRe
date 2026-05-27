@@ -1112,6 +1112,106 @@ router.patch('/:dealId/assumptions/selling-costs', requireAuth, async (req: Auth
 });
 
 /**
+ * PATCH /:dealId/assumptions/adoption-timeline
+ *
+ * Saves the adoption/lease-up timeline for development and lease-up deals.
+ * Fields (all optional, null to clear):
+ *   constructionMonths        — months from deal close to CO
+ *   leaseUpMonths             — months from CO to stabilized occupancy
+ *   absorptionUnitsPerMonth   — units leased per month during ramp
+ *   stabilizationTargetPct    — target occupancy as decimal (0.95 = 95%)
+ *
+ * Task #1271.
+ */
+router.patch('/:dealId/assumptions/adoption-timeline', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+    const {
+      constructionMonths,
+      leaseUpMonths,
+      absorptionUnitsPerMonth,
+      stabilizationTargetPct,
+    } = req.body as {
+      constructionMonths?: number | null;
+      leaseUpMonths?: number | null;
+      absorptionUnitsPerMonth?: number | null;
+      stabilizationTargetPct?: number | null;
+    };
+
+    const validate = (name: string, v: number | null | undefined, min: number, max: number) => {
+      if (v == null) return null;
+      if (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max) {
+        throw new Error(`${name} must be a finite number between ${min} and ${max}`);
+      }
+      return v;
+    };
+
+    const cm  = validate('constructionMonths',       constructionMonths,       0, 120);
+    const lum = validate('leaseUpMonths',             leaseUpMonths,            0, 120);
+    const apm = validate('absorptionUnitsPerMonth',   absorptionUnitsPerMonth,  0, 10000);
+    const stp = validate('stabilizationTargetPct',    stabilizationTargetPct,   0, 1);
+
+    const own = await pool.query(
+      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (own.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized for this deal' });
+    }
+
+    await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, construction_months, lease_up_months, absorption_units_per_month, stabilization_target_pct, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (deal_id) DO UPDATE SET
+         construction_months        = $2,
+         lease_up_months            = $3,
+         absorption_units_per_month = $4,
+         stabilization_target_pct   = $5,
+         updated_at                 = NOW()`,
+      [dealId, cm, lum, apm, stp]
+    );
+
+    res.json({ success: true, data: { constructionMonths: cm, leaseUpMonths: lum, absorptionUnitsPerMonth: apm, stabilizationTargetPct: stp } });
+  } catch (error: any) {
+    logger.error('Error patching adoption timeline:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /:dealId/assumptions/adoption-timeline/clear
+ *
+ * Clears all adoption timeline fields for the deal (resets to platform defaults).
+ * Task #1271.
+ */
+router.patch('/:dealId/assumptions/adoption-timeline/clear', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+
+    const own = await pool.query(`SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`, [dealId, userId]);
+    if (own.rows.length === 0) return res.status(403).json({ error: 'Not authorized for this deal' });
+
+    await pool.query(
+      `UPDATE deal_assumptions SET
+         construction_months        = NULL,
+         lease_up_months            = NULL,
+         absorption_units_per_month = NULL,
+         stabilization_target_pct   = NULL,
+         updated_at                 = NOW()
+       WHERE deal_id = $1`,
+      [dealId]
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error clearing adoption timeline:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * PATCH /:dealId/assumptions/closing-costs
  *
  * Surgical write for closing cost sub-line overrides (Item 2 — DealTermsTab).
