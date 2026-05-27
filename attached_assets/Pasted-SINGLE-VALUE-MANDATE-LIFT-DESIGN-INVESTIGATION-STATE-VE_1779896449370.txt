@@ -1,0 +1,139 @@
+SINGLE-VALUE MANDATE LIFT — DESIGN INVESTIGATION
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. Verify docs/operations/MANDATE_LIFT_DESIGN.md does not already 
+   exist; if it does, read it and report state before proceeding
+2. Verify the Single-Value Mandate is still in line-item-matrix.ts 
+   (per STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md verification, 
+   it was; confirm)
+3. Verify regimeDataByField is still empty in production data 
+   (sanity check that the underlying state hasn't changed)
+
+CONTEXT
+Per STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md (verified APPROVED), 
+the Single-Value Mandate:
+- Is repeated 9 times across line-item-matrix.ts
+- Forbids the agent from writing pre_renovation and 
+  post_stabilization sub-field values
+- Causes regimeDataByField to stay empty for all deals
+- Means RegimeExpand renders dashes everywhere, even for value-add 
+  deals where pre/post distinction is essential
+
+This investigation designs the lift — under what conditions are 
+pre/post sub-field writes permitted, what evidence requirements 
+apply, how does confidence handle forward-looking writes, and 
+how do downstream consumers handle the populated field.
+
+IMPORTANT SEQUENCING NOTE
+This investigation can run in parallel with the A1 vs A2 
+investigation (Q1). However, IMPLEMENTATION of the Mandate lift 
+depends on Q1's canonical decision having landed, because the 
+conditions under which pre/post writes are permitted are 
+strategy-aware. The design produced here should:
+- Specify conditions in terms of strategy (whatever the canonical 
+  field turns out to be)
+- Flag this dependency explicitly
+- Not block on Q1's outcome — design the rules; the field reference 
+  becomes concrete during implementation
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+STEP 1 — Inventory the Mandate
+A. Locate all 9 instances of the Mandate in line-item-matrix.ts
+B. Document the exact prompt language and the line items each 
+   instance applies to
+C. Identify any other files containing similar Mandate language
+
+STEP 2 — Inventory downstream consumers
+A. Find all readers of regimeDataByField (frontend + backend)
+B. Document what each consumer does with the data when populated
+C. Identify whether any consumers assume the field is always empty 
+   (graceful handling) vs assume it may be populated (real consumers)
+D. Specifically check: RegimeExpand component, F9 ProForma 
+   rendering, any agent self-validation logic
+
+STEP 3 — Design the lift rules
+For each line item the Mandate currently covers, design:
+
+A. UNDER WHAT CONDITIONS pre/post sub-field writes are permitted:
+   - Strategy-dependent rules (value-add deals should populate 
+     pre/post; stabilized deals shouldn't)
+   - Evidence requirements (what data is needed to justify a 
+     forward-looking post_stabilization write?)
+   - Asset state dependency (the state-conditional epistemology 
+     from CLAUDE.md P7)
+
+B. EVIDENCE REQUIREMENTS per sub-field:
+   - pre_renovation: must be evidence-anchored to current state 
+     (T-12 actuals, current rent roll, current OpEx)
+   - post_stabilization: must be evidence-anchored to target 
+     state (Platform stabilized cohort, comp set at target class, 
+     business plan from broker package)
+   - Both writes require explicit evidence rows in 
+     underwriting_evidence
+
+C. CONFIDENCE HANDLING:
+   - How does confidence differ for pre vs post writes?
+   - Pre_renovation should have high confidence (anchored in 
+     actuals); post_stabilization should have lower confidence 
+     (projection)
+   - How does the LayeredValue confidence field reflect this?
+
+D. VALIDATION RULES:
+   - Pre and post should be consistent with the business plan 
+     (post > pre for revenue line items in value-add; post < pre 
+     for some OpEx line items if efficiency improvements claimed)
+   - What sigma engine rules apply to flag implausible deltas?
+
+STEP 4 — Prompt redesign
+A. Draft new prompt language replacing the 9 Mandate instances
+B. The new language should:
+   - Permit pre/post writes under the conditions from Step 3
+   - Specify the evidence requirements explicitly in the prompt
+   - Specify the confidence calibration explicitly
+   - Maintain the existing guard against unsupported writes 
+     (no fabrication)
+
+STEP 5 — Implementation roadmap
+This investigation produces the design only. Implementation is 
+downstream and depends on Q1.
+
+Document the implementation sequence:
+- Update line-item-matrix.ts with new prompt language (depends 
+  on Q1 — needs canonical strategy field reference)
+- Update downstream consumers (RegimeExpand) to render populated 
+  data well
+- Update agent self-validation to enforce the new rules
+- Backfill considerations: do prior agent runs need rerun, or 
+  is forward-only acceptable?
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/MANDATE_LIFT_DESIGN.md
+
+Structure:
+1. Executive summary (current state, proposed design, scope of 
+   change)
+2. Mandate inventory (Step 1)
+3. Downstream consumer inventory (Step 2)
+4. Lift rules per line item (Step 3 — conditions, evidence, 
+   confidence, validation)
+5. Prompt redesign (Step 4)
+6. Implementation roadmap with Q1 dependency (Step 5)
+7. Open questions for Leon's review
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Implement the lift (this is design only)
+- Modify line-item-matrix.ts or any other code
+- Decide unilaterally on contested design questions — surface them
+- Skip the Q1 dependency framing — implementation must wait for 
+  the canonical strategy decision
+- "While I'm here" cleanups
