@@ -3140,7 +3140,7 @@ export async function getDealFinancials(
   const _strategyForTemplate = (investmentStrategyLv.resolved ?? '').toLowerCase().replace(/[\s-]+/g, '_');
   const proformaTemplateId = _strategyForTemplate
     ? pickTemplateForStrategy(_strategyForTemplate)
-    : defaultTemplateForDealType((deal.deal_type ?? 'existing') as 'existing' | 'development' | 'redevelopment');
+    : defaultTemplateForDealType(deal.deal_type ?? 'existing');
 
   const assumptions = {
     holdYears,

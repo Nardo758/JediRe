@@ -29,7 +29,7 @@ import {
  * template to the active deal — payloads with any other template are rejected.
  */
 function resolveExpectedTemplateId(
-  ctx?: { dealType?: 'existing' | 'development' | 'redevelopment'; strategy?: string | null }
+  ctx?: { dealType?: string | null; strategy?: string | null }
 ): ProFormaTemplateId {
   if (ctx?.strategy) return pickTemplateForStrategy(ctx.strategy);
   if (ctx?.dealType) return defaultTemplateForDealType(ctx.dealType);
@@ -988,23 +988,22 @@ ${comparableData}`;
    */
   private async resolveDealTemplateContext(
     dealId: string
-  ): Promise<{ dealType?: 'existing' | 'development' | 'redevelopment'; strategy?: string | null }> {
+  ): Promise<{ dealType?: string | null; strategy?: string | null }> {
     try {
       const result = await this.pool.query(
-        `SELECT property_type, deal_type FROM deals WHERE id = $1 LIMIT 1`,
+        `SELECT da.investment_strategy_lv->>'override' AS strategy_override,
+                d.deal_type
+           FROM deals d
+           LEFT JOIN deal_assumptions da ON da.deal_id = d.id
+          WHERE d.id = $1 LIMIT 1`,
         [dealId]
       );
       if (!result.rows[0]) return {};
-      const raw = (result.rows[0].deal_type || result.rows[0].property_type || '').toString().toLowerCase();
-      let dealType: 'existing' | 'development' | 'redevelopment' | undefined;
-      if (raw.includes('develop') || raw.includes('construction') || raw.includes('ground')) {
-        dealType = 'development';
-      } else if (raw.includes('redev') || raw.includes('value-add') || raw.includes('reposition')) {
-        dealType = 'redevelopment';
-      } else if (raw) {
-        dealType = 'existing';
-      }
-      return { dealType };
+      // Prefer the operator strategy override (drives pickTemplateForStrategy); fall back to deal_type
+      // Task #1265: use canonical deal_type directly instead of fuzzy property_type text matching
+      const strategyOverride = result.rows[0].strategy_override as string | null;
+      const dealType = (result.rows[0].deal_type as string | null) || null;
+      return { dealType, strategy: strategyOverride ?? null };
     } catch {
       return {};
     }

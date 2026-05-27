@@ -167,7 +167,7 @@ export const PROFORMA_TEMPLATES: Record<ProFormaTemplateId, ProFormaTemplateSpec
   development_ground_up: {
     id: 'development_ground_up',
     label: 'Development — Ground-Up',
-    strategyTriggers: ['bts', 'bts_for_rent', 'development', 'ground_up'],
+    strategyTriggers: ['bts', 'bts_for_rent', 'build_to_sell', 'development', 'ground_up'],
     defaultHorizonMonths: 120,
     periodicity: 'monthly',
     sections: [

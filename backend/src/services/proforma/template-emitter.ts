@@ -44,8 +44,9 @@ export interface ProFormaTemplateEmission {
 export interface EmitOptions {
   /** M08 strategy slug. Wins over dealType if both supplied. */
   strategy?: string | null;
-  /** Deal type used as fallback when strategy is missing. */
-  dealType?: 'existing' | 'development' | 'redevelopment' | null;
+  /** Deal type used as fallback when strategy is missing. All 6 DealTypeKey values accepted.
+   * Task #1265 — widened from 3-type to full string to support value_add, lease_up, stabilized. */
+  dealType?: string | null;
   /** Explicit user override (bypasses both). */
   userTemplateOverride?: ProFormaTemplateId | null;
   /** User-selected revenue formula. */

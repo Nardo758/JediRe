@@ -37,15 +37,24 @@ export function pickTemplateForStrategy(strategySlug: string): ProFormaTemplateI
   return 'acquisition_stabilized';
 }
 
-/** Default template for a given deal type (when no strategy is set yet). */
+/** Default template for a given deal type (when no strategy is set yet).
+ * Covers all 6 DealTypeKey values so proformaTemplateId is never wrong
+ * for pre-Task-#1233 deals that have deal_type but no investmentStrategy.
+ * Task #1265 — extended from 3-type to 6-type coverage.
+ */
 export function defaultTemplateForDealType(
-  dealType: 'existing' | 'development' | 'redevelopment'
+  dealType: string | null | undefined
 ): ProFormaTemplateId {
   switch (dealType) {
-    case 'development': return 'development_ground_up';
+    case 'development':   return 'development_ground_up';
     case 'redevelopment': return 'redevelopment';
+    case 'value_add':
+    case 'value-add':     return 'acquisition_value_add';
+    case 'lease_up':
+    case 'lease-up':      return 'acquisition_stabilized';   // Phase 1 approximation; Phase 2 adds lease_up template
+    case 'stabilized':
     case 'existing':
-    default: return 'acquisition_stabilized';
+    default:              return 'acquisition_stabilized';
   }
 }
 

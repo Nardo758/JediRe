@@ -962,6 +962,7 @@ function investmentStrategyToDealType(strategy: string): string | undefined {
     'Value-Add':        'value_add',
     'Redevelopment':    'redevelopment',
     'Lease-Up':         'lease_up',
+    'Land Hold':        'existing',  // Task #1265 — Phase 1 approximation; Phase 2 adds 'land_hold' DealTypeKey
   };
   return map[strategy];
 }
