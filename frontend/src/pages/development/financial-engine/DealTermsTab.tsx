@@ -100,10 +100,10 @@ function addYearsToDate(closeIso: string | null | undefined, holdYears: number |
 }
 
 // ─── Strategy release notice helpers ─────────────────────────────────────────
-// Task #1233 shipped: the strategy selector now drives Pattern B routing,
-// RegimeExpand visibility, renovation section display, and tab availability.
-// Operators who had not set a strategy (investmentStrategy_lv.resolved === null)
-// see a one-time banner prompting them to confirm their selection.
+// Task #1265 shipped: the strategy selector is now canonical — it drives
+// proforma template selection, agent behavior, tab availability, and renovation
+// section display. Operators who have not yet set a strategy see a one-time
+// banner prompting them to review and confirm their selection.
 
 function _strategyReleaseNoticeDismissedKey(dealId: string) {
   return `jedi:strategy_release_notice_dismissed:${dealId}`;
@@ -153,14 +153,15 @@ function StrategyReleaseNoticeBanner({
           fontFamily: MONO, fontSize: 9, fontWeight: 700,
           color: TEAL, letterSpacing: 1, marginBottom: 5,
         }}>
-          STRATEGY SELECTOR NOW FUNCTIONAL — ACTION REQUIRED
+          NEW — STRATEGY SELECTOR NOW ACTIVE
         </div>
         <div style={{
           fontFamily: MONO, fontSize: 9, color: BT.text.secondary,
           lineHeight: 1.65, marginBottom: 6,
         }}>
-          The Investment Strategy field now drives deal routing, tab availability, and renovation section display.
-          Deals where no strategy is set will not route correctly. Open each active deal and confirm or set the strategy below.
+          Investment Strategy now drives proforma routing, agent behavior, and tab availability —
+          unlocking tailored analysis for each deal type. Review your strategy for this deal
+          and confirm it below to take advantage of the full F9 experience.
         </div>
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
           <div>
@@ -171,7 +172,7 @@ function StrategyReleaseNoticeBanner({
               FULLY SUPPORTED
             </div>
             <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, lineHeight: 1.7 }}>
-              Rental · Value-Add · Build-to-Sell · Redevelopment
+              Rental · Value-Add · Lease-Up · Build-to-Sell · Redevelopment
             </div>
           </div>
           <div style={{
@@ -187,8 +188,8 @@ function StrategyReleaseNoticeBanner({
               LIMITED SUPPORT (★)
             </div>
             <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, lineHeight: 1.7 }}>
-              Short-Term Rental · Flip · Land Hold — can be saved for categorization;
-              F9 renders a standard multifamily layout which may not match these deal types.
+              Short-Term Rental · Flip · Land Hold — saved for categorization;
+              full F9 UI for these deal types is coming in a future release.
             </div>
           </div>
         </div>
@@ -1413,7 +1414,7 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
             <LvRow label="Investment Strategy"
               operatorOnly
               override={investmentStrategy} setOverride={handleInvestmentStrategySelect}
-              overrideOptions={['Build-to-Sell', 'Flip', 'Land Hold', 'Rental', 'Short-Term Rental']}
+              overrideOptions={['Build-to-Sell', 'Flip', 'Land Hold', 'Lease-Up', 'Redevelopment', 'Rental', 'Short-Term Rental', 'Value-Add']}
               overrideUnsupported={UNSUPPORTED_INVESTMENT_STRATEGIES}
               resolved={investStrategyResolved ?? '--'}
               source={
