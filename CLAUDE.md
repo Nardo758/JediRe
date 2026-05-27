@@ -391,3 +391,31 @@ A related failure mode: dispatches that were drafted but never fired can be conf
 - Verify your own work as the sole check — the agent verifying its own output is a known confirmation-bias risk; operator review of the verification is required
 - Treat parallel firing as acceptable for dependency-linked work — sequential firing is the default for investigation → implementation chains; parallel only when work is genuinely independent
 - Skip current-state verification because "we just decided this in the prior session"
+
+### P9 — Phase 2 Batch Integrity
+
+Phase 2 batches produce canonical derivation logic for proforma assumptions. Two requirements apply to every batch:
+
+**A. AGENT PROMPT ALIGNMENT**
+Each batch's canonical rules must align with the agent's operational prompts in the same dispatch. If a batch establishes a rule (e.g., reserves are tiered by age), the agent's system prompt or tool descriptions referencing that rule must update in the same dispatch.
+
+Verification step (per P8): when verifying a batch dispatch's closing note, confirm the agent prompt update was included. Flag any batch that lands canonical rules without aligning the agent.
+
+**B. EXISTING MODULE REFERENCING**
+Before drafting derivation logic for an assumption, search the codebase for existing platform modules that handle the math (e.g., Tax module, IRR/NPV calculators, OpEx aggregators). Where a module exists:
+- The batch document references the module as authoritative for math
+- The batch document specifies only trigger conditions, inputs, outputs, and agent reasoning about the module
+- The batch document does NOT re-specify the math
+
+Where no module exists:
+- The batch document specifies derivation rules in full
+- The implementation dispatch builds the rules into agent tooling
+
+**DO NOT:**
+- Re-specify math that an existing platform module already handles
+- Ship a batch dispatch without aligning related agent prompts
+
+**Rationale:**
+Shipping canonical derivation logic without aligning the agent's operational behavior produces apparent inconsistency between documentation and platform output. Operators see one rule in the doc and a different rule in agent output, producing credibility loss.
+
+Re-specifying math that a module already handles creates two sources of math truth (the doc and the module). When they drift, downstream consumers don't know which is authoritative.

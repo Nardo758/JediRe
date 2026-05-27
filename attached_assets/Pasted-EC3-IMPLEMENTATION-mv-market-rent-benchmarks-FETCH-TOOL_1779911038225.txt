@@ -1,0 +1,108 @@
+EC3 IMPLEMENTATION — mv_market_rent_benchmarks + FETCH TOOL
+
+CONTEXT
+Per EC3_MARKET_RENT_SOURCE.md (verified APPROVED, amended for 
+mv_ naming and per-floor-plan granularity constraint), EC3 is 
+one dispatch from SATISFIED. The implementation:
+
+1. Create mv_market_rent_benchmarks materialized view aggregating 
+   from apartment_locator_properties.avg_asking_rent
+2. Create fetch_market_rent_benchmark tool following 
+   fetch_comp_set patterns
+3. Add manual refresh trigger that fires on ApartmentIQ sync push
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. EC3_MARKET_RENT_SOURCE.md has APPROVED verification verdict + 
+   amendments applied
+2. apartment_locator_properties table exists with avg_asking_rent 
+   column populated
+3. No prior mv_market_rent_benchmarks view exists
+4. fetch_comp_set tool exists as the reference pattern
+5. The mv_ naming convention is current per platform standards 
+   (mv_investor_summary, mv_news_provider_stats as references)
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+STEP 1 — Create materialized view
+A. SQL definition per the amended EC3 document:
+   CREATE MATERIALIZED VIEW mv_market_rent_benchmarks
+   AS SELECT [aggregation logic per EC3 doc]
+   WITH NO DATA;
+B. Unique index for refresh concurrency
+C. Initial REFRESH MATERIALIZED VIEW CONCURRENTLY (after first 
+   index creation)
+
+STEP 2 — Create fetch tool
+A. Follow fetch_comp_set pattern in tool registry
+B. Tool signature: fetch_market_rent_benchmark(msa, state, 
+   property_type, vintage_band)
+C. Returns building-average market rent benchmark (per-floor-plan 
+   stratification not available; documented constraint per EC3 
+   amendment)
+D. Confidence calibration per EC3 recommendations
+
+STEP 3 — Refresh trigger
+A. Add refresh hook to ApartmentIQ sync push handler
+B. After successful sync: REFRESH MATERIALIZED VIEW CONCURRENTLY 
+   mv_market_rent_benchmarks
+C. Log refresh outcome (row count delta, refresh duration)
+
+STEP 4 — Agent integration
+A. Register fetch_market_rent_benchmark in agent tool registry
+B. Update agent system prompt with tool description
+C. No prompt logic changes for Batches 1-5 (they don't use 
+   market rent); Batch 6 will integrate when scoped
+
+STEP 5 — Verification
+A. Initial refresh produces non-empty view
+B. Sample fetch query returns plausible values for known MSAs
+C. ApartmentIQ sync push triggers refresh correctly
+D. Per-MSA sample size validation (flag low-sample MSAs)
+
+═══════════════════════════════════════════════════════════════════
+PHASE 2 BATCH INTEGRITY CHECK (per P9, anticipating P9 lands)
+═══════════════════════════════════════════════════════════════════
+
+A. EXISTING MODULE CHECK
+   - Search for existing market rent benchmark code paths
+   - Verify no other view/table provides this aggregation
+   - If yes: extend rather than duplicate
+
+B. AGENT PROMPT ALIGNMENT
+   - Update agent system prompt to reference 
+     fetch_market_rent_benchmark in the same dispatch
+   - Tool description must accurately reflect the building-average 
+     constraint (no per-floor-plan stratification)
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Code changes:
+- Migration: mv_market_rent_benchmarks creation + index
+- Tool registration: fetch_market_rent_benchmark
+- Refresh hook: ApartmentIQ sync handler
+- Agent system prompt update: tool description
+
+Closing note in docs/operations/EC3_IMPLEMENTATION.md:
+(a) Migration applied, view populated counts
+(b) Tool registered, sample fetch results
+(c) Refresh hook tested end-to-end
+(d) Agent system prompt diff
+(e) Per-MSA sample size report
+(f) EC3 status: SATISFIED (formerly YELLOW)
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Implement Batch 6 revenue derivation logic (separate batch 
+  dispatch when EC3 is SATISFIED)
+- Modify existing market rent code paths beyond what's needed 
+  for integration (this is additive infrastructure)
+- Build per-floor-plan stratification (Phase 3 enhancement per 
+  EC3 amendment)
+- "While I'm here" cleanups

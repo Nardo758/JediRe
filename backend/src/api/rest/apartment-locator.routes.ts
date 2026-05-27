@@ -26,6 +26,12 @@ router.post("/sync-table", requireAuth, async (req: AuthenticatedRequest, res: R
     const { city, state, minUnits = 1 } = req.body || {};
     const stats = await syncApartmentLocatorTable({ city, state, minUnits });
     logger.info(`[AL sync-table] inserted=${stats.inserted}, updated=${stats.updated}, source=${stats.source}`);
+    try {
+      await dbQuery('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_market_rent_benchmarks');
+      logger.info('[AL sync-table] mv_market_rent_benchmarks refreshed');
+    } catch (mvErr: any) {
+      logger.warn('[AL sync-table] mv_market_rent_benchmarks refresh failed (non-fatal)', { error: mvErr.message });
+    }
     res.json({ success: true, stats: { sourceRows: stats.source, inserted: stats.inserted, updated: stats.updated } });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -43,7 +49,14 @@ router.post('/sync/atlanta', requireAuth, async (req: AuthenticatedRequest, res:
     logger.info('Atlanta sync triggered by user', { userId: req.user?.userId });
     
     const result = await apartmentLocatorSyncService.syncAtlanta();
-    
+    if (result.success) {
+      try {
+        await dbQuery('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_market_rent_benchmarks');
+        logger.info('[AL sync/atlanta] mv_market_rent_benchmarks refreshed');
+      } catch (mvErr: any) {
+        logger.warn('[AL sync/atlanta] mv_market_rent_benchmarks refresh failed (non-fatal)', { error: mvErr.message });
+      }
+    }
     res.json({
       success: result.success,
       message: result.success 
@@ -71,7 +84,14 @@ router.post('/sync/all', requireAuth, async (req: AuthenticatedRequest, res: Res
     logger.info('All metros sync triggered', { userId: req.user?.userId });
     
     const result = await apartmentLocatorSyncService.syncAllMetros();
-    
+    if (result.success) {
+      try {
+        await dbQuery('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_market_rent_benchmarks');
+        logger.info('[AL sync/all] mv_market_rent_benchmarks refreshed');
+      } catch (mvErr: any) {
+        logger.warn('[AL sync/all] mv_market_rent_benchmarks refresh failed (non-fatal)', { error: mvErr.message });
+      }
+    }
     res.json({
       success: result.success,
       message: `Synced ${result.results.length} metros`,

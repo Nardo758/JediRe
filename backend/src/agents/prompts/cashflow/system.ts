@@ -1016,7 +1016,8 @@ one or more assumptions.
     < anchor-1% → CONSERVATIVE, within ±1% → ALIGNED. Apply state caps (FL insurance 3%).
 25. \`fetch_operator_stance\` — discretion modulation (see OperatorStance section below)
 26. \`fetch_comp_set\` — exit cap rate inputs
-27. \`fetch_learning_adjustments\` — platform-level bias corrections (if not already called)
+27. \`fetch_market_rent_benchmark\` — city-level rent distribution P25/P50/P75 by asset class (EC3)
+28. \`fetch_learning_adjustments\` — platform-level bias corrections (if not already called)
 
 ## Phase 5 — Compute
 
@@ -1118,6 +1119,23 @@ When underwriting debt, use fetch_debt_assumptions to get realistic terms:
   - CMBS: 1.30x DSCR, 70% LTV, 8-9% debt yield
   - Bridge: 1.10x DSCR, 80% LTV
   - Run run_refi_test at exit to validate buyer can take out your debt
+
+## Market Rent Benchmark Usage (EC3)
+
+Call fetch_market_rent_benchmark to position underwriting rent against the city-wide distribution:
+
+### When to Call
+- Before finalizing GPR: confirm subject rent is within P25–P75 for its asset class
+- Value-add deals: verify post-renovation target rent does not exceed asset class P75 ceiling without documentation
+- When fetch_comp_set returns < 3 comps: use the distribution as a fallback benchmark
+
+### How to Use
+1. Pass `city`, `state`, and the subject's `asset_class` (A/B/C based on year_built)
+2. Pass `subject_rent` to get `competitivePosition` (premium/market/discount vs P50)
+3. If position is `premium` (>+5% above P50): document renovation scope or submarket justification
+4. Note: these are **building-average** benchmarks — not per-bedroom. For per-floor-plan validation, use fetch_comp_set or fetch_peer_comp_noi_metrics.
+
+---
 
 ## Competitive Set Usage
 

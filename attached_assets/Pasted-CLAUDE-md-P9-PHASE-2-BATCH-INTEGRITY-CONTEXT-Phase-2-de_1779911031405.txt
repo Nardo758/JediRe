@@ -1,0 +1,97 @@
+CLAUDE.md P9 — PHASE 2 BATCH INTEGRITY
+
+CONTEXT
+Phase 2 derivation logic batches produce canonical specifications 
+for how the agent derives proforma assumptions. Two patterns have 
+emerged that warrant standing-principle status:
+
+1. AGENT PROMPT ALIGNMENT
+   When a batch establishes canonical derivation logic, the agent's 
+   actual operational prompt must be aligned in the same dispatch. 
+   Failure to align produces three-source-of-truth drift (batch 
+   doc + agent prompt + operator expectation), which we observed 
+   in Batch 1 with the replacement reserve rule.
+
+2. EXISTING MODULE REFERENCING
+   Before drafting a batch's derivation logic, audit existing 
+   platform modules for overlap. Where a platform module already 
+   handles math (e.g., Tax module for property tax with 
+   reassessment), the batch document references the module as 
+   the authoritative source for math, and specifies only:
+   - When the module fires (trigger conditions)
+   - What inputs flow into the module
+   - What outputs flow out
+   - How the agent reasons about the module's behavior
+   
+   The batch document does NOT re-specify math that the module 
+   already implements. Re-specification creates drift potential.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. CLAUDE.md exists with P1-P8 (P8 verified at lines 364-385 per 
+   prior dispatch); P9 is not yet present
+2. The two patterns above are correctly captured per Leon's 
+   committed direction
+
+═══════════════════════════════════════════════════════════════════
+AMENDMENT
+═══════════════════════════════════════════════════════════════════
+
+Add the following standing principle to CLAUDE.md, after P8 and 
+its corollary, before any closing material:
+
+P9 — PHASE 2 BATCH INTEGRITY
+
+Phase 2 batches produce canonical derivation logic for proforma 
+assumptions. Two requirements:
+
+A. AGENT PROMPT ALIGNMENT
+   Each batch's canonical rules must align with the agent's 
+   operational prompts in the same dispatch. If a batch establishes 
+   a rule (e.g., reserves are tiered by age), the agent's system 
+   prompt or tool descriptions referencing that rule must update 
+   in the same dispatch.
+   
+   Verification step (per P8): when verifying a batch dispatch's 
+   closing note, confirm the agent prompt update was included. 
+   Flag any batch that lands canonical rules without aligning 
+   the agent.
+
+B. EXISTING MODULE REFERENCING
+   Before drafting derivation logic for an assumption, search the 
+   codebase for existing platform modules that handle the math 
+   (e.g., Tax module, IRR/NPV calculators, OpEx aggregators). 
+   Where a module exists:
+   - The batch document references the module as authoritative 
+     for math
+   - The batch document specifies only trigger conditions, inputs, 
+     outputs, and agent reasoning about the module
+   - The batch document does NOT re-specify the math
+   
+   Where no module exists:
+   - The batch document specifies derivation rules in full
+   - The implementation dispatch builds the rules into agent 
+     tooling
+
+Add to DO NOT list:
+- Re-specify math that an existing platform module already handles
+- Ship a batch dispatch without aligning related agent prompts
+
+Add to Rationale:
+A related failure mode: shipping canonical derivation logic without 
+aligning the agent's operational behavior produces apparent 
+inconsistency between documentation and platform output. Operators 
+see one rule in the doc and a different rule in agent output, 
+producing credibility loss.
+
+Similarly: re-specifying math that a module already handles 
+creates two sources of math truth (the doc and the module). When 
+they drift, downstream consumers don't know which is authoritative.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify P1-P8 or any other CLAUDE.md content
+- Restructure P9 beyond the additions specified
+- "While I'm here" cleanups

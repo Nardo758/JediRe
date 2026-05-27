@@ -73,6 +73,7 @@ import { getPlausibilityScoreTool } from './tools/get_plausibility_score';
 import { fetchRateEnvironmentTool } from './tools/fetch_rate_environment';
 import { fetchCycleIntelligenceTool } from './tools/fetch_cycle_intelligence';
 import { fetchSourceDocumentsTool } from './tools/fetch_source_documents';
+import { fetchMarketRentBenchmarkTool } from './tools/fetch_market_rent_benchmark';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -620,6 +621,7 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchDebtAssumptionsTool,
     runRefiTestTool,
     fetchCompSetTool,
+    fetchMarketRentBenchmarkTool,  // EC3: building-average market rent P25/P50/P75 by city × asset class
     fetchDispositionLearningsTool,
     // Primary context assembler — all 9 data layers in one call
     fetchDataMatrixTool,
