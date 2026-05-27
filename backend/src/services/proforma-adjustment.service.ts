@@ -1970,6 +1970,21 @@ export interface DealFinancials {
    * (Task #1236)
    */
   proformaTemplateId: string | null;
+  /**
+   * Pre-renovation and post-stabilization regime values per Pattern B line item.
+   * Populated from T12 actuals (pre_renovation) and proforma resolved (post_stabilization)
+   * for value_add, redevelopment, and development deals. Absent for stabilized/existing deals.
+   *
+   * Consumed by <RegimeExpand> (Pattern B rows) in ProFormaSummaryTab to render
+   * the pre/post sub-rows with real values and correct source badges instead of
+   * deriving them inside the component from t12Value / resolvedValue props.
+   */
+  regimeDataByField?: Record<string, {
+    pre_renovation: { value: number | null; source: string | null; confidence?: 'high' | 'medium' | 'low' | null; note?: string | null };
+    post_stabilization: { value: number | null; source: string | null; confidence?: 'high' | 'medium' | 'low' | null; note?: string | null };
+    transition_year?: { value: number | null; source: string | null; confidence?: 'high' | 'medium' | 'low' | null; note?: string | null } | null;
+    transition_timing_label?: string | null;
+  }>;
 }
 
 /**
@@ -4724,6 +4739,53 @@ export async function getDealFinancials(
     goingInCapPercentile: null as number | null,
   };
 
+  // ── regimeDataByField — Pattern B pre/post regime values ────────────────────
+  // Mirrors the Pattern B routing table in frontend/src/config/m09_line_item_patterns.ts.
+  // For value_add, redevelopment, and development deals each Pattern B line item
+  // gets an entry with:
+  //   pre_renovation:    T12 trailing actual (best available pre-renovation baseline)
+  //   post_stabilization: proforma resolved value (agent or platform)
+  // When both values are null the entry is omitted (RegimeExpand handles the
+  // placeholder state internally via isPlaceholder).
+  const _PATTERN_B_BY_DEAL_TYPE: Record<string, string[]> = {
+    value_add:     ['vacancy_loss', 'concessions', 'bad_debt', 'other_income', 'repairs_maintenance', 'marketing', 'contract_services', 'turnover'],
+    redevelopment: ['vacancy_loss', 'concessions', 'bad_debt', 'other_income', 'utilities', 'repairs_maintenance', 'marketing', 'contract_services', 'turnover'],
+    development:   ['vacancy_loss', 'concessions', 'marketing', 'turnover'],
+  };
+  const _dealTypeNorm = ((deal.deal_type as string | null) ?? '').replace(/-/g, '_').toLowerCase();
+  const _patternBFields = _PATTERN_B_BY_DEAL_TYPE[_dealTypeNorm] ?? [];
+
+  let regimeDataByField: DealFinancials['regimeDataByField'] = undefined;
+  if (_patternBFields.length > 0) {
+    const _regimeMap: NonNullable<DealFinancials['regimeDataByField']> = {};
+    for (const _field of _patternBFields) {
+      const _row = (year1Rows as OperatingStatementRow[]).find(r => r.field === _field);
+      if (!_row) continue;
+      const _preVal  = _row.t12 ?? null;
+      const _postVal = _row.resolved ?? null;
+      if (_preVal == null && _postVal == null) continue;
+      // Determine post-stabilization source label — prefer the resolution slot,
+      // fall back to the row's source tag, default to 'platform'.
+      const _postSrc = _row.resolution ?? _row.source ?? 'platform';
+      _regimeMap[_field] = {
+        pre_renovation: {
+          value: _preVal,
+          source: _preVal != null ? 't12' : null,
+          note:   _preVal != null ? 'trailing 12-month actual (pre-reno baseline)' : null,
+        },
+        post_stabilization: {
+          value: _postVal,
+          source: _postVal != null ? _postSrc : null,
+        },
+        transition_year: null,
+        transition_timing_label: null,
+      };
+    }
+    if (Object.keys(_regimeMap).length > 0) {
+      regimeDataByField = _regimeMap;
+    }
+  }
+
   return {
     dealId,
     dealName: deal.name,
@@ -4752,6 +4814,7 @@ export async function getDealFinancials(
           id: string; label: string; monthly: number; source?: string;
         }>)
       : [],
+    regimeDataByField,
     meta: {
       seeded: Object.keys(year1Seed).length > 0,
       updatedAt: assumptionsRow?.updated_at?.toISOString?.() ?? null,
