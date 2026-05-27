@@ -3,7 +3,7 @@ import { BT } from '../bloomberg-ui';
 import { BlockErrorBoundary } from '../../BlockErrorBoundary';
 import type { StrategyAnalysisV2 } from '../../../hooks/useStrategyAnalysisV2';
 import { HoverContext } from './strategy-v2.types';
-import { MONO, confColor, BlockErrorFallback } from './strategy-v2.utils';
+import { MONO, confColor, BlockErrorFallback, SectionDivider, StrategyJumpBar } from './strategy-v2.utils';
 import { DetectionBanner } from './StrategyDetectionBanner';
 import { SubStrategyComparison } from './StrategySubStrategyComparison';
 import { SignalHeatmap } from './StrategySignalHeatmap';
@@ -11,6 +11,7 @@ import { EvidenceReportBlock } from './StrategyEvidenceReportBlock';
 import { CorrelationTimingPanel } from './StrategyCorrelationTimingPanel';
 import { PlanDocument } from './StrategyPlanDocument';
 import { MonitoringDashboard } from './StrategyMonitoringDashboard';
+import { StrategyCompsPanel } from './StrategyCompsPanel';
 
 export function AICoordinatorNarrative({ narrative }: { narrative: string }) {
   return (
@@ -253,102 +254,130 @@ export function V2FullAnalysis({
 
   return (
     <HoverContext.Provider value={{ hoveredEvidenceRef, setHoveredEvidenceRef }}>
-      <StrategyIntelligenceSummary analysis={analysis} />
 
-      <DetectionBanner detection={det} onConfirm={onConfirm} onAdjust={onAdjust} onOverride={onOverride} />
+      <StrategyJumpBar isGated={isGated} />
+
+      <div id="section-detect">
+        <StrategyIntelligenceSummary analysis={analysis} />
+        <DetectionBanner detection={det} onConfirm={onConfirm} onAdjust={onAdjust} onOverride={onOverride} />
+      </div>
 
       {!isGated && (
         <>
-          <BlockErrorBoundary
-            label="SubStrategyComparisonPanel"
-            fallback={({ retry }) => (
-              <BlockErrorFallback
-                message="Couldn't render the sub-strategy comparison panel — other panels are unaffected."
-                onRetry={retry}
-              />
-            )}
-          >
-            <SubStrategyComparison subStrategies={analysis.subStrategies} arbitrage={analysis.arbitrage} />
-          </BlockErrorBoundary>
-
-          {(analysis.subStrategies ?? []).map(ss => (
+          <div id="section-comps">
+            <SectionDivider label="COMP INTELLIGENCE" />
             <BlockErrorBoundary
-              key={ss.key}
-              label={`EvidenceReportBlock:${ss.key}`}
+              label="StrategyCompsPanelBlock"
               fallback={({ retry }) => (
                 <BlockErrorFallback
-                  message={`Couldn't render evidence for ${(ss.name || ss.key).replace(/_/g, ' ').toUpperCase()} — other sub-strategies are unaffected.`}
+                  message="Couldn't render comp intelligence panel — other panels are unaffected."
                   onRetry={retry}
                 />
               )}
             >
-              <EvidenceReportBlock ss={ss} defaultExpanded={ss.isDetectedPrimary} />
+              <StrategyCompsPanel dealId={dealId} />
             </BlockErrorBoundary>
-          ))}
+          </div>
 
-          <BlockErrorBoundary
-            label="SignalHeatmapPanel"
-            fallback={({ retry }) => (
-              <BlockErrorFallback
-                message="Couldn't render the signal heatmap — other panels are unaffected."
-                onRetry={retry}
-              />
-            )}
-          >
-            <SignalHeatmap subStrategies={analysis.subStrategies} signalScores={analysis.signalScores} />
-          </BlockErrorBoundary>
+          <div id="section-score">
+            <SectionDivider label="STRATEGY SCORING" />
+            <BlockErrorBoundary
+              label="SubStrategyComparisonPanel"
+              fallback={({ retry }) => (
+                <BlockErrorFallback
+                  message="Couldn't render the sub-strategy comparison panel — other panels are unaffected."
+                  onRetry={retry}
+                />
+              )}
+            >
+              <SubStrategyComparison subStrategies={analysis.subStrategies} arbitrage={analysis.arbitrage} />
+            </BlockErrorBoundary>
+          </div>
 
-          <BlockErrorBoundary
-            label="CorrelationTimingPanel"
-            fallback={({ retry }) => (
-              <BlockErrorFallback
-                message="Couldn't render the correlation & timing panel — other panels are unaffected."
-                onRetry={retry}
-              />
-            )}
-          >
-            <CorrelationTimingPanel
-              goldenChain={analysis.goldenChain}
-              correlationAlerts={analysis.correlationAlerts}
-              indicators={analysis.indicators}
-            />
-          </BlockErrorBoundary>
+          <div id="section-evidence">
+            <SectionDivider label="EVIDENCE REPORTS" />
+            {(analysis.subStrategies ?? []).map(ss => (
+              <BlockErrorBoundary
+                key={ss.key}
+                label={`EvidenceReportBlock:${ss.key}`}
+                fallback={({ retry }) => (
+                  <BlockErrorFallback
+                    message={`Couldn't render evidence for ${(ss.name || ss.key).replace(/_/g, ' ').toUpperCase()} — other sub-strategies are unaffected.`}
+                    onRetry={retry}
+                  />
+                )}
+              >
+                <EvidenceReportBlock ss={ss} defaultExpanded={ss.isDetectedPrimary} />
+              </BlockErrorBoundary>
+            ))}
 
-          <BlockErrorBoundary
-            label="PlanDocumentPanel"
-            fallback={({ retry }) => (
-              <BlockErrorFallback
-                message="Couldn't render the investment plan — other panels are unaffected."
-                onRetry={retry}
-              />
-            )}
-          >
-            <PlanDocument plan={analysis.plan} dealId={dealId} />
-          </BlockErrorBoundary>
+            <BlockErrorBoundary
+              label="SignalHeatmapPanel"
+              fallback={({ retry }) => (
+                <BlockErrorFallback
+                  message="Couldn't render the signal heatmap — other panels are unaffected."
+                  onRetry={retry}
+                />
+              )}
+            >
+              <SignalHeatmap subStrategies={analysis.subStrategies} signalScores={analysis.signalScores} />
+            </BlockErrorBoundary>
 
-          <BlockErrorBoundary
-            label="MonitoringDashboardPanel"
-            fallback={({ retry }) => (
-              <BlockErrorFallback
-                message="Couldn't render the monitoring dashboard — other panels are unaffected."
-                onRetry={retry}
+            <BlockErrorBoundary
+              label="CorrelationTimingPanel"
+              fallback={({ retry }) => (
+                <BlockErrorFallback
+                  message="Couldn't render the correlation & timing panel — other panels are unaffected."
+                  onRetry={retry}
+                />
+              )}
+            >
+              <CorrelationTimingPanel
+                goldenChain={analysis.goldenChain}
+                correlationAlerts={analysis.correlationAlerts}
+                indicators={analysis.indicators}
               />
-            )}
-          >
-            <MonitoringDashboard monitoring={analysis.plan?.monitoring || []} />
-          </BlockErrorBoundary>
+            </BlockErrorBoundary>
+          </div>
 
-          <BlockErrorBoundary
-            label="AICoordinatorNarrativePanel"
-            fallback={({ retry }) => (
-              <BlockErrorFallback
-                message="Couldn't render the AI coordinator narrative — other panels are unaffected."
-                onRetry={retry}
-              />
-            )}
-          >
-            <AICoordinatorNarrative narrative={analysis.coordinatorNarrative} />
-          </BlockErrorBoundary>
+          <div id="section-plan">
+            <SectionDivider label="INVESTMENT PLAN" />
+            <BlockErrorBoundary
+              label="PlanDocumentPanel"
+              fallback={({ retry }) => (
+                <BlockErrorFallback
+                  message="Couldn't render the investment plan — other panels are unaffected."
+                  onRetry={retry}
+                />
+              )}
+            >
+              <PlanDocument plan={analysis.plan} dealId={dealId} />
+            </BlockErrorBoundary>
+
+            <BlockErrorBoundary
+              label="MonitoringDashboardPanel"
+              fallback={({ retry }) => (
+                <BlockErrorFallback
+                  message="Couldn't render the monitoring dashboard — other panels are unaffected."
+                  onRetry={retry}
+                />
+              )}
+            >
+              <MonitoringDashboard monitoring={analysis.plan?.monitoring || []} />
+            </BlockErrorBoundary>
+
+            <BlockErrorBoundary
+              label="AICoordinatorNarrativePanel"
+              fallback={({ retry }) => (
+                <BlockErrorFallback
+                  message="Couldn't render the AI coordinator narrative — other panels are unaffected."
+                  onRetry={retry}
+                />
+              )}
+            >
+              <AICoordinatorNarrative narrative={analysis.coordinatorNarrative} />
+            </BlockErrorBoundary>
+          </div>
         </>
       )}
 

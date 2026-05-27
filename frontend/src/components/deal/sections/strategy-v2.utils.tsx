@@ -109,3 +109,69 @@ export function ScoreRing({ score: rawScore, color, size = 56 }: { score: number
     </svg>
   );
 }
+
+export function SectionDivider({ label }: { label: string }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '8px 14px 3px',
+      background: BT.bg.terminal,
+    }}>
+      <div style={{ width: 2, height: 13, background: BT.text.amber, borderRadius: 1, flexShrink: 0 }} />
+      <span style={{
+        fontFamily: MONO, fontSize: 8, color: BT.text.muted,
+        letterSpacing: 1.5, textTransform: 'uppercase' as const,
+      }}>
+        {label}
+      </span>
+      <div style={{ flex: 1, height: 1, background: BT.border.subtle }} />
+    </div>
+  );
+}
+
+const JUMP_SECTIONS = [
+  { id: 'section-detect', label: 'DETECT', gated: false },
+  { id: 'section-comps',  label: 'COMPS',  gated: true },
+  { id: 'section-score',  label: 'SCORE',  gated: true },
+  { id: 'section-evidence', label: 'EVIDENCE', gated: true },
+  { id: 'section-plan',   label: 'PLAN',   gated: true },
+];
+
+export function StrategyJumpBar({ isGated }: { isGated: boolean }) {
+  const handleClick = (id: string, gated: boolean) => {
+    if (gated && isGated) return;
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  return (
+    <div style={{
+      position: 'sticky', top: 0, zIndex: 10,
+      background: BT.bg.header,
+      borderBottom: `1px solid ${BT.border.subtle}`,
+      padding: '3px 10px',
+      display: 'flex', alignItems: 'center', gap: 3,
+    }}>
+      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginRight: 4, letterSpacing: 0.5 }}>JUMP:</span>
+      {JUMP_SECTIONS.map(s => {
+        const disabled = s.gated && isGated;
+        return (
+          <button
+            key={s.id}
+            onClick={() => handleClick(s.id, s.gated)}
+            style={{
+              fontFamily: MONO, fontSize: 8, fontWeight: 700,
+              color: disabled ? BT.text.muted : BT.text.amber,
+              background: 'transparent',
+              border: `1px solid ${disabled ? BT.border.subtle : `${BT.text.amber}44`}`,
+              padding: '2px 8px',
+              cursor: disabled ? 'default' : 'pointer',
+              letterSpacing: 0.5,
+              opacity: disabled ? 0.35 : 1,
+            }}
+          >
+            {s.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
