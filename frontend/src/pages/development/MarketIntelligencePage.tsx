@@ -55,12 +55,14 @@ interface SaleComp {
   recording_date: string;
   property_address: string;
   units: number;
-  year_built: number;
+  year_built: number | null;
   derived_sale_price: number;
   price_per_unit: number;
   implied_cap_rate: number | null;
   buyer_type: string;
   distance_miles: number;
+  source?: string;
+  property_class?: string;
 }
 
 interface SaleCompSet {
@@ -203,6 +205,8 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   const [saleCompSet, setSaleCompSet] = useState<SaleCompSet | null>(null);
   const [saleCompsLoading, setSaleCompsLoading] = useState(false);
   const [saleCompDeletingId, setSaleCompDeletingId] = useState<string | null>(null);
+  const [compSortField, setCompSortField] = useState<'date' | 'ppu' | 'cap'>('date');
+  const [compVintageBand, setCompVintageBand] = useState<string | null>(null);
 
   const loadSaleComps = useCallback(() => {
     if (!dealId) return;
@@ -501,14 +505,36 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   const saleComps = saleCompSet?.comps ?? [];
   const saleCompCount = saleCompSet?.comp_count ?? saleComps.length;
 
+  const VINTAGE_BANDS = ['pre-1990', '1990-2005', '2006-2015', '2016+'];
+
+  function compVintageOf(c: SaleComp): string | null {
+    if (c.year_built == null) return null;
+    const y = c.year_built;
+    if (y < 1990) return 'pre-1990';
+    if (y < 2006) return '1990-2005';
+    if (y < 2016) return '2006-2015';
+    return '2016+';
+  }
+
+  const filteredComps = useMemo(() => {
+    let list = [...saleComps];
+    if (compVintageBand) list = list.filter(c => compVintageOf(c) === compVintageBand);
+    if (compSortField === 'ppu') list.sort((a, b) => (b.price_per_unit ?? 0) - (a.price_per_unit ?? 0));
+    else if (compSortField === 'cap') list.sort((a, b) => ((a.implied_cap_rate ?? 999) - (b.implied_cap_rate ?? 999)));
+    else list.sort((a, b) => (b.recording_date > a.recording_date ? 1 : -1));
+    return list;
+  }, [saleComps, compSortField, compVintageBand]);
+
   const SALE_COMP_COLS = [
     { label: 'PROPERTY',  flex: 3, color: BT2.text.secondary },
-    { label: 'DATE',      flex: 1, color: BT2.text.muted },
-    { label: 'PRICE',     flex: 1, color: BT2.met.financial },
-    { label: '$/UNIT',    flex: 1, color: BT2.text.cyan },
-    { label: 'CAP RATE',  flex: 1, color: BT2.text.amber },
-    { label: 'DIST',      flex: 1, color: BT2.text.muted },
-    { label: '',          flex: 0.4, color: BT2.text.muted },
+    { label: 'DATE',      flex: 0.9, color: BT2.text.muted },
+    { label: 'PRICE',     flex: 0.9, color: BT2.met.financial },
+    { label: '$/UNIT',    flex: 0.9, color: BT2.text.cyan },
+    { label: 'CAP RATE',  flex: 0.9, color: BT2.text.amber },
+    { label: 'VINTAGE',   flex: 0.9, color: BT2.text.purple ?? BT2.text.muted },
+    { label: 'SOURCE',    flex: 0.9, color: BT2.text.muted },
+    { label: 'DIST',      flex: 0.7, color: BT2.text.muted },
+    { label: '',          flex: 0.35, color: BT2.text.muted },
   ];
 
   const renderCompsTab = () => (
@@ -519,7 +545,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
 
       <SectionPanel
         title="SALE COMP TRANSACTIONS"
-        subtitle={`${saleCompCount} RECORDS · PROPERTY / DATE / PRICE / $/UNIT / CAP RATE / DIST`}
+        subtitle={`${filteredComps.length}${compVintageBand ? ` of ${saleCompCount}` : ` RECORDS`} · PROPERTY / DATE / PRICE / $/UNIT / CAP / VINTAGE / SOURCE / DIST`}
         borderColor={BT2.text.amber}
       >
         {saleCompsLoading && (
@@ -530,6 +556,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
         )}
         {!saleCompsLoading && saleComps.length > 0 && (
           <div>
+            {/* KPI strip */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: BT2.border.subtle, marginBottom: 1 }}>
               <div style={{ background: BT2.bg.panel, padding: '4px 8px' }}>
                 <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>COMP COUNT</div>
@@ -548,44 +575,108 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
                 <div style={{ fontSize: 13, fontWeight: 700, color: BT2.text.amber, fontFamily: 'var(--bt-mono)' }}>{fmtCapRate(saleCompSet?.avg_implied_cap_rate ?? null)}</div>
               </div>
             </div>
+
+            {/* Sort + filter controls */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+              background: BT2.bg.panel, borderBottom: `1px solid ${BT2.border.subtle}`,
+              flexWrap: 'wrap',
+            }}>
+              <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5, marginRight: 2 }}>SORT</span>
+              {(['date', 'ppu', 'cap'] as const).map((f) => {
+                const labels = { date: 'DATE ↓', ppu: '$/UNIT ↓', cap: 'CAP RATE ↑' };
+                const active = compSortField === f;
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setCompSortField(f)}
+                    style={{
+                      fontFamily: 'var(--bt-mono)', fontSize: 8, fontWeight: active ? 700 : 400,
+                      color: active ? BT2.text.amber : BT2.text.muted,
+                      background: active ? `${BT2.text.amber}15` : 'transparent',
+                      border: `1px solid ${active ? BT2.text.amber : BT2.border.subtle}`,
+                      borderRadius: 2, padding: '2px 7px', cursor: 'pointer', letterSpacing: 0.5,
+                    }}
+                  >{labels[f]}</button>
+                );
+              })}
+              <span style={{ width: 1, height: 12, background: BT2.border.subtle, margin: '0 4px' }} />
+              <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>VINTAGE</span>
+              <button
+                onClick={() => setCompVintageBand(null)}
+                style={{
+                  fontFamily: 'var(--bt-mono)', fontSize: 8,
+                  fontWeight: compVintageBand == null ? 700 : 400,
+                  color: compVintageBand == null ? BT2.text.cyan : BT2.text.muted,
+                  background: compVintageBand == null ? `${BT2.text.cyan}15` : 'transparent',
+                  border: `1px solid ${compVintageBand == null ? BT2.text.cyan : BT2.border.subtle}`,
+                  borderRadius: 2, padding: '2px 7px', cursor: 'pointer', letterSpacing: 0.5,
+                }}
+              >ALL</button>
+              {VINTAGE_BANDS.map((vb) => {
+                const active = compVintageBand === vb;
+                return (
+                  <button
+                    key={vb}
+                    onClick={() => setCompVintageBand(active ? null : vb)}
+                    style={{
+                      fontFamily: 'var(--bt-mono)', fontSize: 8, fontWeight: active ? 700 : 400,
+                      color: active ? BT2.text.cyan : BT2.text.muted,
+                      background: active ? `${BT2.text.cyan}15` : 'transparent',
+                      border: `1px solid ${active ? BT2.text.cyan : BT2.border.subtle}`,
+                      borderRadius: 2, padding: '2px 7px', cursor: 'pointer', letterSpacing: 0.5,
+                    }}
+                  >{vb}</button>
+                );
+              })}
+            </div>
+
             <TableHeader cols={SALE_COMP_COLS} />
-            {saleComps.map((c, i) => (
-              <div key={c.id} style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <TableRow
-                    index={i}
-                    cells={[
-                      { value: c.property_address || '—',    flex: 3, color: BT2.text.secondary, weight: 600 },
-                      { value: fmtSaleDate(c.recording_date), flex: 1, color: BT2.text.muted },
-                      { value: fmtUsd(c.derived_sale_price),  flex: 1, color: BT2.met.financial },
-                      { value: fmtUsd(c.price_per_unit),      flex: 1, color: BT2.text.cyan },
-                      { value: fmtCapRate(c.implied_cap_rate), flex: 1, color: BT2.text.amber },
-                      { value: fmtMi(c.distance_miles),       flex: 1, color: BT2.text.muted },
-                      { value: '', flex: 0.4 },
-                    ]}
-                  />
+            {filteredComps.map((c, i) => {
+              const vintageBandLabel = c.year_built ? String(c.year_built) : '—';
+              const sourceLabel = c.source
+                ? c.source.replace('georgia_county', 'GA-CTY').replace('_', '-').toUpperCase()
+                : '—';
+              return (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <TableRow
+                      index={i}
+                      cells={[
+                        { value: c.property_address || '—',    flex: 3, color: BT2.text.secondary, weight: 600 },
+                        { value: fmtSaleDate(c.recording_date), flex: 0.9, color: BT2.text.muted },
+                        { value: fmtUsd(c.derived_sale_price),  flex: 0.9, color: BT2.met.financial },
+                        { value: fmtUsd(c.price_per_unit),      flex: 0.9, color: BT2.text.cyan },
+                        { value: fmtCapRate(c.implied_cap_rate), flex: 0.9, color: BT2.text.amber },
+                        { value: vintageBandLabel,              flex: 0.9, color: BT2.text.purple ?? BT2.text.muted },
+                        { value: sourceLabel,                   flex: 0.9, color: BT2.text.muted },
+                        { value: fmtMi(c.distance_miles),       flex: 0.7, color: BT2.text.muted },
+                        { value: '', flex: 0.35 },
+                      ]}
+                    />
+                  </div>
+                  <button
+                    onClick={() => handleDeleteSaleComp(c.id, c.property_address || 'this comp')}
+                    disabled={saleCompDeletingId === c.id}
+                    title="Remove comp"
+                    style={{
+                      position: 'absolute', right: 8,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      width: 20, height: 20,
+                      background: 'transparent', border: 'none',
+                      cursor: saleCompDeletingId === c.id ? 'wait' : 'pointer',
+                      color: saleCompDeletingId === c.id ? BT2.text.muted : BT2.text.red,
+                      opacity: saleCompDeletingId === c.id ? 0.4 : 0.6,
+                      padding: 0, transition: 'opacity 0.15s',
+                    }}
+                    onMouseEnter={(e) => { if (saleCompDeletingId !== c.id) (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+                    onMouseLeave={(e) => { if (saleCompDeletingId !== c.id) (e.currentTarget as HTMLButtonElement).style.opacity = '0.6'; }}
+                  >
+                    <Trash2 size={10} />
+                  </button>
                 </div>
-                <button
-                  onClick={() => handleDeleteSaleComp(c.id, c.property_address || 'this comp')}
-                  disabled={saleCompDeletingId === c.id}
-                  title="Remove comp"
-                  style={{
-                    position: 'absolute', right: 8,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    width: 20, height: 20,
-                    background: 'transparent', border: 'none',
-                    cursor: saleCompDeletingId === c.id ? 'wait' : 'pointer',
-                    color: saleCompDeletingId === c.id ? BT2.text.muted : BT2.text.red,
-                    opacity: saleCompDeletingId === c.id ? 0.4 : 0.6,
-                    padding: 0, transition: 'opacity 0.15s',
-                  }}
-                  onMouseEnter={(e) => { if (saleCompDeletingId !== c.id) (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
-                  onMouseLeave={(e) => { if (saleCompDeletingId !== c.id) (e.currentTarget as HTMLButtonElement).style.opacity = '0.6'; }}
-                >
-                  <Trash2 size={10} />
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </SectionPanel>

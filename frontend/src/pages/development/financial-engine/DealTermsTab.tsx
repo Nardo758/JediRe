@@ -488,6 +488,28 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   const [exitCap,        setExitCap]            = useState('');
   const [sellingCosts,   setSellingCosts]       = useState('');
 
+  // ── Platform-implied cap rate (fetched from /implied-cap-rate endpoint) ─────
+  const [impliedCapData, setImpliedCapData] = useState<{
+    implied_cap_rate: number | null;
+    operator_going_in_cap: number | null;
+    delta_bps: number | null;
+    positioning_label: string | null;
+    computation_method: string;
+  } | null>(null);
+
+  // Fetch platform-implied cap rate on mount and whenever the deal changes
+  useEffect(() => {
+    if (!props.dealId) return;
+    apiClient
+      .get<{ success: boolean; data: typeof impliedCapData }>(`/api/v1/deals/${props.dealId}/implied-cap-rate`)
+      .then((res) => {
+        if (res.data?.success && res.data?.data) {
+          setImpliedCapData(res.data.data);
+        }
+      })
+      .catch(() => {});
+  }, [props.dealId]);
+
   // Hydrate draft state once per dealId. Re-fetches won't clobber an in-flight
   // edit; onF9Refresh handlers below trigger a manual sync after a successful
   // save by stashing the new server value into local state directly.
@@ -998,6 +1020,65 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               source={goingInCapResolved != null ? 'Computed' : 'Not Provided'}
               flag={<PendingBadge label="DERIVED" />}
             />
+
+            {/* ── Platform-implied cap rate comparison ── */}
+            {impliedCapData?.implied_cap_rate != null && (() => {
+              const impliedPct = fmtPct(impliedCapData.implied_cap_rate);
+              const deltaBps   = impliedCapData.delta_bps;
+              const label      = impliedCapData.positioning_label;
+              const deltaAbs   = deltaBps != null ? Math.abs(deltaBps) : null;
+              const deltaColor = label === 'ALIGNED'
+                ? BT.text.green
+                : label === 'OPERATOR_ABOVE'
+                  ? BT.text.amber
+                  : BT.text.red ?? '#ef4444';
+              const deltaLabel = deltaBps == null ? null
+                : deltaBps > 0 ? `+${deltaAbs}bps above implied`
+                : deltaBps < 0 ? `${deltaBps}bps below implied`
+                : 'aligned';
+              return (
+                <tr>
+                  <td colSpan={8} style={{ padding: 0 }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '5px 14px 5px 28px',
+                      background: `${BT.text.amber}08`,
+                      borderBottom: `1px solid ${BT.border.subtle ?? '#1e2a3d'}`,
+                      fontFamily: MONO,
+                    }}>
+                      <span style={{ fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, minWidth: 192 }}>
+                        PLATFORM-IMPLIED CAP RATE
+                      </span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: BT.text.cyan }}>
+                        {impliedPct}
+                      </span>
+                      <span style={{ fontSize: 8, color: BT.text.muted, marginLeft: 4 }}>
+                        vs operator
+                      </span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: BT.text.secondary }}>
+                        {fmtPct(goingInCapResolved)}
+                      </span>
+                      {deltaLabel && (
+                        <span style={{
+                          fontSize: 8, fontWeight: 700, color: deltaColor,
+                          padding: '1px 5px', borderRadius: 2,
+                          background: `${deltaColor}18`,
+                          border: `1px solid ${deltaColor}44`,
+                          letterSpacing: 0.5,
+                          marginLeft: 4,
+                        }}>
+                          {deltaLabel.toUpperCase()}
+                        </span>
+                      )}
+                      <span style={{ fontSize: 7, color: BT.text.muted, marginLeft: 'auto' }}>
+                        benchmark-derived · opex P50 + vacancy P50
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })()}
+
             <LvRow label="Stabilized Cap Rate"
               hint="Peak NOI / Purchase"
               broker={undefined}

@@ -6,6 +6,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { compSetService } from '../../services/saleComps/compSet.service';
+import { getPool } from '../../database/connection';
 
 const router = Router();
 
@@ -180,6 +181,216 @@ router.delete('/deals/:dealId/comps/:compId', requireAuth, async (req: Authentic
       success: false,
       error: error.message
     });
+  }
+});
+
+/**
+ * GET /api/v1/deals/:dealId/implied-cap-rate
+ * Compute a platform-implied cap rate from submarket benchmark rents,
+ * stabilized occupancy, and platform OpEx ratios (line_item_benchmarks P50).
+ *
+ * Formula:
+ *   GPR  = market_rent_per_unit_annual × units
+ *   EGI  = GPR × (1 - vacancy_p50)
+ *   NOI  = EGI - (opex_per_unit_p50 × units)
+ *   implied_cap = NOI / purchase_price
+ *
+ * Returns: implied_cap_rate, operator_going_in_cap, delta_bps, positioning label.
+ */
+router.get('/deals/:dealId/implied-cap-rate', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const pool = getPool();
+
+    // 1 — Deal core info
+    const dealRow = await pool.query(`
+      SELECT
+        d.id,
+        COALESCE(d.asset_class, 'B')           AS asset_class,
+        COALESCE(d.deal_type, 'existing')       AS deal_type,
+        d.submarket_id,
+        d.state,
+        d.msa,
+        p.year_built,
+        p.units,
+        da.purchase_price_lv->>'resolved'        AS purchase_price_resolved
+      FROM deals d
+      LEFT JOIN properties p ON p.deal_id = d.id
+      LEFT JOIN deal_assumptions da ON da.deal_id = d.id
+      WHERE d.id = $1::uuid
+      LIMIT 1
+    `, [dealId]);
+
+    if (dealRow.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const deal = dealRow.rows[0] as Record<string, unknown>;
+    const assetClass   = (deal.asset_class as string) ?? 'B';
+    const dealType     = (deal.deal_type   as string) ?? 'existing';
+    const state        = (deal.state       as string | null) ?? null;
+    const msa          = (deal.msa         as string | null) ?? null;
+    const units        = deal.units ? parseInt(String(deal.units), 10) : null;
+    const yearBuilt    = deal.year_built ? parseInt(String(deal.year_built), 10) : null;
+    const purchasePrice = deal.purchase_price_resolved ? parseFloat(String(deal.purchase_price_resolved)) : null;
+
+    // 2 — Derive dimension buckets
+    const vintageBand = yearBuilt == null ? null
+      : yearBuilt < 1990 ? 'pre-1990'
+      : yearBuilt < 2006 ? '1990-2005'
+      : yearBuilt < 2016 ? '2006-2015'
+      : '2016+';
+
+    const unitCountBand = units == null ? null
+      : units < 100  ? '<100'
+      : units < 200  ? '100-200'
+      : units < 350  ? '200-350'
+      : '350+';
+
+    // Helper: progressively loosen bucket matches, prioritising tighter matches
+    async function queryBenchmark(sql: string, params: unknown[]): Promise<Record<string, unknown> | null> {
+      const r = await pool.query(sql, params);
+      return (r.rows[0] as Record<string, unknown> | undefined) ?? null;
+    }
+
+    // 3 — OpEx sum: sum of per_unit_p50 across all opex lines for the bucket
+    let opexPerUnit: number | null = null;
+    const opexBuckets = [
+      { vintage: vintageBand, units: unitCountBand, state, msa },
+      { vintage: vintageBand, units: unitCountBand, state, msa: null },
+      { vintage: vintageBand, units: null,          state, msa: null },
+      { vintage: null,        units: null,          state, msa: null },
+      { vintage: null,        units: null,          state: null, msa: null },
+    ];
+    for (const b of opexBuckets) {
+      const r = await queryBenchmark(`
+        SELECT SUM(per_unit_p50) AS total_opex_per_unit
+        FROM line_item_benchmarks
+        WHERE category = 'opex'
+          AND asset_class = $1
+          AND deal_type   = $2
+          AND n_samples  >= 3
+          AND ($3::text IS NULL OR state      = $3)
+          AND ($4::text IS NULL OR msa        = $4)
+          AND ($5::text IS NULL OR vintage_band   = $5)
+          AND ($6::text IS NULL OR unit_count_band = $6)
+      `, [assetClass, dealType, b.state, b.msa, b.vintage, b.units]);
+      const v = r?.total_opex_per_unit != null ? parseFloat(String(r.total_opex_per_unit)) : null;
+      if (v != null && v > 0) { opexPerUnit = v; break; }
+    }
+
+    // 4 — Market rent: annual GPR per unit from revenue benchmark
+    let marketRentPerUnitAnnual: number | null = null;
+    const rentBuckets = opexBuckets;
+    for (const b of rentBuckets) {
+      const r = await queryBenchmark(`
+        SELECT per_unit_p50 AS market_rent
+        FROM line_item_benchmarks
+        WHERE category   = 'revenue'
+          AND line_item  IN ('gpr', 'market_rent', 'gross_potential_rent', 'effective_gross_income')
+          AND asset_class = $1
+          AND deal_type   = $2
+          AND n_samples  >= 3
+          AND ($3::text IS NULL OR state           = $3)
+          AND ($4::text IS NULL OR msa             = $4)
+          AND ($5::text IS NULL OR vintage_band    = $5)
+          AND ($6::text IS NULL OR unit_count_band = $6)
+        ORDER BY as_of DESC
+        LIMIT 1
+      `, [assetClass, dealType, b.state, b.msa, b.vintage, b.units]);
+      const v = r?.market_rent != null ? parseFloat(String(r.market_rent)) : null;
+      if (v != null && v > 0) { marketRentPerUnitAnnual = v; break; }
+    }
+
+    // 5 — Vacancy: P50 from archive_assumption_benchmarks
+    let vacancyP50: number | null = null;
+    const vacBuckets = [
+      { asset: assetClass, type: dealType, sub: deal.submarket_id as string | null },
+      { asset: assetClass, type: dealType, sub: null },
+      { asset: assetClass, type: null,     sub: null },
+    ];
+    for (const b of vacBuckets) {
+      const r = await queryBenchmark(`
+        SELECT p50 AS vacancy_p50
+        FROM archive_assumption_benchmarks
+        WHERE assumption_name = 'vacancy_pct'
+          AND asset_class = $1
+          AND ($2::text IS NULL OR deal_type   = $2)
+          AND ($3::uuid IS NULL OR submarket_id = $3::uuid)
+          AND n_samples >= 5
+        ORDER BY as_of DESC
+        LIMIT 1
+      `, [b.asset, b.type, b.sub]);
+      const v = r?.vacancy_p50 != null ? parseFloat(String(r.vacancy_p50)) : null;
+      if (v != null) { vacancyP50 = v; break; }
+    }
+    if (vacancyP50 == null) vacancyP50 = 0.07; // platform default 7%
+
+    // 6 — Compute implied cap rate (requires all inputs)
+    let impliedCapRate: number | null = null;
+    let computationMethod = 'insufficient_data';
+    let opexBucketUsed: Record<string, unknown> | null = null;
+
+    if (units != null && marketRentPerUnitAnnual != null && opexPerUnit != null && purchasePrice != null && purchasePrice > 0) {
+      const gpr    = marketRentPerUnitAnnual * units;
+      const egi    = gpr * (1 - vacancyP50);
+      const noi    = egi - (opexPerUnit * units);
+      impliedCapRate = noi / purchasePrice;
+      computationMethod = 'benchmark_derived';
+      opexBucketUsed = { asset_class: assetClass, deal_type: dealType, vintage_band: vintageBand, unit_count_band: unitCountBand, state, msa };
+    }
+
+    // 7 — Operator going-in cap (from latest underwriting snapshot or financials composer)
+    let operatorGoingInCap: number | null = null;
+    const snapRow = await queryBenchmark(`
+      SELECT proforma_json
+      FROM deal_underwriting_snapshots
+      WHERE deal_id = $1::uuid
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [dealId]);
+    if (snapRow?.proforma_json) {
+      const pj = snapRow.proforma_json as Record<string, unknown>;
+      const snap = pj.proforma_fields as Record<string, unknown> | null ?? pj;
+      const capVal = snap?.going_in_cap_rate ?? snap?.goingInCap ?? snap?.going_in_cap;
+      if (capVal != null) operatorGoingInCap = parseFloat(String(capVal));
+    }
+
+    // 8 — Delta and positioning
+    let deltaBps: number | null = null;
+    let positioningLabel: string | null = null;
+    if (impliedCapRate != null && operatorGoingInCap != null) {
+      deltaBps = Math.round((operatorGoingInCap - impliedCapRate) * 10000);
+      if (Math.abs(deltaBps) <= 25) positioningLabel = 'ALIGNED';
+      else if (deltaBps > 25) positioningLabel = 'OPERATOR_ABOVE';
+      else positioningLabel = 'OPERATOR_BELOW';
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        implied_cap_rate: impliedCapRate,
+        operator_going_in_cap: operatorGoingInCap,
+        delta_bps: deltaBps,
+        positioning_label: positioningLabel,
+        computation_method: computationMethod,
+        inputs: {
+          units,
+          purchase_price: purchasePrice,
+          market_rent_per_unit_annual: marketRentPerUnitAnnual,
+          opex_per_unit_annual: opexPerUnit,
+          vacancy_p50: vacancyP50,
+          vintage_band: vintageBand,
+          unit_count_band: unitCountBand,
+          asset_class: assetClass,
+          deal_type: dealType,
+        },
+        opex_bucket_used: opexBucketUsed,
+      }
+    });
+  } catch (error: any) {
+    console.error('Implied cap rate error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
