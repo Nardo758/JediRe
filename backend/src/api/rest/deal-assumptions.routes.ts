@@ -861,6 +861,51 @@ router.post('/:dealId/assumptions/apply-from-module', requireAuth, async (req: A
 });
 
 /**
+ * POST /:dealId/assumptions/strategy-annotation
+ * Persists strategy-plan annotation fields (non-numeric, audit-only) to
+ * deals.deal_data under the key `strategy_plan_annotations.{section}`.
+ *
+ * Body: { section: 'entry'|'exit', annotations: Record<string, string> }
+ */
+router.post('/:dealId/assumptions/strategy-annotation', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { section, annotations } = req.body as { section?: unknown; annotations?: unknown };
+
+    if (section !== 'entry' && section !== 'exit') {
+      return res.status(400).json({ error: "section must be 'entry' or 'exit'" });
+    }
+    if (!annotations || typeof annotations !== 'object' || Array.isArray(annotations)) {
+      return res.status(400).json({ error: 'annotations must be a plain object' });
+    }
+
+    const own = await pool.query(
+      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, req.user?.userId],
+    );
+    if (own.rows.length === 0) return res.status(403).json({ error: 'Not authorized for this deal' });
+
+    const patch = JSON.stringify({
+      strategy_plan_annotations: {
+        [section as string]: { ...(annotations as object), savedAt: new Date().toISOString() },
+      },
+    });
+    await pool.query(
+      `UPDATE deals
+         SET deal_data  = COALESCE(deal_data, '{}'::jsonb) || $1::jsonb,
+             updated_at = NOW()
+       WHERE id = $2`,
+      [patch, dealId],
+    );
+
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error('Error storing strategy annotation:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * PATCH /:dealId/assumptions/strategy
  *
  * Unified surgical write for both Investment Strategy and Exit Strategy.

@@ -3,33 +3,269 @@ import { BT, Bd, SectionPanel, DataRow } from '../bloomberg-ui';
 import type { InvestmentPlan } from '../../../hooks/useStrategyAnalysisV2';
 import { HoverContext } from './strategy-v2.types';
 import { MONO, fmtSafe, sevColor } from './strategy-v2.utils';
+import { apiClient } from '@/services/api.client';
+import { dispatchModuleApplied } from '../../../utils/moduleEvents';
 
 const PHASE_COLORS: Record<number, string> = {
   1: BT.text.cyan, 2: BT.text.green, 3: BT.text.amber, 4: BT.text.purple,
 };
 
+type ConflictItem = { fieldPath: string; reason: string; existingValue: unknown };
+type SectionKey = 'entry' | 'exit';
+
+function parseCurrencyInput(raw: string): number | null {
+  const cleaned = raw.replace(/[$,\s]/g, '');
+  if (/[Mm]$/.test(cleaned)) {
+    const n = parseFloat(cleaned.slice(0, -1)) * 1e6;
+    return Number.isFinite(n) ? n : null;
+  }
+  if (/[Kk]$/.test(cleaned)) {
+    const n = parseFloat(cleaned.slice(0, -1)) * 1e3;
+    return Number.isFinite(n) ? n : null;
+  }
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+function ConflictPanel({
+  section,
+  conflicts,
+  onForce,
+  onKeep,
+  pushing,
+}: {
+  section: SectionKey;
+  conflicts: ConflictItem[];
+  onForce: () => void;
+  onKeep: () => void;
+  pushing: boolean;
+}) {
+  return (
+    <div style={{
+      margin: '6px 0',
+      padding: '8px 10px',
+      background: `${BT.text.amber}10`,
+      border: `1px solid ${BT.text.amber}44`,
+      borderLeft: `3px solid ${BT.text.amber}`,
+    }}>
+      <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.amber, marginBottom: 4 }}>
+        ⚠ FIELD CONFLICT — {conflicts.length} USER-LOCKED VALUE{conflicts.length > 1 ? 'S' : ''}
+      </div>
+      {conflicts.map((c, i) => (
+        <div key={i} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, padding: '1px 0' }}>
+          <span style={{ color: BT.text.muted }}>FIELD: </span>
+          <span style={{ color: BT.text.primary }}>{c.fieldPath}</span>
+          {c.existingValue != null && (
+            <span style={{ color: BT.text.muted }}> · existing: {String(c.existingValue)}</span>
+          )}
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+        <button
+          onClick={onForce}
+          disabled={pushing}
+          style={{
+            fontFamily: MONO, fontSize: 8, fontWeight: 700,
+            color: BT.text.amber,
+            background: `${BT.text.amber}22`, border: `1px solid ${BT.text.amber}55`,
+            padding: '3px 10px', cursor: pushing ? 'not-allowed' : 'pointer', opacity: pushing ? 0.6 : 1,
+          }}
+        >
+          {pushing ? '…' : 'FORCE OVERWRITE'}
+        </button>
+        <button
+          onClick={onKeep}
+          disabled={pushing}
+          style={{
+            fontFamily: MONO, fontSize: 8, color: BT.text.secondary,
+            background: 'transparent', border: `1px solid ${BT.border.subtle}`,
+            padding: '3px 10px', cursor: pushing ? 'not-allowed' : 'pointer', opacity: pushing ? 0.6 : 1,
+          }}
+        >
+          KEEP USER VALUE
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan | null | undefined; dealId: string }) {
   const { hoveredEvidenceRef, setHoveredEvidenceRef } = useContext(HoverContext);
   const [editedEntry, setEditedEntry] = useState<Partial<{ targetQuarter: string; priceCeiling: string; debtStructure: string }>>({});
   const [hoveredAction, setHoveredAction] = useState<string | null>(null);
-  const [applyFeedback, setApplyFeedback] = useState<Record<string, string>>({});
   const [editedActions, setEditedActions] = useState<Record<string, { timing?: string; expectedImpact?: string }>>({});
+
+  const [pushing, setPushing] = useState<Record<SectionKey, boolean>>({ entry: false, exit: false });
+  const [feedback, setFeedback] = useState<Record<string, string>>({});
+  const [pendingConflicts, setPendingConflicts] = useState<Partial<Record<SectionKey, ConflictItem[]>>>({});
 
   if (!plan) return null;
 
-  const handleApplyToProForma = async (section: string) => {
-    try {
-      await fetch(`/api/v1/deals/${dealId}/proforma/apply-plan`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ section, editedEntry }),
-      });
-      setApplyFeedback(f => ({ ...f, [section]: 'APPLIED ✓' }));
-      setTimeout(() => setApplyFeedback(f => ({ ...f, [section]: '' })), 3000);
-    } catch {
-      setApplyFeedback(f => ({ ...f, [section]: 'STUB — PRO FORMA INTEGRATION PENDING' }));
-      setTimeout(() => setApplyFeedback(f => ({ ...f, [section]: '' })), 3000);
+  const setFeedbackMsg = (section: string, msg: string, clearAfterMs = 4000) => {
+    setFeedback(f => ({ ...f, [section]: msg }));
+    if (clearAfterMs > 0) setTimeout(() => setFeedback(f => ({ ...f, [section]: '' })), clearAfterMs);
+  };
+
+  const callApplyModule = async (
+    source: string,
+    fields: Array<{ fieldPath: string; value: unknown; force?: boolean }>,
+  ) => {
+    const res: any = await apiClient.post(
+      `/api/v1/deals/${dealId}/assumptions/apply-from-module`,
+      { source, appliedAt: new Date().toISOString(), fields },
+    );
+    return res.data as { applied: Array<{ fieldPath: string; value: unknown }>; conflicts: ConflictItem[] };
+  };
+
+  const handlePushEntry = async () => {
+    if (pushing.entry) return;
+
+    const rawPriceCeiling = editedEntry.priceCeiling;
+    let priceCeiling: number | null = null;
+    if (rawPriceCeiling !== undefined && rawPriceCeiling.trim() !== '') {
+      priceCeiling = parseCurrencyInput(rawPriceCeiling);
+    } else if (plan.entry?.priceCeiling) {
+      priceCeiling = plan.entry.priceCeiling;
     }
+
+    const targetHoldMonths = plan.holdStructure?.targetHoldMonths;
+    const holdPeriodYears = targetHoldMonths ? Math.max(1, Math.round(targetHoldMonths / 12)) : null;
+
+    const fields: Array<{ fieldPath: string; value: unknown }> = [];
+    if (priceCeiling !== null && priceCeiling > 0) {
+      fields.push({ fieldPath: 'acquisition.purchasePrice', value: priceCeiling });
+    }
+    if (holdPeriodYears !== null && holdPeriodYears >= 1 && holdPeriodYears <= 36) {
+      fields.push({ fieldPath: 'hold.holdPeriodYears', value: holdPeriodYears });
+    }
+
+    if (fields.length === 0) {
+      setFeedbackMsg('entry', '⚠ No valid numeric values to push', 3000);
+      return;
+    }
+
+    setPushing(p => ({ ...p, entry: true }));
+    try {
+      const { applied, conflicts } = await callApplyModule('strategy:entry', fields);
+      const userConflicts = conflicts.filter(c => c.reason === 'user_locked');
+
+      if (userConflicts.length > 0) {
+        setPendingConflicts(p => ({ ...p, entry: userConflicts }));
+      }
+
+      if (applied.length > 0) {
+        dispatchModuleApplied('strategy:entry', applied.map(a => a.fieldPath));
+        const msg = userConflicts.length > 0
+          ? `✓ ${applied.length} applied · ${userConflicts.length} conflict(s) — resolve below`
+          : `✓ ${applied.length} field(s) pushed to F9`;
+        setFeedbackMsg('entry', msg, userConflicts.length > 0 ? 0 : 4000);
+      } else if (userConflicts.length > 0) {
+        setFeedbackMsg('entry', `⚠ ${userConflicts.length} field(s) locked — resolve below`, 0);
+      }
+
+      const annotatedQuarter = editedEntry.targetQuarter ?? plan.entry?.targetQuarter ?? '';
+      const annotatedDebt = editedEntry.debtStructure ?? plan.entry?.debtStructure ?? '';
+      const annotations: Record<string, string> = {};
+      if (annotatedQuarter) annotations.targetQuarter = annotatedQuarter;
+      if (annotatedDebt) annotations.debtStructure = annotatedDebt;
+      if (Object.keys(annotations).length > 0) {
+        apiClient.post(`/api/v1/deals/${dealId}/assumptions/strategy-annotation`, {
+          section: 'entry', annotations,
+        }).catch(() => {});
+      }
+    } catch (err: any) {
+      setFeedbackMsg('entry', `✕ ${err?.response?.data?.error || err?.message || 'Push failed'}`);
+    } finally {
+      setPushing(p => ({ ...p, entry: false }));
+    }
+  };
+
+  const handlePushExit = async () => {
+    if (pushing.exit) return;
+
+    const exitCapRate = plan.exit?.capRate;
+    const targetIrr = plan.exit?.expectedIRR?.[0];
+
+    const fields: Array<{ fieldPath: string; value: unknown }> = [];
+    if (exitCapRate != null && exitCapRate > 0) {
+      fields.push({ fieldPath: 'disposition.exitCapRate', value: exitCapRate });
+    }
+    if (targetIrr != null && targetIrr > 0) {
+      fields.push({ fieldPath: 'targets.targetIrr', value: targetIrr });
+    }
+
+    if (fields.length === 0) {
+      setFeedbackMsg('exit', '⚠ No exit cap / IRR values available', 3000);
+      return;
+    }
+
+    setPushing(p => ({ ...p, exit: true }));
+    try {
+      const { applied, conflicts } = await callApplyModule('strategy:exit', fields);
+      const userConflicts = conflicts.filter(c => c.reason === 'user_locked');
+
+      if (userConflicts.length > 0) {
+        setPendingConflicts(p => ({ ...p, exit: userConflicts }));
+      }
+
+      if (applied.length > 0) {
+        dispatchModuleApplied('strategy:exit', applied.map(a => a.fieldPath));
+        const msg = userConflicts.length > 0
+          ? `✓ ${applied.length} applied · ${userConflicts.length} conflict(s) — resolve below`
+          : `✓ ${applied.length} field(s) pushed to F9`;
+        setFeedbackMsg('exit', msg, userConflicts.length > 0 ? 0 : 4000);
+      } else if (userConflicts.length > 0) {
+        setFeedbackMsg('exit', `⚠ ${userConflicts.length} field(s) locked — resolve below`, 0);
+      }
+    } catch (err: any) {
+      setFeedbackMsg('exit', `✕ ${err?.response?.data?.error || err?.message || 'Push failed'}`);
+    } finally {
+      setPushing(p => ({ ...p, exit: false }));
+    }
+  };
+
+  const handleForceOverwrite = async (section: SectionKey) => {
+    const conflicts = pendingConflicts[section];
+    if (!conflicts || conflicts.length === 0) return;
+    const source = section === 'entry' ? 'strategy:entry' : 'strategy:exit';
+
+    const forceFields = conflicts.map(c => {
+      let value: number | null = null;
+      if (c.fieldPath === 'acquisition.purchasePrice') {
+        const raw = editedEntry.priceCeiling;
+        value = raw ? parseCurrencyInput(raw) : (plan.entry?.priceCeiling ?? null);
+      } else if (c.fieldPath === 'hold.holdPeriodYears') {
+        const months = plan.holdStructure?.targetHoldMonths;
+        value = months ? Math.max(1, Math.round(months / 12)) : null;
+      } else if (c.fieldPath === 'disposition.exitCapRate') {
+        value = plan.exit?.capRate ?? null;
+      } else if (c.fieldPath === 'targets.targetIrr') {
+        value = plan.exit?.expectedIRR?.[0] ?? null;
+      }
+      return { fieldPath: c.fieldPath, value, force: true };
+    }).filter(f => f.value !== null);
+
+    if (forceFields.length === 0) return;
+
+    setPushing(p => ({ ...p, [section]: true }));
+    setPendingConflicts(p => ({ ...p, [section]: [] }));
+    try {
+      const { applied } = await callApplyModule(source, forceFields);
+      if (applied.length > 0) {
+        dispatchModuleApplied(source, applied.map(a => a.fieldPath));
+        setFeedbackMsg(section, `✓ Force-applied ${applied.length} field(s) to F9`);
+      }
+    } catch (err: any) {
+      setFeedbackMsg(section, `✕ ${err?.response?.data?.error || 'Force-overwrite failed'}`);
+    } finally {
+      setPushing(p => ({ ...p, [section]: false }));
+    }
+  };
+
+  const handleKeepUserValue = (section: SectionKey) => {
+    setPendingConflicts(p => ({ ...p, [section]: [] }));
+    const cleared = feedback[section]?.startsWith('⚠') ? '' : feedback[section];
+    setFeedback(f => ({ ...f, [section]: cleared }));
   };
 
   const inStyle: React.CSSProperties = {
@@ -37,21 +273,54 @@ export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan | null | u
     border: `1px solid ${BT.border.subtle}`, padding: '2px 6px', width: '100%', boxSizing: 'border-box',
   };
 
+  const entryConflicts = pendingConflicts.entry ?? [];
+  const exitConflicts = pendingConflicts.exit ?? [];
+
   return (
     <SectionPanel title="INVESTMENT PLAN DOCUMENT" borderColor={BT.text.green} style={{ marginBottom: 1 }}>
+
       {/* ENTRY */}
       <div style={{ padding: '8px 12px', borderBottom: `1px solid ${BT.border.subtle}`, borderLeft: `2px solid ${BT.text.cyan}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.cyan, letterSpacing: 0.5 }}>ENTRY</span>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {applyFeedback['entry'] && <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green }}>{applyFeedback['entry']}</span>}
-            <button onClick={() => handleApplyToProForma('entry')} style={{
-              fontFamily: MONO, fontSize: 8, color: BT.text.cyan,
-              background: `${BT.text.cyan}18`, border: `1px solid ${BT.text.cyan}44`,
-              padding: '2px 8px', cursor: 'pointer',
-            }}>APPLY TO PRO FORMA</button>
+            {feedback['entry'] && (
+              <span style={{
+                fontFamily: MONO, fontSize: 8,
+                color: feedback['entry'].startsWith('✓') ? BT.text.green
+                  : feedback['entry'].startsWith('✕') ? BT.text.red
+                  : BT.text.amber,
+              }}>
+                {feedback['entry']}
+              </span>
+            )}
+            <button
+              onClick={handlePushEntry}
+              disabled={pushing.entry}
+              style={{
+                fontFamily: MONO, fontSize: 8, fontWeight: 700,
+                color: BT.text.amber,
+                background: `${BT.text.amber}1a`, border: `1px solid ${BT.text.amber}55`,
+                padding: '2px 10px', cursor: pushing.entry ? 'not-allowed' : 'pointer',
+                opacity: pushing.entry ? 0.6 : 1,
+                letterSpacing: 0.3,
+              }}
+            >
+              {pushing.entry ? '…' : 'PUSH TO F9 →'}
+            </button>
           </div>
         </div>
+
+        {entryConflicts.length > 0 && (
+          <ConflictPanel
+            section="entry"
+            conflicts={entryConflicts}
+            onForce={() => handleForceOverwrite('entry')}
+            onKeep={() => handleKeepUserValue('entry')}
+            pushing={pushing.entry}
+          />
+        )}
+
         <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '4px 8px', alignItems: 'center' }}>
           <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>TARGET QUARTER</span>
           <input value={editedEntry.targetQuarter ?? plan.entry?.targetQuarter ?? ''} onChange={e => setEditedEntry(p => ({ ...p, targetQuarter: e.target.value }))} style={inStyle} />
@@ -65,18 +334,10 @@ export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan | null | u
         )}
       </div>
 
-      {/* VALUE CREATION */}
+      {/* VALUE CREATION — button intentionally removed (no numeric F9 destination) */}
       <div style={{ padding: '8px 12px', borderBottom: `1px solid ${BT.border.subtle}`, borderLeft: `2px solid ${BT.text.green}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.green, letterSpacing: 0.5 }}>VALUE CREATION</span>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {applyFeedback['valueCreation'] && <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green }}>{applyFeedback['valueCreation']}</span>}
-            <button onClick={() => handleApplyToProForma('valueCreation')} style={{
-              fontFamily: MONO, fontSize: 8, color: BT.text.green,
-              background: `${BT.text.green}18`, border: `1px solid ${BT.text.green}44`,
-              padding: '2px 8px', cursor: 'pointer',
-            }}>APPLY TO PRO FORMA</button>
-          </div>
         </div>
         {(plan.valueCreation || []).map((action, i) => {
           const phaseColor = PHASE_COLORS[action.phase] || BT.text.secondary;
@@ -170,14 +431,43 @@ export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan | null | u
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.purple, letterSpacing: 0.5 }}>EXIT</span>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {applyFeedback['exit'] && <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green }}>{applyFeedback['exit']}</span>}
-            <button onClick={() => handleApplyToProForma('exit')} style={{
-              fontFamily: MONO, fontSize: 8, color: BT.text.purple,
-              background: `${BT.text.purple}18`, border: `1px solid ${BT.text.purple}44`,
-              padding: '2px 8px', cursor: 'pointer',
-            }}>APPLY TO PRO FORMA</button>
+            {feedback['exit'] && (
+              <span style={{
+                fontFamily: MONO, fontSize: 8,
+                color: feedback['exit'].startsWith('✓') ? BT.text.green
+                  : feedback['exit'].startsWith('✕') ? BT.text.red
+                  : BT.text.amber,
+              }}>
+                {feedback['exit']}
+              </span>
+            )}
+            <button
+              onClick={handlePushExit}
+              disabled={pushing.exit}
+              style={{
+                fontFamily: MONO, fontSize: 8, fontWeight: 700,
+                color: BT.text.purple,
+                background: `${BT.text.purple}1a`, border: `1px solid ${BT.text.purple}55`,
+                padding: '2px 10px', cursor: pushing.exit ? 'not-allowed' : 'pointer',
+                opacity: pushing.exit ? 0.6 : 1,
+                letterSpacing: 0.3,
+              }}
+            >
+              {pushing.exit ? '…' : 'PUSH TO F9 →'}
+            </button>
           </div>
         </div>
+
+        {exitConflicts.length > 0 && (
+          <ConflictPanel
+            section="exit"
+            conflicts={exitConflicts}
+            onForce={() => handleForceOverwrite('exit')}
+            onKeep={() => handleKeepUserValue('exit')}
+            pushing={pushing.exit}
+          />
+        )}
+
         <DataRow label="TARGET QUARTER" value={plan.exit?.targetQuarter || '—'} valueColor={BT.text.primary} />
         <DataRow label="BUYER TYPE" value={plan.exit?.buyerType || '—'} valueColor={BT.text.cyan} />
         <DataRow label="EXIT CAP" value={plan.exit?.capRate ? `${(plan.exit.capRate * 100).toFixed(2)}%` : '—'} valueColor={BT.text.amber} />
