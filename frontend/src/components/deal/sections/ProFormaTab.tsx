@@ -234,6 +234,9 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [rateCapCost, setRateCapCost] = useState(0);
   const [prepayPenalty, setPrepayPenalty] = useState(0.01);
   const [debtSource, setDebtSource] = useState<string | null>(null);
+  // Keyed by fieldPath (e.g. 'disposition.exitCapRate'). Populated from per_year_overrides
+  // metaKeys written by apply-from-module. Only module source literals shown as badges.
+  const [moduleBadges, setModuleBadges] = useState<Record<string, { source: string; appliedAt: string }>>({});
 
   // Incremented by the assumptions.module-applied listener to trigger a model rebuild
   // after the patched state values have settled into the next render.
@@ -283,6 +286,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       const rentRaw = d?.avg_rent_per_unit ?? d?.avgRentPerUnit ?? null;
       const rentNum = rentRaw != null ? Number(rentRaw) : NaN;
       setMarketEstRent(Number.isFinite(rentNum) && rentNum > 0 ? rentNum : null);
+      setModuleBadges(buildModuleBadges(d?.per_year_overrides));
     } catch {
       // non-blocking
     }
@@ -329,6 +333,8 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
             }
           }
         }
+        // Refresh module-applied source badges from updated per_year_overrides
+        setModuleBadges(buildModuleBadges(da?.per_year_overrides));
         // acquisition.purchasePrice is stored in deals.deal_data — fetch the deal record
         if (fields.includes('acquisition.purchasePrice')) {
           const dealRes: any = await apiClient.get(`/api/v1/deals/${id}`);
@@ -1020,16 +1026,21 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={holdPeriod}
-            onChange={(e) => setHoldPeriod(Number(e.target.value))}
-            className="text-xs border border-blue-300 rounded-lg px-2 py-1.5 bg-white text-blue-900"
-          >
-            <option value={3}>3-Year</option>
-            <option value={5}>5-Year</option>
-            <option value={7}>7-Year</option>
-            <option value={10}>10-Year</option>
-          </select>
+          <div className="flex flex-col items-start">
+            <select
+              value={holdPeriod}
+              onChange={(e) => setHoldPeriod(Number(e.target.value))}
+              className="text-xs border border-blue-300 rounded-lg px-2 py-1.5 bg-white text-blue-900"
+            >
+              <option value={3}>3-Year</option>
+              <option value={5}>5-Year</option>
+              <option value={7}>7-Year</option>
+              <option value={10}>10-Year</option>
+            </select>
+            {moduleBadges['hold.holdPeriodYears'] && (
+              <ModuleSourceBadge badge={moduleBadges['hold.holdPeriodYears']} />
+            )}
+          </div>
           <button
             onClick={handleBuildModel}
             disabled={building}
@@ -1290,6 +1301,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                       closingCosts={closingCosts} setClosingCosts={setClosingCosts}
                       platformData={platformData}
                       totalUnits={totalUnits}
+                      moduleBadges={moduleBadges}
                     />
                   )}
                   {section.id === 'acquisition' && modelType === 'development' && (
@@ -1315,6 +1327,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                       platformData={platformData}
                       expenseGrowth={expenseGrowth} setExpenseGrowth={setExpenseGrowth}
                       managementFeePct={managementFeePct} setManagementFeePct={setManagementFeePct}
+                      moduleBadges={moduleBadges}
                     />
                   )}
                   {section.id === 'revenue' && (
@@ -1326,6 +1339,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                       holdPeriod={holdPeriod}
                       preferredReturnPct={preferredReturnPct} setPreferredReturnPct={setPreferredReturnPct}
                       platformData={platformData}
+                      moduleBadges={moduleBadges}
                     />
                   )}
                   {section.id === 'otherIncome' && (
@@ -1392,6 +1406,58 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   );
 };
 
+// ── Module-applied source badge ─────────────────────────────────────────────
+// Displayed inline next to assumption field labels when a module (strategy,
+// event timeline, goal seek) has written a value via the apply-from-module
+// endpoint. Hover for full provenance detail.
+
+const MODULE_SOURCES = new Set([
+  'strategy:entry', 'strategy:exit', 'event_timeline', 'goal_seek',
+]);
+
+type BadgeData = { source: string; appliedAt: string };
+
+export function buildModuleBadges(
+  pyo: Record<string, unknown> | null | undefined,
+): Record<string, BadgeData> {
+  if (!pyo) return {};
+  const result: Record<string, BadgeData> = {};
+  for (const [key, meta] of Object.entries(pyo)) {
+    if (!key.startsWith('module:source:')) continue;
+    const fieldPath = key.slice('module:source:'.length);
+    const m = meta as { source?: unknown; appliedAt?: unknown } | null;
+    if (typeof m?.source === 'string' && MODULE_SOURCES.has(m.source) && typeof m.appliedAt === 'string') {
+      result[fieldPath] = { source: m.source, appliedAt: m.appliedAt };
+    }
+  }
+  return result;
+}
+
+function fmtBadgeDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch { return iso.slice(0, 10); }
+}
+
+const ModuleSourceBadge: React.FC<{ badge?: BadgeData | null }> = ({ badge }) => {
+  if (!badge || !MODULE_SOURCES.has(badge.source)) return null;
+  const tooltip = `Module: ${badge.source}\nApplied: ${new Date(badge.appliedAt).toLocaleString()}`;
+  return (
+    <span
+      title={tooltip}
+      style={{
+        display: 'inline-flex', alignItems: 'center', cursor: 'help',
+        fontSize: 8, fontFamily: 'monospace', lineHeight: 1,
+        color: '#92400e', background: '#fef3c7',
+        border: '1px solid #fcd34d', borderRadius: 3,
+        padding: '1px 5px', marginLeft: 4, userSelect: 'none',
+      }}
+    >
+      {badge.source} · {fmtBadgeDate(badge.appliedAt)}
+    </span>
+  );
+};
+
 const InputField: React.FC<{
   label: string;
   value: number | string;
@@ -1402,10 +1468,14 @@ const InputField: React.FC<{
   step?: number;
   suffix?: string;
   className?: string;
-}> = ({ label, value, onChange, type = 'number', platformValue, platformSource, step, suffix, className = '' }) => (
+  badge?: BadgeData | null;
+}> = ({ label, value, onChange, type = 'number', platformValue, platformSource, step, suffix, className = '', badge }) => (
   <div className={`${className}`}>
     <div className="flex items-center justify-between mb-1">
-      <label className="text-[11px] font-medium text-stone-600">{label}</label>
+      <div className="flex items-center flex-wrap gap-1">
+        <label className="text-[11px] font-medium text-stone-600">{label}</label>
+        {badge && <ModuleSourceBadge badge={badge} />}
+      </div>
       {platformValue !== undefined && (
         <span className="text-[9px] text-cyan-600 bg-cyan-50 px-1.5 py-0.5 rounded font-mono" title={platformSource}>
           Platform: {typeof platformValue === 'number' ? (type === 'percent' ? fmtPct(platformValue) : type === 'currency' ? fmt$(platformValue) : platformValue) : platformValue}
@@ -1573,10 +1643,10 @@ const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixR
   );
 };
 
-const AcquisitionSection: React.FC<any> = ({ purchasePrice, setPurchasePrice, capRate, setCapRate, closingCosts, setClosingCosts, platformData, totalUnits }) => (
+const AcquisitionSection: React.FC<any> = ({ purchasePrice, setPurchasePrice, capRate, setCapRate, closingCosts, setClosingCosts, platformData, totalUnits, moduleBadges }) => (
   <div className="mt-3 space-y-4">
     <div className="grid grid-cols-3 gap-4">
-      <InputField label="Purchase Price" value={purchasePrice} onChange={setPurchasePrice} type="currency" step={100000} />
+      <InputField label="Purchase Price" value={purchasePrice} onChange={setPurchasePrice} type="currency" step={100000} badge={moduleBadges?.['acquisition.purchasePrice']} />
       <InputField label="Going-In Cap Rate" value={capRate} onChange={setCapRate} type="percent" step={0.0025}
         platformValue={platformData?.exitCap} platformSource="Strategy Module" suffix="(decimal)" />
       <div>
@@ -1634,10 +1704,11 @@ const DevelopmentCostsSection: React.FC<any> = ({
   );
 };
 
-const DispositionSection: React.FC<any> = ({ exitCapRate, setExitCapRate, sellingCosts, setSellingCosts, saleNOIMethod, setSaleNOIMethod, holdPeriod, platformData, expenseGrowth, setExpenseGrowth, managementFeePct, setManagementFeePct }) => (
+const DispositionSection: React.FC<any> = ({ exitCapRate, setExitCapRate, sellingCosts, setSellingCosts, saleNOIMethod, setSaleNOIMethod, holdPeriod, platformData, expenseGrowth, setExpenseGrowth, managementFeePct, setManagementFeePct, moduleBadges }) => (
   <div className="mt-3 grid grid-cols-3 gap-4">
     <InputField label="Exit Cap Rate" value={exitCapRate} onChange={setExitCapRate} type="percent"
-      platformValue={platformData?.exitCap} platformSource="Strategy Module" suffix="(decimal)" />
+      platformValue={platformData?.exitCap} platformSource="Strategy Module" suffix="(decimal)"
+      badge={moduleBadges?.['disposition.exitCapRate']} />
     <InputField label="Selling Costs" value={sellingCosts} onChange={setSellingCosts} type="percent" suffix="(decimal)" />
     <InputField label="Expense Growth" value={expenseGrowth} onChange={setExpenseGrowth} type="percent" suffix="(decimal)" />
     <InputField label="Mgmt Fee % of EGI" value={managementFeePct} onChange={setManagementFeePct} type="percent" suffix="(decimal)" />
@@ -1652,7 +1723,7 @@ const DispositionSection: React.FC<any> = ({ exitCapRate, setExitCapRate, sellin
   </div>
 );
 
-const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease, setLossToLease, stabilizedOccupancy, setStabilizedOccupancy, collectionLoss, setCollectionLoss, holdPeriod, platformData, preferredReturnPct, setPreferredReturnPct }) => (
+const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease, setLossToLease, stabilizedOccupancy, setStabilizedOccupancy, collectionLoss, setCollectionLoss, holdPeriod, platformData, preferredReturnPct, setPreferredReturnPct, moduleBadges }) => (
   <div className="mt-3 space-y-4">
     <div className="grid grid-cols-3 gap-4">
       <InputField label="Loss-to-Lease" value={lossToLease} onChange={setLossToLease} type="percent" suffix="(decimal)" />
@@ -1673,7 +1744,12 @@ const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease,
       <div className="flex gap-2 flex-wrap">
         {rentGrowth.slice(0, Math.max(holdPeriod, 5)).map((val, i) => (
           <div key={i} className="text-center">
-            <div className="text-[9px] text-stone-400 mb-1">Y{i + 1}</div>
+            <div className="text-[9px] text-stone-400 mb-1 flex items-center justify-center gap-0.5">
+              Y{i + 1}
+              {i === 0 && moduleBadges?.['revenue.rentGrowth[0]'] && (
+                <ModuleSourceBadge badge={moduleBadges['revenue.rentGrowth[0]']} />
+              )}
+            </div>
             <input type="number" value={val} onChange={(e) => {
               const updated = [...rentGrowth];
               updated[i] = parseFloat(e.target.value) || 0;
