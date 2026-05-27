@@ -1340,24 +1340,37 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         </div>
       )}
 
-      {/* ── Not-yet-supported notice (flip / STR / land_hold templates) ── */}
-      {isSpecialTemplate && (
+      {/* ── Not-yet-supported full-page notice (flip / STR / land_hold) ─────────
+           Replaces the entire scrollable body. The table rows from Task #1236
+           remain in the DOM below but are hidden via display:none so they can
+           be enabled when full modeling lands.                                ── */}
+      {isSpecialTemplate && !showStabilized && (
         <div style={{
-          flexShrink: 0, display: 'flex', alignItems: 'flex-start', gap: 10,
-          padding: '8px 12px',
-          background: '#0f0f14',
-          borderBottom: '1px solid #7c3aed55',
-          borderLeft: '3px solid #7c3aed',
+          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          padding: '48px 32px', background: '#0a0a0a', gap: 20,
         }}>
-          <span style={{ color: '#a78bfa', fontSize: 10, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.06em', flexShrink: 0, marginTop: 1 }}>
-            ⚠ LIMITED SUPPORT
-          </span>
-          <span style={{ fontFamily: 'sans-serif', fontSize: 10, color: '#94a3b8', lineHeight: 1.5 }}>
-            {isFlipTemplate && 'Flip deals are not yet fully modeled. The rows below show the template structure — values marked NOT SET require manual input and cashflow projections are not available.'}
-            {isStrTemplate && 'Short-Term Rental (STR) deals are not yet fully modeled. ADR, RevPAR, and occupancy-based revenue rows are displayed as placeholders — cashflow projections are not available.'}
-            {isLandHoldTemplate && 'Land Hold deals are not yet fully modeled. The carry-cost and disposition rows below are structural placeholders — cashflow projections are not available.'}
-            {' '}Full modeling for this deal type is planned for a future release.
-          </span>
+          <div style={{
+            width: 48, height: 48, borderRadius: '50%',
+            background: '#1a0f2e', border: '2px solid #7c3aed66',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 22,
+          }}>⚠</div>
+          <div style={{ textAlign: 'center', maxWidth: 440 }}>
+            <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#a78bfa', letterSpacing: '0.06em', marginBottom: 10 }}>
+              {isFlipTemplate && 'FLIP DEALS — NOT YET FULLY SUPPORTED'}
+              {isStrTemplate && 'SHORT-TERM RENTAL — NOT YET FULLY SUPPORTED'}
+              {isLandHoldTemplate && 'LAND HOLD — NOT YET FULLY SUPPORTED'}
+            </div>
+            <div style={{ fontFamily: 'sans-serif', fontSize: 11, color: '#94a3b8', lineHeight: 1.7 }}>
+              {isFlipTemplate && 'The cashflow projection engine does not yet model Flip deals. Acquisition basis, renovation budget, and resale exit inputs are not connected to projections or return calculations.'}
+              {isStrTemplate && 'The cashflow projection engine does not yet model Short-Term Rental revenue. ADR, RevPAR, and occupancy-based income are not connected to projections or return calculations.'}
+              {isLandHoldTemplate && 'The cashflow projection engine does not yet model Land Hold deals. Carry costs and disposition are not connected to projections or return calculations.'}
+            </div>
+            <div style={{ fontFamily: 'sans-serif', fontSize: 10, color: '#475569', marginTop: 12, lineHeight: 1.5 }}>
+              Full modeling for this deal type is planned for a future release.
+              Other deal capsule tabs (zoning, market intelligence, strategy) remain fully functional.
+            </div>
+          </div>
         </div>
       )}
 
@@ -1368,8 +1381,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         </div>
       )}
 
-      {/* ── Unit Mix Mismatch Banner ── */}
-      {!showStabilized && (
+      {/* ── Unit Mix Mismatch Banner (suppressed for special templates) ── */}
+      {!showStabilized && !isSpecialTemplate && (
         <UnitMixMismatchBannerConnected
           f9Financials={f9Financials}
           deal={deal}
@@ -1383,8 +1396,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         />
       )}
 
-      {/* ── Scrollable body ── */}
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', display: showStabilized ? 'none' : undefined }}>
+      {/* ── Scrollable body (hidden for special templates — table preserved for future enablement) ── */}
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', display: (showStabilized || isSpecialTemplate) ? 'none' : undefined }}>
 
         {/* ── VALUATION SNAPSHOT STRIP ── */}
         {data.proforma.valuationSnapshot && (

@@ -200,9 +200,10 @@ router.delete('/deals/:dealId/comps/:compId', requireAuth, async (req: Authentic
 router.get('/deals/:dealId/implied-cap-rate', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
+    const userId = req.user?.userId;
     const pool = getPool();
 
-    // 1 — Deal core info
+    // 1 — Deal core info (ownership-scoped: user must own the deal)
     const dealRow = await pool.query(`
       SELECT
         d.id,
@@ -217,9 +218,9 @@ router.get('/deals/:dealId/implied-cap-rate', requireAuth, async (req: Authentic
       FROM deals d
       LEFT JOIN properties p ON p.deal_id = d.id
       LEFT JOIN deal_assumptions da ON da.deal_id = d.id
-      WHERE d.id = $1::uuid
+      WHERE d.id = $1::uuid AND d.user_id = $2::uuid
       LIMIT 1
-    `, [dealId]);
+    `, [dealId, userId]);
 
     if (dealRow.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
