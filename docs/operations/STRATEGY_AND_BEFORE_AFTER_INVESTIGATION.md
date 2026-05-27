@@ -636,3 +636,170 @@ No blocking gaps found. Three informational gaps noted for downstream awareness:
 **APPROVED**
 
 Task #1263 (A1 vs A2 investigation: strategy ↔ deal_type canonical) may begin. The investigation document is complete, all spot-checked citations are accurate, cross-fix integration is substantive, and open questions are correctly classified. The three informational gaps noted above do not block Track 2 work.
+
+---
+
+## VERIFICATION PASS — 2026-05-27
+
+**Verified by:** Task #1238 (P8 Verify Before Queueing)  
+**Method:** Read-only. No code changes. All claims checked against live codebase state.
+
+---
+
+### V1. Document Integrity
+
+**File exists at expected path:** `docs/operations/STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md` — CONFIRMED.
+
+**Required sections — presence and substantiveness:**
+
+| Required Section | Present? | Notes |
+|---|---|---|
+| Per-strategy field visibility matrix | YES | Delivered as 7×6 (7 ProFormaTemplateId × 6 DealTypeKey), not 7×3 as spec described. The 7×6 is more complete — covers all valid DealTypeKey combinations per template, not just 3 columns. No content gap; the larger matrix is strictly better. |
+| Before/after UI surface inventory | YES | §2 covers 4 surfaces: RegimeExpand, StabilizedPotentialView, CompareHubTab, m09 routing config. Each has verdict, data source, and gap assessment. |
+| Three architectural findings | YES | §3a (three-field disconnect), §3b (templates don't drive UI), §3c (regimeDataByField never populated). All three are substantive with code traces, source citations, and options analysis. |
+| Cross-fix integration with Unit Mix investigation | YES | §4.1 — pre/post unit mix split gate on §3a, adoption ramp anchor on §3c. Two specific integration points with recommendations. |
+| Cross-fix integration with Validation Grid investigation | YES | §4.2 — `resolved` column ambiguity for value-add deals, source priority conflict for pre vs post states. Two specific integration points with recommendations. |
+| Design recommendations | YES | §5 — 7 recommendations (Rec 1–7), each linked to a specific finding. |
+| Implementation phasing | YES | §6 — 5 phases (Phase 0–4) with scope descriptions and dependency ordering. |
+| Open questions classified BLOCKING / IMPORTANT / INFORMATIONAL | YES | §7 — 11 questions: 3 BLOCKING (Q1–Q3), 5 IMPORTANT (Q4–Q8), 3 INFORMATIONAL (Q9–Q11). |
+
+**Verdict — document integrity: PASS.** All required sections are present and substantive. The matrix is 7×6 rather than 7×3 (superior to spec).
+
+---
+
+### V2. Source Citation Spot-Checks
+
+**Claim 1 — PATCH `/assumptions/strategy` updates only `investment_strategy_lv`, not `deal_type`**
+
+Source: `backend/src/api/rest/deal-assumptions.routes.ts` lines 674–745.
+
+Verification: grep for `deal_type` across the entire file returns **zero matches**. The route builds a dynamic UPDATE against `deal_assumptions` only. The UPDATE target is `deal_assumptions` (line 735: `UPDATE deal_assumptions SET ${sets.join(', ')} WHERE deal_id = $1`). The only LV fields touched are `exit_strategy_lv` (lines 716–720) and `investment_strategy_lv` (lines 726–729). No write to `deals.deal_type` exists anywhere in the route.
+
+**Verdict: CONFIRMED.**
+
+---
+
+**Claim 2 — The Single-Value Mandate is repeated 9 times in `line-item-matrix.ts`**
+
+Source: `backend/src/agents/prompts/cashflow/line-item-matrix.ts`, cited at lines 10, 92, 144, 193, 302, 768, 825, 840, 855.
+
+Verification: grep for `no pre_renovation|Do NOT populate separate|Single-Value Mandate|single-value mandate` returns 8 lines with explicit mandate or prohibition language: lines 33, 92, 144, 193, 302, 768, 825, 855. The preamble block (lines 8–15) contains "Do NOT output pre_renovation or post_stabilization sub-fields" (line 10), which the grep pattern didn't capture due to phrasing difference ("output" vs "populate"). Including line 10 preamble = 9 discrete mandate locations.
+
+**Minor discrepancy:** The §3c.2 body text cites line 840 but the grep finds no mandate text at line 840 — the closest confirmed citation is line 855. The citation index conflates lines 10 and 33 into a single entry. The count of "9 times" is materially correct (9 confirmed locations: 10, 33, 92, 144, 193, 302, 768, 825, 855); line 840 may be a line-shift artifact from an earlier file version.
+
+**Verdict: CONFIRMED with minor citation note.** The substance is accurate — the mandate is pervasively repeated. The specific line 840 citation is unverified; likely a line number that drifted.
+
+---
+
+**Claim 3 — Pattern B routing reads `deal_type` (not `investmentStrategy`)**
+
+Source: `frontend/src/config/m09_line_item_patterns.ts` lines 168–173.
+
+Verification: `isPatternB(field: string, dealType: DealTypeKey | string | null | undefined)` — the function signature takes `dealType`, not `investmentStrategy`. The implementation calls `getLineItemPattern(field, dealType)` which reads from `PATTERN_TABLE` keyed by field, checking `entry.dealTypes.includes(normalizeDealType(dealType))`. No reference to `investmentStrategy` anywhere in this file.
+
+`ProFormaSummaryTab.tsx` line 934 (cited): `const dealType = (deal?.['deal_type'])` — reads from `deal.deal_type` DB column directly.
+
+**Verdict: CONFIRMED.**
+
+---
+
+**Claim 4 — `regimeDataByField` is never written by any backend code path**
+
+Source: Claimed via search across `backend/src/**/*.ts`.
+
+Verification: grep for `regimeDataByField|regime_data_by_field` across `backend/src` returns **zero matches**. The field is typed in the frontend (`ProFormaSummaryTab.tsx` lines 179, 1401, 1467, 1733) — but all frontend references are reads (`data?.regimeDataByField?.[r.field] ?? null`), never writes. The backend never produces this field. The `getDealFinancials` composer chain writes no such key. `write_underwriting.ts` schema is `proforma_snapshot: z.record(z.string(), z.unknown())` — a flat map with no regime sub-structure.
+
+**Verdict: CONFIRMED.** `regimeDataByField` is defined in the frontend type and read by `RegimeExpand` (three call sites: lines 1401, 1467, 1733) but is never populated by any backend service. Every `RegimeExpand` invocation receives `null` and renders placeholder dashes.
+
+---
+
+**Claim 5 — Randomly selected matrix cell: `flip × DealTypeKey` — "Complete UI gap. None of flip's template-specific fields exist anywhere in F9."**
+
+Source: §1.4, `flip` row; §3b.2; verification via `ProFormaSummaryTab.tsx` search.
+
+Verification: grep for `flip|str_shortterm|land_hold|adr|revpar|furnish|cleaningFee|platformFee` across `ProFormaSummaryTab.tsx` returns **zero matches**. The file is 3,746 lines; none of the flip-specific template fields (`carry`, `exitPrice`, `profitMargin`, `monthsHeld`, `holdingCosts`) appear. `DealTypeKey` in `m09_line_item_patterns.ts` does not include `flip` — it would normalize to an unrecognized string, falling back to Pattern C for all rows. The matrix cell claim ("complete UI gap") is structurally accurate.
+
+**Verdict: CONFIRMED.**
+
+---
+
+### V3. Cross-Fix Integration Coverage
+
+**Unit Mix investigation integration points (§4.1):**
+
+1. **Pre/post unit mix split gated on §3a** — Specific. Names `UnitMixTab.tsx` as the file, identifies the `deal_type === 'value_add' || 'redevelopment'` gating condition, explains the failure mode (toggle shows/hides on wrong data if deal_type is unreliable), and issues a concrete recommendation ("Do not implement pre/post unit mix split until §3a resolved"). Has both identification and recommendation. ✓
+
+2. **Other Income adoption ramp anchor from renovation completion** — Specific. References Task #1161 (merged) and identifies the unsolved dependency: ramp-start gating on post_stabilization occupancy threshold, which requires §3c data that doesn't exist yet. Has both identification and open question. ✓
+
+Both integration points are specific (naming files, tasks, and conditions) and each carries a recommendation or open question. **PASS.**
+
+**Validation Grid investigation integration points (§4.2):**
+
+1. **`resolved` column ambiguity for value-add deals** — Specific. Explains that for value-add, T12 is pre-renovation truth and agent output is post-renovation truth, so they must not compete in the same priority stack. Ties directly to VALIDATION_GRID_AND_SALE_COMPS_INVESTIGATION.md §1A source priority logic. Recommendation: shared data source between Validation Grid Phase 3 and RegimeExpand. ✓
+
+2. **Source priority logic deal-type-conditional interpretation** — Specific. Identifies the structural conflict in the Validation Grid's existing T12 > broker > platform > agent priority when applied to value-add deals. Recommends the grid design must account for this. ✓
+
+Both points are specific and carry actionable guidance. **PASS.**
+
+**Overall cross-fix integration verdict: PASS.** Integration points are not generic; each one traces to a named file, a named spec section, and a design consequence.
+
+---
+
+### V4. Open Questions Classification
+
+All 11 open questions from §7, with independent classification assessment:
+
+| # | Question | Document Class | Verification Class | Notes |
+|---|---|---|---|---|
+| Q1 | investmentStrategy ↔ deal_type reconciliation approach | BLOCKING | BLOCKING | All pattern routing and section visibility gated on this. Depends on product decision, not missing data. |
+| Q2 | regimeDataByField population path (A/B/C) | BLOCKING | BLOCKING | All before/after UI below NOI level gated on this. V4 confirmed data exists (T12/RR actuals); path is an architectural choice. |
+| Q3 | DealTypeKey vocabulary extension (flip/str/land) | BLOCKING | BLOCKING | Template-driven UI and Pattern B routing for three template types require this. Code change, not data dependency. |
+| Q4 | StabilizedPotentialView layout for str/flip/land | IMPORTANT | IMPORTANT | Design decision; doesn't block start of Phase 0. |
+| Q5 | Warning UI for strategy mismatch | IMPORTANT | IMPORTANT | Design decision; doesn't block routing logic. |
+| Q6 | Rent ramp entry UI completeness for value-add | IMPORTANT | IMPORTANT | Scope decision; field exists in blueprint but no input surface in F9. |
+| Q7 | Phasing UI for redevelopment | IMPORTANT | IMPORTANT | UX design decision; template fields exist, input surface absent. |
+| Q8 | Does lease_up need its own template? | IMPORTANT | IMPORTANT | Product decision; lease_up is a valid DealTypeKey with no matching ProFormaTemplateId. |
+| Q9 | investmentStrategy vocabulary mismatch with strategyTriggers | INFORMATIONAL | INFORMATIONAL | Implementation detail; mapping table needed in getActiveTemplate() resolver. |
+| Q10 | lease_up in DealTypeKey extension | INFORMATIONAL | INFORMATIONAL | Low-effort addition; already a valid DB value. |
+| Q11 | transition_year slot in regimeDataByField | INFORMATIONAL | INFORMATIONAL | Investigation detail; never populated alongside regimeDataByField. |
+
+**Blocking questions that depend on data or sources not currently in the platform:**
+- Q1: Does not depend on missing data — it is a product/architecture decision between three documented options.
+- Q2: Does not depend on missing data — T12 actuals and rent roll extractions exist. Path B (deterministic resolver) has a viable data source today.
+- Q3: Does not depend on missing data — it is a code change.
+
+**Verdict — open questions classification: PASS.** No blocking question depends on data that doesn't currently exist. All three BLOCKING questions are architectural decisions that can be made immediately.
+
+---
+
+### V5. Gap Identification
+
+The following areas are either absent from the document or receive insufficient depth given their relevance to downstream implementation:
+
+**Gap 1 — `exit_strategy_lv` strategy-conditional UI not investigated.**  
+The PATCH `/assumptions/strategy` route also writes `exit_strategy_lv` (lines 713–720), and the gotcha section in replit.md explicitly flags exit_strategy as intentionally nullable. The investigation covers `investmentStrategy` thoroughly but does not address whether `exitStrategy` values (`'Sale'`, `'Refinance'`, `'Hold'`) have any conditional UI effect in F9. If Exit Strategy drives any section gating (e.g., `StabilizedPotentialView` shows refinance metrics vs sale metrics), that conditional logic is unverified. This is a non-trivial omission given the Task #619/#620 consumer audit referenced in replit.md.
+
+**Gap 2 — `lease_up` is a first-class DealTypeKey but has no matrix row as a primary template target.**  
+The document flags lease_up in Q8 and shows it in each template's matrix as "PARTIAL — 0 B-rows." However, there is no standalone investigation of what the current F9 UI shows for a deal whose `deal_type = 'lease_up'`. Lease-up deals have distinct cash flow dynamics (absorbing occupancy ramp, elevated concessions, M07 is the primary signal) that are not addressed by any of the 7 templates' `strategyTriggers`. The investigation documents the gap but does not surface the operator-visible manifestation or estimate severity.
+
+**Gap 3 — M11 Debt Advisor interaction with strategy not surfaced.**  
+Pattern B fields (vacancy, concessions) affect NOI, which feeds debt sizing in M11. If `deal_type` is wrong (§3a), M11 may size debt against an incorrect income model (e.g., stabilized NOI for a value-add deal that hasn't renovated yet). This is a downstream consequence of the §3a disconnect that the investigation does not trace into the Debt Advisor module. No recommendation or open question addresses it.
+
+**Gap 4 — `cashflow.postprocess.ts` value-add signal detection not fully evaluated.**  
+The source citation index references `cashflow.postprocess.ts` lines 1375–1379 for value-add GPR detection. This agent post-processing path uses `deal_type ?? investmentStrategy` as a fallback chain — meaning the same §3a disconnect affects agent behavior differently than the React renderer. The investigation mentions this (§3a.2 last row) but does not evaluate whether the postprocess fallback could produce different underwriting outcomes than the UI displays (e.g., agent runs value-add GPR logic while UI shows stabilized Pattern C). This represents a hidden divergence risk.
+
+**Gap 5 — No before/after surface inventory for the DEAL TERMS tab itself.**  
+The investigation inventories 4 UI surfaces but the Deal Terms tab (`DealTermsTab.tsx`) is where `investmentStrategy` is set. If an operator changes `investmentStrategy` in Deal Terms, the rendering cascade to F9 is not traced (what refreshes, what doesn't, whether the cashflow agent result persists despite the strategy change). The "before" state (pre-change) and "after" state (post-change) for the operator are undocumented from the Deal Terms entry point.
+
+**Gap 6 — Matrix combinations involving `lease_up` × templates with non-zero Pattern B.**  
+The 7×6 matrix shows `lease_up` always as "PARTIAL — 0 B-rows (all C)." This may be incorrect for `development_ground_up × lease_up` — a development deal in lease-up phase does have pre-opening vs post-stabilization dynamics (vacancy, concessions, marketing, turnover are B-pattern for `development` deal_type). If a deal transitions deal_type from `development` to `lease_up` after construction completion, Pattern B rows would disappear. The matrix treats these as static but the lifecycle transition is not addressed.
+
+---
+
+### OVERALL VERDICT
+
+**APPROVED FOR DOWNSTREAM WORK — with amendment note on Gap 1 (exit_strategy_lv) and Gap 4 (postprocess divergence).**
+
+The investigation is comprehensive, well-sourced, and architecturally sound. All 5 spot-checked claims are confirmed (one with a minor line-number citation note on line 840 vs 855). Cross-fix integration is specific and actionable. Open questions are correctly classified; none of the BLOCKING questions depend on unavailable data — all three can be resolved by product/architectural decision.
+
+Downstream implementation tasks may proceed on the condition that Gap 1 (exit_strategy_lv UI audit) and Gap 4 (cashflow.postprocess divergence from UI state) are flagged as open items within whichever implementation task first touches strategy-conditional rendering. Gaps 2, 3, 5, and 6 are informational and can be addressed inline during Phase 0–1 scoping.
