@@ -1,0 +1,224 @@
+MANDATE CONSUMER WIRING — INVESTIGATION
+
+CONTEXT
+Per the verification verdict, the Single-Value Mandate is fully 
+lifted in v1.3. All 9 instances confirmed removed. regimeDataByField 
+is no longer forbidden territory — the agent can write pre_renovation 
+and post_stabilization sub-fields per the lift rules in 
+MANDATE_LIFT_DESIGN.md.
+
+This raises a real question: what happens when those sub-fields 
+ARE populated? Three consumer surfaces inherit the change:
+
+1. RegimeExpand component (frontend rendering of populated pre/post 
+   values)
+2. F9 ProForma rendering broadly (multiple consumers across the 
+   F9 module)
+3. Agent self-validation logic (does the agent now check pre/post 
+   consistency post-lift?)
+
+This investigation maps all three surfaces and produces the 
+implementation roadmap. No code changes. Output is a structured 
+plan for what needs to ship to make the Mandate lift visibly 
+useful to operators.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. The Mandate lift is in v1.3 production (per verification — 
+   reconfirm)
+2. docs/operations/MANDATE_LIFT_DESIGN.md exists with verification 
+   APPROVED
+3. No prior investigation document covers consumer wiring (search 
+   docs/operations/ for files matching MANDATE_CONSUMER, 
+   REGIME_*, or similar)
+
+═══════════════════════════════════════════════════════════════════
+PRINCIPLES
+═══════════════════════════════════════════════════════════════════
+
+1. Three consumer surfaces; each is distinct work shape. The 
+   investigation must produce three separate readiness assessments, 
+   not collapse into a single recommendation.
+
+2. The Mandate lift is only useful when downstream consumers can 
+   meaningfully handle populated data. Investigation surfaces both 
+   "what's already handled" and "what breaks when data is populated."
+
+3. Implementation sequencing matters. RegimeExpand may be ready; 
+   F9 ProForma rendering may be partial; agent self-validation 
+   may not exist. The investigation identifies which to implement 
+   first.
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — REGIMEEXPAND COMPONENT
+═══════════════════════════════════════════════════════════════════
+
+A. Locate the RegimeExpand component file path
+B. Document its current behavior with empty regimeDataByField:
+   - Renders dashes / placeholder / nothing?
+   - Does it handle null vs undefined vs empty object differently?
+C. Document what it SHOULD render when populated:
+   - Pre_renovation value with confidence indicator
+   - Post_stabilization value with confidence indicator
+   - Delta visualization (the change)
+   - Source provenance (LayeredValue source tag)
+D. Identify the gap between current and target rendering:
+   - Existing rendering code that can handle populated data
+   - New rendering code needed
+   - Any rendering bugs surfaced by populated data (edge cases 
+     the component hasn't seen because data was always empty)
+E. Confidence indicators:
+   - Does RegimeExpand currently display LayeredValue confidence?
+   - If yes: does the asymmetric pre/post confidence (Gap 2 from 
+     Mandate verification) render cleanly?
+   - If no: should it, given the lift?
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — F9 PROFORMA RENDERING (BROADER)
+═══════════════════════════════════════════════════════════════════
+
+A. grep all readers of regimeDataByField across the F9 module:
+   - grep -rn "regimeDataByField\|pre_renovation\|post_stabilization" 
+     frontend/src/ --include="*.tsx" --include="*.ts"
+B. For each reader beyond RegimeExpand, document:
+   - File path and component name
+   - What it reads from regimeDataByField
+   - Current behavior with empty data
+   - What it SHOULD do with populated data
+C. Specifically check these F9 surfaces:
+   - F9 ProForma summary tabs (Overview, Pro Forma, Projections, 
+     Assumptions, Debt, Waterfall, Sensitivity, Decision, Compare)
+   - Any KPI displays that might be sensitive to pre vs post 
+     (cap rate displays, stabilized NOI, yield-on-cost)
+   - Sensitivity tabs (which scenarios use post_stabilization 
+     values?)
+   - Decision tab (does it surface pre/post comparison?)
+D. Identify rendering work needed per consumer:
+   - Already handles populated data (no work needed)
+   - Partially handles (some work needed)
+   - Doesn't handle (substantial work needed)
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — AGENT SELF-VALIDATION LOGIC
+═══════════════════════════════════════════════════════════════════
+
+The Mandate lift permits the agent to write pre/post values. Does 
+the agent now validate consistency between them?
+
+A. Locate the agent's self-validation pass (post-run, before 
+   writing final snapshot)
+B. Document what self-validation currently checks:
+   - Are there existing consistency checks for line items?
+   - Does it check completeness scores?
+   - Does it flag implausible deltas?
+C. Determine what self-validation SHOULD do post-lift:
+   - Verify pre_renovation is anchored in current-state evidence 
+     per the lift rules
+   - Verify post_stabilization is anchored in target-state 
+     evidence per the lift rules
+   - Flag implausible deltas (e.g., 3x revenue growth claimed 
+     without strong evidence)
+   - Sigma engine integration: are pre/post deltas within the 
+     cohort distribution for similar strategies?
+D. Cross-reference with MANDATE_LIFT_DESIGN.md Section 4 (Lift 
+   Rules per Line Item) to identify which validation rules from 
+   the design need agent-side enforcement vs which are upstream 
+   constraints
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — GAP 2 (CONFIDENCE PROPAGATION) DESIGN
+═══════════════════════════════════════════════════════════════════
+
+The Mandate lift verification flagged Gap 2 as the most consequential 
+remaining design question: when sub-fields have asymmetric confidence 
+(pre 'high', post 'medium'), how does the parent LayeredValue's 
+confidence surface?
+
+This investigation should address Gap 2 because the answer affects 
+RegimeExpand rendering AND agent self-validation AND F9 KPI 
+displays. Without a decision, each consumer might handle it 
+differently, producing UI inconsistency.
+
+A. Document the three options for parent confidence:
+   - Inherit lower of pre/post (conservative; surfaces uncertainty)
+   - Inherit higher of pre/post (optimistic; rare in financial 
+     modeling)
+   - Independent (parent has its own confidence; sub-fields 
+     are detail)
+   - Weighted by strategy (value-add weights post; stabilized 
+     weights pre)
+
+B. Recommend an option with reasoning
+
+C. Identify implementation impact:
+   - Which files need to know the rule?
+   - Where does the rule live (helper function, type definition, 
+     per-consumer)?
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — IMPLEMENTATION SEQUENCING
+═══════════════════════════════════════════════════════════════════
+
+Produce a recommended sequence:
+
+A. Tier 1 (immediate; unlocks visible benefit from Mandate lift):
+   - The minimum work needed to make populated pre/post data 
+     visible to operators
+
+B. Tier 2 (next; consistency + validation):
+   - Agent self-validation rules
+   - Confidence propagation per Step 4 decision
+
+C. Tier 3 (broader; polish + edge cases):
+   - F9 ProForma rendering refinements
+   - Sensitivity tab integration
+   - Decision tab integration
+
+D. Estimated effort per tier (dispatch count + rough hours)
+
+═══════════════════════════════════════════════════════════════════
+STEP 6 — STATISTICS + OPEN QUESTIONS
+═══════════════════════════════════════════════════════════════════
+
+A. Counts:
+   - Total consumers of regimeDataByField found
+   - Consumers ready (no work) / partial / not ready (work needed)
+   - Rendering bugs surfaced by populated data
+
+B. Open questions for review:
+   - Confidence propagation decision (Step 4)
+   - Backfill question (do prior agent runs need rerun to get 
+     populated pre/post, or is forward-only acceptable?)
+   - UI consistency rules (should empty regimeDataByField render 
+     differently than populated-but-low-confidence?)
+   - Which Tier 1 work fires first?
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/MANDATE_CONSUMER_WIRING.md
+
+Structure:
+1. Executive summary (three surfaces, readiness state, recommended 
+   sequencing)
+2. RegimeExpand assessment (Step 1)
+3. F9 ProForma rendering assessment (Step 2)
+4. Agent self-validation assessment (Step 3)
+5. Gap 2 confidence propagation design (Step 4)
+6. Implementation sequencing (Step 5)
+7. Statistics + open questions (Step 6)
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Implement any code changes
+- Modify RegimeExpand, F9 components, or agent self-validation
+- Decide Step 4 (confidence propagation) unilaterally — produce 
+  the analysis; surface the recommendation; let Leon confirm
+- Skip Step 4 — Gap 2 is the most consequential open question 
+  and needs to be addressed before downstream work
+- Skip any of the three consumer surfaces — all three must be 
+  inventoried
+- "While I'm here" cleanups

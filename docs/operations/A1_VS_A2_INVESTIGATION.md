@@ -58,12 +58,14 @@ Under A2, the operator saves `investmentStrategy` in Deal Terms → the backend 
 
 ## Remaining Gaps for Phase 1 (T2.4 pre-conditions)
 
+> **AMENDMENT — 2026-05-27:** Three items previously listed as BLOCKING have been resolved by recent task work (#1265, #1355). Status updated below. The substantive analysis in this document is unchanged; only the open-questions inventory is corrected.
+
 | Gap | File | Effort | Blocking? |
 |---|---|---|---|
-| `'Land Hold'` in INV_VALID but missing from `investmentStrategyToDealType()` — `deal_type` not written | `deal-assumptions.routes.ts` line 956-966 | 1 line — add `'Land Hold': 'existing'` (Phase 1 approximation) | YES |
-| `'Build-to-Sell'` slug `'build_to_sell'` not in `development_ground_up.strategyTriggers` — `proformaTemplateId` resolves to fallback | `proforma-blueprint.ts` line 170 | 1 line — add `'build_to_sell'` to triggers array | YES |
-| `proformaTemplateId` received by `ProFormaSummaryTab` but not used to gate template-specific rendering | `ProFormaSummaryTab.tsx` line 91 | T2.4 main deliverable | YES (scope) |
-| Existing deals pre-Task #1233 have no `investment_strategy_lv` set — no retroactive sync | DB data | Acceptable for Phase 1; no routing regression | IMPORTANT |
+| `'Land Hold'` in INV_VALID but missing from `investmentStrategyToDealType()` — `deal_type` not written | `deal-assumptions.routes.ts` line 956-966 | 1 line — add `'Land Hold': 'existing'` (Phase 1 approximation) | ~~YES~~ **RESOLVED** (Task #1265 — `'Land Hold': 'existing'` added at line 965) |
+| `'Build-to-Sell'` slug `'build_to_sell'` not in `development_ground_up.strategyTriggers` — `proformaTemplateId` resolves to fallback | `proforma-blueprint.ts` line 170 | 1 line — add `'build_to_sell'` to triggers array | ~~YES~~ **RESOLVED** (Task #1265 — `'build_to_sell'` added to strategyTriggers at line 170) |
+| `proformaTemplateId` received by `ProFormaSummaryTab` but not used to gate template-specific rendering | `ProFormaSummaryTab.tsx` line 91 | T2.4 main deliverable | ~~YES (scope)~~ **RESOLVED** (Task #1355 — proformaTemplateId wired into ProFormaSummaryTab) |
+| Existing deals pre-Task #1233 have no `investment_strategy_lv` set — no retroactive sync | DB data | Acceptable for Phase 1; no routing regression | IMPORTANT (open — forward-only acceptable) |
 
 ---
 

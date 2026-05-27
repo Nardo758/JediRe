@@ -264,19 +264,21 @@ Both fixes are 1-line changes and can be bundled in T2.4.
 
 ## 10. Open Questions — Classified
 
+> **AMENDMENT — 2026-05-27:** Three BLOCKING items (Q1, Q3, Q6) were resolved by Tasks #1265 and #1355 before the P8 verification pass ran. Status updated below. Substantive analysis is unchanged.
+
 ### BLOCKING
 
-**Q1 — Land Hold mapping gap in investmentStrategyToDealType()**  
-`'Land Hold'` is in INV_VALID (`deal-assumptions.routes.ts` line 976) but NOT in the `investmentStrategyToDealType()` mapping (lines 957-966). Saving `investmentStrategy = 'Land Hold'` writes the LV correctly but leaves `deals.deal_type` unchanged (undefined return → no UPDATE). If `deal_type` was `'existing'` before, it stays `'existing'` — wrong for routing.  
-**Fix needed in T2.4:** Add `'Land Hold': 'land_hold'` to the map. Prerequisite: Q2 (is `'land_hold'` a valid DealTypeKey?).
+**Q1 — Land Hold mapping gap in investmentStrategyToDealType()** ~~BLOCKING~~ → **RESOLVED (Task #1265)**  
+~~`'Land Hold'` is in INV_VALID but NOT in the `investmentStrategyToDealType()` mapping. Saving `investmentStrategy = 'Land Hold'` leaves `deals.deal_type` unchanged.~~  
+**Resolution:** `'Land Hold': 'existing'` added at `deal-assumptions.routes.ts` line 965 (Task #1265 — Phase 1 approximation; Phase 2 will add proper `'land_hold'` DealTypeKey).
 
 **Q2 — DealTypeKey enum does not include 'land_hold', 'flip', or 'str'**  
 `DealTypeKey` in `m09_line_item_patterns.ts` has 6 values; these three strategy types have no corresponding deal type. For Phase 1 (multifamily-existing only), this is out of scope. For Phase 2 (full strategy type support), DealTypeKey must be extended.  
-**Phase 1 resolution:** Map Land Hold → `'existing'` as a Phase 1 approximation to unblock Q1. Add proper `'land_hold'` value in Phase 2.
+**Phase 1 resolution:** Map Land Hold → `'existing'` as a Phase 1 approximation (done — Q1 resolved). Add proper `'land_hold'` value in Phase 2.
 
-**Q3 — 'Build-to-Sell' slug mismatch with strategyTriggers**  
-`pickTemplateForStrategy('build_to_sell')` returns `'acquisition_stabilized'` (fallback) instead of `'development_ground_up'` because blueprint triggers use `'bts'` not `'build_to_sell'`. `deal_type` is written correctly (`'development'`); only the template derivation is wrong.  
-**Fix needed:** Add `'build_to_sell'` to `development_ground_up.strategyTriggers` in `proforma-blueprint.ts` (1 line).
+**Q3 — 'Build-to-Sell' slug mismatch with strategyTriggers** ~~BLOCKING~~ → **RESOLVED (Task #1265)**  
+~~`pickTemplateForStrategy('build_to_sell')` returns `'acquisition_stabilized'` (fallback) instead of `'development_ground_up'` because blueprint triggers use `'bts'` not `'build_to_sell'`.~~  
+**Resolution:** `'build_to_sell'` added to `development_ground_up.strategyTriggers` at `proforma-blueprint.ts` line 170 (Task #1265 — verified in P8 verification pass).
 
 ### IMPORTANT
 
@@ -286,8 +288,9 @@ STR deals lose their deal_type distinction. Pattern B routing sees `'existing'` 
 **Q5 — Existing deals have no investment_strategy_lv set; no retroactive sync**  
 Deals created before Task #1233 have `deal_type` set at creation but `investment_strategy_lv.override = null`. The Deal Terms tab shows `NOT SET` badge. If operators never save investmentStrategy, `deal_type` remains as originally set — which is correct (it doesn't regress). However, the `proformaTemplateId` derivation returns null for these deals, falling back to deal_type-based rendering. For Phase 1, this is acceptable.
 
-**Q6 — proformaTemplateId is computed but not used to gate template-specific rendering**  
-ProFormaSummaryTab receives `proformaTemplateId` but all tab branching currently reads `deal_type` directly. Template-aware rendering (showing/hiding STR-specific rows, flip carry section, land hold no-income view) is not implemented. This is the core deliverable of T2.4 for Phase 1.
+**Q6 — proformaTemplateId is computed but not used to gate template-specific rendering** ~~IMPORTANT~~ → **RESOLVED (Task #1355)**  
+~~ProFormaSummaryTab receives `proformaTemplateId` but all tab branching reads `deal_type` directly. Template-aware rendering is not implemented.~~  
+**Resolution:** `proformaTemplateId` wired into ProFormaSummaryTab rendering by Task #1355 (confirmed by P8 verification pass).
 
 ### INFORMATIONAL
 

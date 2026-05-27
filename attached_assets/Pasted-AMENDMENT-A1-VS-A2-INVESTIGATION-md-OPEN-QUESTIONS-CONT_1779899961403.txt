@@ -1,0 +1,61 @@
+AMENDMENT — A1_VS_A2_INVESTIGATION.md OPEN QUESTIONS
+
+CONTEXT
+Per the verification verdict, A1_VS_A2_INVESTIGATION.md is sound 
+in analysis but the open-questions section is stale. Three items 
+listed as BLOCKING were resolved by Tasks #1265 and #1355 before 
+the verification ran:
+- Land Hold mapping
+- BTS slug
+- proformaTemplateId wiring
+
+These need to be marked RESOLVED with task references so downstream 
+readers (Leon, future bot sessions) don't treat them as open work.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. docs/operations/A1_VS_A2_INVESTIGATION.md exists with the 
+   verification section appended (per verification verdict)
+2. Tasks #1265 and #1355 are confirmed merged (the verification 
+   reported they are; reconfirm)
+3. The three items (Land Hold mapping, BTS slug, proformaTemplateId 
+   wiring) are listed in the investigation's open-questions section 
+   as currently described
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+A. Locate the open-questions section in the investigation
+B. For each of the three resolved items:
+   - Update the status from BLOCKING (or whatever current 
+     classification) to RESOLVED
+   - Add a brief reference to the resolving task (#1265 or #1355)
+   - Note the resolution date if extractable
+C. If the items appear elsewhere in the document (cross-references 
+   in earlier sections), update those references too
+D. Recount the open-question totals (BLOCKING / IMPORTANT / 
+   INFORMATIONAL) and update any summary statistics
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Direct edit of docs/operations/A1_VS_A2_INVESTIGATION.md.
+
+Append a small note at the top of the open-questions section:
+
+  AMENDMENT — [date]: Three items previously listed as BLOCKING 
+  have been resolved by recent task work (#1265, #1355). Status 
+  updated below. The substantive analysis in this document is 
+  unchanged; only the open-questions inventory is corrected.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify the investigation's substantive analysis sections
+- Modify the verification section appended earlier
+- Change the recommendation
+- Re-run any spot checks
+- "While I'm here" cleanups
