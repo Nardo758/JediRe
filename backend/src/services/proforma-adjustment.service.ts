@@ -4467,7 +4467,32 @@ export async function getDealFinancials(
     const turnoverY1   = ry1('turnover');
     const contractY1   = ry1('contract_services');
     const marketingY1  = ry1('marketing');
-    const utilitiesY1  = ry1('utilities');
+    // BUG-UTIL-01 service-layer guard: when all three decomposed utility sub-lines
+    // (water_sewer, electric, gas_fuel) are fully populated, sum them and suppress the
+    // combined 'utilities' field to prevent a silent zero (or stale combined value) from
+    // reaching the projection loop. Mirrors the write-side guard in the ProFormaSummaryTab
+    // composition (lines 2738–2753). If combined field also exists and differs from the
+    // sub-line sum, emit a warn-level log with deal_id and both values for triage.
+    const _waterSewerY1 = resolvedNum(lv(year1Seed, 'water_sewer'));
+    const _electricY1   = resolvedNum(lv(year1Seed, 'electric'));
+    const _gasFuelY1    = resolvedNum(lv(year1Seed, 'gas_fuel'));
+    const _utilDecomposedAll = _waterSewerY1 != null && _electricY1 != null && _gasFuelY1 != null;
+    let utilitiesY1: number;
+    if (_utilDecomposedAll) {
+      const _decomposedSum = _waterSewerY1! + _electricY1! + _gasFuelY1!;
+      const _combinedUtils = resolvedNum(lv(year1Seed, 'utilities'));
+      if (_combinedUtils != null && Math.abs(_decomposedSum - _combinedUtils) > 1) {
+        console.warn(
+          `[BUG-UTIL-01] Decomposed utility sub-lines sum differs from combined utilities field. ` +
+          `deal_id=${String((deal as any)?.id ?? 'unknown')} ` +
+          `decomposedSum=${_decomposedSum} combined=${_combinedUtils}. ` +
+          `Using sub-line sum; combined utilities field suppressed.`,
+        );
+      }
+      utilitiesY1 = _decomposedSum;
+    } else {
+      utilitiesY1 = ry1('utilities');
+    }
     const gAndAY1      = ry1('g_and_a');
     const insuranceY1  = ry1('insurance');
     // reTaxY1Base: reads year1Seed.real_estate_tax.resolved, which the tax-engine

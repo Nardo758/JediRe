@@ -1,0 +1,360 @@
+Draft 1 — EC4 Sweep (F9 Module Map Audit)
+EC4 SWEEP — F9 MODULE MAP GAPS AUDIT
+
+CONTEXT
+EC4 in PHASE_2_ENTRY_CONDITIONS.md is currently UNKNOWN. This is 
+the last unresolved Phase 2 entry condition.
+
+F9_MODULE_MAP.md surfaced gaps in earlier Phase 1 work. Some may 
+have been closed by intervening dispatches (Batch 1 implementation, 
+Tier 1 RegimeExpand fix, Tier 2 directional validation, EC3 
+implementation). Some may still be open. Phase 2 work may have 
+surfaced new gaps not in the original map.
+
+This dispatch audits all known and newly-surfaced F9 gaps, 
+classifies each, and produces the final readiness assessment for 
+EC4.
+
+STATE VERIFICATION (per P8 corollary):
+1. F9_MODULE_MAP.md exists at expected path
+2. PHASE_2_ENTRY_CONDITIONS.md shows EC4 as UNKNOWN
+3. No prior EC4 audit document exists in docs/operations/
+4. The F9 module map's original gap list is readable (count + 
+   identifiers)
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — INVENTORY KNOWN GAPS
+═══════════════════════════════════════════════════════════════════
+
+A. Open F9_MODULE_MAP.md
+B. Extract every gap explicitly flagged in the document
+C. Document each gap:
+   - Gap ID (assigned by F9_MODULE_MAP or assigned here if 
+     unidentified)
+   - Original severity classification
+   - Affected F9 surface (tab, section, sub-screen)
+   - Description in plain language
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — CHECK STATUS OF EACH KNOWN GAP
+═══════════════════════════════════════════════════════════════════
+
+For each gap from Step 1:
+
+A. Search recent dispatch closing notes (docs/operations/ since 
+   F9_MODULE_MAP.md was last updated):
+   - Did Batch 1 implementation close this gap?
+   - Did Tier 1 RegimeExpand fix close this gap?
+   - Did Tier 2 directional validation close this gap?
+   - Did EC3 implementation close this gap?
+   - Did Tax remediation close this gap?
+   - Did any other dispatch close this gap?
+
+B. If closed: document closure with dispatch reference
+C. If open: re-classify severity given current Phase 2 work
+D. If status uncertain: do targeted code/UI inspection to confirm
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — DISCOVER NEW GAPS FROM PHASE 2 WORK
+═══════════════════════════════════════════════════════════════════
+
+Phase 2 work (Batch 1 implementation, EC3 implementation, Tax 
+remediation) may have surfaced F9 surfaces not previously audited 
+or new gaps in previously-audited surfaces.
+
+A. Review Batch 1 implementation closing note for F9 surface 
+   touch:
+   - Did the OpEx derivation Protocol section add expectations 
+     to F9 rendering?
+   - Are there F9 surfaces that consume Batch 1 derived values 
+     but weren't in the original map?
+
+B. Review EC3 implementation:
+   - Market rent benchmark surface in F9 — gap or working?
+
+C. Review Tax remediation:
+   - Tax-related F9 surfaces (Two-Tool Protocol output rendering) 
+     — gap or working?
+
+D. Document any new gaps surfaced
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — CLASSIFICATION
+═══════════════════════════════════════════════════════════════════
+
+For each gap (known closed/open + new):
+
+Classify as one of:
+- RESOLVED — gap is closed (with dispatch reference)
+- OPEN-BLOCKING — gap must close before Phase 2 substantive work 
+  can proceed; specifically affects Batch 3+ documentation or 
+  implementation
+- OPEN-PHASE-3 — gap is real but doesn't block Phase 2; deferred 
+  to Phase 3 backlog
+- DOWNGRADED — gap was real at time of F9_MODULE_MAP but is no 
+  longer significant (operational state changed)
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — EC4 STATUS DETERMINATION
+═══════════════════════════════════════════════════════════════════
+
+A. Count gaps by classification
+B. EC4 status determination:
+   - SATISFIED: zero OPEN-BLOCKING gaps remain
+   - PARTIAL: 1-3 OPEN-BLOCKING gaps; remediation path identified
+   - REWORK: 4+ OPEN-BLOCKING gaps; substantial cleanup needed 
+     before Phase 2 substantive work
+
+C. If SATISFIED: update PHASE_2_ENTRY_CONDITIONS.md to mark EC4 
+   SATISFIED
+D. If PARTIAL: document the remediation dispatches needed; EC4 
+   stays PARTIAL until they close
+E. If REWORK: surface the scope and discuss before queueing 
+   remediation
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/EC4_F9_MODULE_MAP_AUDIT.md
+
+Structure:
+1. Executive summary (gap counts by classification, EC4 status)
+2. Known gap inventory (Step 1)
+3. Per-gap status update (Step 2)
+4. New gaps discovered from Phase 2 work (Step 3)
+5. Classification summary (Step 4)
+6. EC4 status determination + recommended remediation (Step 5)
+7. Open questions
+
+Plus: PHASE_2_ENTRY_CONDITIONS.md update for EC4 status
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Fix any gaps in this dispatch (audit only)
+- Modify F9 module code
+- Make EC4 status determination if scope is genuinely larger than 
+  audit can resolve — surface that finding instead
+- "While I'm here" cleanups
+Expected close time: ~2-3 hours.
+
+Draft 2 — BUG-UTIL-01 Service-Layer Enforcement
+BUG-UTIL-01 — SERVICE-LAYER ENFORCEMENT
+
+CONTEXT
+Per Batch 1 implementation verification, BUG-UTIL-01 is a latent 
+double-count risk in proforma-adjustment.service.ts. The structural 
+issue:
+
+deal_assumptions.year1 can contain both combined utilities AND 
+sub-line decomposition simultaneously:
+  year1.utilities    = 187,094  (combined, from T12 parser)
+  year1.water_sewer  =  78,579  (split ratio, from agent)
+  year1.electric     =  59,870  (split ratio, from agent)
+  year1.gas_fuel     =  33,677  (split ratio, from agent)
+
+If proforma-adjustment.service.ts sums all expense fields without 
+distinguishing combined-vs-sub-line, it double-counts utilities 
+(~$172K overstated on the example above).
+
+Current protection: Batch 1 implementation added an agent-prompt 
+guard instructing the agent to suppress the combined utilities 
+row when writing sub-lines. This protects write-side cases where 
+the agent is the writer.
+
+Current gap: Service-layer (read-side) is unprotected. Any other 
+writer to deal_assumptions.year1 (manual operator input, future 
+tooling, broker package import, data migration) could produce 
+the double-count, and the service layer would sum it incorrectly.
+
+This dispatch adds service-layer enforcement: detect the 
+combined+sub-line conflict during summation, and apply the right 
+behavior.
+
+STATE VERIFICATION (per P8 corollary):
+1. proforma-adjustment.service.ts exists at expected path
+2. The current summation logic actually sums all expense fields 
+   without filtering (verify by reading the code)
+3. deal_assumptions.year1 schema supports both utilities AND 
+   water_sewer/electric/gas_fuel fields (per types.ts:479-484)
+4. No prior BUG-UTIL-01 fix has been applied
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+STEP 1 — DIAGNOSE CURRENT BEHAVIOR
+A. Open proforma-adjustment.service.ts
+B. Locate the OpEx summation logic
+C. Document current behavior:
+   - Which fields are summed?
+   - Is there any deduplication?
+   - What happens when both utilities and sub-lines exist?
+D. Test: construct a test case with both combined and sub-lines 
+   populated; verify the bug fires (or doesn't — confirm the 
+   actual current behavior, not assumed behavior)
+
+STEP 2 — DESIGN ENFORCEMENT
+A. Decision: when both combined utilities AND sub-lines exist, 
+   which is authoritative?
+   
+   The right answer per Batch 1 implementation: when sub-lines 
+   are populated, they are authoritative. The combined utilities 
+   row is from the T12 parser; the sub-lines are from the agent's 
+   decomposition. Agent's intent is the sub-line breakdown.
+   
+   Rule: If sub-lines (water_sewer, electric, gas_fuel) are all 
+   populated, sum the sub-lines and ignore the combined utilities 
+   row. If sub-lines are partially populated or absent, sum the 
+   combined utilities row.
+
+B. Implement the rule in proforma-adjustment.service.ts
+C. Add logging when the conflict is detected:
+   - logger.warn level
+   - Specific message: "Combined utilities ($X) and sub-lines 
+     ($Y total) both present in deal_assumptions.year1; using 
+     sub-lines per BUG-UTIL-01 rule"
+   - Include deal_id, year, both values for forensic trace
+
+STEP 3 — TEST CASES
+A. Sub-lines only (agent decomposed, combined suppressed): 
+   verify sum = sub-lines total
+B. Combined only (T12 parser, no agent decomposition): verify 
+   sum = combined
+C. Both populated (the BUG-UTIL-01 case): verify sum = sub-lines 
+   total, warning logged
+D. Sub-lines partial (e.g., water_sewer populated, electric and 
+   gas null): verify behavior is sensible (probably: sum 
+   sub-lines that exist + combined for missing, OR fail loudly 
+   rather than silently producing wrong number)
+
+STEP 4 — PHASE 2 BATCH INTEGRITY CHECK (per P9)
+A. P9.A: Does the agent prompt's BUG-UTIL-01 guard remain consistent 
+   with the service-layer rule? Verify yes.
+B. P9.B: Is there an existing utilities aggregation module that 
+   should own this logic, rather than proforma-adjustment.service?
+   Audit before implementing; extend existing module if present.
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Code change in proforma-adjustment.service.ts.
+
+Closing note: docs/operations/BUG_UTIL_01_SERVICE_LAYER_FIX.md
+(a) Before/after of summation logic
+(b) Rule documentation
+(c) Test results for all 4 cases (Step 3)
+(d) Logging output examples for the conflict case
+(e) P9.A confirmation (agent guard remains consistent)
+(f) P9.B confirmation (existing module audit performed)
+(g) Followup: any deals already in production with both combined 
+    and sub-lines populated will now use sub-lines and log the 
+    warning. Operator can review warning logs to identify deals 
+    needing review.
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify the T12 parser (combined utilities write stays as-is)
+- Modify the agent prompt's BUG-UTIL-01 guard (write-side 
+  protection stays as-is)
+- Touch other parts of proforma-adjustment.service.ts beyond the 
+  summation logic
+- Backfill historical deals (forward-only fix; warning logs 
+  identify affected deals for separate review)
+- "While I'm here" cleanups
+Expected close time: ~1-2 hours.
+
+Draft 3 — Journal entry for session lessons
+The two corrections from Wave 3 are worth capturing as standing lessons, not as P8 amendments. P8 is solid as written; the lessons are about how to apply P8, not how to expand it.
+SESSION JOURNAL ENTRY — WAVE 3 LESSONS
+
+Append to: docs/operations/SESSION_JOURNAL.md (create if doesn't 
+exist; structure as ongoing log of session-level findings worth 
+preserving)
+
+═══════════════════════════════════════════════════════════════════
+LESSON 1 — VERIFICATION CATCHES DATA-LEVEL ERRORS IN COMPLETED WORK
+═══════════════════════════════════════════════════════════════════
+
+Context: Tax Gap Remediation dispatch landed all 5 gaps as "fixed" 
+with high confidence. The Build-mode bot's state verification 
+confirmed each gap had a corresponding code/prompt change. The 
+dispatch's testing section presumably passed.
+
+The verification dispatch caught a numeric error: TN 
+assessmentRatio was set to 0.25 (residential rate) instead of 
+0.40 (commercial/multifamily rate). This was hidden inside a data 
+addition that looked structurally complete.
+
+Without verification, TN tax estimates would have produced values 
+at 62.5% of correct indefinitely. Operators would have underwritten 
+TN deals with materially lower tax burdens than reality. The error 
+would not have surfaced until a TN deal closed and the actual 
+property tax bill arrived months later.
+
+Standing lesson: P8 verification doesn't just confirm document 
+integrity. It catches data-level errors hidden inside implementations 
+that look structurally correct. Spot-checks must include sample-level 
+data validation, not just "the change was made."
+
+For future verification dispatches involving data additions (new 
+jurisdictions, new line items, new ratios, new defaults): always 
+include at least one spot-check that confirms the numeric values 
+against authoritative external reference, not just internal 
+consistency.
+
+═══════════════════════════════════════════════════════════════════
+LESSON 2 — STATE VERIFICATION CATCHES DISPATCH AUTHOR ASSUMPTIONS
+═══════════════════════════════════════════════════════════════════
+
+Context: The f9-financial-export.service.ts:172 cleanup dispatch 
+was drafted with the assumption that the $350 hardcode was dead 
+code. The reasoning: Batch 1 implementation wired the three-tier 
+rule into the derivation path; therefore the export-path fallback 
+would never fire.
+
+The bot's state verification caught the assumption error: 
+y1('replacement_reserves') can still return null for deals 
+underwritten before Batch 1 was wired. The hardcode protects 
+those legacy deals from null output during F9 export.
+
+The correct fix was not removal but observability: retain the 
+fallback, add console.warn so the fallback firing is visible in 
+logs. Operators can then identify which legacy deals need a 
+Batch 1 re-run.
+
+Standing lesson: Dispatch authors (Claude, in this case) can be 
+wrong about what's "dead code" or "safe to remove." State 
+verification catches these assumption errors before they produce 
+regressions. The corollary: dispatches that authorize removal of 
+"dead" code should explicitly include "verify dead-ness" as the 
+first state verification step, with a fallback plan if dead-ness 
+isn't confirmed.
+
+For future cleanup dispatches: always frame as "verify dead-ness 
+THEN remove" rather than "remove" with verification as implicit 
+precondition.
+
+═══════════════════════════════════════════════════════════════════
+META-OBSERVATION ON BOTH LESSONS
+═══════════════════════════════════════════════════════════════════
+
+Both lessons share a common thread: the bot's state verification 
+discipline catches errors that look invisible from above. Dispatch 
+authors operate on conceptual models of "what should be true" or 
+"what's done." The bot operates on what's actually in the code 
+right now.
+
+When these diverge, the bot's view is authoritative. The dispatch 
+gets corrected, not the codebase.
+
+This is exactly the discipline P8's state verification corollary 
+was added to produce. Both lessons confirm the corollary is doing 
+its work.
+
+═══════════════════════════════════════════════════════════════════
