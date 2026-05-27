@@ -99,6 +99,120 @@ function addYearsToDate(closeIso: string | null | undefined, holdYears: number |
   return d.toISOString().slice(0, 10);
 }
 
+// ─── Unsupported investment strategy helpers ──────────────────────────────────
+// These three strategies have zero dedicated F9 UI. Operators who select them
+// receive the standard multifamily layout, which is structurally wrong for
+// their deal type. Full support is deferred — see STRATEGY_SCOPE_NOTICE.md.
+
+const UNSUPPORTED_INVESTMENT_STRATEGIES = new Set(['Flip', 'Short-Term Rental', 'Land Hold']);
+
+function _strategyConfirmedKey(dealId: string) {
+  return `jedi:strategy_unsupported_confirmed:${dealId}`;
+}
+
+function isStrategyConfirmed(dealId: string, strategy: string): boolean {
+  try {
+    const raw = localStorage.getItem(_strategyConfirmedKey(dealId));
+    if (!raw) return false;
+    const list: string[] = JSON.parse(raw);
+    return list.includes(strategy);
+  } catch {
+    return false;
+  }
+}
+
+function markStrategyConfirmed(dealId: string, strategy: string): void {
+  try {
+    const raw = localStorage.getItem(_strategyConfirmedKey(dealId));
+    const list: string[] = raw ? JSON.parse(raw) : [];
+    if (!list.includes(strategy)) list.push(strategy);
+    localStorage.setItem(_strategyConfirmedKey(dealId), JSON.stringify(list));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+// ─── Strategy confirmation modal ──────────────────────────────────────────────
+
+function StrategyConfirmModal({
+  strategy,
+  onConfirm,
+  onCancel,
+}: {
+  strategy: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      background: 'rgba(0,0,0,0.65)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{
+        background: BT.bg.header,
+        border: `1px solid ${AMBER}55`,
+        borderTop: `3px solid ${AMBER}`,
+        borderRadius: 4,
+        padding: '20px 24px',
+        maxWidth: 420,
+        width: '90%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+      }}>
+        <div style={{
+          fontFamily: MONO, fontSize: 10, fontWeight: 700,
+          color: AMBER, letterSpacing: 1.2, marginBottom: 12,
+        }}>
+          ⚠ STRATEGY NOT YET FULLY SUPPORTED
+        </div>
+        <div style={{
+          fontFamily: MONO, fontSize: 9, color: BT.text.secondary,
+          lineHeight: 1.6, marginBottom: 16,
+        }}>
+          You've selected <span style={{ color: TEAL, fontWeight: 700 }}>{strategy}</span>.
+          Full F9 UI support for this strategy is not yet built — the platform will render a
+          standard multifamily layout, which may not reflect the correct financial structure
+          for this deal type.
+        </div>
+        <div style={{
+          fontFamily: MONO, fontSize: 8, color: BT.text.muted,
+          lineHeight: 1.5, marginBottom: 18,
+          borderLeft: `2px solid ${AMBER}44`, paddingLeft: 8,
+        }}>
+          The strategy will be saved normally and can be used for deal categorization.
+          This notice will not appear again for this deal.
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            style={{
+              fontFamily: MONO, fontSize: 9, fontWeight: 600,
+              color: BT.text.muted, background: 'transparent',
+              border: `1px solid ${BT.border.subtle}`,
+              padding: '5px 14px', borderRadius: 3, cursor: 'pointer',
+              letterSpacing: 0.3,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              fontFamily: MONO, fontSize: 9, fontWeight: 700,
+              color: BT.bg.terminal, background: AMBER,
+              border: `1px solid ${AMBER}`,
+              padding: '5px 14px', borderRadius: 3, cursor: 'pointer',
+              letterSpacing: 0.3,
+            }}
+          >
+            Continue anyway
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Not-Set badge — for operator-required fields with no value in either LV slot ──
 
 function NotSetBadge({
@@ -207,12 +321,13 @@ function OverrideInput({
 }
 
 function DropdownSelect({
-  value, options, onChange, width = 110,
+  value, options, onChange, width = 110, unsupportedValues,
 }: {
   value: string;
   options: string[];
   onChange: (v: string) => void;
   width?: number;
+  unsupportedValues?: Set<string>;
 }) {
   return (
     <select
@@ -229,7 +344,11 @@ function DropdownSelect({
       }}
     >
       <option value="">--</option>
-      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+      {options.map(opt => (
+        <option key={opt} value={opt}>
+          {unsupportedValues?.has(opt) ? `${opt} ★` : opt}
+        </option>
+      ))}
     </select>
   );
 }
@@ -295,6 +414,8 @@ interface LvRowProps {
   // Override column variant: input | dropdown | passthrough text
   overrideKind?: 'text' | 'number' | 'date' | 'pct';
   overrideOptions?: string[]; // for dropdown rows (Exit Strategy)
+  // Set of option values to annotate as unsupported in the dropdown
+  overrideUnsupported?: Set<string>;
   // Display-only row treatment
   readOnly?: boolean;
   readOnlyValue?: string;
@@ -305,6 +426,7 @@ interface LvRowProps {
 function LvRow({
   label, hint, broker, platform, override, setOverride, onCommit, resolved, source,
   derived, flag, operatorOnly = false, overrideKind = 'text', overrideOptions,
+  overrideUnsupported,
   readOnly = false, readOnlyValue,
   emphasis = null,
 }: LvRowProps) {
@@ -354,7 +476,7 @@ function LvRow({
         ) : overrideKind === 'date' ? (
           <OverrideInput value={override} onChange={setOverride} onCommit={onCommit} type="date" width={120} />
         ) : overrideOptions ? (
-          <DropdownSelect value={override} options={overrideOptions} onChange={(v) => { setOverride(v); onCommit?.(); }} />
+          <DropdownSelect value={override} options={overrideOptions} onChange={(v) => { setOverride(v); onCommit?.(); }} unsupportedValues={overrideUnsupported} />
         ) : overrideKind === 'pct' ? (
           <OverrideInput value={override} onChange={setOverride} onCommit={onCommit} placeholder="--%" />
         ) : overrideKind === 'number' ? (
@@ -482,6 +604,9 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
 
   // ── STRATEGY FIELDS ─────────────────────────────────────────────────────────
   const [investmentStrategy, setInvestmentStrategy] = useState('');
+  // Pending unsupported strategy — set when operator picks one that hasn't
+  // been confirmed yet. Modal reads this; null means modal is closed.
+  const [strategyModal, setStrategyModal] = useState<string | null>(null);
 
   // ── EXIT / DISPOSITION ─────────────────────────────────────────────────────
   const [exitStrategy,   setExitStrategy]       = useState('');
@@ -782,8 +907,8 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     });
   }
 
-  async function saveInvestmentStrategy() {
-    const val = investmentStrategy || null;
+  async function saveInvestmentStrategy(valueOverride?: string | null) {
+    const val = valueOverride !== undefined ? valueOverride : (investmentStrategy || null);
     await withSave(async () => {
       await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/strategy`, { investmentStrategy: val });
       props.onF9Refresh?.();
@@ -791,6 +916,28 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
         detail: { dealId: props.dealId, field: 'investmentStrategy', value: val },
       }));
     });
+  }
+
+  function handleInvestmentStrategySelect(v: string) {
+    if (v && UNSUPPORTED_INVESTMENT_STRATEGIES.has(v) && !isStrategyConfirmed(props.dealId, v)) {
+      setStrategyModal(v);
+    } else {
+      setInvestmentStrategy(v);
+      void saveInvestmentStrategy(v || null);
+    }
+  }
+
+  function handleStrategyModalConfirm() {
+    if (strategyModal) {
+      markStrategyConfirmed(props.dealId, strategyModal);
+      setInvestmentStrategy(strategyModal);
+      void saveInvestmentStrategy(strategyModal);
+      setStrategyModal(null);
+    }
+  }
+
+  function handleStrategyModalCancel() {
+    setStrategyModal(null);
   }
 
   async function saveExitStrategy() {
@@ -830,6 +977,7 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   }
 
   return (
+    <>
     <div style={{
       display: 'flex', flexDirection: 'column', height: '100%',
       background: BT.bg.terminal, overflow: 'hidden',
@@ -1135,9 +1283,9 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
             />
             <LvRow label="Investment Strategy"
               operatorOnly
-              override={investmentStrategy} setOverride={setInvestmentStrategy}
-              overrideOptions={['Build-to-Sell', 'Flip', 'Rental', 'Short-Term Rental']}
-              onCommit={() => void saveInvestmentStrategy()}
+              override={investmentStrategy} setOverride={handleInvestmentStrategySelect}
+              overrideOptions={['Build-to-Sell', 'Flip', 'Land Hold', 'Rental', 'Short-Term Rental']}
+              overrideUnsupported={UNSUPPORTED_INVESTMENT_STRATEGIES}
               resolved={investStrategyResolved ?? '--'}
               source={
                 investmentStrategyLv?.override != null ? 'Override'
@@ -1147,7 +1295,9 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
               flag={
                 investmentStrategyLv?.override == null && investmentStrategyLv?.detected == null
                   ? <NotSetBadge label="NOT SET" title="No investment strategy set — operator attention required" />
-                  : undefined
+                  : UNSUPPORTED_INVESTMENT_STRATEGIES.has(investStrategyResolved ?? '')
+                    ? <NotSetBadge label="LIMITED" title="Full F9 UI for this strategy is not yet built — see STRATEGY_SCOPE_NOTICE.md" />
+                    : undefined
               }
             />
 
@@ -1304,6 +1454,15 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
         </div>
       </div>
     </div>
+
+    {strategyModal && (
+      <StrategyConfirmModal
+        strategy={strategyModal}
+        onConfirm={handleStrategyModalConfirm}
+        onCancel={handleStrategyModalCancel}
+      />
+    )}
+    </>
   );
 }
 

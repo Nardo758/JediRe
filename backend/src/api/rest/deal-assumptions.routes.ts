@@ -701,7 +701,7 @@ router.patch('/:dealId/assumptions/strategy', requireAuth, async (req: Authentic
     const body = req.body as { exitStrategy?: string | null; investmentStrategy?: string | null };
 
     const EXIT_VALID = ['Sale', 'Refinance', 'Hold'];
-    const INV_VALID  = ['Build-to-Sell', 'Flip', 'Rental', 'Short-Term Rental', 'Value-Add', 'Redevelopment', 'Lease-Up'];
+    const INV_VALID  = ['Build-to-Sell', 'Flip', 'Land Hold', 'Lease-Up', 'Redevelopment', 'Rental', 'Short-Term Rental', 'Value-Add'];
 
     if ('exitStrategy' in body && body.exitStrategy !== null && body.exitStrategy !== undefined
         && !EXIT_VALID.includes(body.exitStrategy)) {
