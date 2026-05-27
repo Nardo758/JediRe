@@ -208,6 +208,19 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   const [compSortField, setCompSortField] = useState<'date' | 'ppu' | 'cap'>('date');
   const [compVintageBand, setCompVintageBand] = useState<string | null>(null);
 
+  interface ImpliedCapData {
+    implied_cap_rate: number | null;
+    operator_going_in_cap: number | null;
+    delta_bps: number | null;
+    positioning_label: string | null;
+    computation_method: string;
+    rent_source: string | null;
+    comp_reported_cap_rate: number | null;
+    comp_count: number | null;
+  }
+  const [impliedCapData, setImpliedCapData] = useState<ImpliedCapData | null>(null);
+  const [impliedCapLoading, setImpliedCapLoading] = useState(false);
+
   const loadSaleComps = useCallback(() => {
     if (!dealId) return;
     setSaleCompsLoading(true);
@@ -222,6 +235,21 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   }, [dealId]);
 
   useEffect(() => { loadSaleComps(); }, [loadSaleComps]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    setImpliedCapLoading(true);
+    apiClient
+      .get<{ success: boolean; data: ImpliedCapData }>(`/api/v1/deals/${dealId}/implied-cap-rate`)
+      .then((res) => {
+        if ((res.data as any)?.success && (res.data as any)?.data) {
+          setImpliedCapData((res.data as any).data);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setImpliedCapLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dealId]);
 
   const handleDeleteSaleComp = useCallback(async (compId: string, address: string) => {
     if (!dealId || saleCompDeletingId) return;
@@ -526,16 +554,29 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   }, [saleComps, compSortField, compVintageBand]);
 
   const SALE_COMP_COLS = [
-    { label: 'PROPERTY',  flex: 3, color: BT2.text.secondary },
+    { label: 'PROPERTY',  flex: 2.5, color: BT2.text.secondary },
     { label: 'DATE',      flex: 0.9, color: BT2.text.muted },
-    { label: 'PRICE',     flex: 0.9, color: BT2.met.financial },
+    { label: 'UNITS',     flex: 0.6, color: BT2.text.secondary },
     { label: '$/UNIT',    flex: 0.9, color: BT2.text.cyan },
-    { label: 'CAP RATE',  flex: 0.9, color: BT2.text.amber },
-    { label: 'VINTAGE',   flex: 0.9, color: BT2.text.purple ?? BT2.text.muted },
-    { label: 'SOURCE',    flex: 0.9, color: BT2.text.muted },
-    { label: 'DIST',      flex: 0.7, color: BT2.text.muted },
+    { label: 'NOI/UNIT',  flex: 0.9, color: BT2.met.economic ?? BT2.text.muted },
+    { label: 'CAP RATE',  flex: 1.0, color: BT2.text.amber },
+    { label: 'SRC',       flex: 0.7, color: BT2.text.muted },
+    { label: 'DIST',      flex: 0.6, color: BT2.text.muted },
     { label: '',          flex: 0.35, color: BT2.text.muted },
   ];
+
+  function computeOutlierIds(comps: SaleComp[]): Set<string> {
+    const rates = comps.map(c => c.implied_cap_rate).filter((r): r is number => r != null);
+    if (rates.length < 4) return new Set();
+    const sorted = [...rates].sort((a, b) => a - b);
+    const q1 = sorted[Math.floor(sorted.length * 0.25)];
+    const q3 = sorted[Math.floor(sorted.length * 0.75)];
+    const iqr = q3 - q1;
+    if (iqr === 0) return new Set();
+    const lo = q1 - 1.5 * iqr;
+    const hi = q3 + 1.5 * iqr;
+    return new Set(comps.filter(c => c.implied_cap_rate != null && (c.implied_cap_rate < lo || c.implied_cap_rate > hi)).map(c => c.id));
+  }
 
   const renderCompsTab = () => (
     <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: BT2.bg.terminal }}>
@@ -545,7 +586,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
 
       <SectionPanel
         title="SALE COMP TRANSACTIONS"
-        subtitle={`${filteredComps.length}${compVintageBand ? ` of ${saleCompCount}` : ` RECORDS`} · PROPERTY / DATE / PRICE / $/UNIT / CAP / VINTAGE / SOURCE / DIST`}
+        subtitle={`${filteredComps.length}${compVintageBand ? ` of ${saleCompCount}` : ` RECORDS`} · PROPERTY / DATE / UNITS / $/UNIT / NOI/UNIT / CAP RATE / SRC / DIST`}
         borderColor={BT2.text.amber}
       >
         {saleCompsLoading && (
@@ -554,10 +595,12 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
         {!saleCompsLoading && saleComps.length === 0 && (
           <div style={{ padding: 12, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', fontSize: 9 }}>NO SALE COMP DATA</div>
         )}
-        {!saleCompsLoading && saleComps.length > 0 && (
+        {!saleCompsLoading && saleComps.length > 0 && (() => {
+          const outlierIds = computeOutlierIds(saleComps);
+          return (
           <div>
-            {/* KPI strip */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: BT2.border.subtle, marginBottom: 1 }}>
+            {/* KPI strip — 6 cells: count, avg$/unit, median$/unit, comp median cap, platform implied cap, operator exit cap */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 1, background: BT2.border.subtle, marginBottom: 1 }}>
               <div style={{ background: BT2.bg.panel, padding: '4px 8px' }}>
                 <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>COMP COUNT</div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: BT2.text.amber, fontFamily: 'var(--bt-mono)' }}>{saleCompCount}</div>
@@ -571,10 +614,86 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
                 <div style={{ fontSize: 13, fontWeight: 700, color: BT2.text.cyan, fontFamily: 'var(--bt-mono)' }}>{saleCompSet?.median_price_per_unit ? fmtUsd(saleCompSet.median_price_per_unit) : '—'}</div>
               </div>
               <div style={{ background: BT2.bg.panel, padding: '4px 8px' }}>
-                <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>AVG CAP RATE</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: BT2.text.amber, fontFamily: 'var(--bt-mono)' }}>{fmtCapRate(saleCompSet?.avg_implied_cap_rate ?? null)}</div>
+                <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>COMP MEDIAN CAP</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: BT2.text.amber, fontFamily: 'var(--bt-mono)' }}>{fmtCapRate(saleCompSet?.median_implied_cap_rate ?? null)}</div>
+                <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>transaction-reported</div>
+              </div>
+              <div style={{ background: impliedCapData?.implied_cap_rate != null ? '#00D26A08' : BT2.bg.panel, padding: '4px 8px', borderLeft: `2px solid ${impliedCapData?.implied_cap_rate != null ? '#00D26A55' : BT2.border.subtle}` }}>
+                <div style={{ fontSize: 7, color: impliedCapData?.implied_cap_rate != null ? '#00D26A' : BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>PLATFORM IMPLIED CAP</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: impliedCapData?.implied_cap_rate != null ? '#00D26A' : BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>
+                  {impliedCapLoading ? '…' : fmtCapRate(impliedCapData?.implied_cap_rate ?? null)}
+                </div>
+                <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>
+                  {impliedCapData?.rent_source === 'market_vitals' ? 'market rent / price' : impliedCapData?.rent_source === 'line_item_benchmarks' ? 'benchmark / price' : impliedCapLoading ? '' : 'unavailable'}
+                </div>
+              </div>
+              <div style={{ background: impliedCapData?.operator_going_in_cap != null ? '#00BCD408' : BT2.bg.panel, padding: '4px 8px', borderLeft: `2px solid ${impliedCapData?.operator_going_in_cap != null ? '#00BCD455' : BT2.border.subtle}` }}>
+                <div style={{ fontSize: 7, color: impliedCapData?.operator_going_in_cap != null ? BT2.text.cyan : BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>OPERATOR EXIT CAP</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: impliedCapData?.operator_going_in_cap != null ? BT2.text.cyan : BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>
+                  {fmtCapRate(impliedCapData?.operator_going_in_cap ?? null)}
+                </div>
+                {impliedCapData?.delta_bps != null && impliedCapData?.positioning_label != null && (
+                  <div style={{ fontSize: 7, fontFamily: 'var(--bt-mono)', color: impliedCapData.positioning_label === 'ALIGNED' ? '#00D26A' : impliedCapData.positioning_label === 'OPERATOR_ABOVE' ? BT2.text.amber : BT2.text.red }}>
+                    {impliedCapData.delta_bps > 0 ? '+' : ''}{impliedCapData.delta_bps} bps · {impliedCapData.positioning_label}
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Platform-implied cap benchmark banner */}
+            {(() => {
+              if (impliedCapLoading) return null;
+              if (impliedCapData?.implied_cap_rate == null) {
+                return (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '6px 10px', background: '#1a1a2e',
+                    borderBottom: `1px solid ${BT2.border.subtle}`,
+                    borderLeft: `3px solid ${BT2.text.muted}`,
+                  }}>
+                    <AlertTriangle style={{ width: 10, height: 10, color: BT2.text.muted, flexShrink: 0 }} />
+                    <span style={{ fontFamily: 'var(--bt-mono)', fontSize: 8, color: BT2.text.muted }}>
+                      PLATFORM IMPLIED CAP UNAVAILABLE — insufficient benchmark data for this market. Comp-reported cap rates above are transaction-sourced only.
+                    </span>
+                  </div>
+                );
+              }
+              const icd = impliedCapData;
+              const posColor = icd.positioning_label === 'ALIGNED' ? '#00D26A' : icd.positioning_label === 'OPERATOR_ABOVE' ? BT2.text.amber : BT2.text.red;
+              return (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                  padding: '5px 10px', background: '#00D26A06',
+                  borderBottom: `1px solid #00D26A22`,
+                  borderLeft: `3px solid #00D26A55`,
+                }}>
+                  <span style={{ fontFamily: 'var(--bt-mono)', fontSize: 7, color: '#00D26A', fontWeight: 700, letterSpacing: 0.5 }}>CAP BENCHMARK</span>
+                  <span style={{ fontFamily: 'var(--bt-mono)', fontSize: 8, color: BT2.text.muted }}>
+                    COMP REPORTED: <span style={{ color: BT2.text.amber, fontWeight: 700 }}>{fmtCapRate(icd.comp_reported_cap_rate ?? saleCompSet?.median_implied_cap_rate ?? null)}</span>
+                  </span>
+                  <span style={{ color: BT2.border.subtle }}>·</span>
+                  <span style={{ fontFamily: 'var(--bt-mono)', fontSize: 8, color: BT2.text.muted }}>
+                    PLATFORM IMPLIED: <span style={{ color: '#00D26A', fontWeight: 700 }}>{fmtCapRate(icd.implied_cap_rate)}</span>
+                  </span>
+                  {icd.operator_going_in_cap != null && (
+                    <>
+                      <span style={{ color: BT2.border.subtle }}>·</span>
+                      <span style={{ fontFamily: 'var(--bt-mono)', fontSize: 8, color: BT2.text.muted }}>
+                        OPERATOR EXIT: <span style={{ color: BT2.text.cyan, fontWeight: 700 }}>{fmtCapRate(icd.operator_going_in_cap)}</span>
+                      </span>
+                      {icd.delta_bps != null && (
+                        <>
+                          <span style={{ color: BT2.border.subtle }}>·</span>
+                          <span style={{ fontFamily: 'var(--bt-mono)', fontSize: 8, color: posColor, fontWeight: 700 }}>
+                            {icd.delta_bps > 0 ? '+' : ''}{icd.delta_bps} BPS vs PLATFORM · {icd.positioning_label}
+                          </span>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Sort + filter controls */}
             <div style={{
@@ -629,28 +748,40 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
                   >{vb}</button>
                 );
               })}
+              {outlierIds.size > 0 && (
+                <span style={{ marginLeft: 'auto', fontFamily: 'var(--bt-mono)', fontSize: 7, color: BT2.text.amber }}>
+                  ⚠ {outlierIds.size} OUTLIER{outlierIds.size > 1 ? 'S' : ''} FLAGGED
+                </span>
+              )}
             </div>
 
             <TableHeader cols={SALE_COMP_COLS} />
             {filteredComps.map((c, i) => {
-              const vintageBandLabel = c.year_built ? String(c.year_built) : '—';
               const sourceLabel = c.source
-                ? c.source.replace('georgia_county', 'GA-CTY').replace('_', '-').toUpperCase()
+                ? c.source.replace('georgia_county', 'GA-CTY').replace('_', '-').toUpperCase().slice(0, 8)
                 : '—';
+              const isOutlier = outlierIds.has(c.id);
+              const estNoiPerUnit = c.implied_cap_rate != null && c.price_per_unit > 0
+                ? c.implied_cap_rate * c.price_per_unit
+                : null;
+              const capLabel = c.implied_cap_rate != null
+                ? `${(c.implied_cap_rate * 100).toFixed(2)}%${isOutlier ? ' ⚠' : ''}`
+                : '—';
+              const capColor = isOutlier ? BT2.text.amber : (c.implied_cap_rate != null ? BT2.text.amber : BT2.text.muted);
               return (
-                <div key={c.id} style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', position: 'relative', background: isOutlier ? '#F5A62306' : 'transparent' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <TableRow
                       index={i}
                       cells={[
-                        { value: c.property_address || '—',    flex: 3, color: BT2.text.secondary, weight: 600 },
+                        { value: c.property_address || '—',    flex: 2.5, color: BT2.text.secondary, weight: 600 },
                         { value: fmtSaleDate(c.recording_date), flex: 0.9, color: BT2.text.muted },
-                        { value: fmtUsd(c.derived_sale_price),  flex: 0.9, color: BT2.met.financial },
+                        { value: c.units ? String(c.units) : '—', flex: 0.6, color: BT2.text.secondary },
                         { value: fmtUsd(c.price_per_unit),      flex: 0.9, color: BT2.text.cyan },
-                        { value: fmtCapRate(c.implied_cap_rate), flex: 0.9, color: BT2.text.amber },
-                        { value: vintageBandLabel,              flex: 0.9, color: BT2.text.purple ?? BT2.text.muted },
-                        { value: sourceLabel,                   flex: 0.9, color: BT2.text.muted },
-                        { value: fmtMi(c.distance_miles),       flex: 0.7, color: BT2.text.muted },
+                        { value: estNoiPerUnit != null ? fmtUsd(estNoiPerUnit) : '—', flex: 0.9, color: BT2.met.economic ?? BT2.text.muted },
+                        { value: capLabel,                      flex: 1.0, color: capColor, weight: isOutlier ? 700 : 400 },
+                        { value: sourceLabel,                   flex: 0.7, color: BT2.text.muted },
+                        { value: fmtMi(c.distance_miles),       flex: 0.6, color: BT2.text.muted },
                         { value: '', flex: 0.35 },
                       ]}
                     />
@@ -678,7 +809,8 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
               );
             })}
           </div>
-        )}
+          );
+        })()}
       </SectionPanel>
     </div>
   );
