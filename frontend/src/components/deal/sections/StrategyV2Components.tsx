@@ -880,268 +880,303 @@ function CompScatter({ points, title }: { points: Array<{ name: string; x: numbe
 
 export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategyScore; defaultExpanded: boolean }) {
   const { hoveredEvidenceRef, setHoveredEvidenceRef } = useContext(HoverContext);
-  // isPlanHighlighted: this evidence block is highlighted because a plan action references it
   const isPlanHighlighted = hoveredEvidenceRef !== null && (
     ss.key === hoveredEvidenceRef ||
     (ss.evidenceReport?.subStrategyKey ?? '') === hoveredEvidenceRef
   );
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const [fullDetail, setFullDetail] = useState(false);
   const [drawerRow, setDrawerRow] = useState<MetricStackRow | null>(null);
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
   const ev = ss.evidenceReport;
   const tp = ev?.thesisPrompt;
+  const fp = ss.financialPreview;
+  const gateLbl = gateLabel(ss);
+  const gateClr = gateColor(ss);
+  const borderColor = isPlanHighlighted ? BT.text.cyan : (ss.isDetectedPrimary ? BT.text.amber : BT.border.medium);
 
+  // ── Collapsed state: alternate sub-strategy 1-line summary ──────────────────
+  if (!expanded) {
+    return (
+      <div
+        id={`evidence-${ss.key}`}
+        onClick={() => setExpanded(true)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '5px 12px',
+          borderLeft: `3px solid ${gateClr}`,
+          background: BT.bg.panel,
+          borderBottom: `1px solid ${BT.border.subtle}`,
+          cursor: 'pointer',
+          marginBottom: 1,
+        }}
+      >
+        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {(ss.name || ss.key).replace(/_/g, ' ').toUpperCase()}
+        </span>
+        <Bd c={gateClr}>{gateLbl}</Bd>
+        {fp && (
+          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.met.financial, fontWeight: 700 }}>
+            {fmtSafe(fp.irr, 1)}% IRR
+          </span>
+        )}
+        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>
+          {fmtScore(ss.finalScore)} pts
+        </span>
+        <span style={{ fontFamily: MONO, fontSize: 10, color: BT.text.muted }}>▶</span>
+      </div>
+    );
+  }
+
+  // ── Shared: compute ultimateReturn validity once ──────────────────────────────
+  const ur = ev?.ultimateReturn;
+  const isFiniteNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  const hasAllReturnFields = !!ur
+    && isFiniteNum(ur.irr)
+    && isFiniteNum(ur.equityMultiple)
+    && isFiniteNum(ur.holdMonths)
+    && isFiniteNum(ur.exitCapRate);
+
+  // ── Expanded state ────────────────────────────────────────────────────────────
   return (
     <div id={`evidence-${ss.key}`}>
       {drawerRow && <EvidenceDrawer row={drawerRow} onClose={() => setDrawerRow(null)} />}
       <SectionPanel
         title={`EVIDENCE — ${(ss.name || ss.key).replace(/_/g, ' ').toUpperCase()}`}
-        borderColor={isPlanHighlighted ? BT.text.cyan : (ss.isDetectedPrimary ? BT.text.amber : BT.border.medium)}
+        borderColor={borderColor}
         style={{ marginBottom: 1, outline: isPlanHighlighted ? `1px solid ${BT.text.cyan}44` : undefined }}
         right={
-          <button onClick={() => setExpanded(v => !v)} style={{
+          <button onClick={() => setExpanded(false)} style={{
             fontFamily: MONO, fontSize: 8, color: BT.text.secondary,
             background: 'transparent', border: `1px solid ${BT.border.subtle}`,
             padding: '1px 6px', cursor: 'pointer',
           }}>
-            {expanded ? '▲ COLLAPSE' : '▼ EXPAND'}
+            ▲ COLLAPSE
           </button>
         }
       >
-        {!expanded ? (
-          <div style={{ padding: '6px 10px' }}>
-            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, fontStyle: 'italic' }}>
-              {ev?.thesis ? ev.thesis.slice(0, 140) + (ev.thesis.length > 140 ? '...' : '') : 'Click EXPAND to view evidence.'}
-            </span>
-          </div>
-        ) : (
-          <div>
-            {/* Block A */}
-            {tp && (
-              <div style={{ borderLeft: `2px solid ${BT.text.cyan}`, padding: '8px 12px', margin: '8px', background: `${BT.text.cyan}08` }}>
-                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan, letterSpacing: 0.5, marginBottom: 4 }}>BLOCK A — THESIS</div>
-                <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.primary, marginBottom: 6 }}>{tp.headline}</div>
-                <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.6, marginBottom: 8 }}>{tp.rationale}</div>
-                <div style={{ display: 'flex', gap: 16 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green, marginBottom: 4 }}>KEY DRIVERS</div>
-                    {(tp.keyDrivers || []).map((d, i) => (
-                      <div key={i} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, padding: '1px 0' }}>▶ {d}</div>
-                    ))}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber, marginBottom: 4 }}>RISK FACTORS</div>
-                    {(tp.riskFactors || []).map((r, i) => (
-                      <div key={i} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, padding: '1px 0' }}>⚠ {r}</div>
-                    ))}
-                  </div>
-                </div>
-                {tp.aiCoordinatorContext && (
-                  <div style={{ marginTop: 8, fontFamily: MONO, fontSize: 8, color: BT.text.muted, fontStyle: 'italic' }}>
-                    AI COORD: {tp.aiCoordinatorContext}
-                  </div>
-                )}
-              </div>
-            )}
-            {!tp && ev?.thesis && (
-              <div style={{ borderLeft: `2px solid ${BT.text.cyan}`, padding: '8px 12px', margin: '8px' }}>
-                <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.6 }}>{ev.thesis}</div>
-              </div>
-            )}
-
-            {/* Block B — Metric Stack */}
-            {ev?.metricStack && ev.metricStack.length > 0 && (
-              <BlockErrorBoundary
-                label={`EvidenceReportBlock:${ss.key}:metricStack`}
-                fallback={({ retry }) => (
-                  <div style={{ margin: '0 8px 8px' }}>
-                    <BlockErrorFallback
-                      variant="inline"
-                      message="Couldn't render the metric stack — the rest of this evidence block is unaffected."
-                      onRetry={retry}
-                    />
-                  </div>
-                )}
-              >
-              <div style={{ margin: '0 8px 8px' }}>
-                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, padding: '4px 0', letterSpacing: 0.5 }}>BLOCK B — METRIC STACK (click row to open detail drawer)</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 80px 1fr', background: BT.bg.header, padding: '3px 8px', borderBottom: `1px solid ${BT.border.subtle}` }}>
-                  {['METRIC', 'SUBJECT', 'BENCHMARK', 'DELTA', '$ IMPACT'].map(h => (
-                    <span key={h} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5 }}>{h}</span>
+        <div>
+          {/* ── Thesis — always visible ────────────────────────────────────────── */}
+          {tp && (
+            <div style={{ borderLeft: `2px solid ${BT.text.cyan}`, padding: '8px 12px', margin: '8px', background: `${BT.text.cyan}08` }}>
+              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan, letterSpacing: 0.5, marginBottom: 4 }}>THESIS</div>
+              <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.primary, marginBottom: 6 }}>{tp.headline}</div>
+              <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.6, marginBottom: 8 }}>{tp.rationale}</div>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green, marginBottom: 4 }}>KEY DRIVERS</div>
+                  {(tp.keyDrivers || []).slice(0, 3).map((d, i) => (
+                    <div key={i} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, padding: '1px 0' }}>▶ {d}</div>
                   ))}
                 </div>
-                {ev.metricStack.map((row, i) => (
-                  <div
-                    key={i}
-                    onClick={() => setDrawerRow(row)}
-                    onMouseEnter={() => { setHoveredRow(i); setHoveredEvidenceRef(ss.key); }}
-                    onMouseLeave={() => { setHoveredRow(null); setHoveredEvidenceRef(null); }}
-                    style={{
-                      display: 'grid', gridTemplateColumns: '1fr 90px 90px 80px 1fr',
-                      padding: '4px 8px', borderBottom: `1px solid ${BT.border.subtle}`,
-                      background: hoveredRow === i ? BT.bg.hover : i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary }}>{row.label}</span>
-                    <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary }}>{String(row.subject)}</span>
-                    <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.cyan }}>{String(row.benchmark)}</span>
-                    <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>{String(row.delta)}</span>
-                    <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.green }}>{String(row.dollarImpact)}</span>
-                  </div>
-                ))}
-              </div>
-              </BlockErrorBoundary>
-            )}
-
-            {/* Block C — Comp Scatter */}
-            {ev?.compEvidence && (
-              <BlockErrorBoundary
-                label={`EvidenceReportBlock:${ss.key}:compEvidence`}
-                fallback={({ retry }) => (
-                  <div style={{ margin: '0 8px 8px' }}>
-                    <BlockErrorFallback
-                      variant="inline"
-                      message="Couldn't render the comp evidence — the rest of this evidence block is unaffected."
-                      onRetry={retry}
-                    />
-                  </div>
-                )}
-              >
-                <div style={{ margin: '0 8px 8px' }}>
-                  <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, padding: '4px 0', letterSpacing: 0.5 }}>BLOCK C — COMP EVIDENCE</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <CompScatter points={compEntriesToPoints(ev.compEvidence.tradeArea?.comps ?? [], 'tradeArea')} title="TRADE-AREA COMPS" />
-                    <CompScatter points={compEntriesToPoints(ev.compEvidence.likeKind?.comps ?? [], 'likeKind')} title="LIKE-KIND COMPS" />
-                  </div>
-                </div>
-              </BlockErrorBoundary>
-            )}
-
-            {/* Block D — Math Trail */}
-            {ev?.mathTrail && ev.mathTrail.length > 0 && (
-              <BlockErrorBoundary
-                label={`EvidenceReportBlock:${ss.key}:mathTrail`}
-                fallback={({ retry }) => (
-                  <div style={{ margin: '0 8px 8px' }}>
-                    <BlockErrorFallback
-                      variant="inline"
-                      message="Couldn't render the math trail — the rest of this evidence block is unaffected."
-                      onRetry={retry}
-                    />
-                  </div>
-                )}
-              >
-              <div style={{ margin: '0 8px 8px' }}>
-                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, padding: '4px 0', letterSpacing: 0.5 }}>BLOCK D — MATH TRAIL</div>
-                <div style={{ background: BT.bg.input, border: `1px solid ${BT.border.subtle}`, padding: '6px 10px' }}>
-                  {ev.mathTrail.map((step: MathTrailStep, i) => (
-                    <div key={i} style={{
-                      display: 'flex', gap: 10, padding: '3px 0',
-                      borderBottom: `1px solid ${step.isSubtotal ? BT.border.medium : BT.border.subtle}`,
-                      fontWeight: step.isSubtotal ? 700 : 400,
-                    }}>
-                      <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, width: 16, flexShrink: 0 }}>{i + 1}.</span>
-                      <span style={{ fontFamily: MONO, fontSize: 9, color: step.isSubtotal ? BT.text.amber : BT.text.secondary, flex: 1 }}>{step.step}</span>
-                      {step.formula && <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>[{step.formula}]</span>}
-                      <span style={{ fontFamily: MONO, fontSize: 9, color: step.isSubtotal ? BT.text.amber : BT.text.primary, minWidth: 80, textAlign: 'right' }}>
-                        {String(step.value)}
-                      </span>
-                      {step.sourceRef && (
-                        <button
-                          onClick={() => {
-                            // Navigate to evidence block if sourceRef is a sub-strategy key
-                            const el = document.getElementById(`evidence-${step.sourceRef}`);
-                            if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-                            // Also try deal assumptions section for known refs
-                            else {
-                              const alt = document.getElementById(`section-${step.sourceRef?.replace(/\./g, '-')}`);
-                              if (alt) alt.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }
-                          }}
-                          title={`Source: ${step.sourceRef} — click to navigate`}
-                          style={{
-                            fontFamily: MONO, fontSize: 7, color: BT.text.cyan,
-                            background: 'transparent', border: `1px solid ${BT.text.cyan}33`,
-                            padding: '0 4px', cursor: 'pointer', textDecoration: 'underline dotted',
-                            display: 'inline',
-                          }}
-                        >
-                          →{step.sourceRef}
-                        </button>
-                      )}
-                    </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber, marginBottom: 4 }}>RISK FACTORS</div>
+                  {(tp.riskFactors || []).slice(0, 2).map((r, i) => (
+                    <div key={i} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, padding: '1px 0' }}>⚠ {r}</div>
                   ))}
                 </div>
               </div>
-              </BlockErrorBoundary>
-            )}
-
-            {/* Ultimate Return tile.
-                Task #427: render an explicit "Not yet computed" placeholder
-                when the backend returned null for `ultimateReturn`, OR when
-                any of the four required numeric fields is missing/non-finite.
-                The error boundary below is reserved for unexpected render
-                bugs (it should NOT fire just because data is absent). */}
-            <BlockErrorBoundary
-              label={`EvidenceReportBlock:${ss.key}:ultimateReturn`}
-              fallback={({ retry }) => (
-                <div style={{ margin: '0 8px 8px' }}>
-                  <BlockErrorFallback
-                    variant="inline"
-                    message="Couldn't render the expected return — the rest of this evidence block is unaffected."
-                    onRetry={retry}
-                  />
+              {tp.aiCoordinatorContext && (
+                <div style={{ marginTop: 8, fontFamily: MONO, fontSize: 8, color: BT.text.muted, fontStyle: 'italic' }}>
+                  AI COORD: {tp.aiCoordinatorContext}
                 </div>
               )}
-            >
-              {(() => {
-                const ur = ev?.ultimateReturn;
-                // Strict typeof + Number.isFinite — previously we used
-                // `Number.isFinite(Number(field))` which silently coerced
-                // `null` to 0 (finite) and would have rendered misleading
-                // zeros if the API ever sent per-field nulls. Per the
-                // contract, every field must be a real finite number for
-                // the tile to render; otherwise we show the placeholder.
-                const isFiniteNum = (v: unknown): v is number =>
-                  typeof v === 'number' && Number.isFinite(v);
-                const hasAllReturnFields = !!ur
-                  && isFiniteNum(ur.irr)
-                  && isFiniteNum(ur.equityMultiple)
-                  && isFiniteNum(ur.holdMonths)
-                  && isFiniteNum(ur.exitCapRate);
-                if (!hasAllReturnFields) {
-                  return (
-                    <div style={{ margin: '0 8px 8px', background: `${BT.text.muted}08`, border: `1px dashed ${BT.text.muted}44`, padding: '8px 12px' }}>
-                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 6 }}>EXPECTED RETURN</div>
-                      <div style={{ fontFamily: MONO, fontSize: 11, color: BT.text.secondary }}>
-                        Not yet computed — return projection unavailable for this sub-strategy.
-                      </div>
+            </div>
+          )}
+          {!tp && ev?.thesis && (
+            <div style={{ borderLeft: `2px solid ${BT.text.cyan}`, padding: '8px 12px', margin: '8px' }}>
+              <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.6 }}>{ev.thesis}</div>
+            </div>
+          )}
+
+          {/* ── Expected Return tile — always visible ──────────────────────────── */}
+          <BlockErrorBoundary
+            label={`EvidenceReportBlock:${ss.key}:ultimateReturn`}
+            fallback={({ retry }) => (
+              <div style={{ margin: '0 8px 8px' }}>
+                <BlockErrorFallback
+                  variant="inline"
+                  message="Couldn't render the expected return — the rest of this evidence block is unaffected."
+                  onRetry={retry}
+                />
+              </div>
+            )}
+          >
+            {hasAllReturnFields ? (
+              <div style={{ margin: '0 8px 8px', background: `${BT.text.green}08`, border: `1px solid ${BT.text.green}22`, padding: '8px 12px' }}>
+                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green, letterSpacing: 0.5, marginBottom: 6 }}>EXPECTED RETURN</div>
+                <div style={{ display: 'flex', gap: 20 }}>
+                  {[
+                    { l: 'IRR', v: `${fmtSafe(ur!.irr, 1)}%`, c: BT.text.green },
+                    { l: 'EM', v: `${fmtSafe(ur!.equityMultiple, 2)}x`, c: BT.text.amber },
+                    { l: 'HOLD', v: `${fmtSafe(ur!.holdMonths, 0)}mo`, c: BT.text.purple },
+                    { l: 'EXIT CAP', v: `${fmtSafe(ur!.exitCapRate, 2, 100)}%`, c: BT.text.cyan },
+                  ].map(item => (
+                    <div key={item.l}>
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{item.l}</div>
+                      <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: item.c }}>{item.v}</div>
                     </div>
-                  );
-                }
-                return (
-                  <div style={{ margin: '0 8px 8px', background: `${BT.text.green}08`, border: `1px solid ${BT.text.green}22`, padding: '8px 12px' }}>
-                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green, letterSpacing: 0.5, marginBottom: 6 }}>EXPECTED RETURN</div>
-                    <div style={{ display: 'flex', gap: 20 }}>
-                      {[
-                        { l: 'IRR', v: `${fmtSafe(ur!.irr, 1)}%`, c: BT.text.green },
-                        { l: 'EM', v: `${fmtSafe(ur!.equityMultiple, 2)}x`, c: BT.text.amber },
-                        { l: 'HOLD', v: `${fmtSafe(ur!.holdMonths, 0)}mo`, c: BT.text.purple },
-                        { l: 'EXIT CAP', v: `${fmtSafe(ur!.exitCapRate, 2, 100)}%`, c: BT.text.cyan },
-                      ].map(item => (
-                        <div key={item.l}>
-                          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{item.l}</div>
-                          <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: item.c }}>{item.v}</div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div style={{ margin: '0 8px 8px', background: `${BT.text.muted}08`, border: `1px dashed ${BT.text.muted}44`, padding: '8px 12px' }}>
+                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 6 }}>EXPECTED RETURN</div>
+                <div style={{ fontFamily: MONO, fontSize: 11, color: BT.text.secondary }}>
+                  Not yet computed — return projection unavailable for this sub-strategy.
+                </div>
+              </div>
+            )}
+          </BlockErrorBoundary>
+
+          {/* ── Secondary "FULL DETAIL" toggle ────────────────────────────────── */}
+          <div style={{ margin: '0 8px 8px' }}>
+            <button
+              onClick={() => setFullDetail(v => !v)}
+              style={{
+                fontFamily: MONO, fontSize: 8, color: BT.text.secondary,
+                background: fullDetail ? `${BT.text.secondary}12` : 'transparent',
+                border: `1px solid ${BT.border.subtle}`,
+                padding: '3px 10px', cursor: 'pointer', width: '100%', textAlign: 'left',
+                letterSpacing: 0.5,
+              }}
+            >
+              {fullDetail ? '▲ HIDE FULL DETAIL' : '▼ FULL DETAIL — metric stack · comp scatters · math trail'}
+            </button>
+          </div>
+
+          {fullDetail && (
+            <>
+              {/* Metric Stack */}
+              {ev?.metricStack && ev.metricStack.length > 0 && (
+                <BlockErrorBoundary
+                  label={`EvidenceReportBlock:${ss.key}:metricStack`}
+                  fallback={({ retry }) => (
+                    <div style={{ margin: '0 8px 8px' }}>
+                      <BlockErrorFallback
+                        variant="inline"
+                        message="Couldn't render the metric stack — the rest of this evidence block is unaffected."
+                        onRetry={retry}
+                      />
+                    </div>
+                  )}
+                >
+                  <div style={{ margin: '0 8px 8px' }}>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, padding: '4px 0', letterSpacing: 0.5 }}>METRIC STACK (click row to open detail drawer)</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 80px 1fr', background: BT.bg.header, padding: '3px 8px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+                      {['METRIC', 'SUBJECT', 'BENCHMARK', 'DELTA', '$ IMPACT'].map(h => (
+                        <span key={h} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5 }}>{h}</span>
+                      ))}
+                    </div>
+                    {ev.metricStack.map((row, i) => (
+                      <div
+                        key={i}
+                        onClick={() => setDrawerRow(row)}
+                        onMouseEnter={() => { setHoveredRow(i); setHoveredEvidenceRef(ss.key); }}
+                        onMouseLeave={() => { setHoveredRow(null); setHoveredEvidenceRef(null); }}
+                        style={{
+                          display: 'grid', gridTemplateColumns: '1fr 90px 90px 80px 1fr',
+                          padding: '4px 8px', borderBottom: `1px solid ${BT.border.subtle}`,
+                          background: hoveredRow === i ? BT.bg.hover : i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary }}>{row.label}</span>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary }}>{String(row.subject)}</span>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.cyan }}>{String(row.benchmark)}</span>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>{String(row.delta)}</span>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.green }}>{String(row.dollarImpact)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </BlockErrorBoundary>
+              )}
+
+              {/* Comp Scatter */}
+              {ev?.compEvidence && (
+                <BlockErrorBoundary
+                  label={`EvidenceReportBlock:${ss.key}:compEvidence`}
+                  fallback={({ retry }) => (
+                    <div style={{ margin: '0 8px 8px' }}>
+                      <BlockErrorFallback
+                        variant="inline"
+                        message="Couldn't render the comp evidence — the rest of this evidence block is unaffected."
+                        onRetry={retry}
+                      />
+                    </div>
+                  )}
+                >
+                  <div style={{ margin: '0 8px 8px' }}>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, padding: '4px 0', letterSpacing: 0.5 }}>COMP EVIDENCE</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <CompScatter points={compEntriesToPoints(ev.compEvidence.tradeArea?.comps ?? [], 'tradeArea')} title="TRADE-AREA COMPS" />
+                      <CompScatter points={compEntriesToPoints(ev.compEvidence.likeKind?.comps ?? [], 'likeKind')} title="LIKE-KIND COMPS" />
+                    </div>
+                  </div>
+                </BlockErrorBoundary>
+              )}
+
+              {/* Math Trail */}
+              {ev?.mathTrail && ev.mathTrail.length > 0 && (
+                <BlockErrorBoundary
+                  label={`EvidenceReportBlock:${ss.key}:mathTrail`}
+                  fallback={({ retry }) => (
+                    <div style={{ margin: '0 8px 8px' }}>
+                      <BlockErrorFallback
+                        variant="inline"
+                        message="Couldn't render the math trail — the rest of this evidence block is unaffected."
+                        onRetry={retry}
+                      />
+                    </div>
+                  )}
+                >
+                  <div style={{ margin: '0 8px 8px' }}>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, padding: '4px 0', letterSpacing: 0.5 }}>MATH TRAIL</div>
+                    <div style={{ background: BT.bg.input, border: `1px solid ${BT.border.subtle}`, padding: '6px 10px' }}>
+                      {ev.mathTrail.map((step: MathTrailStep, i) => (
+                        <div key={i} style={{
+                          display: 'flex', gap: 10, padding: '3px 0',
+                          borderBottom: `1px solid ${step.isSubtotal ? BT.border.medium : BT.border.subtle}`,
+                          fontWeight: step.isSubtotal ? 700 : 400,
+                        }}>
+                          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, width: 16, flexShrink: 0 }}>{i + 1}.</span>
+                          <span style={{ fontFamily: MONO, fontSize: 9, color: step.isSubtotal ? BT.text.amber : BT.text.secondary, flex: 1 }}>{step.step}</span>
+                          {step.formula && <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>[{step.formula}]</span>}
+                          <span style={{ fontFamily: MONO, fontSize: 9, color: step.isSubtotal ? BT.text.amber : BT.text.primary, minWidth: 80, textAlign: 'right' }}>
+                            {String(step.value)}
+                          </span>
+                          {step.sourceRef && (
+                            <button
+                              onClick={() => {
+                                const el = document.getElementById(`evidence-${step.sourceRef}`);
+                                if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+                                else {
+                                  const alt = document.getElementById(`section-${step.sourceRef?.replace(/\./g, '-')}`);
+                                  if (alt) alt.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                }
+                              }}
+                              title={`Source: ${step.sourceRef} — click to navigate`}
+                              style={{
+                                fontFamily: MONO, fontSize: 7, color: BT.text.cyan,
+                                background: 'transparent', border: `1px solid ${BT.text.cyan}33`,
+                                padding: '0 4px', cursor: 'pointer', textDecoration: 'underline dotted',
+                                display: 'inline',
+                              }}
+                            >
+                              →{step.sourceRef}
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
                   </div>
-                );
-              })()}
-            </BlockErrorBoundary>
-          </div>
-        )}
+                </BlockErrorBoundary>
+              )}
+            </>
+          )}
+        </div>
       </SectionPanel>
     </div>
   );
