@@ -172,10 +172,6 @@ const MarketScreen = (props: ScreenProps) => (
 const StrategyScreen = (props: ScreenProps) => (
   <StrategyArbitragePage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
 );
-const CompsScreen = (props: ScreenProps) => (
-  <CompsModule dealId={props.dealId} deal={props.deal} embedded={true} onUpdate={props.onUpdate} />
-);
-
 const COMPS_SUBTABS: { id: 'sale' | 'rent'; label: string }[] = [
   { id: 'sale', label: 'SALE COMPS' },
   { id: 'rent', label: 'RENT COMPS' },
