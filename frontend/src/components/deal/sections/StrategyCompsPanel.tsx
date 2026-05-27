@@ -10,6 +10,8 @@ interface CompSet {
   avg_price_per_unit: number;
   min_price_per_unit: number;
   max_price_per_unit: number;
+  std_dev_price_per_unit?: number;
+  median_price_per_sf?: number;
   median_implied_cap_rate: number | null;
   avg_implied_cap_rate: number | null;
   comps: CompTransaction[];
@@ -20,19 +22,30 @@ interface CompTransaction {
   recording_date: string;
   property_address: string;
   units: number;
+  building_sf: number;
   year_built: number;
+  property_class: string;
   derived_sale_price: number;
   price_per_unit: number;
+  price_per_sf?: number;
   implied_cap_rate: number | null;
   grantee_name: string;
   buyer_type: string;
+  holding_period_months?: number | null;
   distance_miles: number;
+  source?: string;
 }
 
 function fmtPpu(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
   return `$${n.toFixed(0)}`;
+}
+
+function fmtSf(n: number): string {
+  if (!n || !Number.isFinite(n)) return '—';
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return `${n.toFixed(0)}`;
 }
 
 function fmtDate(d: string): string {
@@ -43,7 +56,17 @@ function fmtDate(d: string): string {
   }
 }
 
-const COL_WIDTHS = '1fr 36px 60px 56px 40px 32px';
+function latestSaleDate(comps: CompTransaction[]): string {
+  if (!comps || comps.length === 0) return '—';
+  const latest = comps.reduce<Date | null>((max, c) => {
+    const d = new Date(c.recording_date);
+    return max === null || d > max ? d : max;
+  }, null);
+  if (!latest || isNaN(latest.getTime())) return '—';
+  return latest.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+const TABLE_COLS = '1fr 28px 44px 60px 42px';
 
 export function StrategyCompsPanel({ dealId }: { dealId: string }) {
   const [compSet, setCompSet] = useState<CompSet | null>(null);
@@ -100,9 +123,9 @@ export function StrategyCompsPanel({ dealId }: { dealId: string }) {
 
   const METRICS = compSet ? [
     { label: 'MEDIAN $/UNIT',  value: fmtPpu(compSet.median_price_per_unit), color: BT.text.green },
-    { label: 'MEDIAN CAP RATE', value: compSet.median_implied_cap_rate != null ? `${(compSet.median_implied_cap_rate * 100).toFixed(2)}%` : '—', color: BT.text.cyan },
+    { label: 'IMPLIED CAP RATE', value: compSet.median_implied_cap_rate != null ? `${(compSet.median_implied_cap_rate * 100).toFixed(2)}%` : '—', color: BT.text.cyan },
     { label: 'COMP COUNT',     value: String(compSet.comp_count), color: BT.text.amber },
-    { label: 'PRICE RANGE',    value: `${fmtPpu(compSet.min_price_per_unit)} – ${fmtPpu(compSet.max_price_per_unit)}`, color: BT.text.secondary },
+    { label: 'LATEST SALE',    value: latestSaleDate(compSet.comps), color: BT.text.secondary },
   ] : [];
 
   return (
@@ -177,6 +200,7 @@ export function StrategyCompsPanel({ dealId }: { dealId: string }) {
 
           {!loading && !error && compSet && (
             <div style={{ padding: '8px 12px' }}>
+              {/* 4-metric tile row */}
               <div style={{
                 display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
                 gap: 1, background: BT.border.subtle, marginBottom: 6,
@@ -189,22 +213,23 @@ export function StrategyCompsPanel({ dealId }: { dealId: string }) {
                 ))}
               </div>
 
+              {/* Mini comp table — up to 8 rows: ADDRESS · TYPE · SF · $/UNIT · DATE */}
               {compSet.comps && compSet.comps.length > 0 && (
                 <div style={{ maxHeight: 160, overflowY: 'auto', border: `1px solid ${BT.border.subtle}` }}>
                   <div style={{
-                    display: 'grid', gridTemplateColumns: COL_WIDTHS,
+                    display: 'grid', gridTemplateColumns: TABLE_COLS,
                     gap: 4, padding: '3px 6px',
                     borderBottom: `1px solid ${BT.border.subtle}`,
                     background: BT.bg.header,
                     position: 'sticky' as const, top: 0,
                   }}>
-                    {['ADDRESS', 'UNITS', '$/UNIT', 'CAP', 'DATE', 'MI'].map(h => (
+                    {['ADDRESS', 'TYPE', 'SF', '$/UNIT', 'DATE'].map(h => (
                       <span key={h} style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, letterSpacing: 0.5 }}>{h}</span>
                     ))}
                   </div>
                   {compSet.comps.slice(0, 8).map((c, idx) => (
                     <div key={c.id ?? idx} style={{
-                      display: 'grid', gridTemplateColumns: COL_WIDTHS,
+                      display: 'grid', gridTemplateColumns: TABLE_COLS,
                       gap: 4, padding: '3px 6px',
                       background: idx % 2 === 0 ? 'transparent' : `${BT.border.subtle}50`,
                       alignItems: 'center',
@@ -216,13 +241,18 @@ export function StrategyCompsPanel({ dealId }: { dealId: string }) {
                       >
                         {c.property_address}
                       </span>
-                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary, textAlign: 'right' as const }}>{c.units}</span>
-                      <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 700, color: BT.text.green, textAlign: 'right' as const }}>{fmtPpu(c.price_per_unit)}</span>
-                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.cyan, textAlign: 'right' as const }}>
-                        {c.implied_cap_rate != null ? `${(c.implied_cap_rate * 100).toFixed(2)}%` : '—'}
+                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, textAlign: 'center' as const }}>
+                        {c.property_class || '—'}
                       </span>
-                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, textAlign: 'right' as const }}>{fmtDate(c.recording_date)}</span>
-                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, textAlign: 'right' as const }}>{c.distance_miles.toFixed(1)}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary, textAlign: 'right' as const }}>
+                        {fmtSf(c.building_sf)}
+                      </span>
+                      <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 700, color: BT.text.green, textAlign: 'right' as const }}>
+                        {fmtPpu(c.price_per_unit)}
+                      </span>
+                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, textAlign: 'right' as const }}>
+                        {fmtDate(c.recording_date)}
+                      </span>
                     </div>
                   ))}
                 </div>
