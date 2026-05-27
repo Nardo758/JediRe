@@ -221,10 +221,6 @@ export function StrategyIntelligenceSummary({
             fontFamily: MONO, fontSize: 9,
             color: isGated ? BT.text.muted : BT.text.secondary,
             lineHeight: 1.45,
-            display: '-webkit-box',
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: 'vertical' as const,
-            overflow: 'hidden',
             fontStyle: isGated ? 'italic' : 'normal',
           }}>
             {isGated ? 'Confirm detection to unlock thesis.' : thesis ?? dash}
