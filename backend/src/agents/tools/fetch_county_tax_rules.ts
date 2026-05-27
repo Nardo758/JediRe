@@ -192,6 +192,18 @@ const STATE_METHODOLOGIES: Record<string, {
     transferDesc: 'No state deed transfer tax in Arizona. No state income tax on RE gains (but federal applies).',
     probes: 'AZ 5% cap limits assessment growth but does not cap the tax levy — if the tax rate increases or voters approve bonds, the actual tax bill can exceed 5%. The 18% assessment ratio applies to FULL cash value, not fractional. Verify county-specific equalization factors.',
   },
+  TN: {
+    assessmentRatio: 0.25,
+    assessmentRatioDesc: 'Tennessee assesses commercial and industrial property at 40% of appraised value. Residential at 25%. Multifamily (4+ units) is typically classified as commercial: 40% assessment ratio. Agricultural at 25%.',
+    reassessment: 'full',
+    cycleDesc: 'Tennessee law requires each county to reappraise all property at least once every 4 years (some counties every 6 years). Major counties (Davidson, Shelby, Knox, Hamilton) typically follow 4-year cycles. Sale triggers review but does NOT automatically trigger immediate full reassessment — next county cycle applies.',
+    cap: null,
+    capDesc: 'No annual assessment growth cap for commercial/multifamily property. Assessment changes follow the county reappraisal cycle. Between cycles, assessed value typically holds constant unless major improvements are made.',
+    annualTrend: 0.03,
+    transferRate: 0.00037,
+    transferDesc: 'Tennessee deed transfer tax: $0.37 per $100 ($3.70 per $1,000) of consideration. Some counties add a local transfer tax (e.g., Davidson County adds $0.37/$100 = total $0.74/$100). No state income tax on wages but Hall Income Tax (investment income) phased out as of 2021.',
+    probes: 'TN 40% assessment ratio for commercial/multifamily (not 25% residential rate) is the most common misclassification. Always verify property class: 4+ unit multifamily = commercial rate (40%). Nashville (Davidson County) adds a county-level transfer tax. The 4-year reappraisal cycle means taxes can be stable for several years then jump at the next cycle — model the cycle year if known. No TN state ruleset exists in the Tax module; taxService returns jurisdictionMapped=false for TN. Use this methodology map as the basis for manual reasoning and surface the confidence limitation.',
+  },
 };
 
 // ─── Millage Rate Map (from tax rulesets) ──────────────────────────────────
@@ -230,6 +242,7 @@ const DEFAULT_MILLAGE: Record<string, number> = {
   NC: 7.00,
   LA: 12.00,
   AZ: 12.50,
+  TN: 8.00,  // Davidson County (Nashville) composite ~$8/mil; varies by county + municipal overlay
 };
 
 // ─── Execution ──────────────────────────────────────────────────────────────
@@ -352,7 +365,11 @@ this tool returns the methodology itself. Use both:
 1. fetch_county_tax_rules → understand the rules
 2. fetch_tax_intel → get computed amounts for the specific deal
 
-Known jurisdictions: GA, FL, TX, CA, NY, IL, NC, LA, AZ`,
+Known jurisdictions: GA, FL, TX, CA, NY, IL, NC, LA, AZ, TN
+
+Note: GA, FL, TX have full Tax module rulesets (taxService.forecast() returns jurisdictionMapped=true).
+All others use the generic methodology map in this tool. When taxService returns jurisdictionMapped=false,
+call this tool and use proformaGuidance.year1Base for manual reasoning.`,
   inputSchema: InputSchema,
   outputSchema: z.unknown(),
   requiresCapability: 'read:financial',

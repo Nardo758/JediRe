@@ -1,0 +1,165 @@
+TAX GAP REMEDIATION — ALL 5 GAPS
+
+CONTEXT
+Per PHASE_2_BATCH_2_TAX_MODULE_AUDIT.md (verified — audit produced 
+5 prompt-level gaps; no Tax module math changes needed). Per 
+P9.A, agent prompt updates ship in the same dispatch as canonical 
+rule changes.
+
+The 5 gaps in priority order:
+
+GAP-TAX-05 (HIGHEST — internal prompt contradiction):
+  system.ts §Tax Math calls fetch_tax_intel primary
+  Phase 4 sequence lists fetch_jurisdiction_tax_forecast first
+  Two parts of same prompt give conflicting guidance
+  Fix: align the two sections to a single tool priority
+
+GAP-TAX-02 (HIGH — silent failure for unsupported jurisdictions):
+  Unsupported states (NC, CA, NY, IL, etc.) fall to 
+  jurisdictionMapped: false
+  Prompt has no fallback protocol
+  Fix: add explicit fallback instruction — agent calls 
+  fetch_county_tax_rules with generic methodology when 
+  jurisdiction is unmapped; surfaces "tax methodology not 
+  jurisdiction-specific" warning in evidence trail
+
+GAP-TAX-01 (MEDIUM — duplicate tool ambiguity):
+  fetch_jurisdiction_tax_forecast and fetch_tax_intel both wrap 
+  taxService.forecast()
+  Prompt has no documented purpose distinction
+  Fix: document the distinction in prompt OR consolidate to a 
+  single tool. Audit which is the right move first; if 
+  consolidation, that's a larger refactor — likely Phase 3. For 
+  this dispatch, document the distinction with explicit "use X 
+  for A, use Y for B" instructions.
+
+GAP-TAX-03 (MEDIUM — GA millage rule missing from prompt):
+  GA 2.5× millage trap documented in fetch_county_tax_rules tool
+  Not in system.ts
+  Fix: add GA millage rule to system.ts §Tax Math section
+
+GAP-TAX-04 (LOW — TN expansion risk):
+  TN has no methodology map in fetch_county_tax_rules
+  Fix: add TN methodology map (small data addition); align prompt 
+  to reflect TN coverage
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. PHASE_2_BATCH_2_TAX_MODULE_AUDIT.md exists with verified status
+2. system.ts at expected path
+3. fetch_county_tax_rules.ts at expected path  
+4. No prior tax remediation dispatch has been run
+5. The 5 gaps are still present (state verification — nothing 
+   silently fixed since audit closed)
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+A. GAP-TAX-05 FIX
+   - Read system.ts §Tax Math section + Phase 4 sequence
+   - Identify the conflict (which tool is documented as primary 
+     in each)
+   - Resolve: align both sections to call fetch_tax_intel as 
+     primary (or fetch_jurisdiction_tax_forecast as primary — 
+     pick based on which is more general/intelligent and use 
+     consistently)
+   - Both sections updated; single source of truth
+
+B. GAP-TAX-02 FIX
+   - Locate the §Tax Math section
+   - Add explicit fallback protocol:
+     "If jurisdictionMapped is false:
+      1. Call fetch_county_tax_rules with the state code
+      2. Use the generic methodology returned
+      3. Add warning to evidence trail: 'Tax methodology not 
+         jurisdiction-specific; review with operator before 
+         finalizing'
+      4. Confidence: LOWER than jurisdiction-specific paths"
+   - Verify the fallback path is implementable (does 
+     fetch_county_tax_rules accept state-code-only invocation?)
+
+C. GAP-TAX-01 FIX (LIGHTER VERSION — DOCUMENT DISTINCTION)
+   - Add to system.ts:
+     "fetch_jurisdiction_tax_forecast: Use for 
+      multi-year forecasts. Returns projected tax burden over 
+      hold period.
+      fetch_tax_intel: Use for current-state assessment intel 
+      including recent reassessment activity, appeal outcomes, 
+      and millage trends."
+   - Note in dispatch closing that consolidation may be Phase 3 
+     work; this dispatch documents distinction without 
+     restructuring
+
+D. GAP-TAX-03 FIX
+   - Add GA 2.5× millage rule to system.ts §Tax Math section:
+     "Georgia: When property reassesses after sale, the new 
+      assessed value is computed at 40% of fair market value. 
+      Effective millage trap: actual property tax is 
+      (assessed value × millage × 2.5) for the assessment ratio 
+      adjustment. The 2.5× factor is documented in 
+      fetch_county_tax_rules and must be applied when computing 
+      GA tax forecasts."
+
+E. GAP-TAX-04 FIX
+   - Add TN methodology map to fetch_county_tax_rules.ts data 
+     payload
+   - TN reassessment cycle: typically 4-year reappraisal cycle 
+     per state law
+   - Major TN counties (Davidson, Shelby, Knox, Hamilton): 
+     standard methodology
+   - Add TN to supported state list in system.ts
+
+F. PHASE 2 BATCH INTEGRITY CHECK (per P9)
+   - Existing module check: confirm Tax module math is referenced, 
+     not re-specified in any of the above fixes
+   - Agent prompt alignment: all prompt changes ship in this 
+     dispatch (not deferred)
+
+═══════════════════════════════════════════════════════════════════
+TESTING
+═══════════════════════════════════════════════════════════════════
+
+A. Run cashflow agent on a deal in an unsupported jurisdiction 
+   (e.g., NC if available, or CA seed deal)
+B. Verify the fallback protocol fires: fetch_county_tax_rules 
+   called, warning surfaced
+C. Run cashflow agent on a GA deal
+D. Verify 2.5× millage rule is applied in agent's reasoning
+E. Run cashflow agent on a TN deal (if available)
+F. Verify TN methodology now produces a real forecast (not 
+   generic fallback)
+G. Read agent's tool-call sequence on a FL deal
+H. Verify only one of {fetch_tax_intel, 
+   fetch_jurisdiction_tax_forecast} fires first consistently 
+   (the chosen primary)
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Code changes:
+- system.ts: GAP-TAX-05, GAP-TAX-02, GAP-TAX-01 doc, GAP-TAX-03
+- fetch_county_tax_rules.ts: GAP-TAX-04 (TN methodology data)
+
+Closing note: docs/operations/TAX_GAP_REMEDIATION.md
+(a) Per-gap implementation summary
+(b) system.ts diff highlights
+(c) fetch_county_tax_rules.ts data addition
+(d) Testing results per-gap
+(e) P9.A confirmation (prompt and rule changes shipped together)
+(f) P9.B confirmation (Tax module math untouched)
+(g) Followup: GAP-TAX-01 consolidation deferred to Phase 3 if 
+    operator wants
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify Tax module math (any changes to taxService.* are out of 
+  scope; Tax module is authoritative)
+- Consolidate fetch_jurisdiction_tax_forecast and fetch_tax_intel 
+  (Phase 3 work)
+- Add new jurisdictions beyond TN (separate dispatch when 
+  geographic expansion is committed)
+- "While I'm here" cleanups

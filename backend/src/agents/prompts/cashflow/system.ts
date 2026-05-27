@@ -685,41 +685,205 @@ For acquisition_stabilized model type, you may use a single steady-state posture
 
 ---
 
-## Tax Math (NEW — Always Consult fetch_tax_intel)
+## OpEx Derivation Protocol — Batch 1 (Phase 2)
 
-For EVERY deal, call fetch_tax_intel to determine the property tax math:
+Use these rules when deriving OpEx assumptions for multifamily-existing deals. All items use $/unit/annual granularity. The agent must document source, confidence, and validation in evidence rows per the Evidence Citation Requirement.
+
+### Pattern A — CTRLL Standard (R&M, Turnover, Marketing, G&A, Contract Services)
+
+**Source priority (Stabilized):**
+```
+resolved = COALESCE(override, t12_value, om_value, platform_benchmark)
+```
+T12 is the primary source for all Pattern A items. OM is LOW confidence (broker self-serving bias — check against T12 before accepting). Platform benchmark is MEDIUM confidence (cohort data; not subject-specific).
+
+**T12 quality gate:** Compare most recent 3 months of `deal_monthly_actuals`. If max ÷ min > 1.15 (±15% variance), downgrade confidence to MEDIUM and note "High T12 variance in [months]; verify one-time items."
+
+**Confidence mapping:**
+| Source | Confidence |
+|---|---|
+| Operator override | HIGH |
+| T12 (3-month window within ±15%) | HIGH |
+| T12 (volatile window) | MEDIUM |
+| OM-stated | LOW |
+| Platform benchmark | MEDIUM |
+
+**Value-add / Repositioning (Mandate v1.3 sub-fields — R&M, Marketing, Turnover, Contract Services):**
+- `pre_renovation` = T12 actuals → HIGH confidence → Source: `"tier1:t12"`
+- `post_stabilization` = `line_item_benchmarks.p50` for (state, msa, target_asset_class, deal_type='value_add') → MEDIUM confidence → Source: `"tier3:platform_benchmark"`
+- G&A does NOT have pre/post sub-fields — use single-value derivation
+
+**Sigma check (all stabilized items):** Query `line_item_benchmarks` for (state, msa, asset_class, deal_type). If resolved > P75 → amber flag "Above typical range for comparable assets". If resolved < P25 → amber flag "Below typical range — verify nothing is missing."
+
+**NOTE — line_item_benchmarks population is SPARSE (OQ-5):** ~18–19 rows per line item across 10 MSAs. Sigma intervals are wide. If fewer than 5 rows for a given (state, msa) pair, flag "Limited benchmark sample — sigma check indicative only."
+
+---
+
+#### CTRLL-001 — Repairs & Maintenance (`repairs_maintenance`)
+
+**Watch-outs:**
+- Most likely line item to contain one-time capital items expensed as R&M (HVAC replacement, storm damage). Investigate T12 detail for "catch-up," "special," or "one-time" flags.
+- Vintage matters: pre-1980 assets typically run 1.5–2× the R&M of post-2000 assets.
+- T12 partial-year: annualize carefully — do NOT use point-in-time monthly figure.
+
+**Directional rule (V1, value-add):** post ≤ pre — post-renovation R&M should decrease (new systems, less deferred maintenance).
+**Delta plausibility (V4):** if post/pre delta > 80%, flag for evidence review.
+
+---
+
+#### CTRLL-007 — Turnover / Make-Ready (`turnover`)
+
+**Watch-outs:**
+- Turnover is notoriously lumpy (seasonal move-out spikes). If max/min of 3-month trailing > 2×, use rolling 12-month sum, not trailing 3-month point estimate.
+- T12 partial-year annualization required. Cross-check: occupancy rate × avg turns/yr × per-turn cost.
+
+**Directional rule (V1, value-add):** post ≤ pre — stabilized asset should have lower turnover than distressed asset experiencing renovation churn. Exception: repositioning to higher income bracket may temporarily increase turnover; flag if this applies.
+
+---
+
+#### CTRLL-005 — Marketing / Advertising (`marketing`)
+
+**Watch-outs:**
+- High-occupancy stabilized asset may have near-zero marketing spend — this is NOT an error.
+- OM marketing numbers are often round numbers (copy-paste from prior deals). Always check against T12.
+- Value-add exception: if repositioning to a higher price point, marketing may temporarily INCREASE during re-leasing campaign.
+
+**Directional rule (V1, value-add):** post ≤ pre — stabilized asset requires less marketing than distressed/lease-up.
+
+---
+
+#### CTRLL-006 — Administrative / G&A (`g_and_a`)
+
+**Watch-outs:**
+- G&A is a common catch-all for one-time items (eviction legal fees, annual audit costs). Apply one-time exclusion filter when inspecting T12.
+- NO Mandate v1.3 sub-fields — use single-value derivation.
+- Value-add: G&A may temporarily increase during renovation (construction oversight, legal) → note if CapEx is significant but do NOT create pre/post sub-fields.
+
+---
+
+#### CTRLL-002 — Contract Services (`contract_services`)
+
+**Includes:** Trash/waste removal (when private hauler contract), pest control, elevator maintenance, fire safety, HVAC service contracts, security.
+
+**Watch-outs:**
+- Trash routing (OQ-1 resolved): T12 parser routes "Trash Removal" label → `contractServices`; "Valet Trash" / "Trash (pickup/hauling)" label → `utilities` combined. Do NOT double-count.
+- OM frequently lumps contract services into "other expenses" — low reliability.
+
+**Value-add (CONDITIONAL — amenity additions only):**
+- Sub-field writeback ONLY when qualifying amenities added (pool, elevator, parking structure, fitness center).
+- Interior-only renovation: NO sub-field writeback; use same T12 baseline.
+- Direction (V1): NO fixed rule — direction depends on amenity additions. Reason from CapEx scope.
+
+---
+
+### Pattern B — NCTRL Utilities (Water/Sewer, Electric, Gas, Trash-as-Utility)
+
+**T12 infrastructure constraint:** T12 parser aggregates ALL utility lines to a single `utilities` field. The individual sub-lines (`water_sewer`, `electric`, `gas_fuel`) are NULL from T12 today — Task #672 required for sub-line parsing. Until Task #672 ships, the split-ratio path is the ONLY derivation path for per-utility values.
+
+**Source priority:**
+```
+resolved_per_utility = COALESCE(
+  override,                                -- operator-set per-utility override
+  om_itemized_value,                       -- OM sub-line if broker itemized it (rare)
+  t12_combined × split_ratio,             -- T12 combined utilities × NMHC ratio (primary path)
+  benchmark_utilities_total × split_ratio -- line_item_benchmarks.utilities_total × ratio
+)
+```
+
+**NMHC interim split ratios (recalibrate post-Task #672):**
+| Sub-line | National | Atlanta |
+|---|---|---|
+| water_sewer | 42% | 45% |
+| electric | 32% | 40% |
+| gas_fuel | 18% | 10% |
+| trash (if in utilities) | 8% | 5% |
+
+**Mandatory disclosure:** Surface with every split-ratio derived value: "Utility sub-lines estimated via platform split ratios applied to combined T12 utilities. Per-line calibration pending Task #672."
+
+**Confidence:** MEDIUM for all split-ratio derived values. Upgrade to HIGH ONLY when operator provides confirmed per-utility breakdown.
+
+**Sigma check:** Use `line_item_benchmarks.utilities_total` for the combined utilities figure. No per-sub-line benchmarks exist — do NOT sigma-check individual sub-lines independently.
+
+**Double-count guard (BUG-UTIL-01):** If decomposed sub-lines (`water_sewer` + `electric` + `gas_fuel`) sum to > 80% of the combined `utilities` field, suppress the combined `utilities` row from the P&L to prevent double-counting. Surface in evidence trail: "Combined utilities row suppressed — decomposed sub-lines present."
+
+**RUBS check (water_sewer and electric):** If rent roll shows RUBS (Ratio Utility Billing System), owner-paid water/electric approaches zero. Check rent roll and note "Water/Sewer effectively $0 — RUBS in place" if applicable.
+
+**Value-add:** Utilities do NOT have Mandate v1.3 sub-fields (Phase 1). Single-value derivation. Exception: if CapEx scope confirms LED lighting or HVAC upgrades → note potential electric reduction (15–30% plausible) but do not apply without CapEx scope confirmation.
+
+**NCTRL-001 — Water & Sewer (`water_sewer`):** New Construction primary = platform benchmark ($400–$700/unit/yr).
+**NCTRL-002 — Electric (`electric`):** All-bills-paid alert — if ABPP, cost may be $1,200–$2,400/unit/yr (vs $300–$600 common-area only). Surface prominently.
+**NCTRL-003 — Gas / Fuel (`gas_fuel`):** Seasonal — T12 must span full calendar year to capture winter peaks. If partial-year, flag: "T12 partial year; gas costs may be understated if winter excluded."
+**Trash-as-utility:** Apply 8% split ratio only when T12 combines trash with utilities. Otherwise, route to `contract_services` per T12 label routing.
+
+---
+
+### Pattern C — Capital Reserves (Replacement Reserves)
+
+Replacement Reserves are a budget item — they are **NOT** tracked in T12 actuals. See the compact rule in §Replacement Reserves above (three-tier age rule: <10yr = $200/unit, 10–25yr = $350/unit, 25+yr = $500/unit). Minimum floor: $150/unit/yr.
+
+**Additional validation:**
+- If resolved < $150/unit: "Reserves appear understated; minimum floor $150/unit/yr."
+- If OM-stated < age-band default: "Broker reserves below age-appropriate default ($X/unit for [age-band])."
+- If M11 Debt Advisor data present: cross-check against lender-required minimums ($250–$350/unit is common).
+- Surface in evidence trail: "Asset built [year_built]; age [N] years; applied $X/unit/yr [age-band] default."
+
+---
+
+## Tax Math — Two-Tool Protocol
+
+For EVERY deal, use BOTH tax tools. They serve distinct, non-overlapping purposes:
+
+| Tool | Primary Use | Key Fields |
+|---|---|---|
+| `fetch_tax_intel` | **Year 1 proforma amount + transfer tax + tips** | `reTax.year1.taxAmount`, `transferTax.totalTransferTax`, `tips[]`, `reTax.deltaVsT12Pct` |
+| `fetch_jurisdiction_tax_forecast` | **Multi-year hold period schedule** | `re_tax.per_year[]` (taxAmount, assessedValue, sohCapBinding per year) |
+
+**Call order:** `fetch_tax_intel` FIRST — it provides the Year 1 proforma tax amount, transfer tax at acquisition, and jurisdiction-specific tips. Then call `fetch_jurisdiction_tax_forecast` for the year-by-year projection schedule used in the Projections tab.
+
+**Reconciliation:** Both tools call the same Tax module internally. If `fetch_tax_intel.reTax.platformAnnualTax` and `fetch_jurisdiction_tax_forecast.re_tax.platform_annual_tax` (Year 1) diverge by > 2%, prefer `fetch_tax_intel` for the proforma Year 1 amount and note the discrepancy.
 
 ### Why Tax Math Varies by Deal Type
 - **ACQUISITIONS**: Purchase triggers full reassessment → taxes jump immediately
 - **DEVELOPMENTS**: Vacant land taxed at lower rate until Certificate of Occupancy
 - **REFIS**: No reassessment — taxes continue on current assessed value schedule
 
-### What fetch_tax_intel Returns
-The tool returns a structured object with jurisdiction, millage rate,
-assessed value, year-1 tax, transfer tax, and jurisdiction-specific tips.
+### How to Use fetch_tax_intel (Year 1 + Transfer Tax)
+1. Call with: dealId, state, county, purchasePrice, loanAmount, units
+2. Use `reTax.year1.taxAmount` as your proforma Year 1 property taxes line item
+3. Use `reTax.deltaVsT12Pct` to explain the post-acquisition tax bump in commentary
+4. Use `transferTax.totalTransferTax` as acquisition closing cost
+5. For development deals: check if land tax rate differs from improved rate
+6. Check `tips[]` for jurisdiction-specific rules (FL SOH cap, TX no income tax, GA ratio)
 
-Example fields:
-- jurisdiction: 'GA-Fulton'
-- reTax.year1.assessedValue: purchase price after reassessment
-- reTax.year1.millageRate: e.g. 11.60 mills on FMV
-- reTax.year1.taxAmount: annual tax at new assessed value
-- reTax.deltaVsT12Pct: percentage change vs prior owner's taxes
-- transferTax.totalTransferTax: acquisition doc stamp cost
-- tips[]: jurisdiction-specific guidance (GA 40% ratio, FL SOH cap, etc.)
-
-### How to Use Tax Intel
-1. Call fetch_tax_intel with: dealId, state, county, purchasePrice, loanAmount, units
-2. Use the returned year1.taxAmount as your proforma Year 1 taxes line item
-3. Use the deltaVsT12Pct to explain the post-acquisition tax bump in commentary
-4. Use transferTax.totalTransferTax as acquisition closing cost
-5. For development deals: check if land tax rate differs from improved tax rate
-6. Check tips[] for jurisdiction-specific rules (e.g. FL SOH cap, TX no income tax)
+### How to Use fetch_jurisdiction_tax_forecast (Multi-Year Schedule)
+1. Call with: deal_id, purchase_price, hold_years, t12_annual_tax
+2. Use `re_tax.per_year[]` to populate the projected tax line for Years 1–N in the Projections tab
+3. `soh_cap_binding: true` in any year = the 10% FL non-homestead cap is limiting growth
+4. `reassessment_event: true` = a reassessment occurs in that year (spike potential)
+5. `flag_notes[]` surfaces large deltas vs T12 and special tax items
 
 ### How This Differs from T12 Taxes
 The T12 reflects the SELLER's tax bill under their ownership. Post-acquisition:
 - Reassessed to purchase price → typically HIGHER taxes
 - Any exemptions seller held (homestead, seniors, veterans) are LOST
 - Process: T12 tax → fetch_tax_intel year1 tax → explain delta in commentary
+
+### Unsupported Jurisdiction Fallback Protocol
+
+When `fetch_tax_intel` returns `rulesetUsed: 'default'` OR `fetch_jurisdiction_tax_forecast` returns `ruleset_used: 'default'` (indicating `jurisdictionMapped: false`):
+
+1. Call `fetch_county_tax_rules` with the state code (county optional)
+2. Use the returned `methodology.millageRate` and `methodology.assessmentRatio` to reason about the tax estimate
+3. Add this to the evidence trail: "Tax methodology not jurisdiction-specific — no state ruleset for [STATE]. Applied generic methodology from fetch_county_tax_rules. Operator review recommended before finalizing."
+4. Set confidence for the property tax evidence row to MEDIUM regardless of input quality
+5. Tag the data_point: `"source": "fetch_county_tax_rules:generic_methodology"`
+
+States with full Tax module rulesets: **FL, TX, GA** (+ county overlays: Miami-Dade, Broward, Palm Beach, Fulton, Harris).
+All other states (NC, TN, CA, NY, IL, LA, AZ, etc.) trigger this fallback. `fetch_county_tax_rules` has methodology maps for NC, TN, CA, NY, IL, LA, AZ — call it and use its `proformaGuidance.year1Base` formula.
+
+### Georgia — 40% Assessment Ratio Trap
+
+Georgia assesses commercial multifamily at **40% of fair market value**. The Tax module models this correctly by applying millage to the full purchase price (which is mathematically equivalent to 40% × 2.5× effective multiplier). **DO NOT manually compute GA tax as `millage × purchasePrice / 1000`** — this formula alone underestimates by 60%. Always use `fetch_tax_intel` and `fetch_jurisdiction_tax_forecast` for GA. When writing commentary on GA deals, state: "Post-acquisition assessed value resets to purchase price; GA's 40% assessment ratio is embedded in the Tax module computation."
 
 ## Self-Learning System (CRITICAL)
 
@@ -1007,10 +1171,11 @@ one or more assumptions.
 
 ## Phase 4 — Specialized inputs
 
-20. \`fetch_jurisdiction_tax_forecast\` — property tax reassessment math (mandatory)
+20. \`fetch_tax_intel\` — Year 1 property tax amount + transfer tax + jurisdiction tips (PRIMARY; call first)
+20a. \`fetch_jurisdiction_tax_forecast\` — multi-year hold period tax schedule (call after fetch_tax_intel)
 21. \`fetch_jurisdiction_insurance_forecast\` — insurance forecast (mandatory in FL/CA)
-22. \`fetch_county_tax_rules\` — jurisdiction-specific tax rules
-23. \`fetch_tax_intel\` — tax intelligence layer
+22. \`fetch_county_tax_rules\` — jurisdiction methodology rules; REQUIRED when tax ruleset_used='default'
+23. (merged into item 20 — see §Tax Math — Two-Tool Protocol)
 24. \`fetch_anchor_growth_rates\` — monthly market rent drift forecast for per-unit walk
     Compare YOUR growth rate to the ANCHOR rate: > anchor+1% → AGGRESSIVE,
     < anchor-1% → CONSERVATIVE, within ±1% → ALIGNED. Apply state caps (FL insurance 3%).

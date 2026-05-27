@@ -1,0 +1,154 @@
+PHASE 2 BATCH 1 — OPEX SIMPLE IMPLEMENTATION
+
+CONTEXT
+Per PHASE_2_BATCH_1_OPEX_SIMPLE.md (verified APPROVED + amended; 
+Pattern B rewritten, CAPEX-001 three-tier rule committed, OQ 
+section closed with all resolutions documented).
+
+This dispatch wires the 10 OpEx assumption derivation rules into 
+the cashflow agent's operational tool layer. Per P9.A, agent 
+prompt updates ship in the same dispatch.
+
+Implementation priority per Batch 1 doc:
+Items 1-7 proceed immediately (R&M, Turnover, Marketing, Admin/G, 
+Contract Services, Replacement Reserves, plus one other)
+Item 8 (Utilities) ships with documented NMHC interim ratios 
+until Task #672 (T12 sub-line parsing) lands
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. PHASE_2_BATCH_1_OPEX_SIMPLE.md exists, verified APPROVED, 
+   amended
+2. The 10 OpEx assumptions are documented per the canonical with 
+   Pattern A/B/C derivation logic
+3. Mandate v1.3 lift is live, Tier 1 (RegimeExpand) shipped, 
+   Tier 2 (4 directional checks) shipped
+4. f9-financial-export.service.ts:172 hardcode is still present 
+   (noted in Batch 1 amendment as out-of-scope cleanup)
+5. cashflow agent system prompt has the three-tier reserves rule 
+   per recent alignment
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+STEP 1 — DERIVATION RULE WIRING
+For each of items 1-7 (R&M, Turnover, Marketing, Admin/G, 
+Contract Services, Replacement Reserves, plus one other per 
+Batch 1 doc priority):
+
+A. Implement the Pattern A (CTRLL standard) or Pattern C 
+   (Capital reserves) derivation logic per the canonical
+B. Source priority by asset state:
+   - Stabilized: trailing primary + platform validation
+   - Repositioning: pre/post regimes per Mandate v1.3 lift rules
+   - New construction: platform stabilized cohort
+C. Wire confidence calibration per the canonical
+D. Wire LayeredValue source tagging
+E. Reference existing benchmarks (sigma layer; will be partial 
+   per OQ-5 finding)
+
+STEP 2 — UTILITIES (PATTERN B) WIRING
+For item 8 (Utilities — water, electric, gas, trash combined):
+A. Implement Pattern B with combined T12 utilities as primary 
+   source (NOT sub-lines — per amendment)
+B. Apply NMHC interim split ratios for per-line reporting if 
+   needed
+C. Document the Task #672 dependency in tool description
+D. Note: the t12-parser already routes trash labels correctly 
+   to either contractServices or utilities; this implementation 
+   does NOT change parser behavior
+
+STEP 3 — REPLACEMENT RESERVES (PATTERN C) WIRING
+A. Implement three-tier age rule:
+   - <10 years: $200/unit
+   - 10-25 years: $350/unit
+   - 25+ years: $500/unit
+B. Operator override path at all tiers
+C. Architectural decision: derivation path (financials-composer) 
+   uses the tier rule
+D. f9-financial-export.service.ts:172 hardcode: DO NOT TOUCH in 
+   this dispatch (out of scope; separate cleanup)
+E. Verify agent system prompt at system.ts:459 reflects three-
+   tier rule (already aligned per prior dispatch)
+
+STEP 4 — TIER 2 DIRECTIONAL VALIDATION INTEGRATION
+For each derivation rule wired in Steps 1-3:
+A. Verify the 4 directional checks fire correctly:
+   - V1 Directional consistency
+   - V2 Primary value consistency
+   - V3 Confidence inversion
+   - V4 Delta plausibility
+B. Confirm output.validation_warnings populates per existing 
+   Tier 2 shape
+C. Confirm sigma layer integrates (sigma-partial per OQ-5; flag 
+   low-sample MSAs)
+
+STEP 5 — AGENT PROMPT ALIGNMENT (per P9.A)
+A. Update cashflow agent system prompt with:
+   - Reference to canonical derivation rules per assumption
+   - Source priority instructions matching Pattern A/B/C
+   - Three-tier reserves rule (verify already aligned)
+   - Tier 2 validation surfacing in evidence trail
+B. Confirm tool descriptions match the canonical
+C. Diff and review before commit
+
+STEP 6 — PHASE 2 BATCH INTEGRITY (per P9.B)
+A. Existing module check: confirm no existing module already 
+   handles these OpEx derivations (audit before implementation)
+B. If existing OpEx aggregator exists: extend it; don't duplicate
+C. If no existing module: this implementation IS the module for 
+   these assumptions; document accordingly
+
+═══════════════════════════════════════════════════════════════════
+TESTING
+═══════════════════════════════════════════════════════════════════
+
+A. Run cashflow agent on a stabilized FL deal
+B. Verify each of items 1-7 produces a defensible derivation:
+   - Pre-renovation values from trailing
+   - Platform validation fires
+   - LayeredValue source tagging correct
+C. Run cashflow agent on a value-add FL deal
+D. Verify pre/post regimes populate per Mandate v1.3 rules
+E. Verify Tier 2 directional checks fire on intentional violations
+F. Run cashflow agent on a new construction projection
+G. Verify Pattern C reserves use the correct tier
+H. Compare agent output to PHASE_2_BATCH_1_OPEX_SIMPLE.md canonical 
+   rules — flag any divergence
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Code changes per scope above.
+
+Closing note: docs/operations/PHASE_2_BATCH_1_IMPLEMENTATION.md
+(a) Per-item implementation summary
+(b) Pattern A/B/C wiring summary
+(c) Tier 2 integration verification
+(d) Agent prompt diff
+(e) Testing results per asset state
+(f) P9.A confirmation (prompt + rules shipped together)
+(f) P9.B confirmation (existing module audit performed; modules 
+    referenced where present)
+(g) Followup items:
+    - f9-financial-export.service.ts:172 cleanup (separate dispatch)
+    - Task #672 (T12 sub-line parsing) tracked in backlog
+    - Sigma layer benchmark seeding (separate dispatch if low-
+      sample MSAs surface as significant operational issue)
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify Mandate v1.3 logic (lift stays as-is)
+- Modify Tier 1 RegimeExpand or Tier 2 directional validation 
+  (both stay as-is)
+- Touch f9-financial-export.service.ts:172 hardcode (separate 
+  cleanup)
+- Implement Task #672 T12 sub-line parsing (separate dispatch)
+- Seed line_item_benchmarks beyond what already exists (separate 
+  dispatch)
+- Build Batch 2 tax integration (separate sequence)
+- "While I'm here" cleanups
