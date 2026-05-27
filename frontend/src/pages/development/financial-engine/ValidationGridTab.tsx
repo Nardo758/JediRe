@@ -1,36 +1,51 @@
 // ============================================================================
 // ValidationGridTab — F9 Console · Assumption Validation Grid
-// Sub-phase C of Validation work (Task #1274)
+// Task #1274
 //
-// Shows all key underwriting assumptions alongside their validation method,
-// provenance source, and a quality badge (STRONG / WATCH / WEAK / UNVALIDATED).
+// Shows all key underwriting assumptions alongside:
+//   - Confidence level (High / Medium / Low), sourced from evidence metadata
+//     where available, otherwise derived from quality band.
+//   - Source (who/what produced the value)
+//   - Validation method (how it was verified)
+//   - Quality badge (STRONG / WATCH / WEAK / UNVALIDATED)
+//   - Platform baseline comparison for every operator override
+//   - Comp count + median for comp-validated assumptions (exit cap)
+//
 // Read-only display — edits happen in DEAL TERMS, INPUTS, or DEBT tabs.
 //
 // Data sources:
-//   props.f9Financials   — current resolved values from the F9 engine
-//   props.assumptions    — ModelAssumptions (local build state)
-//   /assumptions         — raw DB row: source_type, per_year_overrides
-//   /implied-cap-rate    — platform-implied cap for exit cap validation
+//   props.f9Financials        — current resolved values from the F9 engine
+//   props.assumptions         — ModelAssumptions (local build state)
+//   props.evidenceFieldMap    — per-field confidence/tier from evidence system
+//   GET /assumptions          — raw DB row: source_type, per_year_overrides
+//   GET /implied-cap-rate     — platform-implied cap + comp set median
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, CheckCircle, AlertCircle, HelpCircle } from 'lucide-react';
+import { CheckCircle, AlertTriangle, AlertCircle, HelpCircle } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
-import type { FinancialEngineTabProps } from './types';
+import type { FinancialEngineTabProps, EvidenceFieldMeta } from './types';
 
 const MONO = BT.font.mono;
 
-type QualityBand = 'STRONG' | 'WATCH' | 'WEAK' | 'UNVALIDATED';
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type QualityBand    = 'STRONG' | 'WATCH' | 'WEAK' | 'UNVALIDATED';
+type ConfidenceLevel = 'high' | 'medium' | 'low' | null;
 
 interface ValidationRow {
   key: string;
   assumption: string;
+  /** Formatted display value (e.g. "$12.5M", "5.25%", "5 YRS") */
   value: string;
+  confidence: ConfidenceLevel;
   source: string;
   method: string;
   quality: QualityBand;
+  /** Detail line under value — comp range, per-unit, etc. */
   detail?: string;
+  /** For overridden rows: the platform / platform-implied baseline for comparison */
   platformBaseline?: string;
   isOverride?: boolean;
 }
@@ -41,113 +56,167 @@ interface ValidationGroup {
   rows: ValidationRow[];
 }
 
+// ── Color maps ─────────────────────────────────────────────────────────────────
+
 const QUALITY_COLOR: Record<QualityBand, string> = {
   STRONG:      '#00D26A',
   WATCH:       BT.text.amber,
   WEAK:        '#FF5252',
   UNVALIDATED: BT.text.muted,
 };
-
 const QUALITY_BG: Record<QualityBand, string> = {
   STRONG:      '#00D26A14',
   WATCH:       `${BT.text.amber}14`,
   WEAK:        '#FF525214',
   UNVALIDATED: `${BT.text.muted}14`,
 };
+const CONFIDENCE_COLOR: Record<string, string> = {
+  high:   '#00D26A',
+  medium: BT.text.amber,
+  low:    '#FF5252',
+};
+
+// ── Format helpers ─────────────────────────────────────────────────────────────
 
 function fmtUsd(v: number | null | undefined): string {
   if (v == null || v === 0) return '—';
   if (Math.abs(v) >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
   if (Math.abs(v) >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
-  if (Math.abs(v) >= 1e3) return `$${(v / 1e3).toFixed(0)}K`;
+  if (Math.abs(v) >= 1e3) return `$${Math.round(v / 1e3)}K`;
   return `$${v.toFixed(0)}`;
 }
-
 function fmtPct(v: number | null | undefined): string {
   return v != null ? `${(v * 100).toFixed(2)}%` : '—';
 }
-
 function fmtYrs(v: number | null | undefined): string {
   if (v == null) return '—';
   return `${v} YR${v !== 1 ? 'S' : ''}`;
 }
-
 function fmtRent(v: number | null | undefined): string {
   if (v == null || v === 0) return '—';
   return `$${Math.round(v).toLocaleString()}/mo`;
 }
 
-const SOURCE_LABEL_MAP: Record<string, string> = {
-  manual:               'Operator Input',
-  user:                 'Operator Input',
-  override:             'Operator Override',
-  broker:               'Broker OM',
-  agent:                'Agent Derived',
-  platform:             'Platform Default',
-  computed:             'Platform Computed',
-  'tier1:t12':          'T-12 Document',
-  'tier1:rent_roll':    'Rent Roll',
-  'tier1:tax_bill':     'Tax Bill',
-  'tier3:platform':     'Platform Benchmark',
-  'tier3:market_comp':  'Market Comps',
-  'strategy:entry':     'Strategy Module',
-  'strategy:exit':      'Strategy Module',
-  goal_seek:            'Goal Seek',
-  event_timeline:       'Event Timeline',
-};
+// ── Source label map ───────────────────────────────────────────────────────────
 
-function sourceLabel(s: string | null | undefined): string {
+const SOURCE_MAP: Record<string, string> = {
+  manual:              'Operator Input',
+  user:                'Operator Input',
+  override:            'Operator Override',
+  broker:              'Broker OM',
+  agent:               'Agent Derived',
+  platform:            'Platform Default',
+  computed:            'Platform Computed',
+  'tier1:t12':         'T-12 Document',
+  'tier1:rent_roll':   'Rent Roll',
+  'tier1:tax_bill':    'Tax Bill',
+  'tier3:platform':    'Platform Benchmark',
+  'tier3:market_comp': 'Market Comps',
+  'strategy:entry':    'Strategy Module',
+  'strategy:exit':     'Strategy Module',
+  goal_seek:           'Goal Seek',
+  event_timeline:      'Event Timeline',
+};
+function srcLabel(s: string | null | undefined): string {
   if (!s) return 'Platform Default';
-  return SOURCE_LABEL_MAP[s] ?? s;
+  return SOURCE_MAP[s] ?? s;
 }
 
-function pyoSource(pyo: Record<string, any> | null, fieldPath: string): string | null {
+// ── per_year_overrides module-source lookup ────────────────────────────────────
+
+function pyoSrc(pyo: Record<string, any> | null, fieldPath: string): string | null {
   if (!pyo) return null;
   const meta = pyo[`module:source:${fieldPath}`];
   if (!meta) return null;
-  return meta.source === 'user' ? 'Operator Override' : sourceLabel(meta.source);
+  return meta.source === 'user' ? 'Operator Override' : srcLabel(meta.source);
 }
+
+// ── Confidence derivation ──────────────────────────────────────────────────────
+
+/**
+ * Derive confidence from the evidence field map (preferred) or fall back to
+ * quality band (STRONG → high, WATCH → medium, WEAK | UNVALIDATED → low).
+ */
+function deriveConfidence(
+  quality: QualityBand,
+  evidenceKey: string | null,
+  evidenceFieldMap?: Record<string, EvidenceFieldMeta>,
+): ConfidenceLevel {
+  if (evidenceKey && evidenceFieldMap?.[evidenceKey]) {
+    const raw = evidenceFieldMap[evidenceKey].confidence;
+    if (raw === 'high' || raw === 'medium' || raw === 'low') return raw;
+  }
+  if (quality === 'STRONG')      return 'high';
+  if (quality === 'WATCH')       return 'medium';
+  if (quality === 'WEAK')        return 'low';
+  return 'low';
+}
+
+// ── Icons ──────────────────────────────────────────────────────────────────────
 
 function QualityIcon({ q }: { q: QualityBand }) {
   const c = QUALITY_COLOR[q];
   const s = { width: 9, height: 9, color: c, flexShrink: 0 as const };
-  if (q === 'STRONG')      return <CheckCircle style={s} />;
+  if (q === 'STRONG')      return <CheckCircle  style={s} />;
   if (q === 'WATCH')       return <AlertTriangle style={s} />;
-  if (q === 'WEAK')        return <AlertCircle style={s} />;
+  if (q === 'WEAK')        return <AlertCircle   style={s} />;
   return <HelpCircle style={s} />;
 }
 
+// ── API response shapes ────────────────────────────────────────────────────────
+
 interface RawAssumptions {
-  exit_cap: number | null;
+  exit_cap:          number | null;
   hold_period_years: number | null;
   avg_rent_per_unit: number | null;
-  vacancy_pct: number | null;
-  opex_ratio: number | null;
-  interest_rate: number | null;
-  ltc: number | null;
-  source_type: string | null;
+  vacancy_pct:       number | null;
+  opex_ratio:        number | null;
+  interest_rate:     number | null;
+  ltc:               number | null;
+  source_type:       string | null;
   per_year_overrides: Record<string, any> | null;
   exists?: boolean;
 }
 
 interface ImpliedCapData {
-  implied_cap_rate: number | null;
+  implied_cap_rate:      number | null;
   operator_going_in_cap: number | null;
-  delta_bps: number | null;
-  positioning_label: string | null;
-  computation_method: string;
-  rent_source: string | null;
+  delta_bps:             number | null;
+  positioning_label:     string | null;
+  computation_method:    string;
+  rent_source:           string | null;
   comp_reported_cap_rate: number | null;
-  comp_count: number | null;
+  comp_count:            number | null;
+  inputs?: {
+    market_rent_per_unit_monthly: number | null;
+    vacancy_p50: number | null;
+    opex_per_unit_annual: number | null;
+  };
 }
 
-export function ValidationGridTab(props: FinancialEngineTabProps) {
-  const fin = props.f9Financials ?? null;
-  const assum = props.assumptions;
+// ── Platform defaults (used for baseline comparisons on overridden rows) ───────
+const PLATFORM_DEFAULTS = {
+  holdYears:     5,
+  sellingCosts:  0.02,
+  rentGrowthY1:  0.03,
+  expenseGrowth: 0.03,
+  collectionLoss: 0.02,
+  occupancy:     0.93,
+  ltv:           0.65,
+  interestRate:  0.065,
+  loanTermYrs:   10,
+};
 
-  const [rawA, setRawA]       = useState<RawAssumptions | null>(null);
+// ── Main component ─────────────────────────────────────────────────────────────
+
+export function ValidationGridTab(props: FinancialEngineTabProps) {
+  const fin   = props.f9Financials ?? null;
+  const assum = props.assumptions;
+  const em    = props.evidenceFieldMap;   // per-field evidence metadata
+
+  const [rawA,       setRawA]       = useState<RawAssumptions | null>(null);
   const [impliedCap, setImpliedCap] = useState<ImpliedCapData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading,    setLoading]    = useState(true);
 
   useEffect(() => {
     if (!props.dealId) return;
@@ -159,288 +228,402 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
       apiClient.get<any>(`/api/v1/deals/${props.dealId}/implied-cap-rate`).catch(() => null),
     ]).then(([ar, cr]) => {
       const ad = ar?.data?.data ?? ar?.data;
-      if (ad?.deal_id || ad?.exists !== undefined) setRawA(ad);
+      if (ad && (ad.deal_id || ad.exists !== undefined)) setRawA(ad);
       const cd = cr?.data?.data;
       if (cd) setImpliedCap(cd);
     }).finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.dealId]);
 
-  const pyo = rawA?.per_year_overrides ?? null;
+  const pyo        = rawA?.per_year_overrides ?? null;
+  const hasRawRow  = rawA?.exists !== false;   // false = deal has no assumptions row yet
 
-  // ── Build validation groups ─────────────────────────────────────────────────
+  // ── Build validation groups ────────────────────────────────────────────────
 
   const groups: ValidationGroup[] = [];
 
-  // ── ACQUISITION ──────────────────────────────────────────────────────────────
+  // ── ACQUISITION ────────────────────────────────────────────────────────────
   {
     const rows: ValidationRow[] = [];
 
-    const pp = fin?.capitalStack?.purchasePrice ?? assum?.acquisition?.purchasePrice ?? null;
-    const ppPyo = pyoSource(pyo, 'acquisition.purchasePrice');
-    const ppQ: QualityBand = pp != null && pp > 0
-      ? (ppPyo === 'Operator Override' ? 'WATCH' : 'STRONG')
-      : 'UNVALIDATED';
+    // Purchase Price
+    const pp     = fin?.capitalStack?.purchasePrice ?? assum?.acquisition?.purchasePrice ?? null;
+    const ppPyo  = pyoSrc(pyo, 'acquisition.purchasePrice');
+    const ppQ: QualityBand =
+      pp != null && pp > 0
+        ? (ppPyo === 'Operator Override' ? 'WATCH' : 'STRONG')
+        : 'UNVALIDATED';
     rows.push({
-      key: 'purchase_price',
+      key:        'purchase_price',
       assumption: 'Purchase Price',
-      value: fmtUsd(pp),
-      source: ppPyo ?? (rawA?.source_type ? sourceLabel(rawA.source_type) : 'Not Set'),
-      method: ppPyo ? 'Operator Override' : 'Operator Input',
-      quality: ppQ,
-      detail: pp != null && fin?.capitalStack?.pricePerUnit
+      value:      fmtUsd(pp),
+      confidence: deriveConfidence(ppQ, null, em),
+      source:     ppPyo ?? (rawA?.source_type ? srcLabel(rawA.source_type) : 'Not Set'),
+      method:     ppPyo ? 'Operator Override' : 'Operator Input',
+      quality:    ppQ,
+      detail:     pp != null && fin?.capitalStack?.pricePerUnit
         ? `${fmtUsd(fin.capitalStack.pricePerUnit)}/unit`
         : undefined,
       isOverride: ppPyo === 'Operator Override',
     });
 
+    // Going-In Cap Rate (computed from model — no evidence key needed)
     const goingInCap = fin?.returns?.valuation?.multiples?.capRate?.goingIn ?? null;
+    const goingInQ: QualityBand = goingInCap != null ? 'STRONG' : 'UNVALIDATED';
     rows.push({
-      key: 'going_in_cap',
+      key:        'going_in_cap',
       assumption: 'Going-In Cap Rate',
-      value: fmtPct(goingInCap),
-      source: goingInCap != null ? 'Computed (T-12 NOI ÷ Price)' : 'Not Available',
-      method: 'Computed from Model',
-      quality: goingInCap != null ? 'STRONG' : 'UNVALIDATED',
+      value:      fmtPct(goingInCap),
+      confidence: deriveConfidence(goingInQ, null, em),
+      source:     goingInCap != null ? 'Computed (NOI ÷ Price)' : 'Not Available',
+      method:     'Computed from Model',
+      quality:    goingInQ,
     });
 
     groups.push({ label: 'ACQUISITION', icon: '◇', rows });
   }
 
-  // ── DISPOSITION ───────────────────────────────────────────────────────────────
+  // ── DISPOSITION ────────────────────────────────────────────────────────────
   {
     const rows: ValidationRow[] = [];
 
+    // Exit Cap Rate — core comp-validation row
     const exitCapVal = fin?.assumptions?.exitCap ?? assum?.disposition?.exitCapRate ?? null;
-    const exitPyo = pyoSource(pyo, 'disposition.exitCapRate');
+    const exitPyo    = pyoSrc(pyo, 'disposition.exitCapRate');
 
-    let exitQ: QualityBand = 'WATCH';
-    let exitMethod = exitPyo ?? 'Operator Input';
+    let exitQ: QualityBand    = exitCapVal == null ? 'UNVALIDATED' : 'WATCH';
+    let exitMethod             = exitPyo ?? 'Operator Input';
     let exitDetail: string | undefined;
-    let exitIsOverride = exitPyo === 'Operator Override';
+    let exitPlatform: string | undefined;
+    let exitIsOverride         = exitPyo === 'Operator Override';
 
     if (impliedCap?.implied_cap_rate != null) {
       const absDelta = Math.abs(impliedCap.delta_bps ?? 0);
-      exitMethod = 'Comparable Sale';
-      if (impliedCap.positioning_label === 'ALIGNED' || absDelta <= 50) {
+      exitMethod     = 'Comparable Sale';
+
+      // Quality band based on delta from platform-implied cap
+      if (impliedCap.positioning_label === 'ALIGNED' || absDelta <= 25) {
         exitQ = 'STRONG';
-      } else if (absDelta <= 150) {
+      } else if (absDelta <= 100) {
         exitQ = 'WATCH';
         exitIsOverride = true;
       } else {
         exitQ = 'WEAK';
         exitIsOverride = true;
       }
+
+      // Detail: delta + comp median (range proxy)
       const sign = (impliedCap.delta_bps ?? 0) > 0 ? '+' : '';
-      exitDetail = `${sign}${impliedCap.delta_bps} bps vs ${fmtPct(impliedCap.implied_cap_rate)} platform implied${impliedCap.comp_count ? ` · ${impliedCap.comp_count} comps` : ''}`;
+      const compPart = impliedCap.comp_reported_cap_rate != null
+        ? ` · comp median: ${fmtPct(impliedCap.comp_reported_cap_rate)}${impliedCap.comp_count ? ` (${impliedCap.comp_count} comps)` : ''}`
+        : (impliedCap.comp_count ? ` · ${impliedCap.comp_count} comps` : '');
+      exitDetail  = `${sign}${impliedCap.delta_bps} bps vs ${fmtPct(impliedCap.implied_cap_rate)} implied${compPart}`;
+
+      // Platform baseline for override comparison
+      exitPlatform = `Platform implied: ${fmtPct(impliedCap.implied_cap_rate)}${
+        impliedCap.comp_reported_cap_rate
+          ? ` · Comp median: ${fmtPct(impliedCap.comp_reported_cap_rate)}`
+          : ''
+      }`;
     } else if (exitCapVal == null) {
       exitQ = 'UNVALIDATED';
     }
 
     rows.push({
-      key: 'exit_cap',
-      assumption: 'Exit Cap Rate',
-      value: fmtPct(exitCapVal),
-      source: exitPyo ?? 'Operator Input',
-      method: exitMethod,
-      quality: exitQ,
-      detail: exitDetail,
-      platformBaseline: impliedCap?.implied_cap_rate != null
-        ? `Platform implied: ${fmtPct(impliedCap.implied_cap_rate)}`
-        : undefined,
-      isOverride: exitIsOverride,
+      key:             'exit_cap',
+      assumption:      'Exit Cap Rate',
+      value:           fmtPct(exitCapVal),
+      confidence:      deriveConfidence(exitQ, null, em),
+      source:          exitPyo ?? 'Operator Input',
+      method:          exitMethod,
+      quality:         exitQ,
+      detail:          exitDetail,
+      platformBaseline: exitPlatform,
+      isOverride:      exitIsOverride,
     });
 
-    const holdYrs = fin?.assumptions?.holdYears ?? assum?.holdPeriod ?? null;
-    const holdPyo = pyoSource(pyo, 'hold.holdPeriodYears');
-    rows.push({
-      key: 'hold_period',
-      assumption: 'Hold Period',
-      value: fmtYrs(holdYrs),
-      source: holdPyo ?? (holdYrs != null ? 'Operator Input' : 'Platform Default'),
-      method: holdPyo === 'Strategy Module' ? 'Strategy Module' : holdYrs != null ? 'Operator Input' : 'Platform Default',
-      quality: holdYrs != null && holdYrs > 0
+    // Hold Period
+    const holdYrs   = fin?.assumptions?.holdYears ?? assum?.holdPeriod ?? null;
+    const holdPyo   = pyoSrc(pyo, 'hold.holdPeriodYears');
+    const holdQ: QualityBand =
+      holdYrs != null && holdYrs > 0
         ? (holdPyo === 'Strategy Module' ? 'STRONG' : 'WATCH')
-        : 'UNVALIDATED',
+        : hasRawRow ? 'WATCH' : 'UNVALIDATED';
+    rows.push({
+      key:        'hold_period',
+      assumption: 'Hold Period',
+      value:      fmtYrs(holdYrs),
+      confidence: deriveConfidence(holdQ, null, em),
+      source:     holdPyo ?? (holdYrs != null ? 'Operator Input' : 'Platform Default'),
+      method:     holdPyo === 'Strategy Module' ? 'Strategy Module'
+                : holdYrs != null ? 'Operator Input' : 'Platform Default',
+      quality:    holdQ,
       isOverride: holdPyo === 'Operator Override',
+      platformBaseline: holdPyo === 'Operator Override' && holdYrs !== PLATFORM_DEFAULTS.holdYears
+        ? `Platform default: ${fmtYrs(PLATFORM_DEFAULTS.holdYears)}`
+        : undefined,
     });
 
-    const sellCostsPct = assum?.disposition?.sellingCosts ?? null;
+    // Selling Costs
+    const sellCosts = assum?.disposition?.sellingCosts ?? null;
+    const sellQ: QualityBand =
+      sellCosts != null ? 'WATCH' : hasRawRow ? 'WATCH' : 'UNVALIDATED';
     rows.push({
-      key: 'selling_costs',
+      key:        'selling_costs',
       assumption: 'Selling Costs %',
-      value: sellCostsPct != null ? `${(sellCostsPct * 100).toFixed(1)}%` : '—',
-      source: sellCostsPct != null ? 'Operator Input' : 'Platform Default',
-      method: sellCostsPct != null ? 'Operator Input' : 'Platform Default',
-      quality: sellCostsPct != null ? 'WATCH' : 'UNVALIDATED',
+      value:      sellCosts != null ? `${(sellCosts * 100).toFixed(1)}%` : fmtPct(PLATFORM_DEFAULTS.sellingCosts),
+      confidence: deriveConfidence(sellQ, null, em),
+      source:     sellCosts != null ? 'Operator Input' : 'Platform Default',
+      method:     sellCosts != null ? 'Operator Input' : 'Platform Default',
+      quality:    sellQ,
+      platformBaseline: sellCosts != null && Math.abs(sellCosts - PLATFORM_DEFAULTS.sellingCosts) > 0.005
+        ? `Platform default: ${fmtPct(PLATFORM_DEFAULTS.sellingCosts)}`
+        : undefined,
+      isOverride: sellCosts != null && Math.abs(sellCosts - PLATFORM_DEFAULTS.sellingCosts) > 0.005,
     });
 
     groups.push({ label: 'DISPOSITION', icon: '◈', rows });
   }
 
-  // ── REVENUE ───────────────────────────────────────────────────────────────────
+  // ── REVENUE ────────────────────────────────────────────────────────────────
   {
     const rows: ValidationRow[] = [];
 
-    const gprDecomp = fin?.assumptions?.gprDecomposition ?? null;
-    const rentT12     = gprDecomp?.t12PerUnitMo ?? null;
-    const rentRR      = fin?.rentRollSummary?.avgInPlaceRent ?? null;
-    const rentPlat    = gprDecomp?.platformPerUnitMo ?? null;
-    const rentBroker  = gprDecomp?.brokerPerUnitMo ?? null;
+    // Y1 Market Rent (per unit)
+    const gprDecomp  = fin?.assumptions?.gprDecomposition ?? null;
+    const rentT12    = gprDecomp?.t12PerUnitMo ?? null;
+    const rentRR     = fin?.rentRollSummary?.avgInPlaceRent ?? null;
+    const rentPlat   = gprDecomp?.platformPerUnitMo ?? null;
+    const rentBroker = gprDecomp?.brokerPerUnitMo ?? null;
     const rentResolved = gprDecomp?.resolvedPerUnitMo ?? rawA?.avg_rent_per_unit ?? null;
 
     const rentQ: QualityBand =
       rentT12 != null || rentRR != null ? 'STRONG'
-      : rentPlat != null ? 'WATCH'
-      : rentBroker != null ? 'WEAK'
+      : rentPlat != null                 ? 'WATCH'
+      : rentBroker != null               ? 'WEAK'
       : 'UNVALIDATED';
-    const rentSrc = rentT12 != null ? 'T-12 Document'
-      : rentRR != null ? 'Rent Roll'
-      : rentPlat != null ? 'Platform Benchmark'
-      : rentBroker != null ? 'Broker OM'
+
+    const rentSrc    = rentT12 != null    ? 'T-12 Document'
+      : rentRR != null                   ? 'Rent Roll'
+      : rentPlat != null                 ? 'Platform Benchmark'
+      : rentBroker != null               ? 'Broker OM'
       : 'Not Set';
-    const rentMeth = rentT12 != null ? 'Document (T-12)'
-      : rentRR != null ? 'Document (Rent Roll)'
-      : rentPlat != null ? 'Market Benchmark'
+
+    const rentMeth   = rentT12 != null    ? 'Document (T-12)'
+      : rentRR != null                   ? 'Document (Rent Roll)'
+      : rentPlat != null                 ? 'Market Benchmark'
       : 'Operator Input';
 
+    // Detail line: show available sources for comparison context
+    let rentDetail: string | undefined;
+    const rentParts: string[] = [];
+    if (rentT12 != null)   rentParts.push(`T-12: ${fmtRent(rentT12)}`);
+    if (rentBroker != null) rentParts.push(`Broker: ${fmtRent(rentBroker)}`);
+    if (rentPlat != null)  rentParts.push(`Platform: ${fmtRent(rentPlat)}`);
+    if (rentParts.length > 1) rentDetail = rentParts.join(' · ');
+
+    // Platform baseline for override comparison
+    const rentPlatBaseline = gprDecomp != null && rentPlat != null && rentResolved != null
+      && Math.abs((rentResolved - rentPlat) / rentPlat) > 0.05
+        ? `Platform benchmark: ${fmtRent(rentPlat)}`
+        : undefined;
+
     rows.push({
-      key: 'rent_y1',
+      key:        'rent_y1',
       assumption: 'Y1 Market Rent (per unit)',
-      value: fmtRent(rentResolved),
-      source: rentSrc,
-      method: rentMeth,
-      quality: rentQ,
-      detail: rentT12 != null && rentBroker != null
-        ? `T-12: ${fmtRent(rentT12)} · Broker: ${fmtRent(rentBroker)}`
-        : rentT12 != null ? `T-12: ${fmtRent(rentT12)}`
-        : rentBroker != null ? `Broker: ${fmtRent(rentBroker)}`
+      value:      fmtRent(rentResolved),
+      confidence: deriveConfidence(rentQ, 'gpr', em),
+      source:     rentSrc,
+      method:     rentMeth,
+      quality:    rentQ,
+      detail:     rentDetail,
+      platformBaseline: rentPlatBaseline,
+      isOverride: rentPlatBaseline != null,
+    });
+
+    // Rent Growth Y1
+    const rentGrowthY1  = fin?.assumptions?.rentGrowthYr1 ?? assum?.revenue?.rentGrowth?.[0] ?? null;
+    const rentGrPyo     = pyoSrc(pyo, 'revenue.rentGrowth[0]');
+    const rentGrQ: QualityBand =
+      rentGrowthY1 != null ? 'WATCH'
+      : hasRawRow           ? 'WATCH'
+      : 'UNVALIDATED';
+    rows.push({
+      key:        'rent_growth_y1',
+      assumption: 'Rent Growth Y1',
+      value:      fmtPct(rentGrowthY1),
+      confidence: deriveConfidence(rentGrQ, null, em),
+      source:     rentGrPyo ?? (rawA?.source_type === 'agent' ? 'Agent Derived' : 'Platform Benchmark'),
+      method:     rentGrPyo ? 'Operator Override' : 'Market Benchmark',
+      quality:    rentGrQ,
+      isOverride: !!rentGrPyo,
+      platformBaseline: rentGrPyo && rentGrowthY1 != null && Math.abs(rentGrowthY1 - PLATFORM_DEFAULTS.rentGrowthY1) > 0.005
+        ? `Platform benchmark: ${fmtPct(PLATFORM_DEFAULTS.rentGrowthY1)}`
         : undefined,
     });
 
-    const rentGrowthY1 = fin?.assumptions?.rentGrowthYr1 ?? assum?.revenue?.rentGrowth?.[0] ?? null;
-    const rentGrowthPyo = pyoSource(pyo, 'revenue.rentGrowth[0]');
+    // Stabilized Occupancy
+    const occ        = assum?.revenue?.stabilizedOccupancy
+      ?? (rawA?.vacancy_pct != null ? 1 - rawA.vacancy_pct : null);
+    const hasRROcc   = fin?.rentRollSummary?.weightedOccupancyPct != null;
+    const occQ: QualityBand =
+      hasRROcc         ? 'STRONG'
+      : occ != null    ? 'WATCH'
+      : 'UNVALIDATED';
     rows.push({
-      key: 'rent_growth_y1',
-      assumption: 'Rent Growth Y1',
-      value: fmtPct(rentGrowthY1),
-      source: rentGrowthPyo ?? (rawA?.source_type === 'agent' ? 'Agent Derived' : 'Platform Benchmark'),
-      method: rentGrowthPyo ? 'Operator Override' : 'Market Benchmark',
-      quality: rentGrowthY1 != null ? 'WATCH' : 'UNVALIDATED',
-      isOverride: !!rentGrowthPyo,
-    });
-
-    const rentGrowthStab = fin?.assumptions?.rentGrowthStabilized ?? null;
-    if (rentGrowthStab != null) {
-      rows.push({
-        key: 'rent_growth_stab',
-        assumption: 'Rent Growth (stabilized)',
-        value: fmtPct(rentGrowthStab),
-        source: 'Platform Benchmark',
-        method: 'Market Benchmark',
-        quality: 'WATCH',
-      });
-    }
-
-    const occ = assum?.revenue?.stabilizedOccupancy ?? (rawA?.vacancy_pct != null ? 1 - rawA.vacancy_pct : null);
-    const hasRRocc = fin?.rentRollSummary?.weightedOccupancyPct != null;
-    rows.push({
-      key: 'stab_occ',
+      key:        'stab_occ',
       assumption: 'Stabilized Occupancy',
-      value: occ != null ? `${(occ * 100).toFixed(1)}%` : '—',
-      source: hasRRocc ? 'Rent Roll' : rawA?.source_type ? sourceLabel(rawA.source_type) : 'Platform Default',
-      method: hasRRocc ? 'Document (Rent Roll)' : 'Market Benchmark',
-      quality: hasRRocc ? 'STRONG' : occ != null ? 'WATCH' : 'UNVALIDATED',
-      detail: hasRRocc ? `Rent roll occupancy: ${((fin!.rentRollSummary!.weightedOccupancyPct!) * 100).toFixed(1)}%` : undefined,
+      value:      occ != null ? `${(occ * 100).toFixed(1)}%` : '—',
+      confidence: deriveConfidence(occQ, 'vacancy_rate', em),
+      source:     hasRROcc ? 'Rent Roll' : occ != null ? srcLabel(rawA?.source_type) : 'Not Set',
+      method:     hasRROcc ? 'Document (Rent Roll)' : 'Market Benchmark',
+      quality:    occQ,
+      detail:     hasRROcc
+        ? `Rent roll occupancy: ${((fin!.rentRollSummary!.weightedOccupancyPct!) * 100).toFixed(1)}%`
+        : undefined,
+      platformBaseline: !hasRROcc && occ != null && Math.abs(occ - PLATFORM_DEFAULTS.occupancy) > 0.02
+        ? `Platform default: ${(PLATFORM_DEFAULTS.occupancy * 100).toFixed(0)}%`
+        : undefined,
+      isOverride: !hasRROcc && occ != null && Math.abs(occ - PLATFORM_DEFAULTS.occupancy) > 0.02,
     });
 
+    // Collection / Bad Debt
     const collLoss = assum?.revenue?.collectionLoss ?? null;
+    const collQ: QualityBand =
+      collLoss != null  ? 'WATCH'
+      : hasRawRow       ? 'WATCH'
+      : 'UNVALIDATED';
     rows.push({
-      key: 'collection_loss',
+      key:        'collection_loss',
       assumption: 'Collection / Bad Debt',
-      value: collLoss != null ? `${(collLoss * 100).toFixed(1)}%` : '—',
-      source: 'Platform Default',
-      method: 'Platform Benchmark',
-      quality: collLoss != null ? 'WATCH' : 'UNVALIDATED',
+      value:      collLoss != null ? `${(collLoss * 100).toFixed(1)}%` : `${(PLATFORM_DEFAULTS.collectionLoss * 100).toFixed(1)}% (default)`,
+      confidence: deriveConfidence(collQ, null, em),
+      source:     collLoss != null ? 'Operator Input' : 'Platform Default',
+      method:     'Platform Benchmark',
+      quality:    collQ,
+      platformBaseline: collLoss != null && Math.abs(collLoss - PLATFORM_DEFAULTS.collectionLoss) > 0.005
+        ? `Platform default: ${fmtPct(PLATFORM_DEFAULTS.collectionLoss)}`
+        : undefined,
+      isOverride: collLoss != null && Math.abs(collLoss - PLATFORM_DEFAULTS.collectionLoss) > 0.005,
     });
 
     groups.push({ label: 'REVENUE', icon: '⊕', rows });
   }
 
-  // ── EXPENSES ─────────────────────────────────────────────────────────────────
+  // ── EXPENSES ───────────────────────────────────────────────────────────────
   {
     const rows: ValidationRow[] = [];
 
+    // Operating Expense Ratio
     const opexRatio = rawA?.opex_ratio ?? null;
+    const opexQ: QualityBand =
+      opexRatio != null ? 'WATCH'
+      : hasRawRow       ? 'WATCH'
+      : 'UNVALIDATED';
     rows.push({
-      key: 'opex_ratio',
+      key:        'opex_ratio',
       assumption: 'Operating Expense Ratio',
-      value: opexRatio != null ? `${(opexRatio * 100).toFixed(1)}%` : '—',
-      source: rawA?.source_type ? sourceLabel(rawA.source_type) : 'Platform Default',
-      method: 'Platform Benchmark',
-      quality: opexRatio != null ? 'WATCH' : 'UNVALIDATED',
-      detail: 'total opex / EGR',
+      value:      opexRatio != null ? `${(opexRatio * 100).toFixed(1)}%` : '—',
+      confidence: deriveConfidence(opexQ, 'opex_ratio', em),
+      source:     opexRatio != null ? srcLabel(rawA?.source_type) : 'Platform Default',
+      method:     'Platform Benchmark',
+      quality:    opexQ,
+      detail:     'opex ÷ EGR',
     });
 
-    const expItems = assum?.expenses ? Object.values(assum.expenses) : [];
-    const expGrowthSample = expItems[0]?.growthRate ?? null;
+    // Expense Growth Rate
+    const expItems   = assum?.expenses ? Object.values(assum.expenses) : [];
+    const expGrowth  = expItems[0]?.growthRate ?? null;
+    const expQ: QualityBand =
+      expGrowth != null ? 'WATCH'
+      : hasRawRow       ? 'WATCH'
+      : 'UNVALIDATED';
     rows.push({
-      key: 'expense_growth',
+      key:        'expense_growth',
       assumption: 'Expense Growth Rate',
-      value: expGrowthSample != null ? fmtPct(expGrowthSample) : '—',
-      source: 'Platform Default',
-      method: 'Platform Benchmark',
-      quality: expGrowthSample != null ? 'WATCH' : 'UNVALIDATED',
+      value:      expGrowth != null ? fmtPct(expGrowth) : `${(PLATFORM_DEFAULTS.expenseGrowth * 100).toFixed(1)}% (default)`,
+      confidence: deriveConfidence(expQ, null, em),
+      source:     expGrowth != null ? 'Operator Input' : 'Platform Default',
+      method:     'Platform Benchmark',
+      quality:    expQ,
+      platformBaseline: expGrowth != null && Math.abs(expGrowth - PLATFORM_DEFAULTS.expenseGrowth) > 0.005
+        ? `Platform default: ${fmtPct(PLATFORM_DEFAULTS.expenseGrowth)}`
+        : undefined,
+      isOverride: expGrowth != null && Math.abs(expGrowth - PLATFORM_DEFAULTS.expenseGrowth) > 0.005,
     });
 
     groups.push({ label: 'EXPENSES', icon: '$', rows });
   }
 
-  // ── FINANCING ─────────────────────────────────────────────────────────────────
+  // ── FINANCING ──────────────────────────────────────────────────────────────
   {
     const rows: ValidationRow[] = [];
 
-    const loanAmt = fin?.capitalStack?.loanAmount ?? assum?.financing?.loanAmount ?? null;
-    const ppForLtv = fin?.capitalStack?.purchasePrice ?? assum?.acquisition?.purchasePrice ?? null;
-    const ltvCalc = loanAmt != null && ppForLtv != null && ppForLtv > 0 ? loanAmt / ppForLtv : null;
-    const ltvRaw = rawA?.ltc ?? null;
+    const loanAmt   = fin?.capitalStack?.loanAmount ?? assum?.financing?.loanAmount ?? null;
+    const pp2       = fin?.capitalStack?.purchasePrice ?? assum?.acquisition?.purchasePrice ?? null;
+    const ltvCalc   = loanAmt != null && pp2 != null && pp2 > 0 ? loanAmt / pp2 : null;
+    const ltvRaw    = rawA?.ltc ?? null;
     const ltvDisplay = ltvCalc ?? ltvRaw;
-    const hasDebtAdvisor = fin?.debt != null;
+    const hasDebt   = fin?.debt != null;
 
+    const ltvQ: QualityBand =
+      hasDebt          ? 'STRONG'
+      : ltvDisplay != null ? 'WATCH'
+      : 'UNVALIDATED';
     rows.push({
-      key: 'ltv',
+      key:        'ltv',
       assumption: 'LTV at Close',
-      value: ltvDisplay != null ? `${(ltvDisplay * 100).toFixed(1)}%` : '—',
-      source: hasDebtAdvisor ? 'Debt Advisor (M11)' : 'Platform Default',
-      method: hasDebtAdvisor ? 'Debt Advisor' : 'Platform Benchmark',
-      quality: hasDebtAdvisor ? 'STRONG' : ltvDisplay != null ? 'WATCH' : 'UNVALIDATED',
-      detail: loanAmt ? `Loan amount: ${fmtUsd(loanAmt)}` : undefined,
+      value:      ltvDisplay != null ? `${(ltvDisplay * 100).toFixed(1)}%` : '—',
+      confidence: deriveConfidence(ltvQ, null, em),
+      source:     hasDebt ? 'Debt Advisor (M11)' : 'Platform Default',
+      method:     hasDebt ? 'Debt Advisor' : 'Platform Benchmark',
+      quality:    ltvQ,
+      detail:     loanAmt ? `Loan amount: ${fmtUsd(loanAmt)}` : undefined,
+      platformBaseline: !hasDebt && ltvDisplay != null && Math.abs(ltvDisplay - PLATFORM_DEFAULTS.ltv) > 0.03
+        ? `Platform default: ${(PLATFORM_DEFAULTS.ltv * 100).toFixed(0)}%`
+        : undefined,
+      isOverride: !hasDebt && ltvDisplay != null && Math.abs(ltvDisplay - PLATFORM_DEFAULTS.ltv) > 0.03,
     });
 
     const intRate = fin?.capitalStack?.interestRate ?? assum?.financing?.interestRate ?? null;
+    const intQ: QualityBand =
+      hasDebt                            ? 'STRONG'
+      : intRate != null && intRate > 0   ? 'WATCH'
+      : 'UNVALIDATED';
     rows.push({
-      key: 'interest_rate',
+      key:        'interest_rate',
       assumption: 'Interest Rate',
-      value: intRate != null && intRate > 0 ? fmtPct(intRate) : '—',
-      source: hasDebtAdvisor ? 'Debt Advisor (M11)' : 'Platform Default',
-      method: hasDebtAdvisor ? 'Debt Advisor' : 'Platform Benchmark',
-      quality: hasDebtAdvisor ? 'STRONG' : intRate != null && intRate > 0 ? 'WATCH' : 'UNVALIDATED',
+      value:      intRate != null && intRate > 0 ? fmtPct(intRate) : '—',
+      confidence: deriveConfidence(intQ, null, em),
+      source:     hasDebt ? 'Debt Advisor (M11)' : 'Platform Default',
+      method:     hasDebt ? 'Debt Advisor' : 'Platform Benchmark',
+      quality:    intQ,
+      platformBaseline: !hasDebt && intRate != null && intRate > 0 && Math.abs(intRate - PLATFORM_DEFAULTS.interestRate) > 0.005
+        ? `Platform default: ${fmtPct(PLATFORM_DEFAULTS.interestRate)}`
+        : undefined,
+      isOverride: !hasDebt && intRate != null && intRate > 0 && Math.abs(intRate - PLATFORM_DEFAULTS.interestRate) > 0.005,
     });
 
     const termYrs = assum?.financing?.term ?? null;
+    const termQ: QualityBand =
+      hasDebt          ? 'STRONG'
+      : termYrs != null ? 'WATCH'
+      : 'UNVALIDATED';
     rows.push({
-      key: 'loan_term',
+      key:        'loan_term',
       assumption: 'Loan Term',
-      value: fmtYrs(termYrs),
-      source: hasDebtAdvisor ? 'Debt Advisor (M11)' : 'Platform Default',
-      method: hasDebtAdvisor ? 'Debt Advisor' : 'Platform Default',
-      quality: hasDebtAdvisor ? 'STRONG' : termYrs != null ? 'WATCH' : 'UNVALIDATED',
+      value:      termYrs != null ? fmtYrs(termYrs) : '—',
+      confidence: deriveConfidence(termQ, null, em),
+      source:     hasDebt ? 'Debt Advisor (M11)' : 'Platform Default',
+      method:     hasDebt ? 'Debt Advisor' : 'Platform Default',
+      quality:    termQ,
     });
 
     groups.push({ label: 'FINANCING', icon: '⊞', rows });
   }
 
   // ── Summary counts ─────────────────────────────────────────────────────────
+
   const allRows = groups.flatMap(g => g.rows);
   const counts: Record<QualityBand, number> = {
     STRONG:      allRows.filter(r => r.quality === 'STRONG').length,
@@ -450,9 +633,11 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
   };
   const overrideCount = allRows.filter(r => r.isOverride).length;
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
 
-  const COL_GRID = '1.7fr 0.85fr 1.1fr 1.2fr 0.75fr';
+  // 6 columns: ASSUMPTION | VALUE | CONFIDENCE | SOURCE | METHOD | QUALITY
+  const COL = '1.45fr 0.8fr 0.62fr 1fr 1.05fr 0.72fr';
+  const COL_HEADERS = ['ASSUMPTION', 'CURRENT VALUE', 'CONFIDENCE', 'SOURCE', 'VALIDATION METHOD', 'QUALITY'];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: BT.bg.terminal }}>
@@ -479,35 +664,34 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
           </span>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          {(['STRONG', 'WATCH', 'WEAK', 'UNVALIDATED'] as QualityBand[]).map(q => (
-            counts[q] > 0 && (
+          {(['STRONG', 'WATCH', 'WEAK', 'UNVALIDATED'] as QualityBand[]).map(q =>
+            counts[q] > 0 ? (
               <span key={q} style={{
                 fontFamily: MONO, fontSize: 7, fontWeight: 700,
                 color: QUALITY_COLOR[q], letterSpacing: 0.4,
                 padding: '1px 5px',
-                border: `1px solid ${QUALITY_COLOR[q]}44`,
-                borderRadius: 2,
+                border: `1px solid ${QUALITY_COLOR[q]}44`, borderRadius: 2,
               }}>
                 {counts[q]} {q}
               </span>
-            )
-          ))}
+            ) : null
+          )}
           {loading && <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>LOADING…</span>}
         </div>
       </div>
 
       {/* ── Column headers ── */}
       <div style={{
-        display: 'grid', gridTemplateColumns: COL_GRID, gap: 0,
+        display: 'grid', gridTemplateColumns: COL, gap: 0,
         padding: '3px 12px',
         background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`,
         flexShrink: 0,
       }}>
-        {['ASSUMPTION', 'CURRENT VALUE', 'SOURCE', 'VALIDATION METHOD', 'QUALITY'].map((h, i) => (
+        {COL_HEADERS.map((h, i) => (
           <span key={h} style={{
             fontFamily: MONO, fontSize: 7, color: BT.text.muted, fontWeight: 700,
             letterSpacing: 0.5, paddingRight: 8,
-            textAlign: i === 4 ? 'center' : 'left',
+            textAlign: i === 5 ? 'center' : 'left',
           }}>{h}</span>
         ))}
       </div>
@@ -517,7 +701,7 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
         {groups.map((group, gi) => (
           <div key={group.label}>
 
-            {/* Group header */}
+            {/* Group header row */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '4px 12px',
@@ -525,32 +709,34 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
               borderBottom: `1px solid ${BT.border.subtle}`,
               borderTop: gi > 0 ? `2px solid ${BT.border.subtle}` : undefined,
             }}>
-              <span style={{ fontFamily: MONO, fontSize: 8, opacity: 0.6, lineHeight: 1 }}>
-                {group.icon}
-              </span>
+              <span style={{ fontFamily: MONO, fontSize: 8, opacity: 0.55 }}>{group.icon}</span>
               <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 700, color: BT.text.amber, letterSpacing: 1 }}>
                 {group.label}
               </span>
               <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginLeft: 4 }}>
-                {group.rows.filter(r => r.quality === 'STRONG').length}S /
-                {group.rows.filter(r => r.quality === 'WATCH').length}W /
-                {group.rows.filter(r => r.quality === 'WEAK').length}K /
+                {group.rows.filter(r => r.quality === 'STRONG').length}S ·
+                {group.rows.filter(r => r.quality === 'WATCH').length}W ·
+                {group.rows.filter(r => r.quality === 'WEAK').length}K ·
                 {group.rows.filter(r => r.quality === 'UNVALIDATED').length}U
               </span>
             </div>
 
-            {/* Rows */}
+            {/* Data rows */}
             {group.rows.map((row, ri) => (
               <div key={row.key} style={{
-                display: 'grid', gridTemplateColumns: COL_GRID, gap: 0,
+                display: 'grid', gridTemplateColumns: COL, gap: 0,
                 padding: '5px 12px',
                 background: ri % 2 === 0 ? BT.bg.panel : BT.bg.terminal,
                 borderBottom: `1px solid ${BT.border.subtle}`,
                 alignItems: 'start',
-                borderLeft: row.quality === 'WEAK' ? `3px solid ${QUALITY_COLOR.WEAK}` : row.isOverride ? `3px solid ${BT.text.amber}44` : '3px solid transparent',
+                borderLeft: row.quality === 'WEAK'
+                  ? `3px solid ${QUALITY_COLOR.WEAK}`
+                  : row.isOverride
+                  ? `3px solid ${BT.text.amber}55`
+                  : '3px solid transparent',
               }}>
 
-                {/* ASSUMPTION */}
+                {/* ① ASSUMPTION */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, fontWeight: 600 }}>
@@ -565,13 +751,13 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
                     )}
                   </div>
                   {row.platformBaseline && (
-                    <span style={{ fontFamily: MONO, fontSize: 7, color: '#00D26A', opacity: 0.8 }}>
-                      {row.platformBaseline}
+                    <span style={{ fontFamily: MONO, fontSize: 7, color: '#00D26A', opacity: 0.85 }}>
+                      ↳ {row.platformBaseline}
                     </span>
                   )}
                 </div>
 
-                {/* CURRENT VALUE */}
+                {/* ② CURRENT VALUE */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   <span style={{ fontFamily: MONO, fontSize: 9, color: BT.met.financial, fontWeight: 700 }}>
                     {row.value}
@@ -583,17 +769,32 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
                   )}
                 </div>
 
-                {/* SOURCE */}
+                {/* ③ CONFIDENCE */}
+                <div style={{ paddingTop: 1 }}>
+                  {row.confidence != null ? (
+                    <span style={{
+                      fontFamily: MONO, fontSize: 7, fontWeight: 700, letterSpacing: 0.3,
+                      color: CONFIDENCE_COLOR[row.confidence] ?? BT.text.muted,
+                      textTransform: 'uppercase',
+                    }}>
+                      {row.confidence}
+                    </span>
+                  ) : (
+                    <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>—</span>
+                  )}
+                </div>
+
+                {/* ④ SOURCE */}
                 <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
                   {row.source}
                 </span>
 
-                {/* VALIDATION METHOD */}
+                {/* ⑤ VALIDATION METHOD */}
                 <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>
                   {row.method}
                 </span>
 
-                {/* QUALITY */}
+                {/* ⑥ QUALITY */}
                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 4 }}>
                   <QualityIcon q={row.quality} />
                   <span style={{
@@ -602,12 +803,12 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
                     background: QUALITY_BG[row.quality],
                     padding: '1px 5px',
                     border: `1px solid ${QUALITY_COLOR[row.quality]}44`,
-                    borderRadius: 2,
-                    whiteSpace: 'nowrap',
+                    borderRadius: 2, whiteSpace: 'nowrap',
                   }}>
                     {row.quality}
                   </span>
                 </div>
+
               </div>
             ))}
           </div>
@@ -618,15 +819,16 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
       <div style={{
         flexShrink: 0, padding: '4px 12px',
         background: BT.bg.header, borderTop: `1px solid ${BT.border.subtle}`,
-        display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap',
+        display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
       }}>
         <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, fontWeight: 700 }}>LEGEND:</span>
-        <span style={{ fontFamily: MONO, fontSize: 7, color: '#00D26A' }}>STRONG — comp or document validated</span>
+        <span style={{ fontFamily: MONO, fontSize: 7, color: '#00D26A' }}>STRONG — comp or document verified</span>
         <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.amber }}>WATCH — platform benchmark or operator input</span>
-        <span style={{ fontFamily: MONO, fontSize: 7, color: '#FF5252' }}>WEAK — outlier delta vs market</span>
+        <span style={{ fontFamily: MONO, fontSize: 7, color: '#FF5252' }}>WEAK — outlier vs market</span>
         <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>UNVALIDATED — no source data</span>
+        <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>↳ = platform baseline for overrides</span>
         <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
-          OVR = operator override · Edit in DEAL TERMS / INPUTS / DEBT
+          Edit in: DEAL TERMS · INPUTS · DEBT
         </span>
       </div>
     </div>
