@@ -1718,7 +1718,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       const data: DealFinancials = res.data?.data ?? res.data;
       if (data?.proforma) {
         setFinancials(data);
-        // (dates moved to DealTermsTab — Task #1367)
       }
     } catch { /* silent degradation */ }
     finally { if (tok === fetchRef.current) setLoading(false); }
@@ -1773,8 +1772,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       setNarrativeBlocks(res.data?.data?.blocks ?? []);
     } catch { /* non-fatal */ }
   }, [dealId]);
-
-  // (csLocal hydration moved to DealTermsTab — Task #1367)
 
   // Initial-load fetch: keyed strictly on dealId. We deliberately exclude
   // `fetchFinancials` from deps because that callback closes over
@@ -1940,8 +1937,6 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       detail: { source: 'leasing_assumptions_tab', path, value: finalVal },
     }));
   }, [enqueuePatch]);
-
-  // (patchCapStack moved to DealTermsTab — Task #1367)
 
   // ── Backend-driven row derivation from proforma.year1 ──────────────────────
   // Sections 1 & 3: rows derived from financials.proforma.year1 + FIELD_META
