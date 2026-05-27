@@ -2,7 +2,27 @@
 
 **Status:** Active  
 **Created:** 2026-05-27  
-**Task:** #1237 — STR/Flip/Land Hold 'Not Yet Supported' notice
+**Task:** #1237 — STR/Flip/Land Hold 'Not Yet Supported' notice  
+**Updated:** 2026-05-27 — Task #1243 release note (strategy selector functional as of Task #1233)
+
+---
+
+## Release note — Strategy selector is now functional (Task #1233)
+
+**Shipped:** 2026-05-27
+
+The Investment Strategy dropdown in DEAL TERMS is now wired end-to-end. Saving a strategy now drives:
+
+- **Pattern B routing** — the financial engine selects the correct deal-type template
+- **RegimeExpand visibility** — renovation and improvement sections appear only for strategies that require them
+- **Renovation section display** — Value-Add and Redevelopment show the rehab budget rows; Rental and Build-to-Sell do not
+- **Tab availability** — future tabs gated on deal type now resolve correctly
+
+**Operators who previously set a strategy saw no effect.** All prior saves were recorded correctly, but routing was not applied. Those deals now route on the next page load — no re-save is required. Operators should open each active deal and verify the strategy shown in DEAL TERMS reflects their intent.
+
+### Action required
+
+Open each active deal → DEAL TERMS tab → confirm the **Investment Strategy** row reflects the correct strategy. Deals with no strategy set show a teal banner at the top of the tab.
 
 ---
 
@@ -20,6 +40,8 @@ The three affected strategies are:
 
 The `★` suffix in the dropdown labels signals to operators that these options are limited.
 
+The four **fully supported** strategies — Rental, Value-Add, Build-to-Sell, Redevelopment — are wired end-to-end as of Task #1233.
+
 ---
 
 ## What operators see today when one of these is selected
@@ -34,9 +56,9 @@ All three strategies resolve to the same rendering path: the standard multifamil
 
 ---
 
-## Operator-visible signal
+## Operator-visible signals
 
-As of Task #1237:
+### As of Task #1237
 
 1. **Dropdown badge:** Options for Flip, Short-Term Rental, and Land Hold are annotated with a `★` suffix in the strategy selector dropdown (`★ = Coming soon` convention).
 
@@ -45,6 +67,16 @@ As of Task #1237:
 3. **Flag cell badge:** When an unsupported strategy is the resolved value for a deal, the FLAG column in the Investment Strategy row shows a `LIMITED` badge (amber-tone), identical in styling to the `NOT SET` badge used for unset fields.
 
 4. **Strategy still saves:** Selecting and confirming an unsupported strategy persists it normally to `deal_assumptions.investment_strategy_lv`. The selection is not blocked. Operators can use these tags for deal categorization even without full UI support.
+
+### As of Task #1243 (this release note)
+
+5. **Release notice banner:** Deals where `investment_strategy_lv` is null (no strategy ever set) show a teal dismissible banner at the top of the DEAL TERMS tab. The banner explains:
+   - The strategy selector is now functional
+   - Fully supported strategies: Rental, Value-Add, Build-to-Sell, Redevelopment
+   - Limited support strategies: Short-Term Rental, Flip, Land Hold
+   - Operators should open each active deal and confirm or set the strategy
+
+   The banner is dismissed per-deal via a DISMISS button. Dismiss state is stored in localStorage (`jedi:strategy_release_notice_dismissed:<dealId>`). Once the strategy is set, `resolved` becomes non-null and the banner auto-hides regardless of dismiss state.
 
 ---
 

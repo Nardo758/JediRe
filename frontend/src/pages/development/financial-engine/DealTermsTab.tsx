@@ -99,6 +99,119 @@ function addYearsToDate(closeIso: string | null | undefined, holdYears: number |
   return d.toISOString().slice(0, 10);
 }
 
+// ─── Strategy release notice helpers ─────────────────────────────────────────
+// Task #1233 shipped: the strategy selector now drives Pattern B routing,
+// RegimeExpand visibility, renovation section display, and tab availability.
+// Operators who had not set a strategy (investmentStrategy_lv.resolved === null)
+// see a one-time banner prompting them to confirm their selection.
+
+function _strategyReleaseNoticeDismissedKey(dealId: string) {
+  return `jedi:strategy_release_notice_dismissed:${dealId}`;
+}
+
+function isStrategyReleaseNoticeDismissed(dealId: string): boolean {
+  try {
+    return localStorage.getItem(_strategyReleaseNoticeDismissedKey(dealId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function dismissStrategyReleaseNotice(dealId: string): void {
+  try {
+    localStorage.setItem(_strategyReleaseNoticeDismissedKey(dealId), '1');
+  } catch {
+    // ignore
+  }
+}
+
+// ─── Strategy release notice banner ──────────────────────────────────────────
+
+function StrategyReleaseNoticeBanner({
+  dealId,
+  onDismiss,
+}: {
+  dealId: string;
+  onDismiss: () => void;
+}) {
+  function handleDismiss() {
+    dismissStrategyReleaseNotice(dealId);
+    onDismiss();
+  }
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', gap: 12,
+      padding: '10px 14px',
+      background: `${TEAL}0D`,
+      borderBottom: `1px solid ${TEAL}44`,
+      borderLeft: `3px solid ${TEAL}`,
+      flexShrink: 0,
+    }}>
+      <div style={{ flex: 1 }}>
+        <div style={{
+          fontFamily: MONO, fontSize: 9, fontWeight: 700,
+          color: TEAL, letterSpacing: 1, marginBottom: 5,
+        }}>
+          STRATEGY SELECTOR NOW FUNCTIONAL — ACTION REQUIRED
+        </div>
+        <div style={{
+          fontFamily: MONO, fontSize: 9, color: BT.text.secondary,
+          lineHeight: 1.65, marginBottom: 6,
+        }}>
+          The Investment Strategy field now drives deal routing, tab availability, and renovation section display.
+          Deals where no strategy is set will not route correctly. Open each active deal and confirm or set the strategy below.
+        </div>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+          <div>
+            <div style={{
+              fontFamily: MONO, fontSize: 8, fontWeight: 700,
+              color: GREEN, letterSpacing: 0.8, marginBottom: 3,
+            }}>
+              FULLY SUPPORTED
+            </div>
+            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, lineHeight: 1.7 }}>
+              Rental · Value-Add · Build-to-Sell · Redevelopment
+            </div>
+          </div>
+          <div style={{
+            width: 1, alignSelf: 'stretch',
+            background: BT.border.subtle,
+            margin: '2px 0',
+          }} />
+          <div>
+            <div style={{
+              fontFamily: MONO, fontSize: 8, fontWeight: 700,
+              color: AMBER, letterSpacing: 0.8, marginBottom: 3,
+            }}>
+              LIMITED SUPPORT (★)
+            </div>
+            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, lineHeight: 1.7 }}>
+              Short-Term Rental · Flip · Land Hold — can be saved for categorization;
+              F9 renders a standard multifamily layout which may not match these deal types.
+            </div>
+          </div>
+        </div>
+      </div>
+      <button
+        onClick={handleDismiss}
+        title="Dismiss this notice"
+        style={{
+          fontFamily: MONO, fontSize: 9, fontWeight: 700,
+          color: BT.text.muted,
+          background: 'transparent',
+          border: `1px solid ${BT.border.subtle}`,
+          padding: '3px 10px', borderRadius: 2,
+          cursor: 'pointer', flexShrink: 0,
+          letterSpacing: 0.3,
+        }}
+      >
+        DISMISS
+      </button>
+    </div>
+  );
+}
+
 // ─── Unsupported investment strategy helpers ──────────────────────────────────
 // These three strategies have zero dedicated F9 UI. Operators who select them
 // receive the standard multifamily layout, which is structurally wrong for
@@ -607,6 +720,11 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   // Pending unsupported strategy — set when operator picks one that hasn't
   // been confirmed yet. Modal reads this; null means modal is closed.
   const [strategyModal, setStrategyModal] = useState<string | null>(null);
+  // Strategy release notice (Task #1243): shown when strategy is unset and
+  // the operator has not yet dismissed the notice for this deal.
+  const [releaseNoticeDismissed, setReleaseNoticeDismissed] = useState(
+    () => isStrategyReleaseNoticeDismissed(props.dealId),
+  );
 
   // ── EXIT / DISPOSITION ─────────────────────────────────────────────────────
   const [exitStrategy,   setExitStrategy]       = useState('');
@@ -1035,6 +1153,17 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
           ))}
         </div>
       </div>
+
+      {/* ── Strategy release notice (Task #1243) ────────────────────────── */}
+      {/* Shown only when investmentStrategy has not been set AND the operator
+          has not yet dismissed the notice for this deal. Once the strategy is
+          set the resolved value becomes non-null and this banner auto-hides. */}
+      {!releaseNoticeDismissed && investStrategyResolved === null && (
+        <StrategyReleaseNoticeBanner
+          dealId={props.dealId}
+          onDismiss={() => setReleaseNoticeDismissed(true)}
+        />
+      )}
 
       {/* ── Hold-period quick chips — sit ABOVE the table per spec ────────── */}
       <div style={{
