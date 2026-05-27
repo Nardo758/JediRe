@@ -318,3 +318,130 @@ Line 1375: `proformaFields['deal_type'] ?? proformaFields['investment_strategy']
 | cashflow.postprocess.ts double-read | `backend/src/agents/cashflow.postprocess.ts` | 1375 | VERIFIED — `deal_type ?? investment_strategy` |
 | investmentStrategy resolved LV composition | `backend/src/services/proforma-adjustment.service.ts` | 3130-3142 | VERIFIED — resolved = override ?? detected.value ?? null |
 | deal_type stored in benchmark tables | Migrations: `archive_assumption_benchmarks`, `line_item_benchmarks`, `assumption_snapshots`, `assumption_outcomes` | SQL schemas | VERIFIED — TEXT NOT NULL column in all four |
+
+---
+
+## P8 VERIFICATION — Task #1264
+
+**Date:** 2026-05-27  
+**Verifier:** Task #1264 (non-self-verification pass)  
+**Protocol:** P8 — Verify Before Decision  
+**Method:** Read-only. No code changes. All material claims checked against live codebase.
+
+---
+
+### V1. Document Integrity
+
+All 11 sections present and complete. Table of Contents matches content. No TODO markers, placeholder text, or incomplete stubs. Source Citation Index has 15 entries. Open questions classified with 3 tiers (BLOCKING / IMPORTANT / INFORMATIONAL). Phase scope (multifamily-existing first) stated in header.
+
+**Result: PASS**
+
+---
+
+### V2. Source Citation Spot-Checks
+
+15 of 15 source citations verified against live codebase.
+
+| Claim | File | Lines | Verified? | Notes |
+|---|---|---|---|---|
+| investmentStrategyToDealType() maps 7 values | `deal-assumptions.routes.ts` | 956-966 | ✓ CONFIRMED | Exact match. 7 keys; 'Land Hold' absent |
+| Atomic transaction BEGIN/COMMIT | `deal-assumptions.routes.ts` | 987-1058 | ✓ CONFIRMED | `client.query('BEGIN')` at 992, `COMMIT` at 1058 |
+| INV_VALID has 'Land Hold', mapping does not | `deal-assumptions.routes.ts` | 976, 956-966 | ✓ CONFIRMED | 'Land Hold' at line 976 in array; not in map |
+| deal_type COALESCE default 'existing' | `cashflow-underwriting.routes.ts` | 249 | ✓ CONFIRMED | `COALESCE(d.deal_type, 'existing') AS deal_type` |
+| Pattern B routing reads deal_type | `m09_line_item_patterns.ts` | 168-173 | ✓ CONFIRMED | (P8 #1249 prior pass) |
+| ProFormaSummaryTab line 946 reads deal_type | `ProFormaSummaryTab.tsx` | 946 | ✓ CONFIRMED | `const dealType: string = (deal?.['deal_type'] as string | null) ?? ... ?? 'existing'` |
+| proformaTemplateId prop with fallback comment | `ProFormaSummaryTab.tsx` | 87-91 | ✓ CONFIRMED | Comment text verbatim |
+| pickTemplateForStrategy() iterates strategyTriggers | `blueprint/index.ts` | 30-38 | ✓ CONFIRMED | Exact match |
+| defaultTemplateForDealType() handles 3 types | `blueprint/index.ts` | 41-50 | ✓ CONFIRMED | switch on existing/development/redevelopment; default → acquisition_stabilized |
+| pickTemplateForStrategy called at proformaTemplateId | `proforma-adjustment.service.ts` | 3140-3142 | ✓ CONFIRMED | Slug normalization + call + defaultTemplateForDealType fallback (see Gap 1 below) |
+| 'build_to_sell' absent from development_ground_up triggers | `proforma-blueprint.ts` | 170 | ✓ CONFIRMED | triggers: ['bts', 'bts_for_rent', 'development', 'ground_up'] — no 'build_to_sell' |
+| RenovationAssumptionsSection gate reads rawDealType | `AssumptionsTab.tsx` | 1575 | ✓ CONFIRMED | `const rawDealType = ((deal?.deal_type || deal?.dealType || '') as string).toLowerCase().trim()` |
+| cashflow.postprocess.ts double-read at 1375 | `cashflow.postprocess.ts` | 1375 | ✓ CONFIRMED | `const dealTypeField = proformaFields['deal_type'] ?? proformaFields['investment_strategy']` |
+| investmentStrategy LV composition | `proforma-adjustment.service.ts` | 3130-3142 | ✓ CONFIRMED | resolved = override ?? detected.value ?? null; slug normalization confirmed |
+| deal_type TEXT column in 4 benchmark tables | Migration SQL schemas | — | ✓ CONFIRMED | archive_assumption_benchmarks, line_item_benchmarks, assumption_snapshots, assumption_outcomes all verified |
+
+**Result: PASS — all 15 citations confirmed accurate**
+
+---
+
+### V3. Migration Cost Estimates
+
+**A1 cost (HIGH) — independently assessed:**  
+The document claims A1 requires migrating 4 benchmark table schemas plus 40+ call sites across 8+ files. Independently: `grep -rn "deal_type"` across `backend/src/` returns 409 lines (excluding tests). Restricting to meaningful routing calls (not display or archive-only reads) yields 13+ consumers. Schema change to 4 benchmark tables is confirmed by migration SQL. Assessment: HIGH migration cost for A1 is correctly rated.
+
+**A2 cost (LOW for Phase 1) — independently assessed:**  
+Task #1233 bridge is in production. Two named gaps in §6.2 (Land Hold mapping: 1 line; proformaTemplateId rendering: T2.4 deliverable). Assessment: LOW is correctly rated for Phase 1.
+
+**Result: PASS — migration cost estimates are plausible and complete for Phase 1 scope**
+
+---
+
+### V4. Vocabulary Mapping Verification
+
+Full mapping table in §7 verified against `investmentStrategyToDealType()` (lines 956-966) and `strategyTriggers` arrays in `proforma-blueprint.ts`:
+
+| investmentStrategy | deal_type | templateId slug | strategyTrigger match? |
+|---|---|---|---|
+| Rental | existing | rental | ✓ triggers: ['rental', 'core', 'core_plus'] |
+| Value-Add | value_add | value_add | ✓ triggers: ['value_add', 'rental_value_add'] |
+| Build-to-Sell | development | build_to_sell | ✗ triggers: ['bts', 'bts_for_rent', 'development', 'ground_up'] — no 'build_to_sell' → GAP confirmed |
+| Flip | value_add | flip | ✓ triggers: ['flip'] |
+| Redevelopment | redevelopment | redevelopment | ✓ triggers: ['redevelopment', 'reposition', 'gut_rehab'] |
+| Lease-Up | lease_up | lease_up | ✗ no template has 'lease_up' trigger → fallback acquisition_stabilized → GAP confirmed |
+| Short-Term Rental | existing | short_term_rental | ✓ triggers: ['str', 'short_term_rental'] — template correct; deal_type loses STR distinction (Phase 2) |
+| Land Hold | NOT WRITTEN | land_hold | ✓ triggers: ['land', 'land_hold'] — template correct; deal_type not written → BLOCKING GAP confirmed |
+
+**Result: PASS — all 8 rows in §7 are accurate**
+
+---
+
+### V5. Open Questions Classification Review
+
+| # | Question | Document Class | Verification Class | Correct? |
+|---|---|---|---|---|
+| Q1 | Land Hold mapping gap | BLOCKING | BLOCKING | ✓ — saves Land Hold strategy without updating deal_type |
+| Q2 | DealTypeKey enum missing land_hold/flip/str | BLOCKING | BLOCKING | ✓ — Phase 2 scope, but Land Hold needs Phase 1 approximation |
+| Q3 | Build-to-Sell slug mismatch | BLOCKING | BLOCKING | ✓ — confirmed by trigger table inspection |
+| Q4 | STR and Rental both → 'existing' | IMPORTANT | IMPORTANT | ✓ — design decision, not Phase 1 blocker |
+| Q5 | Pre-Task-#1233 deals have no investmentStrategy | IMPORTANT | IMPORTANT | ✓ — deal_type correctly retained; not a regression |
+| Q6 | proformaTemplateId not yet used in rendering | IMPORTANT | IMPORTANT | ✓ — T2.4 main deliverable |
+| Q7 | cashflow.postprocess.ts double-read redundancy | INFORMATIONAL | INFORMATIONAL | ✓ — harmless, cleanup only |
+| Q8 | STRATEGY_AND_BEFORE_AFTER_INVESTIGATION.md stale claim | INFORMATIONAL | INFORMATIONAL | ✓ — confirmed stale; no block on T2.4 |
+
+**Result: PASS — all 8 questions correctly classified**
+
+---
+
+### V6. Gaps Identified by Verification
+
+**Gap 1 — INFORMATIONAL (new, not in document):**  
+`proforma-adjustment.service.ts` lines 3141-3143 contain a fallback not described in §2.3:
+
+```typescript
+const proformaTemplateId = _strategyForTemplate
+  ? pickTemplateForStrategy(_strategyForTemplate)
+  : defaultTemplateForDealType((deal.deal_type ?? 'existing') as 'existing' | 'development' | 'redevelopment');
+```
+
+When `investmentStrategy` is null/empty, `_strategyForTemplate` is `''` (falsy), so `defaultTemplateForDealType` is called with `deal.deal_type`. Since `defaultTemplateForDealType` only accepts 3 types (`existing | development | redevelopment`), a `deal_type = 'value_add'` deal hits the TypeScript default case and returns `'acquisition_stabilized'`. This means a value-add deal with no investmentStrategy gets `proformaTemplateId = 'acquisition_stabilized'` — not null.
+
+**Current impact:** None. ProFormaSummaryTab ignores `proformaTemplateId` today (falls back to deal_type routing for all rendering). No visible regression.
+
+**T2.4 impact:** Once T2.4 wires `proformaTemplateId` into template-aware rendering, value-add deals that predate Task #1233 (no investmentStrategy saved) will route to the wrong template. T2.4 must handle this by either: (a) extending `defaultTemplateForDealType` to cover all 6 DealTypeKey values, or (b) checking `deal_type` directly when strategy is absent.
+
+This is not a gap in the investigation document's analysis — it is a T2.4 implementation note.
+
+**Gap 2 — MINOR (count discrepancy, not an error):**  
+§2.2 states "Read paths: 6 consumers" but §3.2 table has 7 rows. Rows 2 and 3 in §3.2 both cite `deal-assumptions.routes.ts` (LV write and A2 bridge are the same file). Counting as 1 file → 6 unique files. Counting as 2 functions → 7 rows. The table is more precise. No impact on analysis.
+
+---
+
+### VERDICT
+
+**APPROVED**
+
+All 15 source citations are accurate. Migration cost estimates are correctly rated (A1 = HIGH, A2 = LOW). Vocabulary mapping is confirmed correct for all 8 rows. All 8 open questions are correctly classified. Two informational gaps noted above do not affect the recommendation or block T2.4 scoping.
+
+**T2.4 may begin.** The operator (Leon) should confirm the A2 recommendation before T2.4 is kicked off. The three BLOCKING open questions (Q1, Q2, Q3) are all small code changes that can be bundled in T2.4 itself.
+
+**One T2.4 pre-condition added by this verification:** Extend `defaultTemplateForDealType` (or add a fallback resolver) to handle `value_add`, `lease_up`, and `stabilized` deal types — prevents wrong template routing for pre-Task-#1233 deals once `proformaTemplateId` is wired into rendering.
