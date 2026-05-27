@@ -1,0 +1,76 @@
+PHASE 1 STATUS RECALIBRATION
+
+CONTEXT
+Phase 1 has moved faster than the original task map projected. 
+Multiple closed items, multiple in-flight items. The PHASE_1_TASK_MAP.md 
+and PHASE_1_BRIEF.md documents may be stale. This dispatch 
+updates both to reflect actual current state.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. docs/operations/PHASE_1_TASK_MAP.md exists at expected path
+2. docs/operations/PHASE_1_BRIEF.md exists at expected path
+3. The following items are correctly captured as closed (verify 
+   each):
+   - T1.1 CLAUDE.md P8 amendment (with state-verification 
+     corollary)
+   - T1.2 Verification of Strategy investigation (APPROVED)
+   - T1.3 STR/Flip/Land Hold "not yet supported" notice
+   - T2.1 A1 vs A2 investigation (verified, amended, lightweight 
+     check clean)
+   - T2.3 A1 vs A2 decision (A1 committed by Leon)
+   - T3.1 Mandate lift design (APPROVED)
+   - T3.1.5 Mandate v1.3 implementation (live)
+   - Consumer Wiring investigation (APPROVED)
+   - Tier 1: RegimeExpand sourceColor fix (SHIPPED)
+   - Gap 2 confidence propagation (resolved Option 3, no code)
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+A. Update PHASE_1_TASK_MAP.md:
+   - Mark all closed items as COMPLETE with closing note references
+   - Update critical path graph to reflect actual completions
+   - Update parallel work tracks to reflect current in-flight 
+     dispatches (Tier 2 self-validation, Q1 migration)
+   - Add any newly surfaced tasks (Tier 2 self-validation didn't 
+     exist as a discrete task in the original map but does now)
+
+B. Update PHASE_1_BRIEF.md:
+   - Update success criteria with checkmarks for completed items
+   - Update remaining work section
+   - Update the explicit "what's still in scope" list
+
+C. Update PHASE_2_ENTRY_CONDITIONS.md if any entry conditions 
+   have been satisfied:
+   - EC1 (Strategy ↔ deal_type reconciled) — partially: A1 
+     committed; migration in flight
+   - EC2 (Mandate lifted) — SATISFIED (v1.3 live, Tier 1 shipped)
+   - EC3 (market rent source resolved) — check status
+   - EC4 (F9 module map gaps addressed) — check status
+
+D. Produce a one-page summary of where Phase 1 actually stands 
+   today vs the original brief. This becomes the next dispatch 
+   sequencing reference.
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Direct edits to three documents:
+- docs/operations/PHASE_1_TASK_MAP.md (updated)
+- docs/operations/PHASE_1_BRIEF.md (updated)
+- docs/operations/PHASE_2_ENTRY_CONDITIONS.md (updated)
+
+Plus a new summary:
+- docs/operations/PHASE_1_STATUS_SUMMARY.md (one-page snapshot)
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Make new dispatch recommendations beyond what's already 
+  scheduled
+- Re-litigate architectural decisions
+- "While I'm here" cleanups

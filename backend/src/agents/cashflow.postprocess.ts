@@ -575,6 +575,12 @@ export async function cashflowPostProcess(
             'expense.replacement_reserves':'replacement_reserves',
           };
 
+          // Directional validation: collect pre/post written values per agentKey for post-loop checks
+          const _writtenPairs: Record<string, {
+            preVal: number | null; preConf: string | null;
+            postVal: number | null; postConf: string | null;
+          }> = {};
+
           for (const [agentKey, year1Key] of Object.entries(SUB_FIELD_AGENT_TO_YEAR1)) {
             const field = pfFieldsForWriteback[agentKey];
             if (!field || typeof field !== 'object') continue;
@@ -593,6 +599,18 @@ export async function cashflowPostProcess(
                   dealId: ctx.dealId, agentKey,
                 });
                 continue;
+              }
+
+              // Collect for Tier 2 directional validation (runs after outer loop completes)
+              if (!_writtenPairs[agentKey]) {
+                _writtenPairs[agentKey] = { preVal: null, preConf: null, postVal: null, postConf: null };
+              }
+              if (subField === 'pre_renovation') {
+                _writtenPairs[agentKey].preVal  = subVal;
+                _writtenPairs[agentKey].preConf = conf ?? null;
+              } else {
+                _writtenPairs[agentKey].postVal  = subVal;
+                _writtenPairs[agentKey].postConf = conf ?? null;
               }
 
               const subKey = `${year1Key}__${subField}`;
@@ -628,6 +646,114 @@ export async function cashflowPostProcess(
                   dealId: ctx.dealId, runId, subKey,
                   err: subWriteErr instanceof Error ? subWriteErr.message : String(subWriteErr),
                 });
+              }
+            }
+          }
+
+          // ── Tier 2 directional validation checks (MANDATE_CONSUMER_WIRING.md §4.3) ─────
+          // Warning-level only — no rejection logic changes. Fires after both sub-fields for
+          // each agentKey have been collected. Accumulates into output.validation_warnings.
+          {
+            const DIRECTIONAL_RULES: Record<string, 'post_lte_pre' | 'post_gte_pre'> = {
+              'revenue.vacancy_loss':        'post_lte_pre',
+              'revenue.concessions':         'post_lte_pre',
+              'revenue.bad_debt':            'post_lte_pre',
+              'revenue.other_income':        'post_gte_pre',
+              'expense.repairs_maintenance': 'post_lte_pre',
+              'expense.marketing':           'post_lte_pre',
+              'expense.turnover':            'post_lte_pre',
+            };
+            const DELTA_THRESHOLDS: Record<string, number> = {
+              'revenue.vacancy_loss':        0.60,
+              'revenue.concessions':         0.60,
+              'revenue.bad_debt':            0.60,
+              'revenue.other_income':        0.80,
+              'expense.repairs_maintenance': 0.80,
+              'expense.turnover':            0.80,
+              'expense.marketing':           0.60,
+              'expense.contract_services':   0.50,
+            };
+            const CONF_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
+            if (!output.validation_warnings) output.validation_warnings = [];
+            const _vwarn = output.validation_warnings as Array<Record<string, unknown>>;
+
+            for (const [agentKey, pair] of Object.entries(_writtenPairs)) {
+              const { preVal, preConf, postVal, postConf } = pair;
+
+              // Check #1 — Directional consistency
+              if (preVal !== null && postVal !== null) {
+                const rule = DIRECTIONAL_RULES[agentKey];
+                if (rule === 'post_lte_pre' && postVal > preVal) {
+                  _vwarn.push({
+                    lineItem: agentKey, check: 'directional_consistency',
+                    values: { pre: preVal, post: postVal, expected: 'post ≤ pre' },
+                    ruleRef: 'MANDATE_LIFT_DESIGN.md §4.4 — directional consistency',
+                    action: 'Verify renovation plan supports lower post-stabilization value',
+                  });
+                  logger.warn('[CashflowPostProcess][V1] Directional inversion', { dealId: ctx.dealId, agentKey, preVal, postVal });
+                }
+                if (rule === 'post_gte_pre' && postVal < preVal) {
+                  _vwarn.push({
+                    lineItem: agentKey, check: 'directional_consistency',
+                    values: { pre: preVal, post: postVal, expected: 'post ≥ pre' },
+                    ruleRef: 'MANDATE_LIFT_DESIGN.md §4.4 — directional consistency',
+                    action: 'Verify other income growth assumption is supported',
+                  });
+                  logger.warn('[CashflowPostProcess][V1] Directional inversion', { dealId: ctx.dealId, agentKey, preVal, postVal });
+                }
+              }
+
+              // Check #2 — Primary value consistency (post_stabilization should match primary ±5%)
+              if (postVal !== null) {
+                const pf = pfFieldsForWriteback[agentKey] as Record<string, unknown> | undefined;
+                const primaryVal = typeof pf?.['value']    === 'number' ? pf['value']    as number
+                                 : typeof pf?.['resolved'] === 'number' ? pf['resolved'] as number
+                                 : null;
+                if (primaryVal !== null && Math.abs(primaryVal) > 0.01) {
+                  const divergence = Math.abs(postVal - primaryVal) / Math.abs(primaryVal);
+                  if (divergence > 0.05) {
+                    _vwarn.push({
+                      lineItem: agentKey, check: 'primary_value_consistency',
+                      values: { post: postVal, primary: primaryVal, divergencePct: +(divergence * 100).toFixed(1) },
+                      ruleRef: 'MANDATE_LIFT_DESIGN.md §4.4 — post_stabilization ≈ primary ±5%',
+                      action: 'Verify post_stabilization value aligns with the main proforma field',
+                    });
+                    logger.warn('[CashflowPostProcess][V2] Primary value divergence >5%', { dealId: ctx.dealId, agentKey, postVal, primaryVal, divergencePct: +(divergence * 100).toFixed(1) });
+                  }
+                }
+              }
+
+              // Check #3 — Confidence inversion (pre should not be less confident than post)
+              if (preConf && postConf) {
+                const preRank  = CONF_RANK[preConf]  ?? 0;
+                const postRank = CONF_RANK[postConf] ?? 0;
+                if (preRank < postRank) {
+                  _vwarn.push({
+                    lineItem: agentKey, check: 'confidence_inversion',
+                    values: { preConfidence: preConf, postConfidence: postConf },
+                    ruleRef: 'MANDATE_LIFT_DESIGN.md §4.3 — pre confidence ≥ post confidence',
+                    action: 'Pre-renovation is anchored in actuals; post is a projection and should not exceed pre confidence',
+                  });
+                  logger.warn('[CashflowPostProcess][V3] Confidence inversion', { dealId: ctx.dealId, agentKey, preConf, postConf });
+                }
+              }
+
+              // Check #4 — Delta plausibility
+              if (preVal !== null && postVal !== null && Math.abs(preVal) > 0.01) {
+                const threshold = DELTA_THRESHOLDS[agentKey];
+                if (threshold !== undefined) {
+                  const delta = Math.abs(postVal - preVal) / Math.abs(preVal);
+                  if (delta > threshold) {
+                    _vwarn.push({
+                      lineItem: agentKey, check: 'delta_plausibility',
+                      values: { pre: preVal, post: postVal, deltaPct: +(delta * 100).toFixed(1), thresholdPct: +(threshold * 100) },
+                      ruleRef: 'MANDATE_LIFT_DESIGN.md §4.4 — delta plausibility thresholds',
+                      action: 'Large delta requires strong Tier 1 or Tier 2 evidence; verify evidence source and rationale',
+                    });
+                    logger.warn('[CashflowPostProcess][V4] Delta plausibility exceeded', { dealId: ctx.dealId, agentKey, deltaPct: +(delta * 100).toFixed(1), thresholdPct: +(threshold * 100) });
+                  }
+                }
               }
             }
           }

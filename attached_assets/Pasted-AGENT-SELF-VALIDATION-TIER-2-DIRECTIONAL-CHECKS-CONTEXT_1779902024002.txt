@@ -1,0 +1,125 @@
+AGENT SELF-VALIDATION — TIER 2 DIRECTIONAL CHECKS
+
+CONTEXT
+Per MANDATE_CONSUMER_WIRING.md (verified APPROVED), the agent's 
+self-validation currently enforces:
+- Confidence gate
+- Numeric check
+
+Four directional checks are missing post-Mandate-lift:
+1. Directional consistency (e.g., post_stabilization vacancy ≤ 
+   pre_renovation vacancy for value-add)
+2. Primary value consistency (post ≈ primary ±5% for stabilized 
+   deals where primary is the underwriting target)
+3. Confidence inversion detection (post should not have higher 
+   confidence than pre, since pre is anchored in actuals and 
+   post is a projection)
+4. Delta plausibility (e.g., 3x revenue growth claim flagged as 
+   implausible without strong evidence)
+
+All four are warning-level additions. No rejection logic changes. 
+The agent continues to produce output; the warnings surface in 
+self-validation logs and the closing snapshot for operator review.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. The agent self-validation code is at its expected location 
+   (locate via grep if uncertain)
+2. The confidence gate and numeric check are still present (not 
+   silently refactored since the investigation closed)
+3. None of the four directional checks are partially implemented 
+   already
+4. The investigation's recommendation that all four are 
+   warning-level (no rejection) still applies
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+A. Locate agent self-validation code path
+B. Add directional check #1 — directional consistency
+   - For each line item with pre/post pairs, verify direction 
+     matches expected business plan
+   - Vacancy: post ≤ pre for value-add
+   - Revenue: post ≥ pre for value-add (rent growth expected)
+   - OpEx categories: direction depends on business plan; flag 
+     if no business plan signal exists
+   - Surface as warning with specific line item and expected vs 
+     actual direction
+   
+C. Add directional check #2 — primary value consistency  
+   - For stabilized deals (no business plan execution), 
+     post_stabilization ≈ primary value ±5%
+   - For value-add deals, post is the target; pre is current; 
+     primary is interpolated or operator-specified
+   - Tolerance band is 5% per the investigation
+   - Surface as warning when divergence exceeds tolerance
+
+D. Add directional check #3 — confidence inversion detection
+   - pre confidence ≥ post confidence (since pre is anchored, 
+     post is projection)
+   - If post confidence > pre confidence, flag as warning
+   - Specific message: "post_stabilization confidence (X) exceeds 
+     pre_renovation confidence (Y) — projections shouldn't be 
+     more confident than current-state evidence"
+
+E. Add directional check #4 — delta plausibility  
+   - For each line item, compute post/pre ratio
+   - Flag if ratio exceeds plausibility threshold without strong 
+     evidence
+   - Thresholds: revenue 2x within hold period is high; 3x is 
+     implausible; specific thresholds per line item per the 
+     investigation's recommendation
+   - Surface as warning with specific ratio and threshold
+
+F. Each warning includes:
+   - Line item affected
+   - Check that fired
+   - Specific values that triggered
+   - Reference to the rule in MANDATE_LIFT_DESIGN.md Section 4
+   - Suggested operator action (if applicable)
+
+G. Warnings accumulate into a structured field on the agent's 
+   closing snapshot (separate from rejections). Frontend can 
+   surface these in Evidence trail or Validation surface 
+   (rendering work is Phase 2; data must exist now).
+
+═══════════════════════════════════════════════════════════════════
+TESTING
+═══════════════════════════════════════════════════════════════════
+
+A. Run agent on a deal with known pre/post inconsistency (e.g., 
+   manufacture a test case: post vacancy > pre vacancy on value-add)
+B. Verify all 4 checks fire when expected
+C. Verify no false positives on clean deals (run against Sentosa 
+   or another previously-clean deal)
+D. Verify warnings are structured per spec (line item, check, 
+   values, rule reference)
+E. Confirm no rejection behavior change (warnings only)
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Code changes in agent self-validation file(s).
+Closing note in docs/operations/AGENT_SELFVALIDATION_TIER2.md:
+(a) Before/after of self-validation code
+(b) Per-check implementation summary
+(c) Testing results (which checks fired on test cases, false 
+    positive rate on clean deals)
+(d) Confirmation that warnings accumulate to closing snapshot 
+    cleanly
+(e) Open questions for operator UI work (Tier 3, deferred)
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Add rejection logic (warnings only; agent continues to produce 
+  output)
+- Modify the Mandate lift behavior (v1.3 stays as-is; this is 
+  downstream validation only)
+- Modify confidence gate or numeric check (existing behavior 
+  preserved)
+- Build operator-facing UI for warnings (Tier 3, Phase 2)
+- "While I'm here" cleanups

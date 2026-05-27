@@ -1,0 +1,97 @@
+STRATEGY CANONICAL MIGRATION — A1 IMPLEMENTATION
+
+CONTEXT
+Per A1_VS_A2_INVESTIGATION.md (verified APPROVED, amendment 
+applied, lightweight check clean) and Leon's committed decision: 
+A1 is selected. investmentStrategy becomes the canonical strategy 
+field; deal_type is derived from investmentStrategy or deprecated.
+
+This dispatch implements the migration. Scope per the 
+investigation's A1 migration cost analysis section.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. A1_VS_A2_INVESTIGATION.md exists with verification APPROVED 
+   and amendment applied
+2. Tasks #1265 and #1355 are confirmed merged (resolved items)
+3. The current state of PATCH /assumptions/strategy still only 
+   updates investment_strategy_lv (not silently fixed)
+4. Pattern B routing in m09_line_item_patterns.ts still reads 
+   deal_type (the surface needing migration)
+5. No prior migration work has been started in this area
+
+═══════════════════════════════════════════════════════════════════
+SCOPE PER INVESTIGATION
+═══════════════════════════════════════════════════════════════════
+
+The investigation enumerated the A1 migration consumers. Implement 
+those:
+
+STEP 1 — UPDATE PATTERN B ROUTING
+A. Open m09_line_item_patterns.ts
+B. Change all reads from deal_type to investment_strategy_lv 
+   (preserving fallback behavior if needed)
+C. Verify the vocabulary mapping is handled correctly (per the 
+   investigation's vocabulary mapping section)
+
+STEP 2 — UPDATE RENOVATIONASSUMPTIONSSECTION AND OTHER STRATEGY 
+READERS
+A. Per the consumer inventory in the investigation, migrate each 
+   consumer to read investment_strategy_lv
+B. Preserve UI display semantics (operators see the same strings)
+C. Map vocabulary where needed at the read site, not by 
+   introducing new translation tables
+
+STEP 3 — DEPRECATE OR DERIVE DEAL_TYPE
+A. Per the investigation's recommendation, decide whether 
+   deal_type is:
+   - Deprecated entirely (removed from schema in a future 
+     migration)
+   - Computed from investmentStrategy at read time (derivation)
+   - Maintained as a UI display label only
+B. Apply the chosen approach
+C. Document the decision in the closing note
+
+STEP 4 — DATA MIGRATION
+A. For existing deals where investmentStrategy is NULL but 
+   deal_type is set, backfill investmentStrategy via the 
+   vocabulary mapping
+B. For existing deals where both are set but disagree, flag 
+   the inconsistency in a report (don't auto-resolve)
+C. Document migration outcome counts (backfilled, flagged 
+   inconsistent, untouched)
+
+STEP 5 — VERIFICATION
+A. Run a sample query: pick 5 deals across strategies, verify 
+   Pattern B routing produces correct line items
+B. Verify the strategy selector in DealTermsTab still functions 
+   (write path goes to investment_strategy_lv as before; nothing 
+   should break on that side)
+C. Run an end-to-end check: change a deal's investmentStrategy, 
+   verify downstream behavior (proforma rendering, agent prompts, 
+   Pattern B routing) all reflect the new value
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Code changes per scope above.
+Closing note in docs/operations/A1_MIGRATION_IMPLEMENTATION.md:
+(a) Per-step implementation summary
+(b) Data migration outcome (counts)
+(c) Verification results
+(d) Confirmation that deal_type handling decision is documented
+(e) Any consumers found during implementation that weren't in 
+    the investigation's inventory (gaps the investigation missed)
+(f) Open questions / follow-up work
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify the UI strategy selector (works correctly today; A1 
+  migration is about read-side, not write-side)
+- Touch STR/Flip/Land Hold "not yet supported" notice (works 
+  correctly today)
+- Re-investigate A1 vs A2 — decision is locked
+- "While I'm here" cleanups
