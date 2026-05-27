@@ -319,6 +319,16 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
           const v = parseFloat(da.exit_cap);
           if (Number.isFinite(v) && v > 0) setExitCapRate(v);
         }
+        // revenue.rentGrowth[0] is stored in per_year_overrides metaKey (no dedicated column)
+        if (fields.includes('revenue.rentGrowth[0]') && da?.per_year_overrides != null) {
+          const meta = (da.per_year_overrides as Record<string, { value?: unknown } | undefined>)['module:source:revenue.rentGrowth[0]'];
+          if (meta?.value != null) {
+            const v = parseFloat(String(meta.value));
+            if (Number.isFinite(v) && v > 0 && v <= 0.30) {
+              setRentGrowth((prev: number[]) => { const next = [...prev]; next[0] = v; return next; });
+            }
+          }
+        }
         // acquisition.purchasePrice is stored in deals.deal_data — fetch the deal record
         if (fields.includes('acquisition.purchasePrice')) {
           const dealRes: any = await apiClient.get(`/api/v1/deals/${id}`);

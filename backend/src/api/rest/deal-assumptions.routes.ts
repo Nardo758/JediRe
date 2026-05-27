@@ -670,13 +670,15 @@ router.patch('/:dealId/assumptions/targets', requireAuth, async (req: Authentica
  */
 type ModuleFieldTarget =
   | { storage: 'deals_data';    dataKey: string; dualWriteBudget?: true }
-  | { storage: 'deal_assumptions'; column: string };
+  | { storage: 'deal_assumptions'; column: string }
+  | { storage: 'deal_assumptions_pyo' };  // value stored only in per_year_overrides metaKey
 
 const MODULE_FIELD_REGISTRY: Record<string, ModuleFieldTarget> = {
   'acquisition.purchasePrice': { storage: 'deals_data',    dataKey: 'purchase_price', dualWriteBudget: true },
   'hold.holdPeriodYears':      { storage: 'deal_assumptions', column: 'hold_period_years' },
   'disposition.exitCapRate':   { storage: 'deal_assumptions', column: 'exit_cap' },
   'targets.targetIrr':         { storage: 'deal_assumptions', column: 'target_irr' },
+  'revenue.rentGrowth[0]':     { storage: 'deal_assumptions_pyo' },
 };
 
 function validateModuleFieldValue(fieldPath: string, value: unknown): string | null {
@@ -696,6 +698,9 @@ function validateModuleFieldValue(fieldPath: string, value: unknown): string | n
     case 'targets.targetIrr':
       return (value > 0 && value < 1)
         ? null : 'targetIrr must be a decimal fraction (e.g. 0.15 for 15%)';
+    case 'revenue.rentGrowth[0]':
+      return (value > 0 && value <= 0.30)
+        ? null : 'rentGrowth[0] must be a decimal fraction between 0 and 0.30 (e.g. 0.032 for 3.2%)';
     default:
       return null;
   }
@@ -827,8 +832,17 @@ router.post('/:dealId/assumptions/apply-from-module', requireAuth, async (req: A
             [dealId, dataKey, value]
           );
         }
+      } else if (target.storage === 'deal_assumptions_pyo') {
+        // No dedicated column — value lives only in per_year_overrides via pyPatch below.
+        // Ensure the deal_assumptions row exists so the pyo merge has a target row.
+        await pool.query(
+          `INSERT INTO deal_assumptions (deal_id, updated_at)
+           VALUES ($1, NOW())
+           ON CONFLICT (deal_id) DO NOTHING`,
+          [dealId]
+        );
       } else {
-        const col = target.column;
+        const col = (target as { storage: 'deal_assumptions'; column: string }).column;
         await pool.query(
           `INSERT INTO deal_assumptions (deal_id, ${col}, updated_at)
            VALUES ($1, $2, NOW())

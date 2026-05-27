@@ -12,6 +12,8 @@ import { EventTimelineChart } from '../../m35/EventTimelineChart';
 import { EventCard, EventCardEvent } from '../../m35/EventCard';
 import { EventDependencyModal, EventDependency } from '../../m35/EventDependencyModal';
 import { Plus, RefreshCw, Zap } from 'lucide-react';
+import { apiClient } from '@/services/api.client';
+import { dispatchModuleApplied } from '../../../utils/moduleEvents';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -89,6 +91,7 @@ export function EventTimelineSection({ dealId, deal, dealType, onUpdate }: Event
   const [activeMetric, setActiveMetric] = useState(CHART_METRICS[0].key);
   const [showDepModal, setShowDepModal] = useState(false);
   const [depContext, setDepContext] = useState<'proforma' | 'strategy'>('proforma');
+  const [pushing, setPushing] = useState(false);
 
   const token = localStorage.getItem('auth_token') || '';
 
@@ -111,6 +114,42 @@ export function EventTimelineSection({ dealId, deal, dealType, onUpdate }: Event
   }, [dealId, token]);
 
   useEffect(() => { fetchContext(); }, [fetchContext]);
+
+  // Push M35 event-calibrated baselines to F9 assumptions via apply-from-module.
+  // Values are the CHART_METRICS baselines converted to decimal fractions:
+  //   cap_rate 5.2% → 0.052 → disposition.exitCapRate
+  //   rent_growth_yoy 3.2% → 0.032 → revenue.rentGrowth[0]
+  const handlePushToF9 = useCallback(async () => {
+    if (!dealId || pushing) return;
+    const rentGrowthMetric = CHART_METRICS.find(m => m.key === 'rent_growth_yoy');
+    const capRateMetric    = CHART_METRICS.find(m => m.key === 'cap_rate');
+    const rentGrowthVal    = rentGrowthMetric ? rentGrowthMetric.baseline / 100 : 0.032;
+    const capRateVal       = capRateMetric    ? capRateMetric.baseline / 100    : 0.052;
+
+    setPushing(true);
+    try {
+      const res: any = await apiClient.post(
+        `/api/v1/deals/${dealId}/assumptions/apply-from-module`,
+        {
+          source: 'event_timeline',
+          appliedAt: new Date().toISOString(),
+          fields: [
+            { fieldPath: 'revenue.rentGrowth[0]', value: rentGrowthVal },
+            { fieldPath: 'disposition.exitCapRate', value: capRateVal },
+          ],
+        },
+      );
+      const { applied } = res.data as { applied: Array<{ fieldPath: string }>; conflicts: unknown[] };
+      if (applied.length > 0) {
+        dispatchModuleApplied('event_timeline', applied.map(a => a.fieldPath));
+      }
+    } catch (err) {
+      console.error('[EventTimeline] push-to-F9 failed:', err);
+    } finally {
+      setPushing(false);
+      onUpdate?.();
+    }
+  }, [dealId, pushing, onUpdate]);
 
   const events = ctx?.events || [];
   const topEvent = selectedEventId
@@ -168,9 +207,15 @@ export function EventTimelineSection({ dealId, deal, dealType, onUpdate }: Event
           </button>
           <button
             onClick={() => { setDepContext('proforma'); setShowDepModal(true); }}
-            style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.border.medium}`, cursor: 'pointer', padding: '2px 8px', color: BT.text.secondary, fontFamily: mono, fontSize: 8, fontWeight: 700 }}
+            disabled={pushing}
+            style={{
+              background: BT.bg.panelAlt, border: `1px solid ${BT.border.medium}`,
+              cursor: pushing ? 'not-allowed' : 'pointer', padding: '2px 8px',
+              color: BT.text.amber, fontFamily: mono, fontSize: 8, fontWeight: 700,
+              opacity: pushing ? 0.6 : 1,
+            }}
           >
-            APPLY TO PRO FORMA
+            {pushing ? '…' : 'PUSH TO F9 →'}
           </button>
         </div>
       </div>
@@ -300,7 +345,7 @@ export function EventTimelineSection({ dealId, deal, dealType, onUpdate }: Event
         onClose={() => setShowDepModal(false)}
         onProceed={() => {
           setShowDepModal(false);
-          onUpdate?.();
+          handlePushToF9();
         }}
         onRunWithoutEvents={() => {
           setShowDepModal(false);
