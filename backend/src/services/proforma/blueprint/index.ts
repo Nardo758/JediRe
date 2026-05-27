@@ -28,7 +28,10 @@ import {
  * Falls back to acquisition_stabilized if the strategy is unknown.
  */
 export function pickTemplateForStrategy(strategySlug: string): ProFormaTemplateId {
-  const slug = (strategySlug || '').toLowerCase();
+  // Normalize display names ("Build-to-Sell", "Value-Add") and slugs ("build_to_sell")
+  // to the same underscore form so call sites don't need to pre-normalize.
+  // Task #1265 — added hyphen/space → underscore normalization to handle raw DB values.
+  const slug = (strategySlug || '').toLowerCase().replace(/[\s-]+/g, '_');
   for (const [id, spec] of Object.entries(PROFORMA_TEMPLATES)) {
     if (spec.strategyTriggers.some(t => t === slug)) {
       return id as ProFormaTemplateId;

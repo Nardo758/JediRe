@@ -1001,9 +1001,15 @@ ${comparableData}`;
       if (!result.rows[0]) return {};
       // Prefer the operator strategy override (drives pickTemplateForStrategy); fall back to deal_type
       // Task #1265: use canonical deal_type directly instead of fuzzy property_type text matching
-      const strategyOverride = result.rows[0].strategy_override as string | null;
+      const rawStrategy = result.rows[0].strategy_override as string | null;
       const dealType = (result.rows[0].deal_type as string | null) || null;
-      return { dealType, strategy: strategyOverride ?? null };
+      // Normalize display name → slug so pickTemplateForStrategy matches triggers.
+      // e.g. "Build-to-Sell" → "build_to_sell", "Value-Add" → "value_add".
+      // Task #1265 — belt-and-suspenders alongside the same fix in pickTemplateForStrategy.
+      const strategy = rawStrategy
+        ? rawStrategy.toLowerCase().replace(/[\s-]+/g, '_')
+        : null;
+      return { dealType, strategy };
     } catch {
       return {};
     }
