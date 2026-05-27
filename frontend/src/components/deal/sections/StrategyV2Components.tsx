@@ -1556,6 +1556,231 @@ export function AICoordinatorNarrative({ narrative }: { narrative: string }) {
   );
 }
 
+// ─── Strategy Intelligence Summary ───────────────────────────────────────────
+
+/**
+ * StrategyIntelligenceSummary — compact above-the-fold block that answers the
+ * operator's five most important questions without scrolling.
+ * Always rendered; financial fields are dashed when the detection gate is locked.
+ */
+export function StrategyIntelligenceSummary({
+  analysis,
+}: {
+  analysis: StrategyAnalysisV2;
+}) {
+  const det = analysis.detection;
+  const isGated = det.requiresUserConfirmation && !det.userConfirmed;
+
+  const primary = (analysis.subStrategies ?? []).find(ss => ss.isDetectedPrimary)
+    ?? analysis.subStrategies?.[0]
+    ?? null;
+
+  const conf = det.confidence;
+  const confPct = `${(conf * 100).toFixed(0)}%`;
+  const confLabel = conf >= 0.85 ? 'HIGH' : conf >= 0.70 ? 'MEDIUM' : 'LOW';
+  const cColor = confColor(conf);
+
+  const fp = primary?.financialPreview;
+  const riskFactors = primary?.evidenceReport?.thesisPrompt?.riskFactors ?? [];
+  const topRisk = riskFactors[0] ?? null;
+  const thesis = primary?.evidenceReport?.thesis ?? null;
+
+  const entryQuarter = analysis.plan?.entry?.targetQuarter ?? null;
+  const priceCeiling = analysis.plan?.entry?.priceCeiling ?? null;
+
+  const dash = '—';
+
+  const fmt = (v: unknown, suffix = '', digits = 1): string => {
+    if (isGated) return dash;
+    if (v === null || v === undefined || v === '') return dash;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return dash;
+    return `${n.toFixed(digits)}${suffix}`;
+  };
+
+  const fmtPrice = (v: unknown): string => {
+    if (isGated) return dash;
+    if (v === null || v === undefined) return dash;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return dash;
+    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+    if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
+    return `$${n.toFixed(0)}`;
+  };
+
+  const holdMonths = fp?.holdMonths ?? null;
+  const holdStr = isGated
+    ? dash
+    : holdMonths != null && Number.isFinite(Number(holdMonths))
+      ? Number(holdMonths) >= 12
+        ? `${(Number(holdMonths) / 12).toFixed(1)}yr`
+        : `${Number(holdMonths)}mo`
+      : dash;
+
+  const strategyName = (primary?.name || det.detectedSubStrategy || det.detectedDealType || '')
+    .replace(/_/g, ' ')
+    .toUpperCase() || dash;
+
+  return (
+    <div style={{
+      borderLeft: `3px solid ${BT.text.amber}`,
+      background: BT.bg.panelAlt,
+      borderBottom: `1px solid ${BT.border.subtle}`,
+      padding: '10px 14px 12px',
+    }}>
+      {/* Header row */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        marginBottom: 10, flexWrap: 'wrap',
+      }}>
+        <span style={{
+          fontFamily: MONO, fontSize: 9, color: BT.text.amber,
+          letterSpacing: 1, fontWeight: 700,
+        }}>
+          STRATEGY INTELLIGENCE
+        </span>
+        <span style={{
+          fontFamily: MONO, fontSize: 9, color: BT.text.muted,
+        }}>
+          ·
+        </span>
+        <span style={{
+          fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.primary,
+          letterSpacing: 0.3,
+        }}>
+          {strategyName}
+        </span>
+        {/* Confidence badge */}
+        <span style={{
+          fontFamily: MONO, fontSize: 9, fontWeight: 700, color: cColor,
+          background: `${cColor}18`, border: `1px solid ${cColor}44`,
+          padding: '1px 6px', letterSpacing: 0.5,
+        }}>
+          {confLabel} {confPct}
+        </span>
+        {isGated && (
+          <span style={{
+            fontFamily: MONO, fontSize: 8, color: BT.text.amber,
+            background: `${BT.text.amber}12`, border: `1px solid ${BT.text.amber}33`,
+            padding: '1px 6px', letterSpacing: 0.4,
+          }}>
+            CONFIRM DETECTION TO UNLOCK FINANCIALS
+          </span>
+        )}
+      </div>
+
+      {/* Data grid — 4 columns */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: '6px 10px',
+      }}>
+        {/* Col 1: IRR + EM */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <SummaryCell
+            label="PRIMARY IRR"
+            value={fmt(fp?.irr, '%', 1)}
+            color={isGated ? BT.text.muted : BT.text.green}
+          />
+          <SummaryCell
+            label="EQUITY MULTIPLE"
+            value={isGated ? dash : fp?.equityMultiple != null ? `${Number(fp.equityMultiple).toFixed(2)}×` : dash}
+            color={isGated ? BT.text.muted : BT.text.green}
+          />
+        </div>
+
+        {/* Col 2: Hold + Entry */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <SummaryCell
+            label="HOLD PERIOD"
+            value={holdStr}
+            color={isGated ? BT.text.muted : BT.text.cyan}
+          />
+          <SummaryCell
+            label="ENTRY TARGET"
+            value={isGated ? dash : entryQuarter ?? dash}
+            color={isGated ? BT.text.muted : BT.text.cyan}
+          />
+        </div>
+
+        {/* Col 3: Price ceiling + Top risk */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <SummaryCell
+            label="PRICE CEILING"
+            value={fmtPrice(priceCeiling)}
+            color={isGated ? BT.text.muted : BT.text.amber}
+          />
+          <SummaryCell
+            label="TOP RISK"
+            value={isGated ? dash : topRisk ?? dash}
+            color={isGated ? BT.text.muted : BT.text.red}
+            truncate
+          />
+        </div>
+
+        {/* Col 4: Thesis */}
+        <div style={{
+          display: 'flex', flexDirection: 'column', justifyContent: 'center',
+          borderLeft: `1px solid ${BT.border.subtle}`, paddingLeft: 10,
+        }}>
+          <div style={{
+            fontFamily: MONO, fontSize: 8, color: BT.text.muted,
+            letterSpacing: 0.8, marginBottom: 3, textTransform: 'uppercase',
+          }}>
+            THESIS
+          </div>
+          <div style={{
+            fontFamily: MONO, fontSize: 9,
+            color: isGated ? BT.text.muted : BT.text.secondary,
+            lineHeight: 1.45,
+            display: '-webkit-box',
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: 'vertical' as const,
+            overflow: 'hidden',
+            fontStyle: isGated ? 'italic' : 'normal',
+          }}>
+            {isGated ? 'Confirm detection to unlock thesis.' : thesis ?? dash}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryCell({
+  label,
+  value,
+  color,
+  truncate = false,
+}: {
+  label: string;
+  value: string;
+  color: string;
+  truncate?: boolean;
+}) {
+  return (
+    <div>
+      <div style={{
+        fontFamily: MONO, fontSize: 8, color: BT.text.muted,
+        letterSpacing: 0.8, marginBottom: 2, textTransform: 'uppercase',
+      }}>
+        {label}
+      </div>
+      <div style={{
+        fontFamily: MONO, fontSize: 10, fontWeight: 700, color,
+        ...(truncate ? {
+          whiteSpace: 'nowrap' as const,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          maxWidth: '100%',
+        } : {}),
+      }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
 // ─── Full V2 Analysis Renderer ────────────────────────────────────────────────
 
 /**
@@ -1583,6 +1808,9 @@ export function V2FullAnalysis({
 
   return (
     <HoverContext.Provider value={{ hoveredEvidenceRef, setHoveredEvidenceRef }}>
+      {/* Strategy Intelligence Summary — always shown, above detection banner */}
+      <StrategyIntelligenceSummary analysis={analysis} />
+
       {/* Detection Banner — always shown */}
       <DetectionBanner detection={det} onConfirm={onConfirm} onAdjust={onAdjust} onOverride={onOverride} />
 
