@@ -1,0 +1,78 @@
+REGIMEEXPAND — SOURCECOLOR HELPER FIX
+
+CONTEXT
+Per MANDATE_CONSUMER_WIRING.md (verified outcome pending), the 
+Mandate v1.3 lift exposed a rendering bug in RegimeExpand:
+
+The sourceColor() helper does exact-key lookup against expected 
+source strings. The agent now writes tiered sources like 
+'tier1:t12' and 'agent:cashflow' that don't match any exact key. 
+These fall through to gray and render compound labels like 
+'TIER1:T12' instead of clean source pills.
+
+The investigation identified this as Tier 1 work — the small fix 
+that unlocks the visible benefit of the entire Mandate lift.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. The RegimeExpand component file exists at its expected path 
+   (locate via grep if path uncertain)
+2. The sourceColor() helper exists in the file as described
+3. The bug is still present in the current version (not silently 
+   fixed by another task since the investigation closed)
+4. The agent is currently writing tiered source strings 
+   ('tier1:t12', 'agent:cashflow', etc.) — sanity check that the 
+   data shape matches what the fix targets
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+A. Open RegimeExpand.tsx
+B. Locate the sourceColor() helper
+C. Update the helper to handle tiered source strings:
+   - Recognize the prefix-colon pattern (e.g., 'tier1:t12', 
+     'agent:cashflow')
+   - Strip or parse the prefix to map to the existing color 
+     scheme
+   - Preserve any existing exact-key behavior for non-tiered 
+     sources (don't break what's already working)
+D. Update the label rendering to display clean source pills 
+   rather than 'TIER1:T12' compounds
+E. Verify the fix is ~8 lines as the investigation estimated; 
+   if substantially more, flag and report before continuing
+
+═══════════════════════════════════════════════════════════════════
+TESTING
+═══════════════════════════════════════════════════════════════════
+
+A. Open a deal with populated regimeDataByField (any value-add 
+   deal where the agent has run post-v1.3)
+B. Confirm pre/post source pills render correctly
+C. Confirm existing non-tiered sources still render correctly 
+   (regression check)
+D. Take a screenshot showing pre and post pills rendering cleanly
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Code change in RegimeExpand.tsx (~8 lines).
+Closing note in docs/operations/REGIMEEXPAND_SOURCECOLOR_FIX.md:
+(a) Before/after of the sourceColor() helper
+(b) Verification testing results
+(c) Any regression observations
+(d) Confirmation that Tier 1 from MANDATE_CONSUMER_WIRING.md 
+    is closed
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify rendering behavior beyond the sourceColor() helper 
+  and its label output
+- Refactor the rest of RegimeExpand
+- Change the data shape expectations (the agent's tiered source 
+  format stays as-is; the helper adapts to it)
+- Touch other F9 components
+- "While I'm here" cleanups

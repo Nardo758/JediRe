@@ -592,3 +592,140 @@ Only one Tier 1 item exists (source badge fix in RegimeExpand). This should be d
 | regimeDataByField consumers — 3 call sites, 2 type defs | `ProFormaSummaryTab.tsx` | ~191, ~1656, ~1722, ~1996 | VERIFIED (per MANDATE_LIFT_DESIGN.md §3 and independent grep) |
 | Null filtering in composer — entries with both null omitted | `proforma-adjustment.service.ts` | 4864 | VERIFIED per MANDATE_LIFT_DESIGN.md §3.3 |
 | No prior MANDATE_CONSUMER* or REGIME_* investigation files | `docs/operations/` | directory listing | VERIFIED — none found |
+
+---
+
+═══════════════════════════════════════════════════════════════════
+VERIFICATION PASS — 2026-05-27
+═══════════════════════════════════════════════════════════════════
+
+**State verification pre-checks:**
+1. `docs/operations/MANDATE_CONSUMER_WIRING.md` — EXISTS (594 lines before this section). ✓
+2. All 7 sections present per TOC. ✓
+3. No prior verification section present. ✓
+
+---
+
+### (a) Document Integrity
+
+**PASS.** All 7 required sections present and substantive.
+
+| Section | Present? | Assessment |
+|---|---|---|
+| 1. Executive summary (3 surfaces, readiness table, sequencing) | YES | §1 includes state verification, per-surface summary table, and tier overview |
+| 2. RegimeExpand component assessment | YES | §2 covers empty-data behavior, populated-data behavior, rendering bug, edge cases, readiness table |
+| 3. F9 ProForma rendering assessment | YES | §3 covers all 9 F9 tabs individually, optional chaining claim, KPI displays |
+| 4. Agent self-validation assessment | YES | §4 covers existing mechanisms (A/B/C), missing checks table, recommended additions with code samples, cross-reference to MANDATE_LIFT_DESIGN.md §4 |
+| 5. Gap 2 confidence propagation design | YES | §5 frames the question, analyzes 4 options with pros/cons, recommends Option 3 with 4 rationale points, documents implementation impact |
+| 6. Implementation sequencing | YES | §6 covers Tier 1/2/3 with file + effort estimates |
+| 7. Statistics and open questions | YES | §7 has consumer counts, rendering state table, self-validation state table, 4 open questions |
+
+594 lines is appropriate for the scope. No thin sections.
+
+---
+
+### (b) Source Citation Spot Checks
+
+**Spot Check A — RegimeExpand source badge bug**
+
+- **Claim:** `sourceColor()` uses exact-key lookup; tiered source strings fall through to gray; labels render as compound strings like `TIER1:T12`.
+- **Code verified:** `RegimeExpand.tsx` lines 103–112 (at time of investigation): `SOURCE_COLOR` map keys are `agent`, `platform`, `broker`, `archive`, `t12`, `default`. `sourceColor()` calls `src.toLowerCase()` and does exact lookup against those keys.
+- **Tiered source strings confirmed in agent code:**
+  - `cashflow.postprocess.ts` line 602: `source: (subObj['source'] as string | null) ?? 'agent:cashflow'`
+  - `value-add.ts` lines 63, 68, 74: `"source": "agent:cashflow"`, `"source": "tier1:t12"`, `"source": "tier3:market_comp"` (example output in prompt variant)
+  - `output-schema.ts` line 25: `description: 'LayeredValueSource — e.g. tier1:t12, tier2:owned_asset, tier3:platform'`
+  - `line-item-matrix.ts` lines 909, 914, 920: same compound source string format in the output slot schema
+- **~8-line estimate:** The investigation estimated ~8 lines for the fix. The actual implementation required a `normalizeSource()` helper (~10 lines) + updated `sourceColor()` (~4 lines) + new `sourceLabel()` function (~4 lines) + badge label update (1 line) = ~19 lines. The fix was slightly larger than estimated but still a single-function scope with no design ambiguity. **Minor discrepancy — estimate was optimistic; scope was correct.**
+- **Verdict: CONFIRMED** (estimate discrepancy noted; bug and fix are as described).
+
+**Spot Check B — F9 optional chaining claim**
+
+- **Claim:** "All three ProFormaSummaryTab call sites use optional chaining (`?.`). No consumer assumes `regimeDataByField` is populated."
+- **Grep result:** `grep -n "regimeDataByField" ProFormaSummaryTab.tsx`:
+  - Line 191: `regimeDataByField?: Record<string, {...}>` — optional field in type definition ✓
+  - Line 1656: `regimeData={data?.regimeDataByField?.[r.field] ?? null}` ✓
+  - Line 1722: `regimeData={data?.regimeDataByField?.[r.field] ?? null}` ✓
+  - Line 1996: `regimeData={data?.regimeDataByField?.[r.field] ?? null}` ✓
+- **Sensitivity and Decision tabs:** Independent grep for `regimeDataByField|pre_renovation|post_stabilization` across `frontend/src/` (excluding RegimeExpand and ProFormaSummaryTab) returned **no results**. Neither tab reads sub-field data. Neither breaks when sub-field data is populated.
+- **Distinction confirmed:** "Doesn't break" vs "could be enhanced" is correctly classified. No Tier 3 item is a disguised bug.
+- **Verdict: CONFIRMED.**
+
+**Spot Check C — Agent self-validation current state**
+
+- **Claim:** "Confidence gate and numeric check are enforced; 4 checks are missing (directional consistency, primary value consistency, confidence inversion, delta plausibility)."
+- **Confidence gate:** `cashflow.postprocess.ts` lines 589–596 — `if (subField === 'post_stabilization' && conf === 'low') { continue; }` — CONFIRMED ✓
+- **Numeric check:** Lines 586–587 — `if (typeof subVal !== 'number' || !isFinite(subVal)) continue;` — CONFIRMED ✓
+- **4 missing checks:** Grep for `directional`, `DIRECTIONAL`, `inversion`, `DELTA_THRESHOLD`, `consistency` in `cashflow.postprocess.ts` returned **no results** for any of these patterns. None of the 4 missing checks are partially implemented.
+- **Verdict: CONFIRMED.**
+
+**Spot Check D — Gap 2 recommendation reasoning**
+
+- **Claim:** Option 3 (Independent) recommended; Options 1, 2, 4 were genuinely considered, not straw-manned.
+- **Option 1 (conservative):** Rejected because it would "silently degrade JEDI Score and OperatorStance for every value-add deal" and the parent confidence was established independently of sub-field analysis — specific, substantive rejection.
+- **Option 2 (optimistic):** Rejected as "allows low-quality post-stabilization projection to be masked by high-confidence T12 pre-renovation actuals" — direct rejection with a concrete failure mode.
+- **Option 4 (weighted by strategy):** Rejected as "requires deal_type to flow into confidence derivation logic — which has no current pattern" and "bespoke and opaque to downstream consumers" — cost-specific rejection, not a straw-man.
+- **LayeredValue design consistency:** The LayeredValue pattern across the codebase does not have any precedent for a value's confidence being modified by a sub-field's confidence. The pattern always assigns confidence at the evidence resolution layer. Option 3 is consistent.
+- **Verdict: CONFIRMED** — all four options were genuinely analyzed; Option 3 recommendation is sound.
+
+**Spot Check E — Postprocess confidence write path (claim: Option 3 is what the code already does)**
+
+- **Claim:** "No code change needed — parent confidence is independent today."
+- **Verification:** The sub-field writeback (lines 598–604) stores payload to key `{year1Key}__pre_renovation` or `{year1Key}__post_stabilization` via `jsonb_set`. The primary field's year1 entry (at key `{year1Key}`) is written in the main AGENT_FIELD_TO_YEAR1 loop above (lines ~401–554). These are **separate JSONB paths** — the sub-field write does not touch the primary key's `confidence` value.
+- The parent field's confidence in `DealFinancials` is composed by `proforma-adjustment.service.ts` during the LayeredValue resolution — it reads the primary year1 entry, not the `__pre_renovation`/`__post_stabilization` entries.
+- The postprocess confidence_distribution aggregation (line 1215–1226) counts confidence levels across primary proforma fields — it reads `full.confidence_level` or `full.confidence` from the primary agent output, not from sub-field entries.
+- **Conclusion:** Sub-field confidence values are isolated in their own JSONB keys. The primary field confidence is never modified by sub-field writes. Option 3 is what the code already does.
+- **Verdict: CONFIRMED** — "no code change needed" is correct.
+
+---
+
+### (c) Implementation Sequencing Coherence
+
+**Tier 1 (RegimeExpand sourceColor fix):** This IS the smallest unit that produces visible benefit. No prerequisite exists — RegimeExpand already correctly reads and renders `regimeData`; only the badge color/label are wrong. There is no smaller shippable unit that would produce observable value. **Sequencing correct.**
+
+**Tier 2 (4 postprocess validation checks):** The four checks (directional, primary value consistency, confidence inversion, delta plausibility) are independently shippable. They all operate within the same sub-field write loop (lines 578–633) and can be added in any order. No inter-dependencies. They are all `logger.warn` only — no rejection logic changes — making the risk profile identical across all four. Can ship as one dispatch or be split without blocking each other. **Sequencing correct.**
+
+**Tier 3 (F9 Decision/Sensitivity enhancements):** Both verified as genuine enhancement opportunities, not bugs. Decision tab doesn't break; it just lacks a "Pre-Renovation NOI" insight row. Sensitivity tab doesn't break; it just lacks an annotation. **Classification correct.**
+
+**Backfill (OQ2):** Forward-only is the accepted answer and is addressed in §7.4 OQ2. No separate tier needed — a tier would imply actionable work items, and "run the agent again" is operator-driven, not platform-driven. **Addressed correctly.**
+
+**Gap in sequencing:** Tier 1 is now resolved (RegimeExpand fix shipped as a parallel dispatch alongside this verification). The document should note this when read post-dispatch. No structural change needed to the document.
+
+---
+
+### (d) Open Questions Classification
+
+| Open question | Classified as | Verified class | Blocking? |
+|---|---|---|---|
+| OQ1 — Gap 2: confirm Independent ruling for parent confidence | Implicit (§5.3 recommendation) | IMPORTANT | No — code already implements it; ruling is confirmatory |
+| OQ2 — Backfill: forward-only for prior agent runs | Informational (addressed in §7.4) | INFORMATIONAL | No |
+| OQ3 — Empty regimeDataByField vs populated-but-all-null | Informational (§7.4) | INFORMATIONAL | No — null filtering in composer (line 4864) prevents the edge case |
+| OQ4 — Which Tier 1 work fires first | Informational (only one Tier 1 item exists) | INFORMATIONAL | No |
+
+**No blocking open questions.** OQ1 is the most consequential — it should be confirmed before any developer modifies the postprocess confidence write path. But it requires no implementation work; the document itself serves as the confirmation artifact.
+
+---
+
+### (e) Identified Gaps
+
+**Gap 1 — ~8-line estimate was an underestimate (minor).**
+The investigation estimated ~8 lines for the Tier 1 fix. The actual fix required ~19 lines (normalizeSource helper + updated sourceColor + new sourceLabel + label update). The scope and approach were correct; the estimate was optimistic. For future sequencing, Tier 1 dispatch effort should be read as ~30 minutes (investigation estimate) rather than being recalculated.
+
+**Gap 2 — Non-tab F9 surfaces not explicitly inventoried.**
+The investigation covers all 9 F9 tabs but does not address non-tab surfaces (header/footer layout, print/export views, mobile viewport). Independent grep for `regimeDataByField|pre_renovation|post_stabilization` across all of `frontend/src/` (excluding the known consumers) returned **no results** — no non-tab surface reads sub-field data. The gap in the investigation is an implicit assumption that was correct, but would benefit from being stated explicitly. Impact: zero (no surface was missed). Classification: INFORMATIONAL.
+
+**Gap 3 — JEDI Score integration left implicit.**
+§5.4 states "JEDI Score: No change — reads primary field confidence only." The investigation does not show which JEDI Score file reads primary confidence or confirm that it doesn't read `regimeDataByField` directly. For a document that flags Gap 2 as "the most consequential remaining design question," a one-line source citation for the JEDI Score reader would have strengthened §5.4. Impact: low (the claim is directionally correct — the JEDI Score is not a `regimeDataByField` consumer). Classification: INFORMATIONAL.
+
+**Gap 4 — "Both sub-fields absent when evidence is available" not mapped to a tier.**
+§4.2 lists "Both sub-fields absent when evidence is available" as a missing check. §4.5 readiness table omits it (only lists the 4 specific checks + sigma enrichment). §6.2 Tier 2 also omits it from the 4 recommended postprocess additions. The issue is real but hard to enforce deterministically (the postprocess would need to know what T12 evidence is available to require sub-fields — that's agent input context not easily accessible at writeback time). The gap is correctly left unimplemented; it should be explicitly noted as "not feasible at postprocess layer — prompt-side enforcement only" rather than silently omitted. Classification: INFORMATIONAL.
+
+---
+
+### (f) Overall Verdict
+
+**APPROVED FOR DOWNSTREAM WORK**
+
+All 5 spot checks confirmed. Document is accurate, sourced, and implementable. Tier 1 dispatch (RegimeExpand sourceColor fix) was executed in parallel with this verification and has been shipped. Implementation sequencing is coherent. No blocking questions remain.
+
+Tier 2 (postprocess directional consistency + Gap 2 comment) may proceed. The Gap 2 Independent ruling is confirmed by this verification — no code change required.
+

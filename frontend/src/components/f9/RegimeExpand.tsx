@@ -106,9 +106,27 @@ const SOURCE_COLOR: Record<string, string> = {
   default: '#475569',
 };
 
+/** Strip tier prefix from compound source strings like 'tier1:t12' → 't12', 'agent:cashflow' → 'agent' */
+function normalizeSource(src: string): string {
+  const lower = src.toLowerCase();
+  const colonIdx = lower.indexOf(':');
+  if (colonIdx === -1) return lower;
+  const suffix = lower.slice(colonIdx + 1);
+  const prefix = lower.slice(0, colonIdx);
+  // 'agent:*' → 'agent'; 'tier*:key' → key
+  if (prefix === 'agent') return 'agent';
+  return suffix || lower;
+}
+
 function sourceColor(src: string | null): string {
   if (!src) return SOURCE_COLOR.default;
-  return SOURCE_COLOR[src.toLowerCase()] ?? SOURCE_COLOR.default;
+  const key = normalizeSource(src);
+  return SOURCE_COLOR[key] ?? SOURCE_COLOR.default;
+}
+
+function sourceLabel(src: string | null): string {
+  if (!src) return '';
+  return normalizeSource(src).toUpperCase();
 }
 
 const CONFIDENCE_COLORS = {
@@ -194,7 +212,7 @@ function RegimeRow({
             borderRadius: 2, padding: '0px 4px', fontSize: 7,
             fontWeight: 700, letterSpacing: '0.06em',
           }}>
-            {src.toUpperCase()}
+            {sourceLabel(src)}
           </span>
         )}
       </td>

@@ -1,0 +1,201 @@
+VERIFICATION PASS — MANDATE_CONSUMER_WIRING.md
+
+CONTEXT
+Per CLAUDE.md P8, the Consumer Wiring investigation closing note 
+must be verified before Tier 2 implementation (agent self-
+validation enhancements) fires. Tier 1 (RegimeExpand fix) is 
+small enough to run in parallel with verification.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. docs/operations/MANDATE_CONSUMER_WIRING.md exists at expected 
+   path
+2. The document is complete per the dispatch spec (Sections 1-7)
+3. No verification section has been appended yet
+
+═══════════════════════════════════════════════════════════════════
+STEP 1 — DOCUMENT INTEGRITY
+═══════════════════════════════════════════════════════════════════
+
+A. Confirm document exists and is readable
+B. Confirm sections per dispatch spec:
+   1. Executive summary
+   2. RegimeExpand assessment
+   3. F9 ProForma rendering assessment
+   4. Agent self-validation assessment
+   5. Gap 2 confidence propagation design
+   6. Implementation sequencing (Tier 1/2/3)
+   7. Statistics + open questions
+C. Flag any section thinner than expected (594 lines per Leon's 
+   report — should be substantive)
+
+═══════════════════════════════════════════════════════════════════
+STEP 2 — SOURCE CITATION SPOT-CHECKS
+═══════════════════════════════════════════════════════════════════
+
+For 5 specific factual claims, verify accuracy:
+
+A. REGIMEEXPAND BUG ASSESSMENT
+   - Open RegimeExpand.tsx
+   - Verify sourceColor() does exact-key lookup as described
+   - Verify the tiered source string format ('tier1:t12') actually 
+     appears in current agent output (grep agent code for the 
+     literal pattern)
+   - Confirm the ~8-line fix estimate is plausible
+
+B. F9 OPTIONAL CHAINING CLAIM
+   - The investigation claims "all three ProFormaSummaryTab call 
+     sites use optional chaining" — verify by grep
+   - Confirm no tabs crash on populated sub-field data
+   - If Sensitivity / Decision tab enhancement opportunities are 
+     listed as Tier 3, verify they don't actually break in current 
+     state (the distinction between "doesn't break" and "could be 
+     enhanced" matters)
+
+C. AGENT SELF-VALIDATION CURRENT STATE
+   - The investigation claims "confidence gate and numeric check 
+     are enforced"
+   - Open the agent self-validation code and confirm these checks 
+     exist
+   - The investigation lists 4 missing checks (directional 
+     consistency, primary value consistency, confidence inversion, 
+     delta plausibility). Confirm none of these are already 
+     partially implemented
+
+D. GAP 2 RECOMMENDATION REASONING
+   - The investigation recommends Option 3 (Independent) for 
+     parent confidence
+   - Read the rationale section
+   - Verify the three options were all genuinely considered (not 
+     straw-man dismissals of Options 1, 2, 4)
+   - Verify Option 3 is consistent with the LayeredValue design 
+     elsewhere in the codebase (no hidden conflicts)
+
+E. POSTPROCESS CONFIDENCE WRITE PATH
+   - The investigation says "No code change needed; ruling just 
+     needs to be referenced before any future work touches the 
+     postprocess confidence write path"
+   - Locate the postprocess confidence write path code
+   - Verify Option 3 is what the code already does (i.e., parent 
+     confidence is independent today, so the ruling is "keep as-is")
+   - If the code does something different today, the "no code 
+     change needed" claim is wrong
+
+For each verified claim, document:
+- The claim as stated
+- The actual code/file/data that confirms or contradicts it
+- Verdict: CONFIRMED / PARTIAL / CONTRADICTED / NOT FOUND
+
+═══════════════════════════════════════════════════════════════════
+STEP 3 — IMPLEMENTATION SEQUENCING COHERENCE
+═══════════════════════════════════════════════════════════════════
+
+The investigation produces Tier 1/2/3 sequencing. Verify:
+
+A. Tier 1 (RegimeExpand sourceColor fix) — is the smallest unit 
+   of work that produces visible benefit? Or is there a smaller 
+   prerequisite that should ship first?
+
+B. Tier 2 (4 agent self-validation checks) — are these 
+   independently shippable, or do they have inter-dependencies 
+   that should affect the sub-sequence?
+
+C. Tier 3 (F9 enhancements) — confirm these are genuinely 
+   enhancement opportunities, not bugs being misclassified as 
+   Phase 2 work
+
+D. Is anything missing from the sequencing that should be a 
+   tier? (e.g., backfill considerations for prior agent runs 
+   that wrote no pre/post data — does this need a tier, or is 
+   forward-only the accepted answer?)
+
+═══════════════════════════════════════════════════════════════════
+STEP 4 — OPEN QUESTIONS ASSESSMENT
+═══════════════════════════════════════════════════════════════════
+
+A. List the open questions the document surfaces
+B. Classify each:
+   - BLOCKING — implementation cannot proceed
+   - IMPORTANT — affects scope but not start
+   - INFORMATIONAL — handled inline
+C. Flag any blocking question that depends on data/sources that 
+   don't exist
+
+═══════════════════════════════════════════════════════════════════
+STEP 5 — POTENTIAL GAPS
+═══════════════════════════════════════════════════════════════════
+
+Think about what's MISSING:
+
+A. BACKFILL QUESTION
+   - The investigation may have addressed it, may have skipped it
+   - Prior agent runs (Sentosa, others) wrote no pre/post data 
+     under the Mandate
+   - Should those deals be rerun to populate sub-fields, or is 
+     forward-only acceptable?
+   - If addressed: verify the recommendation is sound
+   - If not addressed: flag as a gap
+
+B. UI CONSISTENCY ACROSS DEAL TYPES
+   - For stabilized deals (no pre/post distinction), how does 
+     RegimeExpand render?
+   - For value-add deals, both regimes populate
+   - For new construction, pre may be N/A
+   - Is the rendering coherent across these states?
+
+C. SIGMA ENGINE INTERACTION
+   - The investigation should address whether delta plausibility 
+     (Tier 2) integrates with the sigma engine
+   - If yes: which is authoritative when they disagree?
+   - If not addressed: flag
+
+D. JEDI SCORE INTEGRATION
+   - The investigation flagged Gap 2 as relevant for JEDI Score 
+     integration
+   - Does the sequencing actually surface JEDI Score work, or 
+     does it stay implicit?
+
+E. F9 ProForma SECTIONS BEYOND TABS
+   - The investigation focused on tabs (Overview, Pro Forma, 
+     Projections, Assumptions, Debt, Waterfall, Sensitivity, 
+     Decision, Compare)
+   - Are there non-tab F9 surfaces (headers, footers, sidebars, 
+     export/print views) that also consume regimeDataByField?
+   - If overlooked: flag
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Append verification section to MANDATE_CONSUMER_WIRING.md:
+
+═══════════════════════════════════════════════════════════════════
+VERIFICATION PASS — [date]
+═══════════════════════════════════════════════════════════════════
+
+(a) Document integrity: <result>
+(b) Source citations (5 spot checks):
+    - RegimeExpand bug assessment: <verdict + evidence>
+    - F9 optional chaining: <verdict + evidence>
+    - Agent self-validation current state: <verdict + evidence>
+    - Gap 2 recommendation reasoning: <verdict + evidence>
+    - Postprocess confidence write path: <verdict + evidence>
+(c) Implementation sequencing coherence: <assessment>
+(d) Open questions classification:
+    BLOCKING: <list>
+    IMPORTANT: <list>
+    INFORMATIONAL: <list>
+(e) Identified gaps: <list>
+(f) Overall verdict: APPROVED FOR DOWNSTREAM WORK / 
+    NEEDS AMENDMENT / NEEDS REWORK
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify investigation content (only append)
+- Run new investigation outside verification scope
+- Implement any code changes (Tier 1 is a separate parallel 
+  dispatch; this is verification only)
+- Skip Step 5 (gaps)
+- "While I'm here" cleanups
