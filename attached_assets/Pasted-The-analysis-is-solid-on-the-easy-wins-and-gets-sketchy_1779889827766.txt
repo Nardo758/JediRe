@@ -1,0 +1,13 @@
+The analysis is solid on the easy wins and gets sketchy on the harder calls. Worth unpacking by risk class, because the recommendation table collapses four very different categories into one priority order.
+Confirmed wins (zero design risk, just delete): InvestmentStrategySection (1,265) and StrategySection (147), assuming a grep confirms zero remaining imports outside the redirect-only pages. The doc files in sections/ (SUPPLY_SECTION_EXAMPLE, OPUS_AI_INTEGRATION_EXAMPLE, DOCUMENTS_SECTION_USAGE) — yes, delete. Pure cognitive load.
+Suspected dead (verify before deleting): The DealPage / DealPageEnhanced / DealView triplet plus DebtTab + ExitStrategyTabs (2,200 lines). The analysis itself flags the DebtTab uncertainty. These don't belong in the same priority bucket as the confirmed wins — they're a separate verification task, then a separate delete task.
+Live code, design question disguised as cleanup: LegacySignalMatrixTab is not redundant with CorrelationTimingPanel — they're different views of related data. CTP shows the golden chain (causal/temporal); the matrix shows pair stability and signal counts (state/distribution). "Legacy" in the name is a tell that someone meant to redesign it, not delete it. The right move is probably to fold pair stability into CTP or promote the matrix to a real analytics tab. Just deleting it loses pair stability entirely.
+Live code, UX question that needs telemetry: The EvidenceReportBlock stack and the push-to-F9 plumbing in StrategyPlanDocument. The 9-block vertical scroll might be intentional Bloomberg-style density — collapsing it behind "show more" assumes users don't read the secondary sub-strategies, which is a guess without data. More importantly: push-to-F9 IS the M08→M09 keystone cascade. Calling 250 lines of conflict detection "rarely used" without telemetry is guessing about the integrity gate between strategy and underwriting. Don't touch either without usage data.
+Sequencing recommendation:
+
+One PR: delete the doc files + InvestmentStrategySection + StrategySection (after grep). Low risk, ~1,900 lines.
+Verification ticket: confirm DealPage / DealPageEnhanced / DealView / DebtTab / ExitStrategyTabs have no remaining imports. Output a delete-list, then a separate PR.
+Separate ticket: LegacySignalMatrixTab — design call, not cleanup. Decide between fold-into-CTP, promote-to-real-tab, or delete.
+Defer #4 and #5 until post-close telemetry (M22) can answer the usage question.
+
+Core observation that "live components are clean, the drag is accumulated legacy" is right. Just sequence the work by risk class, not by line count — the priority list as written mixes a safe 1,900-line win with a 250-line change to the keystone cascade.
