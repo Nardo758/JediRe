@@ -238,6 +238,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
 
   useEffect(() => {
     if (!dealId) return;
+    setImpliedCapData(null);
     setImpliedCapLoading(true);
     apiClient
       .get<{ success: boolean; data: ImpliedCapData }>(`/api/v1/deals/${dealId}/implied-cap-rate`)
@@ -554,9 +555,9 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   }, [saleComps, compSortField, compVintageBand]);
 
   const SALE_COMP_COLS = [
-    { label: 'PROPERTY',  flex: 2.5, color: BT2.text.secondary },
-    { label: 'DATE',      flex: 0.9, color: BT2.text.muted },
-    { label: 'UNITS',     flex: 0.6, color: BT2.text.secondary },
+    { label: 'PROPERTY',  flex: 2.0, color: BT2.text.secondary },
+    { label: 'DATE',      flex: 0.8, color: BT2.text.muted },
+    { label: 'PRICE',     flex: 0.9, color: BT2.met.financial },
     { label: '$/UNIT',    flex: 0.9, color: BT2.text.cyan },
     { label: 'NOI/UNIT',  flex: 0.9, color: BT2.met.economic ?? BT2.text.muted },
     { label: 'CAP RATE',  flex: 1.0, color: BT2.text.amber },
@@ -586,7 +587,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
 
       <SectionPanel
         title="SALE COMP TRANSACTIONS"
-        subtitle={`${filteredComps.length}${compVintageBand ? ` of ${saleCompCount}` : ` RECORDS`} · PROPERTY / DATE / UNITS / $/UNIT / NOI/UNIT / CAP RATE / SRC / DIST`}
+        subtitle={`${filteredComps.length}${compVintageBand ? ` of ${saleCompCount}` : ` RECORDS`} · PROPERTY / DATE / PRICE / $/UNIT / NOI/UNIT / CAP RATE / SRC / DIST`}
         borderColor={BT2.text.amber}
       >
         {saleCompsLoading && (
@@ -774,9 +775,9 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
                     <TableRow
                       index={i}
                       cells={[
-                        { value: c.property_address || '—',    flex: 2.5, color: BT2.text.secondary, weight: 600 },
-                        { value: fmtSaleDate(c.recording_date), flex: 0.9, color: BT2.text.muted },
-                        { value: c.units ? String(c.units) : '—', flex: 0.6, color: BT2.text.secondary },
+                        { value: c.property_address || '—',    flex: 2.0, color: BT2.text.secondary, weight: 600 },
+                        { value: fmtSaleDate(c.recording_date), flex: 0.8, color: BT2.text.muted },
+                        { value: fmtUsd(c.derived_sale_price),  flex: 0.9, color: BT2.met.financial },
                         { value: fmtUsd(c.price_per_unit),      flex: 0.9, color: BT2.text.cyan },
                         { value: estNoiPerUnit != null ? fmtUsd(estNoiPerUnit) : '—', flex: 0.9, color: BT2.met.economic ?? BT2.text.muted },
                         { value: capLabel,                      flex: 1.0, color: capColor, weight: isOutlier ? 700 : 400 },
