@@ -76,19 +76,8 @@ import { ExitCapitalModule } from '../components/deal/sections/ExitCapitalModule
 
 import { StrategyArbitragePage } from './development/StrategyArbitragePage';
 import { RiskDDPage } from './development/RiskDDPage';
-import { ProjectTimelinePage } from './development/ProjectTimelinePage';
-import { ProjectManagementSection } from '../components/deal/sections/ProjectManagementSection';
-
 import { FilesSection } from '../components/deal/sections/FilesSection';
-import CompsModule from '../components/deal/sections/CompsModule';
-import DealCompAnalysisTab from '../components/deal/sections/DealCompAnalysisTab';
 
-import OpusAISection from '../components/deal/sections/OpusAISection';
-import { AIRecommendationsSection } from '../components/deal/sections/AIRecommendationsSection';
-import { ContextTrackerSection } from '../components/deal/sections/ContextTrackerSection';
-import { TeamManagementSection } from '../components/deal/sections/TeamManagementSection';
-import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
-import { NotarizeClosingSection } from '../components/deal/sections/NotarizeClosingSection';
 import { DealToolsSection } from '../components/deal/sections/DealToolsSection';
 
 import { FinancialEnginePage } from './development/FinancialEnginePage';
@@ -172,49 +161,6 @@ const MarketScreen = (props: ScreenProps) => (
 const StrategyScreen = (props: ScreenProps) => (
   <StrategyArbitragePage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
 );
-const COMPS_SUBTABS: { id: 'sale' | 'rent'; label: string }[] = [
-  { id: 'sale', label: 'SALE COMPS' },
-  { id: 'rent', label: 'RENT COMPS' },
-];
-const BT_MONO = 'var(--bt-mono)';
-const CompsTabScreen = (props: ScreenProps) => {
-  const [activeSubTab, setActiveSubTab] = React.useState<'sale' | 'rent'>('sale');
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{
-        display: 'flex', gap: 0,
-        borderBottom: `1px solid ${BT.border.medium}`,
-        background: BT.bg.panel, flexShrink: 0,
-      }}>
-        {COMPS_SUBTABS.map(t => {
-          const active = activeSubTab === t.id;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setActiveSubTab(t.id)}
-              style={{
-                padding: '7px 18px', fontSize: 9, fontFamily: BT_MONO,
-                fontWeight: 700, letterSpacing: '0.08em', cursor: 'pointer',
-                border: 'none', background: 'transparent',
-                borderBottom: active ? `2px solid ${BT.text.amber}` : '2px solid transparent',
-                color: active ? BT.text.amber : BT.text.muted,
-                transition: 'color 0.15s',
-              }}
-            >
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {activeSubTab === 'sale' && (
-          <CompsModule dealId={props.dealId} deal={props.deal} embedded={true} onUpdate={props.onUpdate} />
-        )}
-        {activeSubTab === 'rent' && <DealCompAnalysisTab />}
-      </div>
-    </div>
-  );
-};
 const FinancialEngineWrapper = (p: ScreenProps) => (
   <FinancialEnginePage
     dealId={p.dealId}
@@ -254,60 +200,6 @@ const DebtCapitalScreen = (props: ScreenProps) => (
 const RiskScreen = (props: ScreenProps) => (
   <RiskDDPage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
 );
-const EXEC_TABS = [
-  { id: 'timeline',           label: 'PROJECT TIMELINE',   title: 'PROJECT TIMELINE',   subtitle: 'M17 · MILESTONES + GANTT',        border: BT.text.cyan    },
-  { id: 'project-management', label: 'PROJECT MANAGEMENT', title: 'PROJECT MANAGEMENT', subtitle: 'M17 · PM TASKS + ASSIGNMENTS',     border: BT.met.occupancy },
-  { id: 'construction-mgmt',  label: 'CONSTRUCTION MGMT',  title: 'CONSTRUCTION MGMT',  subtitle: 'M17 · CONSTRUCTION MONITORING',   border: BT.text.amber   },
-  { id: 'notarize-closing',   label: 'CLOSING (RON)',       title: 'NOTARIZE & CLOSE',   subtitle: 'M17 · REMOTE ONLINE NOTARIZATION', border: BT.met.financial },
-  { id: 'opus-ai',            label: 'OPUS AI',             title: 'OPUS AI ASSISTANT',  subtitle: 'M17 · INTELLIGENT EXECUTION AID', border: BT.text.purple  },
-] as const;
-const EXEC_COMPONENTS: Record<string, React.ComponentType<ScreenProps>> = {
-  timeline:           ProjectTimelinePage,
-  'project-management': ProjectManagementSection,
-  'construction-mgmt':  ConstructionManagementSection,
-  'notarize-closing':   NotarizeClosingSection,
-  'opus-ai':            OpusAISection,
-};
-const ExecutionScreen = (props: ScreenProps) => {
-  const [active, setActive] = React.useState<string>(EXEC_TABS[0].id);
-  const tab = EXEC_TABS.find(t => t.id === active) ?? EXEC_TABS[0];
-  const C = EXEC_COMPONENTS[tab.id] as React.ComponentType<ScreenProps>;
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal, animation: 'bt-fade 0.15s' }}>
-      <PanelHeader
-        title="EXECUTION"
-        subtitle="M17 · CLOSE + MANAGE"
-        borderColor={BT.text.cyan}
-        metrics={[
-          { l: 'TIMELINE', c: BT.text.cyan    },
-          { l: 'PM',       c: BT.met.occupancy },
-          { l: 'RON',      c: BT.met.financial },
-          { l: 'OPUS',     c: BT.text.purple  },
-        ]}
-      />
-      <div style={{ display: 'flex', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}`, flexShrink: 0, overflowX: 'auto', height: 28, alignItems: 'stretch' }}>
-        {EXEC_TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setActive(t.id)}
-            style={{
-              fontFamily: BT.font.mono, fontSize: 9, fontWeight: active === t.id ? 700 : 500,
-              padding: '0 14px', background: 'transparent', border: 'none',
-              borderBottom: active === t.id ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
-              color: active === t.id ? BT.text.cyan : BT.text.secondary,
-              cursor: 'pointer', whiteSpace: 'nowrap', letterSpacing: 0.6,
-            }}
-          >{t.label}</button>
-        ))}
-      </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: BT.bg.terminal }}>
-        <SectionPanel title={tab.title} subtitle={tab.subtitle} borderColor={tab.border} style={{ minHeight: '100%' }}>
-          <C {...props} />
-        </SectionPanel>
-      </div>
-    </div>
-  );
-};
 const Design3DScreen = (props: ScreenProps) => (
   <Design3DShellPage
     dealId={props.dealId}
@@ -317,24 +209,6 @@ const Design3DScreen = (props: ScreenProps) => (
 );
 const DealToolsScreen = (props: ScreenProps) => (
   <DealToolsSection dealId={props.dealId} deal={props.deal} />
-);
-
-const AIAgentScreen = (props: ScreenProps) => (
-  <DealScreenWrapper
-    passProps={props}
-    moduleTitle="AI AGENT"
-    moduleSubtitle="M20 · OPUS + RECOMMENDATIONS"
-    moduleBorderColor={BT.text.purple}
-    moduleMetrics={[
-      { l: 'OPUS', c: BT.text.purple },
-      { l: 'AI', c: BT.text.cyan },
-    ]}
-    accentColor={BT.text.purple}
-    tabs={[
-      { id: 'opus-ai',  label: 'Opus AI Agent',     component: OpusAISection },
-      { id: 'ai-recs',  label: 'AI Recommendations', component: AIRecommendationsSection },
-    ]}
-  />
 );
 
 const SupplyPipelineScreen = (props: ScreenProps) => (
