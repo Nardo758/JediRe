@@ -1183,13 +1183,17 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               </button>
             ))}
             <button
-              onClick={() => setShowStabilized(v => !v)}
+              onClick={() => !isSpecialTemplate && setShowStabilized(v => !v)}
+              disabled={isSpecialTemplate}
               style={{
-                padding: '3px 10px', fontSize: 9, fontWeight: 700, borderRadius: 2, border: 'none', cursor: 'pointer', fontFamily: MONO, letterSpacing: '0.06em', transition: 'all 0.15s',
-                background: showStabilized ? 'rgba(99,102,241,0.5)' : 'transparent',
-                color: showStabilized ? '#c7d2fe' : '#475569',
+                padding: '3px 10px', fontSize: 9, fontWeight: 700, borderRadius: 2, border: 'none',
+                cursor: isSpecialTemplate ? 'not-allowed' : 'pointer',
+                fontFamily: MONO, letterSpacing: '0.06em', transition: 'all 0.15s',
+                background: (!isSpecialTemplate && showStabilized) ? 'rgba(99,102,241,0.5)' : 'transparent',
+                color: (!isSpecialTemplate && showStabilized) ? '#c7d2fe' : '#3d3d3d',
+                opacity: isSpecialTemplate ? 0.4 : 1,
               }}
-              title="M09 — Stabilized Potential: 4-column bridge view"
+              title={isSpecialTemplate ? 'Not available for this deal type' : 'M09 — Stabilized Potential: 4-column bridge view'}
             >
               STABILIZED POTENTIAL
             </button>
@@ -1341,10 +1345,11 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
       )}
 
       {/* ── Not-yet-supported full-page notice (flip / STR / land_hold) ─────────
-           Replaces the entire scrollable body. The table rows from Task #1236
-           remain in the DOM below but are hidden via display:none so they can
-           be enabled when full modeling lands.                                ── */}
-      {isSpecialTemplate && !showStabilized && (
+           Replaces the entire scrollable body regardless of view toggle state.
+           showStabilized and showPostStabView are no-ops for special templates —
+           the STABILIZED POTENTIAL button is disabled (see header bar above).
+           Table rows from Task #1236 remain in DOM below but hidden.         ── */}
+      {isSpecialTemplate && (
         <div style={{
           flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
           padding: '48px 32px', background: '#0a0a0a', gap: 20,
@@ -1374,8 +1379,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         </div>
       )}
 
-      {/* ── Stabilized Potential (M09) overlay ── */}
-      {showStabilized && dealId && (
+      {/* ── Stabilized Potential (M09) overlay — suppressed for special templates ── */}
+      {!isSpecialTemplate && showStabilized && dealId && (
         <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
           <StabilizedPotentialView dealId={dealId} />
         </div>
@@ -1396,8 +1401,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         />
       )}
 
-      {/* ── Scrollable body (hidden for special templates — table preserved for future enablement) ── */}
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', display: (showStabilized || isSpecialTemplate) ? 'none' : undefined }}>
+      {/* ── Scrollable body (hidden for special templates or when stabilized view active) ── */}
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', display: (isSpecialTemplate || showStabilized) ? 'none' : undefined }}>
 
         {/* ── VALUATION SNAPSHOT STRIP ── */}
         {data.proforma.valuationSnapshot && (
