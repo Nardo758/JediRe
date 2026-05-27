@@ -92,6 +92,7 @@ export function EventTimelineSection({ dealId, deal, dealType, onUpdate }: Event
   const [showDepModal, setShowDepModal] = useState(false);
   const [depContext, setDepContext] = useState<'proforma' | 'strategy'>('proforma');
   const [pushing, setPushing] = useState(false);
+  const [lockedConflicts, setLockedConflicts] = useState<Array<{ fieldPath: string; existingValue: unknown }>>([]);
 
   const token = localStorage.getItem('auth_token') || '';
 
@@ -115,31 +116,35 @@ export function EventTimelineSection({ dealId, deal, dealType, onUpdate }: Event
 
   useEffect(() => { fetchContext(); }, [fetchContext]);
 
+  const rentGrowthVal = (CHART_METRICS.find(m => m.key === 'rent_growth_yoy')?.baseline ?? 3.2) / 100;
+  const capRateVal    = (CHART_METRICS.find(m => m.key === 'cap_rate')?.baseline ?? 5.2) / 100;
+
+  type ConflictItem = { fieldPath: string; existingValue: unknown };
+  type ApplyField   = { fieldPath: string; value: number; force?: boolean };
+
+  const callApply = useCallback(async (fields: ApplyField[]) => {
+    const res: any = await apiClient.post(
+      `/api/v1/deals/${dealId}/assumptions/apply-from-module`,
+      { source: 'event_timeline', appliedAt: new Date().toISOString(), fields },
+    );
+    return res.data as { applied: Array<{ fieldPath: string }>; conflicts: Array<{ fieldPath: string; reason: string; existingValue: unknown }> };
+  }, [dealId]);
+
   // Push M35 event-calibrated baselines to F9 assumptions via apply-from-module.
   // Values are the CHART_METRICS baselines converted to decimal fractions:
   //   cap_rate 5.2% → 0.052 → disposition.exitCapRate
   //   rent_growth_yoy 3.2% → 0.032 → revenue.rentGrowth[0]
   const handlePushToF9 = useCallback(async () => {
     if (!dealId || pushing) return;
-    const rentGrowthMetric = CHART_METRICS.find(m => m.key === 'rent_growth_yoy');
-    const capRateMetric    = CHART_METRICS.find(m => m.key === 'cap_rate');
-    const rentGrowthVal    = rentGrowthMetric ? rentGrowthMetric.baseline / 100 : 0.032;
-    const capRateVal       = capRateMetric    ? capRateMetric.baseline / 100    : 0.052;
-
     setPushing(true);
+    setLockedConflicts([]);
     try {
-      const res: any = await apiClient.post(
-        `/api/v1/deals/${dealId}/assumptions/apply-from-module`,
-        {
-          source: 'event_timeline',
-          appliedAt: new Date().toISOString(),
-          fields: [
-            { fieldPath: 'revenue.rentGrowth[0]', value: rentGrowthVal },
-            { fieldPath: 'disposition.exitCapRate', value: capRateVal },
-          ],
-        },
-      );
-      const { applied } = res.data as { applied: Array<{ fieldPath: string }>; conflicts: unknown[] };
+      const { applied, conflicts } = await callApply([
+        { fieldPath: 'revenue.rentGrowth[0]', value: rentGrowthVal },
+        { fieldPath: 'disposition.exitCapRate', value: capRateVal },
+      ]);
+      const locked = conflicts.filter(c => c.reason === 'user_locked');
+      if (locked.length > 0) setLockedConflicts(locked);
       if (applied.length > 0) {
         dispatchModuleApplied('event_timeline', applied.map(a => a.fieldPath));
       }
@@ -149,7 +154,32 @@ export function EventTimelineSection({ dealId, deal, dealType, onUpdate }: Event
       setPushing(false);
       onUpdate?.();
     }
-  }, [dealId, pushing, onUpdate]);
+  }, [dealId, pushing, callApply, rentGrowthVal, capRateVal, onUpdate]);
+
+  const handleForceOverwrite = useCallback(async () => {
+    if (!dealId || pushing || lockedConflicts.length === 0) return;
+    const valueMap: Record<string, number> = {
+      'revenue.rentGrowth[0]': rentGrowthVal,
+      'disposition.exitCapRate': capRateVal,
+    };
+    const fields: ApplyField[] = lockedConflicts
+      .map(c => ({ fieldPath: c.fieldPath, value: valueMap[c.fieldPath], force: true }))
+      .filter(f => f.value !== undefined);
+    if (fields.length === 0) { setLockedConflicts([]); return; }
+    setPushing(true);
+    setLockedConflicts([]);
+    try {
+      const { applied } = await callApply(fields);
+      if (applied.length > 0) {
+        dispatchModuleApplied('event_timeline', applied.map(a => a.fieldPath));
+      }
+    } catch (err) {
+      console.error('[EventTimeline] force-overwrite failed:', err);
+    } finally {
+      setPushing(false);
+      onUpdate?.();
+    }
+  }, [dealId, pushing, lockedConflicts, callApply, rentGrowthVal, capRateVal, onUpdate]);
 
   const events = ctx?.events || [];
   const topEvent = selectedEventId
@@ -219,6 +249,60 @@ export function EventTimelineSection({ dealId, deal, dealType, onUpdate }: Event
           </button>
         </div>
       </div>
+
+      {/* Conflict panel — shown when user-locked fields blocked the push */}
+      {lockedConflicts.length > 0 && (
+        <div style={{
+          margin: '0 12px 0',
+          padding: '7px 10px',
+          background: `${BT.text.amber}10`,
+          border: `1px solid ${BT.text.amber}44`,
+          borderLeft: `3px solid ${BT.text.amber}`,
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 5,
+        }}>
+          <div style={{ fontFamily: mono, fontSize: 9, fontWeight: 700, color: BT.text.amber }}>
+            ⚠ FIELD CONFLICT — {lockedConflicts.length} USER-LOCKED VALUE{lockedConflicts.length > 1 ? 'S' : ''} NOT PUSHED
+          </div>
+          {lockedConflicts.map((c, i) => (
+            <div key={i} style={{ fontFamily: mono, fontSize: 8, color: BT.text.secondary }}>
+              <span style={{ color: BT.text.muted }}>FIELD: </span>
+              <span style={{ color: BT.text.primary }}>{c.fieldPath}</span>
+              {c.existingValue != null && (
+                <span style={{ color: BT.text.muted }}> · existing: {String(c.existingValue)}</span>
+              )}
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+            <button
+              onClick={handleForceOverwrite}
+              disabled={pushing}
+              style={{
+                fontFamily: mono, fontSize: 8, fontWeight: 700, color: BT.text.amber,
+                background: `${BT.text.amber}22`, border: `1px solid ${BT.text.amber}55`,
+                padding: '2px 10px', cursor: pushing ? 'not-allowed' : 'pointer',
+                opacity: pushing ? 0.6 : 1,
+              }}
+            >
+              {pushing ? '…' : 'FORCE OVERWRITE'}
+            </button>
+            <button
+              onClick={() => setLockedConflicts([])}
+              disabled={pushing}
+              style={{
+                fontFamily: mono, fontSize: 8, color: BT.text.secondary,
+                background: 'transparent', border: `1px solid ${BT.border.subtle}`,
+                padding: '2px 10px', cursor: pushing ? 'not-allowed' : 'pointer',
+                opacity: pushing ? 0.6 : 1,
+              }}
+            >
+              KEEP USER VALUE
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
