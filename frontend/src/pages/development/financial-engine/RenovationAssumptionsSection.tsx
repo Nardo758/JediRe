@@ -117,7 +117,8 @@ export function RenovationAssumptionsSection({
   const [saving, setSaving] = useState(false);
   const [tierSaved, setTierSaved] = useState(false);
 
-  const isRedevelopment = dealType === 'redevelopment' || dealType === 'value-add';
+  const isRedevelopment = dealType === 'redevelopment';
+  const isValueAdd = dealType === 'value_add';
 
   // Fetch renovation data
   useEffect(() => {
@@ -199,9 +200,9 @@ export function RenovationAssumptionsSection({
               ? <ChevronRight className="w-3 h-3 text-slate-500" />
               : <ChevronDown className="w-3 h-3 text-slate-500" />
             }
-            <span className="text-[11px] font-bold">🏗️ {isRedevelopment ? 'RENOVATION / VALUE-ADD' : 'DEVELOPMENT COST STRUCTURE'}</span>
+            <span className="text-[11px] font-bold">🏗️ {isRedevelopment ? 'REDEVELOPMENT' : isValueAdd ? 'VALUE-ADD RENOVATION' : 'DEVELOPMENT COST STRUCTURE'}</span>
             <span style={{ marginLeft: 'auto', fontSize: 8, color: '#64748b' }}>
-              {tierInfo?.label ?? ''}{isRedevelopment ? ` — ${tierInfo ? fmtPct(data.premiumRamp?.[0]?.premiumDecimal) : ''} premium` : ''}
+              {tierInfo?.label ?? ''}{(isRedevelopment || isValueAdd) ? ` — ${tierInfo ? fmtPct(data.premiumRamp?.[0]?.premiumDecimal) : ''} premium` : ''}
             </span>
           </span>
         </td>
@@ -210,7 +211,7 @@ export function RenovationAssumptionsSection({
       {!isCollapsed && (
         <>
           {/* ── Redevelopment / Value-add: Premium tier picker + ramp ── */}
-          {isRedevelopment && (
+          {(isRedevelopment || isValueAdd) && (
             <tr style={{ borderBottom: '1px solid #1e1e1e1a' }}>
               <td colSpan={12} style={{ padding: 8 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 0' }}>
@@ -408,7 +409,7 @@ export function RenovationAssumptionsSection({
           )}
 
           {/* ── Development: Hard/Soft/Contingency cost structure ── */}
-          {!isRedevelopment && (
+          {!isRedevelopment && !isValueAdd && (
             <tr style={{ borderBottom: '1px solid #1e1e1e1a' }}>
               <td colSpan={12} style={{ padding: 8 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 0' }}>

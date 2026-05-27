@@ -1569,6 +1569,10 @@ function KeystonePanel({
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResults, onAssumptionsChange, onTabChange, onF9Refresh, onLvTreatmentViewChange, f9Financials, sourceDocuments }: FinancialEngineTabProps) {
+  // Raw deal_type from the deal object (6-bucket precision: value_add, redevelopment, development, etc.)
+  // Used to gate RenovationAssumptionsSection — getDealType() maps value_add → 'existing' so we
+  // can't rely on the 3-value dealType prop for this check.
+  const rawDealType = ((deal?.deal_type || deal?.dealType || '') as string).toLowerCase().trim();
   const setConfidenceBands = useDealStore(s => s.setConfidenceBands);
   const classifyFieldOverride = useDealStore(s => s.classifyFieldOverride);
   const upsertValidationFlag = useDealStore(s => s.upsertValidationFlag);
@@ -2747,10 +2751,10 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
             </thead>
             <tbody>
               {/* Deal-type specific section: Renovation/Development costs */}
-              {dealType !== 'existing' && (
+              {(dealType !== 'existing' || ['value_add', 'value-add'].includes(rawDealType)) && (
                 <RenovationAssumptionsSection
                   dealId={dealId}
-                  dealType={dealType}
+                  dealType={rawDealType || dealType}
                   collapsed={renoSectionCollapsed}
                   onToggle={() => setRenoSectionCollapsed(c => !c)}
                 />
