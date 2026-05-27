@@ -1,0 +1,181 @@
+PHASE 2 BATCH 1 — OPEX SIMPLE ASSUMPTIONS DERIVATION LOGIC
+
+CONTEXT
+Phase 2 = state-conditional derivation logic per assumption in 
+PROFORMA_CALCULATION_TEMPLATE.md. This is Batch 1 — the simpler 
+OpEx assumptions where derivation logic can be drafted bot-led 
+with operator review.
+
+Batch 1 covers OpEx assumptions that are:
+- Less state-conditional than revenue (vacancy/concessions etc.)
+- Have clean source priorities
+- Don't depend on market rent (EC3) or unresolved data
+
+Subsequent batches:
+- Batch 2: OpEx complex (property tax with reassessment, insurance 
+  with FL multiplier, management fee operator-specific)
+- Batch 3: Capital structure
+- Batch 4: Growth assumptions
+- Batch 5: Exit cap + terminal value
+- Batch 6: Revenue (waits for EC3)
+- Batch 7: Purchase Price + reconciliation
+
+This dispatch handles Batch 1 only.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. PROFORMA_CALCULATION_TEMPLATE.md exists with the 22 
+   assumptions and layer tagging
+2. No prior Phase 2 derivation dispatch has produced batch 
+   work (search docs/operations/ for PHASE_2_BATCH or similar)
+3. The Mandate v1.3 lift + Tier 1 RegimeExpand + Tier 2 directional 
+   validation are all in place (confirmed COMPLETE in 
+   PHASE_1_TASK_MAP.md)
+
+═══════════════════════════════════════════════════════════════════
+ASSUMPTIONS IN BATCH 1
+═══════════════════════════════════════════════════════════════════
+
+From PROFORMA_CALCULATION_TEMPLATE.md, the Batch 1 OpEx 
+assumptions are:
+
+1. Repairs & maintenance ($/unit annual)
+2. Turnover costs ($/unit annual)
+3. Marketing ($/unit annual)
+4. Admin/general ($/unit annual)
+5. Contract services ($/unit annual)
+6. Utilities — water ($/unit annual)
+7. Utilities — gas ($/unit annual)
+8. Utilities — electric ($/unit annual)
+9. Utilities — trash ($/unit annual)
+10. Replacement reserves ($/unit annual)
+
+10 assumptions, all "$/unit annual" granularity, all multifamily-
+existing scope. Each has the same shape of derivation logic 
+(though specific evidence sources vary).
+
+═══════════════════════════════════════════════════════════════════
+DERIVATION LOGIC STRUCTURE PER ASSUMPTION
+═══════════════════════════════════════════════════════════════════
+
+For each Batch 1 assumption, produce a structured derivation 
+logic block following the principle committed in CLAUDE.md P7 
+and the state-conditional epistemology in 
+MANDATE_LIFT_DESIGN.md:
+
+ASSUMPTION: [field_name]
+
+DESCRIPTION:
+[What this represents in operator language]
+
+SOURCE PRIORITY BY ASSET STATE:
+
+If asset_state == 'Stabilized':
+  Primary: Subject's Trailing (T-12 from deal_monthly_actuals)
+    → Confidence: HIGH if last 3 months agree within ±15%
+    → Caveats: outlier months excluded (one-time spikes)
+  Validation: Platform line_item_benchmarks for state×class×vintage
+    → Sigma flag if subject > P75 or < P25 of cohort
+    → If sigma flag fires: surface to operator, don't auto-reject
+  Cross-check: Sales comp implied OpEx (per cap rate triangulation)
+    → If divergence >20%: flag and explain in evidence trail
+
+If asset_state == 'Repositioning' (value-add):
+  pre_renovation: Subject's Trailing (current degraded state)
+    → Source: T-12 (anchored in actuals)
+    → Confidence: HIGH (same as Stabilized)
+  post_stabilization: Platform line_item_benchmarks at target 
+                     asset class
+    → Source: cohort distribution for target state
+    → Confidence: MEDIUM (projection, not actuals)
+    → Tier 2 validation: post should be ≤ pre for OpEx categories 
+      that improve with renovation (R&M, turnover); ≥ pre for 
+      categories that grow with stabilization (marketing during 
+      lease-up)
+
+If asset_state == 'New Construction':
+  pre_renovation: N/A
+  post_stabilization: Platform line_item_benchmarks at projected 
+                     delivery asset class
+    → Source: cohort distribution for stabilized comparable
+    → Confidence: MEDIUM-LOW (projection, no anchoring)
+
+If asset_state == 'Lease-Up' or 'Distressed':
+  Specific logic per state — bot drafts; operator refines
+
+MODULE CONTEXT TO CONSULT:
+[Which capsule modules supply context for this assumption]
+
+For OpEx Batch 1:
+- M14 Risk: flags OpEx outliers
+- M22 Post-Close: what comparable acquisitions actually achieved 
+  (validates derivation against realized outcomes)
+- M02 Regulatory: only relevant if the assumption is jurisdictional 
+  (e.g., trash collection may be municipal)
+
+VALIDATION METHODS:
+1. Sigma check (line_item_benchmarks distribution)
+2. Comparable assumed-vs-achieved (archive_assumption_benchmarks)
+3. Sales comp triangulation (implied OpEx from cap rate × NOI)
+4. Tier 2 directional checks (now operational)
+
+OUTPUT SHAPE:
+{
+  value: <number>,
+  source: 'trailing' | 'platform' | 'comp_implied' | 'override',
+  confidence: 0.0-1.0,
+  asset_state: 'Stabilized' | 'Repositioning' | ...,
+  evidence_rows: [<links to underwriting_evidence>],
+  validation: {
+    sigma_flag: boolean,
+    sigma_band: {p25, p50, p75},
+    archive_comparison: {assumed_p50, achieved_p50, delta_pct},
+    sales_comp_implied: <number>
+  }
+}
+
+OPERATOR OVERRIDE PATH:
+[How operator-provided values flow through]
+
+═══════════════════════════════════════════════════════════════════
+SCOPE OF THIS DISPATCH
+═══════════════════════════════════════════════════════════════════
+
+A. For each of the 10 Batch 1 assumptions, produce the structured 
+   derivation logic block above
+B. Maintain the standard structure across all 10 so they read 
+   consistently
+C. Where assumptions share logic (e.g., all utilities likely 
+   have similar derivation), produce a common pattern with 
+   per-utility variations noted
+D. Flag any assumption where the derivation logic surfaces 
+   ambiguity that requires operator review before implementation
+E. Identify dependencies on other batches (e.g., if R&M 
+   derivation references property tax behavior, note the cross-
+   batch link)
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/PHASE_2_BATCH_1_OPEX_SIMPLE.md
+
+Structure:
+1. Executive summary (10 assumptions, common patterns observed, 
+   cross-batch dependencies)
+2. Common derivation patterns (shared logic across assumptions)
+3. Per-assumption derivation logic (one section per — 10 sections)
+4. Open questions for operator review
+5. Cross-batch dependencies surfaced
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Produce derivation logic for assumptions NOT in Batch 1
+- Implement any code changes (this is documentation only)
+- Make operator-judgment calls without flagging — surface them 
+  as open questions
+- Collapse the per-assumption structure to save space — each 
+  needs its own section for review
+- "While I'm here" cleanups
