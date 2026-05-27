@@ -661,16 +661,39 @@ router.patch('/:dealId/assumptions/targets', requireAuth, async (req: Authentica
  *
  * Body (both optional — partial payloads safe):
  *   { exitStrategy?: 'Sale' | 'Refinance' | 'Hold' | null,
- *     investmentStrategy?: 'Build-to-Sell' | 'Flip' | 'Rental' | 'Short-Term Rental' | null }
+ *     investmentStrategy?: 'Build-to-Sell' | 'Flip' | 'Rental' | 'Short-Term Rental' |
+ *                          'Value-Add' | 'Redevelopment' | 'Lease-Up' | null }
  *
  * Null clears the operator override; detected slot is always preserved.
  * Shape per field: { detected: {value,confidence,source}|null, override: string|null }
+ *
+ * Side-effect: saving investmentStrategy also derives and writes deals.deal_type
+ * via investmentStrategyToDealType() (A2-derived pattern — Task #1233).
  *
  * Supersedes: PATCH /:dealId/assumptions/exit-strategy (flat TEXT, removed May 2026)
  * Task #613 — Strategy fields LV persistence
  *
  * Emits: deal:strategy-changed CustomEvent (frontend only, after F9 refresh)
  */
+
+/**
+ * Maps an investmentStrategy value to the canonical deals.deal_type value.
+ * Returns undefined when no mapping exists (e.g. null strategy → no write).
+ * Task #1233 — A2-derived pattern.
+ */
+function investmentStrategyToDealType(strategy: string): string | undefined {
+  const map: Record<string, string> = {
+    'Build-to-Sell':    'development',
+    'Flip':             'value_add',
+    'Rental':           'existing',
+    'Short-Term Rental':'existing',
+    'Value-Add':        'value_add',
+    'Redevelopment':    'redevelopment',
+    'Lease-Up':         'lease_up',
+  };
+  return map[strategy];
+}
+
 router.patch('/:dealId/assumptions/strategy', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
@@ -678,7 +701,7 @@ router.patch('/:dealId/assumptions/strategy', requireAuth, async (req: Authentic
     const body = req.body as { exitStrategy?: string | null; investmentStrategy?: string | null };
 
     const EXIT_VALID = ['Sale', 'Refinance', 'Hold'];
-    const INV_VALID  = ['Build-to-Sell', 'Flip', 'Rental', 'Short-Term Rental'];
+    const INV_VALID  = ['Build-to-Sell', 'Flip', 'Rental', 'Short-Term Rental', 'Value-Add', 'Redevelopment', 'Lease-Up'];
 
     if ('exitStrategy' in body && body.exitStrategy !== null && body.exitStrategy !== undefined
         && !EXIT_VALID.includes(body.exitStrategy)) {
@@ -689,55 +712,85 @@ router.patch('/:dealId/assumptions/strategy', requireAuth, async (req: Authentic
       return res.status(400).json({ error: `investmentStrategy must be one of: ${INV_VALID.join(', ')}` });
     }
 
-    const own = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (own.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized for this deal' });
-    }
+    // Use an explicit client transaction so that the deal_assumptions write and the
+    // derived deals.deal_type write (A2-derived, Task #1233) are atomic — if either
+    // update fails, neither is committed.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    // Ensure the deal_assumptions row exists before patching.
-    await pool.query(
-      `INSERT INTO deal_assumptions (deal_id, updated_at) VALUES ($1, NOW())
-       ON CONFLICT (deal_id) DO NOTHING`,
-      [dealId]
-    );
-
-    // Build update expression dynamically — only touch fields that were provided.
-    // Each field updates only the `override` slot; the `detected` slot is preserved
-    // so a future M08 write is not overwritten.
-    const sets: string[] = ['updated_at = NOW()'];
-    const params: unknown[] = [dealId];
-
-    if ('exitStrategy' in body) {
-      const val = body.exitStrategy ?? null;
-      params.push(val);
-      sets.push(
-        `exit_strategy_lv =
-           COALESCE(exit_strategy_lv, '{"detected":null}'::jsonb)
-           || jsonb_build_object('override', $${params.length}::text)`
+      const own = await client.query(
+        `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+        [dealId, userId]
       );
-    }
+      if (own.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Not authorized for this deal' });
+      }
 
-    if ('investmentStrategy' in body) {
-      const val = body.investmentStrategy ?? null;
-      params.push(val);
-      sets.push(
-        `investment_strategy_lv =
-           COALESCE(investment_strategy_lv, '{"detected":null}'::jsonb)
-           || jsonb_build_object('override', $${params.length}::text)`
+      // Ensure the deal_assumptions row exists before patching.
+      await client.query(
+        `INSERT INTO deal_assumptions (deal_id, updated_at) VALUES ($1, NOW())
+         ON CONFLICT (deal_id) DO NOTHING`,
+        [dealId]
       );
-    }
 
-    if (sets.length > 1) {
-      await pool.query(
-        `UPDATE deal_assumptions SET ${sets.join(', ')} WHERE deal_id = $1`,
-        params
-      );
-    }
+      // Build update expression dynamically — only touch fields that were provided.
+      // Each field updates only the `override` slot; the `detected` slot is preserved
+      // so a future M08 write is not overwritten.
+      const sets: string[] = ['updated_at = NOW()'];
+      const params: unknown[] = [dealId];
 
-    res.json({ success: true });
+      if ('exitStrategy' in body) {
+        const val = body.exitStrategy ?? null;
+        params.push(val);
+        sets.push(
+          `exit_strategy_lv =
+             COALESCE(exit_strategy_lv, '{"detected":null}'::jsonb)
+             || jsonb_build_object('override', $${params.length}::text)`
+        );
+      }
+
+      if ('investmentStrategy' in body) {
+        const val = body.investmentStrategy ?? null;
+        params.push(val);
+        sets.push(
+          `investment_strategy_lv =
+             COALESCE(investment_strategy_lv, '{"detected":null}'::jsonb)
+             || jsonb_build_object('override', $${params.length}::text)`
+        );
+      }
+
+      if (sets.length > 1) {
+        await client.query(
+          `UPDATE deal_assumptions SET ${sets.join(', ')} WHERE deal_id = $1`,
+          params
+        );
+      }
+
+      // A2-derived (Task #1233): when investmentStrategy is being set to a non-null value,
+      // derive and write deals.deal_type in the same transaction so all downstream consumers
+      // (Pattern B routing, RegimeExpand, tab visibility, cashflow agent prompt) see the
+      // correct value immediately. Only write when the mapping produces a defined result;
+      // null strategy leaves deal_type unchanged.
+      if ('investmentStrategy' in body && body.investmentStrategy != null) {
+        const derivedDealType = investmentStrategyToDealType(body.investmentStrategy);
+        if (derivedDealType !== undefined) {
+          await client.query(
+            `UPDATE deals SET deal_type = $1 WHERE id = $2`,
+            [derivedDealType, dealId]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      res.json({ success: true });
+    } catch (txError: any) {
+      await client.query('ROLLBACK');
+      throw txError;
+    } finally {
+      client.release();
+    }
   } catch (error: any) {
     logger.error('Error patching strategy fields:', error);
     res.status(500).json({ error: error.message });
