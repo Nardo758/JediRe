@@ -14,6 +14,7 @@ import { FolderView } from './DocumentsFiles/FolderView';
 import { SearchFilters } from './DocumentsFiles/SearchFilters';
 import { StorageStats } from './DocumentsFiles/StorageStats';
 import { MissingFileSuggestions } from './DocumentsFiles/MissingFileSuggestions';
+import { CoStarDataPanel } from './DocumentsFiles/CoStarDataPanel';
 import { apiClient as axios } from '../../../services/api.client';
 import { useDealType } from '../../../stores/dealStore';
 import { MODULE_TABS } from '@/shared/config/deal-type-visibility';
@@ -412,6 +413,9 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
           {reprocessMsg}
         </div>
       )}
+
+      {/* CoStar Exports */}
+      <CoStarDataPanel dealId={deal.id} />
 
       {/* Storage Stats */}
       {analytics && (
