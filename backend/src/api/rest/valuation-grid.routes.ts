@@ -13,9 +13,6 @@ import { getPool } from '../../database/connection';
 
 const router = Router();
 
-function getService(): ValuationGridService {
-  return new ValuationGridService(getPool());
-}
 
 /**
  * GET /api/v1/deals/:dealId/valuation-grid
@@ -24,7 +21,19 @@ function getService(): ValuationGridService {
 router.get('/deals/:dealId/valuation-grid', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const svc = getService();
+    const userId = req.user?.userId;
+    const pool = getPool();
+
+    // Verify deal ownership (owner or admin) before computing
+    const ownerCheck = await pool.query(
+      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
+      [dealId, userId, req.user?.role === 'admin']
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found.' });
+    }
+
+    const svc = new ValuationGridService(pool);
     const result = await svc.compute(dealId);
     res.json({ success: true, data: result });
   } catch (err: any) {
@@ -46,6 +55,17 @@ router.patch('/deals/:dealId/valuation-grid/override', requireAuth, async (req: 
   try {
     const { dealId } = req.params;
     const { value, rationale } = req.body;
+    const userId = req.user?.userId;
+    const pool = getPool();
+
+    // Verify deal ownership before allowing writes
+    const ownerCheck = await pool.query(
+      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
+      [dealId, userId, req.user?.role === 'admin']
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found.' });
+    }
 
     if (typeof value !== 'number' || value <= 0) {
       return res.status(400).json({
@@ -54,7 +74,7 @@ router.patch('/deals/:dealId/valuation-grid/override', requireAuth, async (req: 
       });
     }
 
-    const svc = getService();
+    const svc = new ValuationGridService(pool);
     await svc.saveOperatorOverride(dealId, value, rationale);
 
     res.json({ success: true, message: 'Valuation override saved.' });

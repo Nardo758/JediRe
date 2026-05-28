@@ -274,10 +274,11 @@ export class ValuationGridService {
     }
 
     // Query cap rate distribution from archive benchmarks
-    const params: unknown[] = [subject.assetClass || 'multifamily'];
+    const params: unknown[] = [];
     let whereClauses = [`assumption_name = 'cap_rate'`];
 
     if (subject.assetClass) {
+      params.push(subject.assetClass);
       whereClauses.push(`(asset_class = $${params.length} OR asset_class IS NULL)`);
     } else {
       whereClauses.push(`asset_class IS NULL`);
@@ -678,7 +679,7 @@ export class ValuationGridService {
     }
 
     try {
-      const rcService = getReplacementCostServiceV2();
+      const rcService = getReplacementCostServiceV2(this.pool);
       const input: ReplacementCostInput = {
         units: subject.units,
         totalSF: subject.totalSF,
@@ -687,7 +688,7 @@ export class ValuationGridService {
         assetClass: (subject.assetClass as any) || 'B',
       };
 
-      const rc = await rcService.estimate(input);
+      const rc = await rcService.estimateReplacementCost(input);
       const cpsfVal = safeFloat(rc.costPerSF?.value, 0);
       const cpuVal = safeFloat(rc.costPerUnit?.value, 0);
       const totalCost = safeFloat(rc.totalCost?.value, 0);
