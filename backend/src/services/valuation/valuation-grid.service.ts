@@ -1375,6 +1375,8 @@ export class ValuationGridService {
         recommendedPriceHigh: null,
         gapAnalysis: [],
         activeMethodCount: 0,
+        valuationConfidence: 'INSUFFICIENT' as ConfidenceLevel,
+        valuationConfidenceText: 'Insufficient data — no active valuation methods available.',
       };
     }
 
@@ -1914,10 +1916,37 @@ export class ValuationGridService {
     };
 
     // 2. Build the primary comp list from the scoring comp set.
-    //    ALL comps from the set are shown — excluded ones are flagged but not hidden.
+    //    Operator-excluded comps are flagged but still shown so operators can re-include.
+    //    Comps filtered out by criteria (units/vintage/class) are omitted from the panel
+    //    entirely — they match what the scoring filter chain removes — and may surface as
+    //    additionalCandidates if within the wider radius.
     //    There is deliberately NO age cutoff here; old comps remain visible with stale flag.
+    const allClasses = ['A', 'B', 'C', 'D'];
+    const classFilter = criteria.propertyClasses ?? allClasses;
+    const applyClassFilter = classFilter.length > 0 && classFilter.length < allClasses.length;
+    const matchesCriteria = (c: any): boolean => {
+      const u = c.units != null ? parseInt(String(c.units)) : null;
+      if (u != null) {
+        if (criteria.minUnits > 0 && u < criteria.minUnits) return false;
+        if (criteria.maxUnits < 9999 && u > criteria.maxUnits) return false;
+      }
+      const yb = c.year_built != null ? parseInt(String(c.year_built)) : null;
+      if (yb != null) {
+        if ((criteria.minYearBuilt ?? 0) > 0 && yb < criteria.minYearBuilt) return false;
+        if ((criteria.maxYearBuilt ?? 9999) < 9999 && yb > criteria.maxYearBuilt) return false;
+      }
+      if (applyClassFilter) {
+        const pc = (c.property_class ?? c.asset_class ?? '').toUpperCase();
+        if (pc && !classFilter.map(s => s.toUpperCase()).includes(pc)) return false;
+      }
+      return true;
+    };
+
     const activeCompIds = new Set<string>(compSet?.comps.map((c: any) => String(c.id)) ?? []);
-    const comps: CompReviewItem[] = (compSet?.comps ?? []).map((comp: any) =>
+    const effectiveSetComps = (compSet?.comps ?? []).filter((c: any) =>
+      matchesCriteria(c) || customSet.has(String(c.id))  // custom-added comps always pass
+    );
+    const comps: CompReviewItem[] = effectiveSetComps.map((comp: any) =>
       toReviewItem(comp, {
         excluded: excludedSet.has(String(comp.id)),
         manually_added: customSet.has(String(comp.id)),

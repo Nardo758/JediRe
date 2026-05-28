@@ -390,7 +390,7 @@ router.get('/deals/:dealId/valuation-grid/comps', requireAuth, async (req: Authe
  * PATCH /api/v1/deals/:dealId/valuation-grid/comps/criteria
  *
  * Persist tunable selection parameters. Accepted fields:
- *   radiusMiles, maxAgeMonths, minUnits, maxUnits, propertyClasses
+ *   radiusMiles, maxAgeMonths, minUnits, maxUnits, minYearBuilt, maxYearBuilt, propertyClasses
  * Does NOT change excludedCompIds (use DELETE/include endpoints for that).
  */
 router.patch('/deals/:dealId/valuation-grid/comps/criteria', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
@@ -405,12 +405,14 @@ router.patch('/deals/:dealId/valuation-grid/comps/criteria', requireAuth, async 
     );
     if (ownerCheck.rows.length === 0) return res.status(404).json({ success: false, error: 'Deal not found.' });
 
-    const { radiusMiles, maxAgeMonths, minUnits, maxUnits, propertyClasses } = req.body;
+    const { radiusMiles, maxAgeMonths, minUnits, maxUnits, minYearBuilt, maxYearBuilt, propertyClasses } = req.body;
     const patch: Record<string, unknown> = {};
     if (typeof radiusMiles === 'number' && radiusMiles > 0 && radiusMiles <= 50) patch.radiusMiles = radiusMiles;
     if (typeof maxAgeMonths === 'number' && maxAgeMonths >= 6 && maxAgeMonths <= 120) patch.maxAgeMonths = maxAgeMonths;
     if (typeof minUnits === 'number' && minUnits >= 0) patch.minUnits = minUnits;
     if (typeof maxUnits === 'number' && maxUnits > 0) patch.maxUnits = maxUnits;
+    if (typeof minYearBuilt === 'number' && minYearBuilt >= 0 && minYearBuilt <= 2100) patch.minYearBuilt = minYearBuilt;
+    if (typeof maxYearBuilt === 'number' && maxYearBuilt >= 0 && maxYearBuilt <= 2100) patch.maxYearBuilt = maxYearBuilt;
     if (Array.isArray(propertyClasses) && propertyClasses.every(c => typeof c === 'string')) patch.propertyClasses = propertyClasses;
 
     const svc = new ValuationGridService(pool);

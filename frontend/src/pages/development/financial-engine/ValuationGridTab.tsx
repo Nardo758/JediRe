@@ -115,6 +115,8 @@ interface CompReviewItem {
   staleness_weight: number;
   excluded: boolean;
   manually_added: boolean;
+  relevance_score: number | null;
+  relevance_tier: string | null;
 }
 
 interface CompReviewResult {
