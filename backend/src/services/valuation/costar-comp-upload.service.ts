@@ -320,6 +320,7 @@ function mapRentRow(
 
 async function checkSaleDup(
   pool: Pool,
+  dealId: string,
   address: string,
   city: string,
   state: string,
@@ -332,14 +333,16 @@ async function checkSaleDup(
        AND UPPER(state) = UPPER($3)
        AND sale_date = $4::date
        AND source = 'costar_upload'
+       AND deal_id = $5::uuid
      LIMIT 1`,
-    [address, city, state, saleDate]
+    [address, city, state, saleDate, dealId]
   );
   return res.rows.length > 0;
 }
 
 async function checkRentDup(
   pool: Pool,
+  dealId: string,
   address: string,
   city: string,
   state: string,
@@ -352,8 +355,9 @@ async function checkRentDup(
        AND UPPER(state) = UPPER($3)
        AND snapshot_date = $4::date
        AND source = 'costar_upload'
+       AND deal_id = $5::uuid
      LIMIT 1`,
-    [address, city, state, snapshotDate]
+    [address, city, state, snapshotDate, dealId]
   );
   return res.rows.length > 0;
 }
@@ -366,6 +370,7 @@ export interface CompUploadOptions {
   compType?: CompType;
   snapshotDate?: string;
   fileId?: number | null;
+  /** Required: scopes uploaded rows to this deal. Prevents cross-deal comp bleed. */
   dealId: string;
 }
 
@@ -477,7 +482,7 @@ export async function processCoStarUpload(
     try {
       if (compType === 'sale') {
         const sc = comp as SaleCompRow;
-        const isDup = await checkSaleDup(pool, sc.address, sc.city, sc.state, sc.sale_date);
+        const isDup = await checkSaleDup(pool, dealId, sc.address, sc.city, sc.state, sc.sale_date);
         if (isDup) {
           skippedDup++;
           continue;
@@ -487,23 +492,23 @@ export async function processCoStarUpload(
              (id, property_name, address, city, state, zip, county, msa, submarket,
               property_type, units, sqft, year_built, asset_class, stories,
               sale_date, sale_price, cap_rate, buyer, seller,
-              latitude, longitude, source, qualified, file_id, created_at)
+              latitude, longitude, source, qualified, file_id, deal_id, created_at)
            VALUES
              ($1,$2,$3,$4,$5,$6,$7,$8,$9,
               $10,$11,$12,$13,$14,$15,
               $16,$17,$18,$19,$20,
-              $21,$22,$23,$24,$25,NOW())`,
+              $21,$22,$23,$24,$25,$26,NOW())`,
           [
             sc.id, sc.property_name, sc.address, sc.city, sc.state, sc.zip, sc.county, sc.msa, sc.submarket,
             sc.property_type, sc.units, sc.sqft, sc.year_built, sc.asset_class, sc.stories,
             sc.sale_date, sc.sale_price, sc.cap_rate, sc.buyer, sc.seller,
-            sc.latitude, sc.longitude, sc.source, sc.qualified, sc.file_id,
+            sc.latitude, sc.longitude, sc.source, sc.qualified, sc.file_id, dealId,
           ]
         );
         inserted++;
       } else {
         const rc = comp as RentCompRow;
-        const isDup = await checkRentDup(pool, rc.address, rc.city, rc.state, rc.snapshot_date);
+        const isDup = await checkRentDup(pool, dealId, rc.address, rc.city, rc.state, rc.snapshot_date);
         if (isDup) {
           skippedDup++;
           continue;
@@ -513,17 +518,17 @@ export async function processCoStarUpload(
              (id, property_name, address, city, state, zip, msa, submarket,
               units, year_built, asset_class, snapshot_date,
               avg_asking_rent, avg_effective_rent, occupancy_pct, concession_pct,
-              latitude, longitude, source, file_id, created_at)
+              latitude, longitude, source, file_id, deal_id, created_at)
            VALUES
              ($1,$2,$3,$4,$5,$6,$7,$8,
               $9,$10,$11,$12,
               $13,$14,$15,$16,
-              $17,$18,$19,$20,NOW())`,
+              $17,$18,$19,$20,$21,NOW())`,
           [
             rc.id, rc.property_name, rc.address, rc.city, rc.state, rc.zip, rc.msa, rc.submarket,
             rc.units, rc.year_built, rc.asset_class, rc.snapshot_date,
             rc.avg_asking_rent, rc.avg_effective_rent, rc.occupancy_pct, rc.concession_pct,
-            rc.latitude, rc.longitude, rc.source, rc.file_id,
+            rc.latitude, rc.longitude, rc.source, rc.file_id, dealId,
           ]
         );
         inserted++;

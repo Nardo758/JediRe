@@ -122,6 +122,14 @@ export class CompSetService {
       filters.push(`t.year_built >= $7 AND t.year_built <= $8`);
     }
 
+    // Data isolation: CoStar-uploaded comps are scoped to the uploading deal.
+    // Only include costar_upload rows that belong to THIS deal; public sources (county_recorded,
+    // research_agent, etc.) are always included (deal_id IS NULL).
+    // Param positions: $1=lat $2=lng $3=cutoff $4=min_units $5=max_units $6=property_classes
+    //                  [$7=vintageMin $8=vintageMax] $7or9=deal_id (always last in params array)
+    const dealIdParamIdx = vintage_range ? 9 : 7;
+    filters.push(`(t.source != 'costar_upload' OR t.deal_id = $${dealIdParamIdx}::uuid OR t.deal_id IS NULL)`);
+
     // 4. Spatial query for comps within radius using market_sale_comps
     const compsResult = await pool.query(`
       SELECT
@@ -163,7 +171,8 @@ export class CompSetService {
       min_units,
       max_units,
       property_classes,
-      ...(vintage_range || [])
+      ...(vintage_range || []),
+      deal_id,
     ]);
 
     const comps: CompTransaction[] = compsResult.rows.map((row: any) => ({
