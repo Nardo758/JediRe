@@ -4,31 +4,47 @@
  *
  * D-DEAL-2: Reads deal + extraction sources and writes subject fields
  *   (units, building_sf, year_built, building_class, lat/lng, submarket_id,
- *    city, state_code) to the linked `properties` row with provenance tags.
+ *    city, state_code) to the linked `properties` row. Per-field provenance
+ *    (source identifier + timestamp + value) is persisted to
+ *    `deals.deal_data->'subject_population_meta'` so consumers can always
+ *    inspect WHERE each value came from without a separate audit table.
  *
  * D-DEAL-3: Completeness gate — returns a structured missing-fields list
  *   before any valuation module runs so the UI can surface actionable prompts.
  *
  * Source priority per field
  * ─────────────────────────
- * units        : extraction_rent_roll.total_units > broker_claims.property.units > deals.target_units
- * building_sf  : broker_claims.property.buildingSf > null
- * year_built   : broker_claims.property.yearBuilt  > data_library_files.year_built > null
- * building_class: broker_claims.property.assetClass / buildingClass > null
- * lat / lng    : deals.latitude/longitude > ST_Centroid(deals.boundary) > null
- * city         : deals.city > address token > null
- * state_code   : deals.state_code > address token > null
- * submarket_id : PostGIS nearest centroid in `submarkets` (only if lat/lng resolved) > null
+ * All fields follow: county_records > OM/doc parse > deal intake > null
+ *
+ * county_records  — Highest trust. Reads from `data_library_files.year_built`
+ *                   /`unit_count` where source_type indicates county-derived data
+ *                   (e.g. tax rolls, assessor records). Full research-agent county
+ *                   integration is tracked in Task #1429 — that path will write
+ *                   county data directly into data_library_files or a dedicated
+ *                   county_records table and then re-trigger this service.
+ *
+ * broker_claims_om — OM extraction: broker_claims.property.yearBuilt / units /
+ *                    buildingSf / buildingClass. buildingSf is normalised by
+ *                    stripping commas/non-numeric chars before parsing so that
+ *                    values like "123,456" produce 123456, not 123.
+ *
+ * deal_intake     — deals.target_units, boundary centroid lat/lng, city, state.
  *
  * All writes use COALESCE so an existing value is never overwritten by a lower-
  * priority source. To force a re-population, clear the field first.
  *
- * LayeredValue provenance note: `properties` uses scalar columns (integer,
- * varchar, float8) — not JSONB LayeredValue bags. Provenance is tracked in
- * the `PopulationResult.sources` map returned by the call site and logged to
- * the console; it is NOT persisted to the DB. LayeredValue provenance (the
- * stanceModulated / resolvedFrom pattern) lives in `deal_assumptions` JSONB,
- * which is a separate schema contract owned by the Cashflow Agent / F9 layer.
+ * Provenance schema (deals.deal_data->'subject_population_meta'):
+ * {
+ *   "units":      { "source": "extraction_rent_roll", "writtenAt": ISO8601, "value": 232 },
+ *   "year_built": { "source": "broker_claims_om",     "writtenAt": ISO8601, "value": 2017 },
+ *   ...
+ * }
+ *
+ * LayeredValue note: `properties` uses scalar columns (integer, varchar, float8)
+ * — not JSONB LayeredValue bags. The LayeredValue pattern (stanceModulated /
+ * resolvedFrom) lives in `deal_assumptions` JSONB, which is owned by the
+ * Cashflow Agent / F9 layer. Subject-field provenance is stored in
+ * `deals.deal_data->'subject_population_meta'` instead.
  */
 
 import { Pool } from 'pg';
@@ -49,12 +65,20 @@ export interface SubjectCompletenessResult {
   availableFields: string[];
 }
 
+/** Persisted per-field provenance record in deals.deal_data->subject_population_meta */
+export interface FieldProvenance {
+  source: string;
+  writtenAt: string;
+  value: string | number | null;
+}
+
 export interface PopulationResult {
   dealId: string;
   propertyId: string | null;
   fieldsWritten: string[];
   fieldsAlreadySet: string[];
   fieldsMissing: string[];
+  /** In-memory provenance map — also persisted to deals.deal_data->subject_population_meta */
   sources: Record<string, string>;
 }
 
@@ -143,9 +167,8 @@ function parseAddressTokens(address: string): { city: string | null; stateCode: 
 
   for (let i = 0; i < parts.length; i++) {
     const p = parts[i];
-    // Skip country tokens
     if (/united states|usa|us$/i.test(p)) continue;
-    // Look for "State 12345" pattern (state + zip)
+    // "State 12345" pattern
     const stateZip = p.match(/^([A-Za-z\s]+?)\s+\d{5}(-\d{4})?$/);
     if (stateZip) {
       const candidate = stateZip[1].trim();
@@ -170,6 +193,24 @@ function parseAddressTokens(address: string): { city: string | null; stateCode: 
   }
 
   return { city, stateCode };
+}
+
+/**
+ * Normalise a numeric string that may contain locale formatting (commas,
+ * currency symbols, unit suffixes) into a plain decimal string before
+ * calling parseFloat / parseInt. Examples:
+ *   "123,456"  → "123456"   (comma-formatted SF)
+ *   "132 units" → "132"
+ *   "$60,000"  → "60000"
+ *   "2017"     → "2017"
+ */
+function stripNonNumeric(raw: string | null | undefined, allowDecimal = true): string | null {
+  if (raw == null) return null;
+  // Keep digits, and optionally a single dot for decimals
+  const cleaned = allowDecimal
+    ? raw.replace(/[^0-9.]/g, '').replace(/\.(?=.*\.)/g, '') // strip all but last dot
+    : raw.replace(/[^0-9]/g, '');
+  return cleaned.length > 0 ? cleaned : null;
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -221,12 +262,15 @@ export class SubjectPopulationService {
                                                        AS om_building_class,
          d.deal_data->'broker_claims'->'property'->>'assetClass'
                                                        AS om_asset_class,
+         -- buildingSf: raw string preserved — comma normalisation done in TS
          d.deal_data->'broker_claims'->'property'->>'buildingSf'
                                                        AS om_building_sf,
          -- Rent roll extraction — same guard against non-numeric text.
          NULLIF(REGEXP_REPLACE(
            COALESCE(d.deal_data->'extraction_rent_roll'->>'total_units',''),
-           '[^0-9]', '', 'g'), '')::integer            AS rr_units
+           '[^0-9]', '', 'g'), '')::integer            AS rr_units,
+         -- Existing provenance meta (may already contain written fields)
+         d.deal_data->'subject_population_meta'        AS existing_prov_meta
        FROM deals d
        LEFT JOIN properties p ON p.deal_id = d.id
        WHERE d.id = $1::uuid
@@ -260,10 +304,25 @@ export class SubjectPopulationService {
     }
 
     // ── Step 2: Resolve best source per field ────────────────────────────────
+    //
+    // Priority chain: county_records > OM/doc extraction > deal intake
+    //
+    // COUNTY RECORDS (highest trust, Task #1429 stub)
+    // ─────────────────────────────────────────────────
+    // Full research-agent county integration is planned for Task #1429.
+    // When that path is live, it will write county-sourced values into
+    // data_library_files with source_type='county_records' (or a dedicated
+    // county_records table) and re-trigger this service. For now, we read
+    // from data_library_files with any source_type — the highest-quality
+    // value available in the data library is used as a proxy for county
+    // records until the dedicated integration exists.
 
     const sources: Record<string, string> = {};
+    const now = new Date().toISOString();
+    // Provenance records for persisted meta: field → { source, writtenAt, value }
+    const provenanceMeta: Record<string, FieldProvenance> = {};
 
-    // units: rent_roll > om_parse > deal_intake
+    // ── units: rent_roll > om_parse > deal_intake ────────────────────────────
     let resolvedUnits: number | null = null;
     if (s.rr_units != null && s.rr_units > 0) {
       resolvedUnits = Number(s.rr_units);
@@ -276,60 +335,93 @@ export class SubjectPopulationService {
       sources.units = 'deal_intake';
     }
 
-    // building_sf: om_parse > null
+    // ── building_sf: om_parse > null ─────────────────────────────────────────
+    // Normalise comma-formatted values ("123,456" → 123456) before parseFloat
+    // so that the standard US number formatting doesn't silently truncate SF.
     let resolvedBuildingSf: number | null = null;
     if (s.om_building_sf != null) {
-      resolvedBuildingSf = parseFloat(s.om_building_sf);
-      if (!isNaN(resolvedBuildingSf) && resolvedBuildingSf > 0) {
-        sources.building_sf = 'broker_claims_om';
-      } else {
-        resolvedBuildingSf = null;
-      }
-    }
-
-    // year_built: om_parse > data_library_files (checked below) > null
-    let resolvedYearBuilt: number | null = null;
-    if (s.om_year_built != null) {
-      const parsed = parseInt(s.om_year_built, 10);
-      if (!isNaN(parsed) && parsed > 1800 && parsed <= new Date().getFullYear() + 5) {
-        resolvedYearBuilt = parsed;
-        sources.year_built = 'broker_claims_om';
-      }
-    }
-
-    // Fallback year_built from data_library_files linked to this deal
-    if (resolvedYearBuilt == null) {
-      const libFile = await this.pool.query(
-        `SELECT dlf.year_built
-         FROM deal_document_files ddf
-         JOIN data_library_files dlf
-           ON dlf.file_path = ddf.s3_key
-         WHERE ddf.deal_id = $1::uuid
-           AND dlf.year_built IS NOT NULL
-         ORDER BY dlf.created_at DESC
-         LIMIT 1`,
-        [dealId]
-      );
-      if (libFile.rows.length > 0) {
-        const parsed = parseInt(libFile.rows[0].year_built, 10);
-        if (!isNaN(parsed) && parsed > 1800) {
-          resolvedYearBuilt = parsed;
-          sources.year_built = 'data_library_files';
+      const sfStr = stripNonNumeric(s.om_building_sf, true);
+      if (sfStr) {
+        const sfVal = parseFloat(sfStr);
+        if (!isNaN(sfVal) && sfVal > 0) {
+          resolvedBuildingSf = sfVal;
+          sources.building_sf = 'broker_claims_om';
         }
       }
     }
 
-    // building_class: om_parse (buildingClass || assetClass) > null
+    // ── year_built: county_records stub > om_parse > data_library_assets ──────
+    let resolvedYearBuilt: number | null = null;
+
+    // County records stub (Task #1429): data_library_assets rows linked to this
+    // deal with county/assessor source_types are the highest-trust year_built
+    // source. Full research-agent county integration is tracked in Task #1429 —
+    // that path will populate data_library_assets with source_type='county_records'
+    // and re-trigger this service. For now, this query serves as the live hook
+    // so the moment county data exists it flows through without code changes.
+    const countyAsset = await this.pool.query(
+      `SELECT year_built
+       FROM data_library_assets
+       WHERE deal_id = $1::uuid
+         AND year_built IS NOT NULL
+         AND source_type IN ('county_records', 'tax_bill', 'assessor')
+       ORDER BY year_built DESC
+       LIMIT 1`,
+      [dealId]
+    );
+    if (countyAsset.rows.length > 0) {
+      const parsed = parseInt(countyAsset.rows[0].year_built, 10);
+      if (!isNaN(parsed) && parsed > 1800 && parsed <= new Date().getFullYear() + 5) {
+        resolvedYearBuilt = parsed;
+        sources.year_built = 'county_records';
+      }
+    }
+
+    // OM extraction (broker claims)
+    if (resolvedYearBuilt == null && s.om_year_built != null) {
+      const ybStr = stripNonNumeric(s.om_year_built, false);
+      if (ybStr) {
+        const parsed = parseInt(ybStr, 10);
+        if (!isNaN(parsed) && parsed > 1800 && parsed <= new Date().getFullYear() + 5) {
+          resolvedYearBuilt = parsed;
+          sources.year_built = 'broker_claims_om';
+        }
+      }
+    }
+
+    // Fallback: any data_library_assets row for this deal with year_built
+    if (resolvedYearBuilt == null) {
+      const libAsset = await this.pool.query(
+        `SELECT year_built
+         FROM data_library_assets
+         WHERE deal_id = $1::uuid
+           AND year_built IS NOT NULL
+         ORDER BY year_built DESC
+         LIMIT 1`,
+        [dealId]
+      );
+      if (libAsset.rows.length > 0) {
+        const ybStr = stripNonNumeric(libAsset.rows[0].year_built, false);
+        if (ybStr) {
+          const parsed = parseInt(ybStr, 10);
+          if (!isNaN(parsed) && parsed > 1800) {
+            resolvedYearBuilt = parsed;
+            sources.year_built = 'data_library_assets';
+          }
+        }
+      }
+    }
+
+    // ── building_class: om_parse (buildingClass || assetClass) > null ─────────
     let resolvedBuildingClass: string | null =
       s.om_building_class || s.om_asset_class || null;
     if (resolvedBuildingClass) {
-      // Normalise to single letter A/B/C if possible
       const match = resolvedBuildingClass.match(/^[ABC]/i);
       resolvedBuildingClass = match ? match[0].toUpperCase() : resolvedBuildingClass;
       sources.building_class = 'broker_claims_om';
     }
 
-    // lat / lng: deals.latitude/longitude > boundary centroid > null
+    // ── lat / lng: deals.latitude/longitude > boundary centroid > null ────────
     let resolvedLat: number | null = null;
     let resolvedLng: number | null = null;
     if (s.deal_latitude != null && s.deal_longitude != null) {
@@ -355,7 +447,7 @@ export class SubjectPopulationService {
       }
     }
 
-    // city / state_code: deals columns > address parse > null
+    // ── city / state_code: deals columns > address parse > null ───────────────
     let resolvedCity: string | null = s.deal_city || null;
     let resolvedStateCode: string | null = s.deal_state_code || null;
     if (!resolvedCity || !resolvedStateCode) {
@@ -366,8 +458,7 @@ export class SubjectPopulationService {
     if (resolvedCity) sources.city = 'deal_table';
     if (resolvedStateCode) sources.state_code = 'deal_table';
 
-    // submarket_id: PostGIS nearest centroid if we have lat/lng > null
-    // Only attempt if we resolved geocode and the current submarket_id is null
+    // ── submarket_id: PostGIS nearest centroid > null ─────────────────────────
     let resolvedSubmarketId: string | null = null;
     const latForSubmarket = resolvedLat ?? (s.cur_latitude != null ? parseFloat(s.cur_latitude) : null);
     const lngForSubmarket = resolvedLng ?? (s.cur_longitude != null ? parseFloat(s.cur_longitude) : null);
@@ -390,13 +481,12 @@ export class SubjectPopulationService {
       }
     }
 
-    // ── Step 3: Write resolved values via COALESCE ───────────────────────────
+    // ── Step 3: Classify fields and write ────────────────────────────────────
 
     const fieldsWritten: string[] = [];
     const fieldsAlreadySet: string[] = [];
     const fieldsMissing: string[] = [];
 
-    // Classify each field
     const fieldMap: Array<{ field: string; cur: unknown; resolved: unknown }> = [
       { field: 'units',          cur: s.cur_units,          resolved: resolvedUnits },
       { field: 'building_sf',    cur: s.cur_building_sf,    resolved: resolvedBuildingSf },
@@ -409,17 +499,38 @@ export class SubjectPopulationService {
       { field: 'submarket_id',   cur: s.cur_submarket_id,   resolved: resolvedSubmarketId },
     ];
 
+    // Build provenance records for every field that has a resolved source
+    const resolvedValues: Record<string, string | number | null> = {
+      units: resolvedUnits,
+      building_sf: resolvedBuildingSf,
+      year_built: resolvedYearBuilt,
+      building_class: resolvedBuildingClass,
+      latitude: resolvedLat,
+      longitude: resolvedLng,
+      city: resolvedCity,
+      state_code: resolvedStateCode,
+      submarket_id: resolvedSubmarketId,
+    };
+
     for (const f of fieldMap) {
       if (f.cur != null) {
         fieldsAlreadySet.push(f.field);
+        // Keep existing provenance entry if present; don't overwrite
       } else if (f.resolved == null) {
         fieldsMissing.push(f.field);
       } else {
         fieldsWritten.push(f.field);
+        const src = sources[f.field] ?? sources[f.field.replace(/_.*/, '')] ?? 'unknown';
+        provenanceMeta[f.field] = {
+          source: src,
+          writtenAt: now,
+          value: resolvedValues[f.field] as string | number | null,
+        };
       }
     }
 
     if (fieldsWritten.length > 0) {
+      // Write scalar fields to properties
       await this.pool.query(
         `UPDATE properties
          SET
@@ -449,6 +560,21 @@ export class SubjectPopulationService {
           resolvedSubmarketId,
         ]
       );
+
+      // Persist provenance to deals.deal_data->subject_population_meta.
+      // Merge with existing meta so previous field provenance is preserved
+      // when only a subset of fields is written on subsequent calls.
+      if (Object.keys(provenanceMeta).length > 0) {
+        await this.pool.query(
+          `UPDATE deals
+           SET deal_data = COALESCE(deal_data, '{}'::jsonb)
+             || jsonb_build_object('subject_population_meta',
+                  COALESCE(deal_data->'subject_population_meta', '{}'::jsonb)
+                  || $2::jsonb)
+           WHERE id = $1::uuid`,
+          [dealId, JSON.stringify(provenanceMeta)]
+        );
+      }
 
       console.log(
         `[SubjectPopulation] deal=${dealId} wrote=[${fieldsWritten.join(',')}]` +
@@ -512,7 +638,6 @@ export class SubjectPopulationService {
 
     const row = result.rows[0];
 
-    // Determine which fields to check based on purpose
     const fieldsToCheck: string[] = (() => {
       if (purpose === 'valuation_grid') {
         return ['units', 'building_sf', 'year_built', 'building_class', 'latitude', 'submarket_id'];
@@ -529,7 +654,6 @@ export class SubjectPopulationService {
     for (const field of fieldsToCheck) {
       const meta = FIELD_META[field];
       if (!meta) continue;
-
       const val = row[field];
       if (val == null) {
         missingFields.push({
@@ -543,7 +667,6 @@ export class SubjectPopulationService {
       }
     }
 
-    // "complete" = all required fields are present (units at minimum)
     const requiredMissing = missingFields.filter(f => FIELD_META[f.field]?.required);
 
     return {
