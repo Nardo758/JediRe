@@ -19,6 +19,14 @@ export interface CompSetCriteria {
   exclude_distress?: boolean;
   arms_length_only?: boolean;
   strategy?: string;
+  /**
+   * Backtest / as-of mode: when set, only comps with sale_date STRICTLY BEFORE
+   * this date are included (as-of discipline — no future leakage).
+   * Also skips persisting the result to sale_comp_sets (dry run).
+   */
+  as_of?: Date;
+  /** When true, skip persisting the generated comp set to sale_comp_sets. */
+  dry_run?: boolean;
 }
 
 export interface CompSetResult {
@@ -79,9 +87,10 @@ export class CompSetService {
       strategy,
     } = criteria;
 
-    // 1. Get subject property location
+    // 1. Get subject property location.
+    //    D-DEAL-1: asset_class lives on properties.building_class, not deals.
     const dealResult = await pool.query(`
-      SELECT d.id, d.address, COALESCE(d.asset_class, 'B') AS asset_class,
+      SELECT d.id, d.address, COALESCE(p.building_class, 'B') AS asset_class,
              p.latitude, p.longitude, p.units, p.building_sf, p.year_built
       FROM deals d
       LEFT JOIN properties p ON p.deal_id = d.id
@@ -99,8 +108,13 @@ export class CompSetService {
       throw new Error('Deal property must have coordinates for comp selection');
     }
 
-    // 2. Calculate date cutoff
-    const cutoffDate = new Date();
+    // 2. Calculate date cutoff.
+    //    Backtest / as-of mode: when as_of is set, filter strictly to comps
+    //    dated BEFORE the as_of date (no future leakage). Lookback window is
+    //    still date_range_months measured back from as_of instead of today.
+    const asOf = criteria.as_of;
+    const cutoffUpperDate: Date = asOf ?? new Date();     // upper bound (exclusive when as_of set)
+    const cutoffDate = new Date(cutoffUpperDate);
     cutoffDate.setMonth(cutoffDate.getMonth() - date_range_months);
 
     // 3. Build query filters against market_sale_comps
@@ -134,10 +148,31 @@ export class CompSetService {
     // Data isolation: CoStar-uploaded comps are scoped to the uploading deal.
     // Only include costar_upload rows that belong to THIS deal; public sources (county_recorded,
     // research_agent, etc.) are always included (deal_id IS NULL).
-    // Param positions: $1=lat $2=lng $3=cutoff $4=min_units $5=max_units $6=property_classes
-    //                  [$7=vintageMin $8=vintageMax] $7or9=deal_id (always last in params array)
-    const dealIdParamIdx = vintage_range ? 9 : 7;
+    //
+    // Build params array dynamically so as_of can be injected at the right position.
+    // Param positions: $1=lat $2=lng $3=cutoffDate $4=min_units $5=max_units $6=property_classes
+    //                  [$7=vintageMin $8=vintageMax] [then deal_id] [then as_of if backtest mode]
+    const queryParams: unknown[] = [
+      deal.latitude,
+      deal.longitude,
+      cutoffDate,
+      min_units,
+      max_units,
+      property_classes,
+      ...(vintage_range || []),
+    ];
+
+    const dealIdParamIdx = queryParams.length + 1;  // next position
+    queryParams.push(deal_id);
     filters.push(`(t.source != 'costar_upload' OR t.deal_id = $${dealIdParamIdx}::uuid OR t.deal_id IS NULL)`);
+
+    // AS-OF DISCIPLINE: when as_of is set, exclude comps with sale_date >= as_of.
+    // This is the critical backtest filter — no future data can leak into a historical valuation.
+    if (asOf) {
+      const asOfParamIdx = queryParams.length + 1;
+      queryParams.push(asOf);
+      filters.push(`t.sale_date < $${asOfParamIdx}`);
+    }
 
     // 4. Spatial query for comps within radius using market_sale_comps
     const compsResult = await pool.query(`
@@ -174,16 +209,7 @@ export class CompSetService {
         (point(t.longitude::float, t.latitude::float) <@> point($2::float, $1::float)) ASC,
         t.sale_date DESC
       LIMIT 30
-    `, [
-      deal.latitude,
-      deal.longitude,
-      cutoffDate,
-      min_units,
-      max_units,
-      property_classes,
-      ...(vintage_range || []),
-      deal_id,
-    ]);
+    `, queryParams);
 
     const compsRaw: CompTransaction[] = compsResult.rows.map((row: any) => ({
       id: row.id,
@@ -276,7 +302,30 @@ export class CompSetService {
       ? Math.round((pricesPerUnit.filter(p => p <= subjectPricePerUnit).length / pricesPerUnit.length) * 100)
       : null;
 
-    // 7. Store comp set (using actual sale_comp_sets schema + migrated columns)
+    // 7. Persist comp set — skip when dry_run or as_of is set (backtest mode).
+    //    In backtest mode we return an in-memory result with a synthetic id so
+    //    callers can treat the return value identically without polluting the DB
+    //    with historical artefacts.
+    const isDryRun = criteria.dry_run || !!asOf;
+
+    if (isDryRun) {
+      return {
+        id: `dry-run-${Date.now()}`,
+        deal_id,
+        created_at: new Date().toISOString(),
+        comp_count: comps.length,
+        median_price_per_unit: medianPricePerUnit,
+        avg_price_per_unit: avgPricePerUnit,
+        min_price_per_unit: minPricePerUnit,
+        max_price_per_unit: maxPricePerUnit,
+        std_dev_price_per_unit: stdDevPricePerUnit,
+        median_price_per_sf: medianPricePerSf,
+        median_implied_cap_rate: medianCapRate,
+        avg_implied_cap_rate: avgCapRate,
+        comps,
+      };
+    }
+
     const compSetResult = await pool.query(`
       INSERT INTO sale_comp_sets (
         deal_id, name, status, comp_type, selection_criteria,

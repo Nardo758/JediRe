@@ -275,7 +275,16 @@ export class ValuationGridService {
     this.pool = pool;
   }
 
-  async compute(dealId: string): Promise<ValuationGridResult> {
+  /**
+   * Compute the full valuation grid for a deal.
+   *
+   * @param options.asOf  Backtest / as-of mode: restrict all comp and market
+   *   queries to data dated strictly before this date.  When set the comp
+   *   service runs in dry-run mode (no DB persist) and stored comp sets are
+   *   bypassed in favour of freshly-generated as-of filtered sets.
+   */
+  async compute(dealId: string, options?: { asOf?: Date }): Promise<ValuationGridResult> {
+    const asOf = options?.asOf;
     const populationSvc = new SubjectPopulationService(this.pool);
 
     // D-DEAL-3: Run completeness gate in parallel with subject property fetch.
@@ -305,20 +314,20 @@ export class ValuationGridService {
       m3,
       m5,
     ] = await Promise.all([
-      this.computeCapRateNOI(subject),
-      this.computeCompAnchoredCapRate(dealId, subject, compCriteria),
+      this.computeCapRateNOI(subject, asOf),
+      this.computeCompAnchoredCapRate(dealId, subject, compCriteria, asOf),
       noUnits
         ? Promise.resolve(this.insufficientMethod(
             'per_unit_benchmark', 'Per-Unit Benchmark', 'top_down',
             unitGateMsg,
             ['Missing subject field: unit count']))
-        : this.computePerUnitBenchmark(subject),
+        : this.computePerUnitBenchmark(subject, asOf),
       noUnits
         ? Promise.resolve(this.insufficientMethod(
             'sales_comp_ppu', 'Sales Comp PPU', 'top_down',
             unitGateMsg,
             ['Missing subject field: unit count']))
-        : this.computeSalesCompPPU(dealId, subject, compCriteria),
+        : this.computeSalesCompPPU(dealId, subject, compCriteria, asOf),
       this.computeReplacementCost(subject),
     ]);
 
@@ -421,7 +430,7 @@ export class ValuationGridService {
 
   // ── Method 1: Cap Rate × NOI ─────────────────────────────────────────────
 
-  private async computeCapRateNOI(subject: SubjectProperty): Promise<ValuationMethod> {
+  private async computeCapRateNOI(subject: SubjectProperty, asOf?: Date): Promise<ValuationMethod> {
     const METHOD_ID: MethodId = 'cap_rate_noi';
     const warnings: string[] = [];
     const evidence: EvidenceLine[] = [];
@@ -436,7 +445,9 @@ export class ValuationGridService {
       );
     }
 
-    // Query cap rate distribution from archive benchmarks
+    // Query cap rate distribution from archive benchmarks.
+    // When asOf is set (backtest mode), restrict to benchmarks with as_of <= asOf
+    // so no post-acquisition benchmark data influences the historical valuation.
     const params: unknown[] = [];
     let whereClauses = [`assumption_name = 'cap_rate'`];
 
@@ -450,6 +461,11 @@ export class ValuationGridService {
     if (subject.submarket) {
       params.push(subject.submarket);
       whereClauses.push(`(submarket_id = $${params.length} OR submarket_id IS NULL)`);
+    }
+
+    if (asOf) {
+      params.push(asOf);
+      whereClauses.push(`as_of <= $${params.length}`);
     }
 
     const capQuery = await this.pool.query(
@@ -542,16 +558,23 @@ export class ValuationGridService {
 
   private async getMarketSnapshotForSynthesis(
     city: string,
-    state: string
+    state: string,
+    asOf?: Date
   ): Promise<{ avgRent: number; avgOccupancy: number } | null> {
     try {
+      const params: unknown[] = [city, state];
+      let asOfClause = '';
+      if (asOf) {
+        params.push(asOf);
+        asOfClause = `AND (snapshot_date IS NULL OR snapshot_date <= $${params.length})`;
+      }
       const res = await this.pool.query(
         `SELECT avg_rent_studio, avg_rent_1br, avg_rent_2br, avg_rent_3br, avg_occupancy
          FROM apartment_market_snapshots
-         WHERE LOWER(city) = LOWER($1) AND LOWER(state) = LOWER($2)
-         ORDER BY id DESC
+         WHERE LOWER(city) = LOWER($1) AND LOWER(state) = LOWER($2) ${asOfClause}
+         ORDER BY snapshot_date DESC NULLS LAST, id DESC
          LIMIT 1`,
-        [city, state]
+        params
       );
       if (res.rows.length === 0) return null;
       const row = res.rows[0];
@@ -571,7 +594,8 @@ export class ValuationGridService {
   private async computeCompAnchoredCapRate(
     dealId: string,
     subject: SubjectProperty,
-    criteria: CompCriteria
+    criteria: CompCriteria,
+    asOf?: Date
   ): Promise<ValuationMethod> {
     const METHOD_ID: MethodId = 'comp_anchored_cap_rate';
     const warnings: string[] = [];
@@ -588,9 +612,14 @@ export class ValuationGridService {
     }
 
     // Pull comp set (reuse existing set or generate on-the-fly with persisted criteria)
+    // In backtest (asOf) mode: skip stored comp sets entirely — they contain
+    // present-day data with no as-of guarantee — and generate a fresh set with
+    // the as_of upper bound + dry_run (no DB persist).
     let compSet: any = null;
     try {
-      compSet = await compSetService.getCompSetByDeal(dealId);
+      if (!asOf) {
+        compSet = await compSetService.getCompSetByDeal(dealId);
+      }
       if (!compSet || compSet.comp_count === 0) {
         compSet = await compSetService.generateCompSet({
           deal_id: dealId,
@@ -601,6 +630,7 @@ export class ValuationGridService {
           property_classes: criteria.propertyClasses?.length ? criteria.propertyClasses : undefined,
           vintage_range: (criteria.minYearBuilt > 0 || criteria.maxYearBuilt < 9999)
             ? [criteria.minYearBuilt, criteria.maxYearBuilt] : undefined,
+          ...(asOf ? { as_of: asOf, dry_run: true } : {}),
         });
       }
     } catch {
@@ -710,7 +740,7 @@ export class ValuationGridService {
     }
 
     // Market snapshot for synthesis of comps without cap_rate
-    const snap = await this.getMarketSnapshotForSynthesis(subject.city, subject.state);
+    const snap = await this.getMarketSnapshotForSynthesis(subject.city, subject.state, asOf);
     const snapAvgRent = snap?.avgRent ?? 1250;
     const snapAvgOcc  = snap?.avgOccupancy && snap.avgOccupancy > 0 ? snap.avgOccupancy : 0.93;
     const SYNTH_OPEX  = 0.42;
@@ -718,7 +748,9 @@ export class ValuationGridService {
     // Quality-tier multipliers: C1 (primary, arm's-length, close) → M2 (peripheral)
     const TIER_FACTOR: Record<string, number> = { C1: 1.00, C2: 0.80, M1: 0.60, M2: 0.40 };
 
-    const now = Date.now();
+    // Use asOf as the reference point for staleness so historical backtests
+    // score comp recency relative to the acquisition date, not today.
+    const now = asOf ? asOf.getTime() : Date.now();
     // Task #1417 (6.2): Use operator-configured max age (default 36 months)
     const maxCompAgeMonths = criteria.maxAgeMonths ?? MAX_COMP_AGE_MONTHS_DEFAULT;
 
@@ -888,7 +920,7 @@ export class ValuationGridService {
 
   // ── Method 2: Per-Unit Benchmark ─────────────────────────────────────────
 
-  private async computePerUnitBenchmark(subject: SubjectProperty): Promise<ValuationMethod> {
+  private async computePerUnitBenchmark(subject: SubjectProperty, asOf?: Date): Promise<ValuationMethod> {
     const METHOD_ID: MethodId = 'per_unit_benchmark';
     const warnings: string[] = [];
     const evidence: EvidenceLine[] = [];
@@ -914,6 +946,11 @@ export class ValuationGridService {
     if (subject.submarket) {
       params.push(subject.submarket);
       whereClauses.push(`(submarket_id = $${params.length} OR submarket_id IS NULL)`);
+    }
+
+    if (asOf) {
+      params.push(asOf);
+      whereClauses.push(`as_of <= $${params.length}`);
     }
 
     const benchmarkQuery = await this.pool.query(
@@ -990,7 +1027,8 @@ export class ValuationGridService {
   private async computeSalesCompPPU(
     dealId: string,
     subject: SubjectProperty,
-    criteria: CompCriteria
+    criteria: CompCriteria,
+    asOf?: Date
   ): Promise<ValuationMethod & { _compSetRaw?: any }> {
     const METHOD_ID: MethodId = 'sales_comp_ppu';
     const warnings: string[] = [];
@@ -1013,11 +1051,14 @@ export class ValuationGridService {
       warnings.push('Property coordinates not available — comp set uses city-level filter (less precise).');
     }
 
+    // In backtest (asOf) mode: bypass stored comp sets (no as-of guarantee) and
+    // generate a fresh as-of filtered set in dry-run mode (no DB persist).
     let compSet: any = null;
     try {
-      compSet = await compSetService.getCompSetByDeal(dealId);
+      if (!asOf) {
+        compSet = await compSetService.getCompSetByDeal(dealId);
+      }
       if (!compSet || compSet.comp_count === 0) {
-        // Attempt to generate on-the-fly with persisted criteria (wide retrieval horizon)
         compSet = await compSetService.generateCompSet({
           deal_id: dealId,
           radius_miles: criteria.radiusMiles,
@@ -1027,6 +1068,7 @@ export class ValuationGridService {
           property_classes: criteria.propertyClasses?.length ? criteria.propertyClasses : undefined,
           vintage_range: (criteria.minYearBuilt > 0 || criteria.maxYearBuilt < 9999)
             ? [criteria.minYearBuilt, criteria.maxYearBuilt] : undefined,
+          ...(asOf ? { as_of: asOf, dry_run: true } : {}),
         });
       }
     } catch {
@@ -1876,7 +1918,7 @@ export class ValuationGridService {
   // computeCompAnchoredCapRate are derived from the same compSet, so operators always
   // see "why those comps" rather than a divergent SQL query.
 
-  async listCompsForReview(dealId: string): Promise<CompReviewResult> {
+  async listCompsForReview(dealId: string, asOf?: Date): Promise<CompReviewResult> {
     const compSetService = new (await import('../saleComps/compSet.service')).CompSetService();
     const criteria = await this.getCompCriteria(dealId);
 
@@ -1909,7 +1951,7 @@ export class ValuationGridService {
       }
     }
 
-    const now = Date.now();
+    const now = asOf ? asOf.getTime() : Date.now();
     const excludedSet = new Set<string>(criteria.excludedCompIds);
     const customSet = new Set<string>(criteria.customIncludedCompIds);
 
