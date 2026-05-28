@@ -22,6 +22,13 @@
  *
  * All writes use COALESCE so an existing value is never overwritten by a lower-
  * priority source. To force a re-population, clear the field first.
+ *
+ * LayeredValue provenance note: `properties` uses scalar columns (integer,
+ * varchar, float8) — not JSONB LayeredValue bags. Provenance is tracked in
+ * the `PopulationResult.sources` map returned by the call site and logged to
+ * the console; it is NOT persisted to the DB. LayeredValue provenance (the
+ * stanceModulated / resolvedFrom pattern) lives in `deal_assumptions` JSONB,
+ * which is a separate schema contract owned by the Cashflow Agent / F9 layer.
  */
 
 import { Pool } from 'pg';
@@ -202,9 +209,12 @@ export class SubjectPopulationService {
               THEN ST_Y(ST_Centroid(d.boundary)) END   AS boundary_lat,
          CASE WHEN d.boundary IS NOT NULL
               THEN ST_X(ST_Centroid(d.boundary)) END   AS boundary_lng,
-         -- OM extraction (broker claims)
-         (d.deal_data->'broker_claims'->'property'->>'units')::integer
-                                                       AS om_units,
+         -- OM extraction (broker claims).
+         -- Strip non-numeric chars before ::integer cast to handle strings like
+         -- "232 units" or "232-unit" that the OM parser occasionally emits.
+         NULLIF(REGEXP_REPLACE(
+           COALESCE(d.deal_data->'broker_claims'->'property'->>'units',''),
+           '[^0-9]', '', 'g'), '')::integer            AS om_units,
          d.deal_data->'broker_claims'->'property'->>'yearBuilt'
                                                        AS om_year_built,
          d.deal_data->'broker_claims'->'property'->>'buildingClass'
@@ -213,9 +223,10 @@ export class SubjectPopulationService {
                                                        AS om_asset_class,
          d.deal_data->'broker_claims'->'property'->>'buildingSf'
                                                        AS om_building_sf,
-         -- Rent roll extraction
-         (d.deal_data->'extraction_rent_roll'->>'total_units')::integer
-                                                       AS rr_units
+         -- Rent roll extraction — same guard against non-numeric text.
+         NULLIF(REGEXP_REPLACE(
+           COALESCE(d.deal_data->'extraction_rent_roll'->>'total_units',''),
+           '[^0-9]', '', 'g'), '')::integer            AS rr_units
        FROM deals d
        LEFT JOIN properties p ON p.deal_id = d.id
        WHERE d.id = $1::uuid

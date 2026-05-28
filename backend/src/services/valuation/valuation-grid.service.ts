@@ -172,6 +172,14 @@ export class ValuationGridService {
 
     const methods: ValuationMethod[] = [];
 
+    // D-DEAL-3 gate: skip unit-dependent methods when the unit count is missing
+    // so each method surfaces a targeted prompt instead of a generic INSUFFICIENT.
+    // Methods that do not require units (cap-rate-NOI, replacement-cost) always run.
+    const noUnits = subject.units == null;
+    const unitFieldMeta = subjectCompleteness.missingFields.find(f => f.field === 'units');
+    const unitGateMsg = unitFieldMeta?.suggestion
+      ?? 'Upload an Offering Memorandum or enter the unit count in deal details.';
+
     const [
       m1,
       m2,
@@ -179,8 +187,18 @@ export class ValuationGridService {
       m5,
     ] = await Promise.all([
       this.computeCapRateNOI(subject),
-      this.computePerUnitBenchmark(subject),
-      this.computeSalesCompPPU(dealId, subject),
+      noUnits
+        ? Promise.resolve(this.insufficientMethod(
+            'per_unit_benchmark', 'Per-Unit Benchmark', 'top_down',
+            unitGateMsg,
+            ['Missing subject field: unit count']))
+        : this.computePerUnitBenchmark(subject),
+      noUnits
+        ? Promise.resolve(this.insufficientMethod(
+            'sales_comp_ppu', 'Sales Comp PPU', 'top_down',
+            unitGateMsg,
+            ['Missing subject field: unit count']))
+        : this.computeSalesCompPPU(dealId, subject),
       this.computeReplacementCost(subject),
     ]);
 

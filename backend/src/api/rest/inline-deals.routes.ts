@@ -765,6 +765,22 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
       }
     }
 
+    // D-DEAL-2: Re-populate subject fields when intake fields change so the
+    // linked properties row stays in sync with the latest deal data.
+    // Runs after the response so it never delays the update acknowledgement.
+    setImmediate(async () => {
+      try {
+        const { SubjectPopulationService } = await import('../../services/subject-population.service');
+        const populationSvc = new SubjectPopulationService(pool);
+        await populationSvc.populateSubjectFields(dealId);
+      } catch (populateErr) {
+        console.warn(
+          `[SubjectPopulation] Post-update populate failed for ${dealId}:`,
+          populateErr instanceof Error ? populateErr.message : populateErr
+        );
+      }
+    });
+
     res.json({ success: true, deal: result.rows[0] });
   } catch (error) {
     console.error('Error updating deal:', error);
