@@ -67,6 +67,7 @@ export interface CompPreviewRow {
   salePrice: number | null;
   pricePerUnit: number | null;
   capRate: number | null;
+  noi: number | null;
   // Rent-specific
   snapshotDate: string | null;
   avgAskingRent: number | null;
@@ -908,6 +909,7 @@ export async function previewCoStarUpload(
         salePrice: null,
         pricePerUnit: null,
         capRate: null,
+        noi: null,
         snapshotDate: comp?.period_date ?? null,
         avgAskingRent: comp?.asking_rent_per_unit ?? null,
         avgEffectiveRent: comp?.effective_rent_per_unit ?? null,
@@ -940,6 +942,7 @@ export async function previewCoStarUpload(
           salePrice: null,
           pricePerUnit: null,
           capRate: null,
+          noi: null,
           snapshotDate: null,
           avgAskingRent: null,
           avgEffectiveRent: null,
@@ -967,6 +970,7 @@ export async function previewCoStarUpload(
           salePrice: comp.sale_price,
           pricePerUnit: comp.price_per_unit,
           capRate: comp.cap_rate,
+          noi: comp.noi,
           snapshotDate: null,
           avgAskingRent: null,
           avgEffectiveRent: null,
@@ -997,6 +1001,7 @@ export async function previewCoStarUpload(
           salePrice: null,
           pricePerUnit: null,
           capRate: null,
+          noi: null,
           snapshotDate,
           avgAskingRent: null,
           avgEffectiveRent: null,
@@ -1024,6 +1029,7 @@ export async function previewCoStarUpload(
           salePrice: null,
           pricePerUnit: null,
           capRate: null,
+          noi: null,
           snapshotDate: comp.snapshot_date,
           avgAskingRent: comp.avg_asking_rent,
           avgEffectiveRent: comp.avg_effective_rent,

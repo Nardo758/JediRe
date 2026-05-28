@@ -43,6 +43,7 @@ interface PreviewRow {
   salePrice: number | null;
   pricePerUnit: number | null;
   capRate: number | null;
+  noi: number | null;
   snapshotDate: string | null;
   avgAskingRent: number | null;
   avgEffectiveRent: number | null;
@@ -110,6 +111,7 @@ function ReviewTable({
                   <th style={{ ...TH, textAlign: 'right' }}>PRICE</th>
                   <th style={{ ...TH, textAlign: 'right' }}>PPU</th>
                   <th style={{ ...TH, textAlign: 'right' }}>CAP%</th>
+                  <th style={{ ...TH, textAlign: 'right' }}>NOI</th>
                 </>
               ) : (
                 <>
@@ -162,6 +164,9 @@ function ReviewTable({
                       </td>
                       <td style={{ ...TD, textAlign: 'right' }}>
                         {row.capRate != null ? `${row.capRate.toFixed(2)}%` : '—'}
+                      </td>
+                      <td style={{ ...TD, textAlign: 'right' }}>
+                        {row.noi != null ? `$${Math.round(row.noi).toLocaleString()}` : '—'}
                       </td>
                     </>
                   ) : (
