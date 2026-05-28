@@ -538,7 +538,22 @@ export function parseT12(buffer: Buffer, filename: string): ExtractionResult & {
 
     const expenseRatio = t12Revenue > 0 ? t12OpEx / t12Revenue : 0;
     const noiMargin = t12Revenue > 0 ? t12NOI / t12Revenue : 0;
-    const mgmtFeePct = t12Revenue > 0 ? t12Mgmt / t12Revenue : 0;
+    const mgmtFeePctRaw = t12Revenue > 0 ? t12Mgmt / t12Revenue : 0;
+
+    // Guard: management fees for multifamily are 3–8% of EGI. A value > 10%
+    // almost always means EGI was only partially captured (e.g. only 3 months
+    // of income rows parsed) while the fee was captured in full, producing a
+    // denominator that is far too small. Null out rather than persist a bad rate
+    // that will inflate total_opex and crush NOI on every proforma rebuild.
+    let mgmtFeePct: number | null = mgmtFeePctRaw;
+    if (mgmtFeePctRaw > 0.10) {
+      warnings.push(
+        `Management fee pct computed as ${(mgmtFeePctRaw * 100).toFixed(1)}% of EGI — ` +
+        `unusually high (typical range 3–8%). EGI may be partially captured. ` +
+        `mgmtFeePctOfEgi set to null; use the fee dollar amount ($${Math.round(t12Mgmt).toLocaleString()}) for downstream derivation.`
+      );
+      mgmtFeePct = null;
+    }
 
     // Quality warnings
     if (!foundInsurance) {

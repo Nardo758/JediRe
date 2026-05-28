@@ -422,8 +422,13 @@ async function routeT12(pool: Pool, data: T12Data, propertyId: string, dealId: s
       ? totalVacLoss / totalGpr : null;
     const totalEgi = sum(m => m.effectiveGrossIncome);
     const totalMgmtFee = sum(m => m.managementFee);
-    const managementFeePct = totalEgi && totalEgi > 0 && totalMgmtFee != null
+    const managementFeePctRaw = totalEgi && totalEgi > 0 && totalMgmtFee != null
       ? totalMgmtFee / totalEgi : null;
+    // Guard: >10% signals partial EGI capture (denominator too small).
+    // Null out so the cashflow agent's dollar-derived rate wins on next run.
+    const managementFeePct = managementFeePctRaw != null && managementFeePctRaw > 0.10
+      ? null
+      : managementFeePctRaw;
 
     setImmediate(() => {
       emitExtractionEvents(pool, {

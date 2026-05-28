@@ -1372,6 +1372,30 @@ export class ValuationGridService {
       };
 
       const rc = await rcService.estimateReplacementCost(input);
+
+      // Guard: if both the permit table and the data library contributed no real
+      // data, the service falls back to a hardcoded $/SF default (185 class B,
+      // 225 class A, 155 class C). That fabricated value inflates the reconciled
+      // midpoint by 50–150%, poisoning every deal that lacks local permit data.
+      // Return INSUFFICIENT rather than propagate a known-bad value.
+      const hasRealPermitData = (rc.components?.permitBaseline?.sampleSize ?? 0) > 0;
+      const hasDataLibraryData = (rc.costPerSF?.provenance ?? []).some(
+        (p: { layer: string }) => p.layer === 'data_library'
+      );
+      const hasUserOverride = (rc.costPerSF?.provenance ?? []).some(
+        (p: { layer: string }) => p.layer === 'user_override'
+      );
+      if (!hasRealPermitData && !hasDataLibraryData && !hasUserOverride) {
+        return this.insufficientMethod(
+          METHOD_ID,
+          'Replacement Cost',
+          'cost',
+          'No local permit data available for this market. ' +
+          'Upload cost data to the Data Library or install the building_permits table to enable this method.',
+          []
+        );
+      }
+
       const cpsfVal = safeFloat(rc.costPerSF?.value, 0);
       const cpuVal = safeFloat(rc.costPerUnit?.value, 0);
       const totalCost = safeFloat(rc.totalCost?.value, 0);
@@ -1394,10 +1418,6 @@ export class ValuationGridService {
         rc.costPerSF?.confidence === 'high' ? 'HIGH'
         : rc.costPerSF?.confidence === 'medium' ? 'MEDIUM'
         : 'LOW';
-
-      if (rc.costPerSF?.source === 'default') {
-        warnings.push('Using regional default replacement cost — no permit data for this market. Confidence reduced.');
-      }
 
       return {
         id: METHOD_ID,

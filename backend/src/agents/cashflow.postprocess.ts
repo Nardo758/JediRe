@@ -599,6 +599,110 @@ export async function cashflowPostProcess(
           }
         }
 
+        // ── Derived: management_fee_pct from agent's dollar amount ────────────
+        // The main loop writes management_fee_dollars (annual $) but never the
+        // percentage. If the percentage is stale (e.g. T12 parser captured 11.4%
+        // from a partial EGI denominator) it silently corrupts NOI on every model
+        // rebuild. Derive the rate here from the agent's own resolved dollar value
+        // and EGI so the two always agree. Skipped when:
+        //   (a) agent did not write management_fee_dollars this run
+        //   (b) EGI is unavailable or zero
+        //   (c) derived pct > 10% (signals bad data — log and skip)
+        //   (d) operator has a non-null numeric override on management_fee_pct
+        {
+          const mgmtFeeDollars = effectiveValues['expense.management_fee'];
+          const egiMathEngine  = correctedSnapshotResolved['proforma.revenue.egi'];
+          const egiAgentField  = (() => {
+            const f = pfFieldsForWriteback['revenue.effective_gross_income'];
+            const v = f?.value;
+            return typeof v === 'number' && isFinite(v) ? v : null;
+          })();
+          const egiValue = egiMathEngine ?? egiAgentField;
+
+          if (
+            mgmtFeeDollars != null && mgmtFeeDollars > 0 &&
+            egiValue       != null && egiValue       > 0
+          ) {
+            const derivedPct = mgmtFeeDollars / egiValue;
+
+            if (derivedPct > 0 && derivedPct <= 0.10) {
+              const existingMgmtPctLv = currentYear1['management_fee_pct'] as Record<string, unknown> | undefined;
+              const existingOverride  = existingMgmtPctLv?.override;
+              const operatorHasOverride =
+                existingOverride !== null &&
+                existingOverride !== undefined &&
+                typeof existingOverride === 'number' &&
+                isFinite(existingOverride as number);
+
+              if (!operatorHasOverride) {
+                try {
+                  const pctScenRes = await query(
+                    `UPDATE deal_underwriting_scenarios
+                     SET year1 = jsonb_set(
+                       COALESCE(year1, '{}'),
+                       ARRAY[$2::text],
+                       COALESCE(year1->$2::text, '{}') || jsonb_build_object(
+                         'agent',      $3::numeric,
+                         'resolved',   $3::numeric,
+                         'resolution', $4::text
+                       ),
+                       true
+                     ),
+                     updated_at = NOW()
+                     WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
+                     RETURNING id`,
+                    [ctx.dealId, 'management_fee_pct', derivedPct, 'agent']
+                  );
+                  if ((pctScenRes.rowCount ?? 0) === 0) {
+                    await query(
+                      `UPDATE deal_assumptions
+                       SET year1 = jsonb_set(
+                         COALESCE(year1, '{}'),
+                         ARRAY[$2::text],
+                         COALESCE(year1->$2::text, '{}') || jsonb_build_object(
+                           'agent',      $3::numeric,
+                           'resolved',   $3::numeric,
+                           'resolution', $4::text
+                         ),
+                         true
+                       )
+                       WHERE deal_id = $1`,
+                      [ctx.dealId, 'management_fee_pct', derivedPct, 'agent']
+                    );
+                  }
+                  agentWriteCount++;
+                  logger.info('[CashflowPostProcess] management_fee_pct derived and written', {
+                    dealId:               ctx.dealId,
+                    runId,
+                    derivedPctFormatted:  `${(derivedPct * 100).toFixed(2)}%`,
+                    managementFeeDollars: mgmtFeeDollars,
+                    egi:                  egiValue,
+                  });
+                } catch (pctWriteErr) {
+                  logger.warn('[CashflowPostProcess] management_fee_pct derived write failed (non-fatal)', {
+                    dealId: ctx.dealId,
+                    runId,
+                    err: pctWriteErr instanceof Error ? pctWriteErr.message : String(pctWriteErr),
+                  });
+                }
+              } else {
+                logger.info('[CashflowPostProcess] management_fee_pct skipped — operator override active', {
+                  dealId:           ctx.dealId,
+                  operatorOverride: existingOverride,
+                });
+              }
+            } else {
+              logger.warn('[CashflowPostProcess] management_fee_pct derived pct out of plausible range — skipped', {
+                dealId:               ctx.dealId,
+                runId,
+                derivedPctFormatted:  `${(derivedPct * 100).toFixed(2)}%`,
+                managementFeeDollars: mgmtFeeDollars,
+                egi:                  egiValue,
+              });
+            }
+          }
+        }
+
         // ── Sub-field writeback (pre_renovation / post_stabilization) ─────────
         // For value-add and redevelopment deals, the agent may write pre/post
         // sub-fields on eligible regime-sensitive line items (v1.3 Sub-Field Write
