@@ -202,6 +202,10 @@ export interface CompReviewResult {
 // is used when no operator preference is set.
 
 const MAX_COMP_AGE_MONTHS_DEFAULT = 36;
+// Wide retrieval horizon for comp-set generation — deliberately broader than the operator's
+// maxAgeMonths staleness threshold so that aged comps are RETAINED in the set and
+// downweighted by stalenessWeight() rather than hard-excluded at the SQL level.
+const COMP_RETRIEVAL_HORIZON_MONTHS = 60;
 
 function stalenessLabel(ageMonths: number, maxAgeMonths: number): 'fresh' | 'aging' | 'seasoned' | 'stale' {
   if (ageMonths <= 12) return 'fresh';
@@ -583,12 +587,21 @@ export class ValuationGridService {
       );
     }
 
-    // Pull comp set (reuse existing set or generate on-the-fly)
+    // Pull comp set (reuse existing set or generate on-the-fly with persisted criteria)
     let compSet: any = null;
     try {
       compSet = await compSetService.getCompSetByDeal(dealId);
       if (!compSet || compSet.comp_count === 0) {
-        compSet = await compSetService.generateCompSet({ deal_id: dealId });
+        compSet = await compSetService.generateCompSet({
+          deal_id: dealId,
+          radius_miles: criteria.radiusMiles,
+          date_range_months: COMP_RETRIEVAL_HORIZON_MONTHS,
+          min_units: criteria.minUnits > 0 ? criteria.minUnits : undefined,
+          max_units: criteria.maxUnits < 9999 ? criteria.maxUnits : undefined,
+          property_classes: criteria.propertyClasses?.length ? criteria.propertyClasses : undefined,
+          vintage_range: (criteria.minYearBuilt > 0 || criteria.maxYearBuilt < 9999)
+            ? [criteria.minYearBuilt, criteria.maxYearBuilt] : undefined,
+        });
       }
     } catch {
       // silent — comp set may fail without lat/lon
@@ -658,11 +671,14 @@ export class ValuationGridService {
       warnings.push(`${removedCount} comp${removedCount !== 1 ? 's' : ''} excluded by operator override.`);
     }
 
-    // (c) Apply unit count, vintage band, and class filters
+    // (c) Apply unit count, vintage band, and class filters.
+    //     Custom-added comp IDs bypass criteria — operator explicitly requested them.
+    const customSet = new Set<string>(criteria.customIncludedCompIds ?? []);
     const allClasses = ['A', 'B', 'C', 'D'];
     const classFilter = criteria.propertyClasses ?? allClasses;
     const applyClassFilter = classFilter.length > 0 && classFilter.length < allClasses.length;
     const criteriaComps = effectiveComps.filter((c: any) => {
+      if (customSet.has(String(c.id))) return true;  // operator-added: always include
       const u = c.units != null ? parseInt(String(c.units)) : null;
       if (u != null) {
         if (criteria.minUnits > 0 && u < criteria.minUnits) return false;
@@ -1001,8 +1017,17 @@ export class ValuationGridService {
     try {
       compSet = await compSetService.getCompSetByDeal(dealId);
       if (!compSet || compSet.comp_count === 0) {
-        // Attempt to generate on-the-fly
-        compSet = await compSetService.generateCompSet({ deal_id: dealId });
+        // Attempt to generate on-the-fly with persisted criteria (wide retrieval horizon)
+        compSet = await compSetService.generateCompSet({
+          deal_id: dealId,
+          radius_miles: criteria.radiusMiles,
+          date_range_months: COMP_RETRIEVAL_HORIZON_MONTHS,
+          min_units: criteria.minUnits > 0 ? criteria.minUnits : undefined,
+          max_units: criteria.maxUnits < 9999 ? criteria.maxUnits : undefined,
+          property_classes: criteria.propertyClasses?.length ? criteria.propertyClasses : undefined,
+          vintage_range: (criteria.minYearBuilt > 0 || criteria.maxYearBuilt < 9999)
+            ? [criteria.minYearBuilt, criteria.maxYearBuilt] : undefined,
+        });
       }
     } catch {
       // Silent fail — comp set generation may fail if no lat/lon
@@ -1066,16 +1091,19 @@ export class ValuationGridService {
     }
 
     // Task #1417 (6.1): Apply operator criteria to comp set before PPU synthesis.
+    // Custom-added comp IDs bypass criteria — operator explicitly requested them.
     // This mirrors the same filter chain used in computeCompAnchoredCapRate to ensure
     // the panel and both scoring methods use an identical comp universe.
     if (compSet.comps && compSet.comps.length > 0) {
       const excludedSet = new Set<string>(criteria.excludedCompIds ?? []);
+      const ppuCustomSet = new Set<string>(criteria.customIncludedCompIds ?? []);
       const allClassesPPU = ['A', 'B', 'C', 'D'];
       const classFilterPPU = criteria.propertyClasses ?? allClassesPPU;
       const applyClassFilterPPU = classFilterPPU.length > 0 && classFilterPPU.length < allClassesPPU.length;
 
       const filteredComps = compSet.comps.filter((c: any) => {
         if (excludedSet.has(String(c.id))) return false;
+        if (ppuCustomSet.has(String(c.id))) return true;  // operator-added: always include
         const u = c.units != null ? parseInt(String(c.units)) : null;
         if (u != null) {
           if (criteria.minUnits > 0 && u < criteria.minUnits) return false;
@@ -1749,7 +1777,9 @@ export class ValuationGridService {
         await csvc.generateCompSet({
           deal_id: dealId,
           radius_miles: updated.radiusMiles,
-          date_range_months: updated.maxAgeMonths,
+          // Use wide retrieval horizon — maxAgeMonths is a staleness weight threshold,
+          // not a hard SQL cutoff. Aged comps are downweighted, not excluded.
+          date_range_months: COMP_RETRIEVAL_HORIZON_MONTHS,
           min_units: updated.minUnits > 0 ? updated.minUnits : undefined,
           max_units: updated.maxUnits < 9999 ? updated.maxUnits : undefined,
           property_classes: updated.propertyClasses?.length ? updated.propertyClasses : undefined,
@@ -1865,10 +1895,13 @@ export class ValuationGridService {
           compSet = await compSetService.generateCompSet({
             deal_id: dealId,
             radius_miles: criteria.radiusMiles,
-            date_range_months: criteria.maxAgeMonths,
+            // Wide retrieval horizon — maxAgeMonths is a staleness weight threshold only
+            date_range_months: COMP_RETRIEVAL_HORIZON_MONTHS,
             min_units: criteria.minUnits > 0 ? criteria.minUnits : undefined,
             max_units: criteria.maxUnits < 9999 ? criteria.maxUnits : undefined,
             property_classes: criteria.propertyClasses,
+            vintage_range: (criteria.minYearBuilt > 0 || criteria.maxYearBuilt < 9999)
+              ? [criteria.minYearBuilt, criteria.maxYearBuilt] : undefined,
           });
         } catch {
           compSet = null;
