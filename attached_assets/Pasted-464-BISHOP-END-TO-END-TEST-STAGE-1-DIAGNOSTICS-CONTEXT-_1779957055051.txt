@@ -1,0 +1,176 @@
+464 BISHOP END-TO-END TEST — STAGE 1 DIAGNOSTICS
+
+CONTEXT
+The operator has CoStar pulls (sale comps, rent comps, submarket 
+performance) for 464 Bishop and wants to test the Valuation Grid 
++ Validation Grid + agent reasoning end-to-end on this deal. 
+Before scoping ingestion, three things need to be known.
+
+STATE VERIFICATION (per P8 corollary):
+1. Confirm 464 Bishop exists in the deals table (likely by 
+   address search or known deal_id)
+2. Confirm market_sale_comps and market_rent_comps tables exist 
+   (per Query 1 schema diagnostic)
+3. No prior 464 Bishop ingestion work has been performed
+
+═══════════════════════════════════════════════════════════════════
+DIAGNOSTIC 1 — SUBJECT SIDE READINESS
+═══════════════════════════════════════════════════════════════════
+
+A. Locate the 464 Bishop deal:
+   SELECT id, address, city, state, status, created_at, deal_type
+   FROM deals
+   WHERE address ILIKE '%464%bishop%' 
+      OR address ILIKE '%bishop%464%';
+   
+   If multiple matches: surface them all; operator picks the 
+   correct one.
+
+B. Confirm subject property record:
+   SELECT 
+     d.id AS deal_id,
+     d.address,
+     d.city, d.state,
+     p.id AS property_id,
+     p.units,
+     p.building_sf,
+     p.year_built,
+     p.building_class,
+     p.submarket_id,
+     p.latitude,
+     p.longitude
+   FROM deals d
+   LEFT JOIN properties p ON p.deal_id = d.id
+   WHERE d.id = '<464_bishop_deal_id>';
+   
+   Report:
+   - properties row exists? (yes/no)
+   - units populated? (value or null)
+   - building_sf populated? (value or null)
+   - year_built populated? (value or null)
+   - geocode populated? (lat/lng or null)
+
+C. Confirm existing deal_assumptions for 464 Bishop:
+   SELECT 
+     da.deal_id,
+     da.year1 IS NOT NULL AS has_year1,
+     da.year1->>'noi' AS noi_year1,
+     da.investment_strategy_lv,
+     da.purchase_price,
+     da.valuation_override_lv IS NOT NULL AS has_override,
+     COUNT(da.id) OVER () AS total_assumption_rows
+   FROM deal_assumptions da
+   WHERE da.deal_id = '<464_bishop_deal_id>';
+
+   Report:
+   - Does a deal_assumptions row exist for this deal?
+   - Has the agent run on it (year1 populated)?
+   - Is NOI present?
+   - What's the current investment_strategy_lv?
+
+═══════════════════════════════════════════════════════════════════
+DIAGNOSTIC 2 — COSTAR EXPORT FORMAT
+═══════════════════════════════════════════════════════════════════
+
+This diagnostic does NOT require running anything. The operator 
+will describe the format. Capture in the deliverable:
+
+A. File format(s) of the CoStar pulls:
+   - File type (.csv / .xlsx / .pdf / other)
+   - Number of files per data type (sale comps, rent comps, 
+     submarket performance)
+
+B. Sale comps export — capture from operator description:
+   - Approximate number of sale comp records
+   - Column headers / field names (operator pastes header row)
+   - One sample record (operator pastes one comp's values)
+   - Fields that look like: sale price, sale date, address, 
+     unit count, building sqft, asset class, year built, 
+     submarket, NOI at sale (if present), gross rent (if present)
+
+C. Rent comps export — same approach:
+   - Approximate record count
+   - Column headers
+   - One sample record
+   - Fields: address, asking rent, effective rent, unit type, 
+     occupancy, concessions
+
+D. Submarket performance export — same approach:
+   - Geographic granularity (submarket / city / MSA)
+   - Time series or point-in-time?
+   - Metrics included (rent growth, vacancy, supply pipeline, 
+     transaction volume)
+   - Column headers + one sample row
+
+═══════════════════════════════════════════════════════════════════
+DIAGNOSTIC 3 — PLATFORM TABLE SCHEMAS
+═══════════════════════════════════════════════════════════════════
+
+A. market_sale_comps schema:
+   SELECT column_name, data_type, is_nullable
+   FROM information_schema.columns
+   WHERE table_name = 'market_sale_comps'
+   ORDER BY ordinal_position;
+
+B. market_rent_comps schema:
+   SELECT column_name, data_type, is_nullable
+   FROM information_schema.columns
+   WHERE table_name = 'market_rent_comps'
+   ORDER BY ordinal_position;
+
+C. Submarket performance — identify which platform table this 
+   maps to:
+   - oppgrid_market_economics
+   - submarket_characters
+   - Or other candidate; check schema for each
+   
+   Run the schema query on whichever table looks like the right 
+   target.
+
+D. For each target table, report:
+   - Required (non-null) columns
+   - Columns that look like they map to expected CoStar fields
+   - Any platform-specific fields the CoStar export won't have 
+     (e.g., source_provenance, ingested_at, quality_score)
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/464_BISHOP_DIAGNOSTIC.md
+
+Structure:
+1. Executive summary
+   - 464 Bishop deal_id found / not found
+   - Subject side ready / partial / missing
+   - CoStar exports captured / not yet described
+   - Schema mapping clear / messy / blocked
+2. Diagnostic 1 results (subject side)
+3. Diagnostic 2 results (CoStar format) — populated from operator 
+   description if available; otherwise marked "AWAITING OPERATOR"
+4. Diagnostic 3 results (platform schemas)
+5. Schema mapping assessment per data type:
+   - SALE COMPS: CoStar column → market_sale_comps column 
+     (or "no mapping" / "transformation needed")
+   - RENT COMPS: same shape
+   - SUBMARKET PERFORMANCE: same shape
+6. Stage 2 readiness assessment:
+   - GREEN: subject ready, schema clean → fire Stage 2 ingestion
+   - YELLOW: minor gaps (e.g., one missing field, simple 
+     transformation) → small remediation before Stage 2
+   - ORANGE: subject side missing (no properties row) → properties 
+     creation needed first
+   - RED: deep schema mismatch or other fundamental issue → 
+     reconsider approach
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Ingest any data (Stage 3)
+- Run the cashflow agent (Stage 2)
+- Apply Path A column fix (Stage 2)
+- Generate comp sets
+- Recommend specific ingestion approach (the diagnostic surfaces 
+  the right approach; doesn't presuppose it)
+- "While I'm here" cleanups
