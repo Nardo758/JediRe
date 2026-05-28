@@ -170,6 +170,8 @@ interface SaleCompRow {
   stories: number | null;
   sale_date: string;
   sale_price: number;
+  price_per_unit: number | null;
+  price_per_sqft: number | null;
   cap_rate: number | null;
   buyer: string | null;
   seller: string | null;
@@ -198,6 +200,8 @@ function mapSaleRow(row: ParsedRow, fileId: number | null): { comp: SaleCompRow 
 
   const capRateRaw = colVal(row, 'Cap Rate', 'CapRate', 'Going-In Cap Rate');
   const capRate = parseNum(capRateRaw);
+  const units = parseInt2(colVal(row, '# Units', 'Units', 'NumberOfUnits', 'No. Units'));
+  const sqft = parseInt2(colVal(row, 'Bldg SF', 'Building SF', 'BuildingSF', 'GLA', 'Bldg Sq Ft'));
 
   return {
     comp: {
@@ -211,13 +215,15 @@ function mapSaleRow(row: ParsedRow, fileId: number | null): { comp: SaleCompRow 
       msa: colVal(row, 'MSA'),
       submarket: colVal(row, 'Submarket'),
       property_type: 'multifamily',
-      units: parseInt2(colVal(row, '# Units', 'Units', 'NumberOfUnits', 'No. Units')),
-      sqft: parseInt2(colVal(row, 'Bldg SF', 'Building SF', 'BuildingSF', 'GLA', 'Bldg Sq Ft')),
+      units,
+      sqft,
       year_built: parseInt2(colVal(row, 'Year Built', 'YearBuilt')),
       asset_class: normaliseClass(colVal(row, 'Building Class', 'Class', 'BuildingClass', 'Asset Class')),
       stories: parseInt2(colVal(row, '# Stories', 'Stories', 'NumberOfStories', 'Floors')),
       sale_date,
       sale_price,
+      price_per_unit: units && units > 0 ? Math.round(sale_price / units) : null,
+      price_per_sqft: sqft && sqft > 0 ? Math.round((sale_price / sqft) * 100) / 100 : null,
       cap_rate: capRate != null && capRate > 1 ? capRate : capRate != null ? capRate * 100 : null,
       buyer: colVal(row, 'Buyer', 'Buyer Name'),
       seller: colVal(row, 'Seller', 'Seller Name'),
@@ -275,6 +281,9 @@ function mapRentRow(
     'Asking Rent Per Unit', 'Asking Rent'
   );
   const askingRent = parseNum(askingRentRaw);
+  if (!askingRent || askingRent <= 0) {
+    return { comp: null, reason: `Missing or invalid Avg Asking Rent: "${askingRentRaw}"` };
+  }
 
   const occupancyRaw = colVal(row, 'Occupancy', 'Occupancy Rate', 'OccupancyRate', 'Occ %', 'Occ%');
   let occupancyPct = parseNum(occupancyRaw);
@@ -491,17 +500,17 @@ export async function processCoStarUpload(
           `INSERT INTO market_sale_comps
              (id, property_name, address, city, state, zip, county, msa, submarket,
               property_type, units, sqft, year_built, asset_class, stories,
-              sale_date, sale_price, cap_rate, buyer, seller,
+              sale_date, sale_price, price_per_unit, price_per_sqft, cap_rate, buyer, seller,
               latitude, longitude, source, qualified, file_id, deal_id, created_at)
            VALUES
              ($1,$2,$3,$4,$5,$6,$7,$8,$9,
               $10,$11,$12,$13,$14,$15,
-              $16,$17,$18,$19,$20,
-              $21,$22,$23,$24,$25,$26,NOW())`,
+              $16,$17,$18,$19,$20,$21,$22,
+              $23,$24,$25,$26,$27,$28,NOW())`,
           [
             sc.id, sc.property_name, sc.address, sc.city, sc.state, sc.zip, sc.county, sc.msa, sc.submarket,
             sc.property_type, sc.units, sc.sqft, sc.year_built, sc.asset_class, sc.stories,
-            sc.sale_date, sc.sale_price, sc.cap_rate, sc.buyer, sc.seller,
+            sc.sale_date, sc.sale_price, sc.price_per_unit, sc.price_per_sqft, sc.cap_rate, sc.buyer, sc.seller,
             sc.latitude, sc.longitude, sc.source, sc.qualified, sc.file_id, dealId,
           ]
         );
