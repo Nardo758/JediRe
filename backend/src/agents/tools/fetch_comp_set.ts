@@ -76,7 +76,7 @@ export async function fetchCompSet(input: FetchCompSetInput): Promise<CompSetRes
       cs.comp_state,
       cs.comp_units,
       cs.comp_year_built,
-      cs.comp_asset_class,
+      cs.asset_class,
       cs.comp_distance_miles,
       cs.relevance_score,
       cs.source
@@ -179,7 +179,7 @@ export async function fetchCompSet(input: FetchCompSetInput): Promise<CompSetRes
       compState: String(row.comp_state ?? ''),
       compUnits: Number(row.comp_units ?? 0),
       compYearBuilt: Number(row.comp_year_built ?? 0),
-      compAssetClass: String(row.comp_asset_class ?? ''),
+      compAssetClass: String(row.asset_class ?? ''),
       compDistanceMiles: Number(row.comp_distance_miles ?? 0),
       relevanceScore: Number(row.relevance_score ?? 100),
       source: String(row.source ?? ''),

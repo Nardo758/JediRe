@@ -672,7 +672,7 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
           INSERT INTO deal_comp_sets (
             deal_id, comp_property_address, comp_name, source, status,
             distance_miles, match_score, match_factors,
-            year_built, stories, units, class_code,
+            year_built, stories, units, asset_class,
             avg_rent, occupancy,
             lat, lng
           ) VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
@@ -714,7 +714,7 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
             INSERT INTO competitive_sets (
               deal_id, created_at_stage,
               comp_property_id, comp_name, comp_address, comp_city, comp_state, comp_zip,
-              comp_units, comp_year_built, comp_asset_class,
+              comp_units, comp_year_built, asset_class,
               comp_distance_miles, relevance_score, relevance_factors,
               source, source_id, is_active
             ) VALUES (
@@ -992,7 +992,7 @@ export async function discoverFromAptLocator(
         INSERT INTO competitive_sets (
           deal_id, created_at_stage,
           comp_property_id, comp_name, comp_address, comp_city, comp_state, comp_zip,
-          comp_units, comp_year_built, comp_asset_class,
+          comp_units, comp_year_built, asset_class,
           comp_distance_miles, relevance_score, relevance_factors,
           source, source_id, is_active
         ) VALUES (

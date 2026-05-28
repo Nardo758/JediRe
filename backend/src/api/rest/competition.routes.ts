@@ -913,7 +913,7 @@ router.get(
         let compEntries: any[] = [];
 
         const unitMixComps = await client.query(
-          `SELECT cp.id, cp.name, cp.class, cp.built_year, cp.total_units,
+          `SELECT cp.id, cp.name, cp.asset_class, cp.built_year, cp.total_units,
                   cut.unit_type, cut.mix_pct, cut.avg_sf, cut.avg_rent, cut.vacancy_pct
            FROM comp_properties cp
            LEFT JOIN comp_unit_types cut ON cut.comp_id = cp.id
@@ -933,7 +933,7 @@ router.get(
                 distance: null,
                 units: row.total_units || 0,
                 yearBuilt: row.built_year || 2000,
-                class: row.class || 'B',
+                class: row.asset_class || 'B',
                 isSubject: false,
                 unitTypes: [],
               });

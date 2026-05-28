@@ -26,7 +26,7 @@ export async function getCompSet(pool: Pool, dealId: string, tradeAreaId?: strin
   // ── Prefer active deal_comp_sets if they exist (user-curated selections) ──
   const activeComps = await pool.query(`
     SELECT id, comp_name AS name, comp_property_address AS address,
-           class_code AS class, year_built AS built_year, units AS total_units, NULL AS source_url
+           asset_class AS class, year_built AS built_year, units AS total_units, NULL AS source_url
     FROM deal_comp_sets
     WHERE deal_id = $1 AND status = 'active'
     ORDER BY match_score DESC NULLS LAST
@@ -39,7 +39,7 @@ export async function getCompSet(pool: Pool, dealId: string, tradeAreaId?: strin
     // Use active comp_set addresses to look up unit type data from comp_properties
     const addresses = activeComps.rows.map((r: any) => r.address.toLowerCase());
     const cpResult = await pool.query(`
-      SELECT cp.id, cp.name, cp.address, cp.class, cp.built_year, cp.total_units, cp.source_url
+      SELECT cp.id, cp.name, cp.address, cp.asset_class AS class, cp.built_year, cp.total_units, cp.source_url
       FROM comp_properties cp
       WHERE LOWER(cp.address) = ANY($1) AND cp.is_subject = false
     `, [addresses]);
@@ -77,7 +77,7 @@ export async function getCompSet(pool: Pool, dealId: string, tradeAreaId?: strin
 
   if (tradeAreaId) {
     propsQuery = `
-      SELECT id, name, address, class, built_year, total_units, source_url
+      SELECT id, name, address, asset_class AS class, built_year, total_units, source_url
       FROM comp_properties
       WHERE deal_id = $1 AND trade_area_id = $2 AND is_subject = false
       ORDER BY built_year
@@ -85,7 +85,7 @@ export async function getCompSet(pool: Pool, dealId: string, tradeAreaId?: strin
     params = [dealId, tradeAreaId];
   } else {
     propsQuery = `
-      SELECT id, name, address, class, built_year, total_units, source_url
+      SELECT id, name, address, asset_class AS class, built_year, total_units, source_url
       FROM comp_properties
       WHERE deal_id = $1 AND is_subject = false
       ORDER BY built_year

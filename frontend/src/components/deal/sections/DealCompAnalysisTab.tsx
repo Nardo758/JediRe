@@ -646,7 +646,7 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
           units: comp.units,
           year_built: comp.year_built,
           stories: comp.stories,
-          class_code: comp.class_code,
+          asset_class: comp.class_code,
           distance_miles: comp.distance_miles,
           match_score: comp.match_score,
           geographic_tier: comp.geographic_tier,

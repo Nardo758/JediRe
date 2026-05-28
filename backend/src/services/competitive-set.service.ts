@@ -70,7 +70,7 @@ export async function addToCompSet(comp: CompProperty): Promise<string> {
     `INSERT INTO competitive_sets (
       deal_id, created_at_stage,
       comp_property_id, comp_name, comp_address, comp_city, comp_state, comp_zip,
-      comp_units, comp_year_built, comp_asset_class, comp_distance_miles,
+      comp_units, comp_year_built, asset_class, comp_distance_miles,
       relevance_score, relevance_factors,
       source, source_id
     ) VALUES (
@@ -121,7 +121,7 @@ export async function getCompSet(dealId: string, includeInactive = false): Promi
     compZip: row.comp_zip as string | undefined,
     compUnits: row.comp_units ? Number(row.comp_units) : undefined,
     compYearBuilt: row.comp_year_built ? Number(row.comp_year_built) : undefined,
-    compAssetClass: row.comp_asset_class as string | undefined,
+    compAssetClass: row.asset_class as string | undefined,
     compDistanceMiles: row.comp_distance_miles ? Number(row.comp_distance_miles) : undefined,
     relevanceScore: Number(row.relevance_score ?? 100),
     relevanceFactors: row.relevance_factors as Record<string, number> | undefined,

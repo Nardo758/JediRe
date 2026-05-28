@@ -43,7 +43,7 @@ interface Comp {
   units?: number;
   year_built?: number;
   stories?: number;
-  class_code?: string;
+  asset_class?: string;
   avg_rent?: number;
   occupancy?: number;
   distance_miles?: number;
@@ -456,7 +456,7 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
                   </div>
                 </div>
               )}
-              {comp.class_code && (
+              {comp.asset_class && (
                 <div style={{
                   padding: '6px 10px',
                   borderBottom: `1px solid ${T.border.subtle}08`,
@@ -466,7 +466,7 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
                     CLASS
                   </div>
                   <div style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 700, color: T.text.amber }}>
-                    {comp.class_code}
+                    {comp.asset_class}
                   </div>
                 </div>
               )}

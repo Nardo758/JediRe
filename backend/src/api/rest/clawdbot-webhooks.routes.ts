@@ -1006,7 +1006,7 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
         const saleComps = await pool.query(
           `SELECT id, comp_name, comp_property_address, source, status,
                   distance_miles, match_score, year_built, stories, units,
-                  class_code, avg_rent, occupancy, google_rating,
+                  asset_class, avg_rent, occupancy, google_rating,
                   google_review_count, notes, created_at
            FROM deal_comp_sets
            WHERE deal_id = $1 AND status = 'active'
@@ -1027,7 +1027,7 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
             yearBuilt: r.year_built,
             stories: r.stories,
             units: r.units,
-            classCode: r.class_code,
+            assetClass: r.asset_class,
             avgRent: r.avg_rent ? parseFloat(r.avg_rent) : null,
             occupancy: r.occupancy ? parseFloat(r.occupancy) : null,
             googleRating: r.google_rating ? parseFloat(r.google_rating) : null,

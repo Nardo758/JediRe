@@ -26,7 +26,7 @@ interface CompCandidate {
   comp_state: string;
   comp_units: number;
   comp_year_built: number;
-  comp_asset_class: string;
+  asset_class: string;
   comp_distance_miles: number;
   avg_asking_rent: number;
   avg_effective_rent: number;

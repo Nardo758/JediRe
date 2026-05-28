@@ -746,7 +746,7 @@ Your development's 9-point advantage score indicates strong differentiation pote
     units?: number;
     year_built?: number | null;
     stories?: number | null;
-    class_code?: string | null;
+    asset_class?: string | null;
     distance_miles?: number | null;
     match_score?: number;
     geographic_tier?: string;

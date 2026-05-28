@@ -90,7 +90,7 @@ router.post('/:dealId/comp-set', requireAuth, async (req: AuthenticatedRequest, 
     const pool = getPool();
     const { dealId } = req.params;
     const {
-      address, name, units, year_built, stories, class_code,
+      address, name, units, year_built, stories, asset_class,
       avg_rent, occupancy, google_rating, google_review_count, notes
     } = req.body;
 
@@ -101,7 +101,7 @@ router.post('/:dealId/comp-set', requireAuth, async (req: AuthenticatedRequest, 
     const result = await pool.query(`
       INSERT INTO deal_comp_sets (
         deal_id, comp_property_address, comp_name, source, status,
-        units, year_built, stories, class_code,
+        units, year_built, stories, asset_class,
         avg_rent, occupancy, google_rating, google_review_count, notes
       ) VALUES ($1, $2, $3, 'manual', 'active', $4, $5, $6, $7, $8, $9, $10, $11, $12)
       ON CONFLICT (deal_id, comp_property_address) DO UPDATE SET
@@ -110,7 +110,7 @@ router.post('/:dealId/comp-set', requireAuth, async (req: AuthenticatedRequest, 
         units = COALESCE(EXCLUDED.units, deal_comp_sets.units),
         year_built = COALESCE(EXCLUDED.year_built, deal_comp_sets.year_built),
         stories = COALESCE(EXCLUDED.stories, deal_comp_sets.stories),
-        class_code = COALESCE(EXCLUDED.class_code, deal_comp_sets.class_code),
+        asset_class = COALESCE(EXCLUDED.asset_class, deal_comp_sets.asset_class),
         avg_rent = COALESCE(EXCLUDED.avg_rent, deal_comp_sets.avg_rent),
         occupancy = COALESCE(EXCLUDED.occupancy, deal_comp_sets.occupancy),
         google_rating = COALESCE(EXCLUDED.google_rating, deal_comp_sets.google_rating),
@@ -121,7 +121,7 @@ router.post('/:dealId/comp-set', requireAuth, async (req: AuthenticatedRequest, 
       RETURNING *
     `, [
       dealId, address, name || address,
-      units || null, year_built || null, stories || null, class_code || null,
+      units || null, year_built || null, stories || null, asset_class || null,
       avg_rent || null, occupancy || null,
       google_rating || null, google_review_count || null, notes || null
     ]);
@@ -155,7 +155,7 @@ router.get('/:dealId/comp-set/discover-tiered', requireAuth, async (req: Authent
         await pool.query(`
           INSERT INTO deal_comp_sets (
             deal_id, comp_property_address, comp_name, source, status,
-            units, year_built, stories, class_code,
+            units, year_built, stories, asset_class,
             distance_miles, match_score, geographic_tier, avg_rent, occupancy, lat, lng
           ) VALUES ($1, $2, $3, 'auto', 'active', $4, $5, $6, $7, $8, $9, 'trade_area', $10, $11, $12, $13)
           ON CONFLICT (deal_id, comp_property_address) DO NOTHING
@@ -207,7 +207,7 @@ router.post('/:dealId/comp-set/add-to-set', requireAuth, async (req: Authenticat
   try {
     const pool = getPool();
     const { dealId } = req.params;
-    const { address, name, units, year_built, stories, class_code, distance_miles, match_score, geographic_tier } = req.body;
+    const { address, name, units, year_built, stories, asset_class, distance_miles, match_score, geographic_tier } = req.body;
 
     if (!address) {
       return res.status(400).json({ success: false, error: 'Address is required' });
@@ -221,7 +221,7 @@ router.post('/:dealId/comp-set/add-to-set', requireAuth, async (req: Authenticat
     const result = await pool.query(`
       INSERT INTO deal_comp_sets (
         deal_id, comp_property_address, comp_name, source, status,
-        units, year_built, stories, class_code,
+        units, year_built, stories, asset_class,
         distance_miles, match_score, geographic_tier
       ) VALUES ($1, $2, $3, 'manual', 'active', $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT (deal_id, comp_property_address) DO UPDATE SET
@@ -230,7 +230,7 @@ router.post('/:dealId/comp-set/add-to-set', requireAuth, async (req: Authenticat
         units = COALESCE(EXCLUDED.units, deal_comp_sets.units),
         year_built = COALESCE(EXCLUDED.year_built, deal_comp_sets.year_built),
         stories = COALESCE(EXCLUDED.stories, deal_comp_sets.stories),
-        class_code = COALESCE(EXCLUDED.class_code, deal_comp_sets.class_code),
+        asset_class = COALESCE(EXCLUDED.asset_class, deal_comp_sets.asset_class),
         distance_miles = COALESCE(EXCLUDED.distance_miles, deal_comp_sets.distance_miles),
         match_score = COALESCE(EXCLUDED.match_score, deal_comp_sets.match_score),
         geographic_tier = COALESCE(EXCLUDED.geographic_tier, deal_comp_sets.geographic_tier),
@@ -239,7 +239,7 @@ router.post('/:dealId/comp-set/add-to-set', requireAuth, async (req: Authenticat
       RETURNING *
     `, [
       dealId, address, name || address,
-      units || null, year_built || null, stories || null, class_code || null,
+      units || null, year_built || null, stories || null, asset_class || null,
       distance_miles || null, match_score || null, geographic_tier || 'trade_area'
     ]);
 
@@ -284,7 +284,7 @@ router.patch('/:dealId/comp-set/:compId', requireAuth, async (req: Authenticated
   try {
     const pool = getPool();
     const { dealId, compId } = req.params;
-    const { notes, avg_rent, occupancy, google_rating, google_review_count, units, year_built, stories, class_code } = req.body;
+    const { notes, avg_rent, occupancy, google_rating, google_review_count, units, year_built, stories, asset_class } = req.body;
 
     const setClauses: string[] = ['updated_at = NOW()'];
     const values: any[] = [];
@@ -292,7 +292,7 @@ router.patch('/:dealId/comp-set/:compId', requireAuth, async (req: Authenticated
 
     const fields: Record<string, any> = {
       notes, avg_rent, occupancy, google_rating, google_review_count,
-      units, year_built, stories, class_code
+      units, year_built, stories, asset_class
     };
 
     for (const [key, value] of Object.entries(fields)) {

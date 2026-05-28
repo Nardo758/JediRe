@@ -9,7 +9,7 @@ export const compProperties = pgTable("comp_properties", {
   tradeAreaId: uuid("trade_area_id").notNull(),
   name:        text("name").notNull(),
   address:     text("address"),
-  class:       text("class"),
+  assetClass:  text("asset_class"),
   builtYear:   integer("built_year"),
   totalUnits:  integer("total_units"),
   isSubject:   boolean("is_subject").default(false),

@@ -19,7 +19,7 @@ export const writeCompSetSchema = z.object({
     comp_zip: z.string().optional(),
     comp_units: z.number().optional().describe('Unit count'),
     comp_year_built: z.number().optional(),
-    comp_asset_class: z.enum(['A', 'B', 'C', 'A+', 'B+', 'C+']).optional(),
+    asset_class: z.enum(['A', 'B', 'C', 'A+', 'B+', 'C+']).optional(),
     comp_distance_miles: z.number().optional(),
     
     // Pricing data if known
@@ -73,8 +73,8 @@ function calculateRelevanceScore(
   }
 
   // Asset class match (30% weight if both available)
-  if (comp.comp_asset_class && dealContext?.asset_class) {
-    const compClass = comp.comp_asset_class.charAt(0);
+  if (comp.asset_class && dealContext?.asset_class) {
+    const compClass = comp.asset_class.charAt(0);
     const dealClass = dealContext.asset_class.charAt(0);
     const classScore = compClass === dealClass ? 100 : 
       Math.abs(compClass.charCodeAt(0) - dealClass.charCodeAt(0)) === 1 ? 60 : 30;
@@ -173,7 +173,7 @@ export async function writeCompSet(input: WriteCompSetInput): Promise<WriteCompS
         `INSERT INTO competitive_sets (
           deal_id, created_at_stage,
           comp_name, comp_address, comp_city, comp_state, comp_zip,
-          comp_units, comp_year_built, comp_asset_class, comp_distance_miles,
+          comp_units, comp_year_built, asset_class, comp_distance_miles,
           relevance_score, relevance_factors,
           source, source_id
         ) VALUES (
@@ -186,7 +186,7 @@ export async function writeCompSet(input: WriteCompSetInput): Promise<WriteCompS
         [
           input.deal_id, input.created_at_stage,
           comp.comp_name, comp.comp_address, comp.comp_city, comp.comp_state, comp.comp_zip,
-          comp.comp_units, comp.comp_year_built, comp.comp_asset_class, comp.comp_distance_miles,
+          comp.comp_units, comp.comp_year_built, comp.asset_class, comp.comp_distance_miles,
           score, JSON.stringify(factors),
           comp.source, comp.source_id,
         ]
