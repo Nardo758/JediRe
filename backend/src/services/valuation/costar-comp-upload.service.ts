@@ -20,6 +20,11 @@
 import * as XLSX from 'xlsx';
 import { randomUUID } from 'crypto';
 import type { Pool } from 'pg';
+import {
+  checkSaleCompDedup,
+  mergeSaleCompWithPlatform,
+  type DedupCandidate,
+} from './comp-dedup.service';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -37,6 +42,8 @@ export interface CompUploadResult {
   inserted: number;
   skippedDup: number;
   skippedInvalid: number;
+  /** Platform ↔ CoStar cross-source merges (CoStar comp matched an existing platform record) */
+  merged?: number;
   errors: UploadRowError[];
   rejected: boolean;
   rejectReason?: string;
@@ -593,6 +600,7 @@ export async function processCoStarUpload(
   let inserted = 0;
   let skippedDup = 0;
   let skippedInvalid = 0;
+  let merged = 0;
   const totalRows = rows.length;
 
   // First pass: validate all rows (to gate on >20% failure)
@@ -649,9 +657,37 @@ export async function processCoStarUpload(
     try {
       if (compType === 'sale') {
         const sc = comp as SaleCompRow;
-        const isDup = await checkSaleDup(pool, dealId, sc.address, sc.city, sc.state, sc.sale_date);
-        if (isDup) {
+        // Within-CoStar dup check: same deal, same address+date (existing behaviour)
+        const isCoStarDup = await checkSaleDup(pool, dealId, sc.address, sc.city, sc.state, sc.sale_date);
+        if (isCoStarDup) {
           skippedDup++;
+          continue;
+        }
+        // Cross-platform dedup: check against existing platform records (D-COSTAR-3)
+        const dedupCandidate: DedupCandidate = {
+          address:     sc.address,
+          city:        sc.city,
+          state:       sc.state,
+          sale_date:   sc.sale_date,
+          latitude:    sc.latitude,
+          longitude:   sc.longitude,
+          source_id:   null,
+          submarket:   sc.submarket,
+          asset_class: sc.asset_class,
+          cap_rate:    sc.cap_rate,
+          units:       sc.units,
+          sqft:        sc.sqft,
+          year_built:  sc.year_built,
+          msa:         sc.msa,
+          county:      sc.county,
+        };
+        const dedup = await checkSaleCompDedup(pool, dedupCandidate);
+        if (dedup.matched && dedup.existingId) {
+          // Annotate the existing platform record — do NOT insert a new row
+          await mergeSaleCompWithPlatform(
+            pool, dedup.existingId, dedup.existingSource!, dedup.method!, dedupCandidate,
+          );
+          merged++;
           continue;
         }
         await pool.query(
@@ -750,6 +786,7 @@ export async function processCoStarUpload(
     inserted,
     skippedDup,
     skippedInvalid,
+    merged,
     errors,
     rejected: false,
   };
@@ -1038,6 +1075,7 @@ export async function commitCoStarUpload(
   let inserted = 0;
   let skippedDup = 0;
   let skippedInvalid = 0;
+  let merged = 0;
   const totalRows = rows.length;
 
   for (let i = 0; i < rows.length; i++) {
@@ -1123,13 +1161,14 @@ export async function commitCoStarUpload(
       }
 
       try {
+        // Within-CoStar dup check: same deal, same address+date (existing behaviour)
         const isDup = await checkSaleDup(pool, dealId, comp.address, comp.city, comp.state, comp.sale_date);
         if (isDup) {
           if (!ov?.overwriteDuplicate) {
             skippedDup++;
             continue;
           }
-          // Delete the existing duplicate so INSERT below succeeds cleanly
+          // Delete the existing CoStar duplicate so INSERT below succeeds cleanly
           await pool.query(
             `DELETE FROM market_sale_comps
              WHERE LOWER(address) = LOWER($1)
@@ -1140,6 +1179,33 @@ export async function commitCoStarUpload(
                AND deal_id = $5::uuid`,
             [comp.address, comp.city, comp.state, comp.sale_date, dealId]
           );
+        }
+        // Cross-platform dedup: check against existing platform records (D-COSTAR-3)
+        const dedupCandidate: DedupCandidate = {
+          address:     comp.address,
+          city:        comp.city,
+          state:       comp.state,
+          sale_date:   comp.sale_date,
+          latitude:    comp.latitude,
+          longitude:   comp.longitude,
+          source_id:   null,
+          submarket:   comp.submarket,
+          asset_class: comp.asset_class,
+          cap_rate:    comp.cap_rate,
+          units:       comp.units,
+          sqft:        comp.sqft,
+          year_built:  comp.year_built,
+          msa:         comp.msa,
+          county:      comp.county,
+        };
+        const dedup = await checkSaleCompDedup(pool, dedupCandidate);
+        if (dedup.matched && dedup.existingId) {
+          // Annotate the existing platform record — do NOT insert a new row
+          await mergeSaleCompWithPlatform(
+            pool, dedup.existingId, dedup.existingSource!, dedup.method!, dedupCandidate,
+          );
+          merged++;
+          continue;
         }
         await pool.query(
           `INSERT INTO market_sale_comps
@@ -1239,6 +1305,7 @@ export async function commitCoStarUpload(
     inserted,
     skippedDup,
     skippedInvalid,
+    merged,
     errors,
     rejected: false,
   };

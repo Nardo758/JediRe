@@ -477,6 +477,16 @@ export default function CompsModule({
             </div>
             <div className="text-2xl font-bold text-gray-300">{compSet.comp_count}</div>
             <div className="text-xs text-gray-500 mt-1">Sales in last 24 mo</div>
+            {compSet.comps.length > 0 && (() => {
+              const costarCount = compSet.comps.filter(c => c.source === 'costar_upload').length;
+              const platformCount = compSet.comps.length - costarCount;
+              if (costarCount === 0) return null;
+              return (
+                <div className="text-[10px] text-gray-600 mt-1">
+                  {platformCount} platform · {costarCount} CoStar
+                </div>
+              );
+            })()}
           </div>
 
           <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
