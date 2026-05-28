@@ -16,6 +16,7 @@ import OpusAISection from './OpusAISection';
 import { DealTeamPanel } from '../DealTeamPanel';
 import { CommentThread } from '../CommentThread';
 import { ActivityFeed } from '../ActivityFeed';
+import { CoStarDataPanel } from './DocumentsFiles/CoStarDataPanel';
 
 interface DealToolsSectionProps {
   deal?: any;
@@ -1044,6 +1045,9 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
             </button>
           </div>
         )}
+
+        {/* ─── COSTAR EXPORTS ─── */}
+        <CoStarDataPanel dealId={dealId} />
 
         {/* ─── AUDIT TRAIL ─── */}
         {recentActivity.length > 0 && (
