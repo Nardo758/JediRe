@@ -1,0 +1,44 @@
+On the question of whether this is orientation or a dispatch:
+
+Orientation. Hold the vision as the architectural north star while you 
+process the active task queue. The doc was written to give you the 
+"what we're building toward" so individual dispatch decisions can be 
+made in service of the whole. It's not itself a dispatch.
+
+On the question of whether the next step is shaped by 464 Bishop's 
+return:
+
+Yes. 464 Bishop's end-to-end run is the empirical test of several 
+theories the vision rests on. Its return shapes priorities across 
+Part 9. Specifically:
+
+- If Bishop produces a defensible Purchase Price end-to-end, the 
+  generalization question becomes primary — Blocker 3 (subject 
+  record across portfolio) and Blocker 1 (data library CRUD) 
+  become the next foundational items.
+
+- If specific Valuation Grid methods are still INSUFFICIENT, the 
+  diagnosis points to which gap to close. INSUFFICIENT on Sales 
+  Comp PPU = subject sqft missing. INSUFFICIENT on Comp-Anchored = 
+  comp data didn't actually land in queryable tables. INSUFFICIENT 
+  on GRM/GIM = market rent benchmark gap (Blocker 4).
+
+- If Replacement Cost still poisons reconciliation with comp 
+  methods active, the priority shifts to reconciliation engine 
+  weighting (deal-type-aware method weights) rather than more 
+  data ingestion.
+
+Your read on the current blocker status is appreciated and more 
+accurate than the document's snapshot. Worth capturing as 
+docs/operations/CAPSULE_VISION_STATUS.md so it's not just in 
+this exchange. Updated status overrides the document's "current 
+state gaps" section.
+
+One specific verification I'd value, independent of the Bishop 
+run: query information_schema.tables for mv_market_rent_benchmarks. 
+That was reported "shipped" originally but never confirmed; it's 
+the one blocker still at unknown.
+
+Hold the queue. Run Bishop. Report back with the per-method 
+results. Next dispatch shapes from those results, not from 
+this document.
