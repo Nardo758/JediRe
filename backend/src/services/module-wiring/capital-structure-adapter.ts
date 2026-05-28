@@ -486,22 +486,47 @@ export interface RecommendedTerms {
 
 /**
  * Derive loan terms that satisfy DSCR ≥ 1.25 given NOI and LTV cap.
- * Uses a fixed 30yr amortizing structure. Pure function, no I/O.
+ *
+ * Term/amort conventions (Task #1412 audit fix):
+ *   - termMonths: 60  (5-year balloon — standard commercial/agency product)
+ *   - amortMonths: 360 (30-year amortization schedule)
+ *   - ioPeriod:    derived from LTV tier:
+ *       LTV > 0.75 → 24 months (bridge/value-add products with higher leverage)
+ *       LTV > 0.65 → 12 months (moderate leverage with short I/O)
+ *       LTV ≤ 0.65 → 0 months  (low-leverage fully-amortizing from day 1)
+ *     Caller may override via `ioPeriodMonths`.
+ *
+ * Pure function, no I/O.
  */
 export function getRecommendedTerms(params: {
   noiY1: number;
   purchasePrice: number;
   ltv: number;
   rate?: number;
+  /** Override computed I/O period (months). When supplied, skips LTV-tier derivation. */
+  ioPeriodMonths?: number;
 }): RecommendedTerms {
-  const { noiY1, purchasePrice, ltv, rate = 0.065 } = params;
+  const { noiY1, purchasePrice, ltv, rate = 0.065, ioPeriodMonths } = params;
   const maxByLtv = Math.round(purchasePrice * ltv);
   const loanByDscr = rate > 0 ? Math.round(noiY1 / (1.25 * rate)) : maxByLtv;
   const recommendedLoanAmount = Math.max(0, Math.min(maxByLtv, loanByDscr));
   const debtService = recommendedLoanAmount * rate;
+
+  // Derive I/O period from LTV tier when caller does not supply an override
+  let ioPeriod: number;
+  if (ioPeriodMonths !== undefined) {
+    ioPeriod = ioPeriodMonths;
+  } else if (ltv > 0.75) {
+    ioPeriod = 24;
+  } else if (ltv > 0.65) {
+    ioPeriod = 12;
+  } else {
+    ioPeriod = 0;
+  }
+
   return {
     recommendedLoanAmount,
-    loanTerms: { termMonths: 360, amortMonths: 360, ioPeriod: 0 },
+    loanTerms: { termMonths: 60, amortMonths: 360, ioPeriod },
     debtService,
     effectiveRate: rate,
   };
@@ -556,10 +581,19 @@ export interface M14AdjustmentResult {
   assumptions: ModelAssumptions;
   applied: boolean;
   capRateAdjBps: number;
+  /**
+   * DSCR floor sourced from M14's risk dashboard (default 1.25).
+   * buildModel() compares the post-cycle actual DSCR against this floor
+   * and emits an integrity-check warning when the floor binds.
+   */
+  dscrFloor: number;
 }
 
 /**
  * Apply M14 risk-dashboard cap-rate and reserve overrides to model assumptions.
+ * Also reads the DSCR floor configured in M14 (defaulting to 1.25) and returns
+ * it so buildModel() can surface a warning when M11's proposed debt would
+ * violate the floor.
  * Reads from the dataFlowRouter; returns originals unchanged on missing data.
  */
 export async function applyM14RiskAdjustments(
@@ -567,8 +601,15 @@ export async function applyM14RiskAdjustments(
   assumptions: ModelAssumptions,
 ): Promise<M14AdjustmentResult> {
   const m14Data = dataFlowRouter.getModuleData('M14', dealId)?.data;
+
+  // DSCR floor is always returned (default 1.25) even when no other M14 data is present.
+  const dscrFloor: number =
+    typeof m14Data?.dscr_floor === 'number' && m14Data.dscr_floor > 0
+      ? m14Data.dscr_floor
+      : 1.25;
+
   if (!m14Data) {
-    return { assumptions, applied: false, capRateAdjBps: 0 };
+    return { assumptions, applied: false, capRateAdjBps: 0, dscrFloor };
   }
 
   const capRateAdjBps: number =
@@ -576,7 +617,7 @@ export async function applyM14RiskAdjustments(
   const reserveOverrides: Record<string, number> = m14Data.reserve_overrides ?? {};
 
   if (capRateAdjBps === 0 && reserveOverrides.replacementReserves == null) {
-    return { assumptions, applied: false, capRateAdjBps: 0 };
+    return { assumptions, applied: false, capRateAdjBps: 0, dscrFloor };
   }
 
   const updated: ModelAssumptions = { ...assumptions };
@@ -586,7 +627,7 @@ export async function applyM14RiskAdjustments(
   if (reserveOverrides.replacementReserves != null) {
     updated.replacementReserves = reserveOverrides.replacementReserves;
   }
-  return { assumptions: updated, applied: true, capRateAdjBps };
+  return { assumptions: updated, applied: true, capRateAdjBps, dscrFloor };
 }
 
 // ============================================================================
@@ -646,4 +687,114 @@ export function setupCapitalStructureSubscriptions(): void {
   });
 
   logger.info('[CapStructure Wiring] Subscriptions active: M09→M11, M08→M11');
+}
+
+// ============================================================================
+// M11 → ProFormaAssumptions.financing write-back (Task #1412)
+// ============================================================================
+
+/**
+ * Summary of the 7 capital structure fields as sourced from M11.
+ * Attached to FinancialModelResult.meta so F9 can display sourced values
+ * with their derivation provenance.
+ */
+export interface M11CapitalStructureSummary {
+  /** Resolved loan amount ($). Source: M11 DSCR + LTV triple constraint. */
+  loanAmount: number;
+  /** Loan-to-Value ratio (decimal). Computed: loanAmount / purchasePrice. */
+  ltv: number;
+  /**
+   * Loan-to-Cost ratio (decimal). Computed: loanAmount / totalProjectCost
+   * where totalProjectCost = purchasePrice + capexBudget.
+   * Falls back to LTV when capexBudget is zero (pure acquisition deal).
+   */
+  ltc: number;
+  /** All-in interest rate (decimal). Source: M11 rate environment. */
+  rate: number;
+  /** Balloon term in years (e.g. 5). Source: M11 product defaults. */
+  termYears: number;
+  /** Amortization period in years (e.g. 30). Source: M11 product defaults. */
+  amortYears: number;
+  /** Interest-only period in months. Source: M11 LTV-tier derivation. */
+  ioPeriodMonths: number;
+  /**
+   * M14 DSCR floor that constrained sizing (default 1.25).
+   * When constraintBinds=true, the loan was reduced below the LTV cap to
+   * satisfy this floor — surfaced as an integrity-check warning in F9.
+   */
+  dscrFloor: number;
+  constraintBinds: boolean;
+  /** Year-1 DSCR produced by the final optimized debt terms. */
+  dscrActual: number | null;
+}
+
+/**
+ * Write M11-optimized capital structure fields back into the
+ * ProFormaAssumptions.financing envelope so the persisted F9 model
+ * reflects the M11-sourced values rather than the original analyst inputs.
+ *
+ * Conversions:
+ *   ModelAssumptions.term  (months) → ProFormaAssumptions.financing.term  (years)
+ *   ModelAssumptions.amort (months) → ProFormaAssumptions.financing.amortization (years)
+ *   ModelAssumptions.ioPeriod stays in months in both schemas.
+ *
+ * Fields NOT overwritten: loanType, spread, originationFee, rateCapCost,
+ * prepayPenalty — these are analyst-entered and M11 does not derive them.
+ *
+ * @param adjusted    ModelAssumptions after M11+M14 cycle
+ * @param financing   Existing ProFormaAssumptions.financing (spread + origination preserved)
+ * @param capexBudget Total capex budget ($) for LTC computation (0 for pure acquisitions)
+ * @param dscrActual  Year-1 DSCR from the post-cycle deterministic run (null if unavailable)
+ * @param dscrFloor   M14 DSCR floor returned by applyM14RiskAdjustments()
+ */
+export function writeM11ToFinancing(
+  adjusted: ModelAssumptions,
+  financing: {
+    loanAmount: number;
+    loanType: string;
+    interestRate: number;
+    spread: number;
+    term: number;
+    amortization: number;
+    ioPeriod: number;
+    originationFee: number;
+    rateCapCost: number;
+    prepayPenalty: number;
+  },
+  capexBudget: number,
+  dscrActual: number | null,
+  dscrFloor: number,
+): {
+  financing: typeof financing;
+  summary: M11CapitalStructureSummary;
+} {
+  const ltv = adjusted.purchasePrice > 0 ? adjusted.loanAmount / adjusted.purchasePrice : 0;
+  const totalCost = adjusted.purchasePrice + (capexBudget > 0 ? capexBudget : 0);
+  const ltc = totalCost > 0 ? adjusted.loanAmount / totalCost : ltv;
+  const termYears = adjusted.term / 12;
+  const amortYears = adjusted.amort / 12;
+  const constraintBinds = dscrActual !== null && dscrActual < dscrFloor;
+
+  return {
+    financing: {
+      ...financing,
+      loanAmount: adjusted.loanAmount,
+      interestRate: adjusted.rate,
+      term: termYears,
+      amortization: amortYears,
+      ioPeriod: adjusted.ioPeriod,
+    },
+    summary: {
+      loanAmount: adjusted.loanAmount,
+      ltv,
+      ltc,
+      rate: adjusted.rate,
+      termYears,
+      amortYears,
+      ioPeriodMonths: adjusted.ioPeriod,
+      dscrFloor,
+      constraintBinds,
+      dscrActual,
+    },
+  };
 }

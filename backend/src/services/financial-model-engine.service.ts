@@ -8,7 +8,7 @@ import { applyFullAnchorInterceptor, normalizeExpensesForInterceptor, rekeyExpen
 import OpenAI from 'openai';
 import { mapProFormaAssumptionsToModelAssumptions, crossCheckLLMVsDeterministic, buildEvidenceHintsFromSeed } from './deterministic/proforma-assumptions-bridge';
 import { runModel, runIntegrityChecks } from './deterministic/deterministic-model-runner';
-import { runM11Cycle, applyM14RiskAdjustments } from './module-wiring/capital-structure-adapter';
+import { runM11Cycle, applyM14RiskAdjustments, writeM11ToFinancing, type M11CapitalStructureSummary } from './module-wiring/capital-structure-adapter';
 import { evaluatePipeline, enforceStageGates } from './module-wiring/reasoning-pipeline';
 import { resolveAssumptionBatch, type ModuleValueInput } from './module-wiring/conflict-resolution.service';
 import { ASSUMPTION_MODULE_MAPPINGS, type AssumptionField } from './module-wiring/assumption-module-mapping.config';
@@ -221,6 +221,19 @@ export interface FinancialModelResult {
     m11Iterations: number;
     m14Applied: boolean;
     m14CapRateAdjBps: number;
+    /**
+     * All 7 capital structure assumptions as derived by M11 (Task #1412).
+     * Present whenever the M11 cycle completed without error.
+     * Absent when the cycle was skipped (e.g. purchasePrice = 0).
+     */
+    m11CapitalStructure?: M11CapitalStructureSummary;
+    /**
+     * True when the M14 DSCR floor (default 1.25) constrained the M11 loan
+     * amount below the raw LTV cap — i.e. the deal is tight on debt service.
+     * When true, an integrity-check warning with id='dscr_floor_binds' is
+     * also present in result.integrityChecks.
+     */
+    m14DscrConstraintBinds: boolean;
   };
   summary: {
     irr: number;
@@ -965,6 +978,7 @@ export class FinancialModelEngineService {
           let adjustedAssumptions = modelAssumptions;
           let m11Converged = false;
           let m11Iterations = 0;
+          let m11CapitalStructure: M11CapitalStructureSummary | undefined;
           try {
             const m11 = runM11Cycle(adjustedAssumptions);
             adjustedAssumptions = m11.assumptions;
@@ -984,13 +998,15 @@ export class FinancialModelEngineService {
           // ── M14 Risk Dashboard Cycle ──────────────────────────────────────
           let m14Applied = false;
           let m14CapRateAdjBps = 0;
+          let m14DscrFloor = 1.25;
           try {
             const m14 = await applyM14RiskAdjustments(dealId, adjustedAssumptions);
             adjustedAssumptions = m14.assumptions;
             m14Applied = m14.applied;
             m14CapRateAdjBps = m14.capRateAdjBps;
+            m14DscrFloor = m14.dscrFloor;
             if (m14Applied) {
-              logger.info(`[M14] Risk adjustments applied for ${dealId}: capRateAdjBps=${m14CapRateAdjBps}`);
+              logger.info(`[M14] Risk adjustments applied for ${dealId}: capRateAdjBps=${m14CapRateAdjBps} dscrFloor=${m14DscrFloor}`);
             }
           } catch (m14Err: any) {
             logger.warn(`[M14] Adjustment skipped for ${dealId}: ${m14Err?.message}`);
@@ -998,6 +1014,7 @@ export class FinancialModelEngineService {
 
           // Re-run deterministic model with M11/M14-adjusted assumptions and
           // overwrite evidence + reasoning so persisted result reflects the cycle.
+          let m14DscrConstraintBinds = false;
           try {
             const adjustedDet = runModel(adjustedAssumptions, { skipSensitivity: true });
             result.evidence = adjustedDet.evidence;
@@ -1005,11 +1022,70 @@ export class FinancialModelEngineService {
               walkthrough: adjustedDet.reasoning.walkthrough,
               collisionReport: adjustedDet.reasoning.collisionReport,
             };
+
+            // ── M11 financing write-back (Task #1412) ─────────────────────
+            // Map the M11-optimized ModelAssumptions fields back into the
+            // ProFormaAssumptions.financing envelope so the persisted model
+            // carries the sourced debt terms rather than the original inputs.
+            // Also compute the 7-field capital structure summary for result.meta.
+            try {
+              const dscrActual: number | null = adjustedDet.debtMetrics?.coverage?.dscrY1 ?? null;
+              const capexBudget = adjustedAssumptions.capexBudget ?? 0;
+              const { financing: updatedFinancing, summary } = writeM11ToFinancing(
+                adjustedAssumptions,
+                enhancedAssumptions.financing as {
+                  loanAmount: number; loanType: string; interestRate: number; spread: number;
+                  term: number; amortization: number; ioPeriod: number; originationFee: number;
+                  rateCapCost: number; prepayPenalty: number;
+                },
+                capexBudget,
+                dscrActual,
+                m14DscrFloor,
+              );
+              enhancedAssumptions.financing = updatedFinancing as typeof enhancedAssumptions.financing;
+              m11CapitalStructure = summary;
+              m14DscrConstraintBinds = summary.constraintBinds;
+
+              // Surface a warning when the DSCR floor is binding so F9 operators
+              // can see the deal is tight on debt service coverage.
+              if (m14DscrConstraintBinds) {
+                result.integrityChecks = [
+                  ...(result.integrityChecks ?? []),
+                  {
+                    id: 'dscr_floor_binds',
+                    status: 'warn' as const,
+                    message:
+                      `M14 DSCR floor of ${m14DscrFloor.toFixed(2)}× is binding: ` +
+                      `actual DSCR ${dscrActual !== null ? dscrActual.toFixed(2) : 'n/a'}× ` +
+                      `is below the floor. Loan may be undersized or NOI is thin — ` +
+                      `review debt assumptions before proceeding.`,
+                  },
+                ];
+              }
+
+              logger.info(
+                `[M11] Financing write-back complete for ${dealId}: ` +
+                `loanAmount=${summary.loanAmount.toFixed(0)} ltv=${(summary.ltv * 100).toFixed(1)}% ` +
+                `ltc=${(summary.ltc * 100).toFixed(1)}% rate=${(summary.rate * 100).toFixed(2)}% ` +
+                `term=${summary.termYears}yr amort=${summary.amortYears}yr io=${summary.ioPeriodMonths}mo ` +
+                `dscrActual=${dscrActual?.toFixed(2) ?? 'n/a'} floor=${m14DscrFloor.toFixed(2)} ` +
+                `constraintBinds=${summary.constraintBinds}`,
+              );
+            } catch (writeBackErr: any) {
+              logger.warn(`[M11] Financing write-back skipped for ${dealId}: ${writeBackErr?.message}`);
+            }
           } catch (reRunErr: any) {
             logger.warn(`[M11/M14] Post-cycle re-run skipped for ${dealId}: ${reRunErr?.message}`);
           }
 
-          result.meta = { m11Converged, m11Iterations, m14Applied, m14CapRateAdjBps };
+          result.meta = {
+            m11Converged,
+            m11Iterations,
+            m14Applied,
+            m14CapRateAdjBps,
+            m11CapitalStructure,
+            m14DscrConstraintBinds,
+          };
         }
       } catch (verifyErr: any) {
         // Fail-closed: if the bridge or runner itself throws, treat as a hard failure.
