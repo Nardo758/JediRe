@@ -250,6 +250,8 @@ interface SaleCompRow {
   price_per_unit: number | null;
   price_per_sqft: number | null;
   cap_rate: number | null;
+  noi: number | null;
+  noi_per_unit: number | null;
   buyer: string | null;
   seller: string | null;
   latitude: number | null;
@@ -283,6 +285,10 @@ function mapSaleRow(row: ParsedRow, fileId: number | null, dataAsOf?: string): {
   const units = parseInt2(colVal(row, '# Units', 'Units', 'NumberOfUnits', 'No. Units'));
   const sqft = parseInt2(colVal(row, 'Bldg SF', 'Building SF', 'BuildingSF', 'GLA', 'Bldg Sq Ft'));
 
+  const noiRaw = colVal(row, 'NOI', 'Net Operating Income', 'Annual NOI', 'Total NOI');
+  const noi = parseNum(noiRaw);
+  const noiPerUnit = noi != null && units && units > 0 ? Math.round((noi / units) * 100) / 100 : null;
+
   return {
     comp: {
       id: randomUUID(),
@@ -305,6 +311,8 @@ function mapSaleRow(row: ParsedRow, fileId: number | null, dataAsOf?: string): {
       price_per_unit: units && units > 0 ? Math.round(sale_price / units) : null,
       price_per_sqft: sqft && sqft > 0 ? Math.round((sale_price / sqft) * 100) / 100 : null,
       cap_rate: capRate != null && capRate > 1 ? capRate : capRate != null ? capRate * 100 : null,
+      noi,
+      noi_per_unit: noiPerUnit,
       buyer: colVal(row, 'Buyer', 'Buyer Name'),
       seller: colVal(row, 'Seller', 'Seller Name'),
       latitude: parseNum(colVal(row, 'Latitude', 'Lat')),
@@ -708,17 +716,20 @@ export async function processCoStarUpload(
           `INSERT INTO market_sale_comps
              (id, property_name, address, city, state, zip, county, msa, submarket,
               property_type, units, sqft, year_built, asset_class, stories,
-              sale_date, sale_price, price_per_unit, price_per_sqft, cap_rate, buyer, seller,
+              sale_date, sale_price, price_per_unit, price_per_sqft, cap_rate, noi, noi_per_unit,
+              buyer, seller,
               latitude, longitude, source, source_id, qualified, file_id, deal_id, data_as_of, created_at)
            VALUES
              ($1,$2,$3,$4,$5,$6,$7,$8,$9,
               $10,$11,$12,$13,$14,$15,
               $16,$17,$18,$19,$20,$21,$22,
-              $23,$24,$25,$26,$27,$28,$29,$30,NOW())`,
+              $23,$24,
+              $25,$26,$27,$28,$29,$30,$31,$32,NOW())`,
           [
             sc.id, sc.property_name, sc.address, sc.city, sc.state, sc.zip, sc.county, sc.msa, sc.submarket,
             sc.property_type, sc.units, sc.sqft, sc.year_built, sc.asset_class, sc.stories,
-            sc.sale_date, sc.sale_price, sc.price_per_unit, sc.price_per_sqft, sc.cap_rate, sc.buyer, sc.seller,
+            sc.sale_date, sc.sale_price, sc.price_per_unit, sc.price_per_sqft, sc.cap_rate, sc.noi, sc.noi_per_unit,
+            sc.buyer, sc.seller,
             sc.latitude, sc.longitude, sc.source, sc.source_id, sc.qualified, sc.file_id, dealId, sc.data_as_of,
           ]
         );
@@ -1231,17 +1242,20 @@ export async function commitCoStarUpload(
           `INSERT INTO market_sale_comps
              (id, property_name, address, city, state, zip, county, msa, submarket,
               property_type, units, sqft, year_built, asset_class, stories,
-              sale_date, sale_price, price_per_unit, price_per_sqft, cap_rate, buyer, seller,
+              sale_date, sale_price, price_per_unit, price_per_sqft, cap_rate, noi, noi_per_unit,
+              buyer, seller,
               latitude, longitude, source, source_id, qualified, file_id, deal_id, data_as_of, created_at)
            VALUES
              ($1,$2,$3,$4,$5,$6,$7,$8,$9,
               $10,$11,$12,$13,$14,$15,
               $16,$17,$18,$19,$20,$21,$22,
-              $23,$24,$25,$26,$27,$28,$29,$30,NOW())`,
+              $23,$24,
+              $25,$26,$27,$28,$29,$30,$31,$32,NOW())`,
           [
             comp.id, comp.property_name, comp.address, comp.city, comp.state, comp.zip, comp.county, comp.msa, comp.submarket,
             comp.property_type, comp.units, comp.sqft, comp.year_built, comp.asset_class, comp.stories,
-            comp.sale_date, comp.sale_price, comp.price_per_unit, comp.price_per_sqft, comp.cap_rate, comp.buyer, comp.seller,
+            comp.sale_date, comp.sale_price, comp.price_per_unit, comp.price_per_sqft, comp.cap_rate, comp.noi, comp.noi_per_unit,
+            comp.buyer, comp.seller,
             comp.latitude, comp.longitude, comp.source, comp.source_id, comp.qualified, comp.file_id, dealId, comp.data_as_of,
           ]
         );

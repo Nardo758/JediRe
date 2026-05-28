@@ -187,7 +187,12 @@ export class CompSetService {
         t.sale_price                      AS derived_sale_price,
         COALESCE(t.price_per_unit, 0)     AS price_per_unit,
         COALESCE(t.price_per_sqft, 0)     AS price_per_sf,
-        t.cap_rate                        AS implied_cap_rate,
+        COALESCE(CASE
+          WHEN t.noi IS NOT NULL AND t.sale_price > 0
+          THEN ROUND((t.noi / t.sale_price * 100)::numeric, 4)
+          ELSE NULL
+        END, t.cap_rate)                  AS implied_cap_rate,
+        t.noi,
         t.buyer                           AS grantee_name,
         t.buyer_type,
         NULL::integer                     AS holding_period_months,
@@ -431,7 +436,11 @@ export class CompSetService {
         COALESCE(mc.sale_price, rt.derived_sale_price)   AS derived_sale_price,
         COALESCE(mc.price_per_unit, rt.price_per_unit, 0) AS price_per_unit,
         COALESCE(mc.price_per_sqft, rt.price_per_sf, 0)  AS price_per_sf,
-        COALESCE(mc.cap_rate, rt.implied_cap_rate)       AS implied_cap_rate,
+        COALESCE(CASE
+          WHEN mc.noi IS NOT NULL AND COALESCE(mc.sale_price, rt.derived_sale_price) > 0
+          THEN ROUND((mc.noi / COALESCE(mc.sale_price, rt.derived_sale_price) * 100)::numeric, 4)
+          ELSE NULL
+        END, mc.cap_rate, rt.implied_cap_rate)           AS implied_cap_rate,
         COALESCE(mc.buyer, rt.buyer_name)                AS grantee_name,
         mc.buyer_type                                    AS buyer_type,
         mc.source,
@@ -524,7 +533,11 @@ export class CompSetService {
           COALESCE(mc.sale_price, rt.derived_sale_price)    AS derived_sale_price,
           COALESCE(mc.price_per_unit, rt.price_per_unit, 0) AS price_per_unit,
           COALESCE(mc.price_per_sqft, rt.price_per_sf, 0)   AS price_per_sf,
-          COALESCE(mc.cap_rate, rt.implied_cap_rate)        AS implied_cap_rate,
+          COALESCE(CASE
+            WHEN mc.noi IS NOT NULL AND COALESCE(mc.sale_price, rt.derived_sale_price) > 0
+            THEN ROUND((mc.noi / COALESCE(mc.sale_price, rt.derived_sale_price) * 100)::numeric, 4)
+            ELSE NULL
+          END, mc.cap_rate, rt.implied_cap_rate)            AS implied_cap_rate,
           COALESCE(mc.buyer, rt.buyer_name)                 AS grantee_name,
           COALESCE(mc.buyer_type, rt.buyer_type)            AS buyer_type,
           mc.source,
