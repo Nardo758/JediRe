@@ -238,7 +238,10 @@ export function mapProFormaAssumptionsToModelAssumptions(
   const vacancyStab = Math.max(0, 1 - stabilizedOccupancy);
   const vacancyY1 = vacancyStab; // conservative: start at stabilized vacancy
   const badDebt = a.revenue.collectionLoss ?? 0.01;
-  const concessions = 0; // ProFormaAssumptions does not carry a concessions scalar
+  // Batch-6: read M05 concession rate from the _concessionsPct extended provenance field
+  // written by the Batch-6 revenue derivation pass. Falls back to 0 when unavailable
+  // (pre-Batch-6 assumptions or when M05 snapshot has no concession_rate data).
+  const concessions = (a.revenue as Record<string, unknown>)._concessionsPct as number ?? 0;
 
   // Other income: sum perUnitMonth × penetration × 12 months → annual per unit
   let otherIncomePerUnit = 0;

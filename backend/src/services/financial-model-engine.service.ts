@@ -810,6 +810,286 @@ export class FinancialModelEngineService {
       }
     }
 
+    // ── Batch-6: Revenue assumptions — market rent, vacancy, concessions ─────────
+    //
+    // Data sources (in priority order):
+    //   6a. EC3 mv_market_rent_benchmarks   — city-level P25/P50/P75 rent band
+    //   6b. deal_monthly_actuals             — trailing 12-month occupancy + market rent
+    //   6c. apartment_market_snapshots (M05) — submarket occupancy norm + concession_rate
+    //   6d. apartment_supply_pipeline (M04)  — supply headwind (units delivering soon)
+    //   6e. Other income audit               — MISSING_DATA alert if otherIncome is empty
+    //
+    // NON-DESTRUCTIVE: market rent only applied when unit mix rents are all-zero or
+    // flat; vacancy only written when existing value is the 0.93 default placeholder.
+    // All outputs carry _-prefix provenance extended fields in enhancedAssumptions.revenue.
+    try {
+      const b6City  = (enhancedAssumptions.dealInfo?.city  ?? '').trim();
+      const b6State = (enhancedAssumptions.dealInfo?.state ?? '').trim().toUpperCase();
+      const b6Units = enhancedAssumptions.dealInfo?.totalUnits || 1;
+      const rev6 = enhancedAssumptions.revenue as Record<string, unknown>;
+
+      // ── 6a: EC3 market rent benchmark ────────────────────────────────────────
+      let ec3P50: number | null = null;
+      let ec3P25: number | null = null;
+      let ec3P75: number | null = null;
+      let ec3SampleSize = 0;
+      if (b6City && b6State) {
+        try {
+          const ec3Rows = await pool.query(
+            `SELECT p25_rent, p50_rent, p75_rent, avg_rent, sample_size
+               FROM mv_market_rent_benchmarks
+              WHERE LOWER(city) = LOWER($1) AND state = $2
+              ORDER BY sample_size DESC NULLS LAST
+              LIMIT 1`,
+            [b6City, b6State]
+          );
+          if (ec3Rows.rows.length > 0) {
+            const r = ec3Rows.rows[0];
+            ec3P25 = r.p25_rent != null ? parseFloat(r.p25_rent) : null;
+            ec3P50 = r.p50_rent != null ? parseFloat(r.p50_rent) : null;
+            ec3P75 = r.p75_rent != null ? parseFloat(r.p75_rent) : null;
+            ec3SampleSize = parseInt(String(r.sample_size ?? '0'), 10) || 0;
+          }
+        } catch (_ec3Err) { /* non-fatal — EC3 MV may be empty or refreshing */ }
+      }
+
+      // ── 6b: Trailing actuals — occupancy + market rent ───────────────────────
+      let trailingOccupancy: number | null = null;
+      let trailingMarketRent: number | null = null;
+      try {
+        const actualsRows = await pool.query(
+          `SELECT
+             AVG(occupancy_rate)   AS avg_occ,
+             AVG(avg_market_rent)  AS avg_mkt_rent
+           FROM deal_monthly_actuals
+           WHERE deal_id = $1
+             AND report_month >= NOW() - INTERVAL '12 months'`,
+          [dealId]
+        );
+        if (actualsRows.rows.length > 0) {
+          const rawOcc = actualsRows.rows[0].avg_occ;
+          const rawRent = actualsRows.rows[0].avg_mkt_rent;
+          if (rawOcc != null) {
+            let occ = parseFloat(String(rawOcc));
+            if (occ > 1) occ = occ / 100; // normalize percent → fraction
+            if (isFinite(occ) && occ > 0 && occ <= 1) trailingOccupancy = occ;
+          }
+          if (rawRent != null) {
+            const rent = parseFloat(String(rawRent));
+            if (isFinite(rent) && rent > 0) trailingMarketRent = rent;
+          }
+        }
+      } catch (_actualsErr) { /* non-fatal */ }
+
+      // ── 6c: M05 submarket snapshot — occupancy norm + concession rate ─────────
+      let m05Occupancy: number | null = null;
+      let m05ConcessionRate: number | null = null;
+      let m05UnitsDelivering = 0;
+      let m05TotalMarketUnits = 0;
+      if (b6City && b6State) {
+        try {
+          const snapRows = await pool.query(
+            `SELECT avg_occupancy, concession_rate,
+                    units_delivering_30d, units_delivering_60d, total_units
+               FROM apartment_market_snapshots
+              WHERE LOWER(city) = LOWER($1) AND LOWER(state) = LOWER($2)
+              ORDER BY id DESC
+              LIMIT 1`,
+            [b6City, b6State]
+          );
+          if (snapRows.rows.length > 0) {
+            const s = snapRows.rows[0];
+            if (s.avg_occupancy != null) {
+              let occ = parseFloat(String(s.avg_occupancy));
+              if (occ > 1) occ = occ / 100;
+              if (isFinite(occ) && occ > 0 && occ <= 1) m05Occupancy = occ;
+            }
+            if (s.concession_rate != null) {
+              let concRate = parseFloat(String(s.concession_rate));
+              if (concRate > 1) concRate = concRate / 100; // percent → fraction
+              if (isFinite(concRate) && concRate >= 0 && concRate < 0.5) m05ConcessionRate = concRate;
+            }
+            m05UnitsDelivering = (parseInt(String(s.units_delivering_30d ?? '0'), 10) || 0) +
+                                  (parseInt(String(s.units_delivering_60d ?? '0'), 10) || 0);
+            m05TotalMarketUnits = parseInt(String(s.total_units ?? '0'), 10) || 0;
+          }
+        } catch (_snapErr) { /* non-fatal */ }
+      }
+
+      // ── 6d: M04 supply pipeline — vacancy headwind factor ─────────────────────
+      // For every 1% of market supply delivering in the next 6 months → +0.3% vacancy
+      let supplyHeadwindFactor = 0;
+      if (b6City && b6State) {
+        try {
+          const pipeRows = await pool.query(
+            `SELECT COALESCE(SUM(units_delivering), 0) AS total_delivering
+               FROM apartment_supply_pipeline
+              WHERE LOWER(city) = LOWER($1) AND UPPER(state) = $2
+                AND available_date BETWEEN NOW() AND NOW() + INTERVAL '180 days'`,
+            [b6City, b6State]
+          );
+          const pipeSupply = parseInt(String(pipeRows.rows[0]?.total_delivering ?? '0'), 10) || 0;
+          const marketBase = m05TotalMarketUnits > 0 ? m05TotalMarketUnits : b6Units * 10;
+          if (pipeSupply > 0 && marketBase > 0) {
+            const supplyPct = pipeSupply / marketBase;
+            supplyHeadwindFactor = Math.min(0.03, supplyPct * 0.3);
+          }
+        } catch (_pipeErr) { /* non-fatal */ }
+      }
+
+      // ── Market rent synthesis (6a) ────────────────────────────────────────────
+      // Only hydrate when unit mix market rents are all-zero, blank, or all the same
+      // suspiciously-low default (< $200) — these indicate the LLM left them empty.
+      const unitMixRents = (enhancedAssumptions.unitMix || [])
+        .map((u: { marketRent?: number }) => u.marketRent ?? 0);
+      const allSameOrZero =
+        unitMixRents.length === 0 ||
+        unitMixRents.every((r: number) => r <= 0) ||
+        (unitMixRents.every((r: number) => r === unitMixRents[0]) && (unitMixRents[0] ?? 0) < 200);
+
+      if (allSameOrZero && (ec3P50 || trailingMarketRent)) {
+        let synthesizedRent: number;
+        let rentSource: string;
+
+        if (trailingMarketRent && ec3P50) {
+          synthesizedRent = trailingMarketRent * 0.6 + ec3P50 * 0.4;
+          rentSource = 'trailing_actuals_ec3_blend';
+        } else if (trailingMarketRent) {
+          synthesizedRent = trailingMarketRent;
+          rentSource = 'trailing_actuals';
+        } else {
+          synthesizedRent = ec3P50!;
+          rentSource = 'ec3_p50';
+        }
+
+        // Clamp to EC3 band ± 15% to prevent out-of-market outliers
+        if (ec3P25 != null && ec3P75 != null) {
+          synthesizedRent = Math.max(ec3P25 * 0.85, Math.min(ec3P75 * 1.15, synthesizedRent));
+        }
+
+        for (const unit of (enhancedAssumptions.unitMix || [])) {
+          if (!unit.marketRent || unit.marketRent <= 0) {
+            (unit as Record<string, unknown>).marketRent = synthesizedRent;
+          }
+          if (!unit.inPlaceRent || unit.inPlaceRent <= 0) {
+            (unit as Record<string, unknown>).inPlaceRent = synthesizedRent;
+          }
+        }
+
+        rev6._marketRentSource            = rentSource;
+        rev6._marketRentEC3P50            = ec3P50;
+        rev6._marketRentEC3P25            = ec3P25;
+        rev6._marketRentEC3P75            = ec3P75;
+        rev6._marketRentEC3SampleSize     = ec3SampleSize;
+        rev6._marketRentTrailingActual    = trailingMarketRent;
+        rev6._marketRentSynthesized       = synthesizedRent;
+
+        logger.info(
+          `[Batch6a-MarketRent] Hydrated unit mix for ${dealId}: ` +
+          `rent=$${Math.round(synthesizedRent)} source=${rentSource} ` +
+          `ec3P50=${ec3P50 != null ? `$${Math.round(ec3P50)}` : 'n/a'} ` +
+          `trailing=${trailingMarketRent != null ? `$${Math.round(trailingMarketRent)}` : 'n/a'} ` +
+          `n=${ec3SampleSize}`
+        );
+      } else if (ec3P50 != null) {
+        // Unit mix already has rents — record EC3 validation position only
+        const avgUnitRent = unitMixRents.length > 0
+          ? unitMixRents.reduce((s: number, r: number) => s + r, 0) / unitMixRents.length
+          : 0;
+        const vsP50Pct = ec3P50 > 0 ? (avgUnitRent - ec3P50) / ec3P50 : 0;
+        rev6._marketRentEC3P50            = ec3P50;
+        rev6._marketRentEC3P25            = ec3P25;
+        rev6._marketRentEC3P75            = ec3P75;
+        rev6._marketRentEC3SampleSize     = ec3SampleSize;
+        rev6._marketRentEC3Position       = vsP50Pct > 0.05 ? 'premium' : vsP50Pct < -0.05 ? 'discount' : 'market';
+        rev6._marketRentEC3VsP50Pct       = vsP50Pct;
+        rev6._marketRentSource            = 'unit_mix_validated_by_ec3';
+      }
+
+      // ── Vacancy / stabilized occupancy (6b/6c) ────────────────────────────────
+      const existingOcc = enhancedAssumptions.revenue?.stabilizedOccupancy;
+      const isDefaultOcc = !existingOcc || Math.abs(existingOcc - 0.93) < 0.001;
+      const b6DealMode = enhancedAssumptions.dealMode ?? enhancedAssumptions.modelType ?? 'existing';
+
+      if (trailingOccupancy != null || m05Occupancy != null) {
+        let derivedOcc: number;
+        let vacancySource: string;
+
+        if (trailingOccupancy != null) {
+          derivedOcc = trailingOccupancy;
+          vacancySource = 'trailing_actuals_12m';
+        } else {
+          derivedOcc = m05Occupancy!;
+          vacancySource = 'm05_submarket_norm';
+        }
+
+        // Apply M04 supply headwind: reduces occupancy (increases vacancy)
+        const withHeadwind = Math.max(0.70, Math.min(0.99, derivedOcc - supplyHeadwindFactor));
+
+        // Lease-up / development: cap at 85% as the stabilized target
+        let finalOcc = withHeadwind;
+        if (b6DealMode === 'lease_up' || b6DealMode === 'development' || b6DealMode === 'ground_up') {
+          finalOcc = Math.min(withHeadwind, 0.85);
+          vacancySource += '+lease_up_cap';
+        }
+
+        if (isDefaultOcc && finalOcc > 0) {
+          if (enhancedAssumptions.revenue) {
+            enhancedAssumptions.revenue.stabilizedOccupancy = finalOcc;
+          }
+        }
+
+        rev6._vacancySource               = vacancySource;
+        rev6._vacancyTrailingOccupancy    = trailingOccupancy;
+        rev6._vacancyM05Norm              = m05Occupancy;
+        rev6._vacancySupplyHeadwind       = supplyHeadwindFactor;
+        rev6._vacancyDerived              = finalOcc;
+        rev6._vacancyWroteToAssumptions   = isDefaultOcc && finalOcc > 0;
+
+        logger.info(
+          `[Batch6b-Vacancy] Derived stabilized occupancy for ${dealId}: ` +
+          `${(finalOcc * 100).toFixed(1)}% source=${vacancySource} ` +
+          `trailing=${trailingOccupancy != null ? `${(trailingOccupancy * 100).toFixed(1)}%` : 'n/a'} ` +
+          `m05=${m05Occupancy != null ? `${(m05Occupancy * 100).toFixed(1)}%` : 'n/a'} ` +
+          `headwind=${(supplyHeadwindFactor * 100).toFixed(2)}% wrote=${isDefaultOcc && finalOcc > 0}`
+        );
+      }
+
+      // ── Concessions from M05 submarket snapshot (6c) ─────────────────────────
+      if (m05ConcessionRate != null) {
+        rev6._concessionsPct    = m05ConcessionRate;
+        rev6._concessionsSource = 'm05_submarket_snapshot';
+        logger.info(
+          `[Batch6c-Concessions] M05 concession rate for ${dealId}: ` +
+          `${(m05ConcessionRate * 100).toFixed(2)}% (${b6City}, ${b6State})`
+        );
+      } else {
+        rev6._concessionsPct    = null;
+        rev6._concessionsSource = 'unavailable';
+      }
+
+      // ── Other income audit (6e) ───────────────────────────────────────────────
+      const oiItems = enhancedAssumptions.revenue?.otherIncome
+        ? Object.values(enhancedAssumptions.revenue.otherIncome)
+        : [];
+      const hasOI = oiItems.some((oi: any) => oi && (oi.perUnitMonth ?? 0) > 0);
+      if (!hasOI) {
+        rev6._otherIncomeAvailability = 'MISSING_DATA';
+        rev6._otherIncomeAlertLevel   = 'MISSING_DATA';
+      } else {
+        const totalOIPerUnitMonth = oiItems.reduce(
+          (s: number, oi: any) => s + (oi?.perUnitMonth ?? 0) * (oi?.penetration ?? 1),
+          0
+        );
+        rev6._otherIncomeAvailability       = 'AVAILABLE';
+        rev6._otherIncomeTotalPerUnitMonth  = totalOIPerUnitMonth;
+        rev6._otherIncomeAnnualTotal        = totalOIPerUnitMonth * 12 * b6Units;
+      }
+
+    } catch (err: any) {
+      logger.warn(`[Batch6-Revenue] Skipped for ${dealId}: ${err?.message}`);
+    }
+
     // ── D-MOD pass: pre-derivation stage-gate enforcement + conflict resolution ──
     //
     // ORDER OF OPERATIONS (do not reorder — each step depends on the previous):
