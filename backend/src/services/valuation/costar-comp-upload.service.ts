@@ -1,5 +1,5 @@
 /**
- * CoStar Comp Upload Service — Task #1389
+ * CoStar Comp Upload Service — Task #1389 / Task #1392
  *
  * Parses an operator-uploaded CoStar CSV/XLSX export and ingests rows into
  * market_sale_comps or market_rent_comps with source='costar_upload'.
@@ -11,6 +11,10 @@
  * sale comps; otherwise if it contains rent columns → rent comps.
  *
  * Column mappings per comp-profiles-spec.md §7.1 and §7.2.
+ *
+ * Task #1392 adds:
+ *   previewCoStarUpload  — parse + dedup-check, no DB writes; returns CompPreviewResult
+ *   commitCoStarUpload   — applies per-row operator overrides, then inserts
  */
 
 import * as XLSX from 'xlsx';
@@ -36,6 +40,66 @@ export interface CompUploadResult {
   errors: UploadRowError[];
   rejected: boolean;
   rejectReason?: string;
+}
+
+// ── Preview types (Task #1392) ─────────────────────────────────────────────────
+
+export interface CompPreviewRow {
+  rowIndex: number;
+  propertyName: string | null;
+  address: string;
+  city: string;
+  state: string;
+  zip: string | null;
+  submarket: string | null;
+  units: number | null;
+  yearBuilt: number | null;
+  assetClass: string | null;
+  // Sale-specific
+  saleDate: string | null;
+  salePrice: number | null;
+  pricePerUnit: number | null;
+  capRate: number | null;
+  // Rent-specific
+  snapshotDate: string | null;
+  avgAskingRent: number | null;
+  avgEffectiveRent: number | null;
+  occupancyPct: number | null;
+  // Validation state
+  isValid: boolean;
+  validationError: string | null;
+  isDuplicate: boolean;
+}
+
+export interface CompPreviewResult {
+  compType: CompType;
+  detectedCompType: CompType | null;
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  duplicateRows: number;
+  rows: CompPreviewRow[];
+  rejected: boolean;
+  rejectReason?: string;
+}
+
+// ── Commit types (Task #1392) ──────────────────────────────────────────────────
+
+export interface RowOverride {
+  rowIndex: number;
+  assetClass?: string | null;
+  excluded: boolean;
+  overwriteDuplicate: boolean;
+}
+
+export interface CompCommitOptions {
+  buffer: Buffer;
+  filename: string;
+  compType?: CompType;
+  snapshotDate?: string;
+  fileId?: number | null;
+  dealId: string;
+  overrides: RowOverride[];
 }
 
 interface ParsedRow {
@@ -549,6 +613,399 @@ export async function processCoStarUpload(
         address: (comp as any).address ?? '—',
         reason: `DB error: ${err.message?.slice(0, 120) ?? 'unknown'}`,
       });
+    }
+  }
+
+  return {
+    compType,
+    totalRows,
+    inserted,
+    skippedDup,
+    skippedInvalid,
+    errors,
+    rejected: false,
+  };
+}
+
+// ── Preview (Task #1392) ───────────────────────────────────────────────────────
+
+export interface CompPreviewOptions {
+  buffer: Buffer;
+  filename: string;
+  compType?: CompType;
+  snapshotDate?: string;
+  dealId: string;
+}
+
+export async function previewCoStarUpload(
+  pool: Pool,
+  opts: CompPreviewOptions
+): Promise<CompPreviewResult> {
+  const { buffer, filename, dealId } = opts;
+  const { headers, rows } = parseFileBuffer(buffer, filename);
+
+  if (rows.length === 0) {
+    return {
+      compType: opts.compType ?? 'sale',
+      detectedCompType: null,
+      totalRows: 0,
+      validRows: 0,
+      invalidRows: 0,
+      duplicateRows: 0,
+      rows: [],
+      rejected: true,
+      rejectReason: 'File is empty or could not be parsed.',
+    };
+  }
+
+  const detectedCompType = detectCompType(headers);
+  const compType = opts.compType ?? detectedCompType;
+
+  if (!compType) {
+    return {
+      compType: 'sale',
+      detectedCompType: null,
+      totalRows: rows.length,
+      validRows: 0,
+      invalidRows: rows.length,
+      duplicateRows: 0,
+      rows: [],
+      rejected: true,
+      rejectReason:
+        'Could not detect comp type. File headers did not match CoStar sale or rent export patterns. ' +
+        'Please select the comp type manually.',
+    };
+  }
+
+  const snapshotDate = opts.snapshotDate ?? new Date().toISOString().slice(0, 10);
+
+  const previewRows: CompPreviewRow[] = [];
+  let validRows = 0;
+  let invalidRows = 0;
+  let duplicateRows = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    let isValid = true;
+    let validationError: string | null = null;
+    let isDuplicate = false;
+
+    if (compType === 'sale') {
+      const { comp, reason } = mapSaleRow(row, null);
+      if (!comp) {
+        isValid = false;
+        validationError = reason ?? 'Validation failed';
+        invalidRows++;
+        previewRows.push({
+          rowIndex: i,
+          propertyName: String(row['Property Name'] ?? row['PropertyName'] ?? ''),
+          address: String(row['Address'] ?? row['address'] ?? '—'),
+          city: String(row['City'] ?? row['city'] ?? ''),
+          state: String(row['State'] ?? row['state'] ?? ''),
+          zip: null,
+          submarket: null,
+          units: null,
+          yearBuilt: null,
+          assetClass: null,
+          saleDate: null,
+          salePrice: null,
+          pricePerUnit: null,
+          capRate: null,
+          snapshotDate: null,
+          avgAskingRent: null,
+          avgEffectiveRent: null,
+          occupancyPct: null,
+          isValid,
+          validationError,
+          isDuplicate,
+        });
+      } else {
+        validRows++;
+        isDuplicate = await checkSaleDup(pool, dealId, comp.address, comp.city, comp.state, comp.sale_date);
+        if (isDuplicate) duplicateRows++;
+        previewRows.push({
+          rowIndex: i,
+          propertyName: comp.property_name,
+          address: comp.address,
+          city: comp.city,
+          state: comp.state,
+          zip: comp.zip,
+          submarket: comp.submarket,
+          units: comp.units,
+          yearBuilt: comp.year_built,
+          assetClass: comp.asset_class,
+          saleDate: comp.sale_date,
+          salePrice: comp.sale_price,
+          pricePerUnit: comp.price_per_unit,
+          capRate: comp.cap_rate,
+          snapshotDate: null,
+          avgAskingRent: null,
+          avgEffectiveRent: null,
+          occupancyPct: null,
+          isValid,
+          validationError,
+          isDuplicate,
+        });
+      }
+    } else {
+      const { comp, reason } = mapRentRow(row, snapshotDate, null);
+      if (!comp) {
+        isValid = false;
+        validationError = reason ?? 'Validation failed';
+        invalidRows++;
+        previewRows.push({
+          rowIndex: i,
+          propertyName: String(row['Property Name'] ?? row['PropertyName'] ?? ''),
+          address: String(row['Address'] ?? row['address'] ?? '—'),
+          city: String(row['City'] ?? row['city'] ?? ''),
+          state: String(row['State'] ?? row['state'] ?? ''),
+          zip: null,
+          submarket: null,
+          units: null,
+          yearBuilt: null,
+          assetClass: null,
+          saleDate: null,
+          salePrice: null,
+          pricePerUnit: null,
+          capRate: null,
+          snapshotDate,
+          avgAskingRent: null,
+          avgEffectiveRent: null,
+          occupancyPct: null,
+          isValid,
+          validationError,
+          isDuplicate,
+        });
+      } else {
+        validRows++;
+        isDuplicate = await checkRentDup(pool, dealId, comp.address, comp.city, comp.state, comp.snapshot_date);
+        if (isDuplicate) duplicateRows++;
+        previewRows.push({
+          rowIndex: i,
+          propertyName: comp.property_name,
+          address: comp.address,
+          city: comp.city,
+          state: comp.state,
+          zip: comp.zip,
+          submarket: comp.submarket,
+          units: comp.units,
+          yearBuilt: comp.year_built,
+          assetClass: comp.asset_class,
+          saleDate: null,
+          salePrice: null,
+          pricePerUnit: null,
+          capRate: null,
+          snapshotDate: comp.snapshot_date,
+          avgAskingRent: comp.avg_asking_rent,
+          avgEffectiveRent: comp.avg_effective_rent,
+          occupancyPct: comp.occupancy_pct,
+          isValid,
+          validationError,
+          isDuplicate,
+        });
+      }
+    }
+  }
+
+  return {
+    compType,
+    detectedCompType,
+    totalRows: rows.length,
+    validRows,
+    invalidRows,
+    duplicateRows,
+    rows: previewRows,
+    rejected: false,
+  };
+}
+
+// ── Commit with per-row operator overrides (Task #1392) ───────────────────────
+
+export async function commitCoStarUpload(
+  pool: Pool,
+  opts: CompCommitOptions
+): Promise<CompUploadResult> {
+  const { buffer, filename, fileId = null, dealId, overrides } = opts;
+
+  const { headers, rows } = parseFileBuffer(buffer, filename);
+
+  if (rows.length === 0) {
+    return {
+      compType: opts.compType ?? 'sale',
+      totalRows: 0,
+      inserted: 0,
+      skippedDup: 0,
+      skippedInvalid: 0,
+      errors: [],
+      rejected: true,
+      rejectReason: 'File is empty or could not be parsed.',
+    };
+  }
+
+  const compType = opts.compType ?? detectCompType(headers);
+  if (!compType) {
+    return {
+      compType: 'sale',
+      totalRows: rows.length,
+      inserted: 0,
+      skippedDup: 0,
+      skippedInvalid: 0,
+      errors: [],
+      rejected: true,
+      rejectReason:
+        'Could not detect comp type. Please specify comp type explicitly.',
+    };
+  }
+
+  const snapshotDate = opts.snapshotDate ?? new Date().toISOString().slice(0, 10);
+
+  // Build a quick-lookup map from rowIndex → override
+  const overrideMap = new Map<number, RowOverride>();
+  for (const ov of overrides) {
+    overrideMap.set(ov.rowIndex, ov);
+  }
+
+  const errors: UploadRowError[] = [];
+  let inserted = 0;
+  let skippedDup = 0;
+  let skippedInvalid = 0;
+  const totalRows = rows.length;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const ov = overrideMap.get(i);
+
+    // Operator explicitly excluded this row
+    if (ov?.excluded) {
+      skippedInvalid++;
+      continue;
+    }
+
+    if (compType === 'sale') {
+      const { comp, reason } = mapSaleRow(row, fileId);
+      if (!comp) {
+        skippedInvalid++;
+        errors.push({
+          row: i + 2,
+          address: String(rows[i]['Address'] ?? rows[i]['address'] ?? '—'),
+          reason: reason ?? 'Validation failed',
+        });
+        continue;
+      }
+
+      // Apply asset_class override if provided
+      if (ov && ov.assetClass !== undefined) {
+        comp.asset_class = ov.assetClass ? normaliseClass(ov.assetClass) : null;
+      }
+
+      try {
+        const isDup = await checkSaleDup(pool, dealId, comp.address, comp.city, comp.state, comp.sale_date);
+        if (isDup) {
+          if (!ov?.overwriteDuplicate) {
+            skippedDup++;
+            continue;
+          }
+          // Delete the existing duplicate so INSERT below succeeds cleanly
+          await pool.query(
+            `DELETE FROM market_sale_comps
+             WHERE LOWER(address) = LOWER($1)
+               AND LOWER(city) = LOWER($2)
+               AND UPPER(state) = UPPER($3)
+               AND sale_date = $4::date
+               AND source = 'costar_upload'
+               AND deal_id = $5::uuid`,
+            [comp.address, comp.city, comp.state, comp.sale_date, dealId]
+          );
+        }
+        await pool.query(
+          `INSERT INTO market_sale_comps
+             (id, property_name, address, city, state, zip, county, msa, submarket,
+              property_type, units, sqft, year_built, asset_class, stories,
+              sale_date, sale_price, price_per_unit, price_per_sqft, cap_rate, buyer, seller,
+              latitude, longitude, source, qualified, file_id, deal_id, created_at)
+           VALUES
+             ($1,$2,$3,$4,$5,$6,$7,$8,$9,
+              $10,$11,$12,$13,$14,$15,
+              $16,$17,$18,$19,$20,$21,$22,
+              $23,$24,$25,$26,$27,$28,NOW())`,
+          [
+            comp.id, comp.property_name, comp.address, comp.city, comp.state, comp.zip, comp.county, comp.msa, comp.submarket,
+            comp.property_type, comp.units, comp.sqft, comp.year_built, comp.asset_class, comp.stories,
+            comp.sale_date, comp.sale_price, comp.price_per_unit, comp.price_per_sqft, comp.cap_rate, comp.buyer, comp.seller,
+            comp.latitude, comp.longitude, comp.source, comp.qualified, comp.file_id, dealId,
+          ]
+        );
+        inserted++;
+      } catch (err: any) {
+        skippedInvalid++;
+        errors.push({
+          row: i + 2,
+          address: comp.address,
+          reason: `DB error: ${err.message?.slice(0, 120) ?? 'unknown'}`,
+        });
+      }
+    } else {
+      const { comp, reason } = mapRentRow(row, snapshotDate, fileId);
+      if (!comp) {
+        skippedInvalid++;
+        errors.push({
+          row: i + 2,
+          address: String(rows[i]['Address'] ?? rows[i]['address'] ?? '—'),
+          reason: reason ?? 'Validation failed',
+        });
+        continue;
+      }
+
+      // Apply asset_class override if provided
+      if (ov && ov.assetClass !== undefined) {
+        comp.asset_class = ov.assetClass ? normaliseClass(ov.assetClass) : null;
+      }
+
+      try {
+        const isDup = await checkRentDup(pool, dealId, comp.address, comp.city, comp.state, comp.snapshot_date);
+        if (isDup) {
+          if (!ov?.overwriteDuplicate) {
+            skippedDup++;
+            continue;
+          }
+          await pool.query(
+            `DELETE FROM market_rent_comps
+             WHERE LOWER(address) = LOWER($1)
+               AND LOWER(city) = LOWER($2)
+               AND UPPER(state) = UPPER($3)
+               AND snapshot_date = $4::date
+               AND source = 'costar_upload'
+               AND deal_id = $5::uuid`,
+            [comp.address, comp.city, comp.state, comp.snapshot_date, dealId]
+          );
+        }
+        await pool.query(
+          `INSERT INTO market_rent_comps
+             (id, property_name, address, city, state, zip, msa, submarket,
+              units, year_built, asset_class, snapshot_date,
+              avg_asking_rent, avg_effective_rent, occupancy_pct, concession_pct,
+              latitude, longitude, source, file_id, deal_id, created_at)
+           VALUES
+             ($1,$2,$3,$4,$5,$6,$7,$8,
+              $9,$10,$11,$12,
+              $13,$14,$15,$16,
+              $17,$18,$19,$20,$21,NOW())`,
+          [
+            comp.id, comp.property_name, comp.address, comp.city, comp.state, comp.zip, comp.msa, comp.submarket,
+            comp.units, comp.year_built, comp.asset_class, comp.snapshot_date,
+            comp.avg_asking_rent, comp.avg_effective_rent, comp.occupancy_pct, comp.concession_pct,
+            comp.latitude, comp.longitude, comp.source, comp.file_id, dealId,
+          ]
+        );
+        inserted++;
+      } catch (err: any) {
+        skippedInvalid++;
+        errors.push({
+          row: i + 2,
+          address: comp.address,
+          reason: `DB error: ${err.message?.slice(0, 120) ?? 'unknown'}`,
+        });
+      }
     }
   }
 

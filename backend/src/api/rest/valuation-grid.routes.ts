@@ -1,10 +1,12 @@
 /**
  * Valuation Grid API Routes
- * Task #1370, Dispatch 2 / Task #1389 CoStar Upload
+ * Task #1370, Dispatch 2 / Task #1389 CoStar Upload / Task #1392 Preview+Commit
  *
- * GET  /api/v1/deals/:dealId/valuation-grid                  — compute full grid
- * PATCH /api/v1/deals/:dealId/valuation-grid/override        — save operator override
- * POST /api/v1/deals/:dealId/valuation-grid/comps/upload     — CoStar CSV/XLSX ingest
+ * GET  /api/v1/deals/:dealId/valuation-grid                      — compute full grid
+ * PATCH /api/v1/deals/:dealId/valuation-grid/override            — save operator override
+ * POST /api/v1/deals/:dealId/valuation-grid/comps/upload         — CoStar CSV/XLSX ingest (legacy)
+ * POST /api/v1/deals/:dealId/valuation-grid/comps/preview        — parse file, return rows, no DB writes
+ * POST /api/v1/deals/:dealId/valuation-grid/comps/commit         — insert rows with operator overrides
  */
 
 import { Router, Response } from 'express';
@@ -12,7 +14,14 @@ import multer from 'multer';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { ValuationGridService } from '../../services/valuation/valuation-grid.service';
 import { getPool } from '../../database/connection';
-import { processCoStarUpload, detectCompType, type CompType } from '../../services/valuation/costar-comp-upload.service';
+import {
+  processCoStarUpload,
+  previewCoStarUpload,
+  commitCoStarUpload,
+  detectCompType,
+  type CompType,
+  type RowOverride,
+} from '../../services/valuation/costar-comp-upload.service';
 import { compSetService } from '../../services/saleComps/compSet.service';
 
 const upload = multer({
@@ -169,6 +178,144 @@ router.post(
       return res.status(500).json({
         success: false,
         error: err.message ?? 'Upload failed',
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/v1/deals/:dealId/valuation-grid/comps/preview
+ *
+ * Parses a CoStar CSV/XLSX file and returns all rows with validation status and
+ * duplicate flags. Does NOT write to the database.
+ *
+ * Body (multipart/form-data):
+ *   file          — CSV or XLSX
+ *   comp_type     — 'sale' | 'rent' (optional; auto-detected from headers)
+ *   snapshot_date — ISO date string (for rent comps)
+ */
+router.post(
+  '/deals/:dealId/valuation-grid/comps/preview',
+  requireAuth,
+  upload.single('file') as any,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { dealId } = req.params;
+      const userId = req.user?.userId;
+      const pool = getPool();
+
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: 'No file uploaded.' });
+      }
+
+      const ownerCheck = await pool.query(
+        `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
+        [dealId, userId, req.user?.role === 'admin']
+      );
+      if (ownerCheck.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Deal not found.' });
+      }
+
+      const compTypeRaw = (req.body.comp_type ?? '').toLowerCase();
+      const compType: CompType | undefined =
+        compTypeRaw === 'sale' ? 'sale' : compTypeRaw === 'rent' ? 'rent' : undefined;
+
+      const snapshotDate: string =
+        req.body.snapshot_date?.trim() || new Date().toISOString().slice(0, 10);
+
+      const result = await previewCoStarUpload(pool, {
+        buffer: req.file.buffer,
+        filename: req.file.originalname,
+        compType,
+        snapshotDate,
+        dealId,
+      });
+
+      const status = result.rejected ? 400 : 200;
+      return res.status(status).json({ success: !result.rejected, data: result });
+    } catch (err: any) {
+      console.error('[valuation-grid] comp preview error:', err);
+      return res.status(500).json({
+        success: false,
+        error: err.message ?? 'Preview failed',
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/v1/deals/:dealId/valuation-grid/comps/commit
+ *
+ * Inserts the operator-reviewed rows into the database.
+ * Accepts per-row overrides: asset_class corrections, excluded rows, overwrite flags.
+ *
+ * Body (multipart/form-data):
+ *   file          — CSV or XLSX (same file used in /preview)
+ *   comp_type     — 'sale' | 'rent'
+ *   snapshot_date — ISO date string (for rent comps)
+ *   overrides     — JSON string: Array<{ rowIndex, assetClass?, excluded, overwriteDuplicate }>
+ */
+router.post(
+  '/deals/:dealId/valuation-grid/comps/commit',
+  requireAuth,
+  upload.single('file') as any,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { dealId } = req.params;
+      const userId = req.user?.userId;
+      const pool = getPool();
+
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: 'No file uploaded.' });
+      }
+
+      const ownerCheck = await pool.query(
+        `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
+        [dealId, userId, req.user?.role === 'admin']
+      );
+      if (ownerCheck.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Deal not found.' });
+      }
+
+      const compTypeRaw = (req.body.comp_type ?? '').toLowerCase();
+      const compType: CompType | undefined =
+        compTypeRaw === 'sale' ? 'sale' : compTypeRaw === 'rent' ? 'rent' : undefined;
+
+      const snapshotDate: string =
+        req.body.snapshot_date?.trim() || new Date().toISOString().slice(0, 10);
+
+      let overrides: RowOverride[] = [];
+      try {
+        overrides = JSON.parse(req.body.overrides ?? '[]');
+      } catch {
+        // Invalid JSON — proceed with no overrides
+      }
+
+      const result = await commitCoStarUpload(pool, {
+        buffer: req.file.buffer,
+        filename: req.file.originalname,
+        compType,
+        snapshotDate,
+        fileId: null,
+        dealId,
+        overrides,
+      });
+
+      if (!result.rejected && result.compType === 'sale' && result.inserted > 0) {
+        try {
+          await compSetService.generateCompSet({ deal_id: dealId });
+        } catch {
+          // Non-fatal: comp set refresh may fail if the property has no coordinates.
+        }
+      }
+
+      const status = result.rejected ? 400 : 200;
+      return res.status(status).json({ success: !result.rejected, data: result });
+    } catch (err: any) {
+      console.error('[valuation-grid] comp commit error:', err);
+      return res.status(500).json({
+        success: false,
+        error: err.message ?? 'Commit failed',
       });
     }
   }

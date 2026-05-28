@@ -573,9 +573,9 @@ function GridHeader() {
   );
 }
 
-// ── CoStar Upload Panel ────────────────────────────────────────────────────────
+// ── CoStar Upload Panel (Task #1392 — preview → review → commit) ──────────────
 
-interface UploadResult {
+interface CommitResult {
   compType: 'sale' | 'rent';
   totalRows: number;
   inserted: number;
@@ -585,6 +585,227 @@ interface UploadResult {
   rejected: boolean;
   rejectReason?: string;
 }
+
+interface PreviewRow {
+  rowIndex: number;
+  propertyName: string | null;
+  address: string;
+  city: string;
+  state: string;
+  zip: string | null;
+  submarket: string | null;
+  units: number | null;
+  yearBuilt: number | null;
+  assetClass: string | null;
+  saleDate: string | null;
+  salePrice: number | null;
+  pricePerUnit: number | null;
+  capRate: number | null;
+  snapshotDate: string | null;
+  avgAskingRent: number | null;
+  avgEffectiveRent: number | null;
+  occupancyPct: number | null;
+  isValid: boolean;
+  validationError: string | null;
+  isDuplicate: boolean;
+}
+
+interface PreviewResult {
+  compType: 'sale' | 'rent';
+  detectedCompType: 'sale' | 'rent' | null;
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  duplicateRows: number;
+  rows: PreviewRow[];
+  rejected: boolean;
+  rejectReason?: string;
+}
+
+interface RowState {
+  assetClass: string | null;
+  excluded: boolean;
+  overwriteDuplicate: boolean;
+}
+
+// ── Review Table ───────────────────────────────────────────────────────────────
+
+function ReviewTable({
+  preview,
+  rowStates,
+  onRowChange,
+}: {
+  preview: PreviewResult;
+  rowStates: Map<number, RowState>;
+  onRowChange: (rowIndex: number, patch: Partial<RowState>) => void;
+}) {
+  const isSale = preview.compType === 'sale';
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      {/* Scrollable wrapper — sticky header + scrollable body */}
+      <div style={{ maxHeight: 340, overflowY: 'auto', overflowX: 'auto', border: `1px solid ${BT.border.dim}`, borderRadius: 3 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: MONO, minWidth: 640 }}>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+            <tr style={{ backgroundColor: BT.bg.panel }}>
+              <th style={TH}>INCL.</th>
+              <th style={TH}>ADDRESS</th>
+              <th style={TH}>CITY / ST</th>
+              {isSale ? (
+                <>
+                  <th style={TH}>SALE DATE</th>
+                  <th style={TH}>SALE PRICE</th>
+                  <th style={TH}>PPU</th>
+                  <th style={TH}>CAP%</th>
+                </>
+              ) : (
+                <>
+                  <th style={TH}>AVG ASK RENT</th>
+                  <th style={TH}>AVG EFF RENT</th>
+                  <th style={TH}>OCC%</th>
+                </>
+              )}
+              <th style={TH}>CLASS</th>
+              <th style={TH}>STATUS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {preview.rows.map(row => {
+              const rs = rowStates.get(row.rowIndex) ?? {
+                assetClass: row.assetClass,
+                excluded: !row.isValid,
+                overwriteDuplicate: false,
+              };
+              const isExcluded = rs.excluded;
+              const rowBg = !row.isValid
+                ? `${BT.met.risk}11`
+                : row.isDuplicate
+                ? `${BT.text.amber}11`
+                : 'transparent';
+
+              return (
+                <tr key={row.rowIndex} style={{ backgroundColor: rowBg, opacity: isExcluded ? 0.45 : 1 }}>
+                  {/* Include checkbox */}
+                  <td style={TD}>
+                    <input
+                      type="checkbox"
+                      checked={!isExcluded}
+                      disabled={!row.isValid}
+                      onChange={e => onRowChange(row.rowIndex, { excluded: !e.target.checked })}
+                      style={{ cursor: row.isValid ? 'pointer' : 'not-allowed', accentColor: BT.text.cyan }}
+                    />
+                  </td>
+
+                  {/* Address */}
+                  <td style={{ ...TD, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span title={row.address}>{row.address}</span>
+                  </td>
+
+                  {/* City / State */}
+                  <td style={TD}>{row.city}, {row.state}</td>
+
+                  {/* Type-specific columns */}
+                  {isSale ? (
+                    <>
+                      <td style={TD}>{row.saleDate ?? '—'}</td>
+                      <td style={{ ...TD, textAlign: 'right' }}>
+                        {row.salePrice != null ? `$${row.salePrice.toLocaleString()}` : '—'}
+                      </td>
+                      <td style={{ ...TD, textAlign: 'right' }}>
+                        {row.pricePerUnit != null ? `$${Math.round(row.pricePerUnit).toLocaleString()}` : '—'}
+                      </td>
+                      <td style={{ ...TD, textAlign: 'right' }}>
+                        {row.capRate != null ? `${row.capRate.toFixed(2)}%` : '—'}
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td style={{ ...TD, textAlign: 'right' }}>
+                        {row.avgAskingRent != null ? `$${Math.round(row.avgAskingRent).toLocaleString()}` : '—'}
+                      </td>
+                      <td style={{ ...TD, textAlign: 'right' }}>
+                        {row.avgEffectiveRent != null ? `$${Math.round(row.avgEffectiveRent).toLocaleString()}` : '—'}
+                      </td>
+                      <td style={{ ...TD, textAlign: 'right' }}>
+                        {row.occupancyPct != null ? `${row.occupancyPct.toFixed(1)}%` : '—'}
+                      </td>
+                    </>
+                  )}
+
+                  {/* Asset class dropdown */}
+                  <td style={TD}>
+                    <select
+                      value={rs.assetClass ?? ''}
+                      onChange={e => onRowChange(row.rowIndex, { assetClass: e.target.value || null })}
+                      disabled={isExcluded}
+                      style={{
+                        fontFamily: MONO, fontSize: 10, padding: '2px 4px',
+                        backgroundColor: rs.assetClass == null ? `${BT.text.amber}22` : BT.bg.panel,
+                        border: `1px solid ${rs.assetClass == null ? BT.text.amber : BT.border.dim}`,
+                        color: BT.text.secondary, borderRadius: 2,
+                        cursor: isExcluded ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      <option value="">—</option>
+                      {['A', 'B', 'C', 'D'].map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </td>
+
+                  {/* Status badge */}
+                  <td style={TD}>
+                    {!row.isValid ? (
+                      <span style={{ color: BT.met.risk, fontSize: 9 }} title={row.validationError ?? ''}>
+                        INVALID
+                      </span>
+                    ) : row.isDuplicate ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ color: BT.text.amber, fontSize: 9 }}>DUP</span>
+                        {!isExcluded && (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={rs.overwriteDuplicate}
+                              onChange={e => onRowChange(row.rowIndex, { overwriteDuplicate: e.target.checked })}
+                              style={{ accentColor: BT.text.amber }}
+                            />
+                            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber }}>OVR</span>
+                          </label>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ color: BT.text.green, fontSize: 9 }}>OK</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ marginTop: 4, fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+        {preview.totalRows} row{preview.totalRows !== 1 ? 's' : ''} total
+        {preview.duplicateRows > 0 && ` · ${preview.duplicateRows} duplicate${preview.duplicateRows !== 1 ? 's' : ''} detected`}
+        {preview.invalidRows > 0 && ` · ${preview.invalidRows} invalid (auto-excluded)`}
+      </div>
+    </div>
+  );
+}
+
+const TH: React.CSSProperties = {
+  padding: '4px 8px', textAlign: 'left', fontFamily: MONO, fontSize: 8,
+  letterSpacing: 1, color: BT.text.muted, fontWeight: 700,
+  borderBottom: `1px solid ${BT.border.normal}`, whiteSpace: 'nowrap',
+};
+const TD: React.CSSProperties = {
+  padding: '4px 8px', fontFamily: MONO, fontSize: 10, color: BT.text.secondary,
+  borderBottom: `1px solid ${BT.border.dim}`, whiteSpace: 'nowrap',
+};
+
+// ── Main Upload Panel ──────────────────────────────────────────────────────────
+
+type UploadStep = 'select' | 'previewing' | 'review' | 'committing' | 'done';
 
 function CoStarUploadPanel({
   dealId,
@@ -596,18 +817,37 @@ function CoStarUploadPanel({
   onClose: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [step, setStep] = useState<UploadStep>('select');
   const [file, setFile] = useState<File | null>(null);
   const [compType, setCompType] = useState<'auto' | 'sale' | 'rent'>('auto');
   const [snapshotDate, setSnapshotDate] = useState<string>(new Date().toISOString().slice(0, 10));
-  const [uploading, setUploading] = useState(false);
-  const [result, setResult] = useState<UploadResult | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [panelError, setPanelError] = useState<string | null>(null);
 
-  async function handleUpload() {
+  // Preview state
+  const [preview, setPreview] = useState<PreviewResult | null>(null);
+  const [rowStates, setRowStates] = useState<Map<number, RowState>>(new Map());
+
+  // Commit result
+  const [commitResult, setCommitResult] = useState<CommitResult | null>(null);
+
+  function handleRowChange(rowIndex: number, patch: Partial<RowState>) {
+    setRowStates(prev => {
+      const next = new Map(prev);
+      const existing = next.get(rowIndex);
+      const base: RowState = existing ?? {
+        assetClass: preview?.rows.find(r => r.rowIndex === rowIndex)?.assetClass ?? null,
+        excluded: false,
+        overwriteDuplicate: false,
+      };
+      next.set(rowIndex, { ...base, ...patch });
+      return next;
+    });
+  }
+
+  async function handlePreview() {
     if (!file) return;
-    setUploading(true);
-    setResult(null);
-    setUploadError(null);
+    setStep('previewing');
+    setPanelError(null);
 
     const fd = new FormData();
     fd.append('file', file);
@@ -616,26 +856,99 @@ function CoStarUploadPanel({
 
     try {
       const res = await apiClient.post(
-        `/api/v1/deals/${dealId}/valuation-grid/comps/upload`,
+        `/api/v1/deals/${dealId}/valuation-grid/comps/preview`,
         fd,
         { headers: { 'Content-Type': 'multipart/form-data' } }
       );
-      const r: UploadResult = res.data.data ?? res.data;
-      setResult(r);
+      const p: PreviewResult = res.data.data ?? res.data;
+      if (p.rejected) {
+        setPanelError(p.rejectReason ?? 'Preview failed.');
+        setStep('select');
+        return;
+      }
+      // Initialise rowStates for invalid rows (auto-exclude them)
+      const initial = new Map<number, RowState>();
+      for (const row of p.rows) {
+        if (!row.isValid) {
+          initial.set(row.rowIndex, {
+            assetClass: null,
+            excluded: true,
+            overwriteDuplicate: false,
+          });
+        }
+      }
+      setPreview(p);
+      setRowStates(initial);
+      setStep('review');
+    } catch (e: any) {
+      const serverData = e?.response?.data;
+      if (serverData?.data?.rejected) {
+        setPanelError(serverData.data.rejectReason ?? 'Preview failed.');
+      } else {
+        setPanelError(serverData?.error ?? e?.message ?? 'Preview failed.');
+      }
+      setStep('select');
+    }
+  }
+
+  async function handleCommit() {
+    if (!file || !preview) return;
+    setStep('committing');
+    setPanelError(null);
+
+    // Build overrides array from rowStates
+    const overrides: Array<{
+      rowIndex: number;
+      assetClass?: string | null;
+      excluded: boolean;
+      overwriteDuplicate: boolean;
+    }> = [];
+
+    for (const [rowIndex, rs] of rowStates.entries()) {
+      overrides.push({ rowIndex, assetClass: rs.assetClass, excluded: rs.excluded, overwriteDuplicate: rs.overwriteDuplicate });
+    }
+
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('comp_type', preview.compType);
+    fd.append('snapshot_date', snapshotDate);
+    fd.append('overrides', JSON.stringify(overrides));
+
+    try {
+      const res = await apiClient.post(
+        `/api/v1/deals/${dealId}/valuation-grid/comps/commit`,
+        fd,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      const r: CommitResult = res.data.data ?? res.data;
+      setCommitResult(r);
+      setStep('done');
       if (!r.rejected && r.inserted > 0) onUploaded();
     } catch (e: any) {
       const serverData = e?.response?.data?.data;
       if (serverData) {
-        setResult(serverData as UploadResult);
+        setCommitResult(serverData as CommitResult);
+        setStep('done');
       } else {
-        setUploadError(e?.response?.data?.error ?? e?.message ?? 'Upload failed');
+        setPanelError(e?.response?.data?.error ?? e?.message ?? 'Commit failed.');
+        setStep('review');
       }
-    } finally {
-      setUploading(false);
     }
   }
 
-  const showSnapshotDate = compType === 'rent' || (compType === 'auto' && file?.name.toLowerCase().includes('rent'));
+  function reset() {
+    setStep('select');
+    setFile(null);
+    setPreview(null);
+    setRowStates(new Map());
+    setCommitResult(null);
+    setPanelError(null);
+    setCompType('auto');
+    if (fileRef.current) fileRef.current.value = '';
+  }
+
+  const isPreviewing = step === 'previewing';
+  const isCommitting = step === 'committing';
 
   return (
     <div style={{
@@ -643,16 +956,33 @@ function CoStarUploadPanel({
       borderBottom: `1px solid ${BT.border.dim}`,
       backgroundColor: `${BT.bg.panel}55`,
     }}>
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.cyan, letterSpacing: 1 }}>
-          UPLOAD COSTAR COMPS
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.cyan, letterSpacing: 1 }}>
+            UPLOAD COSTAR COMPS
+          </span>
+          {(step === 'review' || step === 'committing') && preview && (
+            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+              {preview.totalRows} rows · {preview.validRows} valid · {preview.duplicateRows} dup
+            </span>
+          )}
+        </div>
         <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: BT.text.muted, display: 'flex', alignItems: 'center' }}>
           <X size={12} />
         </button>
       </div>
 
-      {!result && (
+      {/* Error banner */}
+      {panelError && (
+        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+          <AlertTriangle size={12} style={{ color: BT.met.risk, flexShrink: 0, marginTop: 1 }} />
+          <span style={{ fontFamily: MONO, fontSize: 10, color: BT.met.risk }}>{panelError}</span>
+        </div>
+      )}
+
+      {/* ── Step 1: Select file ── */}
+      {(step === 'select' || step === 'previewing') && (
         <>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             {/* File picker */}
@@ -663,7 +993,7 @@ function CoStarUploadPanel({
                 type="file"
                 accept=".csv,.xlsx,.xls"
                 style={{ display: 'none' }}
-                onChange={e => setFile(e.target.files?.[0] ?? null)}
+                onChange={e => { setFile(e.target.files?.[0] ?? null); setPanelError(null); }}
               />
               <button
                 onClick={() => fileRef.current?.click()}
@@ -697,7 +1027,7 @@ function CoStarUploadPanel({
             </div>
 
             {/* Snapshot date — rent only */}
-            {(compType === 'rent') && (
+            {compType === 'rent' && (
               <div>
                 <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginBottom: 3 }}>
                   AS-OF DATE <span style={{ color: BT.met.risk }}>*</span>
@@ -716,17 +1046,17 @@ function CoStarUploadPanel({
             )}
 
             <button
-              onClick={handleUpload}
-              disabled={uploading || !file}
+              onClick={handlePreview}
+              disabled={isPreviewing || !file}
               style={{
                 fontFamily: MONO, fontSize: 10, padding: '5px 14px', fontWeight: 700,
-                backgroundColor: uploading || !file ? BT.bg.panel : BT.text.cyan,
-                color: uploading || !file ? BT.text.muted : '#000',
+                backgroundColor: isPreviewing || !file ? BT.bg.panel : BT.text.cyan,
+                color: isPreviewing || !file ? BT.text.muted : '#000',
                 border: 'none', borderRadius: 3,
-                cursor: uploading || !file ? 'default' : 'pointer',
+                cursor: isPreviewing || !file ? 'default' : 'pointer',
               }}
             >
-              {uploading ? 'UPLOADING…' : 'UPLOAD'}
+              {isPreviewing ? 'PARSING…' : 'PREVIEW'}
             </button>
           </div>
 
@@ -737,37 +1067,82 @@ function CoStarUploadPanel({
         </>
       )}
 
-      {uploadError && (
-        <div style={{ marginTop: 8, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-          <AlertTriangle size={12} style={{ color: BT.met.risk, flexShrink: 0 }} />
-          <span style={{ fontFamily: MONO, fontSize: 10, color: BT.met.risk }}>{uploadError}</span>
-        </div>
+      {/* ── Step 2: Review table ── */}
+      {(step === 'review' || step === 'committing') && preview && (
+        <>
+          {/* Legend */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.green }}>● OK</span>
+            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>
+              ● DUP — existing comp with same address + date; check OVR to overwrite
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.met.risk }}>
+              ● INVALID — missing required fields; auto-excluded
+            </span>
+          </div>
+
+          <ReviewTable
+            preview={preview}
+            rowStates={rowStates}
+            onRowChange={handleRowChange}
+          />
+
+          {/* Action bar */}
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+            <button
+              onClick={handleCommit}
+              disabled={isCommitting}
+              style={{
+                fontFamily: MONO, fontSize: 10, padding: '5px 16px', fontWeight: 700,
+                backgroundColor: isCommitting ? BT.bg.panel : BT.text.green,
+                color: isCommitting ? BT.text.muted : '#000',
+                border: 'none', borderRadius: 3,
+                cursor: isCommitting ? 'default' : 'pointer',
+              }}
+            >
+              {isCommitting ? 'COMMITTING…' : 'COMMIT'}
+            </button>
+            <button
+              onClick={reset}
+              disabled={isCommitting}
+              style={{
+                fontFamily: MONO, fontSize: 10, padding: '5px 12px',
+                backgroundColor: BT.bg.panel, border: `1px solid ${BT.border.dim}`,
+                color: BT.text.muted, borderRadius: 3,
+                cursor: isCommitting ? 'default' : 'pointer',
+              }}
+            >
+              BACK
+            </button>
+          </div>
+        </>
       )}
 
-      {result && (
-        <div style={{ marginTop: 8 }}>
-          {result.rejected ? (
+      {/* ── Step 3: Done ── */}
+      {step === 'done' && commitResult && (
+        <div>
+          {commitResult.rejected ? (
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               <AlertTriangle size={12} style={{ color: BT.met.risk, flexShrink: 0, marginTop: 1 }} />
               <div>
-                <div style={{ fontFamily: MONO, fontSize: 10, color: BT.met.risk, fontWeight: 700 }}>UPLOAD REJECTED</div>
-                <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.muted, marginTop: 2 }}>{result.rejectReason}</div>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: BT.met.risk, fontWeight: 700 }}>COMMIT REJECTED</div>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.muted, marginTop: 2 }}>{commitResult.rejectReason}</div>
               </div>
             </div>
           ) : (
             <div>
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 6 }}>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
                 {[
-                  ['TYPE', result.compType.toUpperCase()],
-                  ['TOTAL ROWS', String(result.totalRows)],
-                  ['INSERTED', String(result.inserted)],
-                  ['SKIPPED (DUP)', String(result.skippedDup)],
-                  ['SKIPPED (INVALID)', String(result.skippedInvalid)],
+                  ['TYPE', commitResult.compType.toUpperCase()],
+                  ['TOTAL ROWS', String(commitResult.totalRows)],
+                  ['INSERTED', String(commitResult.inserted)],
+                  ['SKIPPED (DUP)', String(commitResult.skippedDup)],
+                  ['SKIPPED (INVALID)', String(commitResult.skippedInvalid)],
                 ].map(([label, val]) => (
                   <div key={label}>
                     <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.muted }}>{label}</div>
                     <div style={{
-                      fontFamily: MONO, fontSize: 12, fontWeight: 700,
+                      fontFamily: MONO, fontSize: 13, fontWeight: 700,
                       color: label === 'INSERTED' && Number(val) > 0 ? BT.text.green
                         : label === 'SKIPPED (INVALID)' && Number(val) > 0 ? BT.met.risk
                         : BT.text.primary,
@@ -776,52 +1151,52 @@ function CoStarUploadPanel({
                 ))}
               </div>
 
-              {result.errors.length > 0 && (
+              {commitResult.errors.length > 0 && (
                 <div style={{
-                  maxHeight: 120, overflowY: 'auto', padding: '6px 8px',
+                  maxHeight: 100, overflowY: 'auto', padding: '6px 8px', marginBottom: 8,
                   backgroundColor: `${BT.bg.base}88`,
                   border: `1px solid ${BT.border.dim}`, borderRadius: 3,
                 }}>
-                  <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginBottom: 4 }}>
-                    ROW ERRORS ({result.errors.length})
+                  <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginBottom: 3 }}>
+                    ROW ERRORS ({commitResult.errors.length})
                   </div>
-                  {result.errors.slice(0, 20).map((e, i) => (
+                  {commitResult.errors.slice(0, 20).map((e, i) => (
                     <div key={i} style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, padding: '1px 0' }}>
                       Row {e.row} — {e.address}: {e.reason}
                     </div>
                   ))}
-                  {result.errors.length > 20 && (
+                  {commitResult.errors.length > 20 && (
                     <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
-                      … and {result.errors.length - 20} more
+                      … and {commitResult.errors.length - 20} more
                     </div>
                   )}
                 </div>
               )}
-
-              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <button
-                  onClick={() => { setResult(null); setFile(null); if (fileRef.current) fileRef.current.value = ''; }}
-                  style={{
-                    fontFamily: MONO, fontSize: 9, padding: '3px 10px',
-                    backgroundColor: BT.bg.panel, border: `1px solid ${BT.border.dim}`,
-                    color: BT.text.muted, borderRadius: 3, cursor: 'pointer',
-                  }}
-                >
-                  UPLOAD ANOTHER
-                </button>
-                <button
-                  onClick={onClose}
-                  style={{
-                    fontFamily: MONO, fontSize: 9, padding: '3px 10px',
-                    backgroundColor: BT.bg.panel, border: `1px solid ${BT.border.dim}`,
-                    color: BT.text.muted, borderRadius: 3, cursor: 'pointer',
-                  }}
-                >
-                  CLOSE
-                </button>
-              </div>
             </div>
           )}
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button
+              onClick={reset}
+              style={{
+                fontFamily: MONO, fontSize: 9, padding: '3px 10px',
+                backgroundColor: BT.bg.panel, border: `1px solid ${BT.border.dim}`,
+                color: BT.text.muted, borderRadius: 3, cursor: 'pointer',
+              }}
+            >
+              UPLOAD ANOTHER
+            </button>
+            <button
+              onClick={onClose}
+              style={{
+                fontFamily: MONO, fontSize: 9, padding: '3px 10px',
+                backgroundColor: BT.bg.panel, border: `1px solid ${BT.border.dim}`,
+                color: BT.text.muted, borderRadius: 3, cursor: 'pointer',
+              }}
+            >
+              CLOSE
+            </button>
+          </div>
         </div>
       )}
     </div>
