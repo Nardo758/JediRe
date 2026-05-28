@@ -378,7 +378,7 @@ export async function processCoStarUpload(
   pool: Pool,
   opts: CompUploadOptions
 ): Promise<CompUploadResult> {
-  const { buffer, filename, fileId = null } = opts;
+  const { buffer, filename, fileId = null, dealId } = opts;
 
   const { headers, rows } = parseFileBuffer(buffer, filename);
 
