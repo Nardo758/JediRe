@@ -43,6 +43,7 @@ import { scoreFitAgainstProfileTool } from './tools/score_fit_against_profile';
 import { ocrDocumentTool } from './tools/ocr_document';
 import { computeEnvelopeTool } from './tools/compute_envelope';
 import { generateDesignMassingTool } from './tools/generate_design_massing';
+import { fetchMunicipalSaleCompsTool } from './tools/fetch_municipal_sale_comps';
 
 // ── Citation schema (shared with commentary.config) ────────────────────────
 
@@ -105,6 +106,8 @@ export const RESEARCH_AGENT_CONFIG: AgentConfig = {
     // Design tools — zoning envelope + AI massing generation
     computeEnvelopeTool,
     generateDesignMassingTool,
+    // Municipal sale comp ingestion — FL county property appraiser APIs (D-COSTAR-4)
+    fetchMunicipalSaleCompsTool,
   ],
   outputSchema: ResearchOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.research,
