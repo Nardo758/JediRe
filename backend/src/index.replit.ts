@@ -140,6 +140,7 @@ import portfolioRouter from './api/rest/portfolio.routes';
 import competitionRouter from './api/rest/competition.routes';
 import dealMarketIntelligenceRoutes from './api/rest/deal-market-intelligence.routes';
 import dealCompSetsRoutes from './api/rest/deal-comp-sets.routes';
+import { createCoStarUploadRoutes } from './api/rest/costar-upload.routes';
 import dealPhotosRoutes from './api/rest/deal-photos.routes';
 import dealContextRoutes from './api/rest/deal-context.routes';
 import exitTrajectoryRouter from './api/rest/exit-trajectory.routes';
@@ -981,6 +982,9 @@ app.use('/api/v1/capsules', requireAuth, createCapsuleRoutes(pool));
 app.use('/api/v1/email', emailRouter);
 
 // â”€â”€ Deal Capsule Bridge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── CoStar Comp Upload (D-COSTAR-1 / D-COSTAR-2, Task #1407) ────────────────
+app.use('/api/v1/deals/:dealId/costar', createCoStarUploadRoutes(pool));
+
 app.use('/api/v1/deals/:dealId/capsule', requireAuth, createDealCapsuleBridge(pool));
 
 // â”€â”€ Renovation Data API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

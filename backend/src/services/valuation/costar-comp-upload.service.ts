@@ -23,7 +23,7 @@ import type { Pool } from 'pg';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-export type CompType = 'sale' | 'rent';
+export type CompType = 'sale' | 'rent' | 'submarket';
 
 export interface UploadRowError {
   row: number;
@@ -97,6 +97,8 @@ export interface CompCommitOptions {
   filename: string;
   compType?: CompType;
   snapshotDate?: string;
+  /** CoStar export generation date (provenance). Distinct from ingested_at (server time). */
+  dataAsOf?: string;
   fileId?: number | null;
   dealId: string;
   overrides: RowOverride[];
@@ -209,8 +211,12 @@ export function detectCompType(headers: string[]): CompType | null {
     h.includes('avgeffrent') ||
     h.includes('avgeffrents')
   );
+  // Submarket performance: has 'submarket' + 'vacancy' or 'netabsorption' or 'underconst'
+  const hasSubmarket = normed.some(h => h === 'submarket') &&
+    normed.some(h => h.includes('vacancy') || h.includes('netabsorption') || h.includes('underconstruction') || h.includes('deliveries'));
   if (hasSale) return 'sale';
   if (hasRent) return 'rent';
+  if (hasSubmarket) return 'submarket';
   return null;
 }
 
@@ -244,9 +250,10 @@ interface SaleCompRow {
   source: string;
   qualified: boolean;
   file_id: number | null;
+  data_as_of: string | null;
 }
 
-function mapSaleRow(row: ParsedRow, fileId: number | null): { comp: SaleCompRow | null; reason?: string } {
+function mapSaleRow(row: ParsedRow, fileId: number | null, dataAsOf?: string): { comp: SaleCompRow | null; reason?: string } {
   const address = colVal(row, 'Address');
   const city = colVal(row, 'City');
   const stateRaw = colVal(row, 'State');
@@ -296,6 +303,7 @@ function mapSaleRow(row: ParsedRow, fileId: number | null): { comp: SaleCompRow 
       source: 'costar_upload',
       qualified: true,
       file_id: fileId,
+      data_as_of: dataAsOf ?? null,
     },
   };
 }
@@ -323,12 +331,14 @@ interface RentCompRow {
   longitude: number | null;
   source: string;
   file_id: number | null;
+  data_as_of: string | null;
 }
 
 function mapRentRow(
   row: ParsedRow,
   snapshotDate: string,
-  fileId: number | null
+  fileId: number | null,
+  dataAsOf?: string
 ): { comp: RentCompRow | null; reason?: string } {
   const address = colVal(row, 'Address');
   const city = colVal(row, 'City');
@@ -385,6 +395,84 @@ function mapRentRow(
       longitude: parseNum(colVal(row, 'Longitude', 'Long', 'Lng')),
       source: 'costar_upload',
       file_id: fileId,
+      data_as_of: dataAsOf ?? null,
+    },
+  };
+}
+
+// ── Submarket performance mapper ─────────────────────────────────────────────
+
+interface SubmarketStatsRow {
+  id: string;
+  deal_id: string;
+  submarket: string;
+  city: string | null;
+  state: string | null;
+  msa: string | null;
+  period_date: string;
+  vacancy_rate: number | null;
+  asking_rent_per_unit: number | null;
+  effective_rent_per_unit: number | null;
+  yoy_rent_growth: number | null;
+  absorption_units: number | null;
+  net_deliveries_units: number | null;
+  total_inventory_units: number | null;
+  under_construction_units: number | null;
+  occupancy_pct: number | null;
+  concession_pct: number | null;
+  source: string;
+  file_id: number | null;
+  data_as_of: string | null;
+}
+
+function mapSubmarketRow(
+  row: ParsedRow,
+  dealId: string,
+  fileId: number | null,
+  fallbackPeriodDate: string,
+  dataAsOf?: string
+): { comp: SubmarketStatsRow | null; reason?: string } {
+  const submarket = colVal(row, 'Submarket');
+  if (!submarket) return { comp: null, reason: 'Missing Submarket' };
+
+  const periodRaw = colVal(row, 'Period', 'Date', 'Period Date', 'Survey Date', 'Quarter', 'As Of');
+  const periodDate = parseDate(periodRaw) ?? fallbackPeriodDate;
+  if (!periodDate) return { comp: null, reason: 'Missing Period / Date' };
+
+  const vacancyRaw = colVal(row, 'Vacancy Rate', 'Vacancy %', 'Vacancy', 'Overall Vacancy', 'Vac. Rate');
+  let vacancyRate = parseNum(vacancyRaw);
+  if (vacancyRate != null && vacancyRate <= 1) vacancyRate = vacancyRate * 100;
+
+  const occRaw = colVal(row, 'Occupancy', 'Occupancy Rate', 'Occupancy %', 'Occ %');
+  let occupancyPct = parseNum(occRaw);
+  if (occupancyPct != null && occupancyPct <= 1) occupancyPct = occupancyPct * 100;
+
+  const rentGrowthRaw = colVal(row, 'Rent Growth', 'Rent Growth %', 'YoY Rent Growth', 'Asking Rent Growth', 'Ann. Rent Growth');
+  let rentGrowth = parseNum(rentGrowthRaw);
+  if (rentGrowth != null && Math.abs(rentGrowth) <= 1) rentGrowth = rentGrowth * 100;
+
+  return {
+    comp: {
+      id: randomUUID(),
+      deal_id: dealId,
+      submarket: submarket.trim(),
+      city: colVal(row, 'City'),
+      state: normaliseState(colVal(row, 'State')),
+      msa: colVal(row, 'Market', 'MSA', 'Market/MSA', 'Metro Area'),
+      period_date: periodDate,
+      vacancy_rate: vacancyRate,
+      asking_rent_per_unit: parseNum(colVal(row, 'Asking Rent/Unit', 'Asking Rent', 'Asking Rents', 'Avg Asking Rent/Unit')),
+      effective_rent_per_unit: parseNum(colVal(row, 'Eff Rent/Unit', 'Effective Rent/Unit', 'Effective Rent', 'Eff. Rent/Unit', 'Avg Eff Rent/Unit')),
+      yoy_rent_growth: rentGrowth,
+      absorption_units: parseInt2(colVal(row, 'Net Absorption', 'Absorption', 'Net Abs', 'Net Abs. Units')),
+      net_deliveries_units: parseInt2(colVal(row, 'Deliveries', 'Net Deliveries', 'Delivered Units', 'Completions')),
+      total_inventory_units: parseInt2(colVal(row, 'Inventory', 'Total Inventory', 'Inventory Units', 'Total Units')),
+      under_construction_units: parseInt2(colVal(row, 'Under Construction', 'Under Const.', 'Under Const', 'UC Units')),
+      occupancy_pct: occupancyPct,
+      concession_pct: parseNum(colVal(row, 'Concession %', 'Concessions %', 'ConcessionPct')),
+      source: 'costar_upload',
+      file_id: fileId,
+      data_as_of: dataAsOf ?? null,
     },
   };
 }
@@ -442,6 +530,8 @@ export interface CompUploadOptions {
   filename: string;
   compType?: CompType;
   snapshotDate?: string;
+  /** CoStar export generation date (provenance). Distinct from ingested_at (server time). */
+  dataAsOf?: string;
   fileId?: number | null;
   /** Required: scopes uploaded rows to this deal. Prevents cross-deal comp bleed. */
   dealId: string;
@@ -479,7 +569,7 @@ export async function processCoStarUpload(
       errors: [],
       rejected: true,
       rejectReason:
-        'Could not detect comp type. File headers did not match CoStar sale or rent export patterns. ' +
+        'Could not detect comp type. File headers did not match CoStar sale, rent, or submarket export patterns. ' +
         'Please select the comp type manually.',
     };
   }
@@ -497,6 +587,8 @@ export async function processCoStarUpload(
     };
   }
 
+  const today = new Date().toISOString().slice(0, 10);
+  const dataAsOf = opts.dataAsOf ?? today;
   const errors: UploadRowError[] = [];
   let inserted = 0;
   let skippedDup = 0;
@@ -504,13 +596,15 @@ export async function processCoStarUpload(
   const totalRows = rows.length;
 
   // First pass: validate all rows (to gate on >20% failure)
-  const mapped: Array<{ comp: SaleCompRow | RentCompRow | null; reason?: string }> = [];
+  const mapped: Array<{ comp: SaleCompRow | RentCompRow | SubmarketStatsRow | null; reason?: string }> = [];
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     if (compType === 'sale') {
-      mapped.push(mapSaleRow(row, fileId));
+      mapped.push(mapSaleRow(row, fileId, dataAsOf));
+    } else if (compType === 'submarket') {
+      mapped.push(mapSubmarketRow(row, dealId, fileId, opts.snapshotDate ?? today, dataAsOf));
     } else {
-      mapped.push(mapRentRow(row, opts.snapshotDate!, fileId));
+      mapped.push(mapRentRow(row, opts.snapshotDate!, fileId, dataAsOf));
     }
   }
 
@@ -565,17 +659,51 @@ export async function processCoStarUpload(
              (id, property_name, address, city, state, zip, county, msa, submarket,
               property_type, units, sqft, year_built, asset_class, stories,
               sale_date, sale_price, price_per_unit, price_per_sqft, cap_rate, buyer, seller,
-              latitude, longitude, source, qualified, file_id, deal_id, created_at)
+              latitude, longitude, source, qualified, file_id, deal_id, data_as_of, created_at)
            VALUES
              ($1,$2,$3,$4,$5,$6,$7,$8,$9,
               $10,$11,$12,$13,$14,$15,
               $16,$17,$18,$19,$20,$21,$22,
-              $23,$24,$25,$26,$27,$28,NOW())`,
+              $23,$24,$25,$26,$27,$28,$29,NOW())`,
           [
             sc.id, sc.property_name, sc.address, sc.city, sc.state, sc.zip, sc.county, sc.msa, sc.submarket,
             sc.property_type, sc.units, sc.sqft, sc.year_built, sc.asset_class, sc.stories,
             sc.sale_date, sc.sale_price, sc.price_per_unit, sc.price_per_sqft, sc.cap_rate, sc.buyer, sc.seller,
-            sc.latitude, sc.longitude, sc.source, sc.qualified, sc.file_id, dealId,
+            sc.latitude, sc.longitude, sc.source, sc.qualified, sc.file_id, dealId, sc.data_as_of,
+          ]
+        );
+        inserted++;
+      } else if (compType === 'submarket') {
+        const ss = comp as SubmarketStatsRow;
+        await pool.query(
+          `INSERT INTO costar_submarket_stats
+             (id, deal_id, submarket, city, state, msa, period_date,
+              vacancy_rate, asking_rent_per_unit, effective_rent_per_unit, yoy_rent_growth,
+              absorption_units, net_deliveries_units, total_inventory_units, under_construction_units,
+              occupancy_pct, concession_pct, source, file_id, data_as_of)
+           VALUES
+             ($1,$2,$3,$4,$5,$6,$7,
+              $8,$9,$10,$11,
+              $12,$13,$14,$15,
+              $16,$17,$18,$19,$20)
+           ON CONFLICT (deal_id, submarket, state, period_date) DO UPDATE SET
+             vacancy_rate = EXCLUDED.vacancy_rate,
+             asking_rent_per_unit = EXCLUDED.asking_rent_per_unit,
+             effective_rent_per_unit = EXCLUDED.effective_rent_per_unit,
+             yoy_rent_growth = EXCLUDED.yoy_rent_growth,
+             absorption_units = EXCLUDED.absorption_units,
+             net_deliveries_units = EXCLUDED.net_deliveries_units,
+             total_inventory_units = EXCLUDED.total_inventory_units,
+             under_construction_units = EXCLUDED.under_construction_units,
+             occupancy_pct = EXCLUDED.occupancy_pct,
+             concession_pct = EXCLUDED.concession_pct,
+             data_as_of = EXCLUDED.data_as_of,
+             ingested_at = NOW()`,
+          [
+            ss.id, ss.deal_id, ss.submarket, ss.city, ss.state, ss.msa, ss.period_date,
+            ss.vacancy_rate, ss.asking_rent_per_unit, ss.effective_rent_per_unit, ss.yoy_rent_growth,
+            ss.absorption_units, ss.net_deliveries_units, ss.total_inventory_units, ss.under_construction_units,
+            ss.occupancy_pct, ss.concession_pct, ss.source, ss.file_id, ss.data_as_of,
           ]
         );
         inserted++;
@@ -591,17 +719,17 @@ export async function processCoStarUpload(
              (id, property_name, address, city, state, zip, msa, submarket,
               units, year_built, asset_class, snapshot_date,
               avg_asking_rent, avg_effective_rent, occupancy_pct, concession_pct,
-              latitude, longitude, source, file_id, deal_id, created_at)
+              latitude, longitude, source, file_id, deal_id, data_as_of, created_at)
            VALUES
              ($1,$2,$3,$4,$5,$6,$7,$8,
               $9,$10,$11,$12,
               $13,$14,$15,$16,
-              $17,$18,$19,$20,$21,NOW())`,
+              $17,$18,$19,$20,$21,$22,NOW())`,
           [
             rc.id, rc.property_name, rc.address, rc.city, rc.state, rc.zip, rc.msa, rc.submarket,
             rc.units, rc.year_built, rc.asset_class, rc.snapshot_date,
             rc.avg_asking_rent, rc.avg_effective_rent, rc.occupancy_pct, rc.concession_pct,
-            rc.latitude, rc.longitude, rc.source, rc.file_id, dealId,
+            rc.latitude, rc.longitude, rc.source, rc.file_id, dealId, rc.data_as_of,
           ]
         );
         inserted++;
@@ -610,7 +738,7 @@ export async function processCoStarUpload(
       skippedInvalid++;
       errors.push({
         row: i + 2,
-        address: (comp as any).address ?? '—',
+        address: (comp as any).address ?? (comp as any).submarket ?? '—',
         reason: `DB error: ${err.message?.slice(0, 120) ?? 'unknown'}`,
       });
     }
@@ -634,6 +762,8 @@ export interface CompPreviewOptions {
   filename: string;
   compType?: CompType;
   snapshotDate?: string;
+  /** CoStar export generation date (provenance). Distinct from ingested_at (server time). */
+  dataAsOf?: string;
   dealId: string;
 }
 
@@ -677,7 +807,9 @@ export async function previewCoStarUpload(
     };
   }
 
-  const snapshotDate = opts.snapshotDate ?? new Date().toISOString().slice(0, 10);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const snapshotDate = opts.snapshotDate ?? todayStr;
+  const dataAsOf = opts.dataAsOf ?? todayStr;
 
   const previewRows: CompPreviewRow[] = [];
   let validRows = 0;
@@ -690,8 +822,43 @@ export async function previewCoStarUpload(
     let validationError: string | null = null;
     let isDuplicate = false;
 
+    if (compType === 'submarket') {
+      const { comp, reason } = mapSubmarketRow(row, dealId, null, snapshotDate, dataAsOf);
+      if (!comp) {
+        isValid = false;
+        validationError = reason ?? 'Validation failed';
+        invalidRows++;
+      } else {
+        validRows++;
+      }
+      previewRows.push({
+        rowIndex: i,
+        propertyName: null,
+        address: comp?.submarket ?? String(row['Submarket'] ?? '—'),
+        city: comp?.city ?? String(row['City'] ?? ''),
+        state: comp?.state ?? String(row['State'] ?? ''),
+        zip: null,
+        submarket: comp?.submarket ?? null,
+        units: comp?.total_inventory_units ?? null,
+        yearBuilt: null,
+        assetClass: null,
+        saleDate: null,
+        salePrice: null,
+        pricePerUnit: null,
+        capRate: null,
+        snapshotDate: comp?.period_date ?? null,
+        avgAskingRent: comp?.asking_rent_per_unit ?? null,
+        avgEffectiveRent: comp?.effective_rent_per_unit ?? null,
+        occupancyPct: comp?.occupancy_pct ?? null,
+        isValid,
+        validationError,
+        isDuplicate: false,
+      } as CompPreviewRow);
+      continue;
+    }
+
     if (compType === 'sale') {
-      const { comp, reason } = mapSaleRow(row, null);
+      const { comp, reason } = mapSaleRow(row, null, dataAsOf);
       if (!comp) {
         isValid = false;
         validationError = reason ?? 'Validation failed';
@@ -748,7 +915,7 @@ export async function previewCoStarUpload(
         });
       }
     } else {
-      const { comp, reason } = mapRentRow(row, snapshotDate, null);
+      const { comp, reason } = mapRentRow(row, snapshotDate, null, dataAsOf);
       if (!comp) {
         isValid = false;
         validationError = reason ?? 'Validation failed';
@@ -857,7 +1024,9 @@ export async function commitCoStarUpload(
     };
   }
 
-  const snapshotDate = opts.snapshotDate ?? new Date().toISOString().slice(0, 10);
+  const todayCommit = new Date().toISOString().slice(0, 10);
+  const snapshotDate = opts.snapshotDate ?? todayCommit;
+  const dataAsOf = opts.dataAsOf ?? todayCommit;
 
   // Build a quick-lookup map from rowIndex → override
   const overrideMap = new Map<number, RowOverride>();
@@ -881,8 +1050,63 @@ export async function commitCoStarUpload(
       continue;
     }
 
+    if (compType === 'submarket') {
+      const { comp, reason } = mapSubmarketRow(row, dealId, fileId, snapshotDate, dataAsOf);
+      if (!comp) {
+        skippedInvalid++;
+        errors.push({
+          row: i + 2,
+          address: String(rows[i]['Submarket'] ?? '—'),
+          reason: reason ?? 'Validation failed',
+        });
+        continue;
+      }
+      try {
+        await pool.query(
+          `INSERT INTO costar_submarket_stats
+             (id, deal_id, submarket, city, state, msa, period_date,
+              vacancy_rate, asking_rent_per_unit, effective_rent_per_unit, yoy_rent_growth,
+              absorption_units, net_deliveries_units, total_inventory_units, under_construction_units,
+              occupancy_pct, concession_pct, source, file_id, data_as_of)
+           VALUES
+             ($1,$2,$3,$4,$5,$6,$7,
+              $8,$9,$10,$11,
+              $12,$13,$14,$15,
+              $16,$17,$18,$19,$20)
+           ON CONFLICT (deal_id, submarket, state, period_date) DO UPDATE SET
+             vacancy_rate = EXCLUDED.vacancy_rate,
+             asking_rent_per_unit = EXCLUDED.asking_rent_per_unit,
+             effective_rent_per_unit = EXCLUDED.effective_rent_per_unit,
+             yoy_rent_growth = EXCLUDED.yoy_rent_growth,
+             absorption_units = EXCLUDED.absorption_units,
+             net_deliveries_units = EXCLUDED.net_deliveries_units,
+             total_inventory_units = EXCLUDED.total_inventory_units,
+             under_construction_units = EXCLUDED.under_construction_units,
+             occupancy_pct = EXCLUDED.occupancy_pct,
+             concession_pct = EXCLUDED.concession_pct,
+             data_as_of = EXCLUDED.data_as_of,
+             ingested_at = NOW()`,
+          [
+            comp.id, comp.deal_id, comp.submarket, comp.city, comp.state, comp.msa, comp.period_date,
+            comp.vacancy_rate, comp.asking_rent_per_unit, comp.effective_rent_per_unit, comp.yoy_rent_growth,
+            comp.absorption_units, comp.net_deliveries_units, comp.total_inventory_units, comp.under_construction_units,
+            comp.occupancy_pct, comp.concession_pct, comp.source, comp.file_id, comp.data_as_of,
+          ]
+        );
+        inserted++;
+      } catch (err: any) {
+        skippedInvalid++;
+        errors.push({
+          row: i + 2,
+          address: comp.submarket,
+          reason: `DB error: ${err.message?.slice(0, 120) ?? 'unknown'}`,
+        });
+      }
+      continue;
+    }
+
     if (compType === 'sale') {
-      const { comp, reason } = mapSaleRow(row, fileId);
+      const { comp, reason } = mapSaleRow(row, fileId, dataAsOf);
       if (!comp) {
         skippedInvalid++;
         errors.push({
@@ -922,17 +1146,17 @@ export async function commitCoStarUpload(
              (id, property_name, address, city, state, zip, county, msa, submarket,
               property_type, units, sqft, year_built, asset_class, stories,
               sale_date, sale_price, price_per_unit, price_per_sqft, cap_rate, buyer, seller,
-              latitude, longitude, source, qualified, file_id, deal_id, created_at)
+              latitude, longitude, source, qualified, file_id, deal_id, data_as_of, created_at)
            VALUES
              ($1,$2,$3,$4,$5,$6,$7,$8,$9,
               $10,$11,$12,$13,$14,$15,
               $16,$17,$18,$19,$20,$21,$22,
-              $23,$24,$25,$26,$27,$28,NOW())`,
+              $23,$24,$25,$26,$27,$28,$29,NOW())`,
           [
             comp.id, comp.property_name, comp.address, comp.city, comp.state, comp.zip, comp.county, comp.msa, comp.submarket,
             comp.property_type, comp.units, comp.sqft, comp.year_built, comp.asset_class, comp.stories,
             comp.sale_date, comp.sale_price, comp.price_per_unit, comp.price_per_sqft, comp.cap_rate, comp.buyer, comp.seller,
-            comp.latitude, comp.longitude, comp.source, comp.qualified, comp.file_id, dealId,
+            comp.latitude, comp.longitude, comp.source, comp.qualified, comp.file_id, dealId, comp.data_as_of,
           ]
         );
         inserted++;
@@ -945,7 +1169,7 @@ export async function commitCoStarUpload(
         });
       }
     } else {
-      const { comp, reason } = mapRentRow(row, snapshotDate, fileId);
+      const { comp, reason } = mapRentRow(row, snapshotDate, fileId, dataAsOf);
       if (!comp) {
         skippedInvalid++;
         errors.push({
@@ -984,17 +1208,17 @@ export async function commitCoStarUpload(
              (id, property_name, address, city, state, zip, msa, submarket,
               units, year_built, asset_class, snapshot_date,
               avg_asking_rent, avg_effective_rent, occupancy_pct, concession_pct,
-              latitude, longitude, source, file_id, deal_id, created_at)
+              latitude, longitude, source, file_id, deal_id, data_as_of, created_at)
            VALUES
              ($1,$2,$3,$4,$5,$6,$7,$8,
               $9,$10,$11,$12,
               $13,$14,$15,$16,
-              $17,$18,$19,$20,$21,NOW())`,
+              $17,$18,$19,$20,$21,$22,NOW())`,
           [
             comp.id, comp.property_name, comp.address, comp.city, comp.state, comp.zip, comp.msa, comp.submarket,
             comp.units, comp.year_built, comp.asset_class, comp.snapshot_date,
             comp.avg_asking_rent, comp.avg_effective_rent, comp.occupancy_pct, comp.concession_pct,
-            comp.latitude, comp.longitude, comp.source, comp.file_id, dealId,
+            comp.latitude, comp.longitude, comp.source, comp.file_id, dealId, comp.data_as_of,
           ]
         );
         inserted++;

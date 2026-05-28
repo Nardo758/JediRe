@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { BT, BT_CSS } from '../../components/deal/bloomberg-ui';
 import { DueDiligencePage } from './DueDiligencePage';
 import { apiClient } from '../../services/api.client';
+import { CoStarUploadPanel } from '../../components/deal/CoStarUploadPanel';
 
 const mono: React.CSSProperties = { fontFamily: BT.font.mono };
 
@@ -120,6 +121,7 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
   const [searchQuery, setSearchQuery] = useState('');
   const [showUpload, setShowUpload] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
+  const [showCoStarPanel, setShowCoStarPanel] = useState(false);
 
   useEffect(() => {
     if (!resolvedDealId) return;
@@ -230,8 +232,8 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
           </div>
         )}
 
-        {/* Upload Button */}
-        <div style={{ padding: 12, borderTop: `1px solid ${BT.border.subtle}` }}>
+        {/* Upload Buttons */}
+        <div style={{ padding: 12, borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <button
             onClick={() => setShowUpload(true)}
             style={{
@@ -241,12 +243,34 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
           >
             ⬆ UPLOAD FILES
           </button>
+          <button
+            onClick={() => { setShowCoStarPanel(true); setSelectedFile(null); }}
+            style={{
+              width: '100%', padding: '8px 16px', background: showCoStarPanel ? BT.text.green + '22' : 'transparent',
+              color: showCoStarPanel ? BT.text.green : BT.text.secondary,
+              border: `1px solid ${showCoStarPanel ? BT.text.green + '66' : BT.border.subtle}`,
+              cursor: 'pointer', ...mono, fontSize: 10, fontWeight: 600, letterSpacing: 0.5,
+            }}
+          >
+            📊 IMPORT COSTAR
+          </button>
         </div>
       </div>
 
       {/* Main Content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {activeView === 'files' ? (
+
+        {/* CoStar Upload Panel — shown when IMPORT COSTAR is active */}
+        {showCoStarPanel && resolvedDealId && (
+          <div style={{ position: 'relative', flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+            <CoStarUploadPanel
+              dealId={resolvedDealId}
+              onClose={() => setShowCoStarPanel(false)}
+            />
+          </div>
+        )}
+
+        {!showCoStarPanel && (activeView === 'files' ? (
           <>
             {/* Toolbar */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.header, flexShrink: 0 }}>
@@ -372,7 +396,7 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
           <div style={{ flex: 1, overflow: 'auto' }}>
             <DueDiligencePage dealId={resolvedDealId} deal={deal as any} />
           </div>
-        )}
+        ))}
       </div>
 
       {/* File Detail Panel */}
