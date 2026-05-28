@@ -400,6 +400,48 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       );
     }
 
+    // D-DEAL-1 fix (Task #1405 / Wave A): Auto-create linked properties row at deal intake.
+    // Ensures Valuation Grid and other consumers joining via `properties p ON p.deal_id = d.id`
+    // find a subject record immediately after deal creation. Enrichment pipeline fills in
+    // building-level details (city, state, building_class, submarket_id) asynchronously.
+    // Non-fatal: a failure here never blocks the deal creation response.
+    try {
+      let propLat: number | null = null;
+      let propLng: number | null = null;
+      if (boundary.type === 'Point' && Array.isArray(boundary.coordinates) && boundary.coordinates.length >= 2) {
+        propLng = Number(boundary.coordinates[0]) || null;
+        propLat = Number(boundary.coordinates[1]) || null;
+      } else if (boundary.type === 'Polygon' && Array.isArray(boundary.coordinates) && boundary.coordinates.length > 0) {
+        const ring = boundary.coordinates[0] as [number, number][];
+        if (ring.length > 0) {
+          propLng = ring.reduce((s: number, c: [number, number]) => s + c[0], 0) / ring.length;
+          propLat = ring.reduce((s: number, c: [number, number]) => s + c[1], 0) / ring.length;
+        }
+      }
+      await client.query(
+        `INSERT INTO properties (
+           deal_id, address_line1, units, acquisition_price,
+           lat, lng, latitude, longitude, created_by, ownership_status
+         )
+         SELECT $1, $2, $3, $4, $5, $6, $5, $6, $7, 'pipeline'
+         WHERE NOT EXISTS (SELECT 1 FROM properties WHERE deal_id = $1)`,
+        [
+          row.id,
+          address || null,
+          targetUnits || null,
+          budget || null,
+          propLat,
+          propLng,
+          req.user!.userId,
+        ]
+      );
+    } catch (propErr) {
+      logger.warn(`[DealCreation] Failed to auto-create properties row for deal ${row.id} (non-fatal)`, {
+        dealId: row.id,
+        err: propErr instanceof Error ? propErr.message : String(propErr),
+      });
+    }
+
     autoDiscoverComps(row.id).catch(err => {
       console.error(`[CompDiscovery] Failed for deal ${row.id}:`, err.message);
     });
