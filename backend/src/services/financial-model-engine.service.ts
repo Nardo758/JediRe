@@ -9,6 +9,7 @@ import OpenAI from 'openai';
 import { mapProFormaAssumptionsToModelAssumptions, crossCheckLLMVsDeterministic, buildEvidenceHintsFromSeed } from './deterministic/proforma-assumptions-bridge';
 import { runModel, runIntegrityChecks } from './deterministic/deterministic-model-runner';
 import { runM11Cycle, applyM14RiskAdjustments } from './module-wiring/capital-structure-adapter';
+import { evaluatePipeline } from './module-wiring/reasoning-pipeline';
 import type { ProFormaYear1Seed } from './document-extraction/types';
 
 /**
@@ -535,6 +536,26 @@ export class FinancialModelEngineService {
       logger.warn(`[Anchor-Interceptor] Skipped for ${dealId}: ${err?.message}`);
     }
     
+    // ── D-MOD-3: Reasoning pipeline stage-gate evaluation ─────────────────────
+    // Evaluate the 11-stage reasoning pipeline against the current DataFlowRouter
+    // state for this deal. This enforces the dependency chain: market intel before
+    // exit cap, proforma before debt sizing, etc. Violations are logged as warnings
+    // (non-blocking) so the build never hard-fails on a missing optional module.
+    try {
+      const pipelineState = evaluatePipeline(dealId);
+      const completedPct = Math.round((pipelineState.completedStageIds.length / 11) * 100);
+      if (pipelineState.fullyResolved) {
+        logger.info(`[D-MOD-3] Pipeline fully resolved for ${dealId} (11/11 stages satisfied)`);
+      } else {
+        logger.info(
+          `[D-MOD-3] Pipeline for ${dealId}: ${pipelineState.completedStageIds.length}/11 stages satisfied (${completedPct}%). ` +
+          `Gated at: "${pipelineState.gatedStageId ?? 'none'}" — ${pipelineState.gatedReason ?? ''}`
+        );
+      }
+    } catch (pipelineErr: any) {
+      logger.warn(`[D-MOD-3] Pipeline evaluation skipped for ${dealId}: ${pipelineErr?.message}`);
+    }
+
     // Log enhancement summary
     const enhancementSummary = m26m27ProFormaEnhancer.getEnhancementSummary(enhancedAssumptions);
     logger.info(`M26/M27ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢M09 Enhancement for deal ${dealId}:\n${enhancementSummary}`);

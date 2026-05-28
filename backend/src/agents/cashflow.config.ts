@@ -74,6 +74,7 @@ import { fetchRateEnvironmentTool } from './tools/fetch_rate_environment';
 import { fetchCycleIntelligenceTool } from './tools/fetch_cycle_intelligence';
 import { fetchSourceDocumentsTool } from './tools/fetch_source_documents';
 import { fetchMarketRentBenchmarkTool } from './tools/fetch_market_rent_benchmark';
+import { fetchAssumptionModuleMapTool } from './tools/fetch_assumption_module_map';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -645,6 +646,8 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchCountyTaxRulesTool,
     // OperatorStance — meta-layer modulating agent discretion (call after fetch_data_matrix)
     fetchOperatorStanceTool,
+    // D-MOD-1 — Assumption → Module Mapping (read-only; call before deriving key assumptions)
+    fetchAssumptionModuleMapTool,
     // read_gmail_thread is intentionally NOT registered here — it belongs to the deal-intake
     // pipeline (email-intake.function.ts / Inngest), not the underwriting agent. Registering
     // it in the cashflow config would expose Gmail credentials to an unintended call surface.

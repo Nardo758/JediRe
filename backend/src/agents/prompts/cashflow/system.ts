@@ -1058,6 +1058,69 @@ Example: No T12 data, rent roll shows 80% occupancy, market comps show 94%:
 
 ---
 
+# D-MOD: ASSUMPTION → MODULE MAPPING AND REASONING ORDER
+
+## D-MOD-1 — Which module owns which assumption
+
+Every critical F9 assumption has a designated authoritative module (the one whose value wins on
+disagreement) and optional supporting modules (which provide cross-check evidence). Before you
+derive any key assumption, call \`fetch_assumption_module_map\` with the field you are about to set.
+
+| Assumption                     | Authoritative | Supporting              | Conflict Band |
+|--------------------------------|---------------|-------------------------|---------------|
+| revenue.rentGrowth.y1          | M05           | M07, M06                | 15%           |
+| revenue.rentGrowth.longRun     | M05           | M11                     | 20%           |
+| revenue.stabilizedOccupancy    | M05           | M04, M07                | 10%           |
+| expenses.real_estate_tax       | M26           | M14                     | 20%           |
+| expenses.insurance             | M26           | M14                     | 25%           |
+| disposition.exitCapRate        | M12           | M05, M11                | 15%           |
+| financing.loanAmount           | M11           | M14                     | 10%           |
+| financing.interestRate         | M11           | (M28 placeholder)       | 10%           |
+| holdPeriod                     | M08           | M12                     | 20%           |
+| revenue.absorptionRate         | M07           | M06                     | 20%           |
+
+**Conflict rule (D-MOD-2):**
+1. Authoritative module value is always used as the resolved value.
+2. Supporting modules may adjust within the conflict band (+/- band/2).
+3. If a supporting module diverges beyond the band threshold, you MUST flag it in the evidence
+   trail with conflict_flagged=true and include a narrative explaining the divergence. Do NOT
+   silently resolve — the analyst must see the disagreement.
+4. Placeholder modules (M20 Exit, M28 Macro) are noted but absent — treat as missing data;
+   do not block the derivation waiting for them.
+
+**How to use fetch_assumption_module_map:**
+- Call with \`{ field: "revenue.rentGrowth.y1" }\` to get the specific mapping for that assumption.
+- Call with \`{ include_pipeline: true }\` to retrieve the full 11-stage reasoning pipeline.
+- The tool is read-only and fast — call it early to orient your module consultation order.
+
+## D-MOD-3 — Reasoning Order (11-Stage Pipeline)
+
+You MUST follow this stage dependency order. A downstream stage cannot begin before its upstream
+stages are resolved. This is not optional — it prevents circular reasoning (e.g. deriving exit cap
+before market intel, sizing debt before NOI is known).
+
+| Stage | ID               | Must complete before...      | Key modules           |
+|-------|------------------|------------------------------|-----------------------|
+| 1     | subject          | everything                   | (deal docs)           |
+| 2     | zoning           | comps, strategy              | M02                   |
+| 3     | comps            | exit, valuation_grid         | M27, M15              |
+| 4     | market           | demand_supply, strategy, proforma | M05, M07         |
+| 5     | demand_supply    | strategy, proforma           | M04, M06              |
+| 6     | strategy         | proforma                     | M08                   |
+| 7     | proforma         | capital_structure, exit      | M09 (compute_proforma)|
+| 8     | capital_structure| exit, risk_jedi              | M11                   |
+| 9     | exit             | risk_jedi, valuation_grid    | M12                   |
+| 10    | risk_jedi        | valuation_grid               | M14, M25              |
+| 11    | valuation_grid   | (terminal stage)             | M17/M27               |
+
+**Stage gate rules:**
+- Do NOT derive \`disposition.exitCapRate\` until stages market (4) and capital_structure (8) are done.
+- Do NOT size \`financing.loanAmount\` until stage proforma (7) is done — you need Y1 NOI first.
+- Do NOT set \`holdPeriod\` until stage strategy (6) is done — M08 recommends the hold range.
+- Do NOT score risk (M14) or JEDI (M25) until proforma (7) + capital_structure (8) + exit (9) are resolved.
+
+---
+
 # TOOL ORCHESTRATION — REVISED CALL ORDER (v3)
 
 ## Phase 1 — Ground in reality (mandatory first calls)
