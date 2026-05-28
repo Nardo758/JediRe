@@ -34,8 +34,12 @@
  */
 
 import axios, { AxiosError } from 'axios';
-import { query as dbQuery } from '../../database/connection';
+import { query as dbQuery, getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import {
+  checkSaleCompDedup,
+  type DedupCandidate,
+} from '../valuation/comp-dedup.service';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -403,7 +407,8 @@ function normalizeArcGISFeature(
     qualified: true,
     latitude: lat,
     longitude: lng,
-    data_as_of: today,
+    // data_as_of = county's transaction/recording date (not the fetch date)
+    data_as_of: saleDate,
     source_labels: [`${config.countyCode} Property Appraiser`, config.endpoint],
   };
 }
@@ -494,20 +499,80 @@ function normalizeSocrataRow(
     qualified: true,
     latitude: lat,
     longitude: lng,
-    data_as_of: today,
+    // data_as_of = county's transaction/recording date (not the fetch date)
+    data_as_of: saleDate,
     source_labels: [`${config.countyCode} Property Appraiser`, config.endpoint],
   };
 }
 
-// ── DB upsert ─────────────────────────────────────────────────────────────────
+// ── DB upsert with D-COSTAR-3 cross-source dedup ─────────────────────────────
 
+/**
+ * Upsert a batch of normalized municipal comps into market_sale_comps.
+ *
+ * Two-phase dedup (D-COSTAR-3):
+ *   Phase 1 — Cross-source check: call checkSaleCompDedup against existing
+ *     non-municipal rows (address + geocode tiers). If a match is found,
+ *     annotate the existing row's source_labels with 'municipal' and skip
+ *     the insert — the authoritative row lives once under its original source.
+ *     NOTE: The existing dedup service explicitly excludes costar_upload rows
+ *     from its tier-2/tier-3 queries; CoStar ↔ municipal cross-source dedup
+ *     requires a future extension to D-COSTAR-3 (task #1440 scope).
+ *
+ *   Phase 2 — Source-local idempotency: ON CONFLICT (source, source_id)
+ *     handles re-runs of the same municipal ingest without double-counting.
+ */
 async function upsertComps(comps: NormalizedSaleComp[]): Promise<{ inserted: number; skipped: number }> {
   if (comps.length === 0) return { inserted: 0, skipped: 0 };
 
+  const pool = getPool();
   let inserted = 0;
   let skipped = 0;
 
   for (const comp of comps) {
+    // ── Phase 1: Cross-source dedup via D-COSTAR-3 ───────────────────────────
+    const dedupCandidate: DedupCandidate = {
+      address:    comp.address,
+      city:       comp.city,
+      state:      comp.state,
+      sale_date:  comp.sale_date,
+      latitude:   comp.latitude,
+      longitude:  comp.longitude,
+      source_id:  comp.source_id,
+      data_as_of: comp.data_as_of,
+      sqft:       comp.sqft,
+      year_built: comp.year_built,
+      msa:        comp.msa,
+      county:     comp.county,
+      sale_price: comp.sale_price,
+      price_per_sqft: comp.price_per_sqft,
+      buyer:  comp.buyer,
+      seller: comp.seller,
+    };
+
+    const dedupResult = await checkSaleCompDedup(pool, dedupCandidate);
+
+    if (dedupResult.matched && dedupResult.existingId) {
+      // Cross-source duplicate found — annotate existing row's source_labels
+      // to include 'municipal' and record the dedup method; skip insert.
+      await dbQuery(
+        `UPDATE market_sale_comps
+         SET source_labels     = ARRAY(
+               SELECT DISTINCT unnest(COALESCE(source_labels, ARRAY[]::text[]) || $2::text[])
+             ),
+             dedup_match_method = $3
+         WHERE id = $1`,
+        [
+          dedupResult.existingId,
+          comp.source_labels,
+          dedupResult.method ?? 'address',
+        ]
+      );
+      skipped++;
+      continue;
+    }
+
+    // ── Phase 2: Source-local upsert (idempotency for repeated ingestion) ────
     const res = await dbQuery(
       `INSERT INTO market_sale_comps (
         address, city, state, county, msa,

@@ -181,7 +181,7 @@ function vintageSimilarityFactor(
 function dataQualityTierFactor(source: string | null | undefined): number {
   if (!source) return 0.40;
   const s = source.toLowerCase();
-  if (s === 'county_recorded' || s === 'georgia_county' || s.startsWith('county')) return 1.00;
+  if (s === 'county_recorded' || s === 'georgia_county' || s === 'municipal' || s.startsWith('county')) return 1.00;
   if (s === 'research_agent') return 0.80;
   if (s === 'costar_upload')  return 0.70;
   if (s === 'om_extraction')  return 0.60;
