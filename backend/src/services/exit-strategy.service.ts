@@ -2,22 +2,25 @@
  * Exit Strategy Service — M20
  *
  * Derives exit cap rate, terminal value, hold period, and disposition costs
- * for the F9 proforma. Implements the exitCapRate.yaml Tier-5 formula:
+ * for the F9 proforma. Implements the exitCapRate.yaml source-preference tiers:
  *
- *   exit_cap = going_in_cap + base_expansion_bps + macro_modifier_bps + dev_premium_bps
+ *   Tier 3:   M26 archive submarket cap rate trajectory (placeholder — future)
+ *   Tier 2.5: Profile cluster exit cap from archive_assumption_benchmarks (ACTIVE — comp-bounded)
+ *   Tier 4:   Broker OM going-in cap (placeholder — future)
+ *   Tier 5:   Going-in cap + 25bps base expansion (DEFAULT fallback)
  *
- * Tier hierarchy (exitCapRate.yaml §sourcePreference):
- *   Tier 3:   M26 archive submarket cap rate trajectory (not yet wired — placeholder)
- *   Tier 2.5: Profile cluster exit cap achieved by product type (placeholder)
- *   Tier 4:   Broker OM going-in cap + framing (placeholder)
- *   Tier 5:   Going-in cap + 25bps (DEFAULT — this service)
+ * Comp bounding (Tier 2.5):
+ *   When archive_assumption_benchmarks contains exit_cap_rate data for the
+ *   deal's asset class / submarket, the computed exit cap is clamped within
+ *   [P25, P75] of the comp distribution. This prevents outlier scenarios where
+ *   a very low or very high going-in cap projects an implausible exit cap.
  *
- * A +25bps minimum expansion is applied per the yaml spec note:
- *   "Never use going-in cap as exit cap — always add basis points for uncertainty
- *    (25bps minimum, 50bps for development/lease-up)."
+ * Macro modifier:
+ *   CPI YoY → rate-environment proxy: +10bps when CPI > 4%, −5bps when CPI < 2%.
  *
- * Macro modifier: when CPI YoY > 4%, rate environment pressure adds +10bps;
- * when CPI < 2%, compressive environment subtracts −5bps.
+ * Development risk premium (per yaml hard rule):
+ *   "50bps minimum for development/lease-up" → +25bps dev premium on top of
+ *   the 25bps base expansion = 50bps total for ground_up/redevelopment/development.
  */
 
 import { Pool } from 'pg';
@@ -51,6 +54,16 @@ export interface ExitStrategyInputs {
   state: string | null;
   dealMode?: string;
   msaGeoId?: string;
+  assetClass?: string | null;
+  submarket?: string | null;
+}
+
+export interface CompCapRateBound {
+  p25: number;
+  p50: number;
+  p75: number;
+  nSamples: number;
+  source: string;
 }
 
 export interface ExitStrategyResult {
@@ -62,6 +75,7 @@ export interface ExitStrategyResult {
   terminalValue: number | null;
   source: string;
   confidence: number;
+  compBound: CompCapRateBound | null;
   provenance: {
     goingInCap: number;
     baseExpansionBps: number;
@@ -69,6 +83,7 @@ export interface ExitStrategyResult {
     devPremiumBps: number;
     cpiYoY: number | null;
     cpiPeriod: string | null;
+    compBounded: boolean;
   };
 }
 
@@ -78,13 +93,74 @@ export class ExitStrategyService {
   constructor(private pool: Pool) {}
 
   /**
+   * Query archive_assumption_benchmarks for exit_cap_rate comp distribution.
+   * Returns null when insufficient data exists for bounding.
+   */
+  private async queryCompCapBound(
+    assetClass: string | null | undefined,
+    submarket: string | null | undefined,
+    state: string | null | undefined,
+  ): Promise<CompCapRateBound | null> {
+    try {
+      const params: unknown[] = ['exit_cap_rate'];
+      const whereClauses: string[] = [`assumption_name = $1`];
+
+      if (assetClass) {
+        params.push(assetClass);
+        whereClauses.push(`(asset_class = $${params.length} OR asset_class IS NULL)`);
+      }
+      if (submarket) {
+        params.push(submarket);
+        whereClauses.push(`(submarket_id = $${params.length} OR submarket_id IS NULL)`);
+      }
+
+      const result = await this.pool.query(
+        `SELECT p25, p50, p75, n_samples, as_of, submarket_id
+           FROM archive_assumption_benchmarks
+          WHERE ${whereClauses.join(' AND ')}
+          ORDER BY
+            (CASE WHEN submarket_id IS NOT NULL THEN 0 ELSE 1 END),
+            as_of DESC
+          LIMIT 1`,
+        params,
+      );
+
+      const row = result.rows[0];
+      if (!row || row.p50 == null) return null;
+
+      const p25 = parseFloat(row.p25);
+      const p50 = parseFloat(row.p50);
+      const p75 = parseFloat(row.p75);
+      const n   = parseInt(row.n_samples, 10);
+
+      if (isNaN(p25) || isNaN(p50) || isNaN(p75) || p25 <= 0 || p75 >= 0.20) return null;
+
+      const scope = row.submarket_id
+        ? `${row.submarket_id} submarket`
+        : `${state ?? 'national'} market`;
+      const asOf = row.as_of?.toISOString?.()?.slice(0, 10) ?? 'unknown';
+
+      return {
+        p25,
+        p50,
+        p75,
+        nSamples: isNaN(n) ? 0 : n,
+        source: `archive_assumption_benchmarks (exit_cap_rate, ${scope}, n=${n}, as_of=${asOf})`,
+      };
+    } catch (err: any) {
+      logger.debug(`[ExitStrategy] Comp bound query failed: ${err?.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Derive exit cap rate + disposition costs for a deal.
    *
    * When year1NOI is supplied, also computes terminalNOI (applying a simple
    * NOI growth proxy) and terminalValue = terminalNOI / exitCapRate.
    *
-   * @param inputs      - Deal-level inputs (going-in cap, hold period, etc.)
-   * @param year1NOI    - Optional Year-1 NOI for terminal value computation.
+   * @param inputs        - Deal-level inputs (going-in cap, hold period, etc.)
+   * @param year1NOI      - Optional Year-1 NOI for terminal value computation.
    * @param noiGrowthRate - Average annual NOI growth applied to year1NOI (default 0.03).
    */
   async derive(
@@ -127,9 +203,28 @@ export class ExitStrategyService {
       : DEFAULT_GOING_IN_CAP;
 
     const rawExitCap = goingIn + totalExpansionBps / 10_000;
-    const exitCapRate = Math.max(0.02, Math.min(0.12, rawExitCap));
 
     const holdPeriod = inputs.holdPeriod > 0 ? inputs.holdPeriod : DEFAULT_HOLD_PERIOD_YEARS;
+
+    // Tier 2.5 — comp-implied bounding from archive_assumption_benchmarks
+    const compBound = await this.queryCompCapBound(
+      inputs.assetClass,
+      inputs.submarket,
+      inputs.state,
+    );
+
+    let exitCapRate = Math.max(0.02, Math.min(0.12, rawExitCap));
+    let compBounded = false;
+
+    if (compBound && compBound.nSamples >= 5) {
+      if (exitCapRate < compBound.p25) {
+        exitCapRate = compBound.p25;
+        compBounded = true;
+      } else if (exitCapRate > compBound.p75) {
+        exitCapRate = compBound.p75;
+        compBounded = true;
+      }
+    }
 
     const stateKey = (inputs.state ?? '').toUpperCase();
     const sellingCosts = SELLING_COSTS_BY_STATE[stateKey] ?? DEFAULT_SELLING_COSTS;
@@ -147,18 +242,23 @@ export class ExitStrategyService {
     const devNote = devPremiumBps > 0
       ? ` +${devPremiumBps}bps dev-premium`
       : '';
+    const boundNote = compBounded
+      ? ` [comp-bounded to ${(exitCapRate * 100).toFixed(2)}% from raw ${(rawExitCap * 100).toFixed(2)}%]`
+      : '';
 
     const source =
       `M20 Tier-5: going-in(${(goingIn * 100).toFixed(2)}%)` +
       ` + ${BASE_EXPANSION_BPS}bps base${macroNote}${devNote}` +
-      ` = exit(${(exitCapRate * 100).toFixed(2)}%)`;
+      ` = exit(${(exitCapRate * 100).toFixed(2)}%)${boundNote}`;
 
     logger.debug(
       `[ExitStrategy] dealMode=${inputs.dealMode ?? 'n/a'} state=${stateKey} ` +
       `goingIn=${(goingIn * 100).toFixed(2)}% ` +
-      `expansion=${totalExpansionBps}bps → exit=${(exitCapRate * 100).toFixed(2)}% ` +
+      `expansion=${totalExpansionBps}bps → raw=${(rawExitCap * 100).toFixed(2)}% ` +
+      `→ final=${(exitCapRate * 100).toFixed(2)}% ` +
       `sellingCosts=${(sellingCosts * 100).toFixed(1)}%` +
-      (terminalValue ? ` terminalValue=$${Math.round(terminalValue).toLocaleString()}` : '')
+      (terminalValue ? ` terminalValue=$${Math.round(terminalValue).toLocaleString()}` : '') +
+      (compBounded ? ` compBound=[${(compBound!.p25 * 100).toFixed(2)}%,${(compBound!.p75 * 100).toFixed(2)}%]` : '')
     );
 
     return {
@@ -169,7 +269,8 @@ export class ExitStrategyService {
       terminalNOI,
       terminalValue,
       source,
-      confidence: 0.70,
+      confidence: compBounded ? 0.80 : 0.70,
+      compBound: compBound ?? null,
       provenance: {
         goingInCap: goingIn,
         baseExpansionBps: BASE_EXPANSION_BPS,
@@ -177,6 +278,7 @@ export class ExitStrategyService {
         devPremiumBps,
         cpiYoY,
         cpiPeriod,
+        compBounded,
       },
     };
   }

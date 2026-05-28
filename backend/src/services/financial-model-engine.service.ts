@@ -628,6 +628,51 @@ export class FinancialModelEngineService {
           `(cpi=${cpiShelterYoY?.toFixed(3) ?? 'n/a'} momentum=${momentumVal?.toFixed(3) ?? 'none'})`
         );
       }
+
+      // ── Batch-4b: Expense growth from M05 macro + OperatorStance posture ──────
+      // After the anchor interceptor has already set per-line expense growth rates,
+      // apply a posture multiplier from OperatorStance.expenseGrowthPosture and a
+      // CPI macro modifier. This is the M05 contribution to expense growth layering.
+      //   CONTAINED: ×0.85 (operator believes cost control will outpace inflation)
+      //   INFLATION:  ×1.00 (default — no adjustment)
+      //   STRESSED:   ×1.15 (operator expects opex to accelerate above CPI)
+      // Additionally: when CPI > 4.5% (hot regime), apply a +5% uplift regardless
+      // of posture so that expense growth tracks the inflationary environment.
+      try {
+        const stanceRow = await pool.query<{ operator_stance: Record<string, unknown> | null }>(
+          `SELECT operator_stance FROM deals WHERE id = $1 LIMIT 1`,
+          [dealId]
+        );
+        const rawStance = stanceRow.rows[0]?.operator_stance;
+        const expensePosture: string =
+          (rawStance?.expenseGrowthPosture as string | undefined) ?? 'INFLATION';
+
+        const postureMultiplier =
+          expensePosture === 'CONTAINED' ? 0.85 :
+          expensePosture === 'STRESSED'  ? 1.15 : 1.0;
+
+        const cpiHotUplift = cpiShelterYoY != null && cpiShelterYoY > 0.045 ? 1.05 : 1.0;
+        const finalMultiplier = postureMultiplier * cpiHotUplift;
+
+        if (finalMultiplier !== 1.0 && enhancedAssumptions.expenses) {
+          let linesAdjusted = 0;
+          for (const key of Object.keys(enhancedAssumptions.expenses)) {
+            const line = (enhancedAssumptions.expenses as Record<string, { growthRate?: number }>)[key];
+            if (line && typeof line.growthRate === 'number' && line.growthRate > 0) {
+              line.growthRate = Math.max(0.0, Math.min(0.15, line.growthRate * finalMultiplier));
+              linesAdjusted++;
+            }
+          }
+          logger.info(
+            `[Batch4b-ExpenseGrowth] Applied posture=${expensePosture} ` +
+            `multiplier=${finalMultiplier.toFixed(3)} ` +
+            `(postureX=${postureMultiplier} cpiHotX=${cpiHotUplift}) ` +
+            `to ${linesAdjusted} expense lines for ${dealId}`
+          );
+        }
+      } catch (_expErr: any) {
+        logger.debug(`[Batch4b-ExpenseGrowth] Skipped for ${dealId}: ${_expErr?.message}`);
+      }
     } catch (err: any) {
       logger.warn(`[Batch4-RentGrowth] Skipped for ${dealId}: ${err?.message}`);
     }
@@ -641,6 +686,8 @@ export class FinancialModelEngineService {
       const holdPeriod = enhancedAssumptions.holdPeriod || 5;
       const state      = enhancedAssumptions.dealInfo?.state ?? null;
       const dealMode   = enhancedAssumptions.dealMode ?? enhancedAssumptions.modelType ?? 'existing';
+      const assetClass = (enhancedAssumptions as unknown as Record<string, unknown>).assetClass as string | null | undefined ?? null;
+      const submarket  = (enhancedAssumptions as unknown as Record<string, unknown>).submarket  as string | null | undefined ?? null;
 
       const existingExitCap = enhancedAssumptions.disposition?.exitCapRate ?? 0;
       const isDefaultExitCap =
@@ -648,19 +695,60 @@ export class FinancialModelEngineService {
         Math.abs(existingExitCap - 0.065) < 0.0001;
 
       if (isDefaultExitCap) {
-        const exitResult = await exitSvc.derive({ goingInCapRate: goingInCap, holdPeriod, state, dealMode });
+        const exitResult = await exitSvc.derive(
+          { goingInCapRate: goingInCap, holdPeriod, state, dealMode, assetClass, submarket },
+        );
         if (enhancedAssumptions.disposition) {
           enhancedAssumptions.disposition.exitCapRate  = exitResult.exitCapRate;
           enhancedAssumptions.disposition.sellingCosts = exitResult.sellingCosts;
         }
+        const compNote = exitResult.provenance.compBounded
+          ? ` [comp-bounded P25=${(exitResult.compBound!.p25 * 100).toFixed(2)}% P75=${(exitResult.compBound!.p75 * 100).toFixed(2)}% n=${exitResult.compBound!.nSamples}]`
+          : '';
         logger.info(
           `[Batch5-ExitStrategy] Applied M20 exit cap for ${dealId}: ` +
-          `${(exitResult.exitCapRate * 100).toFixed(2)}% ` +
+          `${(exitResult.exitCapRate * 100).toFixed(2)}%${compNote} ` +
           `(${exitResult.source})`
         );
       }
     } catch (err: any) {
       logger.warn(`[Batch5-ExitStrategy] Skipped for ${dealId}: ${err?.message}`);
+    }
+
+    // ── Batch-7A: Hydrate purchasePrice into enhancedAssumptions BEFORE bridge ──
+    // This is the pre-bridge twin of the post-bridge Batch-7 block (below).
+    // Writing here ensures the persisted assumptions row (built from enhancedAssumptions)
+    // receives the reconciled value — not just the deterministic runner's model run.
+    // Only fires when the LLM + extraction pipeline left purchasePrice absent or zero.
+    // Surfaces method-level evidence (PPU, P50, weight) for the F9 audit trail.
+    if (!enhancedAssumptions.acquisition?.purchasePrice ||
+        enhancedAssumptions.acquisition.purchasePrice === 0) {
+      try {
+        const { ValuationGridService } = await import('./valuation/valuation-grid.service');
+        const vgSvc = new ValuationGridService(pool);
+        const vgResult = await vgSvc.compute(dealId);
+        const reconciledValue = vgResult.reconciliation.reconciledValue;
+        if (reconciledValue && reconciledValue > 0) {
+          if (enhancedAssumptions.acquisition) {
+            enhancedAssumptions.acquisition.purchasePrice = reconciledValue;
+          }
+          const methodSummary = (vgResult.methods as any[])
+            .filter((m: any) => m.active !== false)
+            .map((m: any) =>
+              `${m.methodId ?? m.label ?? '?'}:P50=$${m.p50 != null ? Math.round(m.p50).toLocaleString() : 'n/a'}`
+            )
+            .join(', ');
+          logger.info(
+            `[Batch7A-PurchasePrice] Pre-bridge hydration for ${dealId}: ` +
+            `reconciledValue=$${Math.round(reconciledValue).toLocaleString()} ` +
+            `signal=${vgResult.reconciliation.convergenceSignal} ` +
+            `activeMethods=${vgResult.reconciliation.activeMethodCount} ` +
+            `[${methodSummary}]`
+          );
+        }
+      } catch (_vg7aErr: any) {
+        logger.debug(`[Batch7A-PurchasePrice] Valuation Grid unavailable pre-bridge for ${dealId}: ${_vg7aErr?.message}`);
+      }
     }
 
     // ── D-MOD pass: pre-derivation stage-gate enforcement + conflict resolution ──
@@ -953,12 +1041,21 @@ export class FinancialModelEngineService {
             const reconciledValue = vgResult.reconciliation.reconciledValue;
             if (reconciledValue && reconciledValue > 0) {
               modelAssumptions.purchasePrice = reconciledValue;
+              const methodSummary = (vgResult.methods as any[])
+                .filter((m: any) => m.active !== false)
+                .map((m: any) =>
+                  `${m.methodId ?? m.label ?? '?'}` +
+                  `:P50=$${m.p50 != null ? Math.round(m.p50).toLocaleString() : 'n/a'}` +
+                  `${m.ppu != null ? `/ppu=$${Math.round(m.ppu).toLocaleString()}` : ''}`
+                )
+                .join(', ');
               logger.info(
-                `[Batch7-PurchasePrice] Hydrated purchasePrice=${Math.round(reconciledValue).toLocaleString()} ` +
-                `from Valuation Grid ` +
-                `(${vgResult.reconciliation.convergenceSignal}, ` +
-                `${vgResult.reconciliation.activeMethodCount} active methods) ` +
-                `for ${dealId}`
+                `[Batch7-PurchasePrice] Post-bridge hydration for ${dealId}: ` +
+                `reconciledValue=$${Math.round(reconciledValue).toLocaleString()} ` +
+                `signal=${vgResult.reconciliation.convergenceSignal} ` +
+                `activeMethods=${vgResult.reconciliation.activeMethodCount} ` +
+                `reconciledPPU=${vgResult.reconciliation.reconciledPPU != null ? '$' + Math.round(vgResult.reconciliation.reconciledPPU).toLocaleString() : 'n/a'} ` +
+                `[${methodSummary}]`
               );
             }
           } catch (_vgErr: any) {
