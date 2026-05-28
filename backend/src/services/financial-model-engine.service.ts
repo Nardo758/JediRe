@@ -551,7 +551,118 @@ export class FinancialModelEngineService {
     } catch (err: any) {
       logger.warn(`[Anchor-Interceptor] Skipped for ${dealId}: ${err?.message}`);
     }
-    
+
+    // Phase Batch-4: Layered rent growth from CPI macro anchor + submarket momentum
+    try {
+      const { projectRentGrowthSeries } = await import('./proforma/layered-growth/rent-growth');
+      const { MacroIndicatorsService } = await import('./macro-indicators.service');
+      const { provenanced } = await import('../types/provenanced-value');
+      const macroSvc = new MacroIndicatorsService(pool);
+      const cpiResult = await macroSvc.getLatestCpi('national');
+      const cpiShelterYoY = cpiResult ? cpiResult.value / 100 : null;
+
+      const holdYears = enhancedAssumptions.holdPeriod || 5;
+      const state = enhancedAssumptions.dealInfo?.state ?? null;
+      const city  = enhancedAssumptions.dealInfo?.city  ?? null;
+
+      let momentumVal: number | null = null;
+      if (city && state) {
+        try {
+          const snapRows = await pool.query<{ avg_rent: string; snapshot_date: string }>(
+            `SELECT avg_rent, snapshot_date
+               FROM apartment_market_snapshots
+              WHERE LOWER(city) = LOWER($1) AND LOWER(state) = LOWER($2)
+                AND avg_rent IS NOT NULL
+              ORDER BY snapshot_date DESC
+              LIMIT 2`,
+            [city, state]
+          );
+          if (snapRows.rows.length === 2) {
+            const recent   = parseFloat(snapRows.rows[0].avg_rent);
+            const older    = parseFloat(snapRows.rows[1].avg_rent);
+            const daysDiff = Math.abs(
+              new Date(snapRows.rows[0].snapshot_date).getTime() -
+              new Date(snapRows.rows[1].snapshot_date).getTime()
+            ) / (1000 * 60 * 60 * 24);
+            if (older > 0 && daysDiff >= 60) {
+              const rawYoY    = (recent - older) / older;
+              const annualized = daysDiff < 330 ? rawYoY * (365 / daysDiff) : rawYoY;
+              momentumVal     = Math.max(-0.15, Math.min(0.20, annualized));
+            }
+          }
+        } catch (_snapErr) { /* non-fatal */ }
+      }
+
+      const growthSeries = projectRentGrowthSeries(
+        {
+          horizonYears: holdYears,
+          assetClass: 'multifamily',
+          momentum: momentumVal != null
+            ? provenanced(momentumVal, 'platform', 0.75, 'derived',
+                `submarket 12-mo rent trend ${city} ${state}`)
+            : null,
+          cyclePressureIndex: null,
+          cpiShelterYoY: cpiShelterYoY != null
+            ? provenanced(cpiShelterYoY, 'platform', 0.90, 'derived',
+                `CPI proxy for shelter sub-index (${cpiResult!.periodDate})`)
+            : null,
+          eventDeltas: [],
+          position: null,
+        },
+        holdYears,
+      );
+
+      const computedGrowthArray = growthSeries.map(r => r.growth.value ?? 0.03);
+
+      const existing = enhancedAssumptions.revenue?.rentGrowth;
+      const isFlat   =
+        !Array.isArray(existing) || existing.length === 0 ||
+        (existing as number[]).every((v: number) => Math.abs(v - ((existing as number[])[0] ?? 0)) < 0.0005);
+
+      if (isFlat && enhancedAssumptions.revenue) {
+        enhancedAssumptions.revenue.rentGrowth = computedGrowthArray;
+        logger.info(
+          `[Batch4-RentGrowth] Applied layered rent growth for ${dealId}: ` +
+          `Y1=${(computedGrowthArray[0] * 100).toFixed(2)}% ` +
+          `Y${holdYears}=${(computedGrowthArray[holdYears - 1] * 100).toFixed(2)}% ` +
+          `(cpi=${cpiShelterYoY?.toFixed(3) ?? 'n/a'} momentum=${momentumVal?.toFixed(3) ?? 'none'})`
+        );
+      }
+    } catch (err: any) {
+      logger.warn(`[Batch4-RentGrowth] Skipped for ${dealId}: ${err?.message}`);
+    }
+
+    // Phase Batch-5: M20 Exit Strategy — exit cap rate, selling costs, hold period
+    try {
+      const { getExitStrategyService } = await import('./exit-strategy.service');
+      const exitSvc = getExitStrategyService(pool);
+
+      const goingInCap = enhancedAssumptions.acquisition?.capRate ?? 0;
+      const holdPeriod = enhancedAssumptions.holdPeriod || 5;
+      const state      = enhancedAssumptions.dealInfo?.state ?? null;
+      const dealMode   = enhancedAssumptions.dealMode ?? enhancedAssumptions.modelType ?? 'existing';
+
+      const existingExitCap = enhancedAssumptions.disposition?.exitCapRate ?? 0;
+      const isDefaultExitCap =
+        !existingExitCap || existingExitCap <= 0 ||
+        Math.abs(existingExitCap - 0.065) < 0.0001;
+
+      if (isDefaultExitCap) {
+        const exitResult = await exitSvc.derive({ goingInCapRate: goingInCap, holdPeriod, state, dealMode });
+        if (enhancedAssumptions.disposition) {
+          enhancedAssumptions.disposition.exitCapRate  = exitResult.exitCapRate;
+          enhancedAssumptions.disposition.sellingCosts = exitResult.sellingCosts;
+        }
+        logger.info(
+          `[Batch5-ExitStrategy] Applied M20 exit cap for ${dealId}: ` +
+          `${(exitResult.exitCapRate * 100).toFixed(2)}% ` +
+          `(${exitResult.source})`
+        );
+      }
+    } catch (err: any) {
+      logger.warn(`[Batch5-ExitStrategy] Skipped for ${dealId}: ${err?.message}`);
+    }
+
     // ── D-MOD pass: pre-derivation stage-gate enforcement + conflict resolution ──
     //
     // ORDER OF OPERATIONS (do not reorder — each step depends on the previous):
@@ -827,6 +938,31 @@ export class FinancialModelEngineService {
             }
           } catch (_laErr) {
             // non-fatal: verifier proceeds with loanAmount=0
+          }
+        }
+
+        // ── Batch-7: Hydrate purchasePrice from Valuation Grid when zero ────────
+        // When neither the LLM nor the deal_data fallback could populate a purchase
+        // price, fall back to the Valuation Grid's confidence-weighted reconciled
+        // value (reconciledValue = weighted mean across active valuation methods).
+        if (modelAssumptions.purchasePrice === 0) {
+          try {
+            const { ValuationGridService } = await import('./valuation/valuation-grid.service');
+            const vgSvc = new ValuationGridService(pool);
+            const vgResult = await vgSvc.compute(dealId);
+            const reconciledValue = vgResult.reconciliation.reconciledValue;
+            if (reconciledValue && reconciledValue > 0) {
+              modelAssumptions.purchasePrice = reconciledValue;
+              logger.info(
+                `[Batch7-PurchasePrice] Hydrated purchasePrice=${Math.round(reconciledValue).toLocaleString()} ` +
+                `from Valuation Grid ` +
+                `(${vgResult.reconciliation.convergenceSignal}, ` +
+                `${vgResult.reconciliation.activeMethodCount} active methods) ` +
+                `for ${dealId}`
+              );
+            }
+          } catch (_vgErr: any) {
+            logger.debug(`[Batch7-PurchasePrice] Valuation Grid unavailable for ${dealId}: ${_vgErr?.message}`);
           }
         }
 
