@@ -57,6 +57,20 @@ export interface CompTransaction {
   price_per_unit: number;
   price_per_sf: number;
   implied_cap_rate: number | null;
+  /**
+   * NOI in dollars from market_sale_comps (CoStar-uploaded or research).
+   * When present, implied_cap_rate was derived as noi / sale_price.
+   */
+  noi: number | null;
+  /** NOI per unit (noi / units). Null when noi is null or units is zero. */
+  noi_per_unit: number | null;
+  /**
+   * How implied_cap_rate was derived:
+   *   'noi_derived'     — computed from noi / sale_price
+   *   'broker_reported' — taken directly from the cap_rate field
+   *   null              — no cap rate available
+   */
+  cap_rate_source: 'noi_derived' | 'broker_reported' | null;
   grantee_name: string;
   buyer_type: string;
   holding_period_months: number | null;
@@ -189,7 +203,7 @@ export class CompSetService {
         COALESCE(t.price_per_sqft, 0)     AS price_per_sf,
         COALESCE(CASE
           WHEN t.noi IS NOT NULL AND t.sale_price > 0
-          THEN ROUND((t.noi / t.sale_price * 100)::numeric, 4)
+          THEN ROUND((t.noi / t.sale_price)::numeric, 6)
           ELSE NULL
         END, t.cap_rate)                  AS implied_cap_rate,
         t.noi,
@@ -216,25 +230,35 @@ export class CompSetService {
       LIMIT 30
     `, queryParams);
 
-    const compsRaw: CompTransaction[] = compsResult.rows.map((row: any) => ({
-      id: row.id,
-      recording_date: row.recording_date,
-      property_address: row.property_address,
-      units: row.units,
-      building_sf: row.building_sf,
-      year_built: row.year_built,
-      property_class: row.property_class,
-      derived_sale_price: parseFloat(row.derived_sale_price),
-      price_per_unit: parseFloat(row.price_per_unit),
-      price_per_sf: parseFloat(row.price_per_sf),
-      implied_cap_rate: row.implied_cap_rate ? parseFloat(row.implied_cap_rate) : null,
-      grantee_name: row.grantee_name ?? '',
-      buyer_type: row.buyer_type ?? '',
-      holding_period_months: null,
-      distance_miles: parseFloat(row.distance_miles),
-      source: row.source,
-      source_labels: row.source_labels ?? null,
-    }));
+    const compsRaw: CompTransaction[] = compsResult.rows.map((row: any) => {
+      const noi = row.noi != null ? parseFloat(row.noi) : null;
+      const units = row.units ? parseInt(String(row.units)) : 0;
+      const rawCapRate = row.implied_cap_rate ? parseFloat(row.implied_cap_rate) : null;
+      const capRateSource: CompTransaction['cap_rate_source'] =
+        noi != null ? 'noi_derived' : rawCapRate != null ? 'broker_reported' : null;
+      return {
+        id: row.id,
+        recording_date: row.recording_date,
+        property_address: row.property_address,
+        units,
+        building_sf: row.building_sf,
+        year_built: row.year_built,
+        property_class: row.property_class,
+        derived_sale_price: parseFloat(row.derived_sale_price),
+        price_per_unit: parseFloat(row.price_per_unit),
+        price_per_sf: parseFloat(row.price_per_sf),
+        implied_cap_rate: rawCapRate,
+        noi,
+        noi_per_unit: noi != null && units > 0 ? Math.round(noi / units) : null,
+        cap_rate_source: capRateSource,
+        grantee_name: row.grantee_name ?? '',
+        buyer_type: row.buyer_type ?? '',
+        holding_period_months: null,
+        distance_miles: parseFloat(row.distance_miles),
+        source: row.source,
+        source_labels: row.source_labels ?? null,
+      };
+    });
 
     // 4b. Apply relevance scoring — re-rank pool by composite score
     const resolvedStrategy = resolveStrategy(strategy);
@@ -438,11 +462,12 @@ export class CompSetService {
         COALESCE(mc.price_per_sqft, rt.price_per_sf, 0)  AS price_per_sf,
         COALESCE(CASE
           WHEN mc.noi IS NOT NULL AND COALESCE(mc.sale_price, rt.derived_sale_price) > 0
-          THEN ROUND((mc.noi / COALESCE(mc.sale_price, rt.derived_sale_price) * 100)::numeric, 4)
+          THEN ROUND((mc.noi / COALESCE(mc.sale_price, rt.derived_sale_price))::numeric, 6)
           ELSE NULL
         END, mc.cap_rate, rt.implied_cap_rate)           AS implied_cap_rate,
         COALESCE(mc.buyer, rt.buyer_name)                AS grantee_name,
         mc.buyer_type                                    AS buyer_type,
+        mc.noi,
         mc.source,
         mc.source_labels,
         scm.sort_order,
@@ -455,25 +480,35 @@ export class CompSetService {
       ORDER BY scm.sort_order
     `, [compSet.id]);
 
-    const comps: CompTransaction[] = compsResult.rows.map((row: any) => ({
-      id: row.id,
-      recording_date: row.recording_date,
-      property_address: row.property_address,
-      units: row.units,
-      building_sf: row.building_sf,
-      year_built: row.year_built,
-      property_class: row.property_class,
-      derived_sale_price: parseFloat(row.derived_sale_price),
-      price_per_unit: parseFloat(row.price_per_unit),
-      price_per_sf: parseFloat(row.price_per_sf),
-      implied_cap_rate: row.implied_cap_rate ? parseFloat(row.implied_cap_rate) : null,
-      grantee_name: row.grantee_name ?? '',
-      buyer_type: row.buyer_type ?? '',
-      holding_period_months: null,
-      distance_miles: parseFloat(row.distance_miles),
-      source: row.source,
-      source_labels: row.source_labels ?? null,
-    }));
+    const comps: CompTransaction[] = compsResult.rows.map((row: any) => {
+      const noi = row.noi != null ? parseFloat(row.noi) : null;
+      const units = row.units ? parseInt(String(row.units)) : 0;
+      const rawCapRate = row.implied_cap_rate ? parseFloat(row.implied_cap_rate) : null;
+      const capRateSource: CompTransaction['cap_rate_source'] =
+        noi != null ? 'noi_derived' : rawCapRate != null ? 'broker_reported' : null;
+      return {
+        id: row.id,
+        recording_date: row.recording_date,
+        property_address: row.property_address,
+        units,
+        building_sf: row.building_sf,
+        year_built: row.year_built,
+        property_class: row.property_class,
+        derived_sale_price: parseFloat(row.derived_sale_price),
+        price_per_unit: parseFloat(row.price_per_unit),
+        price_per_sf: parseFloat(row.price_per_sf),
+        implied_cap_rate: rawCapRate,
+        noi,
+        noi_per_unit: noi != null && units > 0 ? Math.round(noi / units) : null,
+        cap_rate_source: capRateSource,
+        grantee_name: row.grantee_name ?? '',
+        buyer_type: row.buyer_type ?? '',
+        holding_period_months: null,
+        distance_miles: parseFloat(row.distance_miles),
+        source: row.source,
+        source_labels: row.source_labels ?? null,
+      };
+    });
 
     return {
       id: compSet.id,
@@ -535,11 +570,12 @@ export class CompSetService {
           COALESCE(mc.price_per_sqft, rt.price_per_sf, 0)   AS price_per_sf,
           COALESCE(CASE
             WHEN mc.noi IS NOT NULL AND COALESCE(mc.sale_price, rt.derived_sale_price) > 0
-            THEN ROUND((mc.noi / COALESCE(mc.sale_price, rt.derived_sale_price) * 100)::numeric, 4)
+            THEN ROUND((mc.noi / COALESCE(mc.sale_price, rt.derived_sale_price))::numeric, 6)
             ELSE NULL
           END, mc.cap_rate, rt.implied_cap_rate)            AS implied_cap_rate,
           COALESCE(mc.buyer, rt.buyer_name)                 AS grantee_name,
           COALESCE(mc.buyer_type, rt.buyer_type)            AS buyer_type,
+          mc.noi,
           mc.source,
           mc.source_labels,
           scm.sort_order,
@@ -552,25 +588,35 @@ export class CompSetService {
         ORDER BY scm.sort_order
       `, [compSetId]);
 
-      const comps: CompTransaction[] = remainingComps.rows.map((row: any) => ({
-        id: row.id,
-        recording_date: row.recording_date,
-        property_address: row.property_address,
-        units: row.units,
-        building_sf: row.building_sf,
-        year_built: row.year_built,
-        property_class: row.property_class,
-        derived_sale_price: parseFloat(row.derived_sale_price),
-        price_per_unit: parseFloat(row.price_per_unit),
-        price_per_sf: parseFloat(row.price_per_sf),
-        implied_cap_rate: row.implied_cap_rate ? parseFloat(row.implied_cap_rate) : null,
-        grantee_name: row.grantee_name ?? '',
-        buyer_type: row.buyer_type ?? '',
-        holding_period_months: null,
-        distance_miles: parseFloat(row.distance_miles),
-        source: row.source,
-        source_labels: row.source_labels ?? null,
-      }));
+      const comps: CompTransaction[] = remainingComps.rows.map((row: any) => {
+        const noi = row.noi != null ? parseFloat(row.noi) : null;
+        const units = row.units ? parseInt(String(row.units)) : 0;
+        const rawCapRate = row.implied_cap_rate ? parseFloat(row.implied_cap_rate) : null;
+        const capRateSource: CompTransaction['cap_rate_source'] =
+          noi != null ? 'noi_derived' : rawCapRate != null ? 'broker_reported' : null;
+        return {
+          id: row.id,
+          recording_date: row.recording_date,
+          property_address: row.property_address,
+          units,
+          building_sf: row.building_sf,
+          year_built: row.year_built,
+          property_class: row.property_class,
+          derived_sale_price: parseFloat(row.derived_sale_price),
+          price_per_unit: parseFloat(row.price_per_unit),
+          price_per_sf: parseFloat(row.price_per_sf),
+          implied_cap_rate: rawCapRate,
+          noi,
+          noi_per_unit: noi != null && units > 0 ? Math.round(noi / units) : null,
+          cap_rate_source: capRateSource,
+          grantee_name: row.grantee_name ?? '',
+          buyer_type: row.buyer_type ?? '',
+          holding_period_months: null,
+          distance_miles: parseFloat(row.distance_miles),
+          source: row.source,
+          source_labels: row.source_labels ?? null,
+        };
+      });
 
       const pricesPerUnit = comps.map(c => c.price_per_unit).sort((a, b) => a - b);
       const pricesPerSf = comps.map(c => c.price_per_sf).filter(p => p > 0).sort((a, b) => a - b);

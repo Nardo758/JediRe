@@ -50,6 +50,12 @@ export interface CascadeComp {
   derived_sale_price: number;
   price_per_unit:   number;
   implied_cap_rate: number | null;
+  /** Raw NOI from market_sale_comps (CoStar/research). Null for county-recorded comps. */
+  noi:              number | null;
+  /** NOI per unit (noi / units). Null when noi is null or units is zero. */
+  noi_per_unit:     number | null;
+  /** How implied_cap_rate was derived */
+  cap_rate_source:  'noi_derived' | 'broker_reported' | null;
   recording_date:   Date | null;
   source:           string | null;
   buyer_type:       string | null;
@@ -151,7 +157,12 @@ export async function executeCascade(
       COALESCE(t.asset_class, 'B')       AS property_class,
       t.sale_price                       AS derived_sale_price,
       COALESCE(t.price_per_unit, 0)      AS price_per_unit,
-      t.cap_rate                         AS implied_cap_rate,
+      COALESCE(CASE
+        WHEN t.noi IS NOT NULL AND t.sale_price > 0
+        THEN ROUND((t.noi / t.sale_price)::numeric, 6)
+        ELSE NULL
+      END, t.cap_rate)                   AS implied_cap_rate,
+      t.noi,
       t.sale_date                        AS recording_date,
       t.source,
       t.buyer_type,
@@ -178,15 +189,23 @@ export async function executeCascade(
 
   for (const row of result.rows) {
     const dist = parseFloat(row.distance_miles);
+    const noi = row.noi != null ? parseFloat(String(row.noi)) : null;
+    const unitCount = parseInt(String(row.units)) || 0;
+    const rawCapRate = row.implied_cap_rate ? parseFloat(String(row.implied_cap_rate)) : null;
+    const capRateSource: CascadeComp['cap_rate_source'] =
+      noi != null ? 'noi_derived' : rawCapRate != null ? 'broker_reported' : null;
     const comp: CascadeComp = {
       id:                row.id,
       property_address:  row.property_address ?? '',
-      units:             parseInt(String(row.units)) || 0,
+      units:             unitCount,
       year_built:        row.year_built ? parseInt(String(row.year_built)) : null,
       property_class:    row.property_class ?? null,
       derived_sale_price: parseFloat(row.derived_sale_price) || 0,
       price_per_unit:    parseFloat(row.price_per_unit) || 0,
-      implied_cap_rate:  row.implied_cap_rate ? parseFloat(String(row.implied_cap_rate)) : null,
+      implied_cap_rate:  rawCapRate,
+      noi,
+      noi_per_unit:      noi != null && unitCount > 0 ? Math.round(noi / unitCount) : null,
+      cap_rate_source:   capRateSource,
       recording_date:    row.recording_date ? new Date(row.recording_date) : null,
       source:            row.source ?? null,
       buyer_type:        row.buyer_type ?? null,

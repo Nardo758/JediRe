@@ -39,6 +39,12 @@ interface CompTransaction {
   derived_sale_price: number;
   price_per_unit: number;
   implied_cap_rate: number | null;
+  /** NOI in dollars from CoStar/research upload. Null for county-recorded comps. */
+  noi?: number | null;
+  /** NOI per unit (noi / units). Null when noi is absent. */
+  noi_per_unit?: number | null;
+  /** How implied_cap_rate was derived */
+  cap_rate_source?: 'noi_derived' | 'broker_reported' | null;
   grantee_name: string;
   buyer_type: string;
   distance_miles: number;
@@ -467,6 +473,8 @@ export default function CompsModule({
 
     const comps = displayedComps();
     const hidden = hiddenCount();
+    // Show the NOI column only when at least one comp in the full set has NOI data
+    const hasAnyNoi = (compSet.comps ?? []).some(c => c.noi != null);
 
     return (
       <div className="space-y-6">
@@ -622,6 +630,9 @@ export default function CompsModule({
                   <th className="text-right py-2 px-3 text-gray-400 font-medium">Units</th>
                   <th className="text-right py-2 px-3 text-gray-400 font-medium">Sale Price</th>
                   <th className="text-right py-2 px-3 text-gray-400 font-medium">$/Unit</th>
+                  {hasAnyNoi && (
+                    <th className="text-right py-2 px-3 text-gray-400 font-medium" title="Net Operating Income per unit from CoStar data">NOI/Unit</th>
+                  )}
                   <th className="text-right py-2 px-3 text-gray-400 font-medium">Cap Rate</th>
                   <th className="text-right py-2 px-3 text-gray-400 font-medium">Dist</th>
                   <th className="text-center py-2 px-3 text-gray-400 font-medium">Geography</th>
@@ -675,8 +686,29 @@ export default function CompsModule({
                       <td className="py-2 px-3 text-right text-green-400 font-medium">
                         {formatCurrency(comp.price_per_unit)}
                       </td>
+                      {hasAnyNoi && (
+                        <td className="py-2 px-3 text-right">
+                          {comp.noi_per_unit != null ? (
+                            <span className="text-amber-300 font-medium">
+                              {formatCurrency(comp.noi_per_unit)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-700">–</span>
+                          )}
+                        </td>
+                      )}
                       <td className="py-2 px-3 text-right text-blue-400">
-                        {comp.implied_cap_rate ? formatPercent(comp.implied_cap_rate) : '–'}
+                        <div className="flex items-center justify-end gap-1">
+                          {comp.implied_cap_rate ? formatPercent(comp.implied_cap_rate) : '–'}
+                          {comp.cap_rate_source === 'noi_derived' && (
+                            <span
+                              className="inline-block text-[8px] font-bold uppercase tracking-wide px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 leading-none"
+                              title="Cap rate computed from NOI ÷ sale price (CoStar income data)"
+                            >
+                              NOI
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2 px-3 text-right text-gray-500">
                         {comp.distance_miles.toFixed(1)} mi
