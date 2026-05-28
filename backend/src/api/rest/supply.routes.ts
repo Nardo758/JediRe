@@ -850,6 +850,7 @@ export const supplyHistoricalDeliveriesHandler = async (
               COUNT(*)                AS sample_size
              FROM market_rent_comps
             WHERE ${rentStateWhere}
+              AND source != 'costar_upload'
               AND city IN (${rentCityPlaceholders.join(', ')})
               AND snapshot_date >= $${rentStartIdx}::timestamptz
               AND snapshot_date <  $${rentEndIdx}::timestamptz

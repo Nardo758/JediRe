@@ -13,6 +13,7 @@ import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { ValuationGridService } from '../../services/valuation/valuation-grid.service';
 import { getPool } from '../../database/connection';
 import { processCoStarUpload, detectCompType, type CompType } from '../../services/valuation/costar-comp-upload.service';
+import { compSetService } from '../../services/saleComps/compSet.service';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -148,6 +149,18 @@ router.post(
         fileId: null,
         dealId,
       });
+
+      // After a successful sale comp upload, force-regenerate the comp set so
+      // the new rows are immediately reflected in the Valuation Grid (PPU method).
+      if (!result.rejected && result.compType === 'sale' && result.inserted > 0) {
+        try {
+          await compSetService.generateCompSet({ deal_id: dealId });
+        } catch {
+          // Non-fatal: comp set refresh may fail if the property has no coordinates.
+          // The uploaded rows are already persisted and will be picked up on the next
+          // grid compute once coordinates are available.
+        }
+      }
 
       const status = result.rejected ? 400 : 200;
       return res.status(status).json({ success: !result.rejected, data: result });

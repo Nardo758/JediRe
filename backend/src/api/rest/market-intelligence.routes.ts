@@ -686,7 +686,8 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
       const MSA_MAP: Record<string, string> = { atlanta: 'Atlanta, GA', charlotte: 'Charlotte, NC' };
       const msaFilter = MSA_MAP[marketId];
 
-      const conditions: string[] = [];
+      // Exclude deal-scoped CoStar uploads from public market intel views.
+      const conditions: string[] = [`source != 'costar_upload'`];
       const params: any[] = [];
       let pi = 1;
 
