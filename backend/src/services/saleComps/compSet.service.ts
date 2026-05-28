@@ -4,6 +4,7 @@
  */
 
 import { getPool } from '../../database/connection';
+import { rankComps, resolveStrategy } from '../valuation/comp-relevance-scoring.service';
 
 const pool = getPool();
 
@@ -17,6 +18,7 @@ export interface CompSetCriteria {
   vintage_range?: [number, number];
   exclude_distress?: boolean;
   arms_length_only?: boolean;
+  strategy?: string;
 }
 
 export interface CompSetResult {
@@ -52,6 +54,9 @@ export interface CompTransaction {
   holding_period_months: number | null;
   distance_miles: number;
   source?: string;
+  relevance_score?: number;
+  relevance_tier?: string;
+  relevance_factors?: Record<string, number>;
 }
 
 export class CompSetService {
@@ -68,12 +73,14 @@ export class CompSetService {
       property_classes = ['A', 'B', 'C'],
       vintage_range,
       exclude_distress = true,
-      arms_length_only = true
+      arms_length_only = true,
+      strategy,
     } = criteria;
 
     // 1. Get subject property location
     const dealResult = await pool.query(`
-      SELECT d.id, d.address, p.latitude, p.longitude, p.units, p.building_sf, p.year_built
+      SELECT d.id, d.address, COALESCE(d.asset_class, 'B') AS asset_class,
+             p.latitude, p.longitude, p.units, p.building_sf, p.year_built
       FROM deals d
       LEFT JOIN properties p ON p.deal_id = d.id
       WHERE d.id = $1::uuid
@@ -175,7 +182,7 @@ export class CompSetService {
       deal_id,
     ]);
 
-    const comps: CompTransaction[] = compsResult.rows.map((row: any) => ({
+    const compsRaw: CompTransaction[] = compsResult.rows.map((row: any) => ({
       id: row.id,
       recording_date: row.recording_date,
       property_address: row.property_address,
@@ -193,6 +200,36 @@ export class CompSetService {
       distance_miles: parseFloat(row.distance_miles),
       source: row.source,
     }));
+
+    // 4b. Apply relevance scoring — re-rank pool by composite score
+    const resolvedStrategy = resolveStrategy(strategy);
+    const subject = {
+      units: deal.units ? parseInt(String(deal.units)) : null,
+      year_built: deal.year_built ? parseInt(String(deal.year_built)) : null,
+      asset_class: deal.asset_class ?? 'B',
+    };
+    const candidates = compsRaw.map(c => ({
+      id: c.id,
+      units: c.units,
+      year_built: c.year_built,
+      asset_class: c.property_class,
+      sale_date: c.recording_date,
+      distance_miles: c.distance_miles,
+      source: c.source,
+    }));
+    const { ranked: rankedScores } = rankComps(subject, candidates, resolvedStrategy, 8);
+    const scoreById = new Map(rankedScores.map(s => [s.comp.id, s]));
+
+    const comps: CompTransaction[] = rankedScores.map(({ comp: candidate }) => {
+      const base = compsRaw.find(c => c.id === candidate.id)!;
+      const scored = scoreById.get(candidate.id);
+      return {
+        ...base,
+        relevance_score: scored?.relevance_score,
+        relevance_tier: scored?.relevance_tier,
+        relevance_factors: scored?.factors as unknown as Record<string, number> | undefined,
+      };
+    });
 
     // 5. Calculate aggregated metrics
     const pricesPerUnit = comps.map(c => c.price_per_unit).sort((a, b) => a - b);

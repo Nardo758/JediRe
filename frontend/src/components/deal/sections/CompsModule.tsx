@@ -6,7 +6,8 @@
 import { useState, useEffect } from 'react';
 import {
   TrendingUp, MapPin, Calendar, DollarSign,
-  Building2, Users, Target, BarChart3, AlertCircle
+  Building2, Users, Target, BarChart3, AlertCircle,
+  ChevronDown, ChevronUp, Info,
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 
@@ -18,16 +19,15 @@ interface CompsModuleProps {
   onBack?: () => void;
 }
 
-interface CompSet {
-  id: string;
-  comp_count: number;
-  median_price_per_unit: number;
-  avg_price_per_unit: number;
-  min_price_per_unit: number;
-  max_price_per_unit: number;
-  median_implied_cap_rate: number | null;
-  avg_implied_cap_rate: number | null;
-  comps: CompTransaction[];
+type InvestmentStrategy = 'stabilized' | 'value_add' | 'ground_up' | 'redevelopment';
+
+interface CompRelevanceFactors {
+  distance_decay: number;
+  recency_decay: number;
+  asset_class_match: number;
+  size_similarity: number;
+  vintage_similarity: number;
+  data_quality_tier: number;
 }
 
 interface CompTransaction {
@@ -42,7 +42,136 @@ interface CompTransaction {
   grantee_name: string;
   buyer_type: string;
   distance_miles: number;
+  source?: string;
+  relevance_score?: number;
+  relevance_tier?: string;
+  relevance_factors?: CompRelevanceFactors;
 }
+
+interface CompSet {
+  id: string;
+  comp_count: number;
+  median_price_per_unit: number;
+  avg_price_per_unit: number;
+  min_price_per_unit: number;
+  max_price_per_unit: number;
+  median_implied_cap_rate: number | null;
+  avg_implied_cap_rate: number | null;
+  comps: CompTransaction[];
+  top_comp_ids?: string[];
+  strategy?: string;
+  weights?: Record<string, number>;
+}
+
+const TIER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  C1: { bg: 'bg-emerald-500/15', text: 'text-emerald-300', border: 'border-emerald-500/40' },
+  C2: { bg: 'bg-blue-500/15',    text: 'text-blue-300',    border: 'border-blue-500/40' },
+  M1: { bg: 'bg-yellow-500/15',  text: 'text-yellow-300',  border: 'border-yellow-500/40' },
+  M2: { bg: 'bg-gray-500/15',    text: 'text-gray-400',    border: 'border-gray-600' },
+};
+
+const TIER_DESCRIPTIONS: Record<string, string> = {
+  C1: 'Core — tightest match across all factors',
+  C2: 'Comparable — good match; minor deviations',
+  M1: 'Marginal — limited match; use with caution',
+  M2: 'Weak — geographic fill only',
+};
+
+const STRATEGY_LABELS: Record<InvestmentStrategy, string> = {
+  stabilized:    'Stabilized',
+  value_add:     'Value-Add',
+  ground_up:     'Ground-Up',
+  redevelopment: 'Redevelopment',
+};
+
+const FACTOR_LABELS: Record<keyof CompRelevanceFactors, string> = {
+  distance_decay:     'Distance',
+  recency_decay:      'Recency',
+  asset_class_match:  'Asset Class',
+  size_similarity:    'Size',
+  vintage_similarity: 'Vintage',
+  data_quality_tier:  'Data Quality',
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  county_recorded: 'County',
+  georgia_county:  'County',
+  research_agent:  'Research',
+  costar_upload:   'CoStar',
+  om_extraction:   'OM',
+};
+
+function TierBadge({ tier }: { tier: string }) {
+  const colors = TIER_COLORS[tier] ?? TIER_COLORS.M2;
+  return (
+    <span
+      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${colors.bg} ${colors.text} ${colors.border}`}
+      title={TIER_DESCRIPTIONS[tier] ?? tier}
+    >
+      {tier}
+    </span>
+  );
+}
+
+function ScoreBar({ value, label }: { value: number; label: string }) {
+  const pct = Math.round(value * 100);
+  const color = pct >= 70 ? '#34d399' : pct >= 45 ? '#60a5fa' : pct >= 25 ? '#fbbf24' : '#9ca3af';
+  return (
+    <div className="flex items-center gap-1.5 text-[9px] text-gray-400">
+      <span className="w-14 truncate">{label}</span>
+      <div className="flex-1 h-1 bg-gray-700 rounded-full overflow-hidden">
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+      </div>
+      <span className="w-6 text-right" style={{ color }}>{pct}</span>
+    </div>
+  );
+}
+
+function FactorTooltip({ comp }: { comp: CompTransaction }) {
+  const [open, setOpen] = useState(false);
+  if (!comp.relevance_factors) return null;
+  return (
+    <div className="relative inline-block">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="text-gray-500 hover:text-gray-300 transition-colors"
+        title="Factor breakdown"
+      >
+        <Info className="w-3 h-3" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div
+            className="absolute z-50 left-5 top-0 bg-gray-900 border border-gray-700 rounded-lg p-3 shadow-xl"
+            style={{ minWidth: 180 }}
+          >
+            <div className="text-[9px] font-semibold text-gray-400 mb-2 uppercase tracking-wide">
+              Factor Breakdown
+            </div>
+            <div className="space-y-1">
+              {(Object.keys(FACTOR_LABELS) as Array<keyof CompRelevanceFactors>).map(k => (
+                <ScoreBar
+                  key={k}
+                  value={comp.relevance_factors![k] ?? 0}
+                  label={FACTOR_LABELS[k]}
+                />
+              ))}
+            </div>
+            <div className="mt-2 pt-2 border-t border-gray-700 flex justify-between text-[9px]">
+              <span className="text-gray-500">Composite</span>
+              <span className="text-gray-300 font-bold">
+                {Math.round((comp.relevance_score ?? 0) * 100)}
+              </span>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const DEFAULT_TOP_COUNT = 8;
 
 export default function CompsModule({
   deal,
@@ -57,12 +186,12 @@ export default function CompsModule({
   const [compSet, setCompSet] = useState<CompSet | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [strategy, setStrategy] = useState<InvestmentStrategy>('stabilized');
+  const [reranking, setReranking] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
-    if (dealId) {
-      loadCompData();
-    }
-  // hook intentionally omits loadCompData — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+    if (dealId) loadCompData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId]);
 
@@ -70,18 +199,16 @@ export default function CompsModule({
     try {
       setLoading(true);
       setError(null);
-      
-      const response = await apiClient.get(`/deals/${dealId}/comps`);
-      
+      const response = await apiClient.get(`/deals/${dealId}/comps/ranked?strategy=${strategy}`);
       if (response.success && response.data) {
         setCompSet(response.data);
       } else {
         setCompSet(null);
       }
     } catch (err: any) {
-      console.error('Comp data load error:', err);
       if (err.response?.status === 404) {
-        setError(null); // No error for missing comp set, just show generate button
+        setError(null);
+        setCompSet(null);
       } else {
         setError(err.message || 'Failed to load comp data');
       }
@@ -90,50 +217,62 @@ export default function CompsModule({
     }
   };
 
+  const handleStrategyChange = async (newStrategy: InvestmentStrategy) => {
+    setStrategy(newStrategy);
+    if (!compSet) return;
+    try {
+      setReranking(true);
+      const response = await apiClient.get(`/deals/${dealId}/comps/ranked?strategy=${newStrategy}`);
+      if (response.success && response.data) setCompSet(response.data);
+    } catch {
+    } finally {
+      setReranking(false);
+    }
+  };
+
   const handleGenerateComps = async () => {
     try {
       setGenerating(true);
       setError(null);
-      
       const response = await apiClient.post(`/deals/${dealId}/comps/generate`, {
         radius_miles: 3.0,
         date_range_months: 24,
         min_units: 50,
         max_units: 500,
         exclude_distress: true,
-        arms_length_only: true
+        arms_length_only: true,
+        strategy,
       });
-      
       if (response.success && response.data) {
         setCompSet(response.data);
+        setShowAll(false);
       }
     } catch (err: any) {
-      console.error('Generate comps error:', err);
       setError(err.message || 'Failed to generate comp set');
     } finally {
       setGenerating(false);
     }
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value);
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
+
+  const formatPercent = (value: number) => (value * 100).toFixed(2) + '%';
+
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  const displayedComps = () => {
+    if (!compSet?.comps) return [];
+    if (showAll || !compSet.top_comp_ids?.length) return compSet.comps;
+    const topSet = new Set(compSet.top_comp_ids);
+    const top = compSet.comps.filter(c => topSet.has(c.id));
+    return top.length > 0 ? top : compSet.comps.slice(0, DEFAULT_TOP_COUNT);
   };
 
-  const formatPercent = (value: number) => {
-    return (value * 100).toFixed(2) + '%';
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
+  const hiddenCount = () => {
+    if (!compSet?.comps) return 0;
+    return compSet.comps.length - displayedComps().length;
   };
 
   const renderGridTab = () => {
@@ -149,12 +288,13 @@ export default function CompsModule({
           >
             {generating ? 'Generating...' : 'Generate Comp Set'}
           </button>
-          <p className="text-xs text-gray-500 mt-3">
-            3-mile radius • 24 months • Multifamily only
-          </p>
+          <p className="text-xs text-gray-500 mt-3">3-mile radius · 24 months · Multifamily only</p>
         </div>
       );
     }
+
+    const comps = displayedComps();
+    const hidden = hiddenCount();
 
     return (
       <div className="space-y-6">
@@ -165,12 +305,8 @@ export default function CompsModule({
               <Building2 className="w-3.5 h-3.5" />
               <span>Comp Count</span>
             </div>
-            <div className="text-2xl font-bold text-gray-300">
-              {compSet.comp_count}
-            </div>
-            <div className="text-xs text-gray-500 mt-1">
-              Sales in last 24 mo
-            </div>
+            <div className="text-2xl font-bold text-gray-300">{compSet.comp_count}</div>
+            <div className="text-xs text-gray-500 mt-1">Sales in last 24 mo</div>
           </div>
 
           <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
@@ -178,11 +314,9 @@ export default function CompsModule({
               <DollarSign className="w-3.5 h-3.5" />
               <span>Median Price/Unit</span>
             </div>
-            <div className="text-2xl font-bold text-green-300">
-              {formatCurrency(compSet.median_price_per_unit)}
-            </div>
+            <div className="text-2xl font-bold text-green-300">{formatCurrency(compSet.median_price_per_unit)}</div>
             <div className="text-xs text-green-500/70 mt-1">
-              Range: {formatCurrency(compSet.min_price_per_unit)} - {formatCurrency(compSet.max_price_per_unit)}
+              Range: {formatCurrency(compSet.min_price_per_unit)} – {formatCurrency(compSet.max_price_per_unit)}
             </div>
           </div>
 
@@ -192,13 +326,9 @@ export default function CompsModule({
               <span>Median Cap Rate</span>
             </div>
             <div className="text-2xl font-bold text-blue-300">
-              {compSet.median_implied_cap_rate 
-                ? formatPercent(compSet.median_implied_cap_rate)
-                : 'N/A'}
+              {compSet.median_implied_cap_rate ? formatPercent(compSet.median_implied_cap_rate) : 'N/A'}
             </div>
-            <div className="text-xs text-blue-500/70 mt-1">
-              Transaction-derived
-            </div>
+            <div className="text-xs text-blue-500/70 mt-1">Transaction-derived</div>
           </div>
 
           <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4">
@@ -206,9 +336,7 @@ export default function CompsModule({
               <TrendingUp className="w-3.5 h-3.5" />
               <span>Avg Price/Unit</span>
             </div>
-            <div className="text-2xl font-bold text-purple-300">
-              {formatCurrency(compSet.avg_price_per_unit)}
-            </div>
+            <div className="text-2xl font-bold text-purple-300">{formatCurrency(compSet.avg_price_per_unit)}</div>
             <div className="text-xs text-purple-500/70 mt-1">
               {compSet.avg_price_per_unit > compSet.median_price_per_unit ? '+' : ''}
               {formatCurrency(compSet.avg_price_per_unit - compSet.median_price_per_unit)} vs median
@@ -216,61 +344,156 @@ export default function CompsModule({
           </div>
         </div>
 
+        {/* Strategy selector + legend */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Scoring strategy:</span>
+            <div className="flex gap-1">
+              {(Object.keys(STRATEGY_LABELS) as InvestmentStrategy[]).map(s => (
+                <button
+                  key={s}
+                  onClick={() => handleStrategyChange(s)}
+                  disabled={reranking}
+                  className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${
+                    strategy === s
+                      ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/40'
+                      : 'text-gray-500 border border-gray-700 hover:text-gray-300'
+                  }`}
+                >
+                  {STRATEGY_LABELS[s]}
+                </button>
+              ))}
+            </div>
+            {reranking && <span className="text-[10px] text-gray-500 italic">Re-ranking...</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            {(['C1', 'C2', 'M1', 'M2'] as const).map(tier => (
+              <div key={tier} className="flex items-center gap-1">
+                <TierBadge tier={tier} />
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Comp Table */}
         <div className="bg-gray-800/30 border border-gray-700 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 bg-gray-800/50 border-b border-gray-700">
-            <h4 className="text-sm font-semibold text-gray-300">Comparable Sales</h4>
+          <div className="px-4 py-3 bg-gray-800/50 border-b border-gray-700 flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-gray-300">
+              Comparable Sales
+              {!showAll && hidden > 0 && (
+                <span className="text-xs text-gray-500 font-normal ml-2">
+                  (top {comps.length} of {compSet.comp_count})
+                </span>
+              )}
+            </h4>
+            <span className="text-[10px] text-gray-500">ranked by relevance · {STRATEGY_LABELS[strategy]}</span>
           </div>
-          
+
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-gray-700 bg-gray-800/30">
+                  <th className="text-left py-2 px-3 text-gray-400 font-medium w-6">#</th>
                   <th className="text-left py-2 px-3 text-gray-400 font-medium">Address</th>
+                  <th className="text-center py-2 px-3 text-gray-400 font-medium">Tier</th>
+                  <th className="text-center py-2 px-3 text-gray-400 font-medium">Score</th>
                   <th className="text-center py-2 px-3 text-gray-400 font-medium">Date</th>
                   <th className="text-right py-2 px-3 text-gray-400 font-medium">Units</th>
                   <th className="text-right py-2 px-3 text-gray-400 font-medium">Sale Price</th>
                   <th className="text-right py-2 px-3 text-gray-400 font-medium">$/Unit</th>
                   <th className="text-right py-2 px-3 text-gray-400 font-medium">Cap Rate</th>
-                  <th className="text-left py-2 px-3 text-gray-400 font-medium">Buyer</th>
-                  <th className="text-right py-2 px-3 text-gray-400 font-medium">Distance</th>
+                  <th className="text-right py-2 px-3 text-gray-400 font-medium">Dist</th>
+                  <th className="text-center py-2 px-3 text-gray-400 font-medium">Source</th>
                 </tr>
               </thead>
               <tbody>
-                {compSet.comps.map((comp) => (
-                  <tr key={comp.id} className="border-b border-gray-800/50 hover:bg-gray-800/20">
-                    <td className="py-2 px-3 text-gray-300 max-w-[200px] truncate">
-                      {comp.property_address}
-                    </td>
-                    <td className="py-2 px-3 text-center text-gray-400">
-                      {formatDate(comp.recording_date)}
-                    </td>
-                    <td className="py-2 px-3 text-right text-gray-300">
-                      {comp.units}
-                    </td>
-                    <td className="py-2 px-3 text-right text-gray-300 font-medium">
-                      {formatCurrency(comp.derived_sale_price)}
-                    </td>
-                    <td className="py-2 px-3 text-right text-green-400 font-medium">
-                      {formatCurrency(comp.price_per_unit)}
-                    </td>
-                    <td className="py-2 px-3 text-right text-blue-400">
-                      {comp.implied_cap_rate ? formatPercent(comp.implied_cap_rate) : '-'}
-                    </td>
-                    <td className="py-2 px-3 text-gray-400 max-w-[150px] truncate">
-                      {comp.grantee_name}
-                    </td>
-                    <td className="py-2 px-3 text-right text-gray-500">
-                      {comp.distance_miles.toFixed(1)} mi
-                    </td>
-                  </tr>
-                ))}
+                {comps.map((comp, i) => {
+                  const tierColors = comp.relevance_tier ? (TIER_COLORS[comp.relevance_tier] ?? TIER_COLORS.M2) : null;
+                  return (
+                    <tr
+                      key={comp.id}
+                      className={`border-b border-gray-800/50 hover:bg-gray-800/20 ${
+                        i === 0 && comp.relevance_tier === 'M1' ? 'opacity-70' : ''
+                      }`}
+                    >
+                      <td className="py-2 px-3 text-gray-600 tabular-nums">{i + 1}</td>
+                      <td className="py-2 px-3 text-gray-300 max-w-[180px] truncate">
+                        {comp.property_address}
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          {comp.relevance_tier && <TierBadge tier={comp.relevance_tier} />}
+                          {comp.relevance_factors && <FactorTooltip comp={comp} />}
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        {comp.relevance_score != null ? (
+                          <span className={`font-mono text-[11px] font-bold ${tierColors?.text ?? 'text-gray-400'}`}>
+                            {Math.round(comp.relevance_score * 100)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-600">–</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3 text-center text-gray-400">
+                        {formatDate(comp.recording_date)}
+                      </td>
+                      <td className="py-2 px-3 text-right text-gray-300">{comp.units}</td>
+                      <td className="py-2 px-3 text-right text-gray-300 font-medium">
+                        {formatCurrency(comp.derived_sale_price)}
+                      </td>
+                      <td className="py-2 px-3 text-right text-green-400 font-medium">
+                        {formatCurrency(comp.price_per_unit)}
+                      </td>
+                      <td className="py-2 px-3 text-right text-blue-400">
+                        {comp.implied_cap_rate ? formatPercent(comp.implied_cap_rate) : '–'}
+                      </td>
+                      <td className="py-2 px-3 text-right text-gray-500">
+                        {comp.distance_miles.toFixed(1)} mi
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        {comp.source ? (
+                          <span className="text-[9px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">
+                            {SOURCE_LABELS[comp.source] ?? comp.source}
+                          </span>
+                        ) : (
+                          <span className="text-gray-700">–</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+
+          {/* Show all / collapse */}
+          {compSet.comp_count > DEFAULT_TOP_COUNT && (
+            <div className="px-4 py-3 border-t border-gray-700 flex justify-center">
+              <button
+                onClick={() => setShowAll(v => !v)}
+                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+              >
+                {showAll ? (
+                  <>
+                    <ChevronUp className="w-3.5 h-3.5" />
+                    Show top {DEFAULT_TOP_COUNT} only
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    Show all {compSet.comp_count} comps
+                    {hidden > 0 && (
+                      <span className="text-gray-600">({hidden} more · M1/M2 tier)</span>
+                    )}
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Refresh Button */}
+        {/* Regenerate */}
         <div className="flex justify-center">
           <button
             onClick={handleGenerateComps}
@@ -284,18 +507,16 @@ export default function CompsModule({
     );
   };
 
-  const renderPatternsTab = () => {
-    return (
-      <div className="space-y-4">
-        <div className="bg-gray-800/30 border border-gray-700 rounded-lg p-4">
-          <div className="text-sm font-semibold text-gray-300 mb-3">Transaction Patterns</div>
-          <div className="text-xs text-gray-500 mb-4">
-            Coming soon: Velocity shifts, price migration, buyer rotation, and holding period analysis.
-          </div>
+  const renderPatternsTab = () => (
+    <div className="space-y-4">
+      <div className="bg-gray-800/30 border border-gray-700 rounded-lg p-4">
+        <div className="text-sm font-semibold text-gray-300 mb-3">Transaction Patterns</div>
+        <div className="text-xs text-gray-500">
+          Coming soon: Velocity shifts, price migration, buyer rotation, and holding period analysis.
         </div>
       </div>
-    );
-  };
+    </div>
+  );
 
   const renderCapRatesTab = () => {
     if (!compSet || !compSet.median_implied_cap_rate) {
@@ -313,11 +534,9 @@ export default function CompsModule({
           <div className="flex items-start gap-3">
             <Target className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
             <div>
-              <div className="text-sm font-semibold text-blue-300 mb-1">
-                Transaction-Derived Cap Rate
-              </div>
+              <div className="text-sm font-semibold text-blue-300 mb-1">Transaction-Derived Cap Rate</div>
               <div className="text-xs text-blue-400/80 mb-3">
-                Based on actual recorded sales with documentary stamps - ground truth, not broker quotes.
+                Based on actual recorded sales with documentary stamps — ground truth, not broker quotes.
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -339,7 +558,7 @@ export default function CompsModule({
 
         <div className="bg-gray-800/30 border border-gray-700 rounded-lg p-4">
           <div className="text-sm font-semibold text-gray-300 mb-3">Cap Rate Intelligence</div>
-          <div className="text-xs text-gray-500 mb-4">
+          <div className="text-xs text-gray-500">
             Coming soon: Cap rate trends by class, vintage, and submarket. Spread vs treasuries.
           </div>
         </div>
@@ -364,9 +583,7 @@ export default function CompsModule({
             <TrendingUp className="w-5 h-5 text-green-400" />
             Sale Comp Intelligence
           </h3>
-          <p className="text-xs text-gray-500 mt-1">
-            Transaction intelligence and pattern detection
-          </p>
+          <p className="text-xs text-gray-500 mt-1">Transaction intelligence and pattern detection</p>
         </div>
         {onBack && (
           <button
@@ -405,9 +622,8 @@ export default function CompsModule({
             </div>
           </div>
         )}
-        
-        {activeTab === 'grid' && renderGridTab()}
-        {activeTab === 'patterns' && renderPatternsTab()}
+        {activeTab === 'grid'      && renderGridTab()}
+        {activeTab === 'patterns'  && renderPatternsTab()}
         {activeTab === 'cap-rates' && renderCapRatesTab()}
       </div>
     </div>

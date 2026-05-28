@@ -25,7 +25,8 @@ router.post('/deals/:dealId/comps/generate', requireAuth, async (req: Authentica
       property_classes = ['A', 'B', 'C'],
       vintage_range,
       exclude_distress = true,
-      arms_length_only = true
+      arms_length_only = true,
+      strategy,
     } = req.body;
 
     const compSet = await compSetService.generateCompSet({
@@ -37,7 +38,8 @@ router.post('/deals/:dealId/comps/generate', requireAuth, async (req: Authentica
       property_classes,
       vintage_range,
       exclude_distress,
-      arms_length_only
+      arms_length_only,
+      strategy,
     });
 
     res.json({
@@ -181,6 +183,78 @@ router.delete('/deals/:dealId/comps/:compId', requireAuth, async (req: Authentic
       success: false,
       error: error.message
     });
+  }
+});
+
+/**
+ * GET /api/v1/deals/:dealId/comps/ranked
+ * Re-score and rank the existing comp set for a given strategy without
+ * regenerating from DB. Lightweight — no DB writes.
+ *
+ * Query params:
+ *   strategy — stabilized | value_add | ground_up | redevelopment (default: stabilized)
+ */
+router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { strategy } = req.query as { strategy?: string };
+    const { rankComps, resolveStrategy, TIER_LABELS, FACTOR_LABELS } = await import('../../services/valuation/comp-relevance-scoring.service');
+    const pool = getPool();
+
+    const compSet = await compSetService.getCompSetByDeal(dealId);
+    if (!compSet) {
+      return res.status(404).json({ success: false, error: 'No comp set found for this deal' });
+    }
+
+    const dealRow = await pool.query(
+      `SELECT COALESCE(d.asset_class, 'B') AS asset_class,
+              p.units, p.year_built
+       FROM deals d LEFT JOIN properties p ON p.deal_id = d.id
+       WHERE d.id = $1::uuid LIMIT 1`,
+      [dealId],
+    );
+    const dealInfo = dealRow.rows[0] ?? {};
+    const subject = {
+      units:       dealInfo.units       ? parseInt(String(dealInfo.units),       10) : null,
+      year_built:  dealInfo.year_built  ? parseInt(String(dealInfo.year_built),  10) : null,
+      asset_class: dealInfo.asset_class ?? 'B',
+    };
+
+    const resolvedStrategy = resolveStrategy(strategy);
+    const candidates = compSet.comps.map(c => ({
+      id:            c.id,
+      units:         c.units,
+      year_built:    c.year_built,
+      asset_class:   c.property_class,
+      sale_date:     c.recording_date,
+      distance_miles:c.distance_miles,
+      source:        c.source,
+    }));
+
+    const { ranked, top, weights } = rankComps(subject, candidates, resolvedStrategy, 8);
+    const scoreMap = new Map(ranked.map(s => [s.comp.id, s]));
+
+    const scoredComps = ranked.map(({ comp: candidate }) => {
+      const base = compSet.comps.find(c => c.id === candidate.id)!;
+      const s    = scoreMap.get(candidate.id)!;
+      return { ...base, relevance_score: s.relevance_score, relevance_tier: s.relevance_tier, relevance_factors: s.factors };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        ...compSet,
+        comps:            scoredComps,
+        top_comp_ids:     top.map(s => s.comp.id),
+        strategy:         resolvedStrategy,
+        weights,
+        tier_labels:      TIER_LABELS,
+        factor_labels:    FACTOR_LABELS,
+      },
+    });
+  } catch (error: any) {
+    console.error('Ranked comps error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
