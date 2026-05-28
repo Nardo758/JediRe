@@ -695,20 +695,60 @@ export class FinancialModelEngineService {
         Math.abs(existingExitCap - 0.065) < 0.0001;
 
       if (isDefaultExitCap) {
+        // Fetch year1NOI from deal_data for terminal value computation.
+        // Non-fatal — terminalValue will be null if unavailable.
+        let year1NOI: number | null = null;
+        try {
+          const noiRow = await pool.query<{ noi: string | null }>(
+            `SELECT COALESCE(
+               (deal_data->'extraction_t12'->>'noi_year1')::float,
+               (deal_data->>'noi_year1')::float,
+               (deal_data->>'noi')::float
+             ) AS noi FROM deals WHERE id = $1`,
+            [dealId]
+          );
+          const raw = noiRow.rows[0]?.noi;
+          if (raw != null) year1NOI = parseFloat(String(raw));
+          if (year1NOI != null && isNaN(year1NOI)) year1NOI = null;
+        } catch (_noiErr) { /* non-fatal */ }
+
         const exitResult = await exitSvc.derive(
           { goingInCapRate: goingInCap, holdPeriod, state, dealMode, assetClass, submarket },
+          year1NOI,
         );
+
         if (enhancedAssumptions.disposition) {
           enhancedAssumptions.disposition.exitCapRate  = exitResult.exitCapRate;
           enhancedAssumptions.disposition.sellingCosts = exitResult.sellingCosts;
+          // Persist terminal metrics and provenance as extended fields.
+          // These are not in the ProFormaAssumptions type contract but will be
+          // serialized into the assumptions JSON blob and are accessible to
+          // downstream F9 evidence surfaces + the audit trail.
+          const disp = enhancedAssumptions.disposition as Record<string, unknown>;
+          if (exitResult.terminalNOI  != null) disp._terminalNOI  = exitResult.terminalNOI;
+          if (exitResult.terminalValue != null) disp._terminalValue = exitResult.terminalValue;
+          disp._exitCapSource     = exitResult.source;
+          disp._exitCapConfidence = exitResult.confidence;
+          disp._exitCapProvenance = exitResult.provenance;
+          if (exitResult.compBound)  disp._exitCapCompBound = exitResult.compBound;
         }
+
+        // Wire holdPeriod back when LLM left it at 0 (M20 fallback = 5 years default).
+        if (!enhancedAssumptions.holdPeriod || enhancedAssumptions.holdPeriod === 0) {
+          enhancedAssumptions.holdPeriod = exitResult.holdPeriod;
+        }
+
         const compNote = exitResult.provenance.compBounded
           ? ` [comp-bounded P25=${(exitResult.compBound!.p25 * 100).toFixed(2)}% P75=${(exitResult.compBound!.p75 * 100).toFixed(2)}% n=${exitResult.compBound!.nSamples}]`
           : '';
         logger.info(
           `[Batch5-ExitStrategy] Applied M20 exit cap for ${dealId}: ` +
           `${(exitResult.exitCapRate * 100).toFixed(2)}%${compNote} ` +
-          `(${exitResult.source})`
+          `holdPeriod=${exitResult.holdPeriod}y` +
+          (exitResult.terminalValue != null
+            ? ` terminalValue=$${Math.round(exitResult.terminalValue).toLocaleString()}`
+            : '') +
+          ` (${exitResult.source})`
         );
       }
     } catch (err: any) {
@@ -731,6 +771,23 @@ export class FinancialModelEngineService {
         if (reconciledValue && reconciledValue > 0) {
           if (enhancedAssumptions.acquisition) {
             enhancedAssumptions.acquisition.purchasePrice = reconciledValue;
+            // Persist the reconciliation range and method evidence as extended fields.
+            // These survive serialization to the stored assumptions JSON blob
+            // and are accessible to F9 evidence surfaces and audit trail consumers.
+            const acq = enhancedAssumptions.acquisition as Record<string, unknown>;
+            acq._purchasePriceLow  = vgResult.reconciliation.recommendedPriceLow;
+            acq._purchasePriceHigh = vgResult.reconciliation.recommendedPriceHigh;
+            acq._purchasePricePPU  = vgResult.reconciliation.reconciledPPU;
+            acq._purchasePriceSignal = vgResult.reconciliation.convergenceSignal;
+            acq._purchasePriceSource = 'valuation_grid';
+            acq._valuationGridEvidence = (vgResult.methods as any[])
+              .filter((m: any) => m.active !== false)
+              .map((m: any) => ({
+                methodId:   m.methodId ?? m.label ?? 'unknown',
+                p50:        m.p50 ?? null,
+                ppu:        m.ppu ?? null,
+                confidence: m.confidence ?? null,
+              }));
           }
           const methodSummary = (vgResult.methods as any[])
             .filter((m: any) => m.active !== false)
@@ -741,6 +798,8 @@ export class FinancialModelEngineService {
           logger.info(
             `[Batch7A-PurchasePrice] Pre-bridge hydration for ${dealId}: ` +
             `reconciledValue=$${Math.round(reconciledValue).toLocaleString()} ` +
+            `range=[$${vgResult.reconciliation.recommendedPriceLow != null ? Math.round(vgResult.reconciliation.recommendedPriceLow).toLocaleString() : 'n/a'}` +
+            `–$${vgResult.reconciliation.recommendedPriceHigh != null ? Math.round(vgResult.reconciliation.recommendedPriceHigh).toLocaleString() : 'n/a'}] ` +
             `signal=${vgResult.reconciliation.convergenceSignal} ` +
             `activeMethods=${vgResult.reconciliation.activeMethodCount} ` +
             `[${methodSummary}]`
@@ -1041,6 +1100,28 @@ export class FinancialModelEngineService {
             const reconciledValue = vgResult.reconciliation.reconciledValue;
             if (reconciledValue && reconciledValue > 0) {
               modelAssumptions.purchasePrice = reconciledValue;
+              // Also update acquisition extended fields in enhancedAssumptions
+              // (in case Batch-7A did not fire — e.g., ValuationGrid was temporarily
+              // unavailable at that point but available now). This is a belt-and-suspenders
+              // writeback for the persisted assumptions range/evidence payload.
+              if (enhancedAssumptions.acquisition) {
+                const acq7 = enhancedAssumptions.acquisition as Record<string, unknown>;
+                if (!acq7._purchasePriceSource) {
+                  acq7._purchasePriceLow  = vgResult.reconciliation.recommendedPriceLow;
+                  acq7._purchasePriceHigh = vgResult.reconciliation.recommendedPriceHigh;
+                  acq7._purchasePricePPU  = vgResult.reconciliation.reconciledPPU;
+                  acq7._purchasePriceSignal = vgResult.reconciliation.convergenceSignal;
+                  acq7._purchasePriceSource = 'valuation_grid_post_bridge';
+                  acq7._valuationGridEvidence = (vgResult.methods as any[])
+                    .filter((m: any) => m.active !== false)
+                    .map((m: any) => ({
+                      methodId:   m.methodId ?? m.label ?? 'unknown',
+                      p50:        m.p50 ?? null,
+                      ppu:        m.ppu ?? null,
+                      confidence: m.confidence ?? null,
+                    }));
+                }
+              }
               const methodSummary = (vgResult.methods as any[])
                 .filter((m: any) => m.active !== false)
                 .map((m: any) =>
@@ -1052,6 +1133,8 @@ export class FinancialModelEngineService {
               logger.info(
                 `[Batch7-PurchasePrice] Post-bridge hydration for ${dealId}: ` +
                 `reconciledValue=$${Math.round(reconciledValue).toLocaleString()} ` +
+                `range=[$${vgResult.reconciliation.recommendedPriceLow != null ? Math.round(vgResult.reconciliation.recommendedPriceLow).toLocaleString() : 'n/a'}` +
+                `–$${vgResult.reconciliation.recommendedPriceHigh != null ? Math.round(vgResult.reconciliation.recommendedPriceHigh).toLocaleString() : 'n/a'}] ` +
                 `signal=${vgResult.reconciliation.convergenceSignal} ` +
                 `activeMethods=${vgResult.reconciliation.activeMethodCount} ` +
                 `reconciledPPU=${vgResult.reconciliation.reconciledPPU != null ? '$' + Math.round(vgResult.reconciliation.reconciledPPU).toLocaleString() : 'n/a'} ` +
