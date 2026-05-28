@@ -197,12 +197,17 @@ router.delete('/deals/:dealId/comps/:compId', requireAuth, async (req: Authentic
 router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const { strategy } = req.query as { strategy?: string };
     const {
-      rankComps, resolveStrategy, TIER_LABELS, FACTOR_LABELS,
-      deriveGeographicTier, GEO_TIER_LABELS,
+      strategy,
+      min_units: minUnitsParam,
+      date_range_months: dateRangeParam,
+    } = req.query as { strategy?: string; min_units?: string; date_range_months?: string };
+
+    const {
+      rankComps, resolveStrategy, TIER_LABELS, FACTOR_LABELS, GEO_TIER_LABELS,
     } = await import('../../services/valuation/comp-relevance-scoring.service');
     const { buildCompStory } = await import('../../services/valuation/comp-story.service');
+    const { executeCascade } = await import('../../services/valuation/comp-cascade.service');
     const pool = getPool();
 
     const userId = req.user!.userId;
@@ -216,13 +221,8 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
-    const compSet = await compSetService.getCompSetByDeal(dealId);
-    if (!compSet) {
-      return res.status(404).json({ success: false, error: 'No comp set found for this deal' });
-    }
-
-    // 1. Fetch deal's subject coordinates + metadata.
-    //    Primary: boundary centroid. Fallback: properties.latitude/longitude (when boundary is null).
+    // 1. Fetch deal subject coordinates + metadata.
+    //    Primary: boundary centroid. Fallback: properties.latitude/longitude.
     const dealRow = await pool.query(
       `SELECT COALESCE(d.asset_class, 'B') AS asset_class,
               p.units, p.year_built,
@@ -248,107 +248,181 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
       asset_class: dealInfo.asset_class ?? 'B',
     };
 
-    // 2. Fetch real lat/lng from market_sale_comps to compute accurate distances
-    //    (getCompSetByDeal hardcodes distance_miles = 0)
-    const compIds = compSet.comps.map(c => c.id);
-    const geoRows = compIds.length > 0
-      ? await pool.query<{ id: string; latitude: string | null; longitude: string | null }>(
-          `SELECT id, latitude::text, longitude::text FROM market_sale_comps WHERE id = ANY($1)`,
-          [compIds],
-        )
-      : { rows: [] };
-
-    const geoMap = new Map<string, { lat: number; lng: number }>();
-    for (const r of geoRows.rows) {
-      const lat = r.latitude != null ? parseFloat(r.latitude) : null;
-      const lng = r.longitude != null ? parseFloat(r.longitude) : null;
-      if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng)) {
-        geoMap.set(r.id, { lat, lng });
-      }
-    }
-
-    // Haversine helper (miles)
-    function haversineMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
-      const R = 3959;
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLng = (lng2 - lng1) * Math.PI / 180;
-      const a = Math.sin(dLat / 2) ** 2
-              + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
-              * Math.sin(dLng / 2) ** 2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-
-    const RADIUS_MILES = 3; // matches default generateCompSet radius
-
-    // 3. Build candidates with real distances and geographic tier
-    const enriched = compSet.comps.map(c => {
-      const geo = geoMap.get(c.id);
-      const distMiles = (geo && dealLat != null && dealLng != null)
-        ? Math.round(haversineMiles(dealLat, dealLng, geo.lat, geo.lng) * 100) / 100
-        : null;
-      const geographic_tier = deriveGeographicTier(distMiles, RADIUS_MILES);
-      return { comp: c, distMiles, geographic_tier };
-    });
-
     const resolvedStrategy = resolveStrategy(strategy);
-    const candidates = enriched.map(({ comp: c, distMiles }) => ({
+
+    // 2. Execute the geographic cascade.
+    //    If the deal has no coordinates, fall back to the stored comp set.
+    let scoredComps: any[];
+    let top: any[];
+    let weights: any;
+    let comp_story: any;
+
+    if (dealLat != null && dealLng != null) {
+      // ── LIVE CASCADE PATH (D-COMP-3) ───────────────────────────────────────
+      //
+      // Staged expansion: trade_area (≤3mi) → submarket (≤9mi) → MSA (≤25mi).
+      // Stops as soon as threshold comps are reached at a given tier.
+      // cascade_metadata reflects which tier was the actual stopping point.
+      const minUnits       = minUnitsParam  ? parseInt(minUnitsParam,  10) : 20;
+      const dateRangeMonths = dateRangeParam ? parseInt(dateRangeParam, 10) : 36;
+
+      const cascadeResult = await executeCascade(
+        pool,
+        { lat: dealLat, lng: dealLng, ...subject },
+        { min_units: minUnits, date_range_months: dateRangeMonths, deal_id: dealId },
+      );
+
+      const { comps: cascadeComps, cascade_metadata } = cascadeResult;
+
+      if (cascadeComps.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'No qualifying comps found within 25 miles of this deal',
+        });
+      }
+
+      // Score/rank the cascade pool
+      const candidates = cascadeComps.map(c => ({
+        id:             c.id,
+        units:          c.units,
+        year_built:     c.year_built,
+        asset_class:    c.property_class,
+        sale_date:      c.recording_date,
+        distance_miles: c.distance_miles,
+        source:         c.source,
+      }));
+
+      const ranked = rankComps(subject, candidates, resolvedStrategy, 8);
+      top     = ranked.top;
+      weights = ranked.weights;
+
+      const scoreMap    = new Map(ranked.ranked.map((s: any) => [s.comp.id, s]));
+      const cascadeMap  = new Map(cascadeComps.map(c => [c.id, c]));
+
+      scoredComps = ranked.ranked.map(({ comp: candidate }: any) => {
+        const base = cascadeMap.get(candidate.id)!;
+        const s    = scoreMap.get(candidate.id)!;
+        const tier = base.geographic_tier;
+        return {
+          id:                base.id,
+          property_address:  base.property_address,
+          units:             base.units,
+          year_built:        base.year_built,
+          property_class:    base.property_class,
+          derived_sale_price: base.derived_sale_price,
+          price_per_unit:    base.price_per_unit,
+          price_per_sf:      null,
+          implied_cap_rate:  base.implied_cap_rate,
+          recording_date:    base.recording_date,
+          source:            base.source,
+          buyer_type:        base.buyer_type,
+          distance_miles:    base.distance_miles,
+          geographic_tier:   tier,
+          geographic_label:  GEO_TIER_LABELS[tier],
+          relevance_score:   s.relevance_score,
+          relevance_tier:    s.relevance_tier,
+          relevance_factors: s.factors,
+        };
+      });
+
+      // D-COMP-2: Build strategy comp story using real cascade metadata + subject vintage
+      const storyComps = scoredComps.map(c => ({
+        id:               c.id,
+        year_built:       c.year_built,
+        implied_cap_rate: c.implied_cap_rate,
+        price_per_unit:   c.price_per_unit,
+        recording_date:   c.recording_date,
+        geographic_tier:  c.geographic_tier as 'trade_area' | 'submarket' | 'msa',
+      }));
+      comp_story = buildCompStory(storyComps, resolvedStrategy, {
+        cascade_metadata,
+        subject_year_built: subject.year_built,
+      });
+
+      return res.json({
+        success: true,
+        data: {
+          comps:           scoredComps,
+          top_comp_ids:    top.map((s: any) => s.comp.id),
+          strategy:        resolvedStrategy,
+          weights,
+          tier_labels:     TIER_LABELS,
+          factor_labels:   FACTOR_LABELS,
+          geo_tier_labels: GEO_TIER_LABELS,
+          comp_story,
+          cascade_source:  'live',
+        },
+      });
+    }
+
+    // ── STORED COMP SET FALLBACK (no coordinates on deal) ────────────────────
+    //
+    // The deal has no lat/lng, so we cannot run the cascade. Fall back to the
+    // stored comp set generated by /comps/generate, scoring it in place but
+    // omitting cascade metadata (since no staged expansion was possible).
+    const compSet = await compSetService.getCompSetByDeal(dealId);
+    if (!compSet) {
+      return res.status(404).json({
+        success: false,
+        error: 'No comp set found and deal has no coordinates for live cascade',
+      });
+    }
+
+    const candidates = compSet.comps.map(c => ({
       id:             c.id,
       units:          c.units,
       year_built:     c.year_built,
       asset_class:    c.property_class,
       sale_date:      c.recording_date,
-      distance_miles: distMiles,
+      distance_miles: c.distance_miles,
       source:         c.source,
     }));
 
-    const { ranked, top, weights } = rankComps(subject, candidates, resolvedStrategy, 8);
-    const scoreMap  = new Map(ranked.map(s => [s.comp.id, s]));
-    const geoTierMap = new Map(enriched.map(e => [e.comp.id, e.geographic_tier]));
+    const ranked = rankComps(subject, candidates, resolvedStrategy, 8);
+    top     = ranked.top;
+    weights = ranked.weights;
 
-    const compIdIndex = new Map(compSet.comps.map(c => [c.id, c]));
+    const scoreMap = new Map(ranked.ranked.map((s: any) => [s.comp.id, s]));
+    const compIndex = new Map(compSet.comps.map(c => [c.id, c]));
 
-    const scoredComps = ranked.map(({ comp: candidate }) => {
-      const base = compIdIndex.get(candidate.id)!;
+    scoredComps = ranked.ranked.map(({ comp: candidate }: any) => {
+      const base = compIndex.get(candidate.id)!;
       const s    = scoreMap.get(candidate.id)!;
-      const geo  = geoMap.get(candidate.id);
-      const distMiles = (geo && dealLat != null && dealLng != null)
-        ? Math.round(haversineMiles(dealLat, dealLng, geo.lat, geo.lng) * 100) / 100
-        : base.distance_miles;
-      const geoTier = geoTierMap.get(candidate.id) ?? 'msa';
       return {
         ...base,
-        distance_miles:    distMiles ?? base.distance_miles,
-        geographic_tier:   geoTier,
-        geographic_label:  GEO_TIER_LABELS[geoTier],
+        geographic_tier:   'msa' as const,
+        geographic_label:  GEO_TIER_LABELS['msa'],
         relevance_score:   s.relevance_score,
         relevance_tier:    s.relevance_tier,
         relevance_factors: s.factors,
       };
     });
 
-    // D-COMP-2/D-COMP-3: Build strategy story + geographic cascade metadata
-    const storyComps = scoredComps.map(c => ({
-      id:              c.id,
-      year_built:      c.year_built,
+    const storyComps = scoredComps.map((c: any) => ({
+      id:               c.id,
+      year_built:       c.year_built,
       implied_cap_rate: c.implied_cap_rate,
-      price_per_unit:  c.price_per_unit,
-      recording_date:  c.recording_date,
-      geographic_tier: c.geographic_tier as 'trade_area' | 'submarket' | 'msa',
+      price_per_unit:   c.price_per_unit,
+      recording_date:   c.recording_date,
+      geographic_tier:  c.geographic_tier as 'trade_area' | 'submarket' | 'msa',
     }));
-    const comp_story = buildCompStory(storyComps, resolvedStrategy);
+    comp_story = buildCompStory(storyComps, resolvedStrategy, {
+      subject_year_built: subject.year_built,
+    });
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         ...compSet,
-        comps:         scoredComps,
-        top_comp_ids:  top.map(s => s.comp.id),
-        strategy:      resolvedStrategy,
+        comps:           scoredComps,
+        top_comp_ids:    top.map((s: any) => s.comp.id),
+        strategy:        resolvedStrategy,
         weights,
-        tier_labels:   TIER_LABELS,
-        factor_labels: FACTOR_LABELS,
+        tier_labels:     TIER_LABELS,
+        factor_labels:   FACTOR_LABELS,
         geo_tier_labels: GEO_TIER_LABELS,
         comp_story,
+        cascade_source:  'stored_fallback',
       },
     });
   } catch (error: any) {

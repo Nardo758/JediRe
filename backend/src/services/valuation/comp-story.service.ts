@@ -1,31 +1,31 @@
 /**
- * Comp Story Service — D-COMP-2 / D-COMP-3
+ * Comp Story Service — D-COMP-2
  *
- * Implements two Wave C dispatches on top of the Wave B scoring engine:
+ * Implements strategy-aware comp story grouping on top of a cascade-selected pool.
+ * Called AFTER executeCascade() so the cascade_metadata is real (from staged queries),
+ * not inferred from existing comp geographic_tier labels.
  *
- *   D-COMP-2: Strategy-aware comp story grouping
- *     - value_add   → Rent Ceiling Gap (current-condition vs. renovated split)
- *     - stabilized  → Cap Rate Convergence (spread + recency emphasis)
- *     - ground_up   → Lease-Up Achievement (recently-delivered comps)
- *     - redevelopment → Repositioning Potential (obsolete-vintage pool)
- *
- *   D-COMP-3: Geographic cascade with explicit expansion flags
- *     - trade_area first (≥ 5 qualifying comps)
- *     - widen to submarket if fewer
- *     - widen to MSA if still fewer
- *     - each widening is recorded in CascadeMetadata
+ * Strategy story builders:
+ *   value_add      → Rent Ceiling Gap: vintage-based split (current-condition vs. renovated)
+ *   stabilized     → Cap Rate Convergence: spread + recency emphasis
+ *   ground_up      → Lease-Up Achievement: recently-delivered comps flagged
+ *   redevelopment  → Repositioning Potential: obsolete-vintage comps flagged
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import type { InvestmentStrategy } from './comp-relevance-scoring.service';
+import type { CascadeMetadata } from './comp-cascade.service';
+
+// Re-export so callers that already import from here don't need to change imports
+export type { CascadeMetadata };
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 interface StoryConfig {
   strategies: Record<string, {
-    story_key: string;
+    story_key:   string;
     story_label: string;
     description: string;
     groups?: {
@@ -34,7 +34,7 @@ interface StoryConfig {
     };
     emphasize_recent_months?: number;
     recently_delivered_years?: number;
-    obsolete_vintage_years?: number;
+    obsolete_vintage_years?:   number;
   }>;
   cascade_threshold: number;
 }
@@ -48,10 +48,10 @@ function loadStoryConfig(): StoryConfig {
     return {
       cascade_threshold: 5,
       strategies: {
-        value_add:     { story_key: 'rent_ceiling_gap',       story_label: 'Rent Ceiling Gap',         description: '', groups: { lower: { key: 'current_condition', label: 'Current Condition',         description: 'In-place ceiling' }, upper: { key: 'renovated', label: 'Renovated / Repositioned', description: 'Post-stab target' } } },
-        stabilized:    { story_key: 'cap_rate_convergence',   story_label: 'Cap Rate Convergence',      description: '', emphasize_recent_months: 18 },
-        ground_up:     { story_key: 'lease_up_achievement',   story_label: 'Lease-Up Achievement',      description: '', recently_delivered_years: 3 },
-        redevelopment: { story_key: 'repositioning_potential',story_label: 'Repositioning Potential',   description: '', obsolete_vintage_years: 30 },
+        value_add:     { story_key: 'rent_ceiling_gap',        story_label: 'Rent Ceiling Gap',         description: '', groups: { lower: { key: 'current_condition', label: 'Current Condition', description: 'In-place ceiling' }, upper: { key: 'renovated', label: 'Renovated / Repositioned', description: 'Post-stab target' } } },
+        stabilized:    { story_key: 'cap_rate_convergence',    story_label: 'Cap Rate Convergence',      description: '', emphasize_recent_months: 18 },
+        ground_up:     { story_key: 'lease_up_achievement',    story_label: 'Lease-Up Achievement',      description: '', recently_delivered_years: 3 },
+        redevelopment: { story_key: 'repositioning_potential', story_label: 'Repositioning Potential',   description: '', obsolete_vintage_years: 30 },
       },
     };
   }
@@ -63,34 +63,24 @@ const CONFIG = loadStoryConfig();
 // Public types
 // ---------------------------------------------------------------------------
 
-/** Cascade metadata: which geographic tier was the widening floor. */
-export interface CascadeMetadata {
-  trade_area_count: number;
-  submarket_count:  number;
-  msa_count:        number;
-  /** The widest tier that was actually needed. 'trade_area' = no widening occurred. */
-  widened_to: 'trade_area' | 'submarket' | 'msa';
-  threshold: number;
-}
-
 /** A strategy-driven grouping of comp IDs. */
 export interface CompGroup {
-  group_key:         string;
-  label:             string;
-  description:       string;
-  comp_ids:          string[];
+  group_key:          string;
+  label:              string;
+  description:        string;
+  comp_ids:           string[];
   avg_price_per_unit: number | null;
-  median_cap_rate:   number | null;
+  median_cap_rate:    number | null;
 }
 
 /** Cap rate spread metadata for stabilized deals. */
 export interface CapRateSpread {
-  min:        number;
-  max:        number;
-  median:     number;
-  p25:        number;
-  p75:        number;
-  spread_bps: number;
+  min:          number;
+  max:          number;
+  median:       number;
+  p25:          number;
+  p75:          number;
+  spread_bps:   number;
   recent_count: number;
 }
 
@@ -102,7 +92,7 @@ export interface CompStoryResult {
   cascade:     CascadeMetadata;
 
   // value_add
-  groups?:           CompGroup[];
+  groups?:             CompGroup[];
   price_gap_per_unit?: number | null;
   price_gap_pct?:      number | null;
 
@@ -120,12 +110,12 @@ export interface CompStoryResult {
 
 /** Minimal comp shape required by this service. */
 export interface StoryComp {
-  id:              string;
-  year_built?:     number | null;
+  id:               string;
+  year_built?:      number | null;
   implied_cap_rate?: number | null;
-  price_per_unit:  number;
-  recording_date?: Date | string | null;
-  geographic_tier: 'trade_area' | 'submarket' | 'msa';
+  price_per_unit:   number;
+  recording_date?:  Date | string | null;
+  geographic_tier:  'trade_area' | 'submarket' | 'msa';
 }
 
 // ---------------------------------------------------------------------------
@@ -160,10 +150,11 @@ function medianOrNull(values: number[]): number | null {
 }
 
 // ---------------------------------------------------------------------------
-// Cascade computation (D-COMP-3)
+// Infer cascade metadata from comp pool when real metadata is unavailable.
+// Only used as a fallback when comp pool comes from a stored set (not cascade).
 // ---------------------------------------------------------------------------
 
-function buildCascade(comps: StoryComp[]): CascadeMetadata {
+function inferCascadeFromPool(comps: StoryComp[]): CascadeMetadata {
   const threshold = CONFIG.cascade_threshold;
   let trade_area_count = 0;
   let submarket_count  = 0;
@@ -176,31 +167,64 @@ function buildCascade(comps: StoryComp[]): CascadeMetadata {
   }
 
   let widened_to: 'trade_area' | 'submarket' | 'msa';
-  if (trade_area_count >= threshold) {
-    widened_to = 'trade_area';
-  } else if (trade_area_count + submarket_count >= threshold) {
-    widened_to = 'submarket';
-  } else {
-    widened_to = 'msa';
-  }
+  if (trade_area_count >= threshold)                              widened_to = 'trade_area';
+  else if (trade_area_count + submarket_count >= threshold)       widened_to = 'submarket';
+  else                                                            widened_to = 'msa';
 
-  return { trade_area_count, submarket_count, msa_count, widened_to, threshold };
+  return {
+    trade_area_count, submarket_count, msa_count,
+    widened_to, threshold,
+    radii: { trade_area: 3, submarket: 9, msa: 25 },
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Strategy story builders
 // ---------------------------------------------------------------------------
 
-function buildValueAddStory(comps: StoryComp[], cfg: typeof CONFIG['strategies'][string]): Partial<CompStoryResult> {
+/**
+ * Value-Add: Rent Ceiling Gap
+ *
+ * Splits comps into two cohorts using the subject's year_built as the primary
+ * criterion, so the split has direct interpretive meaning:
+ *   - current_condition: year_built ≤ subject_year (same/older vintage)
+ *     → proves the in-place rent ceiling (what the deal sells for today)
+ *   - renovated:         year_built > subject_year (newer/repositioned vintage)
+ *     → proves the post-stabilization target (where value-add thesis can take it)
+ *
+ * Fallback when subject_year_built is unknown: price_per_unit split at the 60th
+ * percentile (lower = in-place ceiling, upper = repositioned target).
+ */
+function buildValueAddStory(
+  comps: StoryComp[],
+  cfg: typeof CONFIG['strategies'][string],
+  subject_year_built?: number | null,
+): Partial<CompStoryResult> {
   if (comps.length === 0) return {};
 
-  const prices = comps.map(c => c.price_per_unit).filter(p => p > 0);
-  if (prices.length === 0) return {};
+  let lowerComps: StoryComp[];
+  let upperComps: StoryComp[];
 
-  const med = median([...prices].sort((a, b) => a - b));
+  if (subject_year_built) {
+    // Vintage-based split: same/older vintage = current condition; newer = renovated proxy
+    lowerComps = comps.filter(c => c.year_built == null || c.year_built <= subject_year_built);
+    upperComps = comps.filter(c => c.year_built != null && c.year_built > subject_year_built);
 
-  const lowerComps = comps.filter(c => c.price_per_unit < med);
-  const upperComps = comps.filter(c => c.price_per_unit >= med);
+    // If the split leaves one group empty, fall back to price split
+    if (lowerComps.length === 0 || upperComps.length === 0) {
+      const prices = comps.map(c => c.price_per_unit).filter(p => p > 0).sort((a, b) => a - b);
+      const p60    = percentile(prices, 60);
+      lowerComps = comps.filter(c => c.price_per_unit < p60);
+      upperComps = comps.filter(c => c.price_per_unit >= p60);
+    }
+  } else {
+    // No subject vintage known — use 60th percentile price split
+    const prices = comps.map(c => c.price_per_unit).filter(p => p > 0).sort((a, b) => a - b);
+    if (prices.length === 0) return {};
+    const p60    = percentile(prices, 60);
+    lowerComps = comps.filter(c => c.price_per_unit < p60);
+    upperComps = comps.filter(c => c.price_per_unit >= p60);
+  }
 
   const lowerAvg  = avgOrNull(lowerComps.map(c => c.price_per_unit));
   const upperAvg  = avgOrNull(upperComps.map(c => c.price_per_unit));
@@ -214,7 +238,7 @@ function buildValueAddStory(comps: StoryComp[], cfg: typeof CONFIG['strategies']
       label:              groupCfg.lower.label,
       description:        groupCfg.lower.description,
       comp_ids:           lowerComps.map(c => c.id),
-      avg_price_per_unit: lowerAvg != null ? Math.round(lowerAvg) : null,
+      avg_price_per_unit: lowerAvg  != null ? Math.round(lowerAvg)  : null,
       median_cap_rate:    lowerCapR,
     },
     {
@@ -222,7 +246,7 @@ function buildValueAddStory(comps: StoryComp[], cfg: typeof CONFIG['strategies']
       label:              groupCfg.upper.label,
       description:        groupCfg.upper.description,
       comp_ids:           upperComps.map(c => c.id),
-      avg_price_per_unit: upperAvg != null ? Math.round(upperAvg) : null,
+      avg_price_per_unit: upperAvg  != null ? Math.round(upperAvg)  : null,
       median_cap_rate:    upperCapR,
     },
   ];
@@ -237,7 +261,10 @@ function buildValueAddStory(comps: StoryComp[], cfg: typeof CONFIG['strategies']
   return { groups, price_gap_per_unit, price_gap_pct };
 }
 
-function buildStabilizedStory(comps: StoryComp[], cfg: typeof CONFIG['strategies'][string]): Partial<CompStoryResult> {
+function buildStabilizedStory(
+  comps: StoryComp[],
+  cfg: typeof CONFIG['strategies'][string],
+): Partial<CompStoryResult> {
   const recentMonths = cfg.emphasize_recent_months ?? 18;
   const cutoff = new Date();
   cutoff.setMonth(cutoff.getMonth() - recentMonths);
@@ -256,7 +283,7 @@ function buildStabilizedStory(comps: StoryComp[], cfg: typeof CONFIG['strategies
 
   const recentComps = comps.filter(c => {
     if (!c.recording_date) return false;
-    const d = c.recording_date instanceof Date ? c.recording_date : new Date(c.recording_date);
+    const d = c.recording_date instanceof Date ? c.recording_date : new Date(c.recording_date as string);
     return !isNaN(d.getTime()) && d >= cutoff;
   });
 
@@ -273,7 +300,10 @@ function buildStabilizedStory(comps: StoryComp[], cfg: typeof CONFIG['strategies
   return { cap_rate_spread };
 }
 
-function buildGroundUpStory(comps: StoryComp[], cfg: typeof CONFIG['strategies'][string]): Partial<CompStoryResult> {
+function buildGroundUpStory(
+  comps: StoryComp[],
+  cfg: typeof CONFIG['strategies'][string],
+): Partial<CompStoryResult> {
   const deliveredYears = cfg.recently_delivered_years ?? 3;
   const currentYear    = new Date().getFullYear();
   const cutoffYear     = currentYear - deliveredYears;
@@ -286,10 +316,13 @@ function buildGroundUpStory(comps: StoryComp[], cfg: typeof CONFIG['strategies']
   };
 }
 
-function buildRedevelopmentStory(comps: StoryComp[], cfg: typeof CONFIG['strategies'][string]): Partial<CompStoryResult> {
-  const obsoleteYears  = cfg.obsolete_vintage_years ?? 30;
-  const currentYear    = new Date().getFullYear();
-  const cutoffYear     = currentYear - obsoleteYears;
+function buildRedevelopmentStory(
+  comps: StoryComp[],
+  cfg: typeof CONFIG['strategies'][string],
+): Partial<CompStoryResult> {
+  const obsoleteYears = cfg.obsolete_vintage_years ?? 30;
+  const currentYear   = new Date().getFullYear();
+  const cutoffYear    = currentYear - obsoleteYears;
 
   const obsolete = comps.filter(c => c.year_built != null && c.year_built <= cutoffYear);
 
@@ -304,24 +337,31 @@ function buildRedevelopmentStory(comps: StoryComp[], cfg: typeof CONFIG['strateg
 // ---------------------------------------------------------------------------
 
 /**
- * Build the comp story for a ranked pool given the investment strategy.
+ * Build the comp story for a cascade-selected pool given the investment strategy.
  *
- * @param comps       Full ranked comp pool (must include geographic_tier).
- * @param strategy    One of the four canonical InvestmentStrategy values.
- * @returns           CompStoryResult with cascade metadata + strategy groups.
+ * @param comps             Full comp pool (must include geographic_tier).
+ * @param strategy          One of the four canonical InvestmentStrategy values.
+ * @param opts.cascade_metadata  Real cascade metadata from executeCascade().
+ *                              When provided, used directly rather than inferred
+ *                              from comp geographic_tier counts (which would be
+ *                              misleading for stored comp sets).
+ * @param opts.subject_year_built  Subject property year_built for value_add vintage split.
  */
 export function buildCompStory(
   comps: StoryComp[],
   strategy: InvestmentStrategy,
+  opts?: {
+    cascade_metadata?:  CascadeMetadata;
+    subject_year_built?: number | null;
+  },
 ): CompStoryResult {
-  const cfg = CONFIG.strategies[strategy] ?? CONFIG.strategies['stabilized'];
-
-  const cascade = buildCascade(comps);
+  const cfg     = CONFIG.strategies[strategy] ?? CONFIG.strategies['stabilized'];
+  const cascade = opts?.cascade_metadata ?? inferCascadeFromPool(comps);
 
   let extras: Partial<CompStoryResult> = {};
   switch (strategy) {
     case 'value_add':
-      extras = buildValueAddStory(comps, cfg);
+      extras = buildValueAddStory(comps, cfg, opts?.subject_year_built);
       break;
     case 'stabilized':
       extras = buildStabilizedStory(comps, cfg);
