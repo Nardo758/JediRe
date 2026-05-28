@@ -274,10 +274,18 @@ export class CompSetService {
       ? compSetResult.rows[0].created_at.toISOString()
       : String(compSetResult.rows[0].created_at);
 
-    // 8. Insert comp set members — Georgia comps use market_comp_id (not transaction_id FK)
+    // 8. Insert comp set members — market_sale_comps rows use market_comp_id;
+    //    recorded_transactions rows use transaction_id FK.
+    //    Recognised market_sale_comps sources: georgia_county, research_agent, costar_upload, om_extraction.
     for (let i = 0; i < comps.length; i++) {
       const comp = comps[i];
-      const isMarketComp = comp.source === 'georgia_county' || comp.source?.startsWith('georgia');
+      const isMarketComp =
+        !comp.source ||
+        comp.source === 'georgia_county' ||
+        comp.source.startsWith('georgia') ||
+        comp.source === 'costar_upload' ||
+        comp.source === 'research_agent' ||
+        comp.source === 'om_extraction';
       await pool.query(`
         INSERT INTO sale_comp_set_members (
           comp_set_id, ${isMarketComp ? 'market_comp_id' : 'transaction_id'}, sort_order
@@ -335,7 +343,7 @@ export class CompSetService {
         COALESCE(mc.price_per_sqft, rt.price_per_sf, 0)  AS price_per_sf,
         COALESCE(mc.cap_rate, rt.implied_cap_rate)       AS implied_cap_rate,
         COALESCE(mc.buyer, rt.buyer_name)                AS grantee_name,
-        COALESCE(mc.buyer_type, rt.buyer_type)           AS buyer_type,
+        mc.buyer_type                                    AS buyer_type,
         mc.source,
         scm.sort_order,
         0                                                AS distance_miles
