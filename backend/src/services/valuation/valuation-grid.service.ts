@@ -204,6 +204,18 @@ export class ValuationGridService {
   }
 
   // ── Subject property ────────────────────────────────────────────────────────
+  //
+  // D-DEAL-1 (Task #1405 / Wave A diagnosis):
+  // The join `properties p ON p.deal_id = d.id` returns NULL for any deal that
+  // was not seeded with a matching properties row at intake. As of Wave A, only
+  // 464 Bishop (deal_id 3f32276f-aacd-4da3-b306-317c5109b403) has a linked row.
+  // All other deals get NULL from the LEFT JOIN, which causes p.units, p.building_sf,
+  // p.building_class, and p.submarket_id to be NULL. The service handles this
+  // gracefully — NULL subject fields degrade individual methods to 'insufficient'
+  // but never throw. Fix path: Task #1422 (deal creation auto-links properties row).
+  //
+  // Column names confirmed correct: p.building_class (not asset_class) and
+  // p.submarket_id (not submarket) — aliased to match SubjectProperty type fields.
 
   private async getSubjectProperty(dealId: string): Promise<SubjectProperty> {
     const result = await this.pool.query(

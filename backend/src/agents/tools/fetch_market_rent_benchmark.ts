@@ -128,9 +128,23 @@ async function fetchMarketRentBenchmark(input: unknown): Promise<MarketRentBench
     }
   }
 
+  // GAP-4 (Task #1420 audit): apartment_locator_properties.year_built is NULL
+  // for all seeded rows, so every property falls into the ELSE → 'C' branch of
+  // the CASE expression in mv_market_rent_benchmarks. Until year_built is
+  // backfilled from ApartmentIQ, ALL benchmarks are class C regardless of the
+  // requested asset_class. Callers should note this limitation in evidence.
+  const allClassC =
+    benchmarks.length > 0 && benchmarks.every(b => b.assetClass === 'C');
+  const classCNote =
+    allClassC && asset_class !== 'C' && asset_class !== 'all'
+      ? ` NOTE: Only Class C data available (year_built NULL in source — Task #1423 backfill pending). Treating as proxy benchmark; apply conservative confidence adjustment.`
+      : allClassC && asset_class === 'all'
+      ? ` NOTE: All rows are Class C (year_built NULL in source — Task #1423 backfill pending). Class A/B stratification unavailable until year_built is populated.`
+      : '';
+
   const dataNote = benchmarks.length === 0
     ? `No benchmark data found for ${city}, ${stateNorm}. The market may not be seeded yet. Refresh mv_market_rent_benchmarks or check apartment_locator_properties for this city.`
-    : `Building-average benchmarks only (not per-bedroom-type). Source: apartment_locator_properties (ApartmentIQ). n=${benchmarks.reduce((sum, b) => sum + b.sampleSize, 0)} properties.`;
+    : `Building-average benchmarks only (not per-bedroom-type). Source: apartment_locator_properties (ApartmentIQ). n=${benchmarks.reduce((sum, b) => sum + b.sampleSize, 0)} properties.${classCNote}`;
 
   return { city, state: stateNorm, benchmarks, competitivePosition, dataNote };
 }
