@@ -10,6 +10,7 @@
 import React, { useState, useRef } from 'react';
 import { AlertTriangle, ChevronDown, ChevronRight, Upload } from 'lucide-react';
 import { apiClient } from '../../../../services/api.client';
+import { BT } from '../../bloomberg-ui';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -647,7 +648,7 @@ interface CoStarDataPanelProps {
 }
 
 export const CoStarDataPanel: React.FC<CoStarDataPanelProps> = ({ dealId, onCompsUploaded }) => {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<CompTab>('sale');
 
   const tabs: Array<{ id: CompTab; label: string }> = [
@@ -657,26 +658,27 @@ export const CoStarDataPanel: React.FC<CoStarDataPanelProps> = ({ dealId, onComp
   ];
 
   return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, marginBottom: 16, overflow: 'hidden' }}>
+    <div style={{ border: `1px solid ${BT.border.medium}`, marginBottom: 8, overflow: 'hidden', background: BT.bg.panel }}>
       {/* Collapsible header */}
       <button
         onClick={() => setExpanded(p => !p)}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '10px 14px',
-          background: expanded ? '#eff6ff' : '#f9fafb',
-          border: 'none', borderBottom: expanded ? '1px solid #e5e7eb' : 'none',
+          background: expanded ? BT.bg.active : BT.bg.panel,
+          border: 'none', borderBottom: expanded ? `1px solid ${BT.border.subtle}` : 'none',
+          borderTop: `2px solid ${BT.text.blue}`,
           cursor: 'pointer', textAlign: 'left',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Upload size={14} style={{ color: '#3b82f6' }} />
-          <span style={{ fontWeight: 600, fontSize: 13, color: '#1e3a8a' }}>CoStar Exports</span>
-          <span style={{ fontSize: 11, color: '#6b7280' }}>Sale Comps · Rent Comps · Submarket Performance</span>
+          <Upload size={14} style={{ color: BT.text.cyan }} />
+          <span style={{ fontWeight: 700, fontSize: 11, color: BT.text.primary, fontFamily: BT.font.mono, letterSpacing: 0.5 }}>COSTAR EXPORTS</span>
+          <span style={{ fontSize: 9, color: BT.text.muted, fontFamily: BT.font.mono }}>Sale Comps · Rent Comps · Submarket Performance</span>
         </div>
         {expanded
-          ? <ChevronDown size={14} style={{ color: '#6b7280' }} />
-          : <ChevronRight size={14} style={{ color: '#6b7280' }} />
+          ? <ChevronDown size={14} style={{ color: BT.text.muted }} />
+          : <ChevronRight size={14} style={{ color: BT.text.muted }} />
         }
       </button>
 
