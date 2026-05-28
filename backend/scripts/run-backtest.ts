@@ -226,9 +226,10 @@ async function seedDeal(pool: Pool, seed: S1SeedDef): Promise<string> {
     }
 
     // Seed deal_assumptions with ESTIMATED NOI (not actual).
-    // The platform's ValuationGridService reads da.year1->>'noi' as the
-    // pipeline-derived NOI. The delta to actualNoi in ground truth is the
-    // NOI estimation error surfaced in the backtest report.
+    // ValuationGridService and queryPlatformNoi (below) read year1.noi via a
+    // CASE guard that handles both plain scalars and LayeredValue objects.
+    // The delta to actualNoi in ground truth is the NOI estimation error
+    // surfaced in the backtest report.
     await client.query(
       `INSERT INTO deal_assumptions (deal_id, year1, updated_at)
        VALUES ($1::uuid, $2::jsonb, NOW())
@@ -330,7 +331,12 @@ async function queryGroundTruth(pool: Pool, dealId: string): Promise<GroundTruth
 
 async function queryPlatformNoi(pool: Pool, dealId: string): Promise<number | null> {
   const res = await pool.query(
-    `SELECT year1->>'noi' AS noi FROM deal_assumptions WHERE deal_id = $1::uuid`,
+    `SELECT
+       CASE WHEN jsonb_typeof(year1->'noi') = 'object'
+         THEN (year1->'noi'->>'resolved')
+         ELSE (year1->>'noi')
+       END AS noi
+     FROM deal_assumptions WHERE deal_id = $1::uuid`,
     [dealId]
   );
   if (res.rows.length === 0) return null;
