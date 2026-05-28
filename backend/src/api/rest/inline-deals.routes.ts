@@ -400,11 +400,20 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       );
     }
 
-    // D-DEAL-1 fix (Task #1405 / Wave A): Auto-create linked properties row at deal intake.
-    // Ensures Valuation Grid and other consumers joining via `properties p ON p.deal_id = d.id`
-    // find a subject record immediately after deal creation. Enrichment pipeline fills in
-    // building-level details (city, state, building_class, submarket_id) asynchronously.
-    // Non-fatal: a failure here never blocks the deal creation response.
+    // D-DEAL-1 fix (Task #1405 / Wave A): Guarantee a linked properties row exists for every
+    // new deal so the Valuation Grid join `properties p ON p.deal_id = d.id` always returns
+    // a subject record.  Uses update-or-insert to handle the unique index on address_line1:
+    //
+    //   Step A — UPDATE any existing properties row whose address matches this deal's address
+    //            and whose deal_id is still NULL.  Covers the common case where ApartmentIQ
+    //            seeding or a prior user search already created the row.
+    //
+    //   Step B — If Step A linked nothing (rowCount === 0), INSERT a stub row with
+    //            address_line1 = NULL so the unique index is never triggered.  Enrichment
+    //            pipeline fills in address, city, state, building_class, etc.
+    //
+    // Both steps run inside the same try block; an exception is hard-logged (not swallowed)
+    // but still non-fatal so the deal creation response is never blocked.
     try {
       let propLat: number | null = null;
       let propLng: number | null = null;
@@ -418,25 +427,44 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
           propLat = ring.reduce((s: number, c: [number, number]) => s + c[1], 0) / ring.length;
         }
       }
-      await client.query(
-        `INSERT INTO properties (
-           deal_id, address_line1, units, acquisition_price,
-           lat, lng, latitude, longitude, created_by, ownership_status
-         )
-         SELECT $1, $2, $3, $4, $5, $6, $5, $6, $7, 'pipeline'
-         WHERE NOT EXISTS (SELECT 1 FROM properties WHERE deal_id = $1)`,
-        [
-          row.id,
-          address || null,
-          targetUnits || null,
-          budget || null,
-          propLat,
-          propLng,
-          req.user!.userId,
-        ]
-      );
+
+      // Step A: link by address match (avoids unique-index violation on address_line1)
+      let linked = false;
+      if (address) {
+        const updateRes = await client.query(
+          `UPDATE properties
+           SET deal_id           = $1,
+               units             = COALESCE(units, $2),
+               acquisition_price = COALESCE(acquisition_price, $3),
+               lat               = COALESCE(lat, $4),
+               lng               = COALESCE(lng, $5),
+               latitude          = COALESCE(latitude, $4),
+               longitude         = COALESCE(longitude, $5),
+               updated_at        = NOW()
+           WHERE address_line1 = $6
+             AND deal_id IS NULL
+             AND NOT EXISTS (SELECT 1 FROM properties p2 WHERE p2.deal_id = $1)`,
+          [row.id, targetUnits || null, budget || null, propLat, propLng, address]
+        );
+        linked = (updateRes.rowCount ?? 0) > 0;
+      }
+
+      // Step B: insert stub row if no address match linked anything
+      if (!linked) {
+        await client.query(
+          `INSERT INTO properties (
+             deal_id, address_line1, units, acquisition_price,
+             lat, lng, latitude, longitude, created_by, ownership_status
+           )
+           SELECT $1, NULL, $2, $3, $4, $5, $4, $5, $6, 'pipeline'
+           WHERE NOT EXISTS (SELECT 1 FROM properties WHERE deal_id = $1)`,
+          [row.id, targetUnits || null, budget || null, propLat, propLng, req.user!.userId]
+        );
+      }
     } catch (propErr) {
-      logger.warn(`[DealCreation] Failed to auto-create properties row for deal ${row.id} (non-fatal)`, {
+      // Log as error (not warn) — linkage failure means Valuation Grid will degrade.
+      // Non-fatal: deal creation response must not be blocked by a properties-table issue.
+      logger.error(`[DealCreation] D-DEAL-1: failed to link properties row for deal ${row.id}`, {
         dealId: row.id,
         err: propErr instanceof Error ? propErr.message : String(propErr),
       });
