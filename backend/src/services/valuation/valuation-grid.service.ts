@@ -391,8 +391,16 @@ export class ValuationGridService {
          p.submarket_id                            AS submarket,
          p.acquisition_price                      AS purchase_price,
          da.valuation_override_lv                 AS valuation_override_lv,
-         (da.year1->>'noi')                       AS noi_year1,
-         (da.year1->>'year1_noi')                 AS noi_year1_alt
+         CASE
+           WHEN jsonb_typeof(da.year1->'noi') = 'object'
+             THEN (da.year1->'noi'->>'resolved')
+           ELSE (da.year1->>'noi')
+         END                                      AS noi_year1,
+         CASE
+           WHEN jsonb_typeof(da.year1->'year1_noi') = 'object'
+             THEN (da.year1->'year1_noi'->>'resolved')
+           ELSE (da.year1->>'year1_noi')
+         END                                      AS noi_year1_alt
        FROM deals d
        LEFT JOIN properties p ON p.deal_id = d.id
        LEFT JOIN deal_assumptions da ON da.deal_id = d.id

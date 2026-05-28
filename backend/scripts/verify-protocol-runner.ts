@@ -1054,8 +1054,10 @@ async function f9Batch3(): Promise<DispatchResult> {
     checks.push(await mkColumnCheck('deal_assumptions', col));
   }
 
-  // L1: assumptions_hash column (Task #493 cache)
-  checks.push(await mkColumnCheck('deal_assumptions', 'assumptions_hash', { note: 'Run 20260502_assumptions_hash.sql migration' }));
+  // L1: assumptions_hash column (Task #493 cache) — lives on deal_financial_models,
+  // not deal_assumptions. The migration 20260502_assumptions_hash.sql correctly targets
+  // deal_financial_models; the original check had the wrong table name.
+  checks.push(await mkColumnCheck('deal_financial_models', 'assumptions_hash', { note: 'Run 20260502_assumptions_hash.sql migration' }));
 
   // L1: valuation_override_lv column (20260528)
   checks.push(await mkColumnCheck('deal_assumptions', 'valuation_override_lv'));
@@ -1074,8 +1076,18 @@ async function f9Batch3(): Promise<DispatchResult> {
   });
 
   // L2: year1 JSONB is populated (required for Valuation Grid NOI method)
+  // year1.noi may be stored as a plain scalar OR as a LayeredValue object
+  // (with a 'resolved' sub-field). Handle both cases.
   const year1Rows = await dbQuery(
-    `SELECT (year1->>'noi') AS noi, (year1->>'year1_noi') AS noi_alt
+    `SELECT
+       CASE WHEN jsonb_typeof(year1->'noi') = 'object'
+         THEN (year1->'noi'->>'resolved')
+         ELSE (year1->>'noi')
+       END AS noi,
+       CASE WHEN jsonb_typeof(year1->'year1_noi') = 'object'
+         THEN (year1->'year1_noi'->>'resolved')
+         ELSE (year1->>'year1_noi')
+       END AS noi_alt
      FROM deal_assumptions WHERE deal_id = $1`,
     [BISHOP_DEAL_ID],
   );
