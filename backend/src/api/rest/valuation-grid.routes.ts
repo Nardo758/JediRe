@@ -40,12 +40,32 @@ const router = Router();
 /**
  * GET /api/v1/deals/:dealId/valuation-grid
  * Returns the full multi-method valuation grid computation.
+ *
+ * Query params:
+ *   as_of — optional ISO date string (YYYY-MM-DD). When supplied, all comp
+ *            and benchmark queries are restricted to data dated before this date,
+ *            enabling historical backtesting ("what would we have paid in 2020?").
+ *            The response includes an `asOf` field echoing the date used.
  */
 router.get('/deals/:dealId/valuation-grid', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
     const userId = req.user?.userId;
     const pool = getPool();
+
+    // Parse optional as_of query param — must be a valid YYYY-MM-DD date.
+    let asOf: Date | undefined;
+    const asOfRaw = typeof req.query.as_of === 'string' ? req.query.as_of.trim() : '';
+    if (asOfRaw) {
+      const parsed = new Date(asOfRaw);
+      if (isNaN(parsed.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid as_of date: "${asOfRaw}". Expected format: YYYY-MM-DD`,
+        });
+      }
+      asOf = parsed;
+    }
 
     // Verify deal ownership (owner or admin) before computing
     const ownerCheck = await pool.query(
@@ -57,8 +77,8 @@ router.get('/deals/:dealId/valuation-grid', requireAuth, async (req: Authenticat
     }
 
     const svc = new ValuationGridService(pool);
-    const result = await svc.compute(dealId);
-    res.json({ success: true, data: result });
+    const result = await svc.compute(dealId, asOf ? { asOf } : undefined);
+    res.json({ success: true, data: { ...result, asOf: asOf?.toISOString().slice(0, 10) ?? null } });
   } catch (err: any) {
     console.error('[valuation-grid] compute error:', err);
     res.status(err.message?.includes('not found') ? 404 : 500).json({
