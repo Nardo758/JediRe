@@ -54,6 +54,8 @@ export interface CompTransaction {
   holding_period_months: number | null;
   distance_miles: number;
   source?: string;
+  /** Both source origins when this row was merged during CoStar dedup (D-COSTAR-3) */
+  source_labels?: string[] | null;
   relevance_score?: number;
   relevance_tier?: string;
   relevance_factors?: Record<string, number>;
@@ -155,6 +157,7 @@ export class CompSetService {
         t.buyer_type,
         NULL::integer                     AS holding_period_months,
         t.source,
+        t.source_labels,
         ROUND((
           point(t.longitude::float, t.latitude::float)
           <@> point($2::float, $1::float)
@@ -199,6 +202,7 @@ export class CompSetService {
       holding_period_months: null,
       distance_miles: parseFloat(row.distance_miles),
       source: row.source,
+      source_labels: row.source_labels ?? null,
     }));
 
     // 4b. Apply relevance scoring — re-rank pool by composite score
@@ -382,6 +386,7 @@ export class CompSetService {
         COALESCE(mc.buyer, rt.buyer_name)                AS grantee_name,
         mc.buyer_type                                    AS buyer_type,
         mc.source,
+        mc.source_labels,
         scm.sort_order,
         0                                                AS distance_miles
       FROM sale_comp_set_members scm
@@ -409,6 +414,7 @@ export class CompSetService {
       holding_period_months: null,
       distance_miles: parseFloat(row.distance_miles),
       source: row.source,
+      source_labels: row.source_labels ?? null,
     }));
 
     return {
@@ -472,6 +478,8 @@ export class CompSetService {
           COALESCE(mc.cap_rate, rt.implied_cap_rate)        AS implied_cap_rate,
           COALESCE(mc.buyer, rt.buyer_name)                 AS grantee_name,
           COALESCE(mc.buyer_type, rt.buyer_type)            AS buyer_type,
+          mc.source,
+          mc.source_labels,
           scm.sort_order,
           0                                                 AS distance_miles
         FROM sale_comp_set_members scm
@@ -498,6 +506,8 @@ export class CompSetService {
         buyer_type: row.buyer_type ?? '',
         holding_period_months: null,
         distance_miles: parseFloat(row.distance_miles),
+        source: row.source,
+        source_labels: row.source_labels ?? null,
       }));
 
       const pricesPerUnit = comps.map(c => c.price_per_unit).sort((a, b) => a - b);

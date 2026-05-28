@@ -255,6 +255,8 @@ interface SaleCompRow {
   latitude: number | null;
   longitude: number | null;
   source: string;
+  /** CoStar Property ID extracted from export — used for tier-1 parcel dedup */
+  source_id: string | null;
   qualified: boolean;
   file_id: number | null;
   data_as_of: string | null;
@@ -308,6 +310,12 @@ function mapSaleRow(row: ParsedRow, fileId: number | null, dataAsOf?: string): {
       latitude: parseNum(colVal(row, 'Latitude', 'Lat')),
       longitude: parseNum(colVal(row, 'Longitude', 'Long', 'Lng')),
       source: 'costar_upload',
+      // CoStar exports their internal Property ID — use for tier-1 parcel dedup
+      source_id: colVal(
+        row,
+        'CoStar Property ID', 'Property ID', 'PropertyID',
+        'CoStar ID', 'Building ID', 'Parcel ID', 'APN',
+      ) ?? null,
       qualified: true,
       file_id: fileId,
       data_as_of: dataAsOf ?? null,
@@ -665,21 +673,27 @@ export async function processCoStarUpload(
         }
         // Cross-platform dedup: check against existing platform records (D-COSTAR-3)
         const dedupCandidate: DedupCandidate = {
-          address:     sc.address,
-          city:        sc.city,
-          state:       sc.state,
-          sale_date:   sc.sale_date,
-          latitude:    sc.latitude,
-          longitude:   sc.longitude,
-          source_id:   null,
-          submarket:   sc.submarket,
-          asset_class: sc.asset_class,
-          cap_rate:    sc.cap_rate,
-          units:       sc.units,
-          sqft:        sc.sqft,
-          year_built:  sc.year_built,
-          msa:         sc.msa,
-          county:      sc.county,
+          address:         sc.address,
+          city:            sc.city,
+          state:           sc.state,
+          sale_date:       sc.sale_date,
+          latitude:        sc.latitude,
+          longitude:       sc.longitude,
+          source_id:       sc.source_id,
+          data_as_of:      sc.data_as_of,
+          submarket:       sc.submarket,
+          asset_class:     sc.asset_class,
+          cap_rate:        sc.cap_rate,
+          units:           sc.units,
+          sqft:            sc.sqft,
+          year_built:      sc.year_built,
+          msa:             sc.msa,
+          county:          sc.county,
+          sale_price:      sc.sale_price,
+          price_per_unit:  sc.price_per_unit,
+          price_per_sqft:  sc.price_per_sqft,
+          buyer:           sc.buyer,
+          seller:          sc.seller,
         };
         const dedup = await checkSaleCompDedup(pool, dedupCandidate);
         if (dedup.matched && dedup.existingId) {
@@ -695,17 +709,17 @@ export async function processCoStarUpload(
              (id, property_name, address, city, state, zip, county, msa, submarket,
               property_type, units, sqft, year_built, asset_class, stories,
               sale_date, sale_price, price_per_unit, price_per_sqft, cap_rate, buyer, seller,
-              latitude, longitude, source, qualified, file_id, deal_id, data_as_of, created_at)
+              latitude, longitude, source, source_id, qualified, file_id, deal_id, data_as_of, created_at)
            VALUES
              ($1,$2,$3,$4,$5,$6,$7,$8,$9,
               $10,$11,$12,$13,$14,$15,
               $16,$17,$18,$19,$20,$21,$22,
-              $23,$24,$25,$26,$27,$28,$29,NOW())`,
+              $23,$24,$25,$26,$27,$28,$29,$30,NOW())`,
           [
             sc.id, sc.property_name, sc.address, sc.city, sc.state, sc.zip, sc.county, sc.msa, sc.submarket,
             sc.property_type, sc.units, sc.sqft, sc.year_built, sc.asset_class, sc.stories,
             sc.sale_date, sc.sale_price, sc.price_per_unit, sc.price_per_sqft, sc.cap_rate, sc.buyer, sc.seller,
-            sc.latitude, sc.longitude, sc.source, sc.qualified, sc.file_id, dealId, sc.data_as_of,
+            sc.latitude, sc.longitude, sc.source, sc.source_id, sc.qualified, sc.file_id, dealId, sc.data_as_of,
           ]
         );
         inserted++;
@@ -1182,21 +1196,27 @@ export async function commitCoStarUpload(
         }
         // Cross-platform dedup: check against existing platform records (D-COSTAR-3)
         const dedupCandidate: DedupCandidate = {
-          address:     comp.address,
-          city:        comp.city,
-          state:       comp.state,
-          sale_date:   comp.sale_date,
-          latitude:    comp.latitude,
-          longitude:   comp.longitude,
-          source_id:   null,
-          submarket:   comp.submarket,
-          asset_class: comp.asset_class,
-          cap_rate:    comp.cap_rate,
-          units:       comp.units,
-          sqft:        comp.sqft,
-          year_built:  comp.year_built,
-          msa:         comp.msa,
-          county:      comp.county,
+          address:         comp.address,
+          city:            comp.city,
+          state:           comp.state,
+          sale_date:       comp.sale_date,
+          latitude:        comp.latitude,
+          longitude:       comp.longitude,
+          source_id:       comp.source_id,
+          data_as_of:      comp.data_as_of,
+          submarket:       comp.submarket,
+          asset_class:     comp.asset_class,
+          cap_rate:        comp.cap_rate,
+          units:           comp.units,
+          sqft:            comp.sqft,
+          year_built:      comp.year_built,
+          msa:             comp.msa,
+          county:          comp.county,
+          sale_price:      comp.sale_price,
+          price_per_unit:  comp.price_per_unit,
+          price_per_sqft:  comp.price_per_sqft,
+          buyer:           comp.buyer,
+          seller:          comp.seller,
         };
         const dedup = await checkSaleCompDedup(pool, dedupCandidate);
         if (dedup.matched && dedup.existingId) {
@@ -1212,17 +1232,17 @@ export async function commitCoStarUpload(
              (id, property_name, address, city, state, zip, county, msa, submarket,
               property_type, units, sqft, year_built, asset_class, stories,
               sale_date, sale_price, price_per_unit, price_per_sqft, cap_rate, buyer, seller,
-              latitude, longitude, source, qualified, file_id, deal_id, data_as_of, created_at)
+              latitude, longitude, source, source_id, qualified, file_id, deal_id, data_as_of, created_at)
            VALUES
              ($1,$2,$3,$4,$5,$6,$7,$8,$9,
               $10,$11,$12,$13,$14,$15,
               $16,$17,$18,$19,$20,$21,$22,
-              $23,$24,$25,$26,$27,$28,$29,NOW())`,
+              $23,$24,$25,$26,$27,$28,$29,$30,NOW())`,
           [
             comp.id, comp.property_name, comp.address, comp.city, comp.state, comp.zip, comp.county, comp.msa, comp.submarket,
             comp.property_type, comp.units, comp.sqft, comp.year_built, comp.asset_class, comp.stories,
             comp.sale_date, comp.sale_price, comp.price_per_unit, comp.price_per_sqft, comp.cap_rate, comp.buyer, comp.seller,
-            comp.latitude, comp.longitude, comp.source, comp.qualified, comp.file_id, dealId, comp.data_as_of,
+            comp.latitude, comp.longitude, comp.source, comp.source_id, comp.qualified, comp.file_id, dealId, comp.data_as_of,
           ]
         );
         inserted++;

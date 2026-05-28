@@ -43,6 +43,8 @@ interface CompTransaction {
   buyer_type: string;
   distance_miles: number;
   source?: string;
+  /** Both source origins when this comp was merged during CoStar dedup (D-COSTAR-3) */
+  source_labels?: string[] | null;
   relevance_score?: number;
   relevance_tier?: string;
   relevance_factors?: CompRelevanceFactors;
@@ -478,7 +480,13 @@ export default function CompsModule({
             <div className="text-2xl font-bold text-gray-300">{compSet.comp_count}</div>
             <div className="text-xs text-gray-500 mt-1">Sales in last 24 mo</div>
             {compSet.comps.length > 0 && (() => {
-              const costarCount = compSet.comps.filter(c => c.source === 'costar_upload').length;
+              // Count comps with any CoStar involvement:
+              //   pure CoStar (source='costar_upload') OR
+              //   merged platform record (source_labels includes 'costar_upload')
+              const costarCount = compSet.comps.filter(c =>
+                c.source === 'costar_upload' ||
+                (c.source_labels && c.source_labels.includes('costar_upload'))
+              ).length;
               const platformCount = compSet.comps.length - costarCount;
               if (costarCount === 0) return null;
               return (
