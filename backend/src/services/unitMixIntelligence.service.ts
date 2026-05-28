@@ -23,11 +23,11 @@ interface CompResult {
 }
 
 export async function getCompSet(pool: Pool, dealId: string, tradeAreaId?: string): Promise<CompResult[]> {
-  // ── Prefer active deal_comp_sets if they exist (user-curated selections) ──
+  // ── Prefer active deal_rent_comp_sets if they exist (user-curated selections) ──
   const activeComps = await pool.query(`
     SELECT id, comp_name AS name, comp_property_address AS address,
            asset_class AS class, year_built AS built_year, units AS total_units, NULL AS source_url
-    FROM deal_comp_sets
+    FROM deal_rent_comp_sets
     WHERE deal_id = $1 AND status = 'active'
     ORDER BY match_score DESC NULLS LAST
   `, [dealId]);
@@ -44,7 +44,7 @@ export async function getCompSet(pool: Pool, dealId: string, tradeAreaId?: strin
       WHERE LOWER(cp.address) = ANY($1) AND cp.is_subject = false
     `, [addresses]);
 
-    // Merge: for addresses found in comp_properties, use those; for others, use deal_comp_sets row
+    // Merge: for addresses found in comp_properties, use those; for others, use deal_rent_comp_sets row
     const cpByAddr = new Map<string, any>();
     for (const r of cpResult.rows) cpByAddr.set(r.address.toLowerCase(), r);
 

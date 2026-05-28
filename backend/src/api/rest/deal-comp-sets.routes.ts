@@ -15,7 +15,7 @@ router.get('/:dealId/comp-set', requireAuth, async (req: AuthenticatedRequest, r
       SELECT 
         cs.*,
         d.name as deal_name
-      FROM deal_comp_sets cs
+      FROM deal_rent_comp_sets cs
       JOIN deals d ON d.id = cs.deal_id
       WHERE cs.deal_id = $1 AND cs.status = 'active'
       ORDER BY cs.match_score DESC NULLS LAST, cs.distance_miles ASC NULLS LAST
@@ -44,7 +44,7 @@ router.post('/:dealId/comp-set/discover', requireAuth, async (req: Authenticated
 
     const pool = getPool();
     const result = await pool.query(`
-      SELECT * FROM deal_comp_sets 
+      SELECT * FROM deal_rent_comp_sets 
       WHERE deal_id = $1 AND status = 'active'
       ORDER BY match_score DESC NULLS LAST
     `, [dealId]);
@@ -66,7 +66,7 @@ router.post('/:dealId/comp-set/discover', requireAuth, async (req: Authenticated
  * Gap 3: Apt Locator Matches → Competitive Set
  * Discovers apartment_locator_properties within radius and promotes them into:
  *   - competitive_sets (M27 cash flow agent rent benchmarking)
- *   - deal_comp_sets   (deal workspace UI)
+ *   - deal_rent_comp_sets   (deal workspace UI)
  *   - deal_assumptions.avg_rent_per_unit (market rent calibration)
  * Body: { radiusMiles?: number, maxComps?: number }
  */
@@ -99,23 +99,23 @@ router.post('/:dealId/comp-set', requireAuth, async (req: AuthenticatedRequest, 
     }
 
     const result = await pool.query(`
-      INSERT INTO deal_comp_sets (
+      INSERT INTO deal_rent_comp_sets (
         deal_id, comp_property_address, comp_name, source, status,
         units, year_built, stories, asset_class,
         avg_rent, occupancy, google_rating, google_review_count, notes
       ) VALUES ($1, $2, $3, 'manual', 'active', $4, $5, $6, $7, $8, $9, $10, $11, $12)
       ON CONFLICT (deal_id, comp_property_address) DO UPDATE SET
         status = 'active',
-        comp_name = COALESCE(EXCLUDED.comp_name, deal_comp_sets.comp_name),
-        units = COALESCE(EXCLUDED.units, deal_comp_sets.units),
-        year_built = COALESCE(EXCLUDED.year_built, deal_comp_sets.year_built),
-        stories = COALESCE(EXCLUDED.stories, deal_comp_sets.stories),
-        asset_class = COALESCE(EXCLUDED.asset_class, deal_comp_sets.asset_class),
-        avg_rent = COALESCE(EXCLUDED.avg_rent, deal_comp_sets.avg_rent),
-        occupancy = COALESCE(EXCLUDED.occupancy, deal_comp_sets.occupancy),
-        google_rating = COALESCE(EXCLUDED.google_rating, deal_comp_sets.google_rating),
-        google_review_count = COALESCE(EXCLUDED.google_review_count, deal_comp_sets.google_review_count),
-        notes = COALESCE(EXCLUDED.notes, deal_comp_sets.notes),
+        comp_name = COALESCE(EXCLUDED.comp_name, deal_rent_comp_sets.comp_name),
+        units = COALESCE(EXCLUDED.units, deal_rent_comp_sets.units),
+        year_built = COALESCE(EXCLUDED.year_built, deal_rent_comp_sets.year_built),
+        stories = COALESCE(EXCLUDED.stories, deal_rent_comp_sets.stories),
+        asset_class = COALESCE(EXCLUDED.asset_class, deal_rent_comp_sets.asset_class),
+        avg_rent = COALESCE(EXCLUDED.avg_rent, deal_rent_comp_sets.avg_rent),
+        occupancy = COALESCE(EXCLUDED.occupancy, deal_rent_comp_sets.occupancy),
+        google_rating = COALESCE(EXCLUDED.google_rating, deal_rent_comp_sets.google_rating),
+        google_review_count = COALESCE(EXCLUDED.google_review_count, deal_rent_comp_sets.google_review_count),
+        notes = COALESCE(EXCLUDED.notes, deal_rent_comp_sets.notes),
         source = 'manual',
         updated_at = NOW()
       RETURNING *
@@ -146,14 +146,14 @@ router.get('/:dealId/comp-set/discover-tiered', requireAuth, async (req: Authent
 
     // Auto-seed defaults: if no active comps exist yet, insert top 10 trade-area comps
     const existing = await pool.query(
-      `SELECT id FROM deal_comp_sets WHERE deal_id = $1 AND status = 'active' LIMIT 1`,
+      `SELECT id FROM deal_rent_comp_sets WHERE deal_id = $1 AND status = 'active' LIMIT 1`,
       [dealId]
     );
     if (existing.rows.length === 0 && result.trade_area.length > 0) {
       const defaults = result.trade_area.slice(0, 8);
       for (const comp of defaults) {
         await pool.query(`
-          INSERT INTO deal_comp_sets (
+          INSERT INTO deal_rent_comp_sets (
             deal_id, comp_property_address, comp_name, source, status,
             units, year_built, stories, asset_class,
             distance_miles, match_score, geographic_tier, avg_rent, occupancy, lat, lng
@@ -169,7 +169,7 @@ router.get('/:dealId/comp-set/discover-tiered', requireAuth, async (req: Authent
       }
       // Re-query to get actual IDs and update in_comp_set + comp_set_id on returned comps
       const seededRows = await pool.query(
-        `SELECT id, LOWER(comp_property_address) AS addr FROM deal_comp_sets WHERE deal_id = $1 AND status = 'active'`,
+        `SELECT id, LOWER(comp_property_address) AS addr FROM deal_rent_comp_sets WHERE deal_id = $1 AND status = 'active'`,
         [dealId]
       );
       const idByAddr = new Map<string, string>();
@@ -219,21 +219,21 @@ router.post('/:dealId/comp-set/add-to-set', requireAuth, async (req: Authenticat
     }
 
     const result = await pool.query(`
-      INSERT INTO deal_comp_sets (
+      INSERT INTO deal_rent_comp_sets (
         deal_id, comp_property_address, comp_name, source, status,
         units, year_built, stories, asset_class,
         distance_miles, match_score, geographic_tier
       ) VALUES ($1, $2, $3, 'manual', 'active', $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT (deal_id, comp_property_address) DO UPDATE SET
         status = 'active',
-        comp_name = COALESCE(EXCLUDED.comp_name, deal_comp_sets.comp_name),
-        units = COALESCE(EXCLUDED.units, deal_comp_sets.units),
-        year_built = COALESCE(EXCLUDED.year_built, deal_comp_sets.year_built),
-        stories = COALESCE(EXCLUDED.stories, deal_comp_sets.stories),
-        asset_class = COALESCE(EXCLUDED.asset_class, deal_comp_sets.asset_class),
-        distance_miles = COALESCE(EXCLUDED.distance_miles, deal_comp_sets.distance_miles),
-        match_score = COALESCE(EXCLUDED.match_score, deal_comp_sets.match_score),
-        geographic_tier = COALESCE(EXCLUDED.geographic_tier, deal_comp_sets.geographic_tier),
+        comp_name = COALESCE(EXCLUDED.comp_name, deal_rent_comp_sets.comp_name),
+        units = COALESCE(EXCLUDED.units, deal_rent_comp_sets.units),
+        year_built = COALESCE(EXCLUDED.year_built, deal_rent_comp_sets.year_built),
+        stories = COALESCE(EXCLUDED.stories, deal_rent_comp_sets.stories),
+        asset_class = COALESCE(EXCLUDED.asset_class, deal_rent_comp_sets.asset_class),
+        distance_miles = COALESCE(EXCLUDED.distance_miles, deal_rent_comp_sets.distance_miles),
+        match_score = COALESCE(EXCLUDED.match_score, deal_rent_comp_sets.match_score),
+        geographic_tier = COALESCE(EXCLUDED.geographic_tier, deal_rent_comp_sets.geographic_tier),
         source = 'manual',
         updated_at = NOW()
       RETURNING *
@@ -264,7 +264,7 @@ router.delete('/:dealId/comp-set/:compId', requireAuth, async (req: Authenticate
     }
 
     const result = await pool.query(`
-      UPDATE deal_comp_sets 
+      UPDATE deal_rent_comp_sets 
       SET status = 'removed', updated_at = NOW()
       WHERE id = $1 AND deal_id = $2
     `, [compId, dealId]);
@@ -309,7 +309,7 @@ router.patch('/:dealId/comp-set/:compId', requireAuth, async (req: Authenticated
 
     values.push(compId, dealId);
     const result = await pool.query(`
-      UPDATE deal_comp_sets 
+      UPDATE deal_rent_comp_sets 
       SET ${setClauses.join(', ')}
       WHERE id = $${idx} AND deal_id = $${idx + 1}
       RETURNING *

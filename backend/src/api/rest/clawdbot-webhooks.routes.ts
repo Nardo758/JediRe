@@ -1008,7 +1008,7 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
                   distance_miles, match_score, year_built, stories, units,
                   asset_class, avg_rent, occupancy, google_rating,
                   google_review_count, notes, created_at
-           FROM deal_comp_sets
+           FROM deal_rent_comp_sets
            WHERE deal_id = $1 AND status = 'active'
            ORDER BY match_score DESC NULLS LAST, distance_miles ASC NULLS LAST`,
           [params.dealId]

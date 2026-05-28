@@ -84,7 +84,7 @@ const queryDealData: SkillDefinition = {
 
         case 'comps':
           const compsRes = await query(
-            `SELECT * FROM deal_comp_sets WHERE deal_id = $1`,
+            `SELECT * FROM deal_rent_comp_sets WHERE deal_id = $1`,
             [dealId]
           );
           data = compsRes.rows;

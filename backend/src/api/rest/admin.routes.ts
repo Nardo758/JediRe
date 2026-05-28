@@ -945,7 +945,7 @@ router.delete('/deals/:id/force', requireAdminAuth, async (req: AuthenticatedReq
       'development_scenarios', 'deal_activity', 'deal_notes', 'deal_documents',
       'deal_contacts', 'deal_alerts', 'deal_risks', 'deal_key_dates',
       'deal_financial_models', 'deal_designs', 'deal_pipeline',
-      'deal_comp_sets', 'deal_comparable_properties', 'deal_shares',
+      'deal_rent_comp_sets', 'deal_comparable_properties', 'deal_shares',
       'deal_emails', 'deal_annotations', 'deal_decisions',
       'deal_notifications', 'deal_monthly_actuals', 'deal_rate_sheets',
       'deal_capsules', 'deal_modules', 'deal_properties',

@@ -279,7 +279,7 @@ async function buildLvInputs(
   try {
     const rentResult = await pool.query(
       `SELECT avg_rent
-       FROM deal_comp_sets
+       FROM deal_rent_comp_sets
        WHERE deal_id = $1
        ORDER BY created_at DESC
        LIMIT 1`,
