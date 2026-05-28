@@ -497,9 +497,20 @@ export class ValuationGridService {
     const snapAvgOcc  = snap?.avgOccupancy && snap.avgOccupancy > 0 ? snap.avgOccupancy : 0.93;
     const SYNTH_OPEX  = 0.42;
 
+    // Quality-tier multipliers: C1 (primary, arm's-length, close) → M2 (peripheral)
+    const TIER_FACTOR: Record<string, number> = { C1: 1.00, C2: 0.80, M1: 0.60, M2: 0.40 };
+
     const now = Date.now();
 
-    interface WeightedCap { rate: number; weight: number; synthesized: boolean }
+    interface WeightedCap {
+      rate: number;
+      weight: number;
+      synthesized: boolean;
+      tier: string;
+      stalenessWeight: number;
+      tierFactor: number;
+      label: string;
+    }
     const weightedCaps: WeightedCap[] = [];
     let directCount = 0;
     let synthesizedCount = 0;
@@ -509,11 +520,16 @@ export class ValuationGridService {
       const ageMonths = saleDate > 0 ? (now - saleDate) / (1000 * 60 * 60 * 24 * 30.44) : 999;
 
       // Staleness weight
-      const weight =
+      const stalenessWeight =
         ageMonths <= 12 ? 1.00
         : ageMonths <= 24 ? 0.85
         : ageMonths <= 36 ? 0.70
         : 0.50;
+
+      // Quality-tier weight from comp relevance scoring (C1 > C2 > M1 > M2)
+      const tier: string = (comp as any).relevance_tier ?? 'M2';
+      const tierFactor = TIER_FACTOR[tier] ?? 0.40;
+      const weight = stalenessWeight * tierFactor;
 
       let capRate: number;
       let synthesized = false;
@@ -535,22 +551,25 @@ export class ValuationGridService {
 
       // Sanity bounds: 2% – 20%
       if (capRate < 0.02 || capRate > 0.20) continue;
-      weightedCaps.push({ rate: capRate, weight, synthesized });
+
+      const compLabel = (comp as any).property_address ?? comp.id ?? 'unknown';
+      weightedCaps.push({ rate: capRate, weight, synthesized, tier, stalenessWeight, tierFactor, label: compLabel });
     }
 
-    if (weightedCaps.length < 2) {
+    // Minimum 3 valid data points required for a reliable cap rate band
+    if (weightedCaps.length < 3) {
       return this.insufficientMethod(
         METHOD_ID,
         'Comp-Anchored Cap Rate',
         'bottom_up',
-        `Insufficient cap rate data from comp set (${weightedCaps.length} valid data points — need ≥2).`,
+        `Insufficient cap rate data from comp set (${weightedCaps.length} valid data points — need ≥3).`,
         synthesizedCount > 0
           ? [`${synthesizedCount} of ${compSet.comps.length} comps had no reported cap rate and were synthesized using market averages (avg_rent=$${snapAvgRent.toFixed(0)}, occ=${(snapAvgOcc * 100).toFixed(0)}%).`]
           : []
       );
     }
 
-    // Weighted percentile helper
+    // Weighted percentile helper (weight = staleness × tier factor)
     const sorted = [...weightedCaps].sort((a, b) => a.rate - b.rate);
     const totalWeight = sorted.reduce((s, x) => s + x.weight, 0);
     const weightedPercentile = (p: number): number => {
@@ -579,6 +598,7 @@ export class ValuationGridService {
     const n = weightedCaps.length;
     const fmtCap = (v: number) => `${(v * 100).toFixed(2)}%`;
 
+    // Aggregate evidence lines
     evidence.push(
       { label: 'Stabilized NOI', value: fmt$(noi), source: subject.noiSource },
       { label: 'Comp Pool', value: `${n} data points (${directCount} direct, ${synthesizedCount} synthesized)` },
@@ -587,6 +607,15 @@ export class ValuationGridService {
       { label: 'Implied Cap P75', value: fmtCap(capP75), source: 'market_sale_comps' },
       { label: 'Indicated Value P50', value: fmt$(valP50) }
     );
+
+    // Per-comp detail: implied cap rate, composite weight, tier (for UI breakdown + audit)
+    for (const wc of sorted) {
+      evidence.push({
+        label: `Comp: ${wc.label}`,
+        value: `${fmtCap(wc.rate)} | wt=${wc.weight.toFixed(2)} (stale=${wc.stalenessWeight.toFixed(2)}×tier=${wc.tierFactor.toFixed(2)}) | ${wc.synthesized ? 'synthesized' : 'direct'} | ${wc.tier}`,
+        source: 'market_sale_comps',
+      });
+    }
 
     if (synthesizedCount > 0) {
       warnings.push(
@@ -598,12 +627,12 @@ export class ValuationGridService {
       warnings.push(`Thin comp pool (n=${n}) — cap rate band may not represent the submarket. Consider widening radius.`);
     }
 
-    // Confidence: base on direct-cap-rate count (synthesized penalised)
+    // Confidence: base on direct-cap-rate count (synthesized penalised, tier-weighted)
     const effectiveN = directCount + synthesizedCount * 0.5;
     const confidence: ConfidenceLevel =
       effectiveN >= 10 ? this.compConfidence(n, subject.state, subject.city)
       : effectiveN >= 5  ? 'MEDIUM'
-      : effectiveN >= 2  ? 'LOW'
+      : effectiveN >= 3  ? 'LOW'
       : 'INSUFFICIENT';
 
     return {
