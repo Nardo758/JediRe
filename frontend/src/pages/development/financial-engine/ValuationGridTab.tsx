@@ -90,6 +90,8 @@ interface CompCriteria {
   maxAgeMonths: number;
   minUnits: number;
   maxUnits: number;
+  minYearBuilt: number;
+  maxYearBuilt: number;
   propertyClasses: string[];
   excludedCompIds: string[];
 }
@@ -641,6 +643,8 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
           maxAgeMonths: c.maxAgeMonths,
           minUnits: c.minUnits,
           maxUnits: c.maxUnits,
+          minYearBuilt: c.minYearBuilt,
+          maxYearBuilt: c.maxYearBuilt,
           propertyClasses: c.propertyClasses,
         });
       } else {
@@ -836,6 +840,35 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
               })}
             </div>
           </div>
+          {/* Vintage band */}
+          <div>
+            <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.muted, marginBottom: 3 }}>MIN YR BUILT</div>
+            <input
+              type="number" min={1900} max={2100} step={5}
+              value={criteriaForm.minYearBuilt ?? data.criteria.minYearBuilt ?? 0}
+              onChange={e => setCriteriaForm(f => ({ ...f, minYearBuilt: parseInt(e.target.value) || 0 }))}
+              placeholder="0"
+              style={{
+                fontFamily: MONO, fontSize: 11, width: 70,
+                background: BT.bg.input ?? BT.bg.panel, border: `1px solid ${BT.border.normal}`,
+                borderRadius: 3, padding: '3px 6px', color: BT.text.primary,
+              }}
+            />
+          </div>
+          <div>
+            <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.muted, marginBottom: 3 }}>MAX YR BUILT</div>
+            <input
+              type="number" min={1900} max={2100} step={5}
+              value={criteriaForm.maxYearBuilt ?? data.criteria.maxYearBuilt ?? 9999}
+              onChange={e => setCriteriaForm(f => ({ ...f, maxYearBuilt: parseInt(e.target.value) || 9999 }))}
+              placeholder="9999"
+              style={{
+                fontFamily: MONO, fontSize: 11, width: 70,
+                background: BT.bg.input ?? BT.bg.panel, border: `1px solid ${BT.border.normal}`,
+                borderRadius: 3, padding: '3px 6px', color: BT.text.primary,
+              }}
+            />
+          </div>
           <button
             onClick={saveCriteria}
             disabled={savingCriteria}
@@ -866,11 +899,11 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
           {/* Column headers */}
           <div style={{
             display: 'grid', padding: '5px 14px',
-            gridTemplateColumns: '2fr 60px 70px 80px 80px 80px 80px 60px',
+            gridTemplateColumns: '2fr 60px 70px 80px 80px 80px 80px 40px 55px',
             gap: 8, borderBottom: `1px solid ${BT.border.normal}`,
             backgroundColor: BT.bg.panel,
           }}>
-            {['ADDRESS', 'UNITS', 'YR BUILT', 'SALE DATE', 'SALE PRICE', 'PPU', 'CAP RATE', 'AGE'].map(h => (
+            {['ADDRESS', 'UNITS', 'YR BUILT', 'SALE DATE', 'SALE PRICE', 'PPU', 'CAP RATE', 'AGE', ''].map(h => (
               <div key={h} style={{ fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.muted }}>{h}</div>
             ))}
           </div>
@@ -940,6 +973,13 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
   );
 }
 
+const TIER_COLOR: Record<string, string> = {
+  C1: '#06b6d4',  // cyan
+  C2: '#22c55e',  // green
+  M1: '#f59e0b',  // amber
+  M2: '#64748b',  // muted slate
+};
+
 function CompRow({ comp, saving, onToggle, onAdd, isCandidate }: {
   comp: CompReviewItem;
   saving: boolean;
@@ -949,11 +989,12 @@ function CompRow({ comp, saving, onToggle, onAdd, isCandidate }: {
 }) {
   const fmtDate = (d: string | null) => d ? d.slice(0, 7) : '—';
   const fmtCap = (v: number | null) => v == null ? '—' : `${(v * 100).toFixed(2)}%`;
+  const tierColor = comp.relevance_tier ? (TIER_COLOR[comp.relevance_tier] ?? BT.text.muted) : null;
 
   return (
     <div style={{
       display: 'grid', padding: '6px 14px',
-      gridTemplateColumns: '2fr 60px 70px 80px 80px 80px 80px 60px',
+      gridTemplateColumns: '2fr 60px 70px 80px 80px 80px 80px 40px 55px',
       gap: 8, alignItems: 'center',
       borderBottom: `1px solid ${BT.border.dim}`,
       backgroundColor: comp.excluded
@@ -968,6 +1009,15 @@ function CompRow({ comp, saving, onToggle, onAdd, isCandidate }: {
         </div>
         <div style={{ display: 'flex', gap: 4, marginTop: 2, alignItems: 'center' }}>
           <StalenessChip label={comp.staleness_label} />
+          {comp.relevance_tier && tierColor && (
+            <span style={{
+              fontFamily: MONO, fontSize: 7, letterSpacing: 1,
+              color: tierColor, border: `1px solid ${tierColor}44`,
+              borderRadius: 2, padding: '0px 3px',
+            }} title={`Relevance tier: ${comp.relevance_tier}${comp.relevance_score != null ? ` (score: ${comp.relevance_score.toFixed(2)})` : ''}`}>
+              {comp.relevance_tier}
+            </span>
+          )}
           {comp.manually_added && (
             <span style={{
               fontFamily: MONO, fontSize: 7, letterSpacing: 1, color: BT.text.cyan,
@@ -986,7 +1036,16 @@ function CompRow({ comp, saving, onToggle, onAdd, isCandidate }: {
       <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.primary }}>{fmt$(comp.sale_price)}</div>
       <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.secondary }}>{fmtPPU(comp.price_per_unit)}</div>
       <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.secondary }}>{fmtCap(comp.implied_cap_rate)}</div>
-      {/* Action button */}
+      {/* AGE column (months since sale) */}
+      <div style={{
+        fontFamily: MONO, fontSize: 10,
+        color: comp.staleness_label === 'stale' ? BT.met.risk
+          : comp.staleness_label === 'seasoned' ? BT.text.amber
+          : BT.text.secondary,
+      }}>
+        {comp.age_months > 900 ? '—' : `${comp.age_months}mo`}
+      </div>
+      {/* Action column */}
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         {isCandidate ? (
           <button

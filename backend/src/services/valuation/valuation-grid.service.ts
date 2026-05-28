@@ -136,6 +136,10 @@ export interface CompCriteria {
   maxAgeMonths: number;
   minUnits: number;
   maxUnits: number;
+  /** Vintage band lower bound (inclusive). 0 = no filter. */
+  minYearBuilt: number;
+  /** Vintage band upper bound (inclusive). 9999 = no filter. */
+  maxYearBuilt: number;
   propertyClasses: string[];
   /** Comp IDs the operator has explicitly removed from scoring. */
   excludedCompIds: string[];
@@ -654,7 +658,7 @@ export class ValuationGridService {
       warnings.push(`${removedCount} comp${removedCount !== 1 ? 's' : ''} excluded by operator override.`);
     }
 
-    // (c) Apply unit count filter
+    // (c) Apply unit count, vintage band, and class filters
     const allClasses = ['A', 'B', 'C', 'D'];
     const classFilter = criteria.propertyClasses ?? allClasses;
     const applyClassFilter = classFilter.length > 0 && classFilter.length < allClasses.length;
@@ -663,6 +667,11 @@ export class ValuationGridService {
       if (u != null) {
         if (criteria.minUnits > 0 && u < criteria.minUnits) return false;
         if (criteria.maxUnits < 9999 && u > criteria.maxUnits) return false;
+      }
+      const yb = c.year_built != null ? parseInt(String(c.year_built)) : null;
+      if (yb != null) {
+        if ((criteria.minYearBuilt ?? 0) > 0 && yb < criteria.minYearBuilt) return false;
+        if ((criteria.maxYearBuilt ?? 9999) < 9999 && yb > criteria.maxYearBuilt) return false;
       }
       if (applyClassFilter) {
         const pc = (c.property_class ?? c.asset_class ?? '').toUpperCase();
@@ -1071,6 +1080,11 @@ export class ValuationGridService {
         if (u != null) {
           if (criteria.minUnits > 0 && u < criteria.minUnits) return false;
           if (criteria.maxUnits < 9999 && u > criteria.maxUnits) return false;
+        }
+        const yb = c.year_built != null ? parseInt(String(c.year_built)) : null;
+        if (yb != null) {
+          if ((criteria.minYearBuilt ?? 0) > 0 && yb < criteria.minYearBuilt) return false;
+          if ((criteria.maxYearBuilt ?? 9999) < 9999 && yb > criteria.maxYearBuilt) return false;
         }
         if (applyClassFilterPPU) {
           const pc = (c.property_class ?? c.asset_class ?? '').toUpperCase();
@@ -1684,6 +1698,8 @@ export class ValuationGridService {
     maxAgeMonths: MAX_COMP_AGE_MONTHS_DEFAULT,
     minUnits: 50,
     maxUnits: 500,
+    minYearBuilt: 0,
+    maxYearBuilt: 9999,
     propertyClasses: ['A', 'B', 'C'],
     excludedCompIds: [],
     customIncludedCompIds: [],
@@ -1735,6 +1751,9 @@ export class ValuationGridService {
           min_units: updated.minUnits > 0 ? updated.minUnits : undefined,
           max_units: updated.maxUnits < 9999 ? updated.maxUnits : undefined,
           property_classes: updated.propertyClasses?.length ? updated.propertyClasses : undefined,
+          vintage_range: (updated.minYearBuilt > 0 || updated.maxYearBuilt < 9999)
+            ? [updated.minYearBuilt, updated.maxYearBuilt]
+            : undefined,
         });
       } catch {
         // non-fatal: comp-set regeneration silently fails if no subject coordinates
