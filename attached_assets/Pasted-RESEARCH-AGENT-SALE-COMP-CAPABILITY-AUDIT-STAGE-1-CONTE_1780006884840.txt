@@ -1,0 +1,122 @@
+RESEARCH AGENT SALE-COMP CAPABILITY AUDIT — STAGE 1
+
+CONTEXT
+Backtest result showed three comp-based valuation methods 
+(Comp-Anchored, Per-Unit, Sales Comp PPU) returning INSUFFICIENT 
+across all S1 deals due to empty market_sale_comps. Replacement 
+Cost is poisoning reconciliation as the only non-Cap×NOI active 
+method. Operator commit: activate research agent to populate 
+sale comp inventory from municipal sources (Pattern A + Pattern 
+B), with CoStar gap-fill retained for coverage holes per P10.
+
+This dispatch is an AUDIT, not a build. Output is a one-page 
+reality assessment that scopes what Stage 2 (build) needs to do.
+
+STATE VERIFICATION (per P8):
+1. Research agent service exists and is operational
+2. market_sale_comps table exists (per Query 1 schema diagnostic 
+   confirmed empty)
+3. No prior sale-comp population work has run
+
+═══════════════════════════════════════════════════════════════════
+INSPECTION SCOPE
+═══════════════════════════════════════════════════════════════════
+
+A. TOOL REGISTRY INSPECTION
+   Read research agent tool registry (src/agents/research/ or 
+   equivalent). Enumerate tools and classify each:
+   
+   - Sale-comp-relevant: anything that pulls recorded transactions, 
+     sale records, county recorder data, parcel transaction history
+   - Subject-research only: parcel detail, zoning, ownership 
+     lookup, valuation tax data
+   - Other: ArcGIS, Municode, RentCast, etc.
+   
+   Report: which tools exist that COULD populate market_sale_comps, 
+   and whether each currently writes to that table or only returns 
+   for subject context.
+
+B. COUNTY INTEGRATION COVERAGE
+   For each tool flagged as sale-comp-relevant, enumerate:
+   - Which counties/jurisdictions the tool currently supports
+   - Whether the integration is live or stubbed
+   - API/data source per county (county recorder, appraisal district, 
+     state record system, etc.)
+   
+   Required coverage for backtest:
+   - Florida: Hillsborough, Orange, Miami-Dade, Duval (primary 
+     markets)
+   - Georgia: Fulton, DeKalb, Cobb, Gwinnett (Atlanta backtest)
+   - Texas: Dallas Central Appraisal District (Dallas market)
+   
+   Report: coverage matrix per county — LIVE / STUBBED / NOT 
+   STARTED.
+
+C. INVOCATION PATTERN
+   Determine how/when sale-comp tools are currently invoked:
+   - Subject-triggered only (Pattern A): tools fire when a deal 
+     is created at a specific address
+   - Market sweep (Pattern B): scheduled/cron job pulls inventory 
+     for covered submarkets
+   - Both
+   - Neither (tools exist but aren't called)
+   
+   Report: current invocation pattern + frequency if scheduled.
+
+D. WRITE PATH
+   Determine where sale-comp data lands today:
+   - market_sale_comps directly
+   - recorded_transactions or another table (and whether anything 
+     ETLs to market_sale_comps)
+   - DealContext JSON only (returned for subject reasoning, never 
+     persisted to comp inventory)
+   - Other table
+   
+   Report: write path per tool, and whether the writes populate 
+   market_sale_comps in a form the Valuation Grid can consume.
+
+E. HISTORICAL BACKFILL CAPABILITY
+   Determine whether tools support `as_of` / date-range parameters 
+   for pulling historical transactions:
+   - Can the tool pull sale records from 2018-2022 for the 
+     Jacksonville and Atlanta backtest deals?
+   - If not, what's the earliest date the data sources expose?
+   
+   Report: backfill feasibility for the S1 backtest deals.
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/RESEARCH_AGENT_SALE_COMP_AUDIT.md
+
+Structure:
+1. Executive summary
+   - Which of the three audit questions applies:
+     (1) Capability exists, just isn't called market-wide
+     (2) Capability exists for some counties, not others
+     (3) No sale-comp capability today
+   - One-line scope estimate for Stage 2 build
+2. Tool registry findings (A)
+3. County coverage matrix (B)
+4. Invocation pattern (C)
+5. Write path (D) — including any ETL gap between agent output 
+   and market_sale_comps
+6. Historical backfill feasibility per S1 backtest deal (E)
+7. Stage 2 build scope recommendation:
+   - Pattern A activation: what's needed
+   - Pattern B (market sweep) build: what's needed
+   - Historical backfill for backtest deals: feasibility + cost 
+     estimate
+   - Cost implications (Claude credits for ongoing market sweeps)
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Build anything (Stage 2)
+- Run a market sweep
+- Modify the research agent or its tool registry
+- Schedule any jobs
+- "While I'm here" cleanups
+- Scope the build before the audit completes
