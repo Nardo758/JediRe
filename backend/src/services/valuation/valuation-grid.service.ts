@@ -209,8 +209,8 @@ export class ValuationGridService {
     const result = await this.pool.query(
       `SELECT
          d.id,
-         COALESCE(d.city, d.address, '')           AS city,
-         COALESCE(d.state, '')                    AS state,
+         COALESCE(p.city, d.city, d.address, '')  AS city,
+         COALESCE(p.state_code, '')               AS state,
          p.units,
          p.building_sf                            AS total_sf,
          p.latitude,
