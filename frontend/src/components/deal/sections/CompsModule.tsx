@@ -93,7 +93,7 @@ interface CompStoryResult {
 }
 
 interface CompSet {
-  id: string;
+  id?: string;
   comp_count: number;
   median_price_per_unit: number;
   avg_price_per_unit: number;
@@ -106,6 +106,8 @@ interface CompSet {
   strategy?: string;
   weights?: Record<string, number>;
   comp_story?: CompStoryResult;
+  /** 'live' = real staged cascade was executed; 'stored_fallback' = no coordinates, used stored set */
+  cascade_source?: 'live' | 'stored_fallback';
 }
 
 const TIER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -513,7 +515,7 @@ export default function CompsModule({
         </div>
 
         {/* Geographic cascade expansion banner */}
-        {compSet.comp_story?.cascade && compSet.comp_story.cascade.widened_to !== 'trade_area' && (
+        {compSet.cascade_source === 'live' && compSet.comp_story?.cascade && compSet.comp_story.cascade.widened_to !== 'trade_area' && (
           <div className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs border ${
             compSet.comp_story.cascade.widened_to === 'submarket'
               ? 'bg-blue-500/8 border-blue-500/25 text-blue-300'

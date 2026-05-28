@@ -186,6 +186,34 @@ router.delete('/deals/:dealId/comps/:compId', requireAuth, async (req: Authentic
   }
 });
 
+// ---------------------------------------------------------------------------
+// computeCompSummary — builds the same summary envelope as stored comp sets
+// so the UI renders correctly regardless of whether data comes from a live
+// cascade or a stored comp set.
+// ---------------------------------------------------------------------------
+function computeCompSummary(comps: Array<{ price_per_unit: number; implied_cap_rate?: number | null }>) {
+  const prices = comps.map(c => c.price_per_unit).filter(p => p > 0).sort((a, b) => a - b);
+  const caps   = comps.map(c => c.implied_cap_rate).filter((v): v is number => v != null && v > 0).sort((a, b) => a - b);
+
+  const medianOf = (arr: number[]): number => {
+    if (arr.length === 0) return 0;
+    const mid = Math.floor(arr.length / 2);
+    return arr.length % 2 === 0 ? (arr[mid - 1] + arr[mid]) / 2 : arr[mid];
+  };
+  const avgOf = (arr: number[]): number =>
+    arr.length === 0 ? 0 : arr.reduce((a, b) => a + b, 0) / arr.length;
+
+  return {
+    comp_count:             comps.length,
+    median_price_per_unit:  medianOf(prices),
+    avg_price_per_unit:     avgOf(prices),
+    min_price_per_unit:     prices.length > 0 ? prices[0] : 0,
+    max_price_per_unit:     prices.length > 0 ? prices[prices.length - 1] : 0,
+    median_implied_cap_rate: caps.length > 0 ? medianOf(caps) : null,
+    avg_implied_cap_rate:    caps.length > 0 ? avgOf(caps)    : null,
+  };
+}
+
 /**
  * GET /api/v1/deals/:dealId/comps/ranked
  * Re-score and rank the existing comp set for a given strategy without
@@ -339,9 +367,13 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
         subject_year_built: subject.year_built,
       });
 
+      // Summary stats — same envelope as stored comp sets so the UI renders correctly
+      const cascadeSummary = computeCompSummary(scoredComps);
+
       return res.json({
         success: true,
         data: {
+          ...cascadeSummary,
           comps:           scoredComps,
           top_comp_ids:    top.map((s: any) => s.comp.id),
           strategy:        resolvedStrategy,
@@ -385,13 +417,19 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
     const scoreMap = new Map(ranked.ranked.map((s: any) => [s.comp.id, s]));
     const compIndex = new Map(compSet.comps.map(c => [c.id, c]));
 
+    // Derive geographic_tier from stored distance_miles using the same thresholds
+    // as the live cascade (3/9 mile boundaries) rather than forcing everything to 'msa'.
+    const { deriveGeographicTier } = await import('../../services/valuation/comp-relevance-scoring.service');
+
     scoredComps = ranked.ranked.map(({ comp: candidate }: any) => {
       const base = compIndex.get(candidate.id)!;
       const s    = scoreMap.get(candidate.id)!;
+      const dist = typeof base.distance_miles === 'number' ? base.distance_miles : null;
+      const tier = deriveGeographicTier(dist, 3);  // 3 = trade_area radius in miles
       return {
         ...base,
-        geographic_tier:   'msa' as const,
-        geographic_label:  GEO_TIER_LABELS['msa'],
+        geographic_tier:   tier,
+        geographic_label:  GEO_TIER_LABELS[tier],
         relevance_score:   s.relevance_score,
         relevance_tier:    s.relevance_tier,
         relevance_factors: s.factors,
@@ -406,6 +444,8 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
       recording_date:   c.recording_date,
       geographic_tier:  c.geographic_tier as 'trade_area' | 'submarket' | 'msa',
     }));
+    // Do NOT pass cascade_metadata for stored fallback — UI will suppress the
+    // expansion banner when cascade_source !== 'live'.
     comp_story = buildCompStory(storyComps, resolvedStrategy, {
       subject_year_built: subject.year_built,
     });
