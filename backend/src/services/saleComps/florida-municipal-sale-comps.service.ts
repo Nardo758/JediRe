@@ -39,6 +39,7 @@ import { logger } from '../../utils/logger';
 import {
   checkSaleCompDedup,
   type DedupCandidate,
+  type DedupOptions,
 } from '../valuation/comp-dedup.service';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -550,7 +551,10 @@ async function upsertComps(comps: NormalizedSaleComp[]): Promise<{ inserted: num
       seller: comp.seller,
     };
 
-    const dedupResult = await checkSaleCompDedup(pool, dedupCandidate);
+    // checkAllSources=true: municipal ingest checks against ALL existing rows,
+    // including costar_upload, to prevent CoStar ↔ municipal duplicates.
+    const dedupOpts: DedupOptions = { checkAllSources: true };
+    const dedupResult = await checkSaleCompDedup(pool, dedupCandidate, dedupOpts);
 
     if (dedupResult.matched && dedupResult.existingId) {
       // Cross-source duplicate found — annotate existing row's source_labels

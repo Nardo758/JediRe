@@ -129,25 +129,56 @@ const GEO_THRESHOLD_MILES = 0.01;
 // Core dedup check
 // ---------------------------------------------------------------------------
 
+export interface DedupOptions {
+  /**
+   * When true, dedup checks against ALL sources including costar_upload rows.
+   * Default: false — only checks non-costar_upload rows (original CoStar→platform
+   * dedup behaviour, which prevents CoStar comps from self-deduplicating).
+   *
+   * Set to true for municipal ingest so that incoming county records are compared
+   * against the full pool, including any existing CoStar uploads for the same asset.
+   */
+  checkAllSources?: boolean;
+  /**
+   * Optional caller-supplied source value to exclude from the dedup search
+   * (prevents a record from matching itself on re-run). Defaults to
+   * 'costar_upload' when checkAllSources is false; ignored when checkAllSources
+   * is true (no source is excluded).
+   */
+  excludeSource?: string;
+}
+
 /**
- * Check whether a CoStar candidate sale comp matches an existing PLATFORM record.
- * Returns a DedupResult — matched=true when a platform duplicate was found.
+ * Check whether a candidate sale comp matches an existing record in the pool.
+ * Returns a DedupResult — matched=true when a duplicate was found.
  *
- * Only checks rows where source != 'costar_upload'.
+ * Default mode (checkAllSources=false): only checks rows where
+ *   source != 'costar_upload' — the original CoStar→platform dedup path.
+ *
+ * Municipal mode (checkAllSources=true): checks ALL existing rows, including
+ *   costar_upload, so county-sourced comps do not duplicate CoStar records.
  */
 export async function checkSaleCompDedup(
   pool:      Pool,
   candidate: DedupCandidate,
+  opts:      DedupOptions = {},
 ): Promise<DedupResult> {
+  const { checkAllSources = false, excludeSource = 'costar_upload' } = opts;
+
+  // Source filter clause — either exclude costar_upload (default) or nothing
+  const sourceFilter = checkAllSources ? '' : `AND source != '${excludeSource}'`;
 
   // ── Tier 1: Parcel ID match ──────────────────────────────────────────────
-  // Fires when CoStar exports a Property ID that matches a recorded source_id.
+  // Fires when the candidate carries a source_id that matches an existing row.
+  // For municipal comps the source_id is {COUNTY}_{parcel}_{date} — this will
+  // only match within the same source, but the check is a cheap no-op here so
+  // we run it regardless for completeness.
   if (candidate.source_id && candidate.source_id.trim().length > 0) {
     const r = await pool.query<{ id: string; source: string }>(
       `SELECT id, source
          FROM market_sale_comps
         WHERE source_id = $1
-          AND source != 'costar_upload'
+          ${sourceFilter}
           AND ABS(sale_date - $2::date) <= ${DATE_WINDOW_DAYS}
         LIMIT 1`,
       [candidate.source_id.trim(), candidate.sale_date],
@@ -163,9 +194,8 @@ export async function checkSaleCompDedup(
   }
 
   // ── Tier 2: Address match (both sides normalized in TypeScript) ──────────
-  // Fetch all platform candidates in the same city+state+date window, then
-  // compare normalized addresses in TypeScript — same normalizeAddressForDedup
-  // function on both sides ensures identical handling.
+  // Fetch all candidates in the same city+state+date window, then compare
+  // normalized addresses — same normalizeAddressForDedup on both sides.
   const normCandidateAddr = normalizeAddressForDedup(candidate.address);
   const normCity  = candidate.city.toLowerCase().trim();
   const normState = candidate.state.toUpperCase().trim();
@@ -175,7 +205,7 @@ export async function checkSaleCompDedup(
        FROM market_sale_comps
       WHERE LOWER(TRIM(city))  = $1
         AND UPPER(TRIM(state)) = $2
-        AND source != 'costar_upload'
+        ${sourceFilter}
         AND ABS(sale_date - $3::date) <= ${DATE_WINDOW_DAYS}
       LIMIT 50`,
     [normCity, normState, candidate.sale_date],
@@ -198,7 +228,7 @@ export async function checkSaleCompDedup(
          FROM market_sale_comps
         WHERE latitude  IS NOT NULL
           AND longitude IS NOT NULL
-          AND source != 'costar_upload'
+          ${sourceFilter}
           AND ABS(sale_date - $3::date) <= ${DATE_WINDOW_DAYS}
           AND (point(longitude::float, latitude::float)
                <@> point($2::float, $1::float)) < $4
