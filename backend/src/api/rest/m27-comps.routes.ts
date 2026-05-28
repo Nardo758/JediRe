@@ -72,9 +72,18 @@ router.get('/deals/:dealId/comps', requireAuth, async (req: AuthenticatedRequest
       });
     }
 
+    // Expose members (alias for comps) with camelCase relevanceScore for protocol compliance
+    const members = (compSet.comps ?? []).map((c: any) => ({
+      ...c,
+      relevanceScore: c.relevance_score,
+    }));
+
     res.json({
       success: true,
-      data: compSet
+      data: {
+        ...compSet,
+        members,
+      },
     });
   } catch (error: any) {
     console.error('Get comp set error:', error);
@@ -351,6 +360,7 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
           geographic_tier:   tier,
           geographic_label:  GEO_TIER_LABELS[tier],
           relevance_score:   s.relevance_score,
+          relevanceScore:    s.relevance_score,
           relevance_tier:    s.relevance_tier,
           relevance_factors: s.factors,
         };
@@ -378,6 +388,7 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
         data: {
           ...cascadeSummary,
           comps:           scoredComps,
+          members:         scoredComps,
           top_comp_ids:    top.map((s: any) => s.comp.id),
           strategy:        resolvedStrategy,
           weights,
@@ -434,6 +445,7 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
         geographic_tier:   tier,
         geographic_label:  GEO_TIER_LABELS[tier],
         relevance_score:   s.relevance_score,
+        relevanceScore:    s.relevance_score,
         relevance_tier:    s.relevance_tier,
         relevance_factors: s.factors,
       };
@@ -458,6 +470,7 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
       data: {
         ...compSet,
         comps:           scoredComps,
+        members:         scoredComps,
         top_comp_ids:    top.map((s: any) => s.comp.id),
         strategy:        resolvedStrategy,
         weights,

@@ -137,8 +137,8 @@ export class CompSetService {
     const filters = [
       `t.property_type = 'multifamily'`,
       `t.sale_date >= $3`,
-      `t.units >= $4`,
-      `t.units <= $5`,
+      `(t.units IS NULL OR t.units >= $4)`,
+      `(t.units IS NULL OR t.units <= $5)`,
       `t.sale_price > 0`
     ];
 
@@ -407,10 +407,17 @@ export class CompSetService {
         comp.source === 'om_extraction';
       await pool.query(`
         INSERT INTO sale_comp_set_members (
-          comp_set_id, ${isMarketComp ? 'market_comp_id' : 'transaction_id'}, sort_order
-        ) VALUES ($1::uuid, $2::uuid, $3)
+          comp_set_id, ${isMarketComp ? 'market_comp_id' : 'transaction_id'}, sort_order,
+          relevance_score, relevance_factors
+        ) VALUES ($1::uuid, $2::uuid, $3, $4, $5)
         ON CONFLICT DO NOTHING
-      `, [compSetId, comp.id, i + 1]);
+      `, [
+        compSetId,
+        comp.id,
+        i + 1,
+        comp.relevance_score ?? null,
+        comp.relevance_factors ? JSON.stringify(comp.relevance_factors) : null,
+      ]);
     }
 
     return {
@@ -471,6 +478,8 @@ export class CompSetService {
         mc.source,
         mc.source_labels,
         scm.sort_order,
+        scm.relevance_score,
+        scm.relevance_factors,
         0                                                AS distance_miles
       FROM sale_comp_set_members scm
       LEFT JOIN market_sale_comps    mc ON mc.id = scm.market_comp_id
@@ -507,6 +516,8 @@ export class CompSetService {
         distance_miles: parseFloat(row.distance_miles),
         source: row.source,
         source_labels: row.source_labels ?? null,
+        relevance_score: row.relevance_score ? parseFloat(row.relevance_score) : undefined,
+        relevance_factors: row.relevance_factors ?? undefined,
       };
     });
 
