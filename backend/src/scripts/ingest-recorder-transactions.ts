@@ -1,13 +1,18 @@
 /**
  * ingest-recorder-transactions.ts
  *
- * Seeds market_sale_comps and recorded_transactions with real Atlanta MSA
- * multifamily apartment building sale transactions sourced from:
+ * Seeds market_sale_comps with real Atlanta MSA multifamily apartment building
+ * sale transactions sourced from:
  *   1. Tavily-powered web search of public deal announcement news
  *   2. Fulton County assessor property records (estimated market value basis)
  *
- * This script targets transactions ≥ $5M (≥20-unit apartment communities).
- * Sale prices from assessor records use the Georgia 40%-of-FMV rule as proxy.
+ * All records land in market_sale_comps with source = 'county_recorded'
+ * (Tavily news-sourced transactions) or source = 'assessor_estimate'
+ * (assessor FMV proxies), and qualified = true.
+ *
+ * NOTE: This script no longer writes to recorded_transactions (deprecated per
+ * comp-profiles-spec.md §5.1 / Task #1382). Legacy rows remain readable via
+ * vw_recorded_transactions_compat.
  *
  * Usage:
  *   cd backend && npx tsx src/scripts/ingest-recorder-transactions.ts [--tavily] [--assessor]
@@ -220,7 +225,7 @@ async function fetchTavilyComps(): Promise<SaleComp[]> {
         cap_rate:      extractCapRate(text) ?? undefined,
         buyer:         extractBuyer(text) ?? undefined,
         seller:        extractSeller(text) ?? undefined,
-        source:        'public_records',
+        source:        'county_recorded',
         source_url:    url || undefined,
       };
 
@@ -305,8 +310,8 @@ async function upsertMarketSaleComps(comps: SaleComp[]): Promise<{ inserted: num
            property_name, address, city, state, county, msa,
            units, year_built, asset_class,
            sale_date, sale_price, price_per_unit, cap_rate,
-           buyer, seller, source, source_id, created_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW())
+           buyer, seller, source, source_id, qualified, created_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,true,NOW())
          ON CONFLICT DO NOTHING`,
         [
           (c.property_name || c.address).slice(0, 255),
@@ -336,51 +341,6 @@ async function upsertMarketSaleComps(comps: SaleComp[]): Promise<{ inserted: num
   }
 
   return { inserted, skipped };
-}
-
-// ── Upsert into recorded_transactions ──────────────────────────────────────────
-
-async function upsertRecordedTransactions(comps: SaleComp[]): Promise<{ inserted: number }> {
-  let inserted = 0;
-
-  const eligible = comps.filter(c =>
-    c.units && c.units >= 10 &&
-    c.sale_price >= 1_000_000 &&
-    c.source !== 'assessor_estimate'   // Only use real (news-sourced) transactions here
-  );
-
-  for (const c of eligible) {
-    const ppu = c.price_per_unit ?? (c.units! > 0 ? Math.round(c.sale_price / c.units!) : null);
-
-    try {
-      await pool.query(
-        `INSERT INTO recorded_transactions (
-           recording_date, property_address, units,
-           derived_sale_price, price_per_unit,
-           implied_cap_rate, buyer_name, seller_name,
-           city, state_code, created_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
-         ON CONFLICT DO NOTHING`,
-        [
-          c.sale_date,
-          (c.address || c.city).slice(0, 500),
-          c.units ?? null,
-          c.sale_price,
-          ppu,
-          c.cap_rate ?? null,
-          c.buyer ?? null,
-          c.seller ?? null,
-          c.city,
-          c.state,
-        ]
-      );
-      inserted++;
-    } catch (err: any) {
-      logger.warn('[RecorderIngest] recorded_transactions upsert failed', { error: err.message });
-    }
-  }
-
-  return { inserted };
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -414,16 +374,11 @@ async function ingestRecordedTransactions(opts: {
     return;
   }
 
-  console.log(`\n▸ Phase 3: Inserting ${allComps.length} comps...`);
+  console.log(`\n▸ Phase 3: Inserting ${allComps.length} comps into market_sale_comps...`);
   const { inserted: mscInserted, skipped } = await upsertMarketSaleComps(allComps);
-  console.log(`  market_sale_comps: +${mscInserted} new, ${skipped} skipped/invalid`);
-
-  const { inserted: rtInserted } = await upsertRecordedTransactions(allComps);
-  console.log(`  recorded_transactions: +${rtInserted} new`);
 
   console.log(`\n✅ Comps ingest complete`);
-  console.log(`   market_sale_comps: +${mscInserted}`);
-  console.log(`   recorded_transactions: +${rtInserted}`);
+  console.log(`   market_sale_comps: +${mscInserted} new, ${skipped} skipped/invalid`);
 }
 
 if (require.main === module) {
