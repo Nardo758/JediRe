@@ -604,7 +604,8 @@ export class ValuationGridService {
     // This ensures the panel and scoring use the same comp universe.
     const excludedSet = new Set<string>(criteria.excludedCompIds ?? []);
 
-    // (a) Fetch any manually-added comps from market_sale_comps and append
+    // (a) Fetch any manually-added comps from market_sale_comps and append.
+    //     Security: apply the same costar_upload / deal_id visibility guard used elsewhere.
     if (criteria.customIncludedCompIds.length > 0) {
       try {
         const customIds = criteria.customIncludedCompIds.filter(id => !compSet.comps.some((c: any) => String(c.id) === id));
@@ -615,8 +616,9 @@ export class ValuationGridService {
                     sale_price AS derived_sale_price, price_per_unit, price_per_sqft AS price_per_sf,
                     cap_rate AS implied_cap_rate, buyer, source, source_labels
              FROM market_sale_comps
-             WHERE id = ANY($1::uuid[])`,
-            [customIds]
+             WHERE id = ANY($1::uuid[])
+               AND (source != 'costar_upload' OR deal_id = $2::uuid OR deal_id IS NULL)`,
+            [customIds, dealId]
           );
           const customComps = customResult.rows.map((r: any) => ({
             id: r.id,
@@ -1008,6 +1010,50 @@ export class ValuationGridService {
         ),
         _compSetRaw: null,
       };
+    }
+
+    // Task #1417 (6.1): Merge any manually-added comps (customIncludedCompIds) into the
+    // comp set before the criteria filter chain — mirrors computeCompAnchoredCapRate logic.
+    if (criteria.customIncludedCompIds.length > 0) {
+      try {
+        const ppuCustomIds = criteria.customIncludedCompIds.filter(
+          id => !compSet.comps.some((c: any) => String(c.id) === id)
+        );
+        if (ppuCustomIds.length > 0) {
+          const ppuCustomResult = await this.pool.query(
+            `SELECT id, sale_date AS recording_date, address AS property_address,
+                    units, sqft AS building_sf, year_built, asset_class AS property_class,
+                    sale_price AS derived_sale_price, price_per_unit, price_per_sqft AS price_per_sf,
+                    cap_rate AS implied_cap_rate, buyer, source
+             FROM market_sale_comps
+             WHERE id = ANY($1::uuid[])
+               AND (source != 'costar_upload' OR deal_id = $2::uuid OR deal_id IS NULL)`,
+            [ppuCustomIds, dealId]
+          );
+          const ppuCustomComps = ppuCustomResult.rows.map((r: any) => ({
+            id: r.id,
+            recording_date: r.recording_date,
+            property_address: r.property_address,
+            units: r.units ? parseInt(String(r.units)) : null,
+            building_sf: r.building_sf ? parseFloat(String(r.building_sf)) : null,
+            year_built: r.year_built,
+            property_class: r.property_class ?? 'B',
+            derived_sale_price: r.derived_sale_price ? parseFloat(String(r.derived_sale_price)) : 0,
+            price_per_unit: r.price_per_unit ? parseFloat(String(r.price_per_unit)) : 0,
+            price_per_sf: r.price_per_sf ? parseFloat(String(r.price_per_sf)) : 0,
+            implied_cap_rate: r.implied_cap_rate ? parseFloat(String(r.implied_cap_rate)) : null,
+            grantee_name: r.buyer ?? '',
+            buyer_type: '',
+            holding_period_months: null,
+            distance_miles: 0,
+            source: r.source ?? 'manual',
+            relevance_tier: 'C2',
+          }));
+          compSet = { ...compSet, comps: [...compSet.comps, ...ppuCustomComps] };
+        }
+      } catch {
+        // non-fatal
+      }
     }
 
     // Task #1417 (6.1): Apply operator criteria to comp set before PPU synthesis.
@@ -1669,6 +1715,31 @@ export class ValuationGridService {
        WHERE deal_id = $2::uuid`,
       [JSON.stringify(updated), dealId]
     );
+    // Task #1417 (6.1): When any selection-scope criteria change, regenerate the comp set
+    // so that scoring methods immediately see the updated universe on the next compute.
+    const selectionCriteriaChanged = (
+      patch.radiusMiles !== undefined ||
+      patch.maxAgeMonths !== undefined ||
+      patch.minUnits !== undefined ||
+      patch.maxUnits !== undefined ||
+      patch.propertyClasses !== undefined
+    );
+    if (selectionCriteriaChanged) {
+      try {
+        const { CompSetService } = await import('../saleComps/compSet.service');
+        const csvc = new CompSetService();
+        await csvc.generateCompSet({
+          deal_id: dealId,
+          radius_miles: updated.radiusMiles,
+          date_range_months: updated.maxAgeMonths,
+          min_units: updated.minUnits > 0 ? updated.minUnits : undefined,
+          max_units: updated.maxUnits < 9999 ? updated.maxUnits : undefined,
+          property_classes: updated.propertyClasses?.length ? updated.propertyClasses : undefined,
+        });
+      } catch {
+        // non-fatal: comp-set regeneration silently fails if no subject coordinates
+      }
+    }
     return updated;
   }
 
@@ -1710,8 +1781,23 @@ export class ValuationGridService {
    * Task #1417 (6.1): Manually add a comp from the broader candidate pool into the
    * active scoring set.  Stores its ID in `customIncludedCompIds` and appends an
    * `operator_override` provenance event.
+   *
+   * Security: verifies the comp exists and passes the same costar_upload visibility
+   * guard used by the candidate query (restricted uploads only visible to their deal).
    */
   async addComp(dealId: string, compId: string): Promise<void> {
+    // Security guard: ensure the comp is accessible to this deal
+    const visibilityCheck = await this.pool.query(
+      `SELECT id FROM market_sale_comps
+       WHERE id = $1::uuid
+         AND (source != 'costar_upload' OR deal_id = $2::uuid OR deal_id IS NULL)
+       LIMIT 1`,
+      [compId, dealId]
+    );
+    if (visibilityCheck.rows.length === 0) {
+      throw new Error('Comp not found or not accessible for this deal.');
+    }
+
     const criteria = await this.getCompCriteria(dealId);
     if (!criteria.customIncludedCompIds.includes(compId)) {
       criteria.customIncludedCompIds.push(compId);
@@ -1808,7 +1894,7 @@ export class ValuationGridService {
       };
     };
 
-    // 2. Build the primary comp list from the scoring comp set
+    // 2. Build the primary comp list from the scoring comp set.
     //    ALL comps from the set are shown — excluded ones are flagged but not hidden.
     //    There is deliberately NO age cutoff here; old comps remain visible with stale flag.
     const activeCompIds = new Set<string>(compSet?.comps.map((c: any) => String(c.id)) ?? []);
@@ -1818,6 +1904,30 @@ export class ValuationGridService {
         manually_added: customSet.has(String(comp.id)),
       })
     );
+
+    // Task #1417 (6.1): Append manually-added comps that are NOT already in the comp set
+    // so the panel always mirrors what goes into scoring (where customIncludedCompIds are merged).
+    const missingCustomIds = criteria.customIncludedCompIds.filter(id => !activeCompIds.has(id));
+    if (missingCustomIds.length > 0) {
+      try {
+        const customPanelResult = await this.pool.query(
+          `SELECT id, sale_date AS recording_date, address AS property_address,
+                  units, year_built, asset_class AS property_class,
+                  sale_price AS derived_sale_price, price_per_unit,
+                  cap_rate AS implied_cap_rate, source
+           FROM market_sale_comps
+           WHERE id = ANY($1::uuid[])
+             AND (source != 'costar_upload' OR deal_id = $2::uuid OR deal_id IS NULL)`,
+          [missingCustomIds, dealId]
+        );
+        for (const row of customPanelResult.rows) {
+          comps.push(toReviewItem(row, { excluded: excludedSet.has(String(row.id)), manually_added: true }));
+          activeCompIds.add(String(row.id)); // keep additionalCandidates distinct
+        }
+      } catch {
+        // non-fatal
+      }
+    }
 
     // 3. Fetch additional candidates from market_sale_comps within 1.5× radius
     //    for the "manual add" pool — only comps NOT already in the comp set.

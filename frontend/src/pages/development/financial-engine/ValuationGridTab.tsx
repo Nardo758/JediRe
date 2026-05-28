@@ -636,7 +636,13 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
       if (res.data?.success) {
         setData(res.data.data);
         const c = res.data.data.criteria as CompCriteria;
-        setCriteriaForm({ radiusMiles: c.radiusMiles, maxAgeMonths: c.maxAgeMonths });
+        setCriteriaForm({
+          radiusMiles: c.radiusMiles,
+          maxAgeMonths: c.maxAgeMonths,
+          minUnits: c.minUnits,
+          maxUnits: c.maxUnits,
+          propertyClasses: c.propertyClasses,
+        });
       } else {
         setErr(res.data?.error ?? 'Failed to load comps');
       }
@@ -745,6 +751,7 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
           backgroundColor: `${BT.text.cyan}08`,
           display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap',
         }}>
+          {/* Radius */}
           <div>
             <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.muted, marginBottom: 3 }}>RADIUS (mi)</div>
             <input
@@ -758,6 +765,7 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
               }}
             />
           </div>
+          {/* Max age */}
           <div>
             <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.muted, marginBottom: 3 }}>MAX AGE (mo)</div>
             <input
@@ -770,6 +778,63 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
                 borderRadius: 3, padding: '3px 6px', color: BT.text.primary,
               }}
             />
+          </div>
+          {/* Min/max units */}
+          <div>
+            <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.muted, marginBottom: 3 }}>MIN UNITS</div>
+            <input
+              type="number" min={0} max={9999} step={10}
+              value={criteriaForm.minUnits ?? data.criteria.minUnits}
+              onChange={e => setCriteriaForm(f => ({ ...f, minUnits: parseInt(e.target.value) || 0 }))}
+              style={{
+                fontFamily: MONO, fontSize: 11, width: 65,
+                background: BT.bg.input ?? BT.bg.panel, border: `1px solid ${BT.border.normal}`,
+                borderRadius: 3, padding: '3px 6px', color: BT.text.primary,
+              }}
+            />
+          </div>
+          <div>
+            <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.muted, marginBottom: 3 }}>MAX UNITS</div>
+            <input
+              type="number" min={1} max={9999} step={50}
+              value={criteriaForm.maxUnits ?? data.criteria.maxUnits}
+              onChange={e => setCriteriaForm(f => ({ ...f, maxUnits: parseInt(e.target.value) || 9999 }))}
+              style={{
+                fontFamily: MONO, fontSize: 11, width: 65,
+                background: BT.bg.input ?? BT.bg.panel, border: `1px solid ${BT.border.normal}`,
+                borderRadius: 3, padding: '3px 6px', color: BT.text.primary,
+              }}
+            />
+          </div>
+          {/* Property class toggles */}
+          <div>
+            <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.muted, marginBottom: 3 }}>PROP CLASS</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {(['A', 'B', 'C', 'D'] as const).map(cls => {
+                const currentClasses = criteriaForm.propertyClasses ?? data.criteria.propertyClasses;
+                const active = currentClasses.includes(cls);
+                return (
+                  <button
+                    key={cls}
+                    onClick={() => {
+                      const next = active
+                        ? currentClasses.filter(c => c !== cls)
+                        : [...currentClasses, cls];
+                      setCriteriaForm(f => ({ ...f, propertyClasses: next }));
+                    }}
+                    style={{
+                      fontFamily: MONO, fontSize: 9, padding: '2px 7px',
+                      background: active ? `${BT.text.cyan}22` : 'none',
+                      border: `1px solid ${active ? BT.text.cyan : BT.border.dim}`,
+                      borderRadius: 3, cursor: 'pointer',
+                      color: active ? BT.text.cyan : BT.text.muted,
+                    }}
+                  >
+                    {cls}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <button
             onClick={saveCriteria}
