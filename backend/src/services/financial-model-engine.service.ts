@@ -633,13 +633,38 @@ export class FinancialModelEngineService {
       const resolutionResults = resolveAssumptionBatch(conflictBatch);
 
       // ── STEP 4: Apply resolved values back into enhancedAssumptions ─────────
-      // Critical enforcement point: step-2 blends and confidence-penalised
-      // resolutions materialise in the assumption envelope before callLLMForModel().
-      let writebackCount = 0;
+      // HARD GATE: resolved values are only written back when the assumption's
+      // required stage dependency is satisfied.  When a gate is violated, the
+      // writeback is SKIPPED — the assumption value stays as the LLM derived it
+      // (unverified) and the violation is surfaced via evidence in STEP 6.
+      // This converts gate enforcement from advisory/observational to structural:
+      // D-MOD-2 blends cannot materialise in assumptions that lack prerequisite
+      // stage data, preventing quietly polluted model inputs.
+      const stageDependencyByField = new Map<AssumptionField, string>(
+        ASSUMPTION_MODULE_MAPPINGS.map(m => [m.field, m.stageDependency])
+      );
+      let writebackCount  = 0;
+      let gatedBlockCount = 0;
       for (const [field, result] of resolutionResults) {
         if (result.resolvedValue === null) continue;
         const extractor = ASSUMPTION_EXTRACTORS[field];
         if (!extractor) continue;
+
+        // Hard gate: skip writeback when stage not satisfied
+        const stageDep     = stageDependencyByField.get(field);
+        const stageResult  = stageDep ? pipelineState.stages.get(stageDep) : undefined;
+        const gateBlocked  = stageDep !== undefined && !(stageResult?.satisfied ?? true);
+        if (gateBlocked) {
+          gatedBlockCount++;
+          logger.warn(
+            `[D-MOD-3] Writeback BLOCKED for "${field}" — ` +
+            `stage "${stageDep}" not satisfied ` +
+            `(missing: ${stageResult?.missingModules.join(', ') || 'upstream deps'}). ` +
+            `Assumption value kept as-is (unverified).`
+          );
+          continue;
+        }
+
         const origValue = extractor.extractAuth(a);
         if (origValue === null || Math.abs(result.resolvedValue - origValue) < 1e-9) continue;
         extractor.applyResolved(a, result.resolvedValue);
@@ -650,8 +675,10 @@ export class FinancialModelEngineService {
           `(${result.bandAdjusted ? 'step-2 blend' : 'step-1 auth'})`
         );
       }
-      if (writebackCount > 0) {
-        logger.info(`[D-MOD-2] Applied ${writebackCount} resolved value(s) back to enhancedAssumptions`);
+      if (writebackCount > 0 || gatedBlockCount > 0) {
+        logger.info(
+          `[D-MOD-2] Writeback: ${writebackCount} applied, ${gatedBlockCount} gate-blocked`
+        );
       }
 
       // ── STEP 5: Gate-violation evidence collection ──────────────────────────
