@@ -442,6 +442,7 @@ When neither Layer 1 nor Layer 2 has data:
 - Confidence warnings clearly communicate the limitation
 - Feature may degrade to placeholder OR fall back to broader cohort statistics with explicit lower confidence
 
+LayeredValue source tag: `'insufficient'`
 Method-level fallback patterns are documented per feature.
 
 **DESIGN REQUIREMENT FOR FUTURE WORK**
