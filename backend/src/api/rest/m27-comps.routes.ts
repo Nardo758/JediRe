@@ -202,6 +202,7 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
       rankComps, resolveStrategy, TIER_LABELS, FACTOR_LABELS,
       deriveGeographicTier, GEO_TIER_LABELS,
     } = await import('../../services/valuation/comp-relevance-scoring.service');
+    const { buildCompStory } = await import('../../services/valuation/comp-story.service');
     const pool = getPool();
 
     const userId = req.user!.userId;
@@ -304,23 +305,37 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
     const scoreMap  = new Map(ranked.map(s => [s.comp.id, s]));
     const geoTierMap = new Map(enriched.map(e => [e.comp.id, e.geographic_tier]));
 
+    const compIdIndex = new Map(compSet.comps.map(c => [c.id, c]));
+
     const scoredComps = ranked.map(({ comp: candidate }) => {
-      const base = compSet.comps.find(c => c.id === candidate.id)!;
+      const base = compIdIndex.get(candidate.id)!;
       const s    = scoreMap.get(candidate.id)!;
       const geo  = geoMap.get(candidate.id);
       const distMiles = (geo && dealLat != null && dealLng != null)
         ? Math.round(haversineMiles(dealLat, dealLng, geo.lat, geo.lng) * 100) / 100
         : base.distance_miles;
+      const geoTier = geoTierMap.get(candidate.id) ?? 'msa';
       return {
         ...base,
         distance_miles:    distMiles ?? base.distance_miles,
-        geographic_tier:   geoTierMap.get(candidate.id) ?? 'msa',
-        geographic_label:  GEO_TIER_LABELS[geoTierMap.get(candidate.id) ?? 'msa'],
+        geographic_tier:   geoTier,
+        geographic_label:  GEO_TIER_LABELS[geoTier],
         relevance_score:   s.relevance_score,
         relevance_tier:    s.relevance_tier,
         relevance_factors: s.factors,
       };
     });
+
+    // D-COMP-2/D-COMP-3: Build strategy story + geographic cascade metadata
+    const storyComps = scoredComps.map(c => ({
+      id:              c.id,
+      year_built:      c.year_built,
+      implied_cap_rate: c.implied_cap_rate,
+      price_per_unit:  c.price_per_unit,
+      recording_date:  c.recording_date,
+      geographic_tier: c.geographic_tier as 'trade_area' | 'submarket' | 'msa',
+    }));
+    const comp_story = buildCompStory(storyComps, resolvedStrategy);
 
     res.json({
       success: true,
@@ -333,6 +348,7 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
         tier_labels:   TIER_LABELS,
         factor_labels: FACTOR_LABELS,
         geo_tier_labels: GEO_TIER_LABELS,
+        comp_story,
       },
     });
   } catch (error: any) {

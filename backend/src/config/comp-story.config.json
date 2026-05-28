@@ -1,0 +1,41 @@
+{
+  "_comment": "Strategy comp story matrix config (D-COMP-2 / D-COMP-3). Defines the story narrative, group labels, and expansion thresholds per investment strategy.",
+  "strategies": {
+    "value_add": {
+      "story_key": "rent_ceiling_gap",
+      "story_label": "Rent Ceiling Gap",
+      "description": "Split comps into current-condition (in-place ceiling) vs renovated/repositioned (post-stab target). Surfaces the $/unit gap the value-add thesis must close.",
+      "groups": {
+        "lower": {
+          "key": "current_condition",
+          "label": "Current Condition",
+          "description": "In-place ceiling — where this deal trades today"
+        },
+        "upper": {
+          "key": "renovated",
+          "label": "Renovated / Repositioned",
+          "description": "Post-stabilization target — where the value-add thesis drives"
+        }
+      }
+    },
+    "stabilized": {
+      "story_key": "cap_rate_convergence",
+      "story_label": "Cap Rate Convergence",
+      "description": "Emphasizes recent local sales of the same class. Surfaces cap-rate spread to reveal market consensus and bid-ask range.",
+      "emphasize_recent_months": 18
+    },
+    "ground_up": {
+      "story_key": "lease_up_achievement",
+      "story_label": "Lease-Up Achievement",
+      "description": "Surfaces recently-delivered comps (vintage ≤ 3 years) and their achieved rents as the ground-truth benchmark for the lease-up pro forma.",
+      "recently_delivered_years": 3
+    },
+    "redevelopment": {
+      "story_key": "repositioning_potential",
+      "story_label": "Repositioning Potential",
+      "description": "Highlights comps that traded as obsolete vintage (age ≥ 30 years). Shows the repositioning discount and post-renovation premium the redevelopment thesis must underwrite.",
+      "obsolete_vintage_years": 30
+    }
+  },
+  "cascade_threshold": 5
+}

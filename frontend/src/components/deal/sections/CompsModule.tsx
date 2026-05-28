@@ -50,6 +50,48 @@ interface CompTransaction {
   geographic_label?: string;
 }
 
+interface CascadeMetadata {
+  trade_area_count: number;
+  submarket_count:  number;
+  msa_count:        number;
+  widened_to: 'trade_area' | 'submarket' | 'msa';
+  threshold: number;
+}
+
+interface CompGroup {
+  group_key:         string;
+  label:             string;
+  description:       string;
+  comp_ids:          string[];
+  avg_price_per_unit: number | null;
+  median_cap_rate:   number | null;
+}
+
+interface CapRateSpread {
+  min:          number;
+  max:          number;
+  median:       number;
+  p25:          number;
+  p75:          number;
+  spread_bps:   number;
+  recent_count: number;
+}
+
+interface CompStoryResult {
+  story_key:   string;
+  story_label: string;
+  description: string;
+  cascade:     CascadeMetadata;
+  groups?:               CompGroup[];
+  price_gap_per_unit?:   number | null;
+  price_gap_pct?:        number | null;
+  cap_rate_spread?:      CapRateSpread;
+  recently_delivered_count?: number;
+  recently_delivered_ids?:   string[];
+  obsolete_vintage_count?:   number;
+  obsolete_vintage_ids?:     string[];
+}
+
 interface CompSet {
   id: string;
   comp_count: number;
@@ -63,6 +105,7 @@ interface CompSet {
   top_comp_ids?: string[];
   strategy?: string;
   weights?: Record<string, number>;
+  comp_story?: CompStoryResult;
 }
 
 const TIER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -174,6 +217,123 @@ function FactorTooltip({ comp }: { comp: CompTransaction }) {
 }
 
 const DEFAULT_TOP_COUNT = 8;
+
+// ---------------------------------------------------------------------------
+// CompStoryPanel — strategy-specific insight panel (D-COMP-2)
+// ---------------------------------------------------------------------------
+function CompStoryPanel({
+  story,
+  strategy,
+  comps,
+  formatCurrency,
+  formatPercent,
+}: {
+  story: CompStoryResult;
+  strategy: InvestmentStrategy;
+  comps: CompTransaction[];
+  formatCurrency: (v: number) => string;
+  formatPercent: (v: number) => string;
+}) {
+  if (strategy === 'value_add' && story.groups && story.groups.length === 2) {
+    const lower = story.groups[0];
+    const upper = story.groups[1];
+    return (
+      <div className="bg-gray-800/30 border border-gray-700 rounded-lg overflow-hidden">
+        <div className="px-4 py-2.5 bg-gray-800/50 border-b border-gray-700 flex items-center justify-between">
+          <span className="text-xs font-semibold text-gray-300">Rent Ceiling Gap</span>
+          {story.price_gap_pct != null && story.price_gap_per_unit != null && (
+            <span className="text-xs text-emerald-400 font-bold">
+              +{story.price_gap_pct}% gap · {formatCurrency(story.price_gap_per_unit)}/unit value-add delta
+            </span>
+          )}
+        </div>
+        <div className="grid grid-cols-2 divide-x divide-gray-700">
+          {[lower, upper].map((group, idx) => {
+            const groupComps = comps.filter(c => group.comp_ids.includes(c.id));
+            const color = idx === 0 ? 'amber' : 'emerald';
+            return (
+              <div key={group.group_key} className="p-3">
+                <div className={`text-[10px] font-bold uppercase tracking-wide mb-1.5 ${idx === 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {group.label}
+                </div>
+                <div className="text-[9px] text-gray-500 mb-2">{group.description}</div>
+                <div className="space-y-0.5">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-gray-500">Avg $/Unit</span>
+                    <span className={`font-semibold ${idx === 0 ? 'text-amber-300' : 'text-emerald-300'}`}>
+                      {group.avg_price_per_unit != null ? formatCurrency(group.avg_price_per_unit) : '—'}
+                    </span>
+                  </div>
+                  {group.median_cap_rate != null && (
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-gray-500">Median Cap</span>
+                      <span className="text-gray-300">{formatPercent(group.median_cap_rate)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-gray-500">Comps</span>
+                    <span className="text-gray-400">{groupComps.length}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (strategy === 'stabilized' && story.cap_rate_spread) {
+    const { cap_rate_spread: cr } = story;
+    return (
+      <div className="bg-blue-500/8 border border-blue-500/20 rounded-lg px-4 py-3">
+        <div className="text-[10px] font-bold uppercase tracking-wide text-blue-400 mb-2">Cap Rate Convergence</div>
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-[10px]">
+          <div><span className="text-gray-500">Median </span><span className="text-blue-300 font-semibold">{formatPercent(cr.median)}</span></div>
+          <div><span className="text-gray-500">P25 </span><span className="text-blue-300">{formatPercent(cr.p25)}</span></div>
+          <div><span className="text-gray-500">P75 </span><span className="text-blue-300">{formatPercent(cr.p75)}</span></div>
+          <div><span className="text-gray-500">Range </span><span className="text-gray-400">{formatPercent(cr.min)} – {formatPercent(cr.max)}</span></div>
+          <div><span className="text-gray-500">Spread </span><span className="text-gray-400">{cr.spread_bps} bps</span></div>
+          {cr.recent_count > 0 && (
+            <div><span className="text-gray-500">Recent (&lt;18 mo) </span><span className="text-blue-300">{cr.recent_count} comps</span></div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (strategy === 'ground_up' && story.recently_delivered_count != null) {
+    return (
+      <div className="bg-emerald-500/8 border border-emerald-500/20 rounded-lg px-4 py-3 flex items-center gap-3">
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-400">Lease-Up Achievement</span>
+          <div className="text-[10px] text-gray-400 mt-0.5">
+            {story.recently_delivered_count > 0
+              ? <><span className="text-emerald-300 font-semibold">{story.recently_delivered_count} recently-delivered</span> comp{story.recently_delivered_count !== 1 ? 's' : ''} (vintage ≤ 3 yr) — highlighted below as lease-up benchmarks.</>
+              : 'No comps with vintage ≤ 3 years found in pool. Consider widening radius or date range.'}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (strategy === 'redevelopment' && story.obsolete_vintage_count != null) {
+    return (
+      <div className="bg-purple-500/8 border border-purple-500/20 rounded-lg px-4 py-3 flex items-center gap-3">
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-wide text-purple-400">Repositioning Potential</span>
+          <div className="text-[10px] text-gray-400 mt-0.5">
+            {story.obsolete_vintage_count > 0
+              ? <><span className="text-purple-300 font-semibold">{story.obsolete_vintage_count} obsolete-vintage</span> comp{story.obsolete_vintage_count !== 1 ? 's' : ''} (age ≥ 30 yr) — highlighted below as repositioning comps.</>
+              : 'No comps with vintage ≥ 30 years found in pool.'}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
 
 export default function CompsModule({
   deal,
@@ -352,6 +512,39 @@ export default function CompsModule({
           </div>
         </div>
 
+        {/* Geographic cascade expansion banner */}
+        {compSet.comp_story?.cascade && compSet.comp_story.cascade.widened_to !== 'trade_area' && (
+          <div className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs border ${
+            compSet.comp_story.cascade.widened_to === 'submarket'
+              ? 'bg-blue-500/8 border-blue-500/25 text-blue-300'
+              : 'bg-amber-500/8 border-amber-500/25 text-amber-300'
+          }`}>
+            <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            <div>
+              <span className="font-semibold">
+                {compSet.comp_story.cascade.widened_to === 'submarket'
+                  ? 'Widened to submarket'
+                  : 'Widened to MSA'}
+              </span>
+              {' — '}
+              {compSet.comp_story.cascade.trade_area_count < compSet.comp_story.cascade.threshold
+                ? `Only ${compSet.comp_story.cascade.trade_area_count} trade-area comp${compSet.comp_story.cascade.trade_area_count !== 1 ? 's' : ''} found (threshold: ${compSet.comp_story.cascade.threshold}).`
+                : `Insufficient qualifying comps in trade area.`}
+              {compSet.comp_story.cascade.submarket_count > 0 && compSet.comp_story.cascade.widened_to === 'msa' && (
+                <span> Submarket added {compSet.comp_story.cascade.submarket_count} comp{compSet.comp_story.cascade.submarket_count !== 1 ? 's' : ''}.</span>
+              )}
+              <span className="ml-1 text-gray-500">
+                TA: {compSet.comp_story.cascade.trade_area_count} · SM: {compSet.comp_story.cascade.submarket_count} · MSA: {compSet.comp_story.cascade.msa_count}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Strategy story panel */}
+        {compSet.comp_story && (
+          <CompStoryPanel story={compSet.comp_story} strategy={strategy} comps={compSet.comps} formatCurrency={formatCurrency} formatPercent={formatPercent} />
+        )}
+
         {/* Strategy selector + legend */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2">
@@ -417,11 +610,20 @@ export default function CompsModule({
               <tbody>
                 {comps.map((comp, i) => {
                   const tierColors = comp.relevance_tier ? (TIER_COLORS[comp.relevance_tier] ?? TIER_COLORS.M2) : null;
+                  const story = compSet.comp_story;
+                  const isRecentlyDelivered = strategy === 'ground_up' && story?.recently_delivered_ids?.includes(comp.id);
+                  const isObsoleteVintage   = strategy === 'redevelopment' && story?.obsolete_vintage_ids?.includes(comp.id);
+                  const isCurrentCondition  = strategy === 'value_add' && story?.groups?.[0]?.comp_ids.includes(comp.id);
+                  const isRenovated         = strategy === 'value_add' && story?.groups?.[1]?.comp_ids.includes(comp.id);
                   return (
                     <tr
                       key={comp.id}
                       className={`border-b border-gray-800/50 hover:bg-gray-800/20 ${
-                        i === 0 && comp.relevance_tier === 'M1' ? 'opacity-70' : ''
+                        i === 0 && comp.relevance_tier === 'M1' ? 'opacity-70' :
+                        isRecentlyDelivered ? 'bg-emerald-500/5' :
+                        isObsoleteVintage   ? 'bg-purple-500/5' :
+                        isCurrentCondition  ? 'bg-amber-500/4' :
+                        isRenovated         ? 'bg-emerald-500/4' : ''
                       }`}
                     >
                       <td className="py-2 px-3 text-gray-600 tabular-nums">{i + 1}</td>
