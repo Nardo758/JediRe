@@ -64,6 +64,10 @@ export interface ValuationMethod {
   indicatedPSF: number | null;
   compCount?: number;
   sampleSize?: number;
+  /** Task #1417 (6.2) — Number of comps older than MAX_COMP_AGE_MONTHS in the pool */
+  staleCompCount?: number;
+  /** Task #1417 (6.2) — Cap rate spread P75-P25 in basis points (comp-anchored method only) */
+  capRateSpreadBps?: number;
   sourceProvenance: string;
   evidenceTrail: EvidenceLine[];
   warningFlags: string[];
@@ -110,7 +114,84 @@ export interface ValuationGridResult {
     recommendedPriceHigh: number | null;
     gapAnalysis: GapAnalysisItem[];
     activeMethodCount: number;
+    /** Task #1417 (6.3) — Overall valuation confidence propagated from method mix */
+    valuationConfidence: ConfidenceLevel;
+    /** Human-readable explanation e.g. "8 comps, cap rate spread: 145bps" */
+    valuationConfidenceText: string;
   };
+}
+
+// ── Task #1417: Comp override types ──────────────────────────────────────────
+
+export interface CompCriteria {
+  radiusMiles: number;
+  maxAgeMonths: number;
+  minUnits: number;
+  maxUnits: number;
+  propertyClasses: string[];
+  excludedCompIds: string[];
+}
+
+export type StalenessLabel = 'fresh' | 'aging' | 'seasoned' | 'stale';
+
+export interface CompReviewItem {
+  id: string;
+  address: string;
+  city: string | null;
+  state: string | null;
+  units: number | null;
+  year_built: number | null;
+  asset_class: string | null;
+  sale_date: string | null;
+  sale_price: number | null;
+  price_per_unit: number | null;
+  implied_cap_rate: number | null;
+  distance_miles: number | null;
+  source: string;
+  relevance_score: number | null;
+  relevance_tier: string | null;
+  age_months: number;
+  staleness_label: StalenessLabel;
+  staleness_weight: number;
+  excluded: boolean;
+}
+
+export interface CompReviewResult {
+  dealId: string;
+  criteria: CompCriteria;
+  comps: CompReviewItem[];
+  totalCandidates: number;
+  staleCount: number;
+  excludedCount: number;
+}
+
+// ── Task #1417 (6.2): Staleness thresholds ────────────────────────────────────
+//
+// Comps are bucketed by age from today to their sale_date:
+//   fresh    : ≤12 months  → weight 1.00 (full)
+//   aging    : 12-24 months → weight 0.85
+//   seasoned : 24-36 months → weight 0.70
+//   stale    : >MAX_COMP_AGE_MONTHS months → weight 0.50, flagged with ⚠
+//
+// MAX_COMP_AGE_MONTHS is the threshold at which a comp is considered "stale"
+// (i.e. still included in synthesis but explicitly flagged). This is configurable
+// per-deal via deal_assumptions.comp_criteria.maxAgeMonths; the default below
+// is used when no operator preference is set.
+
+const MAX_COMP_AGE_MONTHS_DEFAULT = 36;
+
+function stalenessLabel(ageMonths: number, maxAgeMonths: number): 'fresh' | 'aging' | 'seasoned' | 'stale' {
+  if (ageMonths <= 12) return 'fresh';
+  if (ageMonths <= 24) return 'aging';
+  if (ageMonths <= maxAgeMonths) return 'seasoned';
+  return 'stale';
+}
+
+function stalenessWeight(ageMonths: number): number {
+  if (ageMonths <= 12) return 1.00;
+  if (ageMonths <= 24) return 0.85;
+  if (ageMonths <= 36) return 0.70;
+  return 0.50;
 }
 
 // ── Confidence weight map ─────────────────────────────────────────────────────
@@ -501,35 +582,36 @@ export class ValuationGridService {
     const TIER_FACTOR: Record<string, number> = { C1: 1.00, C2: 0.80, M1: 0.60, M2: 0.40 };
 
     const now = Date.now();
+    // Read operator-configured max age if set (default 36 months)
+    const maxCompAgeMonths = MAX_COMP_AGE_MONTHS_DEFAULT;
 
     interface WeightedCap {
       rate: number;
       weight: number;
       synthesized: boolean;
       tier: string;
-      stalenessWeight: number;
+      sw: number;
       tierFactor: number;
       label: string;
+      ageMonths: number;
     }
     const weightedCaps: WeightedCap[] = [];
     let directCount = 0;
     let synthesizedCount = 0;
+    let staleCount = 0;
 
     for (const comp of compSet.comps) {
       const saleDate = comp.recording_date ? new Date(comp.recording_date).getTime() : 0;
       const ageMonths = saleDate > 0 ? (now - saleDate) / (1000 * 60 * 60 * 24 * 30.44) : 999;
 
-      // Staleness weight
-      const stalenessWeight =
-        ageMonths <= 12 ? 1.00
-        : ageMonths <= 24 ? 0.85
-        : ageMonths <= 36 ? 0.70
-        : 0.50;
+      // Staleness weight (Task #1417 6.2 — uses shared helper)
+      const sw = stalenessWeight(ageMonths);
+      if (stalenessLabel(ageMonths, maxCompAgeMonths) === 'stale') staleCount++;
 
       // Quality-tier weight from comp relevance scoring (C1 > C2 > M1 > M2)
       const tier: string = (comp as any).relevance_tier ?? 'M2';
       const tierFactor = TIER_FACTOR[tier] ?? 0.40;
-      const weight = stalenessWeight * tierFactor;
+      const weight = sw * tierFactor;
 
       let capRate: number;
       let synthesized = false;
@@ -553,7 +635,7 @@ export class ValuationGridService {
       if (capRate < 0.02 || capRate > 0.20) continue;
 
       const compLabel = (comp as any).property_address ?? comp.id ?? 'unknown';
-      weightedCaps.push({ rate: capRate, weight, synthesized, tier, stalenessWeight, tierFactor, label: compLabel });
+      weightedCaps.push({ rate: capRate, weight, synthesized, tier, sw, tierFactor, label: compLabel, ageMonths });
     }
 
     // Minimum 3 valid data points required for a reliable cap rate band
@@ -610,13 +692,22 @@ export class ValuationGridService {
 
     // Per-comp detail: implied cap rate, composite weight, tier (for UI breakdown + audit)
     for (const wc of sorted) {
+      const slabel = stalenessLabel(wc.ageMonths, maxCompAgeMonths);
       evidence.push({
         label: `Comp: ${wc.label}`,
-        value: `${fmtCap(wc.rate)} | wt=${wc.weight.toFixed(2)} (stale=${wc.stalenessWeight.toFixed(2)}×tier=${wc.tierFactor.toFixed(2)}) | ${wc.synthesized ? 'synthesized' : 'direct'} | ${wc.tier}`,
+        value: `${fmtCap(wc.rate)} | wt=${wc.weight.toFixed(2)} (stale=${wc.sw.toFixed(2)}×tier=${wc.tierFactor.toFixed(2)}) | ${wc.synthesized ? 'synthesized' : 'direct'} | ${wc.tier} | ${slabel}${slabel === 'stale' ? ' ⚠' : ''}`,
         source: 'market_sale_comps',
       });
     }
 
+    // Staleness warnings (Task #1417 6.2)
+    if (staleCount > 0) {
+      const pct = Math.round(staleCount / n * 100);
+      warnings.push(
+        `${staleCount} of ${n} comps (${pct}%) are older than ${maxCompAgeMonths} months and flagged as stale. ` +
+        `These receive a 50% weight haircut in cap rate synthesis.`
+      );
+    }
     if (synthesizedCount > 0) {
       warnings.push(
         `${synthesizedCount} of ${n} data points were synthesized (no reported cap rate). ` +
@@ -626,6 +717,9 @@ export class ValuationGridService {
     if (n < 5) {
       warnings.push(`Thin comp pool (n=${n}) — cap rate band may not represent the submarket. Consider widening radius.`);
     }
+
+    // Cap rate spread in basis points (P75 - P25)
+    const capRateSpreadBps = Math.round((capP75 - capP25) * 10000);
 
     // Confidence: base on direct-cap-rate count (synthesized penalised, tier-weighted)
     const effectiveN = directCount + synthesizedCount * 0.5;
@@ -647,6 +741,8 @@ export class ValuationGridService {
       indicatedPPU: ppu50,
       indicatedPSF: psf50,
       compCount: n,
+      staleCompCount: staleCount,
+      capRateSpreadBps,
       sourceProvenance: `${n} sale comp implied cap rates (${directCount} direct, ${synthesizedCount} synthesized)`,
       evidenceTrail: evidence,
       warningFlags: warnings,
@@ -1148,6 +1244,12 @@ export class ValuationGridService {
       });
     }
 
+    // ── Task #1417 (6.3): Valuation confidence propagation ───────────────────
+    // Aggregate evidence from comp-based methods to derive an overall confidence
+    // that reflects: comp count, tier quality, stale comp fraction, and cap rate spread.
+    const valuationConfidence = this.computeValuationConfidence(activeMethods);
+    const valuationConfidenceText = this.buildConfidenceText(activeMethods, valuationConfidence);
+
     return {
       convergenceScore,
       convergenceSignal,
@@ -1159,7 +1261,74 @@ export class ValuationGridService {
       recommendedPriceHigh,
       gapAnalysis,
       activeMethodCount: activeMethods.length,
+      valuationConfidence,
+      valuationConfidenceText,
     };
+  }
+
+  // ── Task #1417 (6.3): Confidence computation helpers ─────────────────────
+
+  private computeValuationConfidence(activeMethods: ValuationMethod[]): ConfidenceLevel {
+    if (activeMethods.length === 0) return 'INSUFFICIENT';
+
+    // Use the minimum confidence across all active methods as the floor
+    const confidenceLevels: ConfidenceLevel[] = ['HIGH', 'MEDIUM', 'LOW', 'INSUFFICIENT'];
+    const minLevel = activeMethods.reduce<ConfidenceLevel>((worst, m) => {
+      const wi = confidenceLevels.indexOf(worst);
+      const mi = confidenceLevels.indexOf(m.confidence);
+      return mi > wi ? m.confidence : worst;
+    }, 'HIGH');
+
+    let levelIdx = confidenceLevels.indexOf(minLevel);
+
+    // Penalty: cap rate spread ≥ 300 bps → wider uncertainty → downgrade one level
+    const compAnchoredMethod = activeMethods.find(m => m.id === 'comp_anchored_cap_rate');
+    if (compAnchoredMethod?.capRateSpreadBps != null && compAnchoredMethod.capRateSpreadBps >= 300) {
+      levelIdx = Math.min(levelIdx + 1, confidenceLevels.length - 1);
+    }
+
+    // Penalty: stale comp fraction ≥ 50% → downgrade one level
+    const totalComps = compAnchoredMethod?.compCount ?? 0;
+    const staleComps = compAnchoredMethod?.staleCompCount ?? 0;
+    if (totalComps > 0 && staleComps / totalComps >= 0.5) {
+      levelIdx = Math.min(levelIdx + 1, confidenceLevels.length - 1);
+    }
+
+    // Penalty: only 1 active method → downgrade one level (one method = low triangulation)
+    if (activeMethods.length === 1) {
+      levelIdx = Math.min(levelIdx + 1, confidenceLevels.length - 1);
+    }
+
+    return confidenceLevels[levelIdx];
+  }
+
+  private buildConfidenceText(activeMethods: ValuationMethod[], confidence: ConfidenceLevel): string {
+    const parts: string[] = [];
+
+    const compAnchoredMethod = activeMethods.find(m => m.id === 'comp_anchored_cap_rate');
+    const salesCompPPU = activeMethods.find(m => m.id === 'sales_comp_ppu');
+
+    const compCount = compAnchoredMethod?.compCount ?? salesCompPPU?.compCount ?? 0;
+    if (compCount > 0) parts.push(`${compCount} comp${compCount !== 1 ? 's' : ''}`);
+
+    if (compAnchoredMethod?.capRateSpreadBps != null) {
+      parts.push(`cap rate spread: ${compAnchoredMethod.capRateSpreadBps}bps`);
+    }
+
+    const staleComps = compAnchoredMethod?.staleCompCount ?? 0;
+    if (staleComps > 0) parts.push(`${staleComps} stale`);
+
+    parts.push(`${activeMethods.length} method${activeMethods.length !== 1 ? 's' : ''}`);
+
+    const detail = parts.join(', ');
+    const label = {
+      HIGH: 'Strong triangulation',
+      MEDIUM: 'Moderate triangulation',
+      LOW: 'Limited triangulation',
+      INSUFFICIENT: 'Insufficient data',
+    }[confidence];
+
+    return `${label}${detail ? ` (${detail})` : ''}`;
   }
 
   // ── Gap analysis driver text ──────────────────────────────────────────────
@@ -1298,5 +1467,170 @@ export class ValuationGridService {
        WHERE deal_id = $2::uuid`,
       [JSON.stringify(lv), dealId]
     );
+  }
+
+  // ── Task #1417 (6.1): Comp criteria persistence ──────────────────────────
+
+  private readonly DEFAULT_CRITERIA: CompCriteria = {
+    radiusMiles: 3.0,
+    maxAgeMonths: MAX_COMP_AGE_MONTHS_DEFAULT,
+    minUnits: 50,
+    maxUnits: 500,
+    propertyClasses: ['A', 'B', 'C'],
+    excludedCompIds: [],
+  };
+
+  private async getCompCriteria(dealId: string): Promise<CompCriteria> {
+    const result = await this.pool.query(
+      `SELECT comp_criteria FROM deal_assumptions WHERE deal_id = $1::uuid LIMIT 1`,
+      [dealId]
+    );
+    const stored = result.rows[0]?.comp_criteria ?? null;
+    if (!stored) return { ...this.DEFAULT_CRITERIA };
+    return {
+      ...this.DEFAULT_CRITERIA,
+      ...stored,
+      excludedCompIds: Array.isArray(stored.excludedCompIds) ? stored.excludedCompIds : [],
+    };
+  }
+
+  async updateCompCriteria(dealId: string, patch: Partial<CompCriteria>): Promise<CompCriteria> {
+    const current = await this.getCompCriteria(dealId);
+    const updated: CompCriteria = { ...current, ...patch };
+    await this.pool.query(
+      `UPDATE deal_assumptions
+       SET comp_criteria = $1::jsonb
+       WHERE deal_id = $2::uuid`,
+      [JSON.stringify(updated), dealId]
+    );
+    return updated;
+  }
+
+  async excludeComp(dealId: string, compId: string): Promise<void> {
+    const criteria = await this.getCompCriteria(dealId);
+    if (!criteria.excludedCompIds.includes(compId)) {
+      criteria.excludedCompIds.push(compId);
+    }
+    await this.pool.query(
+      `UPDATE deal_assumptions SET comp_criteria = $1::jsonb WHERE deal_id = $2::uuid`,
+      [JSON.stringify(criteria), dealId]
+    );
+  }
+
+  async includeComp(dealId: string, compId: string): Promise<void> {
+    const criteria = await this.getCompCriteria(dealId);
+    criteria.excludedCompIds = criteria.excludedCompIds.filter(id => id !== compId);
+    await this.pool.query(
+      `UPDATE deal_assumptions SET comp_criteria = $1::jsonb WHERE deal_id = $2::uuid`,
+      [JSON.stringify(criteria), dealId]
+    );
+  }
+
+  // ── Task #1417 (6.1): Comp review listing ────────────────────────────────
+
+  async listCompsForReview(dealId: string): Promise<CompReviewResult> {
+    const criteria = await this.getCompCriteria(dealId);
+
+    // Get subject property coordinates
+    const subjectResult = await this.pool.query(
+      `SELECT p.latitude, p.longitude, COALESCE(p.city, d.city) AS city, p.state_code AS state
+       FROM deals d LEFT JOIN properties p ON p.deal_id = d.id
+       WHERE d.id = $1::uuid LIMIT 1`,
+      [dealId]
+    );
+    const subject = subjectResult.rows[0];
+    if (!subject?.latitude || !subject?.longitude) {
+      return {
+        dealId,
+        criteria,
+        comps: [],
+        totalCandidates: 0,
+        staleCount: 0,
+        excludedCount: 0,
+      };
+    }
+
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(cutoffDate.getMonth() - criteria.maxAgeMonths);
+
+    // Pull comps from market_sale_comps within operator criteria radius
+    const result = await this.pool.query(
+      `SELECT
+         t.id,
+         t.address,
+         t.city,
+         t.state,
+         t.units,
+         t.year_built,
+         t.asset_class,
+         t.sale_date,
+         t.sale_price,
+         t.price_per_unit,
+         t.cap_rate       AS implied_cap_rate,
+         t.source,
+         ROUND((
+           point(t.longitude::float, t.latitude::float)
+           <@> point($2::float, $1::float)
+         )::numeric, 3)  AS distance_miles
+       FROM market_sale_comps t
+       WHERE t.property_type = 'multifamily'
+         AND t.latitude IS NOT NULL
+         AND t.longitude IS NOT NULL
+         AND t.sale_price > 0
+         AND (
+           point(t.longitude::float, t.latitude::float)
+           <@> point($2::float, $1::float)
+         ) <= $3
+         AND (t.source != 'costar_upload' OR t.deal_id = $4::uuid OR t.deal_id IS NULL)
+       ORDER BY
+         (point(t.longitude::float, t.latitude::float) <@> point($2::float, $1::float)) ASC,
+         t.sale_date DESC
+       LIMIT 100`,
+      [subject.latitude, subject.longitude, criteria.radiusMiles, dealId]
+    );
+
+    const now = Date.now();
+    const excluded = new Set<string>(criteria.excludedCompIds);
+
+    const comps: CompReviewItem[] = result.rows.map((row: any) => {
+      const saleDateMs = row.sale_date ? new Date(row.sale_date).getTime() : 0;
+      const ageMonths = saleDateMs > 0 ? (now - saleDateMs) / (1000 * 60 * 60 * 24 * 30.44) : 999;
+      const slabel = stalenessLabel(ageMonths, criteria.maxAgeMonths);
+      const sw = stalenessWeight(ageMonths);
+      return {
+        id: row.id,
+        address: row.address ?? '',
+        city: row.city ?? null,
+        state: row.state ?? null,
+        units: row.units != null ? parseInt(String(row.units)) : null,
+        year_built: row.year_built != null ? parseInt(String(row.year_built)) : null,
+        asset_class: row.asset_class ?? null,
+        sale_date: row.sale_date ? new Date(row.sale_date).toISOString().slice(0, 10) : null,
+        sale_price: row.sale_price != null ? parseFloat(String(row.sale_price)) : null,
+        price_per_unit: row.price_per_unit != null ? parseFloat(String(row.price_per_unit)) : null,
+        implied_cap_rate: row.implied_cap_rate != null ? parseFloat(String(row.implied_cap_rate)) : null,
+        distance_miles: row.distance_miles != null ? parseFloat(String(row.distance_miles)) : null,
+        source: row.source ?? 'unknown',
+        relevance_score: null,
+        relevance_tier: null,
+        age_months: Math.round(ageMonths),
+        staleness_label: slabel,
+        staleness_weight: sw,
+        excluded: excluded.has(row.id),
+      };
+    });
+
+    const totalCandidates = comps.length;
+    const staleCount = comps.filter(c => c.staleness_label === 'stale').length;
+    const excludedCount = comps.filter(c => c.excluded).length;
+
+    return {
+      dealId,
+      criteria,
+      comps,
+      totalCandidates,
+      staleCount,
+      excludedCount,
+    };
   }
 }

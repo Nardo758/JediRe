@@ -17,7 +17,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, Info, Edit3, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, Info, Edit3, RefreshCw, ChevronDown, ChevronRight, X, Filter, EyeOff, Eye, ShieldCheck } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
 import type { FinancialEngineTabProps } from './types';
@@ -35,6 +35,8 @@ type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW' | 'INSUFFICIENT';
 type ConvergenceSignal = 'CONVERGENT' | 'MODERATE' | 'DIVERGENT';
 
 interface EvidenceLine { label: string; value: string; source?: string; }
+type StalenessLabel = 'fresh' | 'aging' | 'seasoned' | 'stale';
+
 interface ValuationMethod {
   id: MethodId;
   label: string;
@@ -49,6 +51,8 @@ interface ValuationMethod {
   indicatedPSF: number | null;
   compCount?: number;
   sampleSize?: number;
+  staleCompCount?: number;
+  capRateSpreadBps?: number;
   sourceProvenance: string;
   evidenceTrail: EvidenceLine[];
   warningFlags: string[];
@@ -73,7 +77,50 @@ interface ValuationGridResult {
     reconciledValue: number | null; reconciledPPU: number | null; reconciledPSF: number | null;
     recommendedPriceLow: number | null; recommendedPriceHigh: number | null;
     gapAnalysis: GapAnalysisItem[]; activeMethodCount: number;
+    /** Task #1417 (6.3) */
+    valuationConfidence?: ConfidenceLevel;
+    valuationConfidenceText?: string;
   };
+}
+
+// ── Task #1417 (6.1): Comp review types ─────────────────────────────────────
+
+interface CompCriteria {
+  radiusMiles: number;
+  maxAgeMonths: number;
+  minUnits: number;
+  maxUnits: number;
+  propertyClasses: string[];
+  excludedCompIds: string[];
+}
+
+interface CompReviewItem {
+  id: string;
+  address: string;
+  city: string | null;
+  state: string | null;
+  units: number | null;
+  year_built: number | null;
+  asset_class: string | null;
+  sale_date: string | null;
+  sale_price: number | null;
+  price_per_unit: number | null;
+  implied_cap_rate: number | null;
+  distance_miles: number | null;
+  source: string;
+  age_months: number;
+  staleness_label: StalenessLabel;
+  staleness_weight: number;
+  excluded: boolean;
+}
+
+interface CompReviewResult {
+  dealId: string;
+  criteria: CompCriteria;
+  comps: CompReviewItem[];
+  totalCandidates: number;
+  staleCount: number;
+  excludedCount: number;
 }
 
 // ── Formatters ─────────────────────────────────────────────────────────────────
@@ -448,14 +495,37 @@ function GapAnalysisPanel({ items }: { items: GapAnalysisItem[] }) {
   );
 }
 
+// ── Staleness helpers ──────────────────────────────────────────────────────────
+
+const STALENESS_COLOR: Record<StalenessLabel, string> = {
+  fresh: BT.text.green,
+  aging: BT.text.cyan,
+  seasoned: BT.text.amber,
+  stale: BT.met.risk,
+};
+
+function StalenessChip({ label }: { label: StalenessLabel }) {
+  const color = STALENESS_COLOR[label];
+  return (
+    <span style={{
+      fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: 1,
+      color, border: `1px solid ${color}55`, borderRadius: 2, padding: '1px 4px',
+      textTransform: 'uppercase',
+    }}>{label}</span>
+  );
+}
+
 // ── Convergence Banner ─────────────────────────────────────────────────────────
 
 function ConvergenceBanner({
   signal, score, text, reconciledValue, priceLow, priceHigh, ppu, psf,
+  valuationConfidence, valuationConfidenceText,
 }: {
   signal: ConvergenceSignal; score: number; text: string;
   reconciledValue: number | null; priceLow: number | null; priceHigh: number | null;
   ppu: number | null; psf: number | null;
+  valuationConfidence?: ConfidenceLevel;
+  valuationConfidenceText?: string;
 }) {
   const color = CONVERGENCE_COLOR[signal];
   const Icon = signal === 'CONVERGENT' ? CheckCircle
@@ -515,6 +585,298 @@ function ConvergenceBanner({
           </span>
         </div>
       )}
+
+      {/* Task #1417 (6.3): Valuation confidence */}
+      {valuationConfidence && valuationConfidence !== 'INSUFFICIENT' && (
+        <div style={{ borderLeft: `1px solid ${BT.border.dim}`, paddingLeft: 20 }}>
+          <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: 1, color: BT.text.muted, marginBottom: 3 }}>
+            VALUATION CONFIDENCE
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+            <ShieldCheck size={12} style={{ color: CONFIDENCE_COLOR[valuationConfidence] }} />
+            <span style={{
+              fontFamily: MONO, fontSize: 12, fontWeight: 700,
+              color: CONFIDENCE_COLOR[valuationConfidence],
+            }}>{valuationConfidence}</span>
+          </div>
+          {valuationConfidenceText && (
+            <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, maxWidth: 220 }}>
+              {valuationConfidenceText}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Task #1417 (6.1): Comp Review Panel ───────────────────────────────────────
+
+function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
+  dealId: string;
+  onClose: () => void;
+  onRefreshGrid: () => void;
+}) {
+  const [data, setData] = useState<CompReviewResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [editCriteria, setEditCriteria] = useState(false);
+  const [criteriaForm, setCriteriaForm] = useState<Partial<CompCriteria>>({});
+  const [savingCriteria, setSavingCriteria] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(null);
+    try {
+      const res = await apiClient.get(`/deals/${dealId}/valuation-grid/comps`);
+      if (res.data?.success) {
+        setData(res.data.data);
+        const c = res.data.data.criteria as CompCriteria;
+        setCriteriaForm({ radiusMiles: c.radiusMiles, maxAgeMonths: c.maxAgeMonths });
+      } else {
+        setErr(res.data?.error ?? 'Failed to load comps');
+      }
+    } catch (e: any) {
+      setErr(e.message ?? 'Network error');
+    } finally {
+      setLoading(false);
+    }
+  }, [dealId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const toggleComp = async (comp: CompReviewItem) => {
+    setSavingId(comp.id);
+    try {
+      if (comp.excluded) {
+        await apiClient.post(`/deals/${dealId}/valuation-grid/comps/${comp.id}/include`, {});
+      } else {
+        await apiClient.delete(`/deals/${dealId}/valuation-grid/comps/${comp.id}`);
+      }
+      await load();
+      onRefreshGrid();
+    } catch {}
+    setSavingId(null);
+  };
+
+  const saveCriteria = async () => {
+    setSavingCriteria(true);
+    try {
+      await apiClient.patch(`/deals/${dealId}/valuation-grid/comps/criteria`, criteriaForm);
+      setEditCriteria(false);
+      await load();
+      onRefreshGrid();
+    } catch {}
+    setSavingCriteria(false);
+  };
+
+  const activeComps = data?.comps.filter(c => !c.excluded) ?? [];
+  const excludedComps = data?.comps.filter(c => c.excluded) ?? [];
+
+  return (
+    <div style={{
+      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+      backgroundColor: BT.bg.base, zIndex: 50, display: 'flex', flexDirection: 'column',
+      border: `1px solid ${BT.border.normal}`,
+    }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 14px', borderBottom: `1px solid ${BT.border.normal}`,
+        backgroundColor: BT.bg.panel,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Filter size={12} style={{ color: BT.text.cyan }} />
+          <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: 1, color: BT.text.primary }}>
+            COMP REVIEW
+          </span>
+          {data && (
+            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+              {activeComps.length} active · {excludedComps.length} excluded · {data.staleCount} stale
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            onClick={() => setEditCriteria(v => !v)}
+            style={{
+              background: editCriteria ? `${BT.text.cyan}22` : 'none',
+              border: `1px solid ${editCriteria ? BT.text.cyan : BT.border.dim}`,
+              borderRadius: 3, padding: '3px 8px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 4,
+              color: editCriteria ? BT.text.cyan : BT.text.muted,
+            }}
+          >
+            <Filter size={9} />
+            <span style={{ fontFamily: MONO, fontSize: 9 }}>CRITERIA</span>
+          </button>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none', border: `1px solid ${BT.border.dim}`,
+              borderRadius: 3, padding: '3px 8px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 4, color: BT.text.muted,
+            }}
+          >
+            <X size={10} />
+          </button>
+        </div>
+      </div>
+
+      {/* Criteria editor */}
+      {editCriteria && data && (
+        <div style={{
+          padding: '10px 14px', borderBottom: `1px solid ${BT.border.dim}`,
+          backgroundColor: `${BT.text.cyan}08`,
+          display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap',
+        }}>
+          <div>
+            <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.muted, marginBottom: 3 }}>RADIUS (mi)</div>
+            <input
+              type="number" min={0.5} max={50} step={0.5}
+              value={criteriaForm.radiusMiles ?? data.criteria.radiusMiles}
+              onChange={e => setCriteriaForm(f => ({ ...f, radiusMiles: parseFloat(e.target.value) }))}
+              style={{
+                fontFamily: MONO, fontSize: 11, width: 70,
+                background: BT.bg.input ?? BT.bg.panel, border: `1px solid ${BT.border.normal}`,
+                borderRadius: 3, padding: '3px 6px', color: BT.text.primary,
+              }}
+            />
+          </div>
+          <div>
+            <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.muted, marginBottom: 3 }}>MAX AGE (mo)</div>
+            <input
+              type="number" min={6} max={120} step={6}
+              value={criteriaForm.maxAgeMonths ?? data.criteria.maxAgeMonths}
+              onChange={e => setCriteriaForm(f => ({ ...f, maxAgeMonths: parseInt(e.target.value) }))}
+              style={{
+                fontFamily: MONO, fontSize: 11, width: 70,
+                background: BT.bg.input ?? BT.bg.panel, border: `1px solid ${BT.border.normal}`,
+                borderRadius: 3, padding: '3px 6px', color: BT.text.primary,
+              }}
+            />
+          </div>
+          <button
+            onClick={saveCriteria}
+            disabled={savingCriteria}
+            style={{
+              fontFamily: MONO, fontSize: 9, padding: '4px 12px',
+              background: BT.text.cyan, color: BT.bg.base,
+              border: 'none', borderRadius: 3, cursor: 'pointer',
+            }}
+          >
+            {savingCriteria ? 'SAVING…' : 'APPLY'}
+          </button>
+        </div>
+      )}
+
+      {/* Body */}
+      {loading && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontFamily: MONO, fontSize: 10, color: BT.text.muted }}>Loading comp pool…</span>
+        </div>
+      )}
+      {err && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontFamily: MONO, fontSize: 10, color: BT.met.risk }}>{err}</span>
+        </div>
+      )}
+      {!loading && !err && data && (
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          {/* Column headers */}
+          <div style={{
+            display: 'grid', padding: '5px 14px',
+            gridTemplateColumns: '2fr 60px 70px 80px 80px 80px 80px 60px',
+            gap: 8, borderBottom: `1px solid ${BT.border.normal}`,
+            backgroundColor: BT.bg.panel,
+          }}>
+            {['ADDRESS', 'UNITS', 'YR BUILT', 'SALE DATE', 'SALE PRICE', 'PPU', 'CAP RATE', 'AGE'].map(h => (
+              <div key={h} style={{ fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.muted }}>{h}</div>
+            ))}
+          </div>
+
+          {/* Active comps */}
+          {activeComps.length === 0 && excludedComps.length === 0 && (
+            <div style={{ padding: 24, textAlign: 'center' }}>
+              <span style={{ fontFamily: MONO, fontSize: 10, color: BT.text.muted }}>
+                No comps found within {data.criteria.radiusMiles}mi. Try widening the search radius.
+              </span>
+            </div>
+          )}
+
+          {activeComps.map(comp => (
+            <CompRow key={comp.id} comp={comp} saving={savingId === comp.id} onToggle={() => toggleComp(comp)} />
+          ))}
+
+          {/* Excluded comps */}
+          {excludedComps.length > 0 && (
+            <>
+              <div style={{
+                padding: '5px 14px', borderTop: `1px solid ${BT.border.normal}`,
+                backgroundColor: BT.bg.panel,
+                fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.muted,
+              }}>
+                EXCLUDED BY OPERATOR ({excludedComps.length})
+              </div>
+              {excludedComps.map(comp => (
+                <CompRow key={comp.id} comp={comp} saving={savingId === comp.id} onToggle={() => toggleComp(comp)} />
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CompRow({ comp, saving, onToggle }: { comp: CompReviewItem; saving: boolean; onToggle: () => void }) {
+  const fmtDate = (d: string | null) => d ? d.slice(0, 7) : '—';
+  const fmtCap = (v: number | null) => v == null ? '—' : `${(v * 100).toFixed(2)}%`;
+
+  return (
+    <div style={{
+      display: 'grid', padding: '6px 14px',
+      gridTemplateColumns: '2fr 60px 70px 80px 80px 80px 80px 60px',
+      gap: 8, alignItems: 'center',
+      borderBottom: `1px solid ${BT.border.dim}`,
+      backgroundColor: comp.excluded ? `${BT.met.risk}08` : 'transparent',
+      opacity: comp.excluded ? 0.65 : 1,
+    }}>
+      {/* Address */}
+      <div>
+        <div style={{ fontFamily: MONO, fontSize: 10, color: comp.excluded ? BT.text.muted : BT.text.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {comp.address}
+        </div>
+        <div style={{ display: 'flex', gap: 4, marginTop: 2, alignItems: 'center' }}>
+          <StalenessChip label={comp.staleness_label} />
+          {comp.distance_miles != null && (
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{comp.distance_miles.toFixed(1)}mi</span>
+          )}
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{comp.source}</span>
+        </div>
+      </div>
+      <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.secondary }}>{comp.units ?? '—'}</div>
+      <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.secondary }}>{comp.year_built ?? '—'}</div>
+      <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.secondary }}>{fmtDate(comp.sale_date)}</div>
+      <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.primary }}>{fmt$(comp.sale_price)}</div>
+      <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.secondary }}>{fmtPPU(comp.price_per_unit)}</div>
+      <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.secondary }}>{fmtCap(comp.implied_cap_rate)}</div>
+      {/* Toggle button */}
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <button
+          onClick={onToggle}
+          disabled={saving}
+          title={comp.excluded ? 'Re-include this comp' : 'Exclude this comp'}
+          style={{
+            background: 'none', border: `1px solid ${comp.excluded ? BT.text.green : BT.met.risk}44`,
+            borderRadius: 3, padding: '2px 6px', cursor: 'pointer',
+            color: comp.excluded ? BT.text.green : BT.met.risk,
+            display: 'flex', alignItems: 'center', gap: 3,
+          }}
+        >
+          {saving ? '…' : comp.excluded ? <><Eye size={9} /></> : <><EyeOff size={9} /></>}
+        </button>
+      </div>
     </div>
   );
 }
@@ -582,6 +944,7 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showOverrideEditor, setShowOverrideEditor] = useState(false);
+  const [showCompReview, setShowCompReview] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -634,7 +997,17 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
   const rec = data.reconciliation;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', position: 'relative' }}>
+
+      {/* Task #1417 (6.1): Comp Review overlay */}
+      {showCompReview && (
+        <CompReviewPanel
+          dealId={dealId}
+          onClose={() => setShowCompReview(false)}
+          onRefreshGrid={load}
+        />
+      )}
+
       {/* Header bar */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -651,7 +1024,21 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
-            onClick={() => { setShowOverrideEditor(p => !p); setShowUploadPanel(false); }}
+            onClick={() => setShowCompReview(p => !p)}
+            title="Review and manage comp pool"
+            style={{
+              background: showCompReview ? `${BT.text.cyan}22` : 'none',
+              border: `1px solid ${showCompReview ? BT.text.cyan : BT.border.dim}`,
+              borderRadius: 3, padding: '3px 8px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 4,
+              color: showCompReview ? BT.text.cyan : BT.text.muted,
+            }}
+          >
+            <Filter size={10} />
+            <span style={{ fontFamily: MONO, fontSize: 9 }}>COMP REVIEW</span>
+          </button>
+          <button
+            onClick={() => { setShowOverrideEditor(p => !p); }}
             title="Set operator override value"
             style={{
               background: 'none', border: `1px solid ${BT.border.dim}`,
@@ -693,6 +1080,8 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
           priceHigh={rec.recommendedPriceHigh}
           ppu={rec.reconciledPPU}
           psf={rec.reconciledPSF}
+          valuationConfidence={rec.valuationConfidence}
+          valuationConfidenceText={rec.valuationConfidenceText}
         />
       )}
 

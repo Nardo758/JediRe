@@ -357,4 +357,122 @@ router.post(
   }
 );
 
+// ── Task #1417 (6.1 / 6.3): Comp review endpoints ─────────────────────────
+
+/**
+ * GET /api/v1/deals/:dealId/valuation-grid/comps
+ *
+ * Returns the candidate comp pool for this deal with staleness labels, selection
+ * criteria, and excluded-comp flags. Used by the Comp Review Panel in the UI.
+ */
+router.get('/deals/:dealId/valuation-grid/comps', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+    const pool = getPool();
+
+    const ownerCheck = await pool.query(
+      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
+      [dealId, userId, req.user?.role === 'admin']
+    );
+    if (ownerCheck.rows.length === 0) return res.status(404).json({ success: false, error: 'Deal not found.' });
+
+    const svc = new ValuationGridService(pool);
+    const result = await svc.listCompsForReview(dealId);
+    res.json({ success: true, data: result });
+  } catch (err: any) {
+    console.error('[valuation-grid] comps review error:', err);
+    res.status(500).json({ success: false, error: err.message ?? 'Failed to list comps' });
+  }
+});
+
+/**
+ * PATCH /api/v1/deals/:dealId/valuation-grid/comps/criteria
+ *
+ * Persist tunable selection parameters. Accepted fields:
+ *   radiusMiles, maxAgeMonths, minUnits, maxUnits, propertyClasses
+ * Does NOT change excludedCompIds (use DELETE/include endpoints for that).
+ */
+router.patch('/deals/:dealId/valuation-grid/comps/criteria', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+    const pool = getPool();
+
+    const ownerCheck = await pool.query(
+      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
+      [dealId, userId, req.user?.role === 'admin']
+    );
+    if (ownerCheck.rows.length === 0) return res.status(404).json({ success: false, error: 'Deal not found.' });
+
+    const { radiusMiles, maxAgeMonths, minUnits, maxUnits, propertyClasses } = req.body;
+    const patch: Record<string, unknown> = {};
+    if (typeof radiusMiles === 'number' && radiusMiles > 0 && radiusMiles <= 50) patch.radiusMiles = radiusMiles;
+    if (typeof maxAgeMonths === 'number' && maxAgeMonths >= 6 && maxAgeMonths <= 120) patch.maxAgeMonths = maxAgeMonths;
+    if (typeof minUnits === 'number' && minUnits >= 0) patch.minUnits = minUnits;
+    if (typeof maxUnits === 'number' && maxUnits > 0) patch.maxUnits = maxUnits;
+    if (Array.isArray(propertyClasses) && propertyClasses.every(c => typeof c === 'string')) patch.propertyClasses = propertyClasses;
+
+    const svc = new ValuationGridService(pool);
+    const updated = await svc.updateCompCriteria(dealId, patch as any);
+    res.json({ success: true, data: updated });
+  } catch (err: any) {
+    console.error('[valuation-grid] comp criteria update error:', err);
+    res.status(500).json({ success: false, error: err.message ?? 'Failed to update criteria' });
+  }
+});
+
+/**
+ * DELETE /api/v1/deals/:dealId/valuation-grid/comps/:compId
+ *
+ * Excludes a specific comp from this deal's scoring (operator override).
+ * The comp remains in market_sale_comps but is filtered from synthesis runs.
+ */
+router.delete('/deals/:dealId/valuation-grid/comps/:compId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId, compId } = req.params;
+    const userId = req.user?.userId;
+    const pool = getPool();
+
+    const ownerCheck = await pool.query(
+      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
+      [dealId, userId, req.user?.role === 'admin']
+    );
+    if (ownerCheck.rows.length === 0) return res.status(404).json({ success: false, error: 'Deal not found.' });
+
+    const svc = new ValuationGridService(pool);
+    await svc.excludeComp(dealId, compId);
+    res.json({ success: true, message: 'Comp excluded from this deal.' });
+  } catch (err: any) {
+    console.error('[valuation-grid] comp exclude error:', err);
+    res.status(500).json({ success: false, error: err.message ?? 'Failed to exclude comp' });
+  }
+});
+
+/**
+ * POST /api/v1/deals/:dealId/valuation-grid/comps/:compId/include
+ *
+ * Re-includes a previously excluded comp.
+ */
+router.post('/deals/:dealId/valuation-grid/comps/:compId/include', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId, compId } = req.params;
+    const userId = req.user?.userId;
+    const pool = getPool();
+
+    const ownerCheck = await pool.query(
+      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
+      [dealId, userId, req.user?.role === 'admin']
+    );
+    if (ownerCheck.rows.length === 0) return res.status(404).json({ success: false, error: 'Deal not found.' });
+
+    const svc = new ValuationGridService(pool);
+    await svc.includeComp(dealId, compId);
+    res.json({ success: true, message: 'Comp re-included.' });
+  } catch (err: any) {
+    console.error('[valuation-grid] comp include error:', err);
+    res.status(500).json({ success: false, error: err.message ?? 'Failed to include comp' });
+  }
+});
+
 export default router;
