@@ -9,7 +9,9 @@ import OpenAI from 'openai';
 import { mapProFormaAssumptionsToModelAssumptions, crossCheckLLMVsDeterministic, buildEvidenceHintsFromSeed } from './deterministic/proforma-assumptions-bridge';
 import { runModel, runIntegrityChecks } from './deterministic/deterministic-model-runner';
 import { runM11Cycle, applyM14RiskAdjustments } from './module-wiring/capital-structure-adapter';
-import { evaluatePipeline } from './module-wiring/reasoning-pipeline';
+import { evaluatePipeline, enforceStageGates } from './module-wiring/reasoning-pipeline';
+import { resolveAssumptionBatch, type ModuleValueInput } from './module-wiring/conflict-resolution.service';
+import { ASSUMPTION_MODULE_MAPPINGS, type AssumptionField } from './module-wiring/assumption-module-mapping.config';
 import type { ProFormaYear1Seed } from './document-extraction/types';
 
 /**
@@ -536,24 +538,223 @@ export class FinancialModelEngineService {
       logger.warn(`[Anchor-Interceptor] Skipped for ${dealId}: ${err?.message}`);
     }
     
-    // ── D-MOD-3: Reasoning pipeline stage-gate evaluation ─────────────────────
-    // Evaluate the 11-stage reasoning pipeline against the current DataFlowRouter
-    // state for this deal. This enforces the dependency chain: market intel before
-    // exit cap, proforma before debt sizing, etc. Violations are logged as warnings
-    // (non-blocking) so the build never hard-fails on a missing optional module.
+    // ── D-MOD-2 + D-MOD-3: Conflict resolution + stage-gate enforcement pass ──
+    //
+    // This pass runs AFTER M26/M27 enhancement (so tax/insurance values are final)
+    // and BEFORE the LLM call / DB insert.
+    //
+    // D-MOD-2: For each of the 10 mapped assumptions, compare the value in
+    //   enhancedAssumptions (the LLM-set value, using the authoritative module)
+    //   against supporting module values from getFinancialInputsFromModules().
+    //   Step 2 blends within-band supporters; Step 3 flags out-of-band divergences.
+    //   Evidence entries are persisted to underwriting_evidence.
+    //
+    // D-MOD-3: Evaluate the 11-stage reasoning pipeline, enforce stage gates for
+    //   each assumption (exit cap must not be derived before market intel, etc.),
+    //   and persist gate violations as evidence entries.
+    //
+    // Non-blocking: all errors are caught and logged; the build continues.
     try {
+      const moduleInputs = await getFinancialInputsFromModules(dealId);
+      const { market, demand, traffic, strategy } = moduleInputs;
+
+      // ── Build ModuleValueInput batches for each mapped assumption ────────────
+      const a = enhancedAssumptions as ProFormaAssumptions;
+
+      const conflictBatch: Array<{ field: AssumptionField; inputs: ModuleValueInput[] }> = [];
+
+      // 1. Rent Growth Y1: auth=M05 cohort, supporting=M07 traffic, M06 demand
+      const authRentGrowthY1 = a.revenue?.rentGrowth?.[0] ?? null;
+      conflictBatch.push({
+        field: 'revenue.rentGrowth.y1',
+        inputs: [
+          { moduleId: 'M05', value: authRentGrowthY1, confidence: market.source === 'live' ? 0.80 : 0.40, isAuthoritative: true, sourceLabel: 'M05 Market (proforma value)' },
+          { moduleId: 'M07', value: market.rentGrowthPct !== null && traffic.rentGrowthAdjustment !== null ? market.rentGrowthPct + traffic.rentGrowthAdjustment : traffic.rentGrowthAdjustment, confidence: traffic.source === 'live' ? 0.65 : 0.30, isAuthoritative: false, sourceLabel: 'M07 Traffic delta' },
+          { moduleId: 'M06', value: demand.demandScore !== null ? market.rentGrowthPct ?? null : null, confidence: demand.source === 'live' ? 0.55 : 0.25, isAuthoritative: false, sourceLabel: 'M06 Demand-weighted market' },
+        ],
+      });
+
+      // 2. Rent Growth Long-Run: auth=M05, supporting=M11 rate regime
+      const authRentGrowthLR = a.revenue?.rentGrowth?.[1] ?? a.revenue?.rentGrowth?.[0] ?? null;
+      const m11Data = dataFlowRouter.getModuleData('M11', dealId)?.data;
+      conflictBatch.push({
+        field: 'revenue.rentGrowth.longRun',
+        inputs: [
+          { moduleId: 'M05', value: authRentGrowthLR, confidence: market.source === 'live' ? 0.75 : 0.40, isAuthoritative: true, sourceLabel: 'M05 long-run (proforma value)' },
+          { moduleId: 'M11', value: m11Data?.rent_growth_forecast ?? m11Data?.rentGrowthForecast ?? null, confidence: m11Data ? 0.70 : 0.20, isAuthoritative: false, sourceLabel: 'M11 Rate environment forecast' },
+        ],
+      });
+
+      // 3. Stabilised Occupancy: auth=M05, supporting=M04 supply, M07 traffic
+      const authOccupancy = a.revenue?.stabilizedOccupancy ?? null;
+      conflictBatch.push({
+        field: 'revenue.stabilizedOccupancy',
+        inputs: [
+          { moduleId: 'M05', value: authOccupancy, confidence: market.source === 'live' ? 0.80 : 0.45, isAuthoritative: true, sourceLabel: 'M05 Market (proforma value)' },
+          { moduleId: 'M04', value: market.vacancyRate !== null ? 1 - market.vacancyRate : null, confidence: market.source === 'live' ? 0.65 : 0.30, isAuthoritative: false, sourceLabel: 'M04 Supply-derived (1 - vacancyRate)' },
+          { moduleId: 'M07', value: traffic.vacancyAssumption !== null ? 1 - traffic.vacancyAssumption : null, confidence: traffic.source === 'live' ? 0.60 : 0.25, isAuthoritative: false, sourceLabel: 'M07 Traffic vacancy assumption' },
+        ],
+      });
+
+      // 4. Real Estate Tax: auth=M26, supporting=M14
+      const taxExpense = (a.expenses as Record<string, { amount: number; type: string; growthRate: number } | undefined>);
+      const authTax = taxExpense?.['real_estate_tax']?.amount ?? taxExpense?.['tax']?.amount ?? null;
+      const m14Data = dataFlowRouter.getModuleData('M14', dealId)?.data;
+      conflictBatch.push({
+        field: 'expenses.real_estate_tax',
+        inputs: [
+          { moduleId: 'M26', value: authTax, confidence: authTax !== null ? 0.85 : 0.30, isAuthoritative: true, sourceLabel: 'M26 Tax enhancer (proforma value)' },
+          { moduleId: 'M14', value: m14Data?.tax_risk_adjustment ?? null, confidence: m14Data ? 0.55 : 0.20, isAuthoritative: false, sourceLabel: 'M14 Risk tax adjustment' },
+        ],
+      });
+
+      // 5. Insurance: auth=M26, supporting=M14
+      const authInsurance = taxExpense?.['insurance']?.amount ?? null;
+      conflictBatch.push({
+        field: 'expenses.insurance',
+        inputs: [
+          { moduleId: 'M26', value: authInsurance, confidence: authInsurance !== null ? 0.80 : 0.30, isAuthoritative: true, sourceLabel: 'M26 Insurance enhancer (proforma value)' },
+          { moduleId: 'M14', value: m14Data?.insurance_risk_adjustment ?? null, confidence: m14Data ? 0.50 : 0.20, isAuthoritative: false, sourceLabel: 'M14 Risk insurance adjustment' },
+        ],
+      });
+
+      // 6. Exit Cap Rate: auth=M12, supporting=M05, M11
+      const authExitCap = a.disposition?.exitCapRate ?? null;
+      const m12Data = dataFlowRouter.getModuleData('M12', dealId)?.data;
+      conflictBatch.push({
+        field: 'disposition.exitCapRate',
+        inputs: [
+          { moduleId: 'M12', value: authExitCap, confidence: 0.75, isAuthoritative: true, sourceLabel: 'M12 Exit analysis (proforma value)' },
+          { moduleId: 'M05', value: strategy.exitCap ?? null, confidence: strategy.source === 'live' ? 0.65 : 0.30, isAuthoritative: false, sourceLabel: 'M05/M08 Strategy exit cap' },
+          { moduleId: 'M11', value: m11Data?.exit_cap_estimate ?? m11Data?.exitCapEstimate ?? null, confidence: m11Data ? 0.60 : 0.20, isAuthoritative: false, sourceLabel: 'M11 Rate-adjusted exit cap' },
+        ],
+      });
+
+      // 7. Loan Amount: auth=M11, supporting=M14
+      const authLoanAmount = a.financing?.loanAmount ?? null;
+      conflictBatch.push({
+        field: 'financing.loanAmount',
+        inputs: [
+          { moduleId: 'M11', value: authLoanAmount, confidence: 0.80, isAuthoritative: true, sourceLabel: 'M11 Capital structure (proforma value)' },
+          { moduleId: 'M14', value: m14Data?.max_loan_amount ?? null, confidence: m14Data ? 0.55 : 0.20, isAuthoritative: false, sourceLabel: 'M14 Risk-adjusted max loan' },
+        ],
+      });
+
+      // 8. Interest Rate: auth=M11 (M28 placeholder absent)
+      const authInterestRate = a.financing?.interestRate ?? null;
+      conflictBatch.push({
+        field: 'financing.interestRate',
+        inputs: [
+          { moduleId: 'M11', value: authInterestRate, confidence: 0.80, isAuthoritative: true, sourceLabel: 'M11 Rate environment (proforma value)' },
+        ],
+      });
+
+      // 9. Hold Period: auth=M08, supporting=M12
+      const authHoldPeriod = a.holdPeriod ?? null;
+      conflictBatch.push({
+        field: 'holdPeriod',
+        inputs: [
+          { moduleId: 'M08', value: authHoldPeriod, confidence: 0.75, isAuthoritative: true, sourceLabel: 'M08 Strategy (proforma value)' },
+          { moduleId: 'M12', value: strategy.holdPeriod ?? m12Data?.optimal_hold_years ?? m12Data?.optimalHoldYears ?? null, confidence: strategy.source === 'live' ? 0.65 : 0.30, isAuthoritative: false, sourceLabel: 'M12 Optimal hold year' },
+        ],
+      });
+
+      // 10. Absorption Rate: auth=M07, supporting=M06
+      const authAbsorption = a.development?.leaseUpVelocity ?? null;
+      conflictBatch.push({
+        field: 'revenue.absorptionRate',
+        inputs: [
+          { moduleId: 'M07', value: authAbsorption ?? traffic.absorptionRate, confidence: traffic.source === 'live' ? 0.70 : 0.35, isAuthoritative: true, sourceLabel: 'M07 Traffic capture rate' },
+          { moduleId: 'M06', value: demand.demandUnitsTotal !== null ? (demand.demandUnitsTotal / 12) / ((a.dealInfo?.totalUnits ?? 1) || 1) : null, confidence: demand.source === 'live' ? 0.55 : 0.25, isAuthoritative: false, sourceLabel: 'M06 Demand-implied absorption' },
+        ],
+      });
+
+      // ── Run conflict resolution batch (D-MOD-2) ───────────────────────────
+      const resolutionResults = resolveAssumptionBatch(conflictBatch);
+
+      // ── Stage gate evaluation + enforcement (D-MOD-3) ─────────────────────
       const pipelineState = evaluatePipeline(dealId);
-      const completedPct = Math.round((pipelineState.completedStageIds.length / 11) * 100);
-      if (pipelineState.fullyResolved) {
-        logger.info(`[D-MOD-3] Pipeline fully resolved for ${dealId} (11/11 stages satisfied)`);
-      } else {
-        logger.info(
-          `[D-MOD-3] Pipeline for ${dealId}: ${pipelineState.completedStageIds.length}/11 stages satisfied (${completedPct}%). ` +
-          `Gated at: "${pipelineState.gatedStageId ?? 'none'}" — ${pipelineState.gatedReason ?? ''}`
+      const completedPct  = Math.round((pipelineState.completedStageIds.length / 11) * 100);
+      logger.info(
+        `[D-MOD-3] Pipeline for ${dealId}: ` +
+        `${pipelineState.completedStageIds.length}/11 stages (${completedPct}%). ` +
+        `${pipelineState.gatedStageId ? `Gated at "${pipelineState.gatedStageId}" — ${pipelineState.gatedReason}` : 'All stages satisfied.'}`
+      );
+
+      const stageDeps = ASSUMPTION_MODULE_MAPPINGS.map(m => ({
+        field: m.field,
+        stageDependency: m.stageDependency,
+      }));
+      const violations = enforceStageGates(pipelineState, stageDeps);
+
+      if (violations.length > 0) {
+        logger.warn(`[D-MOD-3] ${violations.length} stage gate violation(s) for ${dealId}: ${violations.map(v => `${v.assumptionField}→${v.violatedStageId}(${v.severity})`).join(', ')}`);
+      }
+
+      // ── Persist evidence entries to underwriting_evidence ─────────────────
+      // Each assumption gets one evidence row (conflict or clean).
+      // Stage gate violations get one evidence row each.
+      const evidenceInserts: Array<Promise<unknown>> = [];
+
+      for (const [, result] of resolutionResults) {
+        const entry = result.evidenceEntry;
+        evidenceInserts.push(
+          pool.query(
+            `INSERT INTO underwriting_evidence
+               (deal_id, field_path, value_numeric, primary_tier, data_points, reasoning, alternatives, collision, confidence)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             ON CONFLICT DO NOTHING`,
+            [
+              dealId,
+              `d_mod2.${entry.field_path}`,
+              result.resolvedValue ?? null,
+              entry.primary_tier,
+              JSON.stringify(entry.data_points),
+              entry.reasoning,
+              JSON.stringify([]),
+              entry.conflict_detail ? JSON.stringify({
+                field_path:  `d_mod2.${entry.field_path}`,
+                agent_value: entry.conflict_detail.authoritativeValue,
+                broker_value: entry.conflict_detail.divergingValue,
+                delta_pct:   entry.conflict_detail.divergencePct,
+                magnitude:   entry.conflict_detail.divergencePct > 0.30 ? 'severe' : entry.conflict_detail.divergencePct > 0.15 ? 'material' : 'minor',
+                direction:   entry.conflict_detail.divergingValue > entry.conflict_detail.authoritativeValue ? 'agent_lower' : 'agent_higher',
+                narrative:   entry.conflict_detail.narrative,
+              }) : null,
+              entry.confidence,
+            ]
+          ).catch((err: Error) => logger.warn(`[D-MOD-2] Evidence insert failed for ${entry.field_path}: ${err.message}`))
         );
       }
-    } catch (pipelineErr: any) {
-      logger.warn(`[D-MOD-3] Pipeline evaluation skipped for ${dealId}: ${pipelineErr?.message}`);
+
+      for (const violation of violations) {
+        evidenceInserts.push(
+          pool.query(
+            `INSERT INTO underwriting_evidence
+               (deal_id, field_path, primary_tier, data_points, reasoning, alternatives, confidence)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT DO NOTHING`,
+            [
+              dealId,
+              `d_mod3.gate_violation.${violation.violatedStageId}`,
+              3,
+              JSON.stringify([]),
+              violation.narrative,
+              JSON.stringify([]),
+              violation.severity === 'error' ? 'low' : 'medium',
+            ]
+          ).catch((err: Error) => logger.warn(`[D-MOD-3] Violation evidence insert failed: ${err.message}`))
+        );
+      }
+
+      await Promise.allSettled(evidenceInserts);
+
+      const conflictCount  = [...resolutionResults.values()].filter(r => r.conflictFlagged).length;
+      const blendCount     = [...resolutionResults.values()].filter(r => r.bandAdjusted).length;
+      logger.info(`[D-MOD] Pass complete for ${dealId}: ${resolutionResults.size} assumptions resolved, ${conflictCount} conflict(s), ${blendCount} blend(s), ${violations.length} gate violation(s)`);
+
+    } catch (dmodErr: any) {
+      logger.warn(`[D-MOD] Pass skipped for ${dealId}: ${dmodErr?.message}`);
     }
 
     // Log enhancement summary
