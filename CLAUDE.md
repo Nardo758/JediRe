@@ -419,3 +419,56 @@ Where no module exists:
 Shipping canonical derivation logic without aligning the agent's operational behavior produces apparent inconsistency between documentation and platform output. Operators see one rule in the doc and a different rule in agent output, producing credibility loss.
 
 Re-specifying math that a module already handles creates two sources of math truth (the doc and the module). When they drift, downstream consumers don't know which is authoritative.
+
+### P10 — Data Sourcing Hierarchy
+
+Every data-dependent feature has three source layers with explicit precedence:
+
+**LAYER 1 — PLATFORM-DERIVED**
+Source: research agent, municipal APIs, ApartmentIQ, internal data pipelines, materialized views, derived benchmarks.
+Confidence: typically HIGH for fully-covered jurisdictions; degrades for sparse coverage.
+LayeredValue source tag: `'platform'`
+
+**LAYER 2 — OPERATOR UPLOAD**
+Source: operator uploads data files to the data library — CoStar exports, broker packages, GC bids, third-party reports, manual entry forms.
+Confidence: HIGH (deal-specific, operator-curated).
+LayeredValue source tag: `'operator'` or `'broker'` (depending on upload source)
+Layer 2 is NOT an afterthought. It is a first-class source with explicit upload UX and source provenance.
+
+**LAYER 3 — GRACEFUL DEGRADATION**
+When neither Layer 1 nor Layer 2 has data:
+- Surface INSUFFICIENT badge with explicit reason
+- Provide upload CTA pointing at the gap
+- Confidence warnings clearly communicate the limitation
+- Feature may degrade to placeholder OR fall back to broader cohort statistics with explicit lower confidence
+
+Method-level fallback patterns are documented per feature.
+
+**DESIGN REQUIREMENT FOR FUTURE WORK**
+
+When scoping any Phase 2 batch or new feature that consumes data:
+A. Identify the Layer 1 sources and verify they're populated against actual database state (not just code references)
+B. Define the Layer 2 upload path (file format, expected fields, validation rules) before shipping the feature
+C. Define the Layer 3 degradation behavior (what operators see when data is absent)
+D. All three layers wired in the same dispatch (per P9.A alignment pattern)
+
+**VERIFICATION STEP (extends P8)**
+When verifying a feature's data dependencies, confirm against authoritative platform state:
+- Run COUNT queries against expected source tables
+- Test the empty-state path explicitly
+- Test the operator upload path explicitly
+
+Code references to data sources are NOT sufficient evidence the sources exist or are populated.
+
+**DO NOT:**
+- Ship a data-dependent feature without defining the operator upload path
+- Treat Layer 1 (platform-derived) as the only "real" source; Layer 2 is equally real
+- Assume data exists because code references it — verify against database state
+
+**Rationale:**
+The Valuation Grid v0.1 implementation surfaced this gap. The engine was structurally complete but every active method returned INSUFFICIENT because:
+- `sale_comp_sets` had 0 rows (Layer 1 sparse)
+- No operator upload path existed (Layer 2 not specified)
+- The degraded state rendered confusingly because UX assumed Layer 1 would be present
+
+Without P10 codified, future features will repeat this pattern: structurally complete, operationally empty, with no clear path for operators to fill the gap.
