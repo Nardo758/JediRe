@@ -204,20 +204,38 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
     } = await import('../../services/valuation/comp-relevance-scoring.service');
     const pool = getPool();
 
+    const userId = req.user!.userId;
+
+    // Ownership check — fail fast before any data access
+    const ownerCheck = await pool.query(
+      `SELECT id FROM deals WHERE id = $1::uuid AND user_id = $2::uuid LIMIT 1`,
+      [dealId, userId],
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
     const compSet = await compSetService.getCompSetByDeal(dealId);
     if (!compSet) {
       return res.status(404).json({ success: false, error: 'No comp set found for this deal' });
     }
 
-    // 1. Fetch deal's subject coordinates + metadata
+    // 1. Fetch deal's subject coordinates + metadata.
+    //    Primary: boundary centroid. Fallback: properties.latitude/longitude (when boundary is null).
     const dealRow = await pool.query(
       `SELECT COALESCE(d.asset_class, 'B') AS asset_class,
               p.units, p.year_built,
-              ST_Y(ST_Centroid(d.boundary)) AS deal_lat,
-              ST_X(ST_Centroid(d.boundary)) AS deal_lng
+              COALESCE(
+                ST_Y(ST_Centroid(d.boundary)),
+                p.latitude::float
+              ) AS deal_lat,
+              COALESCE(
+                ST_X(ST_Centroid(d.boundary)),
+                p.longitude::float
+              ) AS deal_lng
        FROM deals d LEFT JOIN properties p ON p.deal_id = d.id
-       WHERE d.id = $1::uuid LIMIT 1`,
-      [dealId],
+       WHERE d.id = $1::uuid AND d.user_id = $2::uuid LIMIT 1`,
+      [dealId, userId],
     );
     const dealInfo = dealRow.rows[0] ?? {};
     const dealLat = dealInfo.deal_lat != null ? parseFloat(String(dealInfo.deal_lat)) : null;

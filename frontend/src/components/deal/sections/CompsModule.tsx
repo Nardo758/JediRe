@@ -245,8 +245,14 @@ export default function CompsModule({
         arms_length_only: true,
         strategy,
       });
-      if (response.success && response.data) {
-        setCompSet(response.data);
+      if (response.success) {
+        // Re-fetch from /ranked so we always get geographic tier labels + proper top-N
+        const rankedResponse = await apiClient.get(`/deals/${dealId}/comps/ranked?strategy=${strategy}`);
+        if (rankedResponse.success && rankedResponse.data) {
+          setCompSet(rankedResponse.data);
+        } else if (response.data) {
+          setCompSet(response.data);
+        }
         setShowAll(false);
       }
     } catch (err: any) {
