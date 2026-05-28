@@ -1,12 +1,13 @@
 /**
  * Valuation Grid Service — Multi-Method Price Triangulation
- * Task #1370, Dispatch 2
+ * Task #1370, Dispatch 2 | Task #1415 Comp-Anchored Cap Rate
  *
- * Runs 5 active valuation methods (V0.1) + 4 placeholder methods (V1.0)
+ * Runs 6 active valuation methods (V0.1) + 4 placeholder methods (V1.0)
  * against a subject deal and reconciles them into a recommended price range.
  *
  * Active V0.1 methods:
- *   1. Cap Rate × NOI          — bottom-up income capitalisation
+ *   1. Cap Rate × NOI          — bottom-up income capitalisation (archive benchmarks)
+ *   1b. Comp-Anchored Cap Rate — implied cap rates from market sale comps + staleness weighting
  *   2. Per-Unit Benchmark      — archive_assumption_benchmarks PPU cohort
  *   3. Sales Comp PPU          — CompSetService transaction comps
  *   3b. Sales Comp PSF         — conditional on sqft coverage
@@ -28,6 +29,7 @@ import { SubjectPopulationService, type SubjectCompletenessResult } from '../sub
 
 export type MethodId =
   | 'cap_rate_noi'
+  | 'comp_anchored_cap_rate'
   | 'per_unit_benchmark'
   | 'sales_comp_ppu'
   | 'sales_comp_psf'
@@ -182,11 +184,13 @@ export class ValuationGridService {
 
     const [
       m1,
+      m1b,
       m2,
       m3,
       m5,
     ] = await Promise.all([
       this.computeCapRateNOI(subject),
+      this.computeCompAnchoredCapRate(dealId, subject),
       noUnits
         ? Promise.resolve(this.insufficientMethod(
             'per_unit_benchmark', 'Per-Unit Benchmark', 'top_down',
@@ -203,6 +207,7 @@ export class ValuationGridService {
     ]);
 
     methods.push(m1);
+    methods.push(m1b);
     methods.push(m2);
     methods.push(m3);
 
@@ -403,6 +408,217 @@ export class ValuationGridService {
       indicatedPSF: psf50,
       sampleSize: nSamples,
       sourceProvenance: sourceText,
+      evidenceTrail: evidence,
+      warningFlags: warnings,
+    };
+  }
+
+  // ── Method 1b: Comp-Anchored Cap Rate ────────────────────────────────────
+  //
+  // Derives a cap rate band directly from market sale comp implied cap rates.
+  // Comps that carry cap_rate from market_sale_comps are used as-is; comps
+  // without cap_rate get a synthesized rate: (avg_rent × units × 12 × occ ×
+  // (1 - opex_ratio)) / sale_price using the subject's city/state market
+  // snapshot as the rent/occ proxy. Each data point is weighted by recency
+  // (staleness haircut: 0-12mo = 1.0, 12-24mo = 0.85, 24-36mo = 0.70,
+  // 36+ = 0.50). A weighted-percentile computation yields P25/P50/P75 cap
+  // rates, and value = subject.noi / cap_rate_P50 (same NOI source as M1).
+
+  private async getMarketSnapshotForSynthesis(
+    city: string,
+    state: string
+  ): Promise<{ avgRent: number; avgOccupancy: number } | null> {
+    try {
+      const res = await this.pool.query(
+        `SELECT avg_rent_studio, avg_rent_1br, avg_rent_2br, avg_rent_3br, avg_occupancy
+         FROM apartment_market_snapshots
+         WHERE LOWER(city) = LOWER($1) AND LOWER(state) = LOWER($2)
+         ORDER BY id DESC
+         LIMIT 1`,
+        [city, state]
+      );
+      if (res.rows.length === 0) return null;
+      const row = res.rows[0];
+      const rentCols = [row.avg_rent_studio, row.avg_rent_1br, row.avg_rent_2br, row.avg_rent_3br]
+        .map(v => safeFloat(v, 0))
+        .filter(v => v > 0);
+      const avgRent = rentCols.length > 0
+        ? rentCols.reduce((a, b) => a + b, 0) / rentCols.length
+        : 0;
+      const avgOccupancy = safeFloat(row.avg_occupancy, 0);
+      return { avgRent: avgRent > 0 ? avgRent : 0, avgOccupancy: avgOccupancy > 0 ? avgOccupancy : 0 };
+    } catch {
+      return null;
+    }
+  }
+
+  private async computeCompAnchoredCapRate(
+    dealId: string,
+    subject: SubjectProperty
+  ): Promise<ValuationMethod> {
+    const METHOD_ID: MethodId = 'comp_anchored_cap_rate';
+    const warnings: string[] = [];
+    const evidence: EvidenceLine[] = [];
+
+    if (!subject.noi) {
+      return this.insufficientMethod(
+        METHOD_ID,
+        'Comp-Anchored Cap Rate',
+        'bottom_up',
+        'No NOI available — add proforma assumptions or upload a T12 rent roll.',
+        []
+      );
+    }
+
+    // Pull comp set (reuse existing set or generate on-the-fly)
+    let compSet: any = null;
+    try {
+      compSet = await compSetService.getCompSetByDeal(dealId);
+      if (!compSet || compSet.comp_count === 0) {
+        compSet = await compSetService.generateCompSet({ deal_id: dealId });
+      }
+    } catch {
+      // silent — comp set may fail without lat/lon
+    }
+
+    if (!compSet || !compSet.comps || compSet.comps.length === 0) {
+      return this.insufficientMethod(
+        METHOD_ID,
+        'Comp-Anchored Cap Rate',
+        'bottom_up',
+        'No sale comps available — comp set needed to derive market cap rate.',
+        []
+      );
+    }
+
+    // Market snapshot for synthesis of comps without cap_rate
+    const snap = await this.getMarketSnapshotForSynthesis(subject.city, subject.state);
+    const snapAvgRent = snap?.avgRent ?? 1250;
+    const snapAvgOcc  = snap?.avgOccupancy && snap.avgOccupancy > 0 ? snap.avgOccupancy : 0.93;
+    const SYNTH_OPEX  = 0.42;
+
+    const now = Date.now();
+
+    interface WeightedCap { rate: number; weight: number; synthesized: boolean }
+    const weightedCaps: WeightedCap[] = [];
+    let directCount = 0;
+    let synthesizedCount = 0;
+
+    for (const comp of compSet.comps) {
+      const saleDate = comp.recording_date ? new Date(comp.recording_date).getTime() : 0;
+      const ageMonths = saleDate > 0 ? (now - saleDate) / (1000 * 60 * 60 * 24 * 30.44) : 999;
+
+      // Staleness weight
+      const weight =
+        ageMonths <= 12 ? 1.00
+        : ageMonths <= 24 ? 0.85
+        : ageMonths <= 36 ? 0.70
+        : 0.50;
+
+      let capRate: number;
+      let synthesized = false;
+
+      const rawCapRate = safeFloat(comp.implied_cap_rate, 0);
+      if (rawCapRate > 0) {
+        capRate = rawCapRate;
+        directCount++;
+      } else {
+        // Synthesize: NOI = avgRent × units × 12 × occupancy × (1 - opexRatio)
+        const compUnits = safeFloat(comp.units, 0);
+        const salePrice = safeFloat(comp.derived_sale_price, 0);
+        if (compUnits <= 0 || salePrice <= 0) continue;
+        const synthNOI = snapAvgRent * compUnits * 12 * snapAvgOcc * (1 - SYNTH_OPEX);
+        capRate = synthNOI / salePrice;
+        synthesized = true;
+        synthesizedCount++;
+      }
+
+      // Sanity bounds: 2% – 20%
+      if (capRate < 0.02 || capRate > 0.20) continue;
+      weightedCaps.push({ rate: capRate, weight, synthesized });
+    }
+
+    if (weightedCaps.length < 2) {
+      return this.insufficientMethod(
+        METHOD_ID,
+        'Comp-Anchored Cap Rate',
+        'bottom_up',
+        `Insufficient cap rate data from comp set (${weightedCaps.length} valid data points — need ≥2).`,
+        synthesizedCount > 0
+          ? [`${synthesizedCount} of ${compSet.comps.length} comps had no reported cap rate and were synthesized using market averages (avg_rent=$${snapAvgRent.toFixed(0)}, occ=${(snapAvgOcc * 100).toFixed(0)}%).`]
+          : []
+      );
+    }
+
+    // Weighted percentile helper
+    const sorted = [...weightedCaps].sort((a, b) => a.rate - b.rate);
+    const totalWeight = sorted.reduce((s, x) => s + x.weight, 0);
+    const weightedPercentile = (p: number): number => {
+      const target = p * totalWeight;
+      let cumWeight = 0;
+      for (const item of sorted) {
+        cumWeight += item.weight;
+        if (cumWeight >= target) return item.rate;
+      }
+      return sorted[sorted.length - 1].rate;
+    };
+
+    const capP25 = weightedPercentile(0.25);
+    const capP50 = weightedPercentile(0.50);
+    const capP75 = weightedPercentile(0.75);
+
+    // Value = NOI / cap_rate  (higher cap → lower value)
+    const noi = subject.noi!;
+    const valP25 = noi / capP75;
+    const valP50 = noi / capP50;
+    const valP75 = noi / capP25;
+
+    const ppu50 = subject.units ? valP50 / subject.units : null;
+    const psf50 = subject.totalSF ? valP50 / subject.totalSF : null;
+
+    const n = weightedCaps.length;
+    const fmtCap = (v: number) => `${(v * 100).toFixed(2)}%`;
+
+    evidence.push(
+      { label: 'Stabilized NOI', value: fmt$(noi), source: subject.noiSource },
+      { label: 'Comp Pool', value: `${n} data points (${directCount} direct, ${synthesizedCount} synthesized)` },
+      { label: 'Implied Cap P25', value: fmtCap(capP25), source: 'market_sale_comps' },
+      { label: 'Implied Cap P50', value: fmtCap(capP50), source: 'market_sale_comps' },
+      { label: 'Implied Cap P75', value: fmtCap(capP75), source: 'market_sale_comps' },
+      { label: 'Indicated Value P50', value: fmt$(valP50) }
+    );
+
+    if (synthesizedCount > 0) {
+      warnings.push(
+        `${synthesizedCount} of ${n} data points were synthesized (no reported cap rate). ` +
+        `Synthesis used market avg rent $${snapAvgRent.toFixed(0)}/mo and ${(snapAvgOcc * 100).toFixed(0)}% occupancy — verify against actuals.`
+      );
+    }
+    if (n < 5) {
+      warnings.push(`Thin comp pool (n=${n}) — cap rate band may not represent the submarket. Consider widening radius.`);
+    }
+
+    // Confidence: base on direct-cap-rate count (synthesized penalised)
+    const effectiveN = directCount + synthesizedCount * 0.5;
+    const confidence: ConfidenceLevel =
+      effectiveN >= 10 ? this.compConfidence(n, subject.state, subject.city)
+      : effectiveN >= 5  ? 'MEDIUM'
+      : effectiveN >= 2  ? 'LOW'
+      : 'INSUFFICIENT';
+
+    return {
+      id: METHOD_ID,
+      label: 'Comp-Anchored Cap Rate',
+      direction: 'bottom_up',
+      status: confidence === 'INSUFFICIENT' ? 'insufficient' : 'active',
+      confidence,
+      indicatedValueP25: valP25,
+      indicatedValueP50: valP50,
+      indicatedValueP75: valP75,
+      indicatedPPU: ppu50,
+      indicatedPSF: psf50,
+      compCount: n,
+      sourceProvenance: `${n} sale comp implied cap rates (${directCount} direct, ${synthesizedCount} synthesized)`,
       evidenceTrail: evidence,
       warningFlags: warnings,
     };
@@ -852,9 +1068,10 @@ export class ValuationGridService {
     const recommendedPriceLow = Math.max(0, reconciledValue - 0.5 * sd);
     const recommendedPriceHigh = reconciledValue + 0.5 * sd;
 
-    // Gap analysis: M1 vs M3 (main diagnostic pair)
+    // Gap analysis: M1 vs M3 (main diagnostic pair) + M1b vs M1 (cap rate cross-check)
     const gapAnalysis: GapAnalysisItem[] = [];
     const m1 = activeMethods.find(m => m.id === 'cap_rate_noi');
+    const m1b = activeMethods.find(m => m.id === 'comp_anchored_cap_rate');
     const m3 = activeMethods.find(m => m.id === 'sales_comp_ppu');
     const m2 = activeMethods.find(m => m.id === 'per_unit_benchmark');
 
@@ -868,6 +1085,22 @@ export class ValuationGridService {
         labelB: 'Sales Comp PPU',
         deltaPct,
         driverText: this.gapDriverText(m1, m3, subject, deltaPct),
+        severity: absDelta < 10 ? 'info' : absDelta < 25 ? 'watch' : 'alert',
+      });
+    }
+
+    // Comp-anchored cap rate vs archive-based cap rate — surfaces cap rate source divergence
+    if (m1 && m1b && m1b.indicatedValueP50 && m1.indicatedValueP50) {
+      const deltaPct = ((m1.indicatedValueP50! - m1b.indicatedValueP50!) / m1b.indicatedValueP50!) * 100;
+      const absDelta = Math.abs(deltaPct);
+      gapAnalysis.push({
+        methodA: 'cap_rate_noi',
+        methodB: 'comp_anchored_cap_rate',
+        labelA: 'Cap Rate × NOI (Archive)',
+        labelB: 'Comp-Anchored Cap Rate',
+        deltaPct,
+        driverText: `Archive benchmark (n=${m1.sampleSize ?? 0}) indicates ${fmt$(m1.indicatedValueP50)} vs comp-implied market cap rate (n=${m1b.compCount ?? 0} comps) at ${fmt$(m1b.indicatedValueP50)}. ` +
+          (absDelta < 10 ? 'Rates converge — strong signal.' : absDelta < 25 ? 'Moderate divergence — review NOI margin vs market transactions.' : 'High divergence — investigate whether archive cap rates reflect current market conditions.'),
         severity: absDelta < 10 ? 'info' : absDelta < 25 ? 'watch' : 'alert',
       });
     }

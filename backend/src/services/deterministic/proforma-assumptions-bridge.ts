@@ -537,7 +537,7 @@ export function coerceFinancialModelResultToModelResultsShape(
     reasoning: { derivationLog: [], walkthrough: '', collisionReport: [] },
     evidence: { confidence_distribution: { high: 0, medium: 0, low: 0 }, fields: [] },
     meta: { modelVersion: 'llm-coerced', runner: 'coerceFinancialModelResultToModelResultsShape', computedAt: new Date().toISOString() },
-  } as import('./deterministic-model-runner').ModelResults;
+  } as unknown as import('./deterministic-model-runner').ModelResults;
 }
 
 /**
