@@ -22,6 +22,7 @@
 import { Pool } from 'pg';
 import { compSetService } from '../saleComps/compSet.service';
 import { getReplacementCostServiceV2, type ReplacementCostInput } from '../inflation/replacement-cost-v2.service';
+import { SubjectPopulationService, type SubjectCompletenessResult } from '../subject-population.service';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -94,6 +95,7 @@ export interface ValuationGridResult {
   dealId: string;
   computedAt: string;
   subject: SubjectProperty;
+  subjectCompleteness: SubjectCompletenessResult;
   methods: ValuationMethod[];
   reconciliation: {
     convergenceScore: number;
@@ -158,7 +160,16 @@ export class ValuationGridService {
   }
 
   async compute(dealId: string): Promise<ValuationGridResult> {
-    const subject = await this.getSubjectProperty(dealId);
+    const populationSvc = new SubjectPopulationService(this.pool);
+
+    // D-DEAL-3: Run completeness gate in parallel with subject property fetch.
+    // The gate result is attached to the response so the UI can surface
+    // actionable missing-field prompts instead of a generic error.
+    const [subject, subjectCompleteness] = await Promise.all([
+      this.getSubjectProperty(dealId),
+      populationSvc.checkSubjectCompleteness(dealId, 'valuation_grid'),
+    ]);
+
     const methods: ValuationMethod[] = [];
 
     const [
@@ -198,6 +209,7 @@ export class ValuationGridService {
       dealId,
       computedAt: new Date().toISOString(),
       subject,
+      subjectCompleteness,
       methods,
       reconciliation,
     };

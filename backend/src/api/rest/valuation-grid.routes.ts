@@ -69,6 +69,42 @@ router.get('/deals/:dealId/valuation-grid', requireAuth, async (req: Authenticat
 });
 
 /**
+ * POST /api/v1/deals/:dealId/valuation-grid/populate-subject
+ * D-DEAL-2: Manually triggers subject field population for a deal's linked
+ * properties row. Reads from all available sources (boundary, OM extraction,
+ * rent roll, data library) and writes missing fields using COALESCE so existing
+ * values are never overwritten. Safe to call multiple times.
+ */
+router.post('/deals/:dealId/valuation-grid/populate-subject', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+    const pool = getPool();
+
+    const ownerCheck = await pool.query(
+      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
+      [dealId, userId, req.user?.role === 'admin']
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found.' });
+    }
+
+    const { SubjectPopulationService } = await import('../../services/subject-population.service');
+    const svc = new SubjectPopulationService(pool);
+    const populationResult = await svc.populateSubjectFields(dealId);
+    const completeness = await svc.checkSubjectCompleteness(dealId, 'valuation_grid');
+
+    res.json({ success: true, data: { population: populationResult, completeness } });
+  } catch (err: any) {
+    console.error('[valuation-grid] populate-subject error:', err);
+    res.status(500).json({
+      success: false,
+      error: err.message ?? 'Failed to populate subject fields',
+    });
+  }
+});
+
+/**
  * PATCH /api/v1/deals/:dealId/valuation-grid/override
  * Persists an operator override purchase price into deal_assumptions.valuation_override_lv.
  *

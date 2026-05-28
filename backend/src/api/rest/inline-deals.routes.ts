@@ -488,6 +488,20 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
         }
         await processDealDocuments(row.id, req.user!.userId);
 
+        // D-DEAL-2: Populate subject fields on the linked properties row
+        // after document extraction so OM/rent-roll values are available.
+        try {
+          const { SubjectPopulationService } = await import('../../services/subject-population.service');
+          const populationSvc = new SubjectPopulationService(pool);
+          await populationSvc.populateSubjectFields(row.id);
+        } catch (populateErr) {
+          // Non-fatal — subject population must never break the deal creation flow
+          console.warn(
+            `[SubjectPopulation] Post-extraction populate failed for ${row.id}:`,
+            populateErr instanceof Error ? populateErr.message : populateErr
+          );
+        }
+
         const seedExists = await pool.query(
           `SELECT 1 FROM deal_assumptions WHERE deal_id = $1 AND year1 IS NOT NULL`,
           [row.id]
