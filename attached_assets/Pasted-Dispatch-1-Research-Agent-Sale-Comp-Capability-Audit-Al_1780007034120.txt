@@ -1,0 +1,225 @@
+Dispatch 1 — Research Agent Sale-Comp Capability Audit
+Already drafted in my last message. Reproducing the header so it's clear which one fires:
+RESEARCH AGENT SALE-COMP CAPABILITY AUDIT — STAGE 1
+
+[Full text as drafted in prior message — inspection only, no build.
+Output: docs/operations/RESEARCH_AGENT_SALE_COMP_AUDIT.md]
+Fires now. Independent of Dispatch 2 — different code paths, no contention.
+
+Dispatch 2 — 464 Bishop pre-check + end-to-end run
+464 BISHOP — PRE-CHECK + END-TO-END VALUATION RUN
+
+CONTEXT
+Operator uploaded CoStar sale comps, rent comps, and submarket 
+performance data for 464 Bishop (P10 Layer 2 operator-upload, 
+executed manually). Goal: run 464 Bishop through the full pipeline 
+(subject → comps → assumptions → Valuation Grid + Validation Grid) 
+and document the result.
+
+Backtest result on S1 deals showed Cap×NOI at 5.55% median error 
+(close to ±5% bar) and Replacement Cost poisoning reconciliation 
+at 66% error because it's the only competitor. 464 Bishop is the 
+first deal where comp-based methods may have real data to compete 
+— the empirical test of whether Replacement Cost gets diluted by 
+working comp methods.
+
+This is a TWO-STAGE dispatch. Stage A gates Stage B. If Stage A 
+surfaces a blocker, document and stop — do not paper over data 
+gaps to force an end-to-end run.
+
+STATE VERIFICATION (per P8):
+1. 464 Bishop deal exists in deals table
+2. Valuation Grid column fix (Path A) has been applied — endpoint 
+   no longer returns HTTP 500 on `p.asset_class does not exist`
+3. CoStar data was uploaded (operator-confirmed) — destination 
+   state unknown until Stage A
+
+═══════════════════════════════════════════════════════════════════
+STAGE A — DATA READINESS PRE-CHECK (must pass before Stage B)
+═══════════════════════════════════════════════════════════════════
+
+A.1 — Subject side ready?
+   SELECT
+     d.id AS deal_id, d.address, d.city, d.state,
+     p.id AS property_id,
+     p.units, p.building_sf, p.year_built, p.building_class,
+     p.submarket_id, p.latitude, p.longitude
+   FROM deals d
+   LEFT JOIN properties p ON p.deal_id = d.id
+   WHERE d.address ILIKE '%464%bishop%';
+
+   PASS criteria: properties row exists; units, building_sf, 
+   year_built all populated; geocode present.
+   
+   If any field is null, document which — Stage B is partially or 
+   fully blocked depending on which.
+
+A.2 — Sale comps ingested?
+   -- Locate 464 Bishop's submarket
+   SELECT submarket_id FROM properties WHERE deal_id = '<464_id>';
+   
+   -- Count sale comps in that submarket
+   SELECT 
+     COUNT(*) AS comp_count,
+     MIN(sale_date) AS earliest, 
+     MAX(sale_date) AS latest,
+     COUNT(DISTINCT source) AS source_count,
+     array_agg(DISTINCT source) AS sources
+   FROM market_sale_comps
+   WHERE submarket_id = '<464_submarket_id>';
+   
+   PASS criteria: comp_count >= 5; sources include 'costar' or 
+   equivalent operator-upload tag; sale_date range covers recent 
+   transactions.
+   
+   If comp_count = 0: CoStar upload landed in data library but 
+   parser hasn't ingested to market_sale_comps → Stage B blocked 
+   on D-COSTAR-2 (parser).
+
+A.3 — Rent comps ingested?
+   SELECT 
+     COUNT(*) AS comp_count, 
+     COUNT(DISTINCT source) AS source_count,
+     array_agg(DISTINCT source) AS sources
+   FROM market_rent_comps
+   WHERE submarket_id = '<464_submarket_id>';
+
+   PASS criteria: comp_count >= 5 with operator-upload source 
+   present.
+
+A.4 — Submarket performance data?
+   Check whichever table is the canonical destination (per the 
+   schema fragmentation we know about — oppgrid_market_economics, 
+   submarket_characters, or other):
+   
+   SELECT COUNT(*) FROM <submarket_perf_table>
+   WHERE submarket_id = '<464_submarket_id>'
+     AND data_as_of >= NOW() - INTERVAL '12 months';
+   
+   PASS criteria: at least one recent row.
+
+A.5 — Deal assumptions / agent run state
+   SELECT 
+     da.deal_id,
+     da.year1 IS NOT NULL AS has_year1,
+     da.year1->>'noi' AS noi_year1,
+     da.investment_strategy_lv,
+     da.last_agent_run_at
+   FROM deal_assumptions da
+   WHERE da.deal_id = '<464_id>';
+   
+   Report: has the cashflow agent run on this deal? If yes, when, 
+   and is NOI present? If no, Stage B includes an agent invocation.
+
+A.6 — Pre-check verdict
+   GREEN: All A.1–A.5 pass → proceed to Stage B
+   YELLOW: One or two minor gaps (e.g., agent hasn't run; 
+     submarket perf thin) → proceed but document expected method 
+     INSUFFICIENT results
+   ORANGE: Subject side incomplete (units null) OR comps absent 
+     → Stage B partially blocked; document and pause
+   RED: Multiple foundational gaps → do not run Stage B; surface 
+     gaps as remediation dispatches
+
+═══════════════════════════════════════════════════════════════════
+STAGE B — END-TO-END RUN (only if Stage A is GREEN or YELLOW)
+═══════════════════════════════════════════════════════════════════
+
+B.1 — Agent invocation (if A.5 indicates not yet run)
+   Invoke cashflow agent on 464 Bishop. Capture:
+   - Which deal-type variant fired (resolveProjectType output)
+   - Assumptions written to deal_assumptions
+   - LayeredValue source provenance per field
+   - Any collision reports
+   - Evidence trail per assumption
+   - Tier authority decisions (T12 vs platform vs default)
+
+B.2 — Valuation Grid run
+   GET /api/v1/deals/<464_id>/valuation-grid
+   
+   Capture per-method:
+   - Method name
+   - Indicated value (or INSUFFICIENT with reason)
+   - Confidence rating
+   - Underlying inputs (comp count, NOI used, cap rate used)
+   
+   Capture reconciliation:
+   - Reconciled range (low, high)
+   - Reconciled midpoint
+   - Method weighting applied (if any)
+   - Convergence/divergence flags
+
+B.3 — Validation Grid surface
+   For each assumption written by the agent, capture:
+   - Source tier (T12 / owned / platform / default)
+   - Evidence trail
+   - Sigma check result (where applicable)
+   - Collision with broker OM (if present)
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+docs/operations/464_BISHOP_END_TO_END_RUN.md
+
+Structure:
+1. Pre-check results (Stage A verdicts)
+2. Agent run summary (Stage B.1) — variant fired, key assumptions, 
+   evidence quality
+3. Valuation Grid output (Stage B.2) — per-method values + 
+   reconciliation
+4. Validation Grid output (Stage B.3) — per-assumption source 
+   triangulation
+5. Specific findings for the open questions the backtest raised:
+   - Does Replacement Cost get diluted when comp methods are active?
+   - How do comp-anchored methods perform on a deal with real 
+     operator-uploaded comp data?
+   - Does the reconciliation behave sensibly with >2 active methods?
+   - Does the agent's NOI feed Cap×NOI deterministically, or is 
+     there visible drift?
+6. Gaps surfaced — anything that worked structurally but produced 
+   unreliable output, anything missing, anything broken
+7. Recommendation for next dispatches based on findings
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Run Stage B if Stage A is ORANGE or RED — surface the gaps 
+  instead and let the operator scope remediation
+- Force methods to produce values when their inputs are absent 
+  (INSUFFICIENT is a real result, not a failure to overcome)
+- "Fix" Replacement Cost calibration mid-run — that's a separate 
+  work item; the goal here is to observe its behavior with comp 
+  competitors active
+- Modify the reconciliation engine — observation only
+- Apply deal-type-aware method weighting changes — that's a 
+  separate dispatch flagged in the backtest analysis
+- "While I'm here" cleanups
+
+What this session is doing now
+Two parallel dispatches:
+
+Research agent capability audit — inspection of what sale-comp pulling exists today, where the gaps are, what Stage 2 (build) needs to cover. Output: one-page reality assessment.
+464 Bishop pre-check + end-to-end — confirm uploaded data actually landed in queryable tables and the subject is populated, then run the full pipeline if green. Output: empirical test of the backtest's open questions.
+
+Both fire independently. Different code paths, no contention.
+
+What I'm watching for in the results
+Honest list — these are the things that will tell us whether this session's discipline is producing reliable signal:
+From the audit:
+
+Whether the research agent has any sale-comp pulling capability today, or whether comp inventory has always been assumed to come from CoStar
+Whether historical backfill (2018-2022) is feasible from county sources — this gates whether the next backtest run can use research-agent-pulled comps for the S1 deals
+Cost implications of market sweeps — quietly the most important architectural question, because it shifts the unit economics
+
+From the 464 Bishop run:
+
+Most important: did the CoStar data actually land in market_sale_comps rows, or is it sitting as files in the data library? This is the single binary fact that determines whether 464 Bishop is the test case we want or whether the upload path itself still needs building
+Whether Replacement Cost dilutes appropriately when comp methods compete — this validates or invalidates the "fix it by ingesting comps, not by recalibrating BLS" recommendation from the backtest analysis
+Whether the agent's NOI is the same across two runs (determinism check) — answers the AI-compute audit's smoking-gun question empirically for this one deal
+
+The session's working theory is that comp ingestion fixes more problems than calibration would, and 464 Bishop is the empirical test. If Replacement Cost still poisons reconciliation when comp methods are active, the theory is wrong and the priority shifts to method weighting / reconciliation logic. If it dilutes cleanly, the theory holds and the path forward is unblocked.
+
+One honest note before signing off the dispatches
+This session h
