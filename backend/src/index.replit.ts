@@ -303,6 +303,9 @@ app.use('/api/v1', m26TaxRouter);
 app.use('/api/v1', m27CompsRouter);
 app.use('/api/v1/cycle-intelligence', m28CycleIntelligenceRoutes);
 
+import valuationGridRouter from './api/rest/valuation-grid.routes';
+app.use('/api/v1', valuationGridRouter);
+
 import taxCompAnalysisRouter from './api/rest/tax-comp-analysis.routes';
 app.use('/api/v1', taxCompAnalysisRouter);
 
