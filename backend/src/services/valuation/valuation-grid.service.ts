@@ -215,9 +215,9 @@ export class ValuationGridService {
          p.building_sf                            AS total_sf,
          p.latitude,
          p.longitude,
-         p.asset_class,
-         p.submarket,
-         da.purchase_price                        AS purchase_price,
+         p.building_class                          AS asset_class,
+         p.submarket_id                            AS submarket,
+         p.acquisition_price                      AS purchase_price,
          da.valuation_override_lv                 AS valuation_override_lv,
          (da.year1->>'noi')                       AS noi_year1,
          (da.year1->>'year1_noi')                 AS noi_year1_alt

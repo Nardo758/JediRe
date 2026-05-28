@@ -1,0 +1,80 @@
+VALUATION GRID — COLUMN REFERENCE FIX
+
+CONTEXT
+Per VALUATION_GRID_DATA_FLOW_SURFACE.md, the Valuation Grid 
+endpoint crashes on every call with "column p.asset_class does 
+not exist". The cause: two column references in the subject 
+property query at valuation-grid.service.ts:209-230 use names 
+that don't match the properties table schema.
+
+This dispatch is a tight rename. Two substitutions in one SQL 
+query. No other changes.
+
+STATE VERIFICATION (per P8 corollary):
+Before executing, confirm:
+1. valuation-grid.service.ts exists; getSubjectProperty() is at 
+   lines 209-230 (verify the line range; file may have shifted)
+2. properties table has building_class (varchar) and submarket_id 
+   (varchar), confirmed by Query 1 schema diagnostic
+3. properties table does not have asset_class or submarket columns
+4. No prior fix dispatch has been run for this issue (search for 
+   recent edits to getSubjectProperty)
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+A. Open valuation-grid.service.ts
+B. Locate getSubjectProperty() function
+C. In the SQL string, make two substitutions:
+   - p.asset_class → p.building_class
+   - p.submarket → p.submarket_id
+D. Preserve all other query structure, column aliases, parameter 
+   bindings
+E. Confirm TypeScript compiles clean
+F. Confirm no other Valuation Grid file references p.asset_class 
+   or p.submarket (grep before closing)
+
+═══════════════════════════════════════════════════════════════════
+TESTING
+═══════════════════════════════════════════════════════════════════
+
+A. Build the project; confirm no type errors
+B. Hit GET /api/v1/deals/:dealId/valuation-grid for any deal in 
+   the database (the 29 deals available)
+C. Confirm endpoint returns HTTP 200 (not 500)
+D. Confirm response payload renders the empty-state correctly:
+   - All methods return INSUFFICIENT or placeholder (expected per 
+     surface)
+   - Reconciliation panel shows "No active methods with sufficient 
+     data"
+   - No new errors surface
+E. Open the Valuation Grid tab in the frontend; confirm it renders 
+   without crash
+
+═══════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════
+
+Code change in valuation-grid.service.ts (two column references).
+
+Closing note: docs/operations/VALUATION_GRID_COLUMN_FIX.md
+(a) Before/after of the SQL query  
+(b) Test results: HTTP 200, empty-state renders
+(c) Confirmation no other files needed similar rename
+(d) Notes on what's still INSUFFICIENT and why (data layer 
+    emptiness — separate problem, not for this dispatch)
+
+═══════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════
+
+- Modify any logic beyond the two column renames
+- Add fallbacks for the INSUFFICIENT methods
+- Touch CompSetService, ReplacementCostServiceV2, or any other 
+  downstream service
+- Seed archive_assumption_benchmarks or any other table
+- Populate properties or sale_comp_sets data
+- Build mv_market_rent_benchmarks
+- Refactor Cap × NOI to comp-anchored synthesis (that's Path B)
+- "While I'm here" cleanups

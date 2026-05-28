@@ -1,0 +1,222 @@
+SESSION CLOSE — VALUATION GRID + PHASE 2 ARCHITECTURAL COMMITS
+
+File: docs/operations/SESSION_CLOSE_VALUATION_GRID.md
+Date: [end of session]
+
+═══════════════════════════════════════════════════════════════════
+CONTEXT
+═══════════════════════════════════════════════════════════════════
+
+This session closed Phase 1 substantively, opened Phase 2 entry 
+conditions, shipped Phase 2 Batch 1 OpEx derivation logic, fired 
+the full Valuation Grid spec to Replit's agent, and surfaced 
+three architectural commits during the resulting diagnostic.
+
+This document captures those commits so the next session opens 
+with them visible, not buried in the conversation arc.
+
+═══════════════════════════════════════════════════════════════════
+COMMIT 1 — COMP-ANCHORED IMPLIED CAP RATE SYNTHESIS
+═══════════════════════════════════════════════════════════════════
+
+DIRECTION (committed; not yet implemented):
+
+The Valuation Grid's Cap Rate × NOI method should derive cap 
+rate from the sale comp set, not from archive_assumption_benchmarks 
+as a stored value.
+
+Synthesis path:
+1. Identify sale comps for subject (submarket, asset class, vintage)
+2. For each comp: synthesize NOI from platform operating stats
+   - Revenue per unit from market rent benchmarks (Layer 1 or 
+     operator upload)
+   - OpEx per unit from line_item_benchmarks (Layer 1 partial)
+   - Effective gross income, vacancy, other income per cohort 
+     stats
+3. Implied cap rate per comp = sale price ÷ synthesized NOI
+4. Aggregate to market cap rate distribution (P25/P50/P75)
+5. Apply median implied cap rate to subject's agent-derived NOI
+
+ARCHITECTURAL ADVANTAGE:
+- Internal consistency: same comp set drives Cap × NOI, PPU, PSF, 
+  GRM, GIM
+- Confidence calibration: sparse comp set → wide band → lower 
+  confidence
+- Reconciliation gap analysis: divergences explainable in terms 
+  of which assumption differs (subject NOI vs comp NOI, subject 
+  vs comp implied cap rate)
+
+PREREQUISITES (need addressing before implementation dispatch):
+- sale_comp_sets generation working (currently empty)
+- Market rent data accessible as queryable layer 
+  (mv_market_rent_benchmarks missing)
+- Subject NOI present on test deals (deal_assumptions.year1 
+  currently null)
+
+DEFER TO: Path B implementation dispatch next session, after 
+foundation diagnostic returns
+
+═══════════════════════════════════════════════════════════════════
+COMMIT 2 — P10 DATA SOURCING HIERARCHY (in CLAUDE.md this session)
+═══════════════════════════════════════════════════════════════════
+
+CODIFIED THIS SESSION as P10. Summary:
+
+Three source layers for every data-dependent feature:
+- Layer 1: Platform-derived (research agent, APIs, pipelines)
+- Layer 2: Operator upload (CoStar, broker, manual) — FIRST-CLASS
+- Layer 3: Graceful degradation (INSUFFICIENT + upload CTA)
+
+Design requirement: all three layers wired in the same dispatch.
+
+Verification step (extends P8): verify data sources against 
+database state, not just code references.
+
+CITATION: P10 amendment in CLAUDE.md (this session's dispatch).
+
+═══════════════════════════════════════════════════════════════════
+COMMIT 3 — SALE / RENT COMP PROFILES
+═══════════════════════════════════════════════════════════════════
+
+DIRECTION (committed; not yet specified):
+
+Define standardized profiles for sale and rent comp records — 
+required fields, validation rules, source provenance, quality 
+grading. Resolves the schema fragmentation surfaced this session:
+
+CURRENT FRAGMENTATION:
+- Sale-related tables: market_sale_comps, recorded_transactions, 
+  deal_comp_sets, comp_properties, sale_comp_sets
+- Rent-related tables: market_rent_comps, apartment_rent_comps, 
+  apartment_locator_properties, apartment_class_rent_snapshots
+- Class column variants: asset_class, property_class, 
+  building_class, class
+- No unified schema across these surfaces
+
+SALE COMP PROFILE (initial sketch):
+- Identity: parcel_id, address, geocode (lat/lng)
+- Sale data: price, date, deed type, financing type
+- Property characteristics: units, sqft, year_built, asset_class 
+  (canonical name TBD), vintage band
+- Operating data (if available): gross rent at sale, gross income 
+  at sale, NOI at sale, occupancy at sale
+- Source provenance: county_recorded | costar_upload | 
+  broker_package | operator_entry
+- Quality score: recency, distance to subject, asset class match, 
+  comp count in cohort
+
+RENT COMP PROFILE (initial sketch):
+- Identity: same as sale comp
+- Rent data: asking, effective, by unit type
+- Property characteristics: same fields as sale comp
+- Operating data: occupancy, concessions, time on market, lease 
+  velocity
+- Source provenance: apartment_iq | costar_upload | broker_package 
+  | operator_entry
+- Quality score: recency, geographic relevance, asset class match
+
+NEXT SESSION:
+- Formalize profile specs (which fields required, optional, 
+  derived)
+- Map current fragmented tables to profile (which become canonical, 
+  which become deprecated, which get views/aliases)
+- Define operator upload path per profile (CoStar export format → 
+  profile field mapping)
+- Define research agent integration for municipal API sale comp 
+  pulls
+
+DEFER TO: dedicated dispatch sequence next session — comp profile 
+spec, then operator upload UX, then research agent integration
+
+═══════════════════════════════════════════════════════════════════
+QUEUED FOR NEXT SESSION
+═══════════════════════════════════════════════════════════════════
+
+In priority order:
+
+1. FOUNDATION DIAGNOSTIC (small, 30-60 min)
+   - SELECT COUNT(*), state FROM market_sale_comps GROUP BY state
+   - SELECT COUNT(*), COUNT(deal_id) FROM properties
+   - Check whether research agent currently pulls sale comp data 
+     (and into which table)
+   - Check mv_market_rent_benchmarks migration status (exists in 
+     code? was run? rolled back?)
+
+2. SALE/RENT COMP PROFILE SPEC (Commit 3)
+   Substantive design work; deserves dedicated session attention.
+
+3. PATH B — COMP-ANCHORED CAP RATE SYNTHESIS (Commit 1)
+   After foundation diagnostic + profile spec land.
+
+4. PHASE 2 BATCH 3 (Capital Structure)
+   Originally next-in-line Phase 2 batch; now pushed behind 
+   Valuation Grid completion + comp profiles work.
+
+5. ADJACENT BACKLOG (not blocking)
+   - Task #672 (T12 sub-line utility parsing)
+   - mv_market_rent_benchmarks migration (if EC3 truly intends to 
+     ship this)
+   - GAP-TAX-01 consolidation (Phase 3)
+   - f9-financial-export.service.ts:172 hardcode (retained with 
+     console.warn; observability sufficient)
+   - Valuation Grid GRM/GIM gross rent/income field coverage
+
+═══════════════════════════════════════════════════════════════════
+SESSION ACCOUNTING
+═══════════════════════════════════════════════════════════════════
+
+PHASE 1: substantively complete
+  - 9 items COMPLETE, 3 IN_FLIGHT moved through verification
+  - P8 + state verification corollary, P9 Phase 2 Batch Integrity, 
+    P10 Data Sourcing Hierarchy all in CLAUDE.md
+  - Mandate v1.3, Tier 1 RegimeExpand, Tier 2 directional 
+    validation, EC3 (partial), Tax remediation, BUG-UTIL-01 fix 
+    all shipped
+
+PHASE 2 ENTRY CONDITIONS:
+  - EC1: SATISFIED
+  - EC2: SATISFIED
+  - EC3: STATUS UNCLEAR (claimed YELLOW; mv view doesn't exist; 
+    next session reconfirms)
+  - EC4: SATISFIED
+
+PHASE 2 PROGRESS:
+  - Batch 1 (OpEx Simple, 10 assumptions): IMPLEMENTED in 
+    system.ts §OpEx Derivation Protocol
+  - Batch 2 (Tax Module Audit): AUDITED + REMEDIATED (5 gaps 
+    closed)
+  - Batches 3-7: not started
+  - Valuation Grid: v0.1 shipped at Replit; blocked on column 
+    fix + data layer maturity; comp-anchored direction committed 
+    for Path B
+
+SESSION JOURNAL: 2 standing lessons captured
+  - Numeric spot-checks against authoritative external reference
+  - Verify dead-ness THEN remove
+  
+SESSION JOURNAL ADDITION (this session, end):
+  Lesson 3: Schema and database-state references in specs must 
+  verify against actual table definitions and database content 
+  before the spec drives implementation. Code references to data 
+  sources are not evidence the sources exist or are populated.
+  Example: EC3 verification claimed mv_market_rent_benchmarks 
+  shipped; database query shows the view doesn't exist.
+
+═══════════════════════════════════════════════════════════════════
+HOW TO OPEN THE NEXT SESSION
+═══════════════════════════════════════════════════════════════════
+
+Load into context:
+- CLAUDE.md (P1-P10)
+- docs/operations/PHASE_2_ENTRY_CONDITIONS.md (current state)
+- docs/operations/PHASE_1_STATUS_SUMMARY.md (snapshot)
+- docs/operations/SESSION_JOURNAL.md (3 standing lessons)
+- docs/operations/SESSION_CLOSE_VALUATION_GRID.md (this document)
+- docs/operations/VALUATION_GRID_DATA_FLOW_SURFACE.md (Replit's 
+  diagnostic)
+- docs/operations/PHASE_2_BATCH_1_OPEX_SIMPLE.md (Batch pattern 
+  reference)
+
+Open with: foundation diagnostic dispatch. Sale_comp_sets + 
+market_sale_comps + properties + research agent state. Outcome 
+shapes the next 3-5 dispatches.

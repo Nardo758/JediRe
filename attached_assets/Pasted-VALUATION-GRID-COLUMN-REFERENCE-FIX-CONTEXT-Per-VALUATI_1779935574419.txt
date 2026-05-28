@@ -1,0 +1,53 @@
+VALUATION GRID — COLUMN REFERENCE FIX
+
+CONTEXT
+Per VALUATION_GRID_DATA_FLOW_SURFACE.md, the Valuation Grid 
+endpoint crashes on every call with "column p.asset_class does 
+not exist". The cause: two column references in the subject 
+property query at valuation-grid.service.ts:209-230 use names 
+that don't match the properties table schema.
+
+STATE VERIFICATION (per P8 corollary):
+1. valuation-grid.service.ts exists; getSubjectProperty() is at 
+   the expected line range (verify; file may have shifted)
+2. properties table has building_class and submarket_id columns 
+   (per Query 1 diagnostic)
+3. properties table does NOT have asset_class or submarket columns
+
+═══════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════
+
+A. Open valuation-grid.service.ts
+B. Locate getSubjectProperty()
+C. Two SQL substitutions in the subject property query:
+   - p.asset_class → p.building_class
+   - p.submarket → p.submarket_id
+D. TypeScript compiles clean
+E. Grep for any other p.asset_class or p.submarket references in 
+   Valuation Grid files; fix if present
+
+TESTING
+A. Build clean
+B. GET /api/v1/deals/:dealId/valuation-grid returns HTTP 200 
+   (was HTTP 500)
+C. Frontend Valuation Grid tab renders without crash
+D. Empty-state UI displays (all methods INSUFFICIENT or 
+   placeholder — expected, not a bug)
+
+DELIVERABLE
+Code change in valuation-grid.service.ts.
+Closing note: docs/operations/VALUATION_GRID_COLUMN_FIX.md
+- Before/after of SQL query
+- HTTP status confirmation
+- Empty-state render confirmation
+- Note: INSUFFICIENT badges are expected; data layer emptiness 
+  is separate problem documented in 
+  VALUATION_GRID_DATA_FLOW_SURFACE.md, scoped for next session
+
+DO NOT
+- Modify any logic beyond the two column renames
+- Touch CompSetService, ReplacementCostServiceV2
+- Seed data
+- Refactor Cap × NOI to comp-anchored synthesis (next session)
+- "While I'm here" cleanups
