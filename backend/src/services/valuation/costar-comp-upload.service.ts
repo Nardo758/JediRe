@@ -1,0 +1,550 @@
+/**
+ * CoStar Comp Upload Service — Task #1389
+ *
+ * Parses an operator-uploaded CoStar CSV/XLSX export and ingests rows into
+ * market_sale_comps or market_rent_comps with source='costar_upload'.
+ *
+ * CoStar usage constraint: operator uploads their own export; platform stores
+ * for that deal only; raw CoStar data is never re-exported with CoStar branding.
+ *
+ * Auto-detection: if the file contains 'Sale Date' or 'Sale Price' columns →
+ * sale comps; otherwise if it contains rent columns → rent comps.
+ *
+ * Column mappings per comp-profiles-spec.md §7.1 and §7.2.
+ */
+
+import * as XLSX from 'xlsx';
+import { randomUUID } from 'crypto';
+import type { Pool } from 'pg';
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+export type CompType = 'sale' | 'rent';
+
+export interface UploadRowError {
+  row: number;
+  address: string;
+  reason: string;
+}
+
+export interface CompUploadResult {
+  compType: CompType;
+  totalRows: number;
+  inserted: number;
+  skippedDup: number;
+  skippedInvalid: number;
+  errors: UploadRowError[];
+  rejected: boolean;
+  rejectReason?: string;
+}
+
+interface ParsedRow {
+  [key: string]: string | number | null | undefined;
+}
+
+// ── Column name normalisation ──────────────────────────────────────────────────
+
+function norm(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function colVal(row: ParsedRow, ...candidates: string[]): string | null {
+  for (const c of candidates) {
+    const n = norm(c);
+    for (const key of Object.keys(row)) {
+      if (norm(key) === n) {
+        const v = row[key];
+        if (v != null && String(v).trim() !== '') return String(v).trim();
+      }
+    }
+  }
+  return null;
+}
+
+// ── Scalar transforms ──────────────────────────────────────────────────────────
+
+function parseNum(raw: string | null): number | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/[$,%\s]/g, '');
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? null : n;
+}
+
+function parseInt2(raw: string | null): number | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/[^0-9-]/g, '');
+  const n = parseInt(cleaned, 10);
+  return isNaN(n) ? null : n;
+}
+
+function parseDate(raw: string | null): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  // XLSX serial date (number stored as string)
+  const serial = parseFloat(s);
+  if (!isNaN(serial) && serial > 1000) {
+    const d = XLSX.SSF.parse_date_code(serial);
+    if (d) {
+      const m = String(d.m).padStart(2, '0');
+      const day = String(d.d).padStart(2, '0');
+      return `${d.y}-${m}-${day}`;
+    }
+  }
+  // M/D/YYYY
+  const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mdy) return `${mdy[3]}-${mdy[1].padStart(2, '0')}-${mdy[2].padStart(2, '0')}`;
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // MM/DD/YY
+  const mdyShort = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+  if (mdyShort) {
+    const yr = parseInt(mdyShort[3], 10) + (parseInt(mdyShort[3], 10) >= 50 ? 1900 : 2000);
+    return `${yr}-${mdyShort[1].padStart(2, '0')}-${mdyShort[2].padStart(2, '0')}`;
+  }
+  return null;
+}
+
+function normaliseState(raw: string | null): string | null {
+  if (!raw) return null;
+  const s = raw.trim().toUpperCase();
+  return s.length >= 2 ? s.slice(0, 2) : null;
+}
+
+function normaliseClass(raw: string | null): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  const match = s.match(/\b([ABCD])\b/i);
+  if (match) return match[1].toUpperCase();
+  const single = s.replace(/class\s*/i, '').trim().toUpperCase();
+  if (['A', 'B', 'C', 'D'].includes(single)) return single;
+  return null;
+}
+
+// ── File parser ───────────────────────────────────────────────────────────────
+
+function parseFileBuffer(buffer: Buffer, filename: string): { headers: string[]; rows: ParsedRow[] } {
+  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const raw = XLSX.utils.sheet_to_json<ParsedRow>(ws, { defval: null, raw: false });
+
+  if (raw.length === 0) return { headers: [], rows: [] };
+  const headers = Object.keys(raw[0]);
+  return { headers, rows: raw };
+}
+
+// ── Auto-detect comp type ─────────────────────────────────────────────────────
+
+export function detectCompType(headers: string[]): CompType | null {
+  const normed = headers.map(norm);
+  const hasSale = normed.some(h => h.includes('saledate') || h.includes('saleprice'));
+  const hasRent = normed.some(h =>
+    h.includes('askingrents') ||
+    h.includes('askingrentunit') ||
+    h.includes('avgaskingrent') ||
+    h.includes('effectiverentunit') ||
+    h.includes('avgeffrent') ||
+    h.includes('avgeffrents')
+  );
+  if (hasSale) return 'sale';
+  if (hasRent) return 'rent';
+  return null;
+}
+
+// ── Sale comp mapper ──────────────────────────────────────────────────────────
+
+interface SaleCompRow {
+  id: string;
+  property_name: string | null;
+  address: string;
+  city: string;
+  state: string;
+  zip: string | null;
+  county: string | null;
+  msa: string | null;
+  submarket: string | null;
+  property_type: string;
+  units: number | null;
+  sqft: number | null;
+  year_built: number | null;
+  asset_class: string | null;
+  stories: number | null;
+  sale_date: string;
+  sale_price: number;
+  cap_rate: number | null;
+  buyer: string | null;
+  seller: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  source: string;
+  qualified: boolean;
+  file_id: number | null;
+}
+
+function mapSaleRow(row: ParsedRow, fileId: number | null): { comp: SaleCompRow | null; reason?: string } {
+  const address = colVal(row, 'Address');
+  const city = colVal(row, 'City');
+  const stateRaw = colVal(row, 'State');
+  const saleDateRaw = colVal(row, 'Sale Date', 'SaleDate', 'Close Date');
+  const salePriceRaw = colVal(row, 'Sale Price', 'SalePrice', 'Sale Amount');
+
+  if (!address) return { comp: null, reason: 'Missing Address' };
+  if (!city) return { comp: null, reason: 'Missing City' };
+  const state = normaliseState(stateRaw);
+  if (!state) return { comp: null, reason: 'Missing or invalid State' };
+  const sale_date = parseDate(saleDateRaw);
+  if (!sale_date) return { comp: null, reason: `Invalid Sale Date: "${saleDateRaw}"` };
+  const sale_price = parseNum(salePriceRaw);
+  if (!sale_price || sale_price <= 0) return { comp: null, reason: `Invalid Sale Price: "${salePriceRaw}"` };
+
+  const capRateRaw = colVal(row, 'Cap Rate', 'CapRate', 'Going-In Cap Rate');
+  const capRate = parseNum(capRateRaw);
+
+  return {
+    comp: {
+      id: randomUUID(),
+      property_name: colVal(row, 'Property Name', 'PropertyName', 'Name'),
+      address: address.trim(),
+      city: city.trim(),
+      state,
+      zip: colVal(row, 'Zip', 'Zip Code', 'Postal Code'),
+      county: colVal(row, 'County'),
+      msa: colVal(row, 'MSA'),
+      submarket: colVal(row, 'Submarket'),
+      property_type: 'multifamily',
+      units: parseInt2(colVal(row, '# Units', 'Units', 'NumberOfUnits', 'No. Units')),
+      sqft: parseInt2(colVal(row, 'Bldg SF', 'Building SF', 'BuildingSF', 'GLA', 'Bldg Sq Ft')),
+      year_built: parseInt2(colVal(row, 'Year Built', 'YearBuilt')),
+      asset_class: normaliseClass(colVal(row, 'Building Class', 'Class', 'BuildingClass', 'Asset Class')),
+      stories: parseInt2(colVal(row, '# Stories', 'Stories', 'NumberOfStories', 'Floors')),
+      sale_date,
+      sale_price,
+      cap_rate: capRate != null && capRate > 1 ? capRate : capRate != null ? capRate * 100 : null,
+      buyer: colVal(row, 'Buyer', 'Buyer Name'),
+      seller: colVal(row, 'Seller', 'Seller Name'),
+      latitude: parseNum(colVal(row, 'Latitude', 'Lat')),
+      longitude: parseNum(colVal(row, 'Longitude', 'Long', 'Lng')),
+      source: 'costar_upload',
+      qualified: true,
+      file_id: fileId,
+    },
+  };
+}
+
+// ── Rent comp mapper ──────────────────────────────────────────────────────────
+
+interface RentCompRow {
+  id: string;
+  property_name: string | null;
+  address: string;
+  city: string;
+  state: string;
+  zip: string | null;
+  msa: string | null;
+  submarket: string | null;
+  units: number | null;
+  year_built: number | null;
+  asset_class: string | null;
+  snapshot_date: string;
+  avg_asking_rent: number | null;
+  avg_effective_rent: number | null;
+  occupancy_pct: number | null;
+  concession_pct: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  source: string;
+  file_id: number | null;
+}
+
+function mapRentRow(
+  row: ParsedRow,
+  snapshotDate: string,
+  fileId: number | null
+): { comp: RentCompRow | null; reason?: string } {
+  const address = colVal(row, 'Address');
+  const city = colVal(row, 'City');
+  const stateRaw = colVal(row, 'State');
+
+  if (!address) return { comp: null, reason: 'Missing Address' };
+  if (!city) return { comp: null, reason: 'Missing City' };
+  const state = normaliseState(stateRaw);
+  if (!state) return { comp: null, reason: 'Missing or invalid State' };
+
+  const askingRentRaw = colVal(
+    row,
+    'Asking Rent/Unit', 'Avg Asking Rent', 'AvgAskingRent', 'Asking Rents',
+    'Asking Rent Per Unit', 'Asking Rent'
+  );
+  const askingRent = parseNum(askingRentRaw);
+
+  const occupancyRaw = colVal(row, 'Occupancy', 'Occupancy Rate', 'OccupancyRate', 'Occ %', 'Occ%');
+  let occupancyPct = parseNum(occupancyRaw);
+  if (occupancyPct != null && occupancyPct <= 1) occupancyPct = occupancyPct * 100;
+
+  const concessionRaw = colVal(row, 'Concession %', 'Concessions %', 'ConcessionPct', 'Concession Pct');
+  let concessionPct = parseNum(concessionRaw);
+  if (concessionPct != null && concessionPct <= 1) concessionPct = concessionPct * 100;
+
+  const effRentRaw = colVal(
+    row,
+    'Effective Rent/Unit', 'Avg Eff Rent', 'AvgEffRent', 'Effective Rent',
+    'Avg Effective Rent', 'Eff Rent/Unit'
+  );
+
+  return {
+    comp: {
+      id: randomUUID(),
+      property_name: colVal(row, 'Property Name', 'PropertyName', 'Name'),
+      address: address.trim(),
+      city: city.trim(),
+      state,
+      zip: colVal(row, 'Zip', 'Zip Code', 'Postal Code'),
+      msa: colVal(row, 'MSA'),
+      submarket: colVal(row, 'Submarket'),
+      units: parseInt2(colVal(row, '# Units', 'Units', 'NumberOfUnits', 'No. Units')),
+      year_built: parseInt2(colVal(row, 'Year Built', 'YearBuilt')),
+      asset_class: normaliseClass(colVal(row, 'Building Class', 'Class', 'BuildingClass', 'Asset Class')),
+      snapshot_date: snapshotDate,
+      avg_asking_rent: askingRent,
+      avg_effective_rent: parseNum(effRentRaw),
+      occupancy_pct: occupancyPct,
+      concession_pct: concessionPct,
+      latitude: parseNum(colVal(row, 'Latitude', 'Lat')),
+      longitude: parseNum(colVal(row, 'Longitude', 'Long', 'Lng')),
+      source: 'costar_upload',
+      file_id: fileId,
+    },
+  };
+}
+
+// ── Dedup checkers ────────────────────────────────────────────────────────────
+
+async function checkSaleDup(
+  pool: Pool,
+  address: string,
+  city: string,
+  state: string,
+  saleDate: string
+): Promise<boolean> {
+  const res = await pool.query(
+    `SELECT 1 FROM market_sale_comps
+     WHERE LOWER(address) = LOWER($1)
+       AND LOWER(city) = LOWER($2)
+       AND UPPER(state) = UPPER($3)
+       AND sale_date = $4::date
+       AND source = 'costar_upload'
+     LIMIT 1`,
+    [address, city, state, saleDate]
+  );
+  return res.rows.length > 0;
+}
+
+async function checkRentDup(
+  pool: Pool,
+  address: string,
+  city: string,
+  state: string,
+  snapshotDate: string
+): Promise<boolean> {
+  const res = await pool.query(
+    `SELECT 1 FROM market_rent_comps
+     WHERE LOWER(address) = LOWER($1)
+       AND LOWER(city) = LOWER($2)
+       AND UPPER(state) = UPPER($3)
+       AND snapshot_date = $4::date
+       AND source = 'costar_upload'
+     LIMIT 1`,
+    [address, city, state, snapshotDate]
+  );
+  return res.rows.length > 0;
+}
+
+// ── Main upload function ──────────────────────────────────────────────────────
+
+export interface CompUploadOptions {
+  buffer: Buffer;
+  filename: string;
+  compType?: CompType;
+  snapshotDate?: string;
+  fileId?: number | null;
+  dealId: string;
+}
+
+export async function processCoStarUpload(
+  pool: Pool,
+  opts: CompUploadOptions
+): Promise<CompUploadResult> {
+  const { buffer, filename, fileId = null } = opts;
+
+  const { headers, rows } = parseFileBuffer(buffer, filename);
+
+  if (rows.length === 0) {
+    return {
+      compType: opts.compType ?? 'sale',
+      totalRows: 0,
+      inserted: 0,
+      skippedDup: 0,
+      skippedInvalid: 0,
+      errors: [],
+      rejected: true,
+      rejectReason: 'File is empty or could not be parsed.',
+    };
+  }
+
+  const compType = opts.compType ?? detectCompType(headers);
+  if (!compType) {
+    return {
+      compType: 'sale',
+      totalRows: rows.length,
+      inserted: 0,
+      skippedDup: 0,
+      skippedInvalid: 0,
+      errors: [],
+      rejected: true,
+      rejectReason:
+        'Could not detect comp type. File headers did not match CoStar sale or rent export patterns. ' +
+        'Please select the comp type manually.',
+    };
+  }
+
+  if (compType === 'rent' && !opts.snapshotDate) {
+    return {
+      compType: 'rent',
+      totalRows: rows.length,
+      inserted: 0,
+      skippedDup: 0,
+      skippedInvalid: 0,
+      errors: [],
+      rejected: true,
+      rejectReason: 'Snapshot date (as-of date) is required for rent comp uploads.',
+    };
+  }
+
+  const errors: UploadRowError[] = [];
+  let inserted = 0;
+  let skippedDup = 0;
+  let skippedInvalid = 0;
+  const totalRows = rows.length;
+
+  // First pass: validate all rows (to gate on >20% failure)
+  const mapped: Array<{ comp: SaleCompRow | RentCompRow | null; reason?: string }> = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (compType === 'sale') {
+      mapped.push(mapSaleRow(row, fileId));
+    } else {
+      mapped.push(mapRentRow(row, opts.snapshotDate!, fileId));
+    }
+  }
+
+  const invalidCount = mapped.filter(m => !m.comp).length;
+  const failurePct = invalidCount / totalRows;
+  if (failurePct > 0.2) {
+    return {
+      compType,
+      totalRows,
+      inserted: 0,
+      skippedDup: 0,
+      skippedInvalid: invalidCount,
+      errors: mapped
+        .map((m, i) =>
+          !m.comp
+            ? {
+                row: i + 2,
+                address: String(rows[i]['Address'] ?? rows[i]['address'] ?? '—'),
+                reason: m.reason ?? 'Validation failed',
+              }
+            : null
+        )
+        .filter(Boolean) as UploadRowError[],
+      rejected: true,
+      rejectReason: `${Math.round(failurePct * 100)}% of rows failed validation (threshold: 20%). Fix the file and re-upload.`,
+    };
+  }
+
+  // Second pass: dedup + insert
+  for (let i = 0; i < mapped.length; i++) {
+    const { comp, reason } = mapped[i];
+    if (!comp) {
+      skippedInvalid++;
+      errors.push({
+        row: i + 2,
+        address: String(rows[i]['Address'] ?? rows[i]['address'] ?? '—'),
+        reason: reason ?? 'Validation failed',
+      });
+      continue;
+    }
+
+    try {
+      if (compType === 'sale') {
+        const sc = comp as SaleCompRow;
+        const isDup = await checkSaleDup(pool, sc.address, sc.city, sc.state, sc.sale_date);
+        if (isDup) {
+          skippedDup++;
+          continue;
+        }
+        await pool.query(
+          `INSERT INTO market_sale_comps
+             (id, property_name, address, city, state, zip, county, msa, submarket,
+              property_type, units, sqft, year_built, asset_class, stories,
+              sale_date, sale_price, cap_rate, buyer, seller,
+              latitude, longitude, source, qualified, file_id, created_at)
+           VALUES
+             ($1,$2,$3,$4,$5,$6,$7,$8,$9,
+              $10,$11,$12,$13,$14,$15,
+              $16,$17,$18,$19,$20,
+              $21,$22,$23,$24,$25,NOW())`,
+          [
+            sc.id, sc.property_name, sc.address, sc.city, sc.state, sc.zip, sc.county, sc.msa, sc.submarket,
+            sc.property_type, sc.units, sc.sqft, sc.year_built, sc.asset_class, sc.stories,
+            sc.sale_date, sc.sale_price, sc.cap_rate, sc.buyer, sc.seller,
+            sc.latitude, sc.longitude, sc.source, sc.qualified, sc.file_id,
+          ]
+        );
+        inserted++;
+      } else {
+        const rc = comp as RentCompRow;
+        const isDup = await checkRentDup(pool, rc.address, rc.city, rc.state, rc.snapshot_date);
+        if (isDup) {
+          skippedDup++;
+          continue;
+        }
+        await pool.query(
+          `INSERT INTO market_rent_comps
+             (id, property_name, address, city, state, zip, msa, submarket,
+              units, year_built, asset_class, snapshot_date,
+              avg_asking_rent, avg_effective_rent, occupancy_pct, concession_pct,
+              latitude, longitude, source, file_id, created_at)
+           VALUES
+             ($1,$2,$3,$4,$5,$6,$7,$8,
+              $9,$10,$11,$12,
+              $13,$14,$15,$16,
+              $17,$18,$19,$20,NOW())`,
+          [
+            rc.id, rc.property_name, rc.address, rc.city, rc.state, rc.zip, rc.msa, rc.submarket,
+            rc.units, rc.year_built, rc.asset_class, rc.snapshot_date,
+            rc.avg_asking_rent, rc.avg_effective_rent, rc.occupancy_pct, rc.concession_pct,
+            rc.latitude, rc.longitude, rc.source, rc.file_id,
+          ]
+        );
+        inserted++;
+      }
+    } catch (err: any) {
+      skippedInvalid++;
+      errors.push({
+        row: i + 2,
+        address: (comp as any).address ?? '—',
+        reason: `DB error: ${err.message?.slice(0, 120) ?? 'unknown'}`,
+      });
+    }
+  }
+
+  return {
+    compType,
+    totalRows,
+    inserted,
+    skippedDup,
+    skippedInvalid,
+    errors,
+    rejected: false,
+  };
+}

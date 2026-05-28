@@ -16,8 +16,8 @@
 // Placeholder V1.0: GRM, GIM, DCF
 // ============================================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, Info, Edit3, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, Info, Edit3, RefreshCw, ChevronDown, ChevronRight, Upload, X } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
 import type { FinancialEngineTabProps } from './types';
@@ -573,6 +573,261 @@ function GridHeader() {
   );
 }
 
+// ── CoStar Upload Panel ────────────────────────────────────────────────────────
+
+interface UploadResult {
+  compType: 'sale' | 'rent';
+  totalRows: number;
+  inserted: number;
+  skippedDup: number;
+  skippedInvalid: number;
+  errors: Array<{ row: number; address: string; reason: string }>;
+  rejected: boolean;
+  rejectReason?: string;
+}
+
+function CoStarUploadPanel({
+  dealId,
+  onUploaded,
+  onClose,
+}: {
+  dealId: string;
+  onUploaded: () => void;
+  onClose: () => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [compType, setCompType] = useState<'auto' | 'sale' | 'rent'>('auto');
+  const [snapshotDate, setSnapshotDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<UploadResult | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  async function handleUpload() {
+    if (!file) return;
+    setUploading(true);
+    setResult(null);
+    setUploadError(null);
+
+    const fd = new FormData();
+    fd.append('file', file);
+    if (compType !== 'auto') fd.append('comp_type', compType);
+    fd.append('snapshot_date', snapshotDate);
+
+    try {
+      const res = await apiClient.post(
+        `/api/v1/deals/${dealId}/valuation-grid/comps/upload`,
+        fd,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      const r: UploadResult = res.data.data ?? res.data;
+      setResult(r);
+      if (!r.rejected && r.inserted > 0) onUploaded();
+    } catch (e: any) {
+      const serverData = e?.response?.data?.data;
+      if (serverData) {
+        setResult(serverData as UploadResult);
+      } else {
+        setUploadError(e?.response?.data?.error ?? e?.message ?? 'Upload failed');
+      }
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const showSnapshotDate = compType === 'rent' || (compType === 'auto' && file?.name.toLowerCase().includes('rent'));
+
+  return (
+    <div style={{
+      padding: '12px 14px',
+      borderBottom: `1px solid ${BT.border.dim}`,
+      backgroundColor: `${BT.bg.panel}55`,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.cyan, letterSpacing: 1 }}>
+          UPLOAD COSTAR COMPS
+        </span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: BT.text.muted, display: 'flex', alignItems: 'center' }}>
+          <X size={12} />
+        </button>
+      </div>
+
+      {!result && (
+        <>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            {/* File picker */}
+            <div>
+              <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginBottom: 3 }}>FILE (CSV / XLSX)</div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                style={{ display: 'none' }}
+                onChange={e => setFile(e.target.files?.[0] ?? null)}
+              />
+              <button
+                onClick={() => fileRef.current?.click()}
+                style={{
+                  fontFamily: MONO, fontSize: 10, padding: '4px 10px',
+                  backgroundColor: BT.bg.panel, border: `1px solid ${BT.border.normal}`,
+                  color: file ? BT.text.primary : BT.text.muted,
+                  borderRadius: 3, cursor: 'pointer',
+                }}
+              >
+                {file ? file.name : 'Choose file…'}
+              </button>
+            </div>
+
+            {/* Comp type */}
+            <div>
+              <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginBottom: 3 }}>COMP TYPE</div>
+              <select
+                value={compType}
+                onChange={e => setCompType(e.target.value as 'auto' | 'sale' | 'rent')}
+                style={{
+                  fontFamily: MONO, fontSize: 10, padding: '4px 8px',
+                  backgroundColor: BT.bg.panel, border: `1px solid ${BT.border.normal}`,
+                  color: BT.text.secondary, borderRadius: 3, cursor: 'pointer',
+                }}
+              >
+                <option value="auto">Auto-detect</option>
+                <option value="sale">Sale Comps</option>
+                <option value="rent">Rent Comps</option>
+              </select>
+            </div>
+
+            {/* Snapshot date — rent only */}
+            {(compType === 'rent') && (
+              <div>
+                <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginBottom: 3 }}>
+                  AS-OF DATE <span style={{ color: BT.met.risk }}>*</span>
+                </div>
+                <input
+                  type="date"
+                  value={snapshotDate}
+                  onChange={e => setSnapshotDate(e.target.value)}
+                  style={{
+                    fontFamily: MONO, fontSize: 10, padding: '4px 8px',
+                    backgroundColor: BT.bg.panel, border: `1px solid ${BT.border.normal}`,
+                    color: BT.text.secondary, borderRadius: 3,
+                  }}
+                />
+              </div>
+            )}
+
+            <button
+              onClick={handleUpload}
+              disabled={uploading || !file}
+              style={{
+                fontFamily: MONO, fontSize: 10, padding: '5px 14px', fontWeight: 700,
+                backgroundColor: uploading || !file ? BT.bg.panel : BT.text.cyan,
+                color: uploading || !file ? BT.text.muted : '#000',
+                border: 'none', borderRadius: 3,
+                cursor: uploading || !file ? 'default' : 'pointer',
+              }}
+            >
+              {uploading ? 'UPLOADING…' : 'UPLOAD'}
+            </button>
+          </div>
+
+          <div style={{ marginTop: 6, fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+            CoStar CSV/XLSX — Sale: requires Address, City, State, Sale Date, Sale Price.
+            Rent: requires Address, City, State + As-of date.
+          </div>
+        </>
+      )}
+
+      {uploadError && (
+        <div style={{ marginTop: 8, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+          <AlertTriangle size={12} style={{ color: BT.met.risk, flexShrink: 0 }} />
+          <span style={{ fontFamily: MONO, fontSize: 10, color: BT.met.risk }}>{uploadError}</span>
+        </div>
+      )}
+
+      {result && (
+        <div style={{ marginTop: 8 }}>
+          {result.rejected ? (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <AlertTriangle size={12} style={{ color: BT.met.risk, flexShrink: 0, marginTop: 1 }} />
+              <div>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: BT.met.risk, fontWeight: 700 }}>UPLOAD REJECTED</div>
+                <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.muted, marginTop: 2 }}>{result.rejectReason}</div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 6 }}>
+                {[
+                  ['TYPE', result.compType.toUpperCase()],
+                  ['TOTAL ROWS', String(result.totalRows)],
+                  ['INSERTED', String(result.inserted)],
+                  ['SKIPPED (DUP)', String(result.skippedDup)],
+                  ['SKIPPED (INVALID)', String(result.skippedInvalid)],
+                ].map(([label, val]) => (
+                  <div key={label}>
+                    <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.muted }}>{label}</div>
+                    <div style={{
+                      fontFamily: MONO, fontSize: 12, fontWeight: 700,
+                      color: label === 'INSERTED' && Number(val) > 0 ? BT.text.green
+                        : label === 'SKIPPED (INVALID)' && Number(val) > 0 ? BT.met.risk
+                        : BT.text.primary,
+                    }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+
+              {result.errors.length > 0 && (
+                <div style={{
+                  maxHeight: 120, overflowY: 'auto', padding: '6px 8px',
+                  backgroundColor: `${BT.bg.base}88`,
+                  border: `1px solid ${BT.border.dim}`, borderRadius: 3,
+                }}>
+                  <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginBottom: 4 }}>
+                    ROW ERRORS ({result.errors.length})
+                  </div>
+                  {result.errors.slice(0, 20).map((e, i) => (
+                    <div key={i} style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, padding: '1px 0' }}>
+                      Row {e.row} — {e.address}: {e.reason}
+                    </div>
+                  ))}
+                  {result.errors.length > 20 && (
+                    <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+                      … and {result.errors.length - 20} more
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button
+                  onClick={() => { setResult(null); setFile(null); if (fileRef.current) fileRef.current.value = ''; }}
+                  style={{
+                    fontFamily: MONO, fontSize: 9, padding: '3px 10px',
+                    backgroundColor: BT.bg.panel, border: `1px solid ${BT.border.dim}`,
+                    color: BT.text.muted, borderRadius: 3, cursor: 'pointer',
+                  }}
+                >
+                  UPLOAD ANOTHER
+                </button>
+                <button
+                  onClick={onClose}
+                  style={{
+                    fontFamily: MONO, fontSize: 9, padding: '3px 10px',
+                    backgroundColor: BT.bg.panel, border: `1px solid ${BT.border.dim}`,
+                    color: BT.text.muted, borderRadius: 3, cursor: 'pointer',
+                  }}
+                >
+                  CLOSE
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Tab ───────────────────────────────────────────────────────────────────
 
 export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
@@ -580,6 +835,7 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showOverrideEditor, setShowOverrideEditor] = useState(false);
+  const [showUploadPanel, setShowUploadPanel] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -649,7 +905,20 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
-            onClick={() => setShowOverrideEditor(p => !p)}
+            onClick={() => { setShowUploadPanel(p => !p); setShowOverrideEditor(false); }}
+            title="Upload CoStar comp export"
+            style={{
+              background: 'none', border: `1px solid ${showUploadPanel ? BT.text.cyan : BT.border.dim}`,
+              borderRadius: 3, padding: '3px 8px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 4,
+              color: showUploadPanel ? BT.text.cyan : BT.text.muted,
+            }}
+          >
+            <Upload size={10} />
+            <span style={{ fontFamily: MONO, fontSize: 9 }}>UPLOAD COMPS</span>
+          </button>
+          <button
+            onClick={() => { setShowOverrideEditor(p => !p); setShowUploadPanel(false); }}
             title="Set operator override value"
             style={{
               background: 'none', border: `1px solid ${BT.border.dim}`,
@@ -691,6 +960,15 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
           priceHigh={rec.recommendedPriceHigh}
           ppu={rec.reconciledPPU}
           psf={rec.reconciledPSF}
+        />
+      )}
+
+      {/* CoStar upload panel (expandable) */}
+      {showUploadPanel && (
+        <CoStarUploadPanel
+          dealId={dealId}
+          onUploaded={() => { load(); }}
+          onClose={() => setShowUploadPanel(false)}
         />
       )}
 
