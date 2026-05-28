@@ -1656,9 +1656,8 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
           Resolved values from F9 /financials · PENDING badges mark rows whose
           override has no persistence path yet (see TODO_DEAL_TERMS_FOLLOWUP.md).
         </div>
-      </div>
 
-      {/* § 4 — LP / GP SPLIT cross-reference (read-only; canonical edit surface is WATERFALL tab) */}
+        {/* § 4 — LP / GP SPLIT cross-reference (read-only; canonical edit surface is WATERFALL tab) */}
       <div style={{
         margin: '0 14px 16px',
         border: `1px solid ${BT.border.subtle}`,
@@ -1778,6 +1777,7 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
             )}
           </div>
         </div>
+      </div>
       </div>
     </div>
 
