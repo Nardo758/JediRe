@@ -1,0 +1,43 @@
+{
+  "_comment": "Strategy-aware weight table for the comp relevance scoring engine (D-COMP-1). Weights must sum to 1.0 per strategy. Edit here to tune without touching service code.",
+  "strategies": {
+    "stabilized": {
+      "w_distance": 0.25,
+      "w_recency":  0.25,
+      "w_class":    0.20,
+      "w_size":     0.15,
+      "w_vintage":  0.10,
+      "w_quality":  0.05
+    },
+    "value_add": {
+      "w_distance": 0.20,
+      "w_recency":  0.20,
+      "w_class":    0.20,
+      "w_size":     0.15,
+      "w_vintage":  0.15,
+      "w_quality":  0.10
+    },
+    "ground_up": {
+      "w_distance": 0.20,
+      "w_recency":  0.15,
+      "w_class":    0.20,
+      "w_size":     0.15,
+      "w_vintage":  0.05,
+      "w_quality":  0.25
+    },
+    "redevelopment": {
+      "w_distance": 0.25,
+      "w_recency":  0.15,
+      "w_class":    0.15,
+      "w_size":     0.10,
+      "w_vintage":  0.05,
+      "w_quality":  0.30
+    }
+  },
+  "tier_thresholds": {
+    "C1": 0.70,
+    "C2": 0.45,
+    "M1": 0.25
+  },
+  "default_display_count": 8
+}

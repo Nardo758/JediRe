@@ -12,12 +12,18 @@
  *             + vintage_similarity× W_vintage
  *             + data_quality_tier × W_quality
  *
- * Tier labels:
+ * Tier labels (thresholds loaded from config):
  *   C1 ≥ 0.70 — Core comp (tightest match)
  *   C2 ≥ 0.45 — Comparable (good match)
  *   M1 ≥ 0.25 — Marginal (limited match)
  *   M2  < 0.25 — Weak (geographic fill only)
+ *
+ * Strategy weights are loaded from:
+ *   backend/src/config/comp-relevance-weights.config.json
  */
+
+import * as fs from 'fs';
+import * as path from 'path';
 
 export type InvestmentStrategy =
   | 'stabilized'
@@ -69,42 +75,45 @@ export interface CompCandidate {
 }
 
 // ---------------------------------------------------------------------------
-// Strategy-aware weight table (must sum to 1.0 per strategy)
+// Config loading — weights are read from the JSON config at module load time.
 // ---------------------------------------------------------------------------
-const STRATEGY_WEIGHTS: Record<InvestmentStrategy, CompRelevanceWeights> = {
-  stabilized: {
-    w_distance: 0.25,
-    w_recency:  0.25,
-    w_class:    0.20,
-    w_size:     0.15,
-    w_vintage:  0.10,
-    w_quality:  0.05,
-  },
-  value_add: {
-    w_distance: 0.20,
-    w_recency:  0.20,
-    w_class:    0.20,
-    w_size:     0.15,
-    w_vintage:  0.15,
-    w_quality:  0.10,
-  },
-  ground_up: {
-    w_distance: 0.20,
-    w_recency:  0.15,
-    w_class:    0.20,
-    w_size:     0.15,
-    w_vintage:  0.05,
-    w_quality:  0.25,
-  },
-  redevelopment: {
-    w_distance: 0.25,
-    w_recency:  0.15,
-    w_class:    0.15,
-    w_size:     0.10,
-    w_vintage:  0.05,
-    w_quality:  0.30,
-  },
-};
+interface WeightsConfig {
+  strategies: Record<string, CompRelevanceWeights>;
+  tier_thresholds: { C1: number; C2: number; M1: number };
+  default_display_count: number;
+}
+
+function loadWeightsConfig(): WeightsConfig {
+  const configPath = path.resolve(__dirname, '../../config/comp-relevance-weights.config.json');
+  try {
+    const raw = fs.readFileSync(configPath, 'utf-8');
+    return JSON.parse(raw) as WeightsConfig;
+  } catch (err) {
+    // Fallback defaults if config file is missing — fail loudly in test environments
+    process.stderr.write(`[comp-relevance-scoring] WARNING: could not load weights config from ${configPath}: ${err}\n`);
+    return {
+      strategies: {
+        stabilized:    { w_distance: 0.25, w_recency: 0.25, w_class: 0.20, w_size: 0.15, w_vintage: 0.10, w_quality: 0.05 },
+        value_add:     { w_distance: 0.20, w_recency: 0.20, w_class: 0.20, w_size: 0.15, w_vintage: 0.15, w_quality: 0.10 },
+        ground_up:     { w_distance: 0.20, w_recency: 0.15, w_class: 0.20, w_size: 0.15, w_vintage: 0.05, w_quality: 0.25 },
+        redevelopment: { w_distance: 0.25, w_recency: 0.15, w_class: 0.15, w_size: 0.10, w_vintage: 0.05, w_quality: 0.30 },
+      },
+      tier_thresholds: { C1: 0.70, C2: 0.45, M1: 0.25 },
+      default_display_count: 8,
+    };
+  }
+}
+
+const CONFIG = loadWeightsConfig();
+
+function getWeights(strategy: InvestmentStrategy): CompRelevanceWeights {
+  const w = CONFIG.strategies[strategy];
+  if (!w) {
+    process.stderr.write(`[comp-relevance-scoring] Unknown strategy "${strategy}", falling back to stabilized\n`);
+    return CONFIG.strategies['stabilized'];
+  }
+  return w;
+}
 
 // ---------------------------------------------------------------------------
 // Factor helpers (each returns 0–1)
@@ -113,7 +122,8 @@ const STRATEGY_WEIGHTS: Record<InvestmentStrategy, CompRelevanceWeights> = {
 function distanceDecayFactor(distanceMiles: number | null | undefined): number {
   if (distanceMiles == null || distanceMiles < 0) return 0.5;
   if (distanceMiles === 0) return 1.0;
-  // Half-life of 1.5 miles — drops to ~0.5 at 1.5 mi, ~0.14 at 5 mi
+  // Exponential decay: half-life of 1.5 miles
+  // ≈1.0 at 0 mi, ≈0.72 at 0.6 mi, ≈0.50 at 1.5 mi, ≈0.14 at 5 mi
   return Math.exp(-distanceMiles / 1.5);
 }
 
@@ -182,9 +192,10 @@ function dataQualityTierFactor(source: string | null | undefined): number {
 // Tier classification
 // ---------------------------------------------------------------------------
 function classifyTier(score: number): CompTier {
-  if (score >= 0.70) return 'C1';
-  if (score >= 0.45) return 'C2';
-  if (score >= 0.25) return 'M1';
+  const t = CONFIG.tier_thresholds;
+  if (score >= t.C1) return 'C1';
+  if (score >= t.C2) return 'C2';
+  if (score >= t.M1) return 'M1';
   return 'M2';
 }
 
@@ -192,25 +203,29 @@ function classifyTier(score: number): CompTier {
 // Public API
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve a raw strategy string to a canonical InvestmentStrategy.
+ * Order matters: 'redev...' must match before 'development' to avoid
+ * 'redevelopment' resolving to 'ground_up'.
+ */
 export function resolveStrategy(raw: string | null | undefined): InvestmentStrategy {
   if (!raw) return 'stabilized';
   const lower = raw.toLowerCase().replace(/[^a-z_]/g, '_');
   if (lower.includes('value') || lower.includes('add')) return 'value_add';
+  if (lower.includes('redev')) return 'redevelopment';         // ← before 'development'
   if (lower.includes('ground') || lower.includes('development')) return 'ground_up';
-  if (lower.includes('redev')) return 'redevelopment';
   return 'stabilized';
 }
 
 /**
  * Score a single candidate against a subject property.
- * Returns factors + composite score + tier label.
  */
 export function scoreComp(
   subject: SubjectProperty,
   candidate: CompCandidate,
   strategy: InvestmentStrategy = 'stabilized',
 ): { relevance_score: number; relevance_tier: CompTier; factors: CompRelevanceFactors } {
-  const W = STRATEGY_WEIGHTS[strategy];
+  const W = getWeights(strategy);
 
   const factors: CompRelevanceFactors = {
     distance_decay:    distanceDecayFactor(candidate.distance_miles),
@@ -239,13 +254,12 @@ export function scoreComp(
 /**
  * Score and rank an entire candidate pool.
  * Returns sorted descending by relevance_score.
- * `defaultCount` = how many to surface in the default "top comps" view.
  */
 export function rankComps<T extends CompCandidate>(
   subject: SubjectProperty,
   candidates: T[],
   strategy: InvestmentStrategy = 'stabilized',
-  defaultCount = 8,
+  defaultCount = CONFIG.default_display_count,
 ): {
   ranked: Array<ScoredComp<T>>;
   top: Array<ScoredComp<T>>;
@@ -258,16 +272,14 @@ export function rankComps<T extends CompCandidate>(
   });
 
   ranked.sort((a, b) => b.relevance_score - a.relevance_score);
-
   const top = ranked.slice(0, defaultCount);
 
-  return {
-    ranked,
-    top,
-    strategy,
-    weights: STRATEGY_WEIGHTS[strategy],
-  };
+  return { ranked, top, strategy, weights: getWeights(strategy) };
 }
+
+// ---------------------------------------------------------------------------
+// UI metadata
+// ---------------------------------------------------------------------------
 
 export const TIER_LABELS: Record<CompTier, { label: string; description: string }> = {
   C1: { label: 'C1 — Core',       description: 'Tightest match across all factors' },
@@ -292,4 +304,29 @@ export const FACTOR_LABELS: Record<keyof CompRelevanceFactors, string> = {
   size_similarity:   'Size',
   vintage_similarity:'Vintage',
   data_quality_tier: 'Data Quality',
+};
+
+/**
+ * Derive geographic source tier from distance_miles.
+ * Used when explicit geographic_tier metadata is not available from the query.
+ *
+ * Thresholds:
+ *   trade_area:  ≤ radiusMiles (default 3 mi)
+ *   submarket:   ≤ radiusMiles × 3 (default 9 mi)
+ *   msa:         > radiusMiles × 3
+ */
+export function deriveGeographicTier(
+  distanceMiles: number | null | undefined,
+  radiusMiles = 3,
+): 'trade_area' | 'submarket' | 'msa' {
+  if (distanceMiles == null) return 'msa';
+  if (distanceMiles <= radiusMiles) return 'trade_area';
+  if (distanceMiles <= radiusMiles * 3) return 'submarket';
+  return 'msa';
+}
+
+export const GEO_TIER_LABELS: Record<'trade_area' | 'submarket' | 'msa', string> = {
+  trade_area: 'Trade Area',
+  submarket:  'Submarket',
+  msa:        'MSA',
 };

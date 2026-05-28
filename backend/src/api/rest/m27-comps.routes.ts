@@ -198,7 +198,10 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
   try {
     const { dealId } = req.params;
     const { strategy } = req.query as { strategy?: string };
-    const { rankComps, resolveStrategy, TIER_LABELS, FACTOR_LABELS } = await import('../../services/valuation/comp-relevance-scoring.service');
+    const {
+      rankComps, resolveStrategy, TIER_LABELS, FACTOR_LABELS,
+      deriveGeographicTier, GEO_TIER_LABELS,
+    } = await import('../../services/valuation/comp-relevance-scoring.service');
     const pool = getPool();
 
     const compSet = await compSetService.getCompSetByDeal(dealId);
@@ -206,50 +209,112 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
       return res.status(404).json({ success: false, error: 'No comp set found for this deal' });
     }
 
+    // 1. Fetch deal's subject coordinates + metadata
     const dealRow = await pool.query(
       `SELECT COALESCE(d.asset_class, 'B') AS asset_class,
-              p.units, p.year_built
+              p.units, p.year_built,
+              ST_Y(ST_Centroid(d.boundary)) AS deal_lat,
+              ST_X(ST_Centroid(d.boundary)) AS deal_lng
        FROM deals d LEFT JOIN properties p ON p.deal_id = d.id
        WHERE d.id = $1::uuid LIMIT 1`,
       [dealId],
     );
     const dealInfo = dealRow.rows[0] ?? {};
+    const dealLat = dealInfo.deal_lat != null ? parseFloat(String(dealInfo.deal_lat)) : null;
+    const dealLng = dealInfo.deal_lng != null ? parseFloat(String(dealInfo.deal_lng)) : null;
+
     const subject = {
-      units:       dealInfo.units       ? parseInt(String(dealInfo.units),       10) : null,
-      year_built:  dealInfo.year_built  ? parseInt(String(dealInfo.year_built),  10) : null,
+      units:       dealInfo.units      ? parseInt(String(dealInfo.units),      10) : null,
+      year_built:  dealInfo.year_built ? parseInt(String(dealInfo.year_built), 10) : null,
       asset_class: dealInfo.asset_class ?? 'B',
     };
 
+    // 2. Fetch real lat/lng from market_sale_comps to compute accurate distances
+    //    (getCompSetByDeal hardcodes distance_miles = 0)
+    const compIds = compSet.comps.map(c => c.id);
+    const geoRows = compIds.length > 0
+      ? await pool.query<{ id: string; latitude: string | null; longitude: string | null }>(
+          `SELECT id, latitude::text, longitude::text FROM market_sale_comps WHERE id = ANY($1)`,
+          [compIds],
+        )
+      : { rows: [] };
+
+    const geoMap = new Map<string, { lat: number; lng: number }>();
+    for (const r of geoRows.rows) {
+      const lat = r.latitude != null ? parseFloat(r.latitude) : null;
+      const lng = r.longitude != null ? parseFloat(r.longitude) : null;
+      if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng)) {
+        geoMap.set(r.id, { lat, lng });
+      }
+    }
+
+    // Haversine helper (miles)
+    function haversineMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
+      const R = 3959;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2
+              + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
+              * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    const RADIUS_MILES = 3; // matches default generateCompSet radius
+
+    // 3. Build candidates with real distances and geographic tier
+    const enriched = compSet.comps.map(c => {
+      const geo = geoMap.get(c.id);
+      const distMiles = (geo && dealLat != null && dealLng != null)
+        ? Math.round(haversineMiles(dealLat, dealLng, geo.lat, geo.lng) * 100) / 100
+        : null;
+      const geographic_tier = deriveGeographicTier(distMiles, RADIUS_MILES);
+      return { comp: c, distMiles, geographic_tier };
+    });
+
     const resolvedStrategy = resolveStrategy(strategy);
-    const candidates = compSet.comps.map(c => ({
-      id:            c.id,
-      units:         c.units,
-      year_built:    c.year_built,
-      asset_class:   c.property_class,
-      sale_date:     c.recording_date,
-      distance_miles:c.distance_miles,
-      source:        c.source,
+    const candidates = enriched.map(({ comp: c, distMiles }) => ({
+      id:             c.id,
+      units:          c.units,
+      year_built:     c.year_built,
+      asset_class:    c.property_class,
+      sale_date:      c.recording_date,
+      distance_miles: distMiles,
+      source:         c.source,
     }));
 
     const { ranked, top, weights } = rankComps(subject, candidates, resolvedStrategy, 8);
-    const scoreMap = new Map(ranked.map(s => [s.comp.id, s]));
+    const scoreMap  = new Map(ranked.map(s => [s.comp.id, s]));
+    const geoTierMap = new Map(enriched.map(e => [e.comp.id, e.geographic_tier]));
 
     const scoredComps = ranked.map(({ comp: candidate }) => {
       const base = compSet.comps.find(c => c.id === candidate.id)!;
       const s    = scoreMap.get(candidate.id)!;
-      return { ...base, relevance_score: s.relevance_score, relevance_tier: s.relevance_tier, relevance_factors: s.factors };
+      const geo  = geoMap.get(candidate.id);
+      const distMiles = (geo && dealLat != null && dealLng != null)
+        ? Math.round(haversineMiles(dealLat, dealLng, geo.lat, geo.lng) * 100) / 100
+        : base.distance_miles;
+      return {
+        ...base,
+        distance_miles:    distMiles ?? base.distance_miles,
+        geographic_tier:   geoTierMap.get(candidate.id) ?? 'msa',
+        geographic_label:  GEO_TIER_LABELS[geoTierMap.get(candidate.id) ?? 'msa'],
+        relevance_score:   s.relevance_score,
+        relevance_tier:    s.relevance_tier,
+        relevance_factors: s.factors,
+      };
     });
 
     res.json({
       success: true,
       data: {
         ...compSet,
-        comps:            scoredComps,
-        top_comp_ids:     top.map(s => s.comp.id),
-        strategy:         resolvedStrategy,
+        comps:         scoredComps,
+        top_comp_ids:  top.map(s => s.comp.id),
+        strategy:      resolvedStrategy,
         weights,
-        tier_labels:      TIER_LABELS,
-        factor_labels:    FACTOR_LABELS,
+        tier_labels:   TIER_LABELS,
+        factor_labels: FACTOR_LABELS,
+        geo_tier_labels: GEO_TIER_LABELS,
       },
     });
   } catch (error: any) {

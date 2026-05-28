@@ -46,6 +46,8 @@ interface CompTransaction {
   relevance_score?: number;
   relevance_tier?: string;
   relevance_factors?: CompRelevanceFactors;
+  geographic_tier?: 'trade_area' | 'submarket' | 'msa';
+  geographic_label?: string;
 }
 
 interface CompSet {
@@ -403,7 +405,7 @@ export default function CompsModule({
                   <th className="text-right py-2 px-3 text-gray-400 font-medium">$/Unit</th>
                   <th className="text-right py-2 px-3 text-gray-400 font-medium">Cap Rate</th>
                   <th className="text-right py-2 px-3 text-gray-400 font-medium">Dist</th>
-                  <th className="text-center py-2 px-3 text-gray-400 font-medium">Source</th>
+                  <th className="text-center py-2 px-3 text-gray-400 font-medium">Geography</th>
                 </tr>
               </thead>
               <tbody>
@@ -452,7 +454,20 @@ export default function CompsModule({
                         {comp.distance_miles.toFixed(1)} mi
                       </td>
                       <td className="py-2 px-3 text-center">
-                        {comp.source ? (
+                        {comp.geographic_label ? (
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                              comp.geographic_tier === 'trade_area'
+                                ? 'bg-emerald-500/10 text-emerald-400'
+                                : comp.geographic_tier === 'submarket'
+                                ? 'bg-blue-500/10 text-blue-400'
+                                : 'bg-gray-700 text-gray-400'
+                            }`}
+                            title={comp.source ? `Source: ${SOURCE_LABELS[comp.source] ?? comp.source}` : undefined}
+                          >
+                            {comp.geographic_label}
+                          </span>
+                        ) : comp.source ? (
                           <span className="text-[9px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">
                             {SOURCE_LABELS[comp.source] ?? comp.source}
                           </span>
