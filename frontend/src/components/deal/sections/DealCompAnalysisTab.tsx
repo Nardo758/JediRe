@@ -283,12 +283,12 @@ function CompRow({
       <td style={{ padding: '3px 6px', textAlign: 'center', color: BT2.text.secondary, fontFamily: mono, fontSize: 9 }}>{comp.units || '—'}</td>
       <td style={{ padding: '3px 6px', textAlign: 'center', color: BT2.text.secondary, fontFamily: mono, fontSize: 9 }}>{comp.year_built || '—'}</td>
       <td style={{ padding: '3px 6px', textAlign: 'center' }}>
-        {comp.class_code ? (
+        {comp.asset_class ? (
           <span style={{
             fontSize: 8, fontWeight: 700, padding: '1px 3px', borderRadius: 2,
-            background: comp.class_code.startsWith('A') ? '#00BCD411' : comp.class_code.startsWith('B') ? '#F5A62311' : BT2.bg.header,
-            color: comp.class_code.startsWith('A') ? '#00BCD4' : comp.class_code.startsWith('B') ? '#F5A623' : BT2.text.muted,
-          }}>{comp.class_code}</span>
+            background: comp.asset_class === 'A' ? '#00BCD411' : comp.asset_class === 'B' ? '#F5A62311' : BT2.bg.header,
+            color: comp.asset_class === 'A' ? '#00BCD4' : comp.asset_class === 'B' ? '#F5A623' : BT2.text.muted,
+          }}>{comp.asset_class}</span>
         ) : <span style={{ color: BT2.text.muted, fontSize: 9 }}>—</span>}
       </td>
       <td style={{ padding: '3px 6px', textAlign: 'center', color: BT2.text.secondary, fontFamily: mono, fontSize: 9 }}>
@@ -423,7 +423,7 @@ function CompMapPanel({
                     <rect x={x + 10} y={y - 18} width={130} height={28} rx="3" fill={BT2.bg.header} stroke={BT2.border.medium} strokeWidth="1" opacity="0.95" />
                     <text x={x + 15} y={y - 6} fill={BT2.text.primary} fontSize="8" fontWeight="600">{(p.comp.name || p.comp.address).substring(0, 22)}</text>
                     <text x={x + 15} y={y + 3} fill={BT2.text.muted} fontSize="6" fontFamily={mono}>
-                      {p.comp.units}u · {p.comp.class_code || '—'} · {p.comp.distance_miles}mi · {Math.round(p.comp.match_score)}%
+                      {p.comp.units}u · {p.comp.asset_class || '—'} · {p.comp.distance_miles}mi · {Math.round(p.comp.match_score)}%
                     </text>
                   </g>
                 )}
@@ -646,7 +646,7 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
           units: comp.units,
           year_built: comp.year_built,
           stories: comp.stories,
-          asset_class: comp.class_code,
+          asset_class: comp.asset_class,
           distance_miles: comp.distance_miles,
           match_score: comp.match_score,
           geographic_tier: comp.geographic_tier,

@@ -161,7 +161,7 @@ router.get('/:dealId/comp-set/discover-tiered', requireAuth, async (req: Authent
           ON CONFLICT (deal_id, comp_property_address) DO NOTHING
         `, [
           dealId, comp.address, comp.name,
-          comp.units || null, comp.year_built || null, comp.stories || null, comp.class_code || null,
+          comp.units || null, comp.year_built || null, comp.stories || null, comp.asset_class || null,
           comp.distance_miles || null, comp.match_score || null,
           comp.avg_rent || null, comp.occupancy || null,
           comp.lat || null, comp.lng || null,

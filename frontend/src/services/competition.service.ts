@@ -138,7 +138,7 @@ export interface TieredCompProperty {
   units: number;
   year_built: number | null;
   stories: number | null;
-  class_code: string | null;
+  asset_class: string | null;
   distance_miles: number | null;
   match_score: number;
   avg_rent: number | null;

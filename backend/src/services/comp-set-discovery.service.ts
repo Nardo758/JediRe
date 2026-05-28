@@ -87,7 +87,7 @@ export interface TieredComp {
   units: number;
   year_built: number | null;
   stories: number | null;
-  class_code: string | null;
+  asset_class: string | null;
   distance_miles: number | null;
   match_score: number;
   avg_rent: number | null;
@@ -97,6 +97,14 @@ export interface TieredComp {
   in_comp_set: boolean;
   comp_set_id: string | null;
   geographic_tier: 'trade_area' | 'submarket' | 'msa';
+}
+
+function canonicalAssetClass(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (raw === 'C5' || raw === 'C6') return 'A';
+  if (raw === 'C4') return 'B';
+  if (raw === 'C3') return 'C';
+  return raw;
 }
 
 export interface TieredDiscoveryResult {
@@ -166,7 +174,7 @@ export async function discoverTieredComps(dealId: string, radiusMiles: number = 
       units: c.units,
       year_built: c.year_built,
       stories: c.stories,
-      class_code: c.class_code,
+      asset_class: canonicalAssetClass(c.class_code),
       distance_miles: c.distance_miles ? Math.round(c.distance_miles * 100) / 100 : null,
       match_score: score,
       avg_rent: null,
@@ -695,7 +703,7 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
           comp.year_built,
           comp.stories,
           comp.units,
-          comp.class_code,
+          canonicalAssetClass(comp.class_code),
           compAvgRent,
           compOccupancy,
           compLat,
