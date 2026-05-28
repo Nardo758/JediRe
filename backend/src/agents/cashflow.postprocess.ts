@@ -343,6 +343,50 @@ export async function cashflowPostProcess(
             ? mergedHierarchicalResolutions
             : undefined,
         };
+
+        // ── Boundary guard: CONVERT field source check ──────────────────────
+        // Warn when an engine-computed CONVERT subtotal appears in agent output
+        // with an agent-authored source. The math engine will overwrite the value
+        // in post-processing, but agent authorship wastes tokens and signals the
+        // prompt change has not fully taken effect. Fires per-run for monitoring.
+        const CONVERT_FIELD_PATHS = new Set([
+          'proforma.noi',
+          'proforma.revenue.egi',
+          'proforma.opex.total',
+          'proforma.revenue.base_rental_revenue',
+          'proforma.revenue.other_income',
+          'proforma.opex.controllable_total',
+          'proforma.opex.non_controllable_total',
+          'proforma.noi_after_reserves',
+          'proforma.valuation.cap_rate',
+          'proforma.valuation.stabilized_value',
+          // Agent short-path aliases for the same CONVERT fields
+          'revenue.effective_gross_income',
+          'revenue.other_income',
+          'noi',
+          'noi_year1',
+        ]);
+        const AGENT_SOURCE_PREFIXES = ['agent', 'agent_default', 'computed', 'llm'];
+        const pfForGuard = output.proforma_fields as Record<string, any> | undefined;
+        if (pfForGuard) {
+          const violations: string[] = [];
+          for (const [fieldPath, fieldEntry] of Object.entries(pfForGuard)) {
+            if (!CONVERT_FIELD_PATHS.has(fieldPath)) continue;
+            const entry = fieldEntry as Record<string, unknown>;
+            const src = typeof entry?.source === 'string' ? entry.source.toLowerCase() : '';
+            if (AGENT_SOURCE_PREFIXES.some(pfx => src === pfx || src.startsWith(pfx + ':'))) {
+              violations.push(`${fieldPath}(source=${entry.source})`);
+            }
+          }
+          if (violations.length > 0) {
+            logger.warn('[CashflowPostProcess] BOUNDARY_GUARD: engine-computed CONVERT fields authored by agent — math engine will overwrite', {
+              runId,
+              dealId: ctx.dealId,
+              violationCount: violations.length,
+              violations,
+            });
+          }
+        }
       } catch (mathErr) {
         logger.warn('[CashflowPostProcess] Math engine correctSnapshotMath failed (non-fatal)', {
           runId,
@@ -375,15 +419,17 @@ export async function cashflowPostProcess(
           'expense.repairs_maintenance':    'repairs_maintenance',
           'expense.marketing':              'marketing',
           'expense.admin_general':          'g_and_a',
-          'expense.management_fee':         'management_fee_dollars',  // new: dollars, not pct
+          'expense.management_fee':         'management_fee_dollars',  // dollars, not pct
           'expense.replacement_reserves':   'replacement_reserves',
           'expense.contract_services':      'contract_services',
           'expense.turnover':               'turnover',
           'revenue.gross_potential_rent':   'gpr',
-          'revenue.effective_gross_income': 'egi',
-          'revenue.other_income':           'other_income_dollars',    // new: annual dollars, not per-unit-per-month
-          'revenue.vacancy_loss':           'vacancy_loss_dollars',    // new: dollars, not pct
-          'revenue.bad_debt':               'bad_debt_dollars',        // new: dollars, not pct
+          // NOTE: 'revenue.effective_gross_income' (CONVERT-2) removed — EGI is
+          // engine-computed via SUBTOTAL_TO_YEAR1 in the math-engine block above.
+          // NOTE: 'revenue.other_income' (CONVERT-5) removed — aggregate is
+          // engine-computed from breakdown sub-fields; SUBTOTAL_TO_YEAR1 writes it back.
+          'revenue.vacancy_loss':           'vacancy_loss_dollars',    // dollars, not pct
+          'revenue.bad_debt':               'bad_debt_dollars',        // dollars, not pct
           'revenue.concessions':            'concessions',
         };
 
@@ -391,10 +437,11 @@ export async function cashflowPostProcess(
         // When a corrected value exists, prefer it over the agent's raw value.
         // NOTE: proforma.revenue.base_rental_revenue is net rental income (NRI),
         // NOT gross potential rent — it deliberately does NOT map to GPR to avoid
-        // overwriting GPR with NRI values. Only EGI has a direct 1-to-1 equivalent.
-        const CORRECTED_PATH_TO_AGENT: Record<string, string> = {
-          'proforma.revenue.egi': 'revenue.effective_gross_income',
-        };
+        // overwriting GPR with NRI values.
+        // NOTE: 'proforma.revenue.egi' → 'revenue.effective_gross_income' was removed
+        // here because EGI is now a CONVERT field (CONVERT-2). The math engine writes
+        // EGI back to deal_assumptions.year1 via SUBTOTAL_TO_YEAR1, not via this map.
+        const CORRECTED_PATH_TO_AGENT: Record<string, string> = {};
 
         // Build effective value map: agent's proforma_fields, overlaid with
         // math-engine corrections for any fields the engine touched.

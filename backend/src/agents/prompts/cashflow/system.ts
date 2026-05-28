@@ -1515,6 +1515,38 @@ If fetch_disposition_learnings shows avg IRR variance of -150bps:
 
 ---
 
+## ENGINE-COMPUTED SUBTOTALS — DO NOT POPULATE IN proforma_fields
+
+The following 10 subtotals and below-line values are computed **deterministically** by the
+Pro Forma Math Engine (correctSnapshotMath) in post-processing. **Do NOT write these field
+paths to proforma_fields in your write_underwriting call.** Writing them wastes tokens,
+creates a race condition on any read path that runs before post-processing completes, and
+makes the ±5%/±25bps backtest bars meaningless for those fields.
+
+| Field path | Engine formula |
+|---|---|
+| \`proforma.noi\` | EGI − total_opex |
+| \`proforma.revenue.egi\` | base_rental_revenue + other_income |
+| \`proforma.opex.total\` | controllable_total + non_controllable_total |
+| \`proforma.revenue.base_rental_revenue\` | GPR − (loss_to_lease + vacancy_loss + concessions + bad_debt + non_revenue_units) |
+| \`proforma.revenue.other_income\` | Σ other_income.* breakdown sub-fields |
+| \`proforma.opex.controllable_total\` | Σ personnel + repairs + turnover + contract_services + marketing + administrative |
+| \`proforma.opex.non_controllable_total\` | management_fee + insurance + property_tax |
+| \`proforma.noi_after_reserves\` | NOI − reserves.capex |
+| \`proforma.valuation.cap_rate\` | NOI / purchase_price |
+| \`proforma.valuation.stabilized_value\` | stabilized_NOI / cap_rate |
+
+**What you should write:** The leaf KEEP-AI fields — GPR, individual deductions,
+individual expense line items (personnel, repairs, management_fee, insurance, property_tax,
+capex reserves), and the other_income breakdown sub-components. The engine derives all
+subtotals from these.
+
+**Other income:** Write each breakdown sub-field individually (parking, pet_fees, storage,
+laundry, rubs, cable_telecom, misc). Do NOT write the aggregate \`proforma.revenue.other_income\`
+or \`revenue.other_income\` to proforma_fields. The engine sums the sub-fields automatically.
+
+---
+
 ## Output Requirements
 
 Your final response MUST be a single JSON object with ALL keys exactly as shown below.
@@ -1526,7 +1558,6 @@ CRITICAL: Every field_path in proforma_fields must be a dot-notation key (e.g.
 "revenue.gross_potential_rent") and each value must be an object with
 { value, source, evidence, archive_percentile? }. Include AT MINIMUM:
   - revenue.gross_potential_rent
-  - revenue.effective_gross_income
   - revenue.concessions       ← REQUIRED: stabilized annual concession dollars
   - revenue.bad_debt          ← REQUIRED: stabilized annual bad debt dollars
   - expense.turnover          ← REQUIRED: stabilized annual turnover cost dollars

@@ -105,9 +105,16 @@ function runSanityChecks(
   }
 
   const gpr = metrics['gpr'] ?? metrics['revenue.gpr'] ?? null;
-  const egi = metrics['egi'] ?? metrics['revenue.egi'] ?? null;
+  // EGI and total_opex are engine-computed CONVERT fields (CONVERT-2/3).
+  // Read them from the snapshot only for transitional compatibility — after the
+  // full CONVERT dispatch lands they will be absent and these will be null.
+  const egi = metrics['egi'] ?? metrics['revenue.egi'] ?? metrics['revenue.effective_gross_income'] ?? null;
   const totalOpex = metrics['total_opex'] ?? metrics['opex.total'] ?? null;
-  const noi = metrics['noi'] ?? metrics['noi_year1'] ?? null;
+  // NOI is a CONVERT field (CONVERT-1). Derive from leaf inputs rather than
+  // reading the agent-authored value — avoids circular dependency on an
+  // aggregate the agent should no longer produce.
+  const computedNoi = (egi != null && totalOpex != null) ? egi - totalOpex : null;
+  const noi = computedNoi ?? metrics['noi'] ?? metrics['noi_year1'] ?? null;
 
   // Occupancy from evidence rows (stored as decimal 0–1 or pct 0–100)
   const occupancyRaw = metrics['occupancy_pct'] ?? metrics['occupancy'] ?? metrics['physical_occupancy'] ?? null;
