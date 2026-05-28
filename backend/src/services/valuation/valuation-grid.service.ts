@@ -123,13 +123,26 @@ export interface ValuationGridResult {
 
 // ── Task #1417: Comp override types ──────────────────────────────────────────
 
+/** Tracks a single operator override action with provenance for audit. */
+export interface OverrideEvent {
+  compId: string;
+  action: 'exclude' | 'include' | 'add';
+  source: 'operator_override';
+  at: string;
+}
+
 export interface CompCriteria {
   radiusMiles: number;
   maxAgeMonths: number;
   minUnits: number;
   maxUnits: number;
   propertyClasses: string[];
+  /** Comp IDs the operator has explicitly removed from scoring. */
   excludedCompIds: string[];
+  /** Comp IDs the operator has manually added from the broader candidate pool. */
+  customIncludedCompIds: string[];
+  /** Immutable audit log of all operator override actions (newest last). */
+  overrideEvents: OverrideEvent[];
 }
 
 export type StalenessLabel = 'fresh' | 'aging' | 'seasoned' | 'stale';
@@ -153,13 +166,19 @@ export interface CompReviewItem {
   age_months: number;
   staleness_label: StalenessLabel;
   staleness_weight: number;
+  /** Whether operator has excluded this comp from scoring. */
   excluded: boolean;
+  /** Whether this comp was manually added by the operator (not in system comp set). */
+  manually_added: boolean;
 }
 
 export interface CompReviewResult {
   dealId: string;
   criteria: CompCriteria;
+  /** Active and operator-excluded comps from the system comp set, filtered by criteria. */
   comps: CompReviewItem[];
+  /** Additional comps from market_sale_comps within 1.5× radius but NOT in the comp set. */
+  additionalCandidates: CompReviewItem[];
   totalCandidates: number;
   staleCount: number;
   excludedCount: number;
@@ -187,11 +206,17 @@ function stalenessLabel(ageMonths: number, maxAgeMonths: number): 'fresh' | 'agi
   return 'stale';
 }
 
-function stalenessWeight(ageMonths: number): number {
-  if (ageMonths <= 12) return 1.00;
-  if (ageMonths <= 24) return 0.85;
-  if (ageMonths <= 36) return 0.70;
-  return 0.50;
+/**
+ * Task #1417 (6.2): Staleness weight uses `maxAgeMonths` as the stale threshold so that
+ * the haircut is consistent with the staleness label. Comps beyond `maxAgeMonths` always
+ * receive the 0.50× haircut, regardless of whether that threshold is 24, 36, or 48 months.
+ * The fresh/aging/seasoned breakpoints (12mo / 24mo) are domain-anchored and remain fixed.
+ */
+function stalenessWeight(ageMonths: number, maxAgeMonths: number = MAX_COMP_AGE_MONTHS_DEFAULT): number {
+  if (ageMonths > maxAgeMonths) return 0.50;   // stale — beyond operator threshold
+  if (ageMonths > 24) return 0.70;              // seasoned
+  if (ageMonths > 12) return 0.85;              // aging
+  return 1.00;                                   // fresh
 }
 
 // ── Confidence weight map ─────────────────────────────────────────────────────
@@ -575,21 +600,84 @@ export class ValuationGridService {
       );
     }
 
-    // Task #1417 (6.1): Apply operator exclusions — filter before synthesis loop
+    // Task #1417 (6.1): Apply operator criteria as post-filters on the comp set
+    // This ensures the panel and scoring use the same comp universe.
     const excludedSet = new Set<string>(criteria.excludedCompIds ?? []);
+
+    // (a) Fetch any manually-added comps from market_sale_comps and append
+    if (criteria.customIncludedCompIds.length > 0) {
+      try {
+        const customIds = criteria.customIncludedCompIds.filter(id => !compSet.comps.some((c: any) => String(c.id) === id));
+        if (customIds.length > 0) {
+          const customResult = await this.pool.query(
+            `SELECT id, sale_date AS recording_date, address AS property_address,
+                    units, sqft AS building_sf, year_built, asset_class AS property_class,
+                    sale_price AS derived_sale_price, price_per_unit, price_per_sqft AS price_per_sf,
+                    cap_rate AS implied_cap_rate, buyer, source, source_labels
+             FROM market_sale_comps
+             WHERE id = ANY($1::uuid[])`,
+            [customIds]
+          );
+          const customComps = customResult.rows.map((r: any) => ({
+            id: r.id,
+            recording_date: r.recording_date,
+            property_address: r.property_address,
+            units: r.units ? parseInt(String(r.units)) : null,
+            building_sf: r.building_sf ? parseFloat(String(r.building_sf)) : null,
+            year_built: r.year_built,
+            property_class: r.property_class ?? 'B',
+            derived_sale_price: r.derived_sale_price ? parseFloat(String(r.derived_sale_price)) : 0,
+            price_per_unit: r.price_per_unit ? parseFloat(String(r.price_per_unit)) : 0,
+            price_per_sf: r.price_per_sf ? parseFloat(String(r.price_per_sf)) : 0,
+            implied_cap_rate: r.implied_cap_rate ? parseFloat(String(r.implied_cap_rate)) : null,
+            grantee_name: r.buyer ?? '',
+            buyer_type: '',
+            holding_period_months: null,
+            distance_miles: 0,
+            source: r.source ?? 'manual',
+            source_labels: r.source_labels ?? null,
+            relevance_tier: 'C2',
+          }));
+          compSet = { ...compSet, comps: [...compSet.comps, ...customComps] };
+        }
+      } catch {
+        // non-fatal — custom add fails silently
+      }
+    }
+
+    // (b) Apply operator exclusions
     const effectiveComps = compSet.comps.filter((c: any) => !excludedSet.has(String(c.id)));
     if (excludedSet.size > 0 && effectiveComps.length < compSet.comps.length) {
       const removedCount = compSet.comps.length - effectiveComps.length;
       warnings.push(`${removedCount} comp${removedCount !== 1 ? 's' : ''} excluded by operator override.`);
     }
-    compSet = { ...compSet, comps: effectiveComps };
 
-    if (effectiveComps.length === 0) {
+    // (c) Apply unit count filter
+    const allClasses = ['A', 'B', 'C', 'D'];
+    const classFilter = criteria.propertyClasses ?? allClasses;
+    const applyClassFilter = classFilter.length > 0 && classFilter.length < allClasses.length;
+    const criteriaComps = effectiveComps.filter((c: any) => {
+      const u = c.units != null ? parseInt(String(c.units)) : null;
+      if (u != null) {
+        if (criteria.minUnits > 0 && u < criteria.minUnits) return false;
+        if (criteria.maxUnits < 9999 && u > criteria.maxUnits) return false;
+      }
+      if (applyClassFilter) {
+        const pc = (c.property_class ?? c.asset_class ?? '').toUpperCase();
+        if (pc && !classFilter.map(s => s.toUpperCase()).includes(pc)) return false;
+      }
+      return true;
+    });
+    compSet = { ...compSet, comps: criteriaComps };
+
+    if (criteriaComps.length === 0) {
       return this.insufficientMethod(
         METHOD_ID,
         'Comp-Anchored Cap Rate',
         'bottom_up',
-        'All comps excluded by operator. Re-include comps in the Comp Review panel.',
+        criteriaComps.length === 0 && effectiveComps.length > 0
+          ? 'All comps filtered by unit count or property class criteria. Adjust criteria in Comp Review.'
+          : 'All comps excluded by operator. Re-include comps in the Comp Review panel.',
         warnings
       );
     }
@@ -626,8 +714,8 @@ export class ValuationGridService {
       const saleDate = comp.recording_date ? new Date(comp.recording_date).getTime() : 0;
       const ageMonths = saleDate > 0 ? (now - saleDate) / (1000 * 60 * 60 * 24 * 30.44) : 999;
 
-      // Staleness weight (Task #1417 6.2 — uses shared helper)
-      const sw = stalenessWeight(ageMonths);
+      // Staleness weight (Task #1417 6.2 — uses maxAgeMonths from operator criteria)
+      const sw = stalenessWeight(ageMonths, maxCompAgeMonths);
       if (stalenessLabel(ageMonths, maxCompAgeMonths) === 'stale') staleCount++;
 
       // Quality-tier weight from comp relevance scoring (C1 > C2 > M1 > M2)
@@ -922,31 +1010,50 @@ export class ValuationGridService {
       };
     }
 
-    // Task #1417 (6.1): Apply operator exclusions to individual comps if available,
-    // then recompute PPU stats from the filtered set for accurate synthesis.
-    const excludedSet = new Set<string>(criteria.excludedCompIds ?? []);
-    if (excludedSet.size > 0 && compSet.comps && compSet.comps.length > 0) {
-      const filteredComps = compSet.comps.filter((c: any) => !excludedSet.has(String(c.id)));
+    // Task #1417 (6.1): Apply operator criteria to comp set before PPU synthesis.
+    // This mirrors the same filter chain used in computeCompAnchoredCapRate to ensure
+    // the panel and both scoring methods use an identical comp universe.
+    if (compSet.comps && compSet.comps.length > 0) {
+      const excludedSet = new Set<string>(criteria.excludedCompIds ?? []);
+      const allClassesPPU = ['A', 'B', 'C', 'D'];
+      const classFilterPPU = criteria.propertyClasses ?? allClassesPPU;
+      const applyClassFilterPPU = classFilterPPU.length > 0 && classFilterPPU.length < allClassesPPU.length;
+
+      const filteredComps = compSet.comps.filter((c: any) => {
+        if (excludedSet.has(String(c.id))) return false;
+        const u = c.units != null ? parseInt(String(c.units)) : null;
+        if (u != null) {
+          if (criteria.minUnits > 0 && u < criteria.minUnits) return false;
+          if (criteria.maxUnits < 9999 && u > criteria.maxUnits) return false;
+        }
+        if (applyClassFilterPPU) {
+          const pc = (c.property_class ?? c.asset_class ?? '').toUpperCase();
+          if (pc && !classFilterPPU.map(s => s.toUpperCase()).includes(pc)) return false;
+        }
+        return true;
+      });
+
       const removedCount = compSet.comps.length - filteredComps.length;
       if (removedCount > 0) {
-        warnings.push(`${removedCount} comp${removedCount !== 1 ? 's' : ''} excluded by operator override.`);
+        warnings.push(`${removedCount} comp${removedCount !== 1 ? 's' : ''} removed by operator criteria (exclusions, units, or class filter).`);
         // Recompute PPU stats from the filtered comp set
         const ppuValues = filteredComps
-          .map((c: any) => safeFloat(c.price_per_unit ?? c.derived_sale_price, 0))
+          .map((c: any) => safeFloat(c.price_per_unit, 0))
           .filter((v: number) => v > 0)
           .sort((a: number, b: number) => a - b);
         if (ppuValues.length > 0) {
-          const median = ppuValues[Math.floor(ppuValues.length / 2)];
-          const mean = ppuValues.reduce((sum: number, v: number) => sum + v, 0) / ppuValues.length;
-          const stdDev = Math.sqrt(
-            ppuValues.reduce((sum: number, v: number) => sum + Math.pow(v - mean, 2), 0) / ppuValues.length
+          const medianIdx = Math.floor(ppuValues.length / 2);
+          const medianVal = ppuValues[medianIdx];
+          const meanVal = ppuValues.reduce((s: number, v: number) => s + v, 0) / ppuValues.length;
+          const stdDevVal = Math.sqrt(
+            ppuValues.reduce((s: number, v: number) => s + (v - meanVal) ** 2, 0) / ppuValues.length
           );
           compSet = {
             ...compSet,
             comps: filteredComps,
             comp_count: filteredComps.length,
-            median_price_per_unit: median,
-            std_dev_price_per_unit: stdDev,
+            median_price_per_unit: medianVal,
+            std_dev_price_per_unit: stdDevVal,
             min_price_per_unit: ppuValues[0],
             max_price_per_unit: ppuValues[ppuValues.length - 1],
           };
@@ -1533,6 +1640,8 @@ export class ValuationGridService {
     maxUnits: 500,
     propertyClasses: ['A', 'B', 'C'],
     excludedCompIds: [],
+    customIncludedCompIds: [],
+    overrideEvents: [],
   };
 
   private async getCompCriteria(dealId: string): Promise<CompCriteria> {
@@ -1546,6 +1655,8 @@ export class ValuationGridService {
       ...this.DEFAULT_CRITERIA,
       ...stored,
       excludedCompIds: Array.isArray(stored.excludedCompIds) ? stored.excludedCompIds : [],
+      customIncludedCompIds: Array.isArray(stored.customIncludedCompIds) ? stored.customIncludedCompIds : [],
+      overrideEvents: Array.isArray(stored.overrideEvents) ? stored.overrideEvents : [],
     };
   }
 
@@ -1566,6 +1677,13 @@ export class ValuationGridService {
     if (!criteria.excludedCompIds.includes(compId)) {
       criteria.excludedCompIds.push(compId);
     }
+    // Task #1417 (6.1): Record provenance for this override
+    criteria.overrideEvents.push({
+      compId,
+      action: 'exclude',
+      source: 'operator_override',
+      at: new Date().toISOString(),
+    });
     await this.pool.query(
       `UPDATE deal_assumptions SET comp_criteria = $1::jsonb WHERE deal_id = $2::uuid`,
       [JSON.stringify(criteria), dealId]
@@ -1575,6 +1693,37 @@ export class ValuationGridService {
   async includeComp(dealId: string, compId: string): Promise<void> {
     const criteria = await this.getCompCriteria(dealId);
     criteria.excludedCompIds = criteria.excludedCompIds.filter(id => id !== compId);
+    // Task #1417 (6.1): Record provenance
+    criteria.overrideEvents.push({
+      compId,
+      action: 'include',
+      source: 'operator_override',
+      at: new Date().toISOString(),
+    });
+    await this.pool.query(
+      `UPDATE deal_assumptions SET comp_criteria = $1::jsonb WHERE deal_id = $2::uuid`,
+      [JSON.stringify(criteria), dealId]
+    );
+  }
+
+  /**
+   * Task #1417 (6.1): Manually add a comp from the broader candidate pool into the
+   * active scoring set.  Stores its ID in `customIncludedCompIds` and appends an
+   * `operator_override` provenance event.
+   */
+  async addComp(dealId: string, compId: string): Promise<void> {
+    const criteria = await this.getCompCriteria(dealId);
+    if (!criteria.customIncludedCompIds.includes(compId)) {
+      criteria.customIncludedCompIds.push(compId);
+    }
+    // Remove from exclusion list if it was there
+    criteria.excludedCompIds = criteria.excludedCompIds.filter(id => id !== compId);
+    criteria.overrideEvents.push({
+      compId,
+      action: 'add',
+      source: 'operator_override',
+      at: new Date().toISOString(),
+    });
     await this.pool.query(
       `UPDATE deal_assumptions SET comp_criteria = $1::jsonb WHERE deal_id = $2::uuid`,
       [JSON.stringify(criteria), dealId]
@@ -1582,132 +1731,136 @@ export class ValuationGridService {
   }
 
   // ── Task #1417 (6.1): Comp review listing ────────────────────────────────
+  //
+  // PRIMARY SOURCE: compSetService — exactly the same comp universe used by scoring.
+  // SUPPLEMENTARY: market_sale_comps within 1.5× radius for "manual add" candidates.
+  //
+  // Key invariant: the `comps` list here and the `criteriaComps` in
+  // computeCompAnchoredCapRate are derived from the same compSet, so operators always
+  // see "why those comps" rather than a divergent SQL query.
 
   async listCompsForReview(dealId: string): Promise<CompReviewResult> {
+    const compSetService = new (await import('../saleComps/compSet.service')).CompSetService();
     const criteria = await this.getCompCriteria(dealId);
 
-    // Get subject property coordinates
-    const subjectResult = await this.pool.query(
-      `SELECT p.latitude, p.longitude, COALESCE(p.city, d.city) AS city, p.state_code AS state
-       FROM deals d LEFT JOIN properties p ON p.deal_id = d.id
-       WHERE d.id = $1::uuid LIMIT 1`,
-      [dealId]
-    );
-    const subject = subjectResult.rows[0];
-    if (!subject?.latitude || !subject?.longitude) {
-      return {
-        dealId,
-        criteria,
-        comps: [],
-        totalCandidates: 0,
-        staleCount: 0,
-        excludedCount: 0,
-      };
+    // 1. Use compSetService as the authoritative source for the scoring comp set
+    let compSet = await compSetService.getCompSetByDeal(dealId);
+    if (!compSet) {
+      // Fall back to generating a comp set if none exists
+      const subjectFallback = await this.pool.query(
+        `SELECT p.latitude, p.longitude FROM deals d
+         LEFT JOIN properties p ON p.deal_id = d.id WHERE d.id = $1::uuid LIMIT 1`,
+        [dealId]
+      );
+      const sf = subjectFallback.rows[0];
+      if (sf?.latitude && sf?.longitude) {
+        try {
+          compSet = await compSetService.generateCompSet({
+            deal_id: dealId,
+            radius_miles: criteria.radiusMiles,
+            date_range_months: criteria.maxAgeMonths,
+            min_units: criteria.minUnits > 0 ? criteria.minUnits : undefined,
+            max_units: criteria.maxUnits < 9999 ? criteria.maxUnits : undefined,
+            property_classes: criteria.propertyClasses,
+          });
+        } catch {
+          compSet = null;
+        }
+      }
     }
-
-    // Task #1417 (6.1): Build a parameterized query that applies ALL operator tunables:
-    //   radiusMiles, maxAgeMonths (selection filter), minUnits, maxUnits, propertyClasses
-    // Excluded comps are NOT filtered in SQL — they remain visible but flagged `excluded: true`
-    // so operators can see what they've removed and re-include if needed.
-    const queryParams: any[] = [subject.latitude, subject.longitude, criteria.radiusMiles, dealId];
-    let paramIdx = 5;
-    const extraClauses: string[] = [];
-
-    // maxAgeMonths — filter out comps older than the threshold
-    // (same threshold used by staleness haircut; stale comps beyond this won't appear at all)
-    const cutoffDate = new Date();
-    cutoffDate.setMonth(cutoffDate.getMonth() - criteria.maxAgeMonths);
-    queryParams.push(cutoffDate.toISOString().slice(0, 10));
-    extraClauses.push(`(t.sale_date IS NULL OR t.sale_date >= $${paramIdx++}::date)`);
-
-    // minUnits / maxUnits
-    if (criteria.minUnits > 0) {
-      queryParams.push(criteria.minUnits);
-      extraClauses.push(`(t.units IS NULL OR t.units >= $${paramIdx++})`);
-    }
-    if (criteria.maxUnits < 9999) {
-      queryParams.push(criteria.maxUnits);
-      extraClauses.push(`(t.units IS NULL OR t.units <= $${paramIdx++})`);
-    }
-
-    // propertyClasses — only apply when not all-inclusive
-    const allClasses = ['A', 'B', 'C', 'D'];
-    const filteredClasses = criteria.propertyClasses ?? allClasses;
-    if (filteredClasses.length > 0 && filteredClasses.length < allClasses.length) {
-      queryParams.push(filteredClasses);
-      extraClauses.push(`(t.asset_class IS NULL OR t.asset_class = ANY($${paramIdx++}::text[]))`);
-    }
-
-    const extraWhere = extraClauses.length > 0 ? `AND ${extraClauses.join(' AND ')}` : '';
-
-    const result = await this.pool.query(
-      `SELECT
-         t.id,
-         t.address,
-         t.city,
-         t.state,
-         t.units,
-         t.year_built,
-         t.asset_class,
-         t.sale_date,
-         t.sale_price,
-         t.price_per_unit,
-         t.cap_rate       AS implied_cap_rate,
-         t.source,
-         ROUND((
-           point(t.longitude::float, t.latitude::float)
-           <@> point($2::float, $1::float)
-         )::numeric, 3)  AS distance_miles
-       FROM market_sale_comps t
-       WHERE t.property_type = 'multifamily'
-         AND t.latitude IS NOT NULL
-         AND t.longitude IS NOT NULL
-         AND t.sale_price > 0
-         AND (
-           point(t.longitude::float, t.latitude::float)
-           <@> point($2::float, $1::float)
-         ) <= $3
-         AND (t.source != 'costar_upload' OR t.deal_id = $4::uuid OR t.deal_id IS NULL)
-         ${extraWhere}
-       ORDER BY
-         (point(t.longitude::float, t.latitude::float) <@> point($2::float, $1::float)) ASC,
-         t.sale_date DESC
-       LIMIT 100`,
-      queryParams
-    );
 
     const now = Date.now();
-    const excluded = new Set<string>(criteria.excludedCompIds);
+    const excludedSet = new Set<string>(criteria.excludedCompIds);
+    const customSet = new Set<string>(criteria.customIncludedCompIds);
 
-    const comps: CompReviewItem[] = result.rows.map((row: any) => {
-      const saleDateMs = row.sale_date ? new Date(row.sale_date).getTime() : 0;
+    // Helper: convert a CompTransaction or raw row to a CompReviewItem
+    const toReviewItem = (
+      comp: any,
+      opts: { excluded: boolean; manually_added: boolean }
+    ): CompReviewItem => {
+      const saleDate = comp.recording_date ?? comp.sale_date;
+      const saleDateMs = saleDate ? new Date(saleDate).getTime() : 0;
       const ageMonths = saleDateMs > 0 ? (now - saleDateMs) / (1000 * 60 * 60 * 24 * 30.44) : 999;
-      const slabel = stalenessLabel(ageMonths, criteria.maxAgeMonths);
-      const sw = stalenessWeight(ageMonths);
       return {
-        id: row.id,
-        address: row.address ?? '',
-        city: row.city ?? null,
-        state: row.state ?? null,
-        units: row.units != null ? parseInt(String(row.units)) : null,
-        year_built: row.year_built != null ? parseInt(String(row.year_built)) : null,
-        asset_class: row.asset_class ?? null,
-        sale_date: row.sale_date ? new Date(row.sale_date).toISOString().slice(0, 10) : null,
-        sale_price: row.sale_price != null ? parseFloat(String(row.sale_price)) : null,
-        price_per_unit: row.price_per_unit != null ? parseFloat(String(row.price_per_unit)) : null,
-        implied_cap_rate: row.implied_cap_rate != null ? parseFloat(String(row.implied_cap_rate)) : null,
-        distance_miles: row.distance_miles != null ? parseFloat(String(row.distance_miles)) : null,
-        source: row.source ?? 'unknown',
-        relevance_score: null,
-        relevance_tier: null,
+        id: String(comp.id),
+        address: comp.property_address ?? comp.address ?? '',
+        city: comp.city ?? null,
+        state: comp.state ?? null,
+        units: comp.units != null ? parseInt(String(comp.units)) : null,
+        year_built: comp.year_built != null ? parseInt(String(comp.year_built)) : null,
+        asset_class: comp.property_class ?? comp.asset_class ?? null,
+        sale_date: saleDate ? new Date(saleDate).toISOString().slice(0, 10) : null,
+        sale_price: comp.derived_sale_price != null
+          ? parseFloat(String(comp.derived_sale_price))
+          : (comp.sale_price != null ? parseFloat(String(comp.sale_price)) : null),
+        price_per_unit: comp.price_per_unit != null ? parseFloat(String(comp.price_per_unit)) : null,
+        implied_cap_rate: comp.implied_cap_rate != null ? parseFloat(String(comp.implied_cap_rate)) : null,
+        distance_miles: comp.distance_miles != null ? parseFloat(String(comp.distance_miles)) : null,
+        source: comp.source ?? 'unknown',
+        relevance_score: comp.relevance_score ?? null,
+        relevance_tier: comp.relevance_tier ?? null,
         age_months: Math.round(ageMonths),
-        staleness_label: slabel,
-        staleness_weight: sw,
-        excluded: excluded.has(row.id),
+        // Task #1417 (6.2): staleness label and weight both use maxAgeMonths for consistency
+        staleness_label: stalenessLabel(ageMonths, criteria.maxAgeMonths),
+        staleness_weight: stalenessWeight(ageMonths, criteria.maxAgeMonths),
+        excluded: opts.excluded,
+        manually_added: opts.manually_added,
       };
-    });
+    };
 
-    const totalCandidates = comps.length;
+    // 2. Build the primary comp list from the scoring comp set
+    //    ALL comps from the set are shown — excluded ones are flagged but not hidden.
+    //    There is deliberately NO age cutoff here; old comps remain visible with stale flag.
+    const activeCompIds = new Set<string>(compSet?.comps.map((c: any) => String(c.id)) ?? []);
+    const comps: CompReviewItem[] = (compSet?.comps ?? []).map((comp: any) =>
+      toReviewItem(comp, {
+        excluded: excludedSet.has(String(comp.id)),
+        manually_added: customSet.has(String(comp.id)),
+      })
+    );
+
+    // 3. Fetch additional candidates from market_sale_comps within 1.5× radius
+    //    for the "manual add" pool — only comps NOT already in the comp set.
+    let additionalCandidates: CompReviewItem[] = [];
+    try {
+      const subjectResult = await this.pool.query(
+        `SELECT p.latitude, p.longitude FROM deals d
+         LEFT JOIN properties p ON p.deal_id = d.id WHERE d.id = $1::uuid LIMIT 1`,
+        [dealId]
+      );
+      const subject = subjectResult.rows[0];
+      if (subject?.latitude && subject?.longitude) {
+        const widerRadius = criteria.radiusMiles * 1.5;
+        const candidateResult = await this.pool.query(
+          `SELECT
+             t.id, t.address AS property_address, t.city, t.state,
+             t.units, t.year_built, t.asset_class AS property_class,
+             t.sale_date AS recording_date, t.sale_price AS derived_sale_price,
+             t.price_per_unit, t.cap_rate AS implied_cap_rate, t.source,
+             ROUND((
+               point(t.longitude::float, t.latitude::float)
+               <@> point($2::float, $1::float)
+             )::numeric, 3) AS distance_miles
+           FROM market_sale_comps t
+           WHERE t.property_type = 'multifamily'
+             AND t.latitude IS NOT NULL AND t.longitude IS NOT NULL
+             AND t.sale_price > 0
+             AND (point(t.longitude::float, t.latitude::float) <@> point($2::float, $1::float)) <= $3
+             AND (t.source != 'costar_upload' OR t.deal_id = $4::uuid OR t.deal_id IS NULL)
+           ORDER BY (point(t.longitude::float, t.latitude::float) <@> point($2::float, $1::float)) ASC,
+                    t.sale_date DESC
+           LIMIT 150`,
+          [subject.latitude, subject.longitude, widerRadius, dealId]
+        );
+        additionalCandidates = candidateResult.rows
+          .filter((r: any) => !activeCompIds.has(String(r.id)))
+          .map((r: any) => toReviewItem(r, { excluded: false, manually_added: false }));
+      }
+    } catch {
+      // non-fatal — candidate query failure doesn't break the panel
+    }
+
+    const totalCandidates = comps.length + additionalCandidates.length;
     const staleCount = comps.filter(c => c.staleness_label === 'stale').length;
     const excludedCount = comps.filter(c => c.excluded).length;
 
@@ -1715,6 +1868,7 @@ export class ValuationGridService {
       dealId,
       criteria,
       comps,
+      additionalCandidates,
       totalCandidates,
       staleCount,
       excludedCount,

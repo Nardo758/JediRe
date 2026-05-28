@@ -475,4 +475,32 @@ router.post('/deals/:dealId/valuation-grid/comps/:compId/include', requireAuth, 
   }
 });
 
+/**
+ * POST /api/v1/deals/:dealId/valuation-grid/comps/:compId/add
+ *
+ * Task #1417 (6.1): Manually add a comp from the broader candidate pool into the
+ * active scoring set. The comp is stored in `customIncludedCompIds` with an
+ * `operator_override` provenance event. The next valuation recompute will include it.
+ */
+router.post('/deals/:dealId/valuation-grid/comps/:compId/add', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId, compId } = req.params;
+    const userId = req.user?.userId;
+    const pool = getPool();
+
+    const ownerCheck = await pool.query(
+      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
+      [dealId, userId, req.user?.role === 'admin']
+    );
+    if (ownerCheck.rows.length === 0) return res.status(404).json({ success: false, error: 'Deal not found.' });
+
+    const svc = new ValuationGridService(pool);
+    await svc.addComp(dealId, compId);
+    res.json({ success: true, message: 'Comp added to scoring set.' });
+  } catch (err: any) {
+    console.error('[valuation-grid] comp add error:', err);
+    res.status(500).json({ success: false, error: err.message ?? 'Failed to add comp' });
+  }
+});
+
 export default router;

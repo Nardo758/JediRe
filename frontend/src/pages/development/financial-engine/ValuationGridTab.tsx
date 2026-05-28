@@ -112,12 +112,15 @@ interface CompReviewItem {
   staleness_label: StalenessLabel;
   staleness_weight: number;
   excluded: boolean;
+  manually_added: boolean;
 }
 
 interface CompReviewResult {
   dealId: string;
   criteria: CompCriteria;
   comps: CompReviewItem[];
+  /** Comps from a wider radius not in the system-generated comp set — available for manual add. */
+  additionalCandidates: CompReviewItem[];
   totalCandidates: number;
   staleCount: number;
   excludedCount: number;
@@ -624,6 +627,7 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
   const [editCriteria, setEditCriteria] = useState(false);
   const [criteriaForm, setCriteriaForm] = useState<Partial<CompCriteria>>({});
   const [savingCriteria, setSavingCriteria] = useState(false);
+  const [showCandidates, setShowCandidates] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setErr(null);
@@ -659,6 +663,16 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
     setSavingId(null);
   };
 
+  const addComp = async (comp: CompReviewItem) => {
+    setSavingId(comp.id);
+    try {
+      await apiClient.post(`/api/v1/deals/${dealId}/valuation-grid/comps/${comp.id}/add`, {});
+      await load();
+      onRefreshGrid();
+    } catch {}
+    setSavingId(null);
+  };
+
   const saveCriteria = async () => {
     setSavingCriteria(true);
     try {
@@ -672,6 +686,7 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
 
   const activeComps = data?.comps.filter(c => !c.excluded) ?? [];
   const excludedComps = data?.comps.filter(c => c.excluded) ?? [];
+  const candidates = data?.additionalCandidates ?? [];
 
   return (
     <div style={{
@@ -823,13 +838,50 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
               ))}
             </>
           )}
+
+          {/* Additional candidates for manual add */}
+          {candidates.length > 0 && (
+            <>
+              <div
+                onClick={() => setShowCandidates(v => !v)}
+                style={{
+                  padding: '6px 14px', borderTop: `1px solid ${BT.border.normal}`,
+                  backgroundColor: BT.bg.panel, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <span style={{ fontFamily: MONO, fontSize: 8, letterSpacing: 1, color: BT.text.secondary }}>
+                  ADDITIONAL CANDIDATES ({candidates.length}) — {showCandidates ? 'HIDE ▲' : 'SHOW ▼'}
+                </span>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                  comps within {(data.criteria.radiusMiles * 1.5).toFixed(1)}mi not in scoring set
+                </span>
+              </div>
+              {showCandidates && candidates.map(comp => (
+                <CompRow
+                  key={comp.id}
+                  comp={comp}
+                  saving={savingId === comp.id}
+                  onToggle={() => {}}
+                  onAdd={() => addComp(comp)}
+                  isCandidate
+                />
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function CompRow({ comp, saving, onToggle }: { comp: CompReviewItem; saving: boolean; onToggle: () => void }) {
+function CompRow({ comp, saving, onToggle, onAdd, isCandidate }: {
+  comp: CompReviewItem;
+  saving: boolean;
+  onToggle: () => void;
+  onAdd?: () => void;
+  isCandidate?: boolean;
+}) {
   const fmtDate = (d: string | null) => d ? d.slice(0, 7) : '—';
   const fmtCap = (v: number | null) => v == null ? '—' : `${(v * 100).toFixed(2)}%`;
 
@@ -839,7 +891,9 @@ function CompRow({ comp, saving, onToggle }: { comp: CompReviewItem; saving: boo
       gridTemplateColumns: '2fr 60px 70px 80px 80px 80px 80px 60px',
       gap: 8, alignItems: 'center',
       borderBottom: `1px solid ${BT.border.dim}`,
-      backgroundColor: comp.excluded ? `${BT.met.risk}08` : 'transparent',
+      backgroundColor: comp.excluded
+        ? `${BT.met.risk}08`
+        : isCandidate ? `${BT.text.cyan}05` : 'transparent',
       opacity: comp.excluded ? 0.65 : 1,
     }}>
       {/* Address */}
@@ -849,6 +903,12 @@ function CompRow({ comp, saving, onToggle }: { comp: CompReviewItem; saving: boo
         </div>
         <div style={{ display: 'flex', gap: 4, marginTop: 2, alignItems: 'center' }}>
           <StalenessChip label={comp.staleness_label} />
+          {comp.manually_added && (
+            <span style={{
+              fontFamily: MONO, fontSize: 7, letterSpacing: 1, color: BT.text.cyan,
+              border: `1px solid ${BT.text.cyan}44`, borderRadius: 2, padding: '0px 3px',
+            }}>ADDED</span>
+          )}
           {comp.distance_miles != null && (
             <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{comp.distance_miles.toFixed(1)}mi</span>
           )}
@@ -861,21 +921,37 @@ function CompRow({ comp, saving, onToggle }: { comp: CompReviewItem; saving: boo
       <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.primary }}>{fmt$(comp.sale_price)}</div>
       <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.secondary }}>{fmtPPU(comp.price_per_unit)}</div>
       <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.secondary }}>{fmtCap(comp.implied_cap_rate)}</div>
-      {/* Toggle button */}
+      {/* Action button */}
       <div style={{ display: 'flex', justifyContent: 'center' }}>
-        <button
-          onClick={onToggle}
-          disabled={saving}
-          title={comp.excluded ? 'Re-include this comp' : 'Exclude this comp'}
-          style={{
-            background: 'none', border: `1px solid ${comp.excluded ? BT.text.green : BT.met.risk}44`,
-            borderRadius: 3, padding: '2px 6px', cursor: 'pointer',
-            color: comp.excluded ? BT.text.green : BT.met.risk,
-            display: 'flex', alignItems: 'center', gap: 3,
-          }}
-        >
-          {saving ? '…' : comp.excluded ? <><Eye size={9} /></> : <><EyeOff size={9} /></>}
-        </button>
+        {isCandidate ? (
+          <button
+            onClick={onAdd}
+            disabled={saving}
+            title="Add this comp to the scoring set"
+            style={{
+              background: 'none', border: `1px solid ${BT.text.cyan}44`,
+              borderRadius: 3, padding: '2px 6px', cursor: 'pointer',
+              color: BT.text.cyan, fontFamily: MONO, fontSize: 8,
+              display: 'flex', alignItems: 'center', gap: 3,
+            }}
+          >
+            {saving ? '…' : '+ ADD'}
+          </button>
+        ) : (
+          <button
+            onClick={onToggle}
+            disabled={saving}
+            title={comp.excluded ? 'Re-include this comp' : 'Exclude this comp'}
+            style={{
+              background: 'none', border: `1px solid ${comp.excluded ? BT.text.green : BT.met.risk}44`,
+              borderRadius: 3, padding: '2px 6px', cursor: 'pointer',
+              color: comp.excluded ? BT.text.green : BT.met.risk,
+              display: 'flex', alignItems: 'center', gap: 3,
+            }}
+          >
+            {saving ? '…' : comp.excluded ? <Eye size={9} /> : <EyeOff size={9} />}
+          </button>
+        )}
       </div>
     </div>
   );
