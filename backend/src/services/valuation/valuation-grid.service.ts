@@ -248,9 +248,11 @@ export class ValuationGridService {
     // D-DEAL-3: Run completeness gate in parallel with subject property fetch.
     // The gate result is attached to the response so the UI can surface
     // actionable missing-field prompts instead of a generic error.
-    const [subject, subjectCompleteness] = await Promise.all([
+    // Task #1417 (6.1): Also fetch comp_criteria so operator overrides propagate into scoring.
+    const [subject, subjectCompleteness, compCriteria] = await Promise.all([
       this.getSubjectProperty(dealId),
       populationSvc.checkSubjectCompleteness(dealId, 'valuation_grid'),
+      this.getCompCriteria(dealId),
     ]);
 
     const methods: ValuationMethod[] = [];
@@ -271,7 +273,7 @@ export class ValuationGridService {
       m5,
     ] = await Promise.all([
       this.computeCapRateNOI(subject),
-      this.computeCompAnchoredCapRate(dealId, subject),
+      this.computeCompAnchoredCapRate(dealId, subject, compCriteria),
       noUnits
         ? Promise.resolve(this.insufficientMethod(
             'per_unit_benchmark', 'Per-Unit Benchmark', 'top_down',
@@ -283,7 +285,7 @@ export class ValuationGridService {
             'sales_comp_ppu', 'Sales Comp PPU', 'top_down',
             unitGateMsg,
             ['Missing subject field: unit count']))
-        : this.computeSalesCompPPU(dealId, subject),
+        : this.computeSalesCompPPU(dealId, subject, compCriteria),
       this.computeReplacementCost(subject),
     ]);
 
@@ -535,7 +537,8 @@ export class ValuationGridService {
 
   private async computeCompAnchoredCapRate(
     dealId: string,
-    subject: SubjectProperty
+    subject: SubjectProperty,
+    criteria: CompCriteria
   ): Promise<ValuationMethod> {
     const METHOD_ID: MethodId = 'comp_anchored_cap_rate';
     const warnings: string[] = [];
@@ -572,6 +575,25 @@ export class ValuationGridService {
       );
     }
 
+    // Task #1417 (6.1): Apply operator exclusions — filter before synthesis loop
+    const excludedSet = new Set<string>(criteria.excludedCompIds ?? []);
+    const effectiveComps = compSet.comps.filter((c: any) => !excludedSet.has(String(c.id)));
+    if (excludedSet.size > 0 && effectiveComps.length < compSet.comps.length) {
+      const removedCount = compSet.comps.length - effectiveComps.length;
+      warnings.push(`${removedCount} comp${removedCount !== 1 ? 's' : ''} excluded by operator override.`);
+    }
+    compSet = { ...compSet, comps: effectiveComps };
+
+    if (effectiveComps.length === 0) {
+      return this.insufficientMethod(
+        METHOD_ID,
+        'Comp-Anchored Cap Rate',
+        'bottom_up',
+        'All comps excluded by operator. Re-include comps in the Comp Review panel.',
+        warnings
+      );
+    }
+
     // Market snapshot for synthesis of comps without cap_rate
     const snap = await this.getMarketSnapshotForSynthesis(subject.city, subject.state);
     const snapAvgRent = snap?.avgRent ?? 1250;
@@ -582,8 +604,8 @@ export class ValuationGridService {
     const TIER_FACTOR: Record<string, number> = { C1: 1.00, C2: 0.80, M1: 0.60, M2: 0.40 };
 
     const now = Date.now();
-    // Read operator-configured max age if set (default 36 months)
-    const maxCompAgeMonths = MAX_COMP_AGE_MONTHS_DEFAULT;
+    // Task #1417 (6.2): Use operator-configured max age (default 36 months)
+    const maxCompAgeMonths = criteria.maxAgeMonths ?? MAX_COMP_AGE_MONTHS_DEFAULT;
 
     interface WeightedCap {
       rate: number;
@@ -852,7 +874,8 @@ export class ValuationGridService {
 
   private async computeSalesCompPPU(
     dealId: string,
-    subject: SubjectProperty
+    subject: SubjectProperty,
+    criteria: CompCriteria
   ): Promise<ValuationMethod & { _compSetRaw?: any }> {
     const METHOD_ID: MethodId = 'sales_comp_ppu';
     const warnings: string[] = [];
@@ -897,6 +920,38 @@ export class ValuationGridService {
         ),
         _compSetRaw: null,
       };
+    }
+
+    // Task #1417 (6.1): Apply operator exclusions to individual comps if available,
+    // then recompute PPU stats from the filtered set for accurate synthesis.
+    const excludedSet = new Set<string>(criteria.excludedCompIds ?? []);
+    if (excludedSet.size > 0 && compSet.comps && compSet.comps.length > 0) {
+      const filteredComps = compSet.comps.filter((c: any) => !excludedSet.has(String(c.id)));
+      const removedCount = compSet.comps.length - filteredComps.length;
+      if (removedCount > 0) {
+        warnings.push(`${removedCount} comp${removedCount !== 1 ? 's' : ''} excluded by operator override.`);
+        // Recompute PPU stats from the filtered comp set
+        const ppuValues = filteredComps
+          .map((c: any) => safeFloat(c.price_per_unit ?? c.derived_sale_price, 0))
+          .filter((v: number) => v > 0)
+          .sort((a: number, b: number) => a - b);
+        if (ppuValues.length > 0) {
+          const median = ppuValues[Math.floor(ppuValues.length / 2)];
+          const mean = ppuValues.reduce((sum: number, v: number) => sum + v, 0) / ppuValues.length;
+          const stdDev = Math.sqrt(
+            ppuValues.reduce((sum: number, v: number) => sum + Math.pow(v - mean, 2), 0) / ppuValues.length
+          );
+          compSet = {
+            ...compSet,
+            comps: filteredComps,
+            comp_count: filteredComps.length,
+            median_price_per_unit: median,
+            std_dev_price_per_unit: stdDev,
+            min_price_per_unit: ppuValues[0],
+            max_price_per_unit: ppuValues[ppuValues.length - 1],
+          };
+        }
+      }
     }
 
     const medianPPU = safeFloat(compSet.median_price_per_unit);
@@ -1550,10 +1605,41 @@ export class ValuationGridService {
       };
     }
 
+    // Task #1417 (6.1): Build a parameterized query that applies ALL operator tunables:
+    //   radiusMiles, maxAgeMonths (selection filter), minUnits, maxUnits, propertyClasses
+    // Excluded comps are NOT filtered in SQL — they remain visible but flagged `excluded: true`
+    // so operators can see what they've removed and re-include if needed.
+    const queryParams: any[] = [subject.latitude, subject.longitude, criteria.radiusMiles, dealId];
+    let paramIdx = 5;
+    const extraClauses: string[] = [];
+
+    // maxAgeMonths — filter out comps older than the threshold
+    // (same threshold used by staleness haircut; stale comps beyond this won't appear at all)
     const cutoffDate = new Date();
     cutoffDate.setMonth(cutoffDate.getMonth() - criteria.maxAgeMonths);
+    queryParams.push(cutoffDate.toISOString().slice(0, 10));
+    extraClauses.push(`(t.sale_date IS NULL OR t.sale_date >= $${paramIdx++}::date)`);
 
-    // Pull comps from market_sale_comps within operator criteria radius
+    // minUnits / maxUnits
+    if (criteria.minUnits > 0) {
+      queryParams.push(criteria.minUnits);
+      extraClauses.push(`(t.units IS NULL OR t.units >= $${paramIdx++})`);
+    }
+    if (criteria.maxUnits < 9999) {
+      queryParams.push(criteria.maxUnits);
+      extraClauses.push(`(t.units IS NULL OR t.units <= $${paramIdx++})`);
+    }
+
+    // propertyClasses — only apply when not all-inclusive
+    const allClasses = ['A', 'B', 'C', 'D'];
+    const filteredClasses = criteria.propertyClasses ?? allClasses;
+    if (filteredClasses.length > 0 && filteredClasses.length < allClasses.length) {
+      queryParams.push(filteredClasses);
+      extraClauses.push(`(t.asset_class IS NULL OR t.asset_class = ANY($${paramIdx++}::text[]))`);
+    }
+
+    const extraWhere = extraClauses.length > 0 ? `AND ${extraClauses.join(' AND ')}` : '';
+
     const result = await this.pool.query(
       `SELECT
          t.id,
@@ -1582,11 +1668,12 @@ export class ValuationGridService {
            <@> point($2::float, $1::float)
          ) <= $3
          AND (t.source != 'costar_upload' OR t.deal_id = $4::uuid OR t.deal_id IS NULL)
+         ${extraWhere}
        ORDER BY
          (point(t.longitude::float, t.latitude::float) <@> point($2::float, $1::float)) ASC,
          t.sale_date DESC
        LIMIT 100`,
-      [subject.latitude, subject.longitude, criteria.radiusMiles, dealId]
+      queryParams
     );
 
     const now = Date.now();

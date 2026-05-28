@@ -628,7 +628,7 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
   const load = useCallback(async () => {
     setLoading(true); setErr(null);
     try {
-      const res = await apiClient.get(`/deals/${dealId}/valuation-grid/comps`);
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/valuation-grid/comps`);
       if (res.data?.success) {
         setData(res.data.data);
         const c = res.data.data.criteria as CompCriteria;
@@ -649,9 +649,9 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
     setSavingId(comp.id);
     try {
       if (comp.excluded) {
-        await apiClient.post(`/deals/${dealId}/valuation-grid/comps/${comp.id}/include`, {});
+        await apiClient.post(`/api/v1/deals/${dealId}/valuation-grid/comps/${comp.id}/include`, {});
       } else {
-        await apiClient.delete(`/deals/${dealId}/valuation-grid/comps/${comp.id}`);
+        await apiClient.delete(`/api/v1/deals/${dealId}/valuation-grid/comps/${comp.id}`);
       }
       await load();
       onRefreshGrid();
@@ -662,7 +662,7 @@ function CompReviewPanel({ dealId, onClose, onRefreshGrid }: {
   const saveCriteria = async () => {
     setSavingCriteria(true);
     try {
-      await apiClient.patch(`/deals/${dealId}/valuation-grid/comps/criteria`, criteriaForm);
+      await apiClient.patch(`/api/v1/deals/${dealId}/valuation-grid/comps/criteria`, criteriaForm);
       setEditCriteria(false);
       await load();
       onRefreshGrid();
