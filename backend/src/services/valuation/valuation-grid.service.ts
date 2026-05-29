@@ -313,6 +313,36 @@ export class ValuationGridService {
     const unitGateMsg = unitFieldMeta?.suggestion
       ?? 'Upload an Offering Memorandum or enter the unit count in deal details.';
 
+    // Task #1505: Pre-fetch the shared comp set ONCE before dispatching the parallel
+    // valuation methods. Previously, computeCompAnchoredCapRate and computeSalesCompPPU
+    // each independently called getCompSetByDeal + generateCompSet inside Promise.all.
+    // When no stored comp set existed, both INSERTed a new sale_comp_sets row
+    // simultaneously; the second insert completed before the first's members were
+    // committed, leaving a ghost row (comp_count=N, 0 actual members in the join
+    // table). Serialising the lookup/generation here guarantees at most one
+    // INSERT per compute() call and eliminates the race entirely.
+    let sharedCompSet: any = null;
+    try {
+      if (!asOf) {
+        sharedCompSet = await compSetService.getCompSetByDeal(dealId);
+      }
+      if (!sharedCompSet || sharedCompSet.comp_count === 0 || !sharedCompSet.comps || sharedCompSet.comps.length === 0) {
+        sharedCompSet = await compSetService.generateCompSet({
+          deal_id: dealId,
+          radius_miles: compCriteria.radiusMiles,
+          date_range_months: COMP_RETRIEVAL_HORIZON_MONTHS,
+          min_units: compCriteria.minUnits > 0 ? compCriteria.minUnits : undefined,
+          max_units: compCriteria.maxUnits < 9999 ? compCriteria.maxUnits : undefined,
+          property_classes: compCriteria.propertyClasses?.length ? compCriteria.propertyClasses : undefined,
+          vintage_range: (compCriteria.minYearBuilt > 0 || compCriteria.maxYearBuilt < 9999)
+            ? [compCriteria.minYearBuilt, compCriteria.maxYearBuilt] : undefined,
+          ...(asOf ? { as_of: asOf, dry_run: true } : {}),
+        });
+      }
+    } catch {
+      // silent — comp set may fail without lat/lon; each method handles null gracefully
+    }
+
     const [
       m1,
       m1b,
@@ -321,7 +351,7 @@ export class ValuationGridService {
       m5,
     ] = await Promise.all([
       this.computeCapRateNOI(subject, asOf),
-      this.computeCompAnchoredCapRate(dealId, subject, compCriteria, asOf),
+      this.computeCompAnchoredCapRate(dealId, subject, compCriteria, asOf, sharedCompSet),
       noUnits
         ? Promise.resolve(this.insufficientMethod(
             'per_unit_benchmark', 'Per-Unit Benchmark', 'top_down',
@@ -333,7 +363,7 @@ export class ValuationGridService {
             'sales_comp_ppu', 'Sales Comp PPU', 'top_down',
             unitGateMsg,
             ['Missing subject field: unit count']))
-        : this.computeSalesCompPPU(dealId, subject, compCriteria, asOf),
+        : this.computeSalesCompPPU(dealId, subject, compCriteria, asOf, sharedCompSet),
       this.computeReplacementCost(subject),
     ]);
 
@@ -609,7 +639,8 @@ export class ValuationGridService {
     dealId: string,
     subject: SubjectProperty,
     criteria: CompCriteria,
-    asOf?: Date
+    asOf?: Date,
+    sharedCompSet?: any
   ): Promise<ValuationMethod> {
     const METHOD_ID: MethodId = 'comp_anchored_cap_rate';
     const warnings: string[] = [];
@@ -732,26 +763,36 @@ export class ValuationGridService {
     // In backtest (asOf) mode: skip stored comp sets entirely — they contain
     // present-day data with no as-of guarantee — and generate a fresh set with
     // the as_of upper bound + dry_run (no DB persist).
-    let compSet: any = null;
-    try {
-      if (!asOf) {
-        compSet = await compSetService.getCompSetByDeal(dealId);
+    //
+    // Task #1505: Use the pre-fetched sharedCompSet from compute() when available.
+    // This avoids a duplicate INSERT race: both this method and computeSalesCompPPU
+    // previously ran getCompSetByDeal + generateCompSet inside Promise.all, causing
+    // two simultaneous INSERTs when no stored set existed — the second could complete
+    // before the first's members were committed, leaving a ghost row.
+    // Fall back to individual fetch/generate only when called outside of compute()
+    // (e.g., direct API routes or scripts that bypass the shared pre-fetch).
+    let compSet: any = sharedCompSet ?? null;
+    if (!compSet || compSet.comp_count === 0 || !compSet.comps || compSet.comps.length === 0) {
+      try {
+        if (!asOf) {
+          compSet = await compSetService.getCompSetByDeal(dealId);
+        }
+        if (!compSet || compSet.comp_count === 0 || !compSet.comps || compSet.comps.length === 0) {
+          compSet = await compSetService.generateCompSet({
+            deal_id: dealId,
+            radius_miles: criteria.radiusMiles,
+            date_range_months: COMP_RETRIEVAL_HORIZON_MONTHS,
+            min_units: criteria.minUnits > 0 ? criteria.minUnits : undefined,
+            max_units: criteria.maxUnits < 9999 ? criteria.maxUnits : undefined,
+            property_classes: criteria.propertyClasses?.length ? criteria.propertyClasses : undefined,
+            vintage_range: (criteria.minYearBuilt > 0 || criteria.maxYearBuilt < 9999)
+              ? [criteria.minYearBuilt, criteria.maxYearBuilt] : undefined,
+            ...(asOf ? { as_of: asOf, dry_run: true } : {}),
+          });
+        }
+      } catch {
+        // silent — comp set may fail without lat/lon
       }
-      if (!compSet || compSet.comp_count === 0 || !compSet.comps || compSet.comps.length === 0) {
-        compSet = await compSetService.generateCompSet({
-          deal_id: dealId,
-          radius_miles: criteria.radiusMiles,
-          date_range_months: COMP_RETRIEVAL_HORIZON_MONTHS,
-          min_units: criteria.minUnits > 0 ? criteria.minUnits : undefined,
-          max_units: criteria.maxUnits < 9999 ? criteria.maxUnits : undefined,
-          property_classes: criteria.propertyClasses?.length ? criteria.propertyClasses : undefined,
-          vintage_range: (criteria.minYearBuilt > 0 || criteria.maxYearBuilt < 9999)
-            ? [criteria.minYearBuilt, criteria.maxYearBuilt] : undefined,
-          ...(asOf ? { as_of: asOf, dry_run: true } : {}),
-        });
-      }
-    } catch {
-      // silent — comp set may fail without lat/lon
     }
 
     if (!compSet || !compSet.comps || compSet.comps.length === 0) {
@@ -1145,7 +1186,8 @@ export class ValuationGridService {
     dealId: string,
     subject: SubjectProperty,
     criteria: CompCriteria,
-    asOf?: Date
+    asOf?: Date,
+    sharedCompSet?: any
   ): Promise<ValuationMethod & { _compSetRaw?: any }> {
     const METHOD_ID: MethodId = 'sales_comp_ppu';
     const warnings: string[] = [];
@@ -1170,26 +1212,32 @@ export class ValuationGridService {
 
     // In backtest (asOf) mode: bypass stored comp sets (no as-of guarantee) and
     // generate a fresh as-of filtered set in dry-run mode (no DB persist).
-    let compSet: any = null;
-    try {
-      if (!asOf) {
-        compSet = await compSetService.getCompSetByDeal(dealId);
+    //
+    // Task #1505: Use the pre-fetched sharedCompSet from compute() when available.
+    // See computeCompAnchoredCapRate for the full race-condition explanation.
+    // Fall back to individual fetch/generate only when called outside of compute().
+    let compSet: any = sharedCompSet ?? null;
+    if (!compSet || compSet.comp_count === 0 || !compSet.comps || compSet.comps.length === 0) {
+      try {
+        if (!asOf) {
+          compSet = await compSetService.getCompSetByDeal(dealId);
+        }
+        if (!compSet || compSet.comp_count === 0 || !compSet.comps || compSet.comps.length === 0) {
+          compSet = await compSetService.generateCompSet({
+            deal_id: dealId,
+            radius_miles: criteria.radiusMiles,
+            date_range_months: COMP_RETRIEVAL_HORIZON_MONTHS,
+            min_units: criteria.minUnits > 0 ? criteria.minUnits : undefined,
+            max_units: criteria.maxUnits < 9999 ? criteria.maxUnits : undefined,
+            property_classes: criteria.propertyClasses?.length ? criteria.propertyClasses : undefined,
+            vintage_range: (criteria.minYearBuilt > 0 || criteria.maxYearBuilt < 9999)
+              ? [criteria.minYearBuilt, criteria.maxYearBuilt] : undefined,
+            ...(asOf ? { as_of: asOf, dry_run: true } : {}),
+          });
+        }
+      } catch {
+        // Silent fail — comp set generation may fail if no lat/lon
       }
-      if (!compSet || compSet.comp_count === 0 || !compSet.comps || compSet.comps.length === 0) {
-        compSet = await compSetService.generateCompSet({
-          deal_id: dealId,
-          radius_miles: criteria.radiusMiles,
-          date_range_months: COMP_RETRIEVAL_HORIZON_MONTHS,
-          min_units: criteria.minUnits > 0 ? criteria.minUnits : undefined,
-          max_units: criteria.maxUnits < 9999 ? criteria.maxUnits : undefined,
-          property_classes: criteria.propertyClasses?.length ? criteria.propertyClasses : undefined,
-          vintage_range: (criteria.minYearBuilt > 0 || criteria.maxYearBuilt < 9999)
-            ? [criteria.minYearBuilt, criteria.maxYearBuilt] : undefined,
-          ...(asOf ? { as_of: asOf, dry_run: true } : {}),
-        });
-      }
-    } catch {
-      // Silent fail — comp set generation may fail if no lat/lon
     }
 
     if (!compSet || compSet.comp_count === 0) {
