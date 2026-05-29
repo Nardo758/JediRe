@@ -168,6 +168,7 @@ STRIPE_PRICE_OPERATOR_MONTHLY = "price_1TPB0HLfOO4b6Db2ZR6KOS9K"
 STRIPE_PRICE_PRINCIPAL_MONTHLY = "price_1TPB0ILfOO4b6Db2xIGkiYmC"
 EMAIL_FROM = "JediRe <noreply@jedire.com>"
 ARCHIVE_INGEST_SECRET = "jedire-archive-2026"
+USE_NEW_PROPERTY_SCHEMA_VALUATION_COMPS = "shadow"
 
 [postMerge]
 path = "scripts/post-merge.sh"

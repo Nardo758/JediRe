@@ -661,11 +661,11 @@ export class ValuationGridService {
     // from property_operating_data) as the primary source for the cap rate distribution.
     // Falls through to the existing CompSetService path if insufficient data.
     //
-    // Shadow mode: when VALUATION_COMPS_FLAG=shadow, run the new path in parallel with the
-    // old path. The new path result is logged to property_reader_shadow_log but does NOT serve.
-    // This lets us validate data coverage before promoting to canary/true.
-    const phase5Flag = VALUATION_COMPS_FLAG();
-    if (!asOf && subject.latitude && subject.longitude && (shouldUseNewPath(phase5Flag) || shouldRunShadow(phase5Flag))) {
+    // canary/true: Phase 5 path serves
+    // shadow:      legacy path serves; Phase 5 is queried AFTER legacy completes and the
+    //              results are compared (true old vs new) before being logged
+    const valuationCompsFlag = VALUATION_COMPS_FLAG();
+    if (!asOf && subject.latitude && subject.longitude && shouldUseNewPath(valuationCompsFlag)) {
       try {
         const distribution = await propertySalesService.getMarketCapRateDistribution({
           lat: subject.latitude,
@@ -707,7 +707,7 @@ export class ValuationGridService {
             : distribution.n >= 5  ? 'MEDIUM'
             : 'LOW';
 
-          const fmtCap = (v: number) => `${(v * 100).toFixed(2)}%`;
+          const fmtCapPs5 = (v: number) => `${(v * 100).toFixed(2)}%`;
 
           // Count Georgia county-recorded comps (source=county_recorded) for shadow-log
           // confirmation that Gwinnett/DeKalb/Cobb/Fulton ingest is populating the pool.
@@ -720,15 +720,15 @@ export class ValuationGridService {
             { label: 'Stabilized NOI', value: fmt$(noi), source: subject.noiSource },
             { label: 'Comp Pool (property_sales)', value: `${distribution.n} comps with implied cap rate` },
             { label: 'Georgia county_recorded', value: `${georgiaCount} of ${distribution.n} comps`, source: 'property_sales' },
-            { label: 'Implied Cap P25', value: fmtCap(distribution.p25), source: 'property_sales' },
-            { label: 'Implied Cap P50', value: fmtCap(distribution.p50), source: 'property_sales' },
-            { label: 'Implied Cap P75', value: fmtCap(distribution.p75), source: 'property_sales' },
+            { label: 'Implied Cap P25', value: fmtCapPs5(distribution.p25), source: 'property_sales' },
+            { label: 'Implied Cap P50', value: fmtCapPs5(distribution.p50), source: 'property_sales' },
+            { label: 'Implied Cap P75', value: fmtCapPs5(distribution.p75), source: 'property_sales' },
             { label: 'Indicated Value P50', value: fmt$(valP50) },
           ];
           for (const s of distribution.sources) {
             ps5evidence.push({
               label: `Comp: ${s.saleId.slice(0, 8)}…`,
-              value: `${fmtCap(s.impliedCapRate)} | ${s.saleDate} | ${s.distanceMiles.toFixed(2)}mi`,
+              value: `${fmtCapPs5(s.impliedCapRate)} | ${s.saleDate} | ${s.distanceMiles.toFixed(2)}mi`,
               source: 'property_sales',
             });
           }
@@ -758,6 +758,10 @@ export class ValuationGridService {
         // Phase 5 path failed silently — fall through to legacy CompSetService path
       }
     }
+
+    // Legacy CompSetService path — wrapped in IIFE so the result is captured for
+    // the shadow comparison block below. All early returns inside resolve legacyResult.
+    const legacyResult = await (async (): Promise<ValuationMethod> => {
 
     // Pull comp set (reuse existing set or generate on-the-fly with persisted criteria)
     // In backtest (asOf) mode: skip stored comp sets entirely — they contain
@@ -1074,6 +1078,32 @@ export class ValuationGridService {
       evidenceTrail: evidence,
       warningFlags: warnings,
     };
+    })(); // end legacy IIFE
+
+    // Shadow: legacy has already served — now fire-and-forget Phase 5 query and log
+    // true old (legacy cap rate) vs new (property_sales cap rate) for divergence analysis.
+    if (!asOf && subject.latitude && subject.longitude && shouldRunShadow(valuationCompsFlag)) {
+      const subjectNoi = subject.noi;
+      propertySalesService.getMarketCapRateDistribution({
+        lat: subject.latitude,
+        lng: subject.longitude,
+        radiusMiles: criteria.radiusMiles,
+        monthsBack: criteria.maxAgeMonths ?? MAX_COMP_AGE_MONTHS_DEFAULT,
+        minUnits: criteria.minUnits > 0 ? criteria.minUnits : undefined,
+        maxUnits: criteria.maxUnits < 9999 ? criteria.maxUnits : undefined,
+      }).then(dist => {
+        const legacyCapP50 = subjectNoi && legacyResult.indicatedValueP50
+          ? subjectNoi / legacyResult.indicatedValueP50
+          : null;
+        return phase3ShadowService.logBatch('valuation_comps', dealId, {
+          p50_cap_rate:  { old: legacyCapP50,                    new: dist?.p50  ?? null },
+          comp_count:    { old: legacyResult.compCount ?? null,  new: dist?.n    ?? null },
+          method_status: { old: legacyResult.status,             new: dist && dist.n >= 3 ? 'active' : 'insufficient' },
+        });
+      }).catch(() => {});
+    }
+
+    return legacyResult;
   }
 
   // ── Method 2: Per-Unit Benchmark ─────────────────────────────────────────
