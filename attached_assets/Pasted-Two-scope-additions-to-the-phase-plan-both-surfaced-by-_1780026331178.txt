@@ -1,0 +1,67 @@
+Two scope additions to the phase plan, both surfaced by operator 
+during plan review:
+
+ADDITION 1 — Apartment Locator AI scraped properties integration
+
+The original phase plan didn't explicitly map Apartment Locator data 
+into the unified schema. This is a real gap. Apartment Locator is a 
+research-agent data source (per platform memory) that scrapes both 
+identity data (address, property name, units, year built) and 
+operating data (asking rents, availability, amenities) from external 
+property listings.
+
+Architectural placement:
+- Apartment Locator is another source layer (Tier 3b — third-party 
+  market data) feeding the unified property model
+- Identity data → backfills properties + property_characteristics 
+  with source: 'apartment_locator'
+- Operating data → property_operating_data rows tagged accordingly
+- Photos/amenities/descriptions → property_media table (worth 
+  deciding in Phase 1)
+
+Phase placement:
+- Phase 1: Add apartment_locator_properties disposition decision 
+  to the 1.1 verification list (along with property_records, 
+  property_info_cache, discovered_properties)
+- Phase 2: Dual-write covers existing apartment_locator_properties 
+  writes; backfill script for existing scraped data
+- Phase 5: Ingestion pipeline rewires to write directly to new 
+  schema; apartment_locator_properties either deprecates or 
+  becomes a raw-scrape staging table
+
+ADDITION 2 — Property name field + backfill script
+
+Currently the platform displays addresses, not property names. This 
+is a UX symptom of a deeper data problem: there's no consistent 
+property_name field populated across the deal inventory. Property 
+names aren't in county records but ARE in Apartment Locator data, 
+CoStar uploads, OMs, and broker packages.
+
+Two-script approach (Option A first):
+
+OPTION A — Derivation from existing platform data (Phase 2 work):
+- Extract from apartment_locator_properties (Apartment Locator 
+  scrapes have names)
+- Extract from uploaded OM PDFs via existing document parser
+- Extract from property_info_cache where 'property_name' or 
+  equivalent is present
+- Backfill properties.property_name for the ~60-80% of properties 
+  where source data exists
+- Single script + one-time backfill, ~1-2 weeks
+
+OPTION B — Active enrichment via external sources (post-Phase 5):
+- Research agent enrichment cross-referencing against Apartment 
+  Locator API, Google Places, county DBA filings
+- Fills the gap Option A leaves
+- Ongoing cost implications; evaluate after Option A lands
+
+Phase placement:
+- Phase 1: Add property_name column (and optional 
+  property_name_history table for renamed properties) to schema
+- Phase 2: Option A backfill script runs as one of the backfill 
+  passes
+- Post-Phase 5: Evaluate gap; decide on Option B based on coverage 
+  and value
+
+Both additions confirmed as real refactor scope, not adjacent work. 
+Including them in the plan now rather than discovering them mid-phase.
