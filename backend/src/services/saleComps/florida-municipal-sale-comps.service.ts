@@ -41,6 +41,9 @@ import {
   type DedupCandidate,
   type DedupOptions,
 } from '../valuation/comp-dedup.service';
+import { propertyResolverService } from '../property-entity/property-resolver.service';
+import { propertySalesService } from '../property-entity/property-sales.service';
+import { isDualWriteEnabled } from '../property-entity/property-dual-write.service';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -618,14 +621,54 @@ async function upsertComps(comps: NormalizedSaleComp[]): Promise<{ inserted: num
       ]
     );
 
-    if (res.rows[0]?.was_inserted) {
+    const wasInserted = res.rows[0]?.was_inserted;
+    if (wasInserted) {
       inserted++;
+      // Phase 5 dual-write: also write to property_sales (new canonical schema)
+      if (isDualWriteEnabled()) {
+        dualWriteToPropertySales(comp).catch(err => {
+          logger.warn('[FloridaMunicipalSaleComps] property_sales dual-write failed', {
+            sourceId: comp.source_id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
     } else {
       skipped++;
     }
   }
 
   return { inserted, skipped };
+}
+
+/**
+ * Phase 5 — Dual-write a normalized FL municipal comp into property_sales.
+ * Non-fatal: errors are swallowed by the caller.
+ */
+async function dualWriteToPropertySales(comp: NormalizedSaleComp): Promise<void> {
+  const property = await propertyResolverService.resolveByAddress({
+    address: comp.address,
+    city: comp.city,
+    state: comp.state,
+    createIfMissing: true,
+  });
+  if (!property) return;
+
+  await propertySalesService.upsertBySourceId({
+    propertyId: property.id,
+    saleDate: comp.sale_date,
+    salePrice: comp.sale_price,
+    pricePerUnit: comp.price_per_unit,
+    pricePerSf: comp.price_per_sqft,
+    buyer: comp.buyer,
+    seller: comp.seller,
+    source: 'county_recorded',
+    sourceId: `fl_municipal::${comp.source_id}`,
+    sourceDate: comp.data_as_of,
+    confidence: 0.90,
+    isJediTracked: false,
+    qualified: comp.qualified,
+  });
 }
 
 // ── Main service class ────────────────────────────────────────────────────────

@@ -122,6 +122,71 @@ function extractDeliveryDate(prop: SupplyProperty): string | null {
 // processing state.
 import { upsertApartmentLocatorJob } from './intake-sources/apartment-locator';
 
+// ── Phase 5 — Property entity dual-write helpers ─────────────────────────────
+// Write property_characteristics (physical) + property_operating_data (rents/occ)
+// to the new canonical schema after every Apartment Locator property sync.
+// Non-fatal: errors logged, never surface to the caller.
+import { isDualWriteEnabled } from './property-entity/property-dual-write.service';
+import { propertyCharacteristicsService } from './property-entity/property-characteristics.service';
+import { propertyOperatingDataService } from './property-entity/property-operating-data.service';
+
+async function dualWriteApartmentLocatorPropertyEntity(
+  propertyId: string,
+  prop: SupplyProperty,
+  safeInt: (v: any) => number | null,
+  safeFloat: (v: any) => number | null,
+): Promise<void> {
+  if (!isDualWriteEnabled()) return;
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const units = safeInt(prop.total_units);
+    const sqft  = safeInt(prop.square_feet);
+    if (units || sqft) {
+      await propertyCharacteristicsService.create({
+        propertyId,
+        effectiveFrom: today,
+        unitCount: units ?? undefined,
+        buildingSf: sqft ?? undefined,
+        source: 'agent',
+        sourceDate: today,
+        confidence: 0.70,
+        provenance: { enrichmentSource: 'apartment_locator_ai', syncedAt: today },
+      });
+    }
+  } catch (err) {
+    logger.warn('[ApartmentLocatorSync] property_characteristics dual-write failed', {
+      propertyId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  try {
+    const rent  = safeFloat(prop.rent);
+    const units = safeInt(prop.total_units);
+    const avail = safeInt(prop.units_available);
+    const occupancy = (units && units > 0 && avail != null)
+      ? ((units - avail) / units)
+      : null;
+    if (rent || occupancy != null) {
+      await propertyOperatingDataService.create({
+        propertyId,
+        periodType: 'point_in_time',
+        periodEnd: today,
+        askingRentPerUnit: rent ?? undefined,
+        occupancy: occupancy ?? undefined,
+        source: 'agent_derived',
+        sourceDate: today,
+        confidence: 0.65,
+        isOwned: false,
+      });
+    }
+  } catch (err) {
+    logger.warn('[ApartmentLocatorSync] property_operating_data dual-write failed', {
+      propertyId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 async function upsertIntakeJob(prop: SupplyProperty): Promise<void> {
   if (!prop.id) return;
   try {
@@ -307,7 +372,10 @@ export class ApartmentLocatorSyncService {
             LIMIT 1
           `, [prop.address, prop.city, prop.state]);
           
+          let canonicalPropertyId: string | null = null;
+
           if (existing.rows.length > 0) {
+            canonicalPropertyId = existing.rows[0].id;
             await pool.query(`
               UPDATE properties SET
                 name = COALESCE($1, name),
@@ -338,7 +406,7 @@ export class ApartmentLocatorSyncService {
             ]);
             updated++;
           } else {
-            await pool.query(`
+            const insertResult = await pool.query(`
               INSERT INTO properties (
                 name, address_line1, city, state_code, zip,
                 property_type, units, rent, beds, baths, sqft,
@@ -350,6 +418,7 @@ export class ApartmentLocatorSyncService {
                   ELSE NULL
                 END,
                 $12, 'apartment_locator_ai', NOW())
+              RETURNING id
             `, [
               prop.name,
               prop.address,
@@ -364,8 +433,17 @@ export class ApartmentLocatorSyncService {
               avail,
               prop.id
             ]);
+            canonicalPropertyId = insertResult.rows[0]?.id ?? null;
             inserted++;
           }
+
+          // Phase 5 — dual-write to canonical property entity schema
+          if (canonicalPropertyId) {
+            dualWriteApartmentLocatorPropertyEntity(
+              canonicalPropertyId, prop, safeInt, safeFloat
+            ).catch(() => { /* non-fatal; logged inside */ });
+          }
+
           // Wire property into the intake pipeline so the orchestrator
           // can enrich it (other-docs check, municipal stub, etc.)
           await upsertIntakeJob(prop);

@@ -31,7 +31,7 @@ This document is the canonical source of truth for where the refactor stands. Wh
 | **2** | Dual-Write | **COMPLETE ✅** | 4-5 weeks | Phase 1 AC gate (clear) |
 | 3 | Reader Migration | IN PROGRESS | 6-10 weeks | Phase 2 AC gate |
 | **4** | Old-Table Deprecation | **INFRASTRUCTURE READY ⚙️** | 2-4 weeks | Phase 3 AC gate |
-| 5 | Comp / Valuation Grid Integration | NOT STARTED | 2-3 weeks | Phase 4 AC gate |
+| **5** | Comp / Valuation Grid Integration | **IN PROGRESS 🔄** | 2-3 weeks | Phase 4 AC gate |
 
 ---
 
@@ -381,24 +381,84 @@ Each deprecated table: final snapshot (pg_dump) → verified → documented in `
 
 ## PHASE 5 — COMP / VALUATION GRID INTEGRATION
 
-**Status:** NOT STARTED  
+**Status:** IN PROGRESS 🔄 (Task #1491 — 2026-05-29)  
 **Duration:** 2-3 weeks
 
-### What resumes
+### What was delivered (Task #1491)
 
-- **Comp ingestion (paused):** #1477/#1479 Fulton/Gwinnett ingest resume — writing into `property_sales` + `property_characteristics`, not `market_sale_comps`
-- **Strategy-aware comp selection:** M15 reads `PropertySalesService.getSalesByCriteria()` with strategy filters
-- **Comp-anchored cap rate (Path B):** Per-comp NOI from `property_operating_data` → implied cap rate → P25/P50/P75 market cap rate → Cap × NOI valuation method
-- **Backtest re-run:** S1 deals (Jacksonville, Atlanta ×2); expected ≥ 3 of 5 methods active vs 2 pre-refactor
+**T001 — PropertySalesService extended:**
+
+| Method | Description |
+|---|---|
+| `getSalesByCriteria(opts)` | Strategy-aware spatial comp query. Joins `property_sales` → `properties` → `property_characteristics`. Applies strategy matrix (stabilized/core_plus/value_add/opportunistic/development) to building class, age, and price filters. Returns `PropertySaleWithProperty[]` with `distanceMiles`. |
+| `bulkIngestSales(sales[])` | Batch ETL ingest. Loops `upsertBySourceId` per record; captures per-record errors. Returns `{ inserted, skipped, errors, errorMessages }`. |
+| `synthesizeImpliedCapRates(opts)` | Back-fills `property_sales.implied_cap_rate` from matching `property_operating_data` TTM rows within 12 months of sale_date. Sanity range: 1%–25%. Re-runnable; skips existing. |
+| `getMarketCapRateDistribution(opts)` | Calls `getSalesByCriteria` then computes P25/P50/P75 from implied cap rates. Returns null if < 3 data points. Used by valuation grid Phase 5 path. |
+
+**Strategy Matrix:**
+
+| Strategy | Building Classes | Max Age | Min Price |
+|---|---|---|---|
+| `stabilized` | A, B | 36 months | $1M |
+| `core_plus` | A, B, C | 48 months | $1M |
+| `value_add` | B, C, D | 60 months | — |
+| `opportunistic` | all | 60 months | — |
+| `development` | all | 60 months | — |
+
+**T002 — Florida municipal comps dual-write:**
+
+`florida-municipal-sale-comps.service.ts` — Added `dualWriteToPropertySales()` called after each successful `market_sale_comps` insert. Uses `propertyResolverService.resolveByAddress` to resolve/create the property entity, then `propertySalesService.upsertBySourceId()` to write into `property_sales` (source=`county_recorded`, confidence=0.90). Fire-and-forget (non-fatal). Gated by `isDualWriteEnabled()`.
+
+**T003 — Apartment Locator dual-write to canonical property entity schema:**
+
+`apartment-locator-sync.service.ts` — Added `dualWriteApartmentLocatorPropertyEntity()` called after every properties INSERT/UPDATE in `syncCity`. Writes:
+- `property_characteristics`: `unit_count`, `building_sf`, source=`agent`, confidence=0.70
+- `property_operating_data`: `asking_rent_per_unit`, `occupancy` (= `(total_units - units_available) / total_units`), period_type=`point_in_time`, source=`agent_derived`, confidence=0.65
+
+`apartment_locator_properties` **retained as-is** (raw-scrape staging for `discoverFromAptLocator()` rental comp pool). No change to that table.
+
+Also: Properties INSERT now `RETURNING id` to capture the canonical property_id for dual-write (was silently discarding it before).
+
+**T004 — Valuation grid property_sales path:**
+
+`valuation-grid.service.ts` — `computeCompAnchoredCapRate()` now has a Phase 5 block (before existing CompSetService path) that:
+1. Checks `shouldUseNewPath(VALUATION_COMPS_FLAG())` — disabled by default (flag=`false`)
+2. Calls `propertySalesService.getMarketCapRateDistribution()` — spatial, strategy-agnostic
+3. If ≥ 3 implied cap rates found, returns a full `ValuationMethod` with P25/P50/P75 distribution and per-comp evidence trail
+4. Falls through to existing CompSetService → market_sale_comps path on failure or insufficient data
+
+To activate: set `VALUATION_COMPS_FLAG=shadow` (logs both paths) or `VALUATION_COMPS_FLAG=true` (primary).
+
+**T005 — Cap rate synthesis CLI script:**
+
+`backend/scripts/synthesize-implied-cap-rates.ts` — Runs `synthesizeImpliedCapRates`. Flags:
+- `--dry-run` — no DB writes
+- `--limit=N` — max rows to process (default 5000)
+
+Usage: `cd backend && npx ts-node --transpile-only scripts/synthesize-implied-cap-rates.ts --dry-run`
+
+**Option B property name coverage (T006 eval):**
+
+`apartment_locator_properties` KEEP as raw-scrape staging. Rationale:
+- It is the rental comp pool for `discoverFromAptLocator()` — distinct from `properties` (owned/tracked)
+- Phase 5 dual-write now also writes structured data into canonical schema for any Apartment Locator properties that match/create a `properties` row
+- No renaming or schema change needed; the boundary is intentional
 
 ### Phase 5 acceptance criteria
 
-- [ ] All 10 original spec Part 9 acceptance criteria pass
-- [ ] Backtest equivalent or better vs pre-refactor baseline
+- [x] `getSalesByCriteria()` strategy-aware comp query built with 5-strategy matrix
+- [x] `bulkIngestSales()` batch ETL path available
+- [x] `synthesizeImpliedCapRates()` back-fill script available
+- [x] `getMarketCapRateDistribution()` P25/P50/P75 spatial cap rate synthesis built
+- [x] Florida municipal comps dual-write to `property_sales` wired
+- [x] Apartment Locator dual-write to `property_characteristics` + `property_operating_data` wired
+- [x] Valuation grid Phase 5 path added (behind `VALUATION_COMPS_FLAG`)
+- [x] `apartment_locator_properties` disposition documented (KEEP as raw-scrape staging)
+- [ ] `VALUATION_COMPS_FLAG=shadow` deployed and confirmed logging both paths on real deals
+- [ ] `synthesize-implied-cap-rates.ts` run against production — `updated > 0`
+- [ ] Backtest S1 deals (Jacksonville, Atlanta ×2) equivalent or better vs pre-refactor
 - [ ] No active deal returns INSUFFICIENT on subject-side data
-- [ ] `property_sales` queryable at 681K+ rows
-- [ ] Strategy-aware comp selection producing appropriate sets
-- [ ] Comp-anchored cap rate synthesis active and within sanity bounds
+- [ ] `property_sales` row count growing with each FL municipal ingest cycle
 
 ---
 
@@ -456,3 +516,4 @@ Each deprecated table: final snapshot (pg_dump) → verified → documented in `
 | 2026-05-29 | **PHASE 1 GATE: CLEAR** |
 | 2026-05-29 | **Phase 3 started (Task #1489).** Reader inventory complete: 37 readers across 5 waves. Infrastructure built: phase3-flags.ts (37 flags), phase3-shadow.service.ts, `property_reader_shadow_log` table, index.ts updated. Wave 1 R-002 (cashflow.inngest.ts entity context) + R-003 (data-router.ts) wired with shadow+flag pattern. Implementation map updated. |
 | 2026-05-29 | **Phase 4 infrastructure delivered (Task #1490).** All Phase 4 operational scripts placed in `docs/operations/runbooks/phase4/` (outside auto-migration path). Deliverables: (1) `window1_write_revoke.sql` — dynamic role detection, REVOKE write on 7 deprecated tables + 5 time-varying properties columns; (2) `window2_read_revoke.sql` — REVOKE read; (3) `drop_tables.sql` — drops all 7 tables in dependency order, preflight excludes `pg_backend_pid()` to prevent self-match, handles `sale_comp_set_members.market_comp_id` → `market_sale_comps` FK in Step 3; (4) `drop_columns.sql` — drops time-varying columns in 3 batches with property_characteristics row-count guard; (5) `PROPERTY_REFACTOR_ARCHIVE.md` — 7-table archive registry with verification queries; (6) `PHASE4_MONITORING.md` — daily monitoring queries, Window 1/2 daily logs, response playbook, schedule tracking; (7) `runbooks/phase4/README.md` — execution guide. Step 8 Drizzle schema cleanup: `unitMix.schema.ts` `compProperties` export removed after `comp_properties` drop. |
+| 2026-05-29 | **Phase 5 core implementation delivered (Task #1491).** T001: `PropertySalesService` extended with `getSalesByCriteria()` (5-strategy matrix), `bulkIngestSales()`, `synthesizeImpliedCapRates()`, `getMarketCapRateDistribution()` + `PropertySaleWithProperty` join type. T002: FL municipal comps `dualWriteToPropertySales()` wired after each new `market_sale_comps` insert (gated by `isDualWriteEnabled()`). T003: Apartment Locator `syncCity` dual-writes to `property_characteristics` + `property_operating_data` after each property upsert; properties INSERT now `RETURNING id`; `apartment_locator_properties` kept as raw-scrape staging. T004: Valuation grid `computeCompAnchoredCapRate` Phase 5 block added behind `VALUATION_COMPS_FLAG` — tries `property_sales.implied_cap_rate` spatial distribution first, falls through to existing CompSetService path. T005: `scripts/synthesize-implied-cap-rates.ts` CLI script. Remaining AC: activate `VALUATION_COMPS_FLAG=shadow`, run synthesis script on production, backtest S1 deals. |

@@ -24,6 +24,8 @@ import { Pool } from 'pg';
 import { compSetService } from '../saleComps/compSet.service';
 import { getReplacementCostServiceV2, type ReplacementCostInput } from '../inflation/replacement-cost-v2.service';
 import { SubjectPopulationService, type SubjectCompletenessResult } from '../subject-population.service';
+import { propertySalesService } from '../property-entity/property-sales.service';
+import { shouldUseNewPath, VALUATION_COMPS_FLAG } from '../property-entity/phase3-flags';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -617,6 +619,77 @@ export class ValuationGridService {
         'No NOI available — add proforma assumptions or upload a T12 rent roll.',
         []
       );
+    }
+
+    // Phase 5 — Property_sales path (behind VALUATION_COMPS_FLAG)
+    // When the feature flag is active, try property_sales.implied_cap_rate (pre-synthesized
+    // from property_operating_data) as the primary source for the cap rate distribution.
+    // Falls through to the existing CompSetService path if insufficient data.
+    if (!asOf && subject.latitude && subject.longitude && shouldUseNewPath(VALUATION_COMPS_FLAG())) {
+      try {
+        const distribution = await propertySalesService.getMarketCapRateDistribution({
+          lat: subject.latitude,
+          lng: subject.longitude,
+          radiusMiles: criteria.radiusMiles,
+          monthsBack: criteria.maxAgeMonths ?? MAX_COMP_AGE_MONTHS_DEFAULT,
+          minUnits: criteria.minUnits > 0 ? criteria.minUnits : undefined,
+          maxUnits: criteria.maxUnits < 9999 ? criteria.maxUnits : undefined,
+        });
+
+        if (distribution && distribution.n >= 3) {
+          const noi = subject.noi!;
+          const valP25 = noi / distribution.p75;
+          const valP50 = noi / distribution.p50;
+          const valP75 = noi / distribution.p25;
+          const ppu50 = subject.units ? valP50 / subject.units : null;
+          const psf50 = subject.totalSF ? valP50 / subject.totalSF : null;
+          const capRateSpreadBps = Math.round((distribution.p75 - distribution.p25) * 10000);
+          const confidence: ConfidenceLevel =
+            distribution.n >= 10 ? 'HIGH'
+            : distribution.n >= 5  ? 'MEDIUM'
+            : 'LOW';
+
+          const fmtCap = (v: number) => `${(v * 100).toFixed(2)}%`;
+          const ps5evidence: EvidenceLine[] = [
+            { label: 'Stabilized NOI', value: fmt$(noi), source: subject.noiSource },
+            { label: 'Comp Pool (property_sales)', value: `${distribution.n} comps with implied cap rate` },
+            { label: 'Implied Cap P25', value: fmtCap(distribution.p25), source: 'property_sales' },
+            { label: 'Implied Cap P50', value: fmtCap(distribution.p50), source: 'property_sales' },
+            { label: 'Implied Cap P75', value: fmtCap(distribution.p75), source: 'property_sales' },
+            { label: 'Indicated Value P50', value: fmt$(valP50) },
+          ];
+          for (const s of distribution.sources) {
+            ps5evidence.push({
+              label: `Comp: ${s.saleId.slice(0, 8)}…`,
+              value: `${fmtCap(s.impliedCapRate)} | ${s.saleDate} | ${s.distanceMiles.toFixed(2)}mi`,
+              source: 'property_sales',
+            });
+          }
+
+          return {
+            id: METHOD_ID,
+            label: 'Comp-Anchored Cap Rate',
+            direction: 'bottom_up',
+            status: 'active',
+            confidence,
+            indicatedValueP25: valP25,
+            indicatedValueP50: valP50,
+            indicatedValueP75: valP75,
+            indicatedPPU: ppu50,
+            indicatedPSF: psf50,
+            compCount: distribution.n,
+            staleCompCount: 0,
+            capRateSpreadBps,
+            sourceProvenance: `${distribution.n} property_sales implied cap rates (Phase 5 — synthesized from operating data)`,
+            evidenceTrail: ps5evidence,
+            warningFlags: distribution.n < 5
+              ? [`Thin comp pool from property_sales (n=${distribution.n}) — consider widening radius.`]
+              : [],
+          };
+        }
+      } catch {
+        // Phase 5 path failed silently — fall through to legacy CompSetService path
+      }
     }
 
     // Pull comp set (reuse existing set or generate on-the-fly with persisted criteria)
