@@ -282,6 +282,42 @@ Future sources (not yet pursued — pending strategy decision):
 - Option C: Commercial aggregator (ATTOM, Reonomy, RCA)
 - Option A: Per-county discovery continues (ArcGIS Hub, Tyler MUNIS per county)
 
+**Gwinnett unit count gap — confirmed 2026-05-29 (separate from sales gap):**
+
+Gwinnett DOES have sale prices (3,004 transactions ≥$5M; 9,154 ≥$1M; 25,265 rows in
+`property_sales` source=county_recorded). However, `property_info_cache.number_of_units`
+= 0 for 23,534 of ~24K Gwinnett parcels. Root cause: LAND_VALUE field `NUMDWLG`
+("Number of Dwellings") = 0 for all commercial/MF parcels in Gwinnett's assessor data —
+the field tracks residential dwelling units, not apartment unit counts.
+
+Result: `price_per_unit = NULL` for all 25,265 rows → zero qualified MF comps from
+Gwinnett despite 3,004 large transactions being present in the system.
+
+STEP 4 `enrichCapitalMarkets` cannot help because it operates on `market_sale_comps`
+(0 Gwinnett rows) rather than `property_sales`.
+
+Fix path for Gwinnett specifically:
+- Gwinnett Improvements table (Table 8, USECODE='APART') — has FINSIZE/YRBUILT/STORIES
+  but no explicit unit count field. May need to join to a separate residential inventory.
+- Or: apply enrichCapitalMarkets logic to `property_sales` source=county_recorded for
+  Gwinnett's $5M+ transactions (back-solve units from sale_price ÷ typical PPU range).
+- Or: same A/B/C/D strategy options above (PT-61, ATTOM, etc.) — Gwinnett would be
+  covered by Option B (PT-61) or Option C.
+
+**Summary of Georgia county data coverage (as of 2026-05-29):**
+
+| County | Sale prices | Unit counts | Qualified MF comps |
+|---|---|---|---|
+| Cobb | ✅ via georgia_property_sales | ✅ via property_info_cache | ✅ 6,012 |
+| Gwinnett | ✅ 25,265 in property_sales | ❌ NUMDWLG=0 for 97% | ❌ 0 |
+| DeKalb | ❌ no ArcGIS sale endpoint | N/A | ❌ 0 |
+| Fulton | ❌ no ArcGIS sale endpoint | N/A | ❌ 0 |
+
+Canary promotion (Phase 5) is feasible on Cobb-only corpus. The 110bps divergence
+noted in shadow backtest reflects Cobb geographic premium (NW suburban vs. south
+Atlanta deals). Whether to treat this as acceptable divergence or a blocker is the
+remaining canary promotion decision.
+
 ---
 
 ### R-010 — CompSet service (compSet.service.ts)

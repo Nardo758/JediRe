@@ -1,0 +1,305 @@
+~/workspace$ cd backend && npx ts-node --transpile-only scripts/backtest-s1-valuation.ts
+
+══════════════════════════════════════════════════════════
+ Phase 5 Backtest — S1 Gold Set Valuation Method Coverage
+══════════════════════════════════════════════════════════
+ VALUATION_COMPS_FLAG = shadow
+ Run date             = 2026-05-29T19:23:29.993Z
+══════════════════════════════════════════════════════════
+
+─── Jacksonville MF (2018) (f1c6909a…) ───
+[ReplacementCostV2] Permit query failed: error: relation "building_permits" does not exist
+    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async ReplacementCostServiceV2.getPermitDerivedCostPerSF (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:415:22)
+    at async ReplacementCostServiceV2.estimateReplacementCost (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:229:28)
+    at async ValuationGridService.computeReplacementCost (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:1565:18)
+    at async Promise.all (index 4)
+    at async ValuationGridService.compute (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:352:9)
+    at async main (/home/runner/workspace/backend/scripts/backtest-s1-valuation.ts:97:16) {
+  length: 116,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '192',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '1452',
+  routine: 'parserOpenTable'
+}
+[ReplacementCostV2] Data Library query failed: error: column cd.asset_id does not exist
+    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async ReplacementCostServiceV2.getDataLibraryCostPerSF (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:600:22)
+    at async ReplacementCostServiceV2.estimateReplacementCost (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:249:29)
+    at async ValuationGridService.computeReplacementCost (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:1565:18)
+    at async Promise.all (index 4)
+    at async ValuationGridService.compute (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:352:9)
+    at async main (/home/runner/workspace/backend/scripts/backtest-s1-valuation.ts:97:16) {
+  length: 110,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: undefined,
+  position: '283',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '3727',
+  routine: 'errorMissingColumn'
+}
+[ReplacementCostV2] Permit regional factor query failed: error: relation "building_permits" does not exist
+    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async ReplacementCostServiceV2.getPermitDerivedRegionalFactor (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:534:28)
+    at async ReplacementCostServiceV2.getRegionalAdjustment (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:500:33)
+    at async ReplacementCostServiceV2.estimateReplacementCost (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:285:32)
+    at async ValuationGridService.computeReplacementCost (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:1565:18)
+    at async Promise.all (index 4)
+    at async ValuationGridService.compute (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:352:9)
+    at async main (/home/runner/workspace/backend/scripts/backtest-s1-valuation.ts:97:16) {
+  length: 116,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '121',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '1452',
+  routine: 'parserOpenTable'
+}
+  Subject:  128 units | NOI $519,731 | lat 30.2672 lng -81.7362
+  Methods (non-placeholder):
+    cap_rate_noi                 ✅ active
+    comp_anchored_cap_rate       ✅ active
+    per_unit_benchmark           ✅ active
+    sales_comp_ppu               ✅ active
+    replacement_cost             ❌ insufficient
+  Active method count: 4 / 5
+  Reconciled value P50: $13,493,071
+
+─── Atlanta MF #1 (2020) (17457eb3…) ───
+[ReplacementCostV2] Permit query failed: error: relation "building_permits" does not exist
+    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async ReplacementCostServiceV2.getPermitDerivedCostPerSF (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:415:22)
+    at async ReplacementCostServiceV2.estimateReplacementCost (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:229:28)
+    at async ValuationGridService.computeReplacementCost (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:1565:18)
+    at async Promise.all (index 4)
+    at async ValuationGridService.compute (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:352:9)
+    at async main (/home/runner/workspace/backend/scripts/backtest-s1-valuation.ts:97:16) {
+  length: 116,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '192',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '1452',
+  routine: 'parserOpenTable'
+}
+[ReplacementCostV2] Data Library query failed: error: column cd.asset_id does not exist
+    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async ReplacementCostServiceV2.getDataLibraryCostPerSF (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:600:22)
+    at async ReplacementCostServiceV2.estimateReplacementCost (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:249:29)
+    at async ValuationGridService.computeReplacementCost (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:1565:18)
+    at async Promise.all (index 4)
+    at async ValuationGridService.compute (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:352:9)
+    at async main (/home/runner/workspace/backend/scripts/backtest-s1-valuation.ts:97:16) {
+  length: 110,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: undefined,
+  position: '283',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '3727',
+  routine: 'errorMissingColumn'
+}
+[ReplacementCostV2] Permit regional factor query failed: error: relation "building_permits" does not exist
+    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async ReplacementCostServiceV2.getPermitDerivedRegionalFactor (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:534:28)
+    at async ReplacementCostServiceV2.getRegionalAdjustment (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:500:33)
+    at async ReplacementCostServiceV2.estimateReplacementCost (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:285:32)
+    at async ValuationGridService.computeReplacementCost (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:1565:18)
+    at async Promise.all (index 4)
+    at async ValuationGridService.compute (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:352:9)
+    at async main (/home/runner/workspace/backend/scripts/backtest-s1-valuation.ts:97:16) {
+  length: 116,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '121',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '1452',
+  routine: 'parserOpenTable'
+}
+  Subject:  96 units | NOI $581,414 | lat 33.7088 lng -84.3786
+  Methods (non-placeholder):
+    cap_rate_noi                 ✅ active
+    comp_anchored_cap_rate       ✅ active
+    per_unit_benchmark           ✅ active
+    sales_comp_ppu               ✅ active
+    replacement_cost             ❌ insufficient
+  Active method count: 4 / 5
+  Reconciled value P50: $12,892,849
+
+─── Atlanta MF #2 / HOLD-OUT (2022) (0a55f0ac…) ───
+[ReplacementCostV2] Permit query failed: error: relation "building_permits" does not exist
+    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async ReplacementCostServiceV2.getPermitDerivedCostPerSF (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:415:22)
+    at async ReplacementCostServiceV2.estimateReplacementCost (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:229:28)
+    at async ValuationGridService.computeReplacementCost (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:1565:18)
+    at async Promise.all (index 4)
+    at async ValuationGridService.compute (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:352:9)
+    at async main (/home/runner/workspace/backend/scripts/backtest-s1-valuation.ts:97:16) {
+  length: 116,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '192',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '1452',
+  routine: 'parserOpenTable'
+}
+[ReplacementCostV2] Data Library query failed: error: column cd.asset_id does not exist
+    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async ReplacementCostServiceV2.getDataLibraryCostPerSF (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:600:22)
+    at async ReplacementCostServiceV2.estimateReplacementCost (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:249:29)
+    at async ValuationGridService.computeReplacementCost (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:1565:18)
+    at async Promise.all (index 4)
+    at async ValuationGridService.compute (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:352:9)
+    at async main (/home/runner/workspace/backend/scripts/backtest-s1-valuation.ts:97:16) {
+  length: 110,
+  severity: 'ERROR',
+  code: '42703',
+  detail: undefined,
+  hint: undefined,
+  position: '283',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '3727',
+  routine: 'errorMissingColumn'
+}
+[ReplacementCostV2] Permit regional factor query failed: error: relation "building_permits" does not exist
+    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async ReplacementCostServiceV2.getPermitDerivedRegionalFactor (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:534:28)
+    at async ReplacementCostServiceV2.getRegionalAdjustment (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:500:33)
+    at async ReplacementCostServiceV2.estimateReplacementCost (/home/runner/workspace/backend/src/services/inflation/replacement-cost-v2.service.ts:285:32)
+    at async ValuationGridService.computeReplacementCost (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:1565:18)
+    at async Promise.all (index 4)
+    at async ValuationGridService.compute (/home/runner/workspace/backend/src/services/valuation/valuation-grid.service.ts:352:9)
+    at async main (/home/runner/workspace/backend/scripts/backtest-s1-valuation.ts:97:16) {
+  length: 116,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '121',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '1452',
+  routine: 'parserOpenTable'
+}
+  Subject:  80 units | NOI $629,046 | lat 33.6877 lng -84.3516
+  Methods (non-placeholder):
+    cap_rate_noi                 ✅ active
+    comp_anchored_cap_rate       ✅ active
+    per_unit_benchmark           ✅ active
+    sales_comp_ppu               ✅ active
+    replacement_cost             ❌ insufficient
+  Active method count: 4 / 5
+  Reconciled value P50: $11,971,724
+
+══════════════════════════════════════════════════════════
+ Backtest Summary
+══════════════════════════════════════════════════════════
+  ✅ Jacksonville MF (2018): 4/5 active  comp_anchored=active
+  ✅ Atlanta MF #1 (2020): 4/5 active  comp_anchored=active
+  ✅ Atlanta MF #2 / HOLD-OUT (2022): 4/5 active  comp_anchored=active
+
+AC checks:
+  ✅ ≥3 methods active on all 3 S1 deals           (3/3 deals pass)
+  ✅ comp_anchored_cap_rate active on ≥1 S1 deal       (3/3 deals)
+  ✅ VALUATION_COMPS_FLAG=shadow active (shadow logging enabled)
+
+Overall result: ✅ PASS
+
+Shadow log entries written this run: 0
+
+══════════════════════════════════════════════════════════
