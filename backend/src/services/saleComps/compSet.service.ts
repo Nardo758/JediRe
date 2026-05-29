@@ -4,7 +4,7 @@
  */
 
 import { getPool } from '../../database/connection';
-import { rankComps, resolveStrategy } from '../valuation/comp-relevance-scoring.service';
+import { rankComps, resolveStrategy, deriveGeographicTier } from '../valuation/comp-relevance-scoring.service';
 
 const pool = getPool();
 
@@ -81,6 +81,13 @@ export interface CompTransaction {
   relevance_score?: number;
   relevance_tier?: string;
   relevance_factors?: Record<string, number>;
+  /**
+   * Geographic tier derived from distance vs. the deal's preferred radius:
+   *   trade_area  — within the preferred radius (closest, most weight)
+   *   submarket   — within 3× the preferred radius
+   *   msa         — beyond 3× (rarely used; relevance score handles penalty)
+   */
+  geographic_tier?: 'trade_area' | 'submarket' | 'msa';
 }
 
 export class CompSetService {
@@ -188,6 +195,13 @@ export class CompSetService {
       filters.push(`t.sale_date < $${asOfParamIdx}`);
     }
 
+    // 4. Adaptive search radius: search at 3× the preferred radius (capped at 15 mi)
+    //    so the submarket tier is always included. The relevance scorer's
+    //    distanceDecayFactor (exponential, half-life 1.5 mi) naturally deprioritises
+    //    far comps — a good match at 5 mi still outscores a poor match at 1 mi.
+    //    The preferred radius is preserved for geographic_tier labelling below.
+    const searchRadiusMiles = Math.min(radius_miles * 3, 15);
+
     // 4. Spatial query for comps within radius using market_sale_comps
     const compsResult = await pool.query(`
       SELECT
@@ -223,11 +237,19 @@ export class CompSetService {
         AND (
           point(t.longitude::float, t.latitude::float)
           <@> point($2::float, $1::float)
-        ) <= ${ radius_miles }
+        ) <= ${ searchRadiusMiles }
       ORDER BY
+        -- Prefer data-rich comps (PPU + cap_rate) so they are not pushed out of the
+        -- LIMIT window by data-sparse county deed records at shorter distances.
+        (CASE
+          WHEN t.price_per_unit IS NOT NULL AND t.price_per_unit > 0
+               AND t.cap_rate IS NOT NULL THEN 0
+          WHEN t.price_per_unit IS NOT NULL AND t.price_per_unit > 0 THEN 1
+          ELSE 2
+        END) ASC,
         (point(t.longitude::float, t.latitude::float) <@> point($2::float, $1::float)) ASC,
         t.sale_date DESC
-      LIMIT 30
+      LIMIT 50
     `, queryParams);
 
     const compsRaw: CompTransaction[] = compsResult.rows.map((row: any) => {
@@ -279,7 +301,7 @@ export class CompSetService {
     const { ranked: rankedScores } = rankComps(subject, candidates, resolvedStrategy, 8);
     const scoreById = new Map(rankedScores.map(s => [s.comp.id, s]));
 
-    const comps: CompTransaction[] = rankedScores.map(({ comp: candidate }) => {
+    const allScoredComps: CompTransaction[] = rankedScores.map(({ comp: candidate }) => {
       const base = compsRaw.find(c => c.id === candidate.id)!;
       const scored = scoreById.get(candidate.id);
       return {
@@ -287,11 +309,24 @@ export class CompSetService {
         relevance_score: scored?.relevance_score,
         relevance_tier: scored?.relevance_tier,
         relevance_factors: scored?.factors as unknown as Record<string, number> | undefined,
+        geographic_tier: deriveGeographicTier(base.distance_miles, radius_miles),
       };
     });
 
+    // 4c. Apply M1 quality floor: drop M2 comps (relevance_score < 0.25, "geographic fill
+    //     only") unless there are fewer than 3 comps above the floor — in that case keep
+    //     the best available so scoring methods don't return INSUFFICIENT due to thin data.
+    const M1_FLOOR = 0.25;
+    const aboveFloor = allScoredComps.filter(c => (c.relevance_score ?? 0) >= M1_FLOOR);
+    const comps: CompTransaction[] = aboveFloor.length >= 3
+      ? aboveFloor
+      : allScoredComps.slice(0, Math.max(aboveFloor.length, 3));
+
     // 5. Calculate aggregated metrics
-    const pricesPerUnit = comps.map(c => c.price_per_unit).sort((a, b) => a - b);
+    // Filter out price_per_unit = 0 — these are data-sparse county deed records where
+    // units is NULL and the SQL COALESCE maps the missing PPU to 0. Including them
+    // would pull medians and averages to zero, breaking PPU-based valuation methods.
+    const pricesPerUnit = comps.map(c => c.price_per_unit).filter(p => p > 0).sort((a, b) => a - b);
     const pricesPerSf = comps.map(c => c.price_per_sf).filter(p => p > 0).sort((a, b) => a - b);
     const capRates = comps.map(c => c.implied_cap_rate).filter(c => c !== null) as number[];
 
