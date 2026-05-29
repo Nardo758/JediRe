@@ -16,7 +16,8 @@
     "seed-florida": "ts-node src/scripts/seed-florida-geographies.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "validate:projections": "ts-node --transpile-only src/scripts/validate-projections-adapter.ts"
+    "validate:projections": "ts-node --transpile-only src/scripts/validate-projections-adapter.ts",
+    "script:enrich-georgia-comps": "ts-node --transpile-only scripts/enrich-georgia-comps.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
