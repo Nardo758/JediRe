@@ -37,6 +37,13 @@ import {
 import type { CashflowAgentOutput } from './cashflow.config';
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
+import {
+  dealPropertyLinkService,
+  CASHFLOW_AGENT_FLAG,
+  shouldUseNewPath,
+  shouldRunShadow,
+  phase3ShadowService,
+} from '../services/property-entity';
 import { VARIABLE_META, computePlausibility } from '../services/sigma/sigma-engine';
 import type { RunContext } from './runtime/types';
 
@@ -761,7 +768,15 @@ export const cashflowOnWalkthroughRequested = inngest.createFunction(
     });
 
     // Step 2: Load deal entity identity needed by Commentary Agent
+    // R-002: Cashflow Agent property context — Phase 3 reader migration
+    // Flag: USE_NEW_PROPERTY_SCHEMA_CASHFLOW_AGENT (default: false)
+    // Shadow: new path reads deals.property_id → properties identity cols
     const entityCtx = await step.run('load-entity-context', async () => {
+      const cashflowFlag = CASHFLOW_AGENT_FLAG();
+      const useNew = shouldUseNewPath(cashflowFlag);
+      const runShadow = shouldRunShadow(cashflowFlag);
+
+      // ── Old path (deal_properties JOIN) ──────────────────────────
       const res = await query(
         `SELECT dp.property_id, p.property_type,
                 COALESCE(p.name, d.name, d.id::text) AS entity_name,
@@ -774,11 +789,54 @@ export const cashflowOnWalkthroughRequested = inngest.createFunction(
         [dealId]
       );
       const row = res.rows[0] as Record<string, unknown> | undefined;
-      return {
+      const oldResult = {
         entity_id: (row?.entity_id as string | null) ?? dealId,
         entity_name: (row?.entity_name as string | null) ?? dealId,
         property_type: (row?.property_type as string | null) ?? null,
       };
+
+      // ── New path (deals.property_id → properties identity) ───────
+      if (useNew || runShadow) {
+        try {
+          const link = await dealPropertyLinkService.resolveDealProperty(dealId);
+          let newPropertyType: string | null = null;
+          let newEntityName: string = dealId;
+          let newEntityId: string = dealId;
+
+          if (link?.propertyId) {
+            const propRes = await query(
+              `SELECT id, property_type, name FROM properties WHERE id = $1`,
+              [link.propertyId]
+            );
+            const propRow = propRes.rows[0] as Record<string, unknown> | undefined;
+            if (propRow) {
+              newPropertyType = (propRow.property_type as string | null) ?? null;
+              newEntityName = (propRow.name as string | null) ?? dealId;
+              newEntityId = propRow.id as string;
+            }
+          }
+
+          const newResult = {
+            entity_id: newEntityId,
+            entity_name: newEntityName,
+            property_type: newPropertyType,
+          };
+
+          if (runShadow) {
+            await phase3ShadowService.logBatch('cashflow_agent', dealId, {
+              entity_id:    { old: oldResult.entity_id,    new: newResult.entity_id },
+              entity_name:  { old: oldResult.entity_name,  new: newResult.entity_name },
+              property_type:{ old: oldResult.property_type,new: newResult.property_type },
+            });
+          }
+
+          if (useNew) return newResult;
+        } catch (err) {
+          logger.warn('R-002 cashflow_agent new path failed; falling back to old path', { err, dealId });
+        }
+      }
+
+      return oldResult;
     });
 
     // Step 3: Invoke Commentary Agent to generate the walkthrough narrative

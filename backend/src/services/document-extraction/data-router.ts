@@ -11,6 +11,13 @@ import { runCrossValidation } from '../multi-doc-cross-validation.service';
 import { runDataQualityAgent, runDataQualityAgentAfterReseed } from '../data-quality-agent.service';
 import { emitExtractionEvents, emitOmProformaEvents } from '../extraction-events.service';
 import { ingestPropertyPerformance } from '../historical-observations/property-performance-ingestor';
+import {
+  dealPropertyLinkService,
+  DATA_ROUTER_FLAG,
+  shouldUseNewPath,
+  shouldRunShadow,
+  phase3ShadowService,
+} from '../property-entity';
 
 interface RouteContext {
   dealId: string;
@@ -36,11 +43,43 @@ interface RouteResult {
 }
 
 async function getOrCreatePropertyForDeal(pool: Pool, dealId: string): Promise<string> {
+  // R-003: Document extraction data-router deal→property — Phase 3 reader migration
+  // Flag: USE_NEW_PROPERTY_SCHEMA_DATA_ROUTER (default: false)
+  // New path: DealPropertyLinkService.resolveDealProperty (reads deals.property_id first)
+  const dataRouterFlag = DATA_ROUTER_FLAG();
+  const useNewDataRouter = shouldUseNewPath(dataRouterFlag);
+  const runShadowDataRouter = shouldRunShadow(dataRouterFlag);
+
+  // ── Old path (deal_properties direct query) ──────────────────────
   const joinExisting = await pool.query(
     `SELECT property_id FROM deal_properties WHERE deal_id = $1 LIMIT 1`,
     [dealId]
   );
-  if (joinExisting.rows[0]?.property_id) return joinExisting.rows[0].property_id;
+  const oldPropertyId: string | null = joinExisting.rows[0]?.property_id ?? null;
+
+  // ── New path (DealPropertyLinkService) ───────────────────────────
+  if (useNewDataRouter || runShadowDataRouter) {
+    try {
+      const link = await dealPropertyLinkService.resolveDealProperty(dealId);
+      const newPropertyId = link?.propertyId ?? null;
+
+      if (runShadowDataRouter) {
+        await phase3ShadowService.log({
+          readerId: 'data_router',
+          entityId: dealId,
+          field: 'propertyId',
+          oldValue: oldPropertyId,
+          newValue: newPropertyId,
+        });
+      }
+
+      if (useNewDataRouter && newPropertyId) return newPropertyId;
+    } catch {
+      // New path failure falls through to old path below
+    }
+  }
+
+  if (oldPropertyId) return oldPropertyId;
 
   const actualsExisting = await pool.query(
     `SELECT property_id FROM deal_monthly_actuals WHERE deal_id = $1 AND property_id IS NOT NULL LIMIT 1`,

@@ -198,53 +198,91 @@ Nightly reconciliation script:
 
 ## PHASE 3 — READER MIGRATION
 
-**Status:** NOT STARTED  
+**Status:** IN PROGRESS — Wave 1 started (Task #1489, 2026-05-29)  
 **Duration:** 6-10 weeks
+
+### Phase 3 infrastructure delivered (Task #1489)
+
+| Artifact | File | Purpose |
+|---|---|---|
+| Reader audit | `docs/operations/PROPERTY_REFACTOR_READER_AUDIT.md` | 37 readers catalogued across 5 waves; each with old tables, new path, flag name |
+| Feature flags | `backend/src/services/property-entity/phase3-flags.ts` | 37 typed env-var flags; `FlagState = false\|shadow\|canary\|true`; exported from index.ts |
+| Shadow logger | `backend/src/services/property-entity/phase3-shadow.service.ts` | Logs old/new divergences to `property_reader_shadow_log`; swallows errors |
+| Shadow table | `backend/src/database/migrations/20260529_phase3_reader_shadow_log.sql` | `property_reader_shadow_log` with divergence index; applied 2026-05-29 |
+| Wave 1 R-002 | `backend/src/agents/cashflow.inngest.ts` | Entity context step wired: shadow+flag behind `USE_NEW_PROPERTY_SCHEMA_CASHFLOW_AGENT` |
+| Wave 1 R-003 | `backend/src/services/document-extraction/data-router.ts` | getOrCreatePropertyForDeal wired: shadow+flag behind `USE_NEW_PROPERTY_SCHEMA_DATA_ROUTER` |
 
 ### Migration discipline (non-negotiable per reader)
 
-1. Feature flag created: `use_new_property_schema_<reader_name>` — default OFF
+1. Feature flag created: `USE_NEW_PROPERTY_SCHEMA_<READER_NAME>` — default `false` (OFF)
 2. New code path added alongside old
-3. Shadow comparison runs ≥ 1 week (old path live; new path runs in parallel; divergences logged, not served)
-4. Flag ON for 10% canary; metrics monitored
-5. Flag ON for 100%
-6. Old code path removed after 30 days stable at 100%
-7. Verification protocol Layer 1 + Layer 2 documented per reader
+3. Set env to `shadow`: old path serves; new path runs in parallel; divergences written to `property_reader_shadow_log`
+4. Shadow clean for ≥ 7 days → set to `canary` (10% of requests use new path)
+5. Canary metrics OK → set to `true` (100%)
+6. Old code path removed after ≥ 30 days at `true`
+7. Verification protocol Layer 1 + Layer 2 documented per reader in `PROPERTY_REFACTOR_READER_AUDIT.md`
 
-### Reader migration waves
+### Reader migration waves — current state
 
 **Wave 1 — Foundation (weeks 2-3)**
-1. `DealService.getProperty(deal_id)` → reads `deals.property_id` → `PropertyResolverService`
-2. Cashflow agent property-info tools → reads `property_characteristics` via service layer
 
-**Wave 2 — Valuation (weeks 3-5)**
-3. Valuation Grid subject side → `PropertyCharacteristicsService` instead of `properties` direct
-4. Valuation Grid comp side → `PropertySalesService.getSalesByCriteria()` instead of `market_sale_comps`
-5. M15 comp services (comp-query, comp-set-discovery)
-6. Comp relevance scoring (D-COMP-1, if built before this phase)
+| Reader | Flag | Status |
+|---|---|---|
+| R-001: DealService.getProperty / deal resolve | `USE_NEW_PROPERTY_SCHEMA_DEAL_RESOLVE` | IN PROGRESS — `DealPropertyLinkService` already implements new path; remaining callers to be wired |
+| R-002: Cashflow Agent entity context | `USE_NEW_PROPERTY_SCHEMA_CASHFLOW_AGENT` | SHADOW READY — wired in cashflow.inngest.ts; set env to `shadow` to begin comparison |
+| R-003: Document extraction data-router | `USE_NEW_PROPERTY_SCHEMA_DATA_ROUTER` | SHADOW READY — wired in data-router.ts; set env to `shadow` to begin comparison |
+| R-004 through R-007 | (various) | NOT STARTED |
 
-**Wave 3 — Analytical (weeks 5-7)**
-7. F3 Markets module
-8. F4 Supply module
-9. F6 Traffic module
-10. F8 Debt module (lower priority)
+**Wave 2 — Valuation (weeks 3-5)** — NOT STARTED. Gate: Wave 1 shadow ≥ 7 days clean.
 
-**Wave 4 — Strategy-aware (weeks 7-9)** *(after Wave 2 complete)*
-11. Strategy-aware comp selection
-12. Strategy projection service
+| Reader | Flag | New path |
+|---|---|---|
+| R-008: Valuation Grid subject | `USE_NEW_PROPERTY_SCHEMA_VALUATION_SUBJECT` | `PropertyCharacteristicsService.getCurrent()` |
+| R-009: Valuation Grid comps | `USE_NEW_PROPERTY_SCHEMA_VALUATION_COMPS` | `PropertySalesService.getSalesByCriteria()` — **largest behavioral change** |
+| R-010: CompSet service | `USE_NEW_PROPERTY_SCHEMA_COMP_SET` | `PropertySalesService` + `PropertyCharacteristicsService` |
+| R-011: Comp-query + CompQueryEngine | `USE_NEW_PROPERTY_SCHEMA_COMP_QUERY` | `PropertyCharacteristicsService.getCurrent()` |
+| R-012: Comp-set-discovery | `USE_NEW_PROPERTY_SCHEMA_COMP_SET_DISCOVERY` | `property_characteristics` |
+| R-013: Georgia sale comps | `USE_NEW_PROPERTY_SCHEMA_GEORGIA_SALE_COMPS` | `PropertySalesService.getSalesByCriteria()` |
+| R-014: Correlation engine | `USE_NEW_PROPERTY_SCHEMA_CORRELATION_COMPS` | `PropertySalesService.getSalesByCriteria()` |
+| R-015: Comp-dedup/cascade | `USE_NEW_PROPERTY_SCHEMA_COMP_DEDUP` | `PropertySalesService` |
+| R-016: Backtest snapshot | `USE_NEW_PROPERTY_SCHEMA_BACKTEST_SNAPSHOT` | `PropertySalesService.getSalesByCriteria()` |
+| R-017: Georgia capital tab | `USE_NEW_PROPERTY_SCHEMA_GEORGIA_CAPITAL_TAB` | `PropertySalesService.getSalesByCriteria()` |
 
-**Wave 5 — Post-close + capsule (weeks 8-10)**
-13. M22 post-close intelligence → `property_operating_data` with `is_owned = TRUE`
-14. Deal Capsule rendering
-15. Freeze-on-share snapshot
+**Wave 3 — Analytical (weeks 5-7)** — NOT STARTED. 14 readers (R-018 through R-031). Gate: Wave 2 stable.
+
+**Wave 4 — Strategy-aware (weeks 7-9)** — NOT STARTED. 2 readers (R-033, R-034). Gate: Wave 2 stable.
+
+**Wave 5 — Post-close + capsule (weeks 8-10)** — NOT STARTED. 3 readers (R-035, R-036, R-037).
 
 ### Phase 3 acceptance criteria
 
-- [ ] Every reader migrated; flag at 100%; ≥ 30 days stable
+- [ ] Every reader migrated (R-001 through R-037); flag at `true`; ≥ 30 days stable
 - [ ] Old code paths removed; grep confirms zero reads on old tables
+- [ ] `property_reader_shadow_log` clean (zero divergences in final 30-day window)
 - [ ] Backtest harness re-run; results equivalent or better
 - [ ] Bishop end-to-end run equivalent or improved
-- [ ] All readers in `docs/operations/PROPERTY_REFACTOR_READER_AUDIT.md`
+- [ ] All readers in `docs/operations/PROPERTY_REFACTOR_READER_AUDIT.md` (populated ✅)
+
+### How to begin shadow comparison for R-002
+
+```bash
+# Activate shadow mode for Cashflow Agent entity context reader
+# This logs divergences without changing what production requests see
+export USE_NEW_PROPERTY_SCHEMA_CASHFLOW_AGENT=shadow
+
+# Monitor divergences (run daily)
+# Query: SELECT reader_id, COUNT(*) total, COUNT(*) FILTER (WHERE NOT match) diverged
+#        FROM property_reader_shadow_log WHERE created_at > NOW() - INTERVAL '7 days'
+#        GROUP BY reader_id;
+
+# After 7 days with zero divergences, promote to canary:
+export USE_NEW_PROPERTY_SCHEMA_CASHFLOW_AGENT=canary
+
+# After canary metrics OK, promote to 100%:
+export USE_NEW_PROPERTY_SCHEMA_CASHFLOW_AGENT=true
+
+# After 30 days at 100% and confirmed stable, remove old code path (Phase 3 Step 7)
+```
 
 ---
 
@@ -374,3 +412,4 @@ Each deprecated table: final snapshot → documented in `docs/operations/PROPERT
 | 2026-05-29 | Phase 1b migration: properties.parcel_id_canonical column + index |
 | 2026-05-29 | Phase 1 complete: PropertyResolverService + DealPropertyLinkService built; index.ts updated |
 | 2026-05-29 | **PHASE 1 GATE: CLEAR** |
+| 2026-05-29 | **Phase 3 started (Task #1489).** Reader inventory complete: 37 readers across 5 waves. Infrastructure built: phase3-flags.ts (37 flags), phase3-shadow.service.ts, `property_reader_shadow_log` table, index.ts updated. Wave 1 R-002 (cashflow.inngest.ts entity context) + R-003 (data-router.ts) wired with shadow+flag pattern. Implementation map updated. |
