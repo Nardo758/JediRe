@@ -1,0 +1,54 @@
+On confirming the six decisions:
+
+I want to confirm against verified schema state, not assumed. 
+Run the state verification you proposed — query the actual 
+current schema against Parts 5 and 6 of the spec. Output: 
+a one-page reality check identifying where the spec's 
+assumed-current state matches reality and where it diverges.
+
+Specifically verify:
+- Every table the spec assumes exists (properties, 
+  recorded_transactions, parcel_data, market_sale_comps, 
+  market_rent_comps, comp_properties, etc.) — exists in 
+  database with assumed columns
+- Every column the spec maps in Part 5 — actually present, 
+  with expected type
+- Any tables in the current schema that handle property data 
+  but aren't mentioned in the spec
+- Current row counts (some tables may be effectively empty, 
+  others significantly populated — affects migration scope)
+- Foreign key relationships (deals → properties cardinality 
+  as actually implemented vs as assumed)
+
+I'll review the reality check, then either:
+(a) Confirm all six decisions as written (if assumed-state 
+    matches reality)
+(b) Adjust specific decisions based on what surfaced (if 
+    divergences require it)
+(c) Surface a specific question for one decision that the 
+    reality check made unclear
+
+On in-flight work:
+You called the right pause on #1477 and #1479. Hold those.
+The enrichCapitalMarkets enrichment work that already ran 
+is fine — improving existing data without creating new 
+architectural debt. Anything new that would write into 
+market_sale_comps or comp_properties should pause until 
+Phase 1 acceptance.
+
+464 Bishop end-to-end run can continue — it's a read-only 
+test against existing state, doesn't lock in fragmentation.
+
+On phase 1 scope:
+After the reality check, Phase 1 starts as the spec defines: 
+schema build, no production traffic, no destructive operations. 
+Full field-by-field mapping (Part 5 conceptual → implementation 
+specific) is part of Phase 1 work, gated on reality check 
+findings.
+
+One spec refinement worth flagging in advance:
+Decision 3's property_characteristics versioning approach — 
+new row per change (effective_from/effective_to) vs single 
+current row + history table — is your call during Phase 1 
+based on actual query patterns. Spec implies the former; 
+either works.
