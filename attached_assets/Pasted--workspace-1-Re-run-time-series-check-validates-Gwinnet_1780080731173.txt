@@ -1,0 +1,137 @@
+~/workspace$ # 1. Re-run time-series check (validates Gwinnett date preservation)
+cd backend && npx ts-node --transpile-only scripts/synthesize-implied-cap-rates.ts --time-series
+
+# 2. Re-run S1 backtest (check if 110bps gap narrows with Gwinnett in pool)
+cd backend && npx ts-node --transpile-only scripts/backtest-s1-valuation.ts
+[synthesize-implied-cap-rates] Starting
+  dry-run: false
+  limit:   5000
+
+── Pass 1: NOI-based synthesis (property_operating_data) ────────
+18:51:15 [warn] Slow query detected:
+{
+  "service": "jedire-api",
+  "environment": "development",
+  "query": "SELECT ps.id, ps.property_id, ps.sale_date, ps.sale_price\n       FROM property_sales ps\n       WHERE",
+  "duration": "2483ms"
+}
+18:51:17 [info] [PropertySalesService.synthesizeImpliedCapRates] Complete
+{
+  "service": "jedire-api",
+  "environment": "development",
+  "updated": 0,
+  "skipped": 0,
+  "insufficient": 5000,
+  "dryRun": false
+}
+  Updated (implied_cap_rate written): 0
+  Skipped (out of sanity range):      0
+  Insufficient (no NOI data):         5000
+
+── Pass 2: Source cap rate back-fill (market_sale_comps) ────────
+18:51:20 [warn] Slow query detected:
+{
+  "service": "jedire-api",
+  "environment": "development",
+  "query": "SELECT COUNT(*) AS cnt\n       FROM property_sales ps\n       JOIN market_sale_comps msc ON ps.source_",
+  "duration": "3108ms"
+}
+18:51:22 [warn] Slow query detected:
+{
+  "service": "jedire-api",
+  "environment": "development",
+  "query": "UPDATE property_sales ps\n       SET implied_cap_rate = ROUND((msc.cap_rate / 100.0)::numeric, 4),\n  ",
+  "duration": "2461ms"
+}
+18:51:22 [info] [PropertySalesService.synthesizeFromSourceCapRates] Complete
+{
+  "service": "jedire-api",
+  "environment": "development",
+  "updated": 0,
+  "skipped": 32,
+  "dryRun": false
+}
+  Updated (implied_cap_rate written): 0
+  Skipped (out of sanity range):      32
+
+── Pass 3: Coordinate back-fill (properties.lat/lng) ────────────
+18:51:29 [warn] Slow query detected:
+{
+  "service": "jedire-api",
+  "environment": "development",
+  "query": "UPDATE properties p\n       SET lat = msc.latitude,\n           lng = msc.longitude,\n           update",
+  "duration": "6594ms"
+}
+18:51:29 [info] [PropertySalesService.backfillPropertyCoordinatesFromComps] Complete
+{
+  "service": "jedire-api",
+  "environment": "development",
+  "updated": 0,
+  "dryRun": false
+}
+  Updated (lat/lng written):          0
+
+── Totals ───────────────────────────────────────────────────────
+  Total rows with implied_cap_rate written: 0
+  Properties with coordinates back-filled:  0
+  dry-run (no DB writes):                   false
+
+── Pass 4 (time-series): Cap rate by quarter — date preservation check ──
+
+  Reference: Atlanta Urban Core (33.749, -84.388) — 25mi radius, last 20 quarters
+18:51:32 [warn] Slow query detected:
+{
+  "service": "jedire-api",
+  "environment": "development",
+  "query": "SELECT\n         TO_CHAR(DATE_TRUNC('quarter', ps.sale_date), 'YYYY-\"Q\"Q') AS quarter,\n         ROUND",
+  "duration": "3724ms"
+}
+    Quarter    P50 cap   N comps
+    ─────────  ────────  ───────
+    2026-Q2      6.04%        1
+    2026-Q1      6.22%       33
+    2025-Q4      6.27%       89
+    2025-Q3      6.17%       50
+    2025-Q2      6.26%       55
+    2025-Q1      6.23%       44
+    2024-Q4      6.22%      107
+    2024-Q3      6.06%      127
+    2024-Q2      6.04%       25
+    2024-Q1      6.20%       22
+    2023-Q4      5.39%       13
+    2023-Q3      4.99%       49
+    2023-Q2      5.52%       32
+    2023-Q1      4.86%      131
+    2022-Q4      5.71%       39
+    2022-Q3      6.16%       63
+    2022-Q2      6.04%       70
+    2022-Q1      5.36%       71
+    2021-Q4      4.94%      317
+    2021-Q3      6.01%       51
+    2021-Q2      6.25%       13
+
+  Reference: South Atlanta / DeKalb border (33.6877, -84.3516) — 25mi radius, last 20 quarters
+    Quarter    P50 cap   N comps
+    ─────────  ────────  ───────
+    2026-Q2      6.04%        1
+    2026-Q1      6.22%       29
+    2025-Q4      6.23%       41
+    2025-Q3      6.16%       31
+    2025-Q2      6.29%       44
+    2025-Q1      6.34%       30
+    2024-Q4      6.27%       91
+    2024-Q3      6.09%      112
+    2024-Q2      6.41%       16
+    2024-Q1      6.38%       15
+    2023-Q4      6.20%        8
+    2023-Q3      6.14%       22
+    2023-Q2      5.62%       24
+    2023-Q1      6.08%       32
+    2022-Q4      6.23%       22
+    2022-Q3      6.26%       51
+    2022-Q2      6.04%       56
+    2022-Q1      5.00%       64
+    2021-Q4      4.92%      299
+    2021-Q3      6.13%       41
+    2021-Q2      6.25%       12
+bash: cd: backend: No such file or director
