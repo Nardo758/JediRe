@@ -19,6 +19,7 @@ import {
   DueDiligenceSection,
   PropertiesSection,
   DocumentsSection,
+  DocumentsFilesSection,
   TeamSection,
   ContextTrackerSection,
   NotesSection,
@@ -357,7 +358,7 @@ export const DealPageEnhanced: React.FC = () => {
               icon="📄"
               title="Documents"
             >
-              <DocumentsSection dealId={dealId!} />
+              <DocumentsFilesSection deal={deal!} />
             </DealSection>
           </div>
 
