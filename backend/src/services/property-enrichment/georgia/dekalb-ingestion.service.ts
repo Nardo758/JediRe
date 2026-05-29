@@ -11,8 +11,10 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { ArcGISClient } from './arcgis-client';
-import { query as dbQuery } from '../../../database/connection';
+import { query as dbQuery, getPool } from '../../../database/connection';
 import { createJobRecord, completeJobRecord } from './job-tracker';
+import { propertyDualWriteService, isDualWriteEnabled } from '../../property-entity/property-dual-write.service';
+import { propertyResolverService } from '../../property-entity/property-resolver.service';
 import {
   DeKalbParcel,
   DeKalbPermit,
@@ -323,51 +325,94 @@ export class DeKalbIngestionService {
    * Save enriched property to database
    */
   private async saveProperty(property: EnrichedProperty): Promise<void> {
-    await dbQuery(
-      `INSERT INTO property_info_cache (
-        parcel_id, address, city, state, county,
-        year_built, living_area_sqft,
-        assessed_value, just_value,
-        land_use_code, property_type, zoning,
-        owner_name,
-        latitude, longitude,
-        provider, fetched_at, raw_data
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-      ON CONFLICT (parcel_id, county, state) DO UPDATE SET
-        year_built       = COALESCE(EXCLUDED.year_built, property_info_cache.year_built),
-        living_area_sqft = COALESCE(EXCLUDED.living_area_sqft, property_info_cache.living_area_sqft),
-        assessed_value   = COALESCE(EXCLUDED.assessed_value, property_info_cache.assessed_value),
-        just_value       = COALESCE(EXCLUDED.just_value, property_info_cache.just_value),
-        land_use_code    = COALESCE(EXCLUDED.land_use_code, property_info_cache.land_use_code),
-        property_type    = COALESCE(EXCLUDED.property_type, property_info_cache.property_type),
-        zoning           = COALESCE(EXCLUDED.zoning, property_info_cache.zoning),
-        owner_name       = COALESCE(EXCLUDED.owner_name, property_info_cache.owner_name),
-        latitude         = COALESCE(EXCLUDED.latitude, property_info_cache.latitude),
-        longitude        = COALESCE(EXCLUDED.longitude, property_info_cache.longitude),
-        provider         = EXCLUDED.provider,
-        fetched_at       = EXCLUDED.fetched_at,
-        updated_at       = NOW()`,
-      [
-        property.parcelId,
-        property.address || '',
-        property.city || '',
-        property.state,
-        property.county,
-        property.yearBuilt || null,
-        property.sqft || null,
-        property.assessedValue || null,
-        property.totalValue || null,
-        property.propertyClass || null,
-        property.isMultifamily ? 'multifamily' : 'other',
-        property.zoning || null,
-        property.ownerName || null,
-        property.latitude ?? null,
-        property.longitude ?? null,
-        property.provider,
-        property.fetchedAt,
-        JSON.stringify({ isMultifamily: property.isMultifamily })
-      ]
-    );
+    // Pre-resolve property entity OUTSIDE transaction (idempotent find-or-create)
+    let resolvedPropertyId: string | null = null;
+    if (isDualWriteEnabled()) {
+      const resolved = await propertyResolverService.resolveByParcel({
+        parcelIdRaw: property.parcelId,
+        county: property.county,
+        state: property.state,
+        createIfMissing: true,
+      });
+      resolvedPropertyId = resolved?.id ?? null;
+    }
+
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      await client.query(
+        `INSERT INTO property_info_cache (
+          parcel_id, address, city, state, county,
+          year_built, living_area_sqft,
+          assessed_value, just_value,
+          land_use_code, property_type, zoning,
+          owner_name,
+          latitude, longitude,
+          provider, fetched_at, raw_data
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        ON CONFLICT (parcel_id, county, state) DO UPDATE SET
+          year_built       = COALESCE(EXCLUDED.year_built, property_info_cache.year_built),
+          living_area_sqft = COALESCE(EXCLUDED.living_area_sqft, property_info_cache.living_area_sqft),
+          assessed_value   = COALESCE(EXCLUDED.assessed_value, property_info_cache.assessed_value),
+          just_value       = COALESCE(EXCLUDED.just_value, property_info_cache.just_value),
+          land_use_code    = COALESCE(EXCLUDED.land_use_code, property_info_cache.land_use_code),
+          property_type    = COALESCE(EXCLUDED.property_type, property_info_cache.property_type),
+          zoning           = COALESCE(EXCLUDED.zoning, property_info_cache.zoning),
+          owner_name       = COALESCE(EXCLUDED.owner_name, property_info_cache.owner_name),
+          latitude         = COALESCE(EXCLUDED.latitude, property_info_cache.latitude),
+          longitude        = COALESCE(EXCLUDED.longitude, property_info_cache.longitude),
+          provider         = EXCLUDED.provider,
+          fetched_at       = EXCLUDED.fetched_at,
+          updated_at       = NOW()`,
+        [
+          property.parcelId,
+          property.address || '',
+          property.city || '',
+          property.state,
+          property.county,
+          property.yearBuilt || null,
+          property.sqft || null,
+          property.assessedValue || null,
+          property.totalValue || null,
+          property.propertyClass || null,
+          property.isMultifamily ? 'multifamily' : 'other',
+          property.zoning || null,
+          property.ownerName || null,
+          property.latitude ?? null,
+          property.longitude ?? null,
+          property.provider,
+          property.fetchedAt,
+          JSON.stringify({ isMultifamily: property.isMultifamily }),
+        ]
+      );
+
+      if (resolvedPropertyId) {
+        await propertyDualWriteService.writeCharacteristicsInTx(resolvedPropertyId, {
+          parcelId: property.parcelId,
+          county: property.county,
+          state: property.state,
+          address: property.address || null,
+          city: property.city || null,
+          latitude: property.latitude ?? null,
+          longitude: property.longitude ?? null,
+          yearBuilt: property.yearBuilt || null,
+          livingAreaSqft: property.sqft || null,
+          zoning: property.zoning || null,
+          landUseCode: property.propertyClass || null,
+          fetchedAt: property.fetchedAt,
+          provider: property.provider,
+        }, client);
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   /**
@@ -394,8 +439,26 @@ export class DeKalbIngestionService {
     if (isNaN(saleDate.getTime())) return;
     if (rawAmt < 200_000) return; // below promote threshold — skip
 
+    const saleDateStr = saleDate.toISOString().split('T')[0];
+
+    // Pre-resolve property entity OUTSIDE transaction (idempotent find-or-create)
+    let resolvedPropertyId: string | null = null;
+    if (isDualWriteEnabled()) {
+      const resolved = await propertyResolverService.resolveByParcel({
+        parcelIdRaw: parcel.PARCELID,
+        county: 'DeKalb',
+        state: 'GA',
+        createIfMissing: true,
+      });
+      resolvedPropertyId = resolved?.id ?? null;
+    }
+
+    const pool = getPool();
+    const client = await pool.connect();
     try {
-      await dbQuery(
+      await client.query('BEGIN');
+
+      await client.query(
         `INSERT INTO georgia_property_sales (
           parcel_id, county, state,
           sale_date, sale_year, sale_price,
@@ -406,14 +469,30 @@ export class DeKalbIngestionService {
           parcel.PARCELID,
           'DeKalb',
           'GA',
-          saleDate.toISOString().split('T')[0],
+          saleDateStr,
           saleDate.getFullYear(),
           rawAmt,
-          'dekalb_ga'
+          'dekalb_ga',
         ]
       );
+
+      if (resolvedPropertyId) {
+        await propertyDualWriteService.writeSaleInTx(resolvedPropertyId, {
+          parcelId: parcel.PARCELID,
+          county: 'DeKalb',
+          state: 'GA',
+          saleDate: saleDateStr,
+          salePrice: rawAmt,
+          provider: 'dekalb_ga',
+        }, client);
+      }
+
+      await client.query('COMMIT');
     } catch (err) {
+      await client.query('ROLLBACK');
       console.warn(`[DeKalb] saveSales skip (${parcel.PARCELID}): ${err}`);
+    } finally {
+      client.release();
     }
   }
   

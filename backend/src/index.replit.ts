@@ -410,6 +410,7 @@ import { syncAccelaPlanningCron } from './inngest/functions/sync-accela-planning
 import { syncMiamiDadePlanningCron } from './inngest/functions/sync-miami-dade-planning';
 import { georgiaCompEnrichmentWeekly } from './inngest/functions/georgia-comp-enrichment-weekly';
 import { georgiaArcGisIngestCron } from './inngest/functions/georgia-arcgis-ingest.cron';
+import { propertyReconciliationNightly } from './inngest/functions/property-reconciliation-nightly';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -463,6 +464,8 @@ app.use(
       georgiaCompEnrichmentWeekly,
       // Task #1477: weekly Fulton + Gwinnett ArcGIS ingestion — real unit counts → Bishop comps (Sun 02:00 UTC)
       georgiaArcGisIngestCron,
+      // Task #1488: nightly property dual-write reconciliation — row-count parity + sample audit (03:00 UTC)
+      propertyReconciliationNightly,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,

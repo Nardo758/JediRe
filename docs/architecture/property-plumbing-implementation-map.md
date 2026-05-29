@@ -116,9 +116,26 @@ See full analysis in `docs/architecture/property-plumbing-phase1-dispositions.md
 
 ## PHASE 2 — DUAL-WRITE
 
-**Status:** NOT STARTED — gate clear, ready to begin  
+**Status:** SHIPPED (Task #1488) — dual-write active behind `PROPERTY_DUAL_WRITE_ENABLED` flag (default `true`)  
 **Duration:** 4-5 weeks  
 **Key constraint:** Every dual-write is atomic (both writes or neither). Dual-write failures are P1 — alert on every failure, rollback both writes.
+
+### Phase 2 delivery checklist (Task #1488)
+
+- [x] `property_dual_write_failures` monitoring table (migration `20260529_phase2_dual_write_failures.sql`)
+- [x] `PropertyDualWriteService` — central orchestrator with feature flag rollback (`PROPERTY_DUAL_WRITE_ENABLED`)
+- [x] Write-path inventory doc: `docs/architecture/property-plumbing-phase2-write-path-inventory.md`
+- [x] Georgia ingestion dual-write wired: Cobb, Fulton, Gwinnett, DeKalb (`dualWriteFromInfoCache` + `dualWriteFromGeorgiaSale`)
+- [x] Deal creation dual-write wired: `inline-deals.routes.ts` → `dualWriteDealLink` (via `PropertyResolverService.resolveByAddress` → `deals.property_id`)
+- [x] Backfill script 1: `backend/scripts/backfill-property-identity.ts`
+- [x] Backfill script 2: `backend/scripts/backfill-property-characteristics.ts`
+- [x] Backfill script 3: `backend/scripts/backfill-property-sales.ts`
+- [x] Backfill script 4: `backend/scripts/backfill-property-operating-data.ts`
+- [x] Backfill script 5: `backend/scripts/backfill-deal-property-links.ts`
+- [x] Nightly Inngest reconciliation job: `backend/src/inngest/functions/property-reconciliation-nightly.ts`
+- [x] `property-entity/index.ts` exports `PropertyDualWriteService`
+- [x] No TypeScript errors introduced in Phase 2 files
+- [x] Migration applied: 3 new Phase 1+2 migrations (applied 3, skipped 252, failed 0)
 
 ### 2.1 Pre-phase verification (before any code ships)
 

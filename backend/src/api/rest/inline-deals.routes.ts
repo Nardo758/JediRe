@@ -470,6 +470,25 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       });
     }
 
+    // Phase 2 dual-write: resolve canonical property entity by address → write deals.property_id
+    // Non-blocking fire-and-forget; any failure is warn-logged (not fatal to deal creation).
+    if (address) {
+      (async () => {
+        try {
+          const { propertyResolverService } = await import('../../services/property-entity/property-resolver.service');
+          const { propertyDualWriteService } = await import('../../services/property-entity/property-dual-write.service');
+          const resolved = await propertyResolverService.resolveByAddress({ address });
+          if (resolved) {
+            await propertyDualWriteService.dualWriteDealLink(row.id, resolved.id);
+          }
+        } catch (dwErr) {
+          logger.warn(`[DealCreation] Phase2 dual-write failed for deal ${row.id}`, {
+            err: dwErr instanceof Error ? dwErr.message : String(dwErr),
+          });
+        }
+      })();
+    }
+
     autoDiscoverComps(row.id).catch(err => {
       console.error(`[CompDiscovery] Failed for deal ${row.id}:`, err.message);
     });

@@ -1,9 +1,8 @@
 /**
  * Property Entity Service Layer
- * Phase 1 — Property Plumbing Refactor
+ * Phase 1 & 2 — Property Plumbing Refactor
  *
- * Four services covering the new schema tables and identity resolution.
- * No production reads/writes yet — Phase 2 dual-write wires these in.
+ * Services covering the new schema tables, identity resolution, and dual-write.
  *
  * Services:
  *   PropertyCharacteristicsService — time-varying physical state
@@ -11,10 +10,7 @@
  *   PropertySalesService           — canonical transaction history
  *   PropertyResolverService        — identity resolution (find-or-create, dedup, merge)
  *   DealPropertyLinkService        — dual-write deal→property link (new FK + legacy join)
- *
- * Phase 2 will activate dual-write by calling DealPropertyLinkService.linkDealToProperty
- * from DealService write paths, and PropertyResolverService.resolveByAddress/Parcel
- * from all ingest pipelines.
+ *   PropertyDualWriteService       — Phase 2 orchestrator: routes all ingest writes to new schema
  */
 
 export { propertyCharacteristicsService, PropertyCharacteristicsService } from './property-characteristics.service';
@@ -22,6 +18,7 @@ export { propertyOperatingDataService, PropertyOperatingDataService } from './pr
 export { propertySalesService, PropertySalesService } from './property-sales.service';
 export { propertyResolverService, PropertyResolverService } from './property-resolver.service';
 export { dealPropertyLinkService, DealPropertyLinkService } from './deal-property-link.service';
+export { propertyDualWriteService, PropertyDualWriteService } from './property-dual-write.service';
 
 export type {
   PropertyCharacteristic,
