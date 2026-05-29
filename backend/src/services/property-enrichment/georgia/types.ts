@@ -101,23 +101,42 @@ export interface GwinnettLandValue {
 // DEKALB COUNTY
 // ============================================================================
 
+/**
+ * DeKalb parcel attributes sourced from iasWorldParcels/MapServer/0.
+ * SALES FIELDS — NOT AVAILABLE: DeKalb's public ArcGIS server does not expose
+ * any sale/transfer data. LSALEAMT/LSALEDT stubs are retained so saveSales()
+ * can silently no-op; they will always be undefined at runtime.
+ */
 export interface DeKalbParcel {
   PARCELID: string;
-  CLASSCD: string;
-  SITEADDRESS: string;
-  OWNERNME1: string;
-  CNTASSDVAL: number;
-  TOTAPR1: number;
-  ZONING: string;
+  LOWPARCELID?: string;   // alternate parcel ID format
+  CLASSCD?: string;       // class code (e.g. R1, R4)
+  CLASSDSCRP?: string;    // class description
+  SITEADDRESS?: string;
+  OWNERNME1?: string;
+  OWNERNME2?: string;
+  CNTASSDVAL?: number;    // current assessed value
+  LNDVALUE?: number;      // land value
+  TOTAPR1?: number;       // total appraised value
+  ZONING?: string;
+  // iasWorldParcels-specific enrichment fields
+  RESYRBLT?: number;      // year built (residential)
+  BLDGAREA?: number;      // total building area (sqft)
+  RESFLRAREA?: number;    // residential floor area (sqft)
+  FLOORCOUNT?: number;    // number of stories
+  USECD?: string;         // use code
+  USEDSCRP?: string;      // use description
+  NGHBRHDCD?: string;     // neighborhood code
+  CITY?: string;
   // Populated by ArcGIS returnCentroid=true, outSR=4326
-  centroid_x?: number; // longitude (WGS84)
-  centroid_y?: number; // latitude  (WGS84)
-  // Potential sale fields — present on some DeKalb MapServer versions
-  SALEDATE?: number;  // Epoch ms or YYYYMMDD integer
+  centroid_x?: number;    // longitude (WGS84)
+  centroid_y?: number;    // latitude  (WGS84)
+  // Sale stubs — confirmed absent from all DeKalb ArcGIS layers (2025-05-29)
+  SALEDATE?: number;
   SALEPRICE?: number;
   SALEAMT?: number;
-  LSALEAMT?: number;  // Last sale amount
-  LSALEDT?: number;   // Last sale date (epoch ms)
+  LSALEAMT?: number;
+  LSALEDT?: number;
 }
 
 export interface DeKalbPermit {

@@ -1,12 +1,26 @@
 /**
  * DeKalb County Data Ingestion Service
- * 
- * Endpoints:
- * - Parcels: https://dcgis.dekalbcountyga.gov/mapping/rest/services/TaxParcels/MapServer/0
- * - Permits: https://dcgis.dekalbcountyga.gov/building/rest/services/Building_Permit_Applications/FeatureServer/0
- * 
- * Note: IASWorld endpoints exist but return NULL values
- * Year built: Use CO date from permits as proxy (address match to parcels)
+ *
+ * Endpoints used:
+ *   Parcels (rich)  : https://dcgis.dekalbcountyga.gov/mapping/rest/services/iasWorldParcels/MapServer/0
+ *                     Has RESYRBLT, BLDGAREA, RESFLRAREA, FLOORCOUNT, USECD/USEDSCRP, NGHBRHDCD.
+ *   Parcels (basic) : https://dcgis.dekalbcountyga.gov/mapping/rest/services/TaxParcels/MapServer/0
+ *                     Fallback; fewer fields.
+ *   CO Permits      : https://dcgis.dekalbcountyga.gov/building/rest/services/Building_Permit_Applications/FeatureServer/0
+ *                     Returns 404 as of 2025 — skip with graceful warning.
+ *
+ * SALES DATA STATUS — NO PUBLIC ENDPOINT FOUND
+ *   DeKalb County's public ArcGIS server (dcgis.dekalbcountyga.gov) does not expose any
+ *   property sale/transfer data in any layer. Neither TaxParcels, iasWorldParcels, nor
+ *   Tax_Parcels_Assessment_View contain SALEDATE/SALEPRICE fields (confirmed 2025-05-29).
+ *   saveSales() is a no-op stub; it will never write to georgia_property_sales until a
+ *   replacement endpoint is discovered. promoteGeorgiaSales will produce 0 comps for
+ *   DeKalb until that gap is filled.
+ *
+ *   Possible future sources to investigate:
+ *     - DeKalb County ArcGIS Online org (search hub.arcgis.com for "DeKalb County GA sales")
+ *     - Georgia PT-61 transfer tax deed records (state-level open data)
+ *     - Tyler Technologies iNovah or MUNIS portal (if county publishes externally)
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -24,7 +38,9 @@ import {
   DEFAULT_INGESTION_CONFIG
 } from './types';
 
-const DEKALB_PARCELS_URL = 'https://dcgis.dekalbcountyga.gov/mapping/rest/services/TaxParcels/MapServer';
+// iasWorldParcels is the richest parcel layer — has RESYRBLT, BLDGAREA, FLOORCOUNT,
+// USECD/USEDSCRP. TaxParcels is a lighter fallback. No sale data in either.
+const DEKALB_PARCELS_URL = 'https://dcgis.dekalbcountyga.gov/mapping/rest/services/iasWorldParcels/MapServer';
 const DEKALB_PERMITS_URL = 'https://dcgis.dekalbcountyga.gov/building/rest/services/Building_Permit_Applications/FeatureServer';
 
 const LAYER_IDS = {
@@ -129,8 +145,17 @@ export class DeKalbIngestionService {
     
     const parcels = await this.parcelsClient.queryAll<DeKalbParcel>(LAYER_IDS.PARCELS, {
       where: '1=1',
-      outFields: ['PARCELID', 'CLASSCD', 'SITEADDRESS', 'OWNERNME1',
-                  'CNTASSDVAL', 'TOTAPR1', 'ZONING'],
+      outFields: [
+        'PARCELID', 'LOWPARCELID',
+        'CLASSCD', 'CLASSDSCRP',
+        'SITEADDRESS', 'CITY',
+        'OWNERNME1', 'OWNERNME2',
+        'CNTASSDVAL', 'LNDVALUE', 'TOTAPR1',
+        'ZONING',
+        // iasWorldParcels enrichment fields
+        'RESYRBLT', 'BLDGAREA', 'RESFLRAREA', 'FLOORCOUNT',
+        'USECD', 'USEDSCRP', 'NGHBRHDCD',
+      ],
       returnCentroid: true,
       outSR: 4326,
       batchSize: cfg.batchSize,
@@ -288,36 +313,55 @@ export class DeKalbIngestionService {
     parcel: DeKalbParcel,
     permitData?: { yearBuilt: number; sqft?: number }
   ): EnrichedProperty {
-    // Detect multifamily from class code
-    const isMultifamily = 
-      (parcel.CLASSCD || '').startsWith('R4') || // R4 = apartments
-      (parcel.CLASSCD || '').startsWith('C4') ||
-      (parcel.CLASSCD || '').toLowerCase().includes('apt') ||
-      (parcel.CLASSCD || '').toLowerCase().includes('multi');
-    
+    // Detect multifamily from class code or use description
+    const classLower = (parcel.CLASSCD || '').toLowerCase();
+    const useDesc = (parcel.USEDSCRP || '').toLowerCase();
+    const isMultifamily =
+      classLower.startsWith('r4') ||       // R4x = apartments in DeKalb
+      classLower.startsWith('c4') ||
+      classLower.includes('apt') ||
+      classLower.includes('multi') ||
+      useDesc.includes('apartment') ||
+      useDesc.includes('multifamily') ||
+      useDesc.includes('multi-family');
+
+    // Prefer iasWorldParcels RESYRBLT; fall back to permit CO date
+    const yearBuilt = parcel.RESYRBLT
+      ? Number(parcel.RESYRBLT)
+      : permitData?.yearBuilt;
+
+    // Prefer residential floor area; fall back to total building area or permit sqft
+    const sqft = parcel.RESFLRAREA
+      ? Number(parcel.RESFLRAREA)
+      : parcel.BLDGAREA
+        ? Number(parcel.BLDGAREA)
+        : permitData?.sqft;
+
     return {
       parcelId: parcel.PARCELID,
       address: parcel.SITEADDRESS || '',
+      city: parcel.CITY || '',
       county: 'DeKalb',
       state: 'GA',
-      
+
       ownerName: parcel.OWNERNME1 || '',
-      
-      yearBuilt: permitData?.yearBuilt,
-      sqft: permitData?.sqft,
-      
+
+      yearBuilt,
+      sqft,
+      stories: parcel.FLOORCOUNT ? Number(parcel.FLOORCOUNT) : undefined,
+
       assessedValue: parcel.CNTASSDVAL,
       totalValue: parcel.TOTAPR1,
-      
-      propertyClass: parcel.CLASSCD,
-      zoning: parcel.ZONING,
+
+      propertyClass: parcel.USECD || parcel.CLASSCD || null,
+      zoning: parcel.ZONING || null,
       isMultifamily,
-      
+
       latitude: parcel.centroid_y ?? undefined,
       longitude: parcel.centroid_x ?? undefined,
 
       provider: 'dekalb_ga',
-      fetchedAt: new Date()
+      fetchedAt: new Date(),
     };
   }
   

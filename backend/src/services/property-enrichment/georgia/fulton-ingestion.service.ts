@@ -29,11 +29,20 @@ import {
 } from './types';
 
 // Fulton uses the county's internal ArcGIS pub server for parcels.
-// NOTE: The former ArcGIS Online org (jXZcOJp6qFkhsZyH) is no longer accessible (400 Invalid URL).
-// The working parcel endpoint is on gismaps.fultoncountyga.gov/arcgispub.
-// That server does NOT expose property sales data — sales endpoints remain unavailable
-// until Fulton County publishes a replacement. Until then, ingestSales / fetchSalesAll
-// will log a warning and return 0 records (no comps will be promoted for Fulton).
+//
+// SALES DATA STATUS — ENDPOINT DEAD
+//   The ArcGIS Online org (jXZcOJp6qFkhsZyH) that hosted Tyler_YearlySales is no longer
+//   accessible (HTTP 400 Invalid URL — confirmed 2025-05-29). All folders on the live
+//   gismaps.fultoncountyga.gov/arcgispub server were checked; none contain sale data:
+//     OpenData  → Tax_Parcels (LivUnits, LUCode, ClassCode — no sale fields)
+//     Tax       → Tyler_Tool  (County_Poly, TSC_PB_TASKLIST_EVW — not sale data)
+//   fetchSalesAll() returns an empty map; ingestSales / saveSales are no-ops.
+//   promoteGeorgiaSales produces 0 comps for Fulton until a replacement is found.
+//
+//   Future sources to investigate:
+//     - Fulton County open data portal: https://fultondata.fultoncountyga.gov
+//     - Georgia PT-61 transfer tax deed records (state-level open data)
+//     - Alternate Tyler Technologies endpoint under a different ArcGIS Online org
 const FULTON_TAX_PARCELS_URL = 'https://gismaps.fultoncountyga.gov/arcgispub/rest/services/OpenData/Tax_Parcels/MapServer';
 const FULTON_YEARLY_SALES_URL = 'https://services1.arcgis.com/jXZcOJp6qFkhsZyH/arcgis/rest/services/Tyler_YearlySales/FeatureServer';
 const FULTON_STRUCTURES_URL = 'https://services1.arcgis.com/jXZcOJp6qFkhsZyH/arcgis/rest/services/Structures/FeatureServer';

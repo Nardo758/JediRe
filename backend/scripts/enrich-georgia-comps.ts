@@ -464,7 +464,7 @@ async function main() {
     FROM property_sales ps
     JOIN properties p ON ps.property_id = p.id
     WHERE ps.source = 'county_recorded'
-      AND p.state   = 'GA'
+      AND p.state_code = 'GA'
     GROUP BY p.county
     ORDER BY p.county
   `);
