@@ -1,0 +1,74 @@
+Reality check accepted. Quality of work is genuinely excellent — 
+the divergences you surfaced are exactly the kind of thing that 
+would have caused mid-Phase-1 scope expansion if we'd locked 
+decisions against the unverified spec.
+
+Decisions 1, 2, 5 — confirmed as written. Reality check sharpens 
+them rather than changing them.
+
+Decision 3 (four tables) — confirmed, with one open question for 
+your judgment: property_records vs property_info_cache disposition.
+property_info_cache appears to be the richer foundation (290K 
+rows, 64 cols, already linked to georgia_property_sales). 
+property_records (249K rows, 42 cols) likely overlaps significantly 
+in purpose. 
+
+Three options:
+(a) Merge property_records into property_info_cache, then map 
+    property_info_cache as the identity-extension layer feeding 
+    the new properties table
+(b) Keep property_records as the identity foundation, deprecate 
+    property_info_cache, lose the ArcGIS richness
+(c) Run state verification on the actual overlap between the two 
+    tables and decide based on column coverage / data quality
+
+I'd recommend (c) — verify the overlap before deciding. The 
+decision doesn't block Phase 1 schema build; it can be made 
+during Phase 1.
+
+Decision 4 (Sales vs Deals) — confirmed architecturally; migration 
+path needs adjustment. The target is unchanged: deals.property_id 
+as canonical FK, many-to-one cardinality. Phase 1 adds deals.property_id 
+column; Phase 2 dual-write writes to both deal_properties join 
+and the new column; Phase 3 reader migration switches readers 
+to the FK; Phase 4 deprecates deal_properties join after readers 
+migrate.
+
+Decision 6 (Five-phase) — confirmed structurally. Phase 1 scope 
+expands per your reality check item 9. The five additional items 
+you flagged are all real Phase 1 work:
+  1. property_sales stub rename
+  2. property_records disposition (per Decision 3 (c) above)
+  3. property_info_cache ↔ properties join establishment
+  4. deal_properties vs deals.property_id reconciliation
+  5. discovered_properties mapping
+
+Adjusted Phase 1 duration: 3-4 weeks (was 2-3). Total refactor 
+duration: 16-25 weeks (slight increase from 15-24).
+
+On in-flight work:
+Hold on #1477 and #1479 confirmed. Bishop end-to-end run continues 
+(read-only, doesn't lock fragmentation).
+
+On the broader corpus:
+The reality check you ran on this spec exposed factual claims 
+about current state that hadn't been verified. The other documents 
+(vision, strategy-awareness, calc-vs-assumption, AI-compute audit) 
+make similar claims that may also need verification before being 
+treated as factually accurate. Their architectural commitments 
+are sound; their current-state assertions deserve the same 
+discipline you just applied here.
+
+When you have capacity, worth running a reality-check pass on 
+each of those documents — same approach as you did here. Flag 
+divergences; surface where architectural commitments stand vs 
+where factual claims need correction.
+
+Phase 1 start:
+Produce a one-page Phase 1 scope refinement document incorporating 
+the reality check findings + the open Decision 3 question. Once 
+that lands, Phase 1 begins.
+
+Acknowledged that the spec was wrong in specific factual places. 
+The discipline (state verify before commit) is what caught it. 
+That's the system working as designed.
