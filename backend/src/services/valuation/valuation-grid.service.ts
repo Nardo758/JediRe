@@ -667,13 +667,16 @@ export class ValuationGridService {
     const valuationCompsFlag = VALUATION_COMPS_FLAG();
     if (!asOf && subject.latitude && subject.longitude && shouldUseNewPath(valuationCompsFlag)) {
       try {
+        // Market distribution uses a wider radius than deal-specific comp selection
+        // (at least 10 miles so suburban comps reach intown subjects) and omits
+        // unit-count filters since property_sales properties often lack unit data —
+        // the distribution is a market reference, not a targeted comp selection.
+        const marketRadiusMiles = Math.max(criteria.radiusMiles, 10);
         const distribution = await propertySalesService.getMarketCapRateDistribution({
           lat: subject.latitude,
           lng: subject.longitude,
-          radiusMiles: criteria.radiusMiles,
+          radiusMiles: marketRadiusMiles,
           monthsBack: criteria.maxAgeMonths ?? MAX_COMP_AGE_MONTHS_DEFAULT,
-          minUnits: criteria.minUnits > 0 ? criteria.minUnits : undefined,
-          maxUnits: criteria.maxUnits < 9999 ? criteria.maxUnits : undefined,
         });
 
         // Shadow mode: log what the new path would produce, then fall through to old path.

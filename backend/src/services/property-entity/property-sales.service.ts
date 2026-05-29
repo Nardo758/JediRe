@@ -512,6 +512,132 @@ export class PropertySalesService {
   }
 
   /**
+   * Second synthesis pass: back-fill implied_cap_rate from linked market_sale_comps records.
+   *
+   * For broker_comp rows in property_sales whose source_id follows the `msc::<uuid>` pattern,
+   * copies market_sale_comps.cap_rate (stored as a percentage, e.g. 5.73) into
+   * property_sales.implied_cap_rate as a decimal (0.0573).
+   *
+   * Sanity range: 1% – 25% (same as NOI-based synthesis).
+   * Safe to re-run: only touches rows where implied_cap_rate IS NULL.
+   */
+  async synthesizeFromSourceCapRates(opts: {
+    dryRun?: boolean;
+  } = {}): Promise<{ updated: number; skipped: number }> {
+    const { dryRun = false } = opts;
+
+    if (dryRun) {
+      const countResult = await query(
+        `SELECT COUNT(*) AS cnt
+         FROM property_sales ps
+         JOIN market_sale_comps msc ON ps.source_id = 'msc::' || msc.id::text
+         WHERE ps.source = 'broker_comp'
+           AND ps.implied_cap_rate IS NULL
+           AND msc.cap_rate IS NOT NULL
+           AND msc.cap_rate > 0
+           AND (msc.cap_rate / 100.0) BETWEEN 0.01 AND 0.25`,
+        []
+      );
+      const cnt = parseInt(countResult.rows[0]?.cnt ?? '0', 10);
+      logger.info('[PropertySalesService.synthesizeFromSourceCapRates] dry-run', { wouldUpdate: cnt });
+      return { updated: cnt, skipped: 0 };
+    }
+
+    const skippedResult = await query(
+      `SELECT COUNT(*) AS cnt
+       FROM property_sales ps
+       JOIN market_sale_comps msc ON ps.source_id = 'msc::' || msc.id::text
+       WHERE ps.source = 'broker_comp'
+         AND ps.implied_cap_rate IS NULL
+         AND msc.cap_rate IS NOT NULL
+         AND msc.cap_rate > 0
+         AND (msc.cap_rate / 100.0) NOT BETWEEN 0.01 AND 0.25`,
+      []
+    );
+    const skipped = parseInt(skippedResult.rows[0]?.cnt ?? '0', 10);
+
+    const updateResult = await query(
+      `UPDATE property_sales ps
+       SET implied_cap_rate = ROUND((msc.cap_rate / 100.0)::numeric, 4),
+           qualified = COALESCE(msc.qualified, TRUE),
+           updated_at = NOW()
+       FROM market_sale_comps msc
+       WHERE ps.source_id = 'msc::' || msc.id::text
+         AND ps.source = 'broker_comp'
+         AND ps.implied_cap_rate IS NULL
+         AND msc.cap_rate IS NOT NULL
+         AND msc.cap_rate > 0
+         AND (msc.cap_rate / 100.0) BETWEEN 0.01 AND 0.25`,
+      []
+    );
+    const updated = updateResult.rowCount ?? 0;
+
+    logger.info('[PropertySalesService.synthesizeFromSourceCapRates] Complete', {
+      updated, skipped, dryRun,
+    });
+
+    return { updated, skipped };
+  }
+
+  /**
+   * Back-fill coordinates on properties that were resolved from market_sale_comps
+   * but never received lat/lng (resolver creates the property row without geocoding).
+   *
+   * Joins property_sales (broker_comp, source_id='msc::<uuid>') → market_sale_comps
+   * → properties, and copies latitude/longitude to properties.lat / properties.lng
+   * where both are currently NULL.
+   *
+   * This is required for the Phase 5 spatial query in getSalesByCriteria to work —
+   * without coordinates the ST_DWithin filter excludes all rows.
+   *
+   * Safe to re-run: only updates properties where lat IS NULL.
+   */
+  async backfillPropertyCoordinatesFromComps(opts: {
+    dryRun?: boolean;
+  } = {}): Promise<{ updated: number }> {
+    const { dryRun = false } = opts;
+
+    if (dryRun) {
+      const countResult = await query(
+        `SELECT COUNT(*) AS cnt
+         FROM property_sales ps
+         JOIN market_sale_comps msc ON ps.source_id = 'msc::' || msc.id::text
+         JOIN properties p ON ps.property_id = p.id
+         WHERE ps.source = 'broker_comp'
+           AND p.lat IS NULL
+           AND msc.latitude IS NOT NULL
+           AND msc.longitude IS NOT NULL`,
+        []
+      );
+      const cnt = parseInt(countResult.rows[0]?.cnt ?? '0', 10);
+      logger.info('[PropertySalesService.backfillPropertyCoordinatesFromComps] dry-run', { wouldUpdate: cnt });
+      return { updated: cnt };
+    }
+
+    const updateResult = await query(
+      `UPDATE properties p
+       SET lat = msc.latitude,
+           lng = msc.longitude,
+           updated_at = NOW()
+       FROM property_sales ps
+       JOIN market_sale_comps msc ON ps.source_id = 'msc::' || msc.id::text
+       WHERE ps.property_id = p.id
+         AND ps.source = 'broker_comp'
+         AND p.lat IS NULL
+         AND msc.latitude IS NOT NULL
+         AND msc.longitude IS NOT NULL`,
+      []
+    );
+    const updated = updateResult.rowCount ?? 0;
+
+    logger.info('[PropertySalesService.backfillPropertyCoordinatesFromComps] Complete', {
+      updated, dryRun,
+    });
+
+    return { updated };
+  }
+
+  /**
    * Market cap rate distribution (P25/P50/P75) from property_sales implied cap rates.
    *
    * Used by Phase 5 comp-anchored cap rate synthesis in the valuation grid.
