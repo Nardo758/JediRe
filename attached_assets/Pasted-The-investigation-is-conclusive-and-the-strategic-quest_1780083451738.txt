@@ -1,0 +1,69 @@
+The investigation is conclusive and the strategic question is 
+real. Three things to do now, one decision to make in parallel.
+
+DO NOW (don't wait for strategic decision):
+
+1. Run Gwinnett re-ingest. Endpoint exists; calling it produces 
+   Gwinnett sale comp coverage. Free improvement.
+
+2. Run DeKalb re-ingest against iasWorldParcels (the layer you 
+   discovered during the investigation). Populates property 
+   characteristics for 245K DeKalb parcels. Doesn't solve the 
+   sale data gap but improves the characteristics layer 
+   substantially.
+
+3. Adjust canary deferral exit condition. Previously: "wait for 
+   DeKalb+Fulton ingest." That's no longer achievable on the 
+   current strategy. New condition: 
+   - Gwinnett re-ingest complete
+   - synthesize-implied-cap-rates.ts re-run against Cobb + 
+     Gwinnett combined
+   - Shadow backtest re-runs against expanded comp pool
+   - DeKalb/Fulton documented as known coverage gaps pending 
+     strategic decision below
+   - Operator-uploaded CoStar continues to fill gaps for any 
+     active deals in DeKalb/Fulton submarkets
+
+DECIDE IN PARALLEL (operator-side strategic question):
+
+The sale comp acquisition strategy needs to be made explicit. 
+Three coherent combinations:
+
+Combination 1: PT-61/GSCCCA primary, county ArcGIS backup, 
+   operator-upload supplement
+   - Architecturally correct if PT-61 access is feasible
+   - One integration covers all Georgia counties statewide
+   - Scales to other states (Florida DR-219, Texas state 
+     recording, etc.)
+   - Depends on: PT-61 access feasibility (worth a 1-2 day 
+     investigation before committing)
+
+Combination 2: Commercial aggregator (ATTOM/CoreLogic) primary, 
+   operator-upload supplement
+   - Best if PT-61 is inaccessible or you have data budget
+   - Resolves coverage definitively for paid subscription
+   - Cost varies; need to get actual quotes before committing
+
+Combination 3: Operator-upload primary, county ArcGIS for 
+   working counties only, state-level deferred
+   - Lowest cost / fastest to ship
+   - Treats platform as analytics-on-operator-data
+   - Permanent dependency on operators uploading CoStar for 
+     each deal
+
+Recommended next step: investigate PT-61/GSCCCA access for 1-2 
+days before picking. Specifically:
+   - Does GSCCCA expose a programmatic API for PT-61 records?
+   - If no API, what's bulk download access like (cost, terms, 
+     frequency)?
+   - What licensing/redistribution constraints apply if records 
+     ingested into the platform?
+
+Output: a one-page feasibility assessment. Based on findings, 
+operator picks Combination 1, 2, or 3, and we commit to the 
+strategy in writing.
+
+This doesn't block the immediate canary work — items 1, 2, 3 
+above proceed regardless. The strategic decision shapes the 
+next two months of ingest work and Phase 5 of the property 
+refactor.
