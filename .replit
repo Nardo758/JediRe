@@ -107,6 +107,10 @@ args = "agent-runtime-tests"
 task = "workflow.run"
 args = "Georgia DeKalb+Fulton Ingest"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Georgia Gwinnett+DeKalb Ingest"
+
 [[workflows.workflow]]
 name = "JediRe"
 author = "agent"
@@ -146,9 +150,20 @@ args = "cd backend && npm test -- --reporter=verbose src/agents/runtime/__tests_
 name = "Georgia DeKalb+Fulton Ingest"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "console"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd backend && npx ts-node --transpile-only scripts/enrich-georgia-comps.ts --county=DeKalb,Fulton 2>&1 | tee /tmp/dekalb-fulton-ingest.log"
+args = "echo 'Superseded by Georgia Gwinnett+DeKalb Ingest workflow. Run: cd backend && npx ts-node --transpile-only scripts/enrich-georgia-comps.ts --county=DeKalb,Fulton'"
+
+[[workflows.workflow]]
+name = "Georgia Gwinnett+DeKalb Ingest"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd backend && npx ts-node --transpile-only scripts/enrich-georgia-comps.ts --county=Gwinnett,DeKalb 2>&1 | tee /tmp/gwinnett-dekalb-ingest.log"
 
 [workflows.workflow.metadata]
 outputType = "console"

@@ -1,0 +1,85 @@
+Clean work on the investigation and the bug fix. The DeKalb 
+iasWorldParcels discovery is a real bonus — better property 
+characteristics coverage at no extra cost.
+
+The structural finding is what matters most: ArcGIS doesn't 
+expose DeKalb or Fulton sales, and you've verified this 
+exhaustively rather than assumed it. That converts an open 
+question into a closed one.
+
+Two things before continuing:
+
+ITEM 1 — Don't try the three suggested future sources yet
+
+PT-61, ArcGIS Hub search, and Tyler MUNIS are good candidates 
+but they're three separate engineering investments. Picking 
+one without resolving the broader strategy means committing 
+to county-by-county discovery as the structural approach.
+
+The honest broader question: what's the sale comp acquisition 
+strategy? Three options:
+
+A. Continue per-county discovery (try PT-61 for DeKalb/Fulton, 
+   keep finding sources for each new market). Engineering 
+   effort scales with market expansion. Permanent gap risk.
+
+B. State-level aggregation integration. PT-61 via GSCCCA is 
+   the candidate for Georgia — one integration covers all 
+   counties statewide. Need to verify programmatic access is 
+   feasible. Same approach would need to be repeated per 
+   state, but each state covers many counties.
+
+C. Commercial aggregator (ATTOM, Reonomy, RCA). Paid data 
+   service with broad coverage. Cost structure shifts to 
+   subscription / per-record. Resolves coverage definitively.
+
+D. Operator-upload-primary per P10 in CLAUDE.md. CoStar 
+   uploads become the canonical sale comp inventory for deal 
+   work. County data becomes enrichment. No engineering 
+   needed for missing counties; operators fill gaps when 
+   deals require it.
+
+Different choices have different cost / time / operational 
+profiles. Replit can execute against any of them; operator 
+needs to make the strategic call.
+
+ITEM 2 — In parallel, two things that don't require the 
+strategic decision
+
+a) Run Gwinnett re-ingest now. Endpoint exists; it just 
+   hasn't been called recently. This is free work that 
+   improves Atlanta comp coverage without resolving the 
+   broader question.
+
+b) Run DeKalb re-ingest against the new iasWorldParcels 
+   layer. Populates year_built, sqft, stories for 245K 
+   parcels. Improves property characteristics coverage 
+   regardless of sale data strategy.
+
+These two improvements don't depend on the Strategy A/B/C/D 
+decision and produce immediate value.
+
+For the canary deferral:
+The shadow path's 110bps divergence finding (data gap, not 
+methodology) still holds and is still the right reason to 
+defer canary. But "wait for DeKalb+Fulton ingest" is no 
+longer a feasible exit condition because that ingest is 
+blocked on the strategy decision. Two adjustments:
+
+- Canary deferral exit condition becomes: "Gwinnett re-ingest 
+  complete + Cobb data re-synthesized including Gwinnett + 
+  shadow backtest re-runs against the expanded comp pool"
+- The "missing DeKalb/Fulton" is documented as a known 
+  coverage gap pending strategy decision
+- Operators handling deals in DeKalb/Fulton submarkets 
+  currently rely on operator-uploaded CoStar data; this 
+  continues until the strategy decision is made and 
+  implemented
+
+The canary can proceed once Gwinnett is in, with explicit 
+acknowledgment that DeKalb/Fulton submarket coverage relies 
+on operator upload until further notice. The full rollout 
+decision (Item 3 / ground truth + Layer 3 verification) is 
+the moment where strategic coverage matters more.
+
+W

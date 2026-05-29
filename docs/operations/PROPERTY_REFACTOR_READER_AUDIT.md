@@ -246,6 +246,42 @@ inventory (not scoped to a deal). **Comp counts will increase** for markets with
 **Shadow comparison:** Log `{dealId, oldCompCount, newCompCount, oldP50, newP50}` per
 valuation grid request. Divergence > 20% in P50 cap rate → flag as material.
 
+**Canary deferral status (updated 2026-05-29):**
+
+Phase 5 shadow backtest (S1 Layer 1) confirmed 110bps divergence between Atlanta MF
+deals is a **geography gap** (Cobb NW suburban vs. DeKalb/south Atlanta), not a
+methodology defect. Canary promotion was deferred pending county expansion.
+
+**Prior exit condition (superseded):** "Wait for DeKalb + Fulton ingest to complete."
+
+**Updated exit condition:** Canary can proceed when:
+1. Gwinnett re-ingest complete (endpoint live; run underway as of 2026-05-29)
+2. Shadow backtest re-run against the Gwinnett-expanded comp pool — divergence
+   expected to narrow when Gwinnett MF comps (geographically closer to Atlanta deals)
+   join the Cobb pool
+3. Time-series check (`synthesize-implied-cap-rates.ts --time-series`) confirms
+   date preservation intact across the combined Gwinnett + Cobb corpus
+
+**DeKalb / Fulton coverage gap — known, tracked (2026-05-29):**
+
+Investigation confirmed no public ArcGIS sale endpoint exists for either county:
+- DeKalb: `dcgis.dekalbcountyga.gov` — all layers probed, no sale fields
+- Fulton: `gismaps.fultoncountyga.gov/arcgispub` — all folders probed, no sale data;
+  former ArcGIS Online org (`jXZcOJp6qFkhsZyH`) is dead (HTTP 400)
+
+`georgia_property_sales` has 0 rows for both counties. `promoteGeorgiaSales` produces
+0 comps. This is a **data availability gap, not a code defect.**
+
+Operator impact: Deals in DeKalb/Fulton submarkets currently rely on operator-uploaded
+CoStar comps (existing path, unaffected). This continues until the comp acquisition
+strategy decision (Option A/B/C/D) is made and implemented. Do not block canary on
+DeKalb/Fulton coverage.
+
+Future sources (not yet pursued — pending strategy decision):
+- Option B: Georgia PT-61 / GSCCCA state-level transfer tax (one integration, all GA counties)
+- Option C: Commercial aggregator (ATTOM, Reonomy, RCA)
+- Option A: Per-county discovery continues (ArcGIS Hub, Tyler MUNIS per county)
+
 ---
 
 ### R-010 — CompSet service (compSet.service.ts)
