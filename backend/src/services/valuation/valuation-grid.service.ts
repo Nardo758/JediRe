@@ -668,10 +668,11 @@ export class ValuationGridService {
     if (!asOf && subject.latitude && subject.longitude && shouldUseNewPath(valuationCompsFlag)) {
       try {
         // Market distribution uses a wider radius than deal-specific comp selection
-        // (at least 10 miles so suburban comps reach intown subjects) and omits
-        // unit-count filters since property_sales properties often lack unit data —
-        // the distribution is a market reference, not a targeted comp selection.
-        const marketRadiusMiles = Math.max(criteria.radiusMiles, 10);
+        // (at least 25 miles so metro comps reach all intown subjects — e.g. south-Atlanta
+        // deals reaching Cobb County comps at ~18 miles) and omits unit-count filters
+        // since property_sales properties often lack unit data — the distribution is a
+        // market reference, not a targeted comp selection.
+        const marketRadiusMiles = Math.max(criteria.radiusMiles, 25);
         const distribution = await propertySalesService.getMarketCapRateDistribution({
           lat: subject.latitude,
           lng: subject.longitude,
@@ -1090,10 +1091,10 @@ export class ValuationGridService {
       propertySalesService.getMarketCapRateDistribution({
         lat: subject.latitude,
         lng: subject.longitude,
-        radiusMiles: criteria.radiusMiles,
+        radiusMiles: Math.max(criteria.radiusMiles, 25),
         monthsBack: criteria.maxAgeMonths ?? MAX_COMP_AGE_MONTHS_DEFAULT,
-        minUnits: criteria.minUnits > 0 ? criteria.minUnits : undefined,
-        maxUnits: criteria.maxUnits < 9999 ? criteria.maxUnits : undefined,
+        // Unit filters intentionally omitted: property_sales properties lack units data
+        // (same treatment as the active Phase 5 path at line ~675).
       }).then(dist => {
         const legacyCapP50 = subjectNoi && legacyResult.indicatedValueP50
           ? subjectNoi / legacyResult.indicatedValueP50

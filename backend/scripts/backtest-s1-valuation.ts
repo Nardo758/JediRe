@@ -214,6 +214,10 @@ async function main(): Promise<void> {
   }
 
   // ── Shadow log verification ─────────────────────────────────────────────────
+  // Shadow writes are fire-and-forget (.then()) and may not land before
+  // this count query runs. Wait 3s to give async promises time to resolve.
+
+  await new Promise(resolve => setTimeout(resolve, 3000));
 
   try {
     const shadowResult = await pool.query(
