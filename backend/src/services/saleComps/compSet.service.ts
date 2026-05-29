@@ -436,10 +436,12 @@ export class CompSetService {
       const isMarketComp =
         !comp.source ||
         comp.source === 'georgia_county' ||
+        comp.source === 'county_recorded' ||
         comp.source.startsWith('georgia') ||
         comp.source === 'costar_upload' ||
         comp.source === 'research_agent' ||
-        comp.source === 'om_extraction';
+        comp.source === 'om_extraction' ||
+        comp.source === 'florida_municipal';
       await pool.query(`
         INSERT INTO sale_comp_set_members (
           comp_set_id, ${isMarketComp ? 'market_comp_id' : 'transaction_id'}, sort_order,

@@ -248,10 +248,10 @@ export class PropertySalesService {
         p.building_class,
         COALESCE(pc.unit_count, p.units) AS units,
         ROUND(
-          ST_Distance(
+          (ST_Distance(
             ST_SetSRID(ST_MakePoint(p.lng, p.lat), 4326)::geography,
             ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
-          ) / 1609.34, 3
+          ) / 1609.34)::numeric, 3
         ) AS distance_miles
       FROM property_sales ps
       JOIN properties p ON ps.property_id = p.id

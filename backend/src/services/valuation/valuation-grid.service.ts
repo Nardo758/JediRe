@@ -25,7 +25,8 @@ import { compSetService } from '../saleComps/compSet.service';
 import { getReplacementCostServiceV2, type ReplacementCostInput } from '../inflation/replacement-cost-v2.service';
 import { SubjectPopulationService, type SubjectCompletenessResult } from '../subject-population.service';
 import { propertySalesService } from '../property-entity/property-sales.service';
-import { shouldUseNewPath, VALUATION_COMPS_FLAG } from '../property-entity/phase3-flags';
+import { shouldUseNewPath, shouldRunShadow, VALUATION_COMPS_FLAG } from '../property-entity/phase3-flags';
+import { phase3ShadowService } from '../property-entity/phase3-shadow.service';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -207,7 +208,10 @@ const MAX_COMP_AGE_MONTHS_DEFAULT = 36;
 // Wide retrieval horizon for comp-set generation — deliberately broader than the operator's
 // maxAgeMonths staleness threshold so that aged comps are RETAINED in the set and
 // downweighted by stalenessWeight() rather than hard-excluded at the SQL level.
-const COMP_RETRIEVAL_HORIZON_MONTHS = 60;
+// 120 months (10 years) accommodates markets with thin transaction volume (e.g. Jacksonville)
+// where the nearest comps may be 5–8 years old. Staleness weighting (weight=0.5 for stale)
+// applies the quality penalty without hard-excluding otherwise-valid data points.
+const COMP_RETRIEVAL_HORIZON_MONTHS = 120;
 
 function stalenessLabel(ageMonths: number, maxAgeMonths: number): 'fresh' | 'aging' | 'seasoned' | 'stale' {
   if (ageMonths <= 12) return 'fresh';
@@ -625,7 +629,12 @@ export class ValuationGridService {
     // When the feature flag is active, try property_sales.implied_cap_rate (pre-synthesized
     // from property_operating_data) as the primary source for the cap rate distribution.
     // Falls through to the existing CompSetService path if insufficient data.
-    if (!asOf && subject.latitude && subject.longitude && shouldUseNewPath(VALUATION_COMPS_FLAG())) {
+    //
+    // Shadow mode: when VALUATION_COMPS_FLAG=shadow, run the new path in parallel with the
+    // old path. The new path result is logged to property_reader_shadow_log but does NOT serve.
+    // This lets us validate data coverage before promoting to canary/true.
+    const phase5Flag = VALUATION_COMPS_FLAG();
+    if (!asOf && subject.latitude && subject.longitude && (shouldUseNewPath(phase5Flag) || shouldRunShadow(phase5Flag))) {
       try {
         const distribution = await propertySalesService.getMarketCapRateDistribution({
           lat: subject.latitude,
@@ -636,7 +645,25 @@ export class ValuationGridService {
           maxUnits: criteria.maxUnits < 9999 ? criteria.maxUnits : undefined,
         });
 
-        if (distribution && distribution.n >= 3) {
+        // Shadow mode: log what the new path would produce, then fall through to old path.
+        if (shouldRunShadow(phase5Flag) && !shouldUseNewPath(phase5Flag)) {
+          await phase3ShadowService.logBatch('valuation_comps', dealId, {
+            'comp_anchored_cap_rate.new_path_active': {
+              old: null,
+              new: distribution && distribution.n >= 3 ? 'active' : 'insufficient',
+            },
+            'comp_anchored_cap_rate.new_path_n': {
+              old: null,
+              new: distribution?.n ?? 0,
+            },
+            'comp_anchored_cap_rate.new_path_p50': {
+              old: null,
+              new: distribution?.p50 ?? null,
+            },
+          });
+          // Fall through to old path — shadow does not serve
+        } else if (distribution && distribution.n >= 3) {
+          // Serving mode (flag=true or canary): return the new path result
           const noi = subject.noi!;
           const valP25 = noi / distribution.p75;
           const valP50 = noi / distribution.p50;
@@ -710,7 +737,7 @@ export class ValuationGridService {
       if (!asOf) {
         compSet = await compSetService.getCompSetByDeal(dealId);
       }
-      if (!compSet || compSet.comp_count === 0) {
+      if (!compSet || compSet.comp_count === 0 || !compSet.comps || compSet.comps.length === 0) {
         compSet = await compSetService.generateCompSet({
           deal_id: dealId,
           radius_miles: criteria.radiusMiles,
@@ -1148,7 +1175,7 @@ export class ValuationGridService {
       if (!asOf) {
         compSet = await compSetService.getCompSetByDeal(dealId);
       }
-      if (!compSet || compSet.comp_count === 0) {
+      if (!compSet || compSet.comp_count === 0 || !compSet.comps || compSet.comps.length === 0) {
         compSet = await compSetService.generateCompSet({
           deal_id: dealId,
           radius_miles: criteria.radiusMiles,
