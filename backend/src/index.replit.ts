@@ -408,6 +408,7 @@ import { macroSignalsMonthly } from './inngest/functions/macro-signals-monthly';
 import { syncPlanningApplicationsCron } from './inngest/functions/sync-planning-applications';
 import { syncAccelaPlanningCron } from './inngest/functions/sync-accela-planning';
 import { syncMiamiDadePlanningCron } from './inngest/functions/sync-miami-dade-planning';
+import { georgiaCompEnrichmentWeekly } from './inngest/functions/georgia-comp-enrichment-weekly';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -457,6 +458,8 @@ app.use(
       syncAccelaPlanningCron,
       // Task #1077: nightly Miami-Dade BCC planning application ingest (03:30 UTC)
       syncMiamiDadePlanningCron,
+      // Task #1478: weekly Georgia comp promote + enrich — every Monday 02:00 UTC (no ArcGIS ingest)
+      georgiaCompEnrichmentWeekly,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,
