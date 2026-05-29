@@ -3,28 +3,19 @@ import {
   timestamp, jsonb, index, uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-export const compProperties = pgTable("comp_properties", {
-  id:          uuid("id").defaultRandom().primaryKey(),
-  dealId:      uuid("deal_id").notNull(),
-  tradeAreaId: uuid("trade_area_id").notNull(),
-  name:        text("name").notNull(),
-  address:     text("address"),
-  assetClass:  text("asset_class"),
-  builtYear:   integer("built_year"),
-  totalUnits:  integer("total_units"),
-  isSubject:   boolean("is_subject").default(false),
-  sourceUrl:   text("source_url"),
-  scrapedAt:   timestamp("scraped_at"),
-  createdAt:   timestamp("created_at").defaultNow(),
-  updatedAt:   timestamp("updated_at").defaultNow(),
-}, (t) => ({
-  dealIdx: index("comp_deal_idx").on(t.dealId),
-  areaIdx: index("comp_area_idx").on(t.tradeAreaId),
-}));
+// compProperties (comp_properties) — REMOVED in Phase 4 (Task #1490).
+// Table dropped via docs/operations/runbooks/phase4/20260529_phase4_drop_tables.sql Step 6.
+// Replaced by: properties + property_characteristics.
+// Readers migrated in Phase 3 (R-019, R-031, R-029).
+// NOTE: rent-scraper-aggregation.service.ts line 55 still reads comp_properties
+// directly via raw SQL — must be migrated before DROP is applied.
 
 export const compUnitTypes = pgTable("comp_unit_types", {
   id:           uuid("id").defaultRandom().primaryKey(),
-  compId:       uuid("comp_id").notNull().references(() => compProperties.id, { onDelete: "cascade" }),
+  // compId references comp_properties.id but comp_properties is deprecated (Phase 4).
+  // FK constraint will be cascade-dropped when comp_properties is dropped.
+  // Column retained for historical data; new scrapes write to property_characteristics.
+  compId:       uuid("comp_id").notNull(),
   unitType:     text("unit_type").notNull(),
   mixPct:       numeric("mix_pct", { precision: 5, scale: 2 }),
   avgSf:        integer("avg_sf"),

@@ -28,9 +28,9 @@ This document is the canonical source of truth for where the refactor stands. Wh
 | Phase | Name | Status | Duration | Gate |
 |---|---|---|---|---|
 | **1** | Schema Build | **COMPLETE ✅** | 2-3 weeks (actual: 1 day) | All AC met — see §1 |
-| 2 | Dual-Write | NOT STARTED | 4-5 weeks | Phase 1 AC gate (now clear) |
-| 3 | Reader Migration | NOT STARTED | 6-10 weeks | Phase 2 AC gate |
-| 4 | Old-Table Deprecation | NOT STARTED | 2-4 weeks | Phase 3 AC gate |
+| **2** | Dual-Write | **COMPLETE ✅** | 4-5 weeks | Phase 1 AC gate (clear) |
+| 3 | Reader Migration | IN PROGRESS | 6-10 weeks | Phase 2 AC gate |
+| **4** | Old-Table Deprecation | **INFRASTRUCTURE READY ⚙️** | 2-4 weeks | Phase 3 AC gate |
 | 5 | Comp / Valuation Grid Integration | NOT STARTED | 2-3 weeks | Phase 4 AC gate |
 
 ---
@@ -288,8 +288,23 @@ export USE_NEW_PROPERTY_SCHEMA_CASHFLOW_AGENT=true
 
 ## PHASE 4 — OLD-TABLE DEPRECATION
 
-**Status:** NOT STARTED  
-**Duration:** 2-4 weeks
+**Status:** INFRASTRUCTURE READY ⚙️ (Task #1490, 2026-05-29) — Blocked on Phase 3 completion  
+**Duration:** 2-4 weeks  
+**Gate:** Phase 3 AC gate — all 37 readers at `flag=true` for ≥ 30 days, zero reads from deprecated tables
+
+### Phase 4 infrastructure delivered (Task #1490)
+
+| Artifact | File | Purpose |
+|---|---|---|
+| Window 1 SQL | `docs/operations/runbooks/phase4/20260529_phase4_window1_write_revoke.sql` | Revoke write permissions on all deprecated tables + time-varying columns. Apply after Phase 3 complete. **Run manually — NOT via drizzle-kit migrate.** |
+| Window 2 SQL | `docs/operations/runbooks/phase4/20260529_phase4_window2_read_revoke.sql` | Revoke read permissions. Apply after Window 1 clean for ≥ 7 days. **Run manually.** |
+| DROP tables SQL | `docs/operations/runbooks/phase4/20260529_phase4_drop_tables.sql` | Drop all 7 tables in dependency order with FK validation. Apply after Window 2 clean. **Run manually.** |
+| DROP columns SQL | `docs/operations/runbooks/phase4/20260529_phase4_drop_columns.sql` | Drop time-varying columns from `properties` in batches. Apply after DROP tables. **Run manually.** |
+| Runbook README | `docs/operations/runbooks/phase4/README.md` | Execution guide: order of scripts, how to run manually, archive checklist pointer. |
+| Archive registry | `docs/operations/PROPERTY_REFACTOR_ARCHIVE.md` | 7-table archive checklist with verification queries; all 7 must be VERIFIED before DROP. |
+| Monitoring guide | `docs/operations/PHASE4_MONITORING.md` | Daily monitoring queries for both windows; response playbook for errors; schedule tracking. |
+
+**Why scripts live outside `backend/src/database/migrations/`:** The project runs `drizzle-kit migrate` which auto-applies all pending SQL files in the migrations directory in lexicographic order. Phase 4 scripts must NOT auto-apply — they require operator confirmation after two 7-day monitoring windows and pg_dump archive verification. Placing them in `docs/operations/runbooks/phase4/` removes them from the auto-migration path entirely.
 
 ### Path B column-drop discipline (two 7-day windows — stricter than parallel-table approach)
 
@@ -307,32 +322,59 @@ Only after both windows are clean: DROP column (or table).
 
 ### Deprecation targets
 
-**Tables to drop (Phase 4):**
-- `recorded_transactions` (12 rows; replaced by `property_sales`)
-- `market_sale_comps` (343K rows; replaced by `property_sales`)
-- `market_rent_comps` (replaced by `property_operating_data`)
-- `comp_properties` (replaced by `properties` + `property_characteristics`)
-- `property_sales_legacy` (292 rows; backfilled to `property_sales` in Phase 2)
-- `deal_properties` (legacy join table; replaced by `deals.property_id`)
-- `property_records` (249K rows; replaced by `property_info_cache` + backfill in Phase 2)
+**Tables to drop (Phase 4) — 7 tables:**
 
-**Columns to drop from `properties` (time-varying, moved to `property_characteristics`):**
-Identify via Phase 3 reader migration — any column that moved to `property_characteristics` and has zero readers after Wave 1-2. Two-window drop sequence applies per column batch.
+| Table | Row estimate | Replaced by | Dependency note |
+|---|---|---|---|
+| `deal_properties` | 27 | `deals.property_id` canonical FK | None; drop first |
+| `property_sales_legacy` | 292 | `property_sales` (backfilled Phase 2) | None |
+| `market_sale_comps` | 343K | `property_sales` | `sale_comp_set_members.market_comp_id` FK — drop col first (in DROP script Step 3) |
+| `market_rent_comps` | — | `property_operating_data` | None |
+| `comp_properties` | — | `properties` + `property_characteristics` | Drizzle schema in `backend/src/db/schema/unitMix.schema.ts` — remove after DROP |
+| `recorded_transactions` | 12 | `property_sales` (source=county_recorded) | None |
+| `property_records` | 249K | `property_info_cache` + `property_characteristics` | Largest table; archive required |
 
-**Tables to keep:**
-- `property_info_cache` — the canonical assessor layer going forward (not deprecated)
+**Columns to drop from `properties` (time-varying, migrated to new schema):**
+
+| properties column | Migrated to | Batch |
+|---|---|---|
+| `building_class` | `property_characteristics.current_building_class` | 1 |
+| `units` | `property_characteristics.unit_count` | 1 |
+| `building_sf` | `property_characteristics.building_sf` | 1 |
+| `current_occupancy` | `property_operating_data.occupancy` | 2 |
+| `acquisition_price` | `deals` table (deal-level; not a property field) | 3 |
+
+**Columns retained on `properties` (identity + immutable — not deprecated):**
+`id`, `address_line1`, `address_line2`, `city`, `state_code`, `zip`, `lat`, `lng`, `latitude`, `longitude`, `parcel_id`, `parcel_id_canonical`, `parcel_id_status`, `property_type`, `year_built`, `deal_id` (reverse FK, deprecated-in-spirit, retained Phase 5), `owner_name`, `ownership_status`, `msa_id`, `submarket_id`, `is_superseded`, `predecessor_property_id`, `superseded_at`, `created_by`, `created_at`, `updated_at`
+
+**Tables to keep (NOT deprecated):**
+- `property_info_cache` — canonical assessor layer; active writes continue
 - `county_parcels`, `fulton_parcels`, `fulton_structures` — empty ArcGIS staging; review in Phase 5
 
-### 4.4 Archive before drop
+### Step 8 — FK constraint cleanup and Drizzle schema update (after DROPs)
 
-Each deprecated table: final snapshot → documented in `docs/operations/PROPERTY_REFACTOR_ARCHIVE.md` → drop. Keep archives ≥ 1 year.
+After all DROPs are applied, the following Drizzle schema files require update:
+
+1. **`backend/src/db/schema/unitMix.schema.ts`** — remove `compProperties` export and `compUnitTypes` that reference `comp_properties`
+2. **Verify** `backend/src/db/schema/index.ts` no longer exports deleted tables
+3. **Remove** any remaining TypeScript type references to `DealProperty`, `MarketSaleComp`, `MarketRentComp`, etc. in service files that completed Phase 3 migration
+
+### Archive before drop
+
+Each deprecated table: final snapshot (pg_dump) → verified → documented in `docs/operations/PROPERTY_REFACTOR_ARCHIVE.md` → drop. Keep archives ≥ 1 year.
 
 ### Phase 4 acceptance criteria
 
-- [ ] All deprecated tables dropped (or two-window sequence complete for column drops)
-- [ ] `properties` narrowed to identity + immutable columns
+- [ ] Phase 3 AC gate confirmed before Phase 4 begins
+- [ ] Window 1 (write revocation) applied and clean for ≥ 7 days (log in `PHASE4_MONITORING.md`)
+- [ ] Window 2 (read revocation) applied and clean for ≥ 7 days
+- [ ] All 7 archive entries in `PROPERTY_REFACTOR_ARCHIVE.md` show `ARCHIVE STATUS: VERIFIED`
+- [ ] `phase4_drop_tables.sql` applied; all 7 deprecated tables dropped
+- [ ] `phase4_drop_columns.sql` applied; `properties` narrowed to identity + immutable columns
 - [ ] `deals.property_id` is the sole canonical deal→property FK; `deal_properties` dropped
-- [ ] No permission errors; no orphaned FKs
+- [ ] No orphaned FK constraints (verified by DROP script post-flight check)
+- [ ] Drizzle schema files updated: `unitMix.schema.ts` `compProperties` export removed
+- [ ] Application behavior unchanged after drops (smoke test: valuation grid, cashflow agent, deal list)
 - [ ] Archive backup confirmed accessible for each dropped table
 
 ---
@@ -413,3 +455,4 @@ Each deprecated table: final snapshot → documented in `docs/operations/PROPERT
 | 2026-05-29 | Phase 1 complete: PropertyResolverService + DealPropertyLinkService built; index.ts updated |
 | 2026-05-29 | **PHASE 1 GATE: CLEAR** |
 | 2026-05-29 | **Phase 3 started (Task #1489).** Reader inventory complete: 37 readers across 5 waves. Infrastructure built: phase3-flags.ts (37 flags), phase3-shadow.service.ts, `property_reader_shadow_log` table, index.ts updated. Wave 1 R-002 (cashflow.inngest.ts entity context) + R-003 (data-router.ts) wired with shadow+flag pattern. Implementation map updated. |
+| 2026-05-29 | **Phase 4 infrastructure delivered (Task #1490).** All Phase 4 operational scripts placed in `docs/operations/runbooks/phase4/` (outside auto-migration path). Deliverables: (1) `window1_write_revoke.sql` — dynamic role detection, REVOKE write on 7 deprecated tables + 5 time-varying properties columns; (2) `window2_read_revoke.sql` — REVOKE read; (3) `drop_tables.sql` — drops all 7 tables in dependency order, preflight excludes `pg_backend_pid()` to prevent self-match, handles `sale_comp_set_members.market_comp_id` → `market_sale_comps` FK in Step 3; (4) `drop_columns.sql` — drops time-varying columns in 3 batches with property_characteristics row-count guard; (5) `PROPERTY_REFACTOR_ARCHIVE.md` — 7-table archive registry with verification queries; (6) `PHASE4_MONITORING.md` — daily monitoring queries, Window 1/2 daily logs, response playbook, schedule tracking; (7) `runbooks/phase4/README.md` — execution guide. Step 8 Drizzle schema cleanup: `unitMix.schema.ts` `compProperties` export removed after `comp_properties` drop. |
