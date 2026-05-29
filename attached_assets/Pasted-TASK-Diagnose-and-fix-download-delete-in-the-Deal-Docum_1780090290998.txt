@@ -1,0 +1,175 @@
+TASK: Diagnose and fix download + delete in the Deal Documents library and the
+newly-added Market Documents section (submarket-scoped). Audit-first, single PR.
+
+BRANCH
+git checkout -b claude/document-library-download-delete-fix
+
+SCOPE RULES
+- Submarket scope, not MSA. Route paths use /submarkets/:submarketId/documents.
+- Don't expand scope. If you find broken parser pipelines, missing migrations, or
+  unrelated mock data, file them as findings in the audit doc with proposed task
+  IDs. Ship download+delete narrow.
+- Bloomberg dark theme constraints apply to all UI: T tokens from bloomberg-tokens.ts,
+  9px minimum font, no Tailwind color classes, no shadows, max 2px border radius,
+  JetBrains Mono primary. No exceptions.
+- Reuse the existing service layer. Don't fork services to add a parallel surface.
+
+═══════════════════════════════════════════════════════════════════════════
+PHASE 1 — AUDIT (READ-ONLY, NO EDITS)
+═══════════════════════════════════════════════════════════════════════════
+
+Produce /tmp/document-library-audit.md with file:line citations for each item.
+Do not edit any source file in Phase 1. Stop after writing the audit and post
+its contents in the chat.
+
+1A. FRONTEND — DEAL DOCUMENTS SURFACE
+   - View frontend/src/components/deal/sections/FilesSection.tsx and every
+     FilesSection.*.tsx variant.
+   - For each row in the file list, report: does the JSX render a download button?
+     A delete button? Cite the lines. If buttons exist, what handler is called?
+   - grep -rn "filesMockData" frontend/src/  — is the mock still imported?
+   - View frontend/src/services/api.client.ts. List every method under
+     api.deals.files.* (or equivalent). Specifically: does api.deals.files.download
+     and api.deals.files.delete exist? Cite lines.
+
+1B. FRONTEND — MARKET DOCUMENTS SURFACE
+   - grep -rln "Market Documents\|MarketDocuments\|marketDocuments\|SubmarketDocuments"
+     frontend/src/  — identify the component(s) just added.
+   - View each. Report: does the row UI render download and delete buttons? What
+     handlers are wired?
+   - Where does the component read its submarket context from? Active deal's
+     submarket? Route param? Dropdown? Cite lines.
+   - Is FilesSection.tsx being reused, copy-pasted, or re-implemented fresh? Note
+     the relationship — this drives the Phase 2 refactor.
+
+1C. BACKEND — DEAL FILES ROUTES
+   - View backend/src/api/rest/documentsFiles.routes.ts (or whichever route file
+     backs /api/v1/deals/:id/files). List every endpoint with verb + path.
+   - Specifically check for:
+       GET  /:fileId/download  (or signed-URL endpoint)
+       DELETE /:fileId
+     If absent, note absent.
+   - View the corresponding service file. Does it expose getSignedDownloadUrl()
+     and deleteFile() (or equivalents)? Cite lines.
+
+1D. BACKEND — MARKET DOCUMENTS ROUTES
+   - grep -rln "market.*document\|marketDocument\|submarket.*document\|submarketDocument"
+     backend/src/
+   - If a route file exists, list its endpoints. If not, note absent — Phase 2 will
+     create backend/src/api/rest/submarketDocuments.routes.ts.
+
+1E. STORAGE LAYER
+   - Where do files actually live? grep -rn "putObject\|getSignedUrl\|s3Client\|
+     S3Client\|fs\.writeFile" backend/src/services/ and report the answer (S3,
+     local disk, or DB BYTEA).
+   - View the Drizzle schema for data_library_files (or whatever table backs
+     documents). Report columns. Specifically: is there storage_path, s3_key, or
+     equivalent? Is there submarket_id? deal_id? deleted_at?
+
+1F. PRIOR ATTEMPTS — "STILL DOESN'T" CHECK
+   - git log --oneline --all | grep -iE "download|delete|document.library|files" | head -20
+   - For the top 5 hits, git show --stat <sha> and summarize what was changed.
+     This identifies what already shipped and what's actually still missing —
+     prevents re-implementing code that's already there but broken.
+
+1G. MIGRATION HEAD
+   - ls jedire/backend/migrations/ | sort | tail -5
+   - Report the highest migration number. Phase 2 may need to add one.
+
+OUTPUT FORMAT for the audit doc:
+   ## 1A Deal Documents Frontend
+   - FilesSection.tsx:L42 — row renders <FileName> but no action buttons
+   - filesMockData still imported at line 8 ✗
+   - api.client.ts — no download() method, no delete() method
+   ## 1B Market Documents Frontend
+   ...etc
+
+STOP HERE. Post the audit. Wait for human approval before Phase 2.
+
+═══════════════════════════════════════════════════════════════════════════
+PHASE 2 — IMPLEMENTATION (AFTER HUMAN APPROVAL)
+═══════════════════════════════════════════════════════════════════════════
+
+Based on the audit, implement the minimum needed. Likely shape:
+
+BACKEND
+- If GET /:fileId/download missing: add it. Returns { url: string } with a
+  5-minute signed URL (S3) or streams bytes (local). Auth-checked: caller must
+  own the parent deal OR be on the workspace for the parent submarket.
+- If DELETE /:fileId missing: add it. Soft-delete (set deleted_at + deleted_by_user_id).
+  Storage cleanup queued separately, not in this PR.
+- If submarketDocuments.routes.ts missing: create it. Path prefix
+  /api/v1/submarkets/:submarketId/documents. Endpoints: list, upload, download,
+  delete. Reuse the same service layer as deal documents — pass scope discriminator
+  ({ scope: 'deal', dealId } | { scope: 'submarket', submarketId }) into the service.
+- If schema needs submarket_id: write the next migration in
+  jedire/backend/migrations/. Nullable column (existing rows have no submarket).
+  Index it.
+
+FRONTEND
+- Add typed methods to api.client.ts:
+    api.deals.files.download(fileId): Promise<{url: string}>
+    api.deals.files.delete(fileId): Promise<void>
+    api.submarkets.documents.list(submarketId)
+    api.submarkets.documents.upload(submarketId, file)
+    api.submarkets.documents.download(fileId)
+    api.submarkets.documents.delete(fileId)
+- Extract shared <DocumentList> component at
+  frontend/src/components/shared/DocumentList.tsx. Props:
+    { files, onDownload(fileId), onDelete(fileId), scope: 'deal'|'submarket', isLoading }
+  Both FilesSection.tsx and the Market Documents component consume it.
+  Identical row UI — no two copies of the row markup.
+- Row buttons (Bloomberg dark, JetBrains Mono, T tokens):
+    Download icon button — T.text.cyan, hover T.text.cyanBright
+    Delete icon button — T.text.red, hover T.text.redBright
+  9px font minimum. No shadows. 2px max radius. Icons inline-aligned right.
+- Download handler: call API → receive { url } → window.open(url, '_blank').
+  Don't fetch bytes through the SPA.
+- Delete handler:
+    1. Confirm dialog: "Delete {filename}? This cannot be undone."
+       Use existing confirm pattern in the codebase; don't introduce a new one.
+    2. Optimistic remove from local state
+    3. Call API
+    4. On success: refetch list to confirm canonical state
+    5. On failure: restore the row + show error toast
+- Per-row loading state during delete. Don't block the whole list.
+- For the Market Documents surface: small label under the upload zone reading
+  "Visible to all deals in {submarket_name}" — operators need to know this isn't
+  a deal-private file.
+
+TESTS
+- Vitest per handler:
+    - download success → window.open called with returned URL
+    - delete success → row removed
+    - delete failure → row restored, toast shown
+    - delete 403 → row restored, "permission denied" toast
+- Backend integration test per new endpoint (in-memory DB):
+    - download returns { url } for authorized caller
+    - download returns 403 for unauthorized
+    - delete soft-deletes (deleted_at populated, row not returned by list)
+    - delete 403 for unauthorized
+
+═══════════════════════════════════════════════════════════════════════════
+PHASE 3 — ACCEPTANCE
+═══════════════════════════════════════════════════════════════════════════
+
+Verify all six pass before opening the PR:
+
+1. On a fresh deal, upload a file → it appears with download + delete buttons.
+2. Click download → browser receives the file (S3) or downloads bytes (local).
+3. Click delete → confirm dialog → file disappears → still gone after page refresh.
+4. Open a Market Documents section on a submarket → upload, download, delete all work.
+5. Submarket label "Visible to all deals in {submarket_name}" is rendered.
+6. grep -rn "filesMockData" frontend/src/  returns nothing.
+
+═══════════════════════════════════════════════════════════════════════════
+PR
+═══════════════════════════════════════════════════════════════════════════
+
+Title: Document Library: download + delete on deal + submarket surfaces
+
+Description must include:
+- Link to /tmp/document-library-audit.md contents (paste it into the PR body)
+- Files changed grouped by Backend / Frontend / Schema / Tests
+- Acceptance checklist with each of the 6 items above checked
+- Any out-of-scope findings filed as separate task IDs
