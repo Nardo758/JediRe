@@ -1,0 +1,89 @@
+Excellent investigation across all three items. The Item 1 
+finding is exactly the kind of evidence-based reframing that 
+makes the migration discipline work — "real and expected" 
+became "data gap, will collapse after ingest" with hard numbers 
+behind it. That's the right kind of pushback on my own framing.
+
+Acknowledged on Item 3: the backtest harness spec assumed 
+ground truth fields would be populated; they're not. That's 
+my spec error, not yours. The S1 gold set was correctly built 
+for method-coverage testing, and I extrapolated it into 
+accuracy testing without verifying the data. P8 discipline 
+working as designed — you caught what I missed.
+
+Two scope additions to the canary deferral plan before locking 
+the next steps:
+
+ADDITION 1 — Expand ingest scope from "DeKalb+Fulton" to 
+"primary metro Atlanta multifamily sale comp inventory"
+
+DeKalb+Fulton solves the comp gap for these two specific S1 
+subjects. But the underlying problem — geographic comp gaps 
+causing methodology-divergence-as-data-gap — will recur for 
+any Atlanta deal whose comps live in an un-ingested adjacent 
+county. To prevent discovering the same problem deal-by-deal, 
+the ingest should cover the primary metro Atlanta MF counties:
+  - Core 5: Fulton, DeKalb, Cobb, Gwinnett, Clayton
+  - Inner ring: Cherokee, Forsyth, Henry, Douglas, Fayette, 
+    Paulding, Rockdale
+
+Cobb is already ingested. The remaining 11 counties should 
+ingest as one wave. Multifamily transaction volume concentrates 
+in the inner counties; rural-Atlanta-MSA counties don't need 
+priority.
+
+This makes the canary deferral wait longer (more counties to 
+ingest), but it produces a foundation that doesn't reveal the 
+same 100bps divergence pattern for every Atlanta deal we touch 
+in the next quarter.
+
+ADDITION 2 — Date preservation through to time-series capability
+
+Every sale comp ingested must preserve its sale_date through 
+to the new schema's property_sales.sale_date field. Verify 
+this for the existing Cobb County ingest and lock it as a 
+requirement for the expanded metro ingest:
+
+  1. Source rows have dates preserved when transformed into 
+     property_sales rows
+  2. synthesize-implied-cap-rates.ts produces per-period 
+     aggregates (cap rate by quarter, PPU by year), not just 
+     point-in-time medians
+  3. The valuation comp reader supports as-of-date filtering 
+     so a 2018 deal can be valued against 2018-and-prior 
+     comps (the as-of-date discipline from the backtest 
+     harness spec)
+
+The architectural value: with full metro Atlanta + dates 
+preserved + time-series synthesis, the platform has 
+comp-anchored time-series for the metro. That unlocks:
+  - Cap rate trajectory (compression vs expansion signals 
+    for F4 Markets, Exit Timing tab)
+  - Transaction velocity over time (M20 Exit Strategy timing)
+  - As-of-date valuations (proper backtesting against ground 
+    truth, when ground truth becomes available per Item 3)
+  - Freshness indicators with real per-comp dates (per F-key 
+    triage Wave A)
+
+Without dates preserved, ingesting more counties produces 
+more point-in-time inventory but doesn't unlock the time-series 
+capabilities the platform's analytical surfaces depend on.
+
+REVISED PLAN
+1. Begin primary metro Atlanta MF sale comp ingest (11 
+   remaining counties)
+2. Confirm date preservation in the existing Cobb ingest 
+   pipeline before scaling
+3. Update synthesize-implied-cap-rates.ts to produce 
+   time-series output if it doesn't already
+4. Once ingest + synthesis are complete with dates, re-run 
+   shadow backtest
+5. Re-characterize divergence
+6. Canary decision based on post-ingest divergence
+7. Operator decision on Item 3 (S1 ground truth path) in 
+   parallel; gates full rollout
+
+Locking Item 2 (canary scope clarification) regardless:
+Worth adding the Phase 5 canary vs R-033 distinction to 
+docs/operations/PROPERTY_REFACTOR_READER_AUDIT.md so future 
+reviewers see what was and wasn't validated at each gate.

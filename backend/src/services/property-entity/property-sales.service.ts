@@ -155,6 +155,7 @@ export class PropertySalesService {
     lng: number;
     radiusMiles: number;
     monthsBack?: number;
+    asOf?: Date;
     minUnits?: number;
     maxUnits?: number;
     minYearBuilt?: number;
@@ -183,8 +184,18 @@ export class PropertySalesService {
     const params: unknown[] = [lat, lng, radiusMiles * 1609.34, monthsBack];
     let idx = 5;
 
+    // As-of date: window = [asOf - monthsBack, asOf]; without asOf = [NOW() - monthsBack, NOW()]
+    let dateCondition: string;
+    if (opts.asOf) {
+      params.push(opts.asOf.toISOString().split('T')[0]);  // $5
+      dateCondition = `ps.sale_date BETWEEN ($${idx}::date - ($4 || ' months')::interval) AND $${idx}::date`;
+      idx++;
+    } else {
+      dateCondition = `ps.sale_date >= NOW() - ($4 || ' months')::interval`;
+    }
+
     const conditions: string[] = [
-      `ps.sale_date >= NOW() - ($4 || ' months')::interval`,
+      dateCondition,
       `ST_DWithin(
          ST_SetSRID(ST_MakePoint(p.lng, p.lat), 4326)::geography,
          ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
@@ -648,6 +659,7 @@ export class PropertySalesService {
     lng: number;
     radiusMiles: number;
     monthsBack: number;
+    asOf?: Date;
     strategy?: InvestmentStrategy;
     minUnits?: number;
     maxUnits?: number;
@@ -663,6 +675,7 @@ export class PropertySalesService {
       lng: opts.lng,
       radiusMiles: opts.radiusMiles,
       monthsBack: opts.monthsBack,
+      asOf: opts.asOf,
       strategy: opts.strategy,
       minUnits: opts.minUnits,
       maxUnits: opts.maxUnits,
@@ -689,6 +702,57 @@ export class PropertySalesService {
         source: c.source ?? '',
       })),
     };
+  }
+
+  /**
+   * Cap rate time-series: P50 by calendar quarter within a geographic radius.
+   *
+   * Returns quarterly P50 cap rates from property_sales, ordered newest-first.
+   * Primary uses:
+   *   - F4 Markets: cap rate trajectory (compression vs expansion signal)
+   *   - As-of-date backtest validation: confirm date preservation and trend visibility
+   *   - M20 Exit Strategy: transaction velocity by period
+   *
+   * Requires implied_cap_rate populated by synthesize-implied-cap-rates.ts.
+   */
+  async getCapRateTimeSeries(opts: {
+    lat: number;
+    lng: number;
+    radiusMiles: number;
+    quartersBack?: number;
+  }): Promise<Array<{ quarter: string; p50CapRate: number | null; n: number }>> {
+    const radiusMeters = opts.radiusMiles * 1609.34;
+    const monthsBack = (opts.quartersBack ?? 12) * 3;
+
+    const result = await query(
+      `SELECT
+         TO_CHAR(DATE_TRUNC('quarter', ps.sale_date), 'YYYY-"Q"Q') AS quarter,
+         ROUND(
+           PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ps.implied_cap_rate)::numeric * 100,
+           2
+         ) AS p50_cap_pct,
+         COUNT(*)::integer AS n
+       FROM property_sales ps
+       JOIN properties p ON ps.property_id = p.id
+       WHERE ps.qualified = TRUE
+         AND ps.implied_cap_rate > 0.01
+         AND ps.implied_cap_rate < 0.25
+         AND ps.sale_date >= NOW() - ($3 || ' months')::interval
+         AND ST_DWithin(
+               ST_SetSRID(ST_MakePoint(p.lng, p.lat), 4326)::geography,
+               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
+               $4
+             )
+       GROUP BY DATE_TRUNC('quarter', ps.sale_date)
+       ORDER BY DATE_TRUNC('quarter', ps.sale_date) DESC`,
+      [opts.lat, opts.lng, monthsBack, radiusMeters]
+    );
+
+    return result.rows.map((r: any) => ({
+      quarter: r.quarter as string,
+      p50CapRate: r.p50_cap_pct != null ? parseFloat(r.p50_cap_pct) / 100 : null,
+      n: r.n as number,
+    }));
   }
 }
 

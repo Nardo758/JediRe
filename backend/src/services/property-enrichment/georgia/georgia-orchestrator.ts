@@ -1,29 +1,32 @@
 /**
  * Georgia Metro Ingestion Orchestrator
- * Coordinates data ingestion across all Atlanta metro counties
+ * Coordinates data ingestion across all Atlanta metro counties.
+ *
+ * Core 5 (ArcGIS ingestion implemented):
+ *   cobb, gwinnett, dekalb, fulton, clayton
+ *
+ * Inner ring (ingest pending — promote/enrich steps still run on any existing rows):
+ *   cherokee, forsyth, henry, douglas, fayette, paulding, rockdale
  */
 
 import { getCobbIngestionService } from './cobb-ingestion.service';
 import { getGwinnettIngestionService } from './gwinnett-ingestion.service';
 import { getDeKalbIngestionService } from './dekalb-ingestion.service';
 import { getFultonIngestionService } from './fulton-ingestion.service';
+import { getClaytonIngestionService } from './clayton-ingestion.service';
 import { IngestionJob, IngestionConfig, DEFAULT_INGESTION_CONFIG } from './types';
 
 export interface OrchestratorResult {
   startedAt: Date;
   completedAt: Date;
-  counties: {
-    cobb?: IngestionJob;
-    gwinnett?: IngestionJob;
-    dekalb?: IngestionJob;
-    fulton?: IngestionJob;
-  };
+  counties: Record<string, IngestionJob | undefined>;
   summary: {
     totalRecords: number;
     totalInserted: number;
     totalErrors: number;
     successfulCounties: string[];
     failedCounties: string[];
+    skippedCounties: string[];
   };
 }
 
@@ -32,19 +35,24 @@ export class GeorgiaIngestionOrchestrator {
   private gwinnettService = getGwinnettIngestionService();
   private dekalbService = getDeKalbIngestionService();
   private fultonService = getFultonIngestionService();
-  
+  private claytonService = getClaytonIngestionService();
+
   /**
-   * Run full ingestion for all counties
+   * Run full ingestion for all (or a subset of) counties.
+   *
+   * Counties with no implemented ArcGIS service are skipped with a log message.
+   * The promote/enrich pipeline downstream operates on whatever rows exist in
+   * georgia_property_sales, so skipped counties don't block later steps.
    */
   async ingestAll(
     config: Partial<IngestionConfig> = {},
     options: {
-      counties?: ('cobb' | 'gwinnett' | 'dekalb' | 'fulton')[];
+      counties?: string[];
       parallel?: boolean;
     } = {}
   ): Promise<OrchestratorResult> {
     const startedAt = new Date();
-    const counties = options.counties || ['cobb', 'gwinnett', 'dekalb', 'fulton'];
+    const counties = options.counties || ['cobb', 'gwinnett', 'dekalb', 'fulton', 'clayton'];
     const parallel = options.parallel ?? false;
     
     const result: OrchestratorResult = {
@@ -56,44 +64,61 @@ export class GeorgiaIngestionOrchestrator {
         totalInserted: 0,
         totalErrors: 0,
         successfulCounties: [],
-        failedCounties: []
+        failedCounties: [],
+        skippedCounties: [],
       }
     };
-    
-    console.log(`[Georgia] Starting ingestion for counties: ${counties.join(', ')}`);
+
+    // Partition requested counties into supported vs not-yet-implemented
+    const SUPPORTED = new Set(['cobb', 'gwinnett', 'dekalb', 'fulton', 'clayton']);
+    const activeCounties = counties.filter(c => SUPPORTED.has(c));
+    const pendingCounties = counties.filter(c => !SUPPORTED.has(c));
+
+    if (pendingCounties.length > 0) {
+      console.log(`[Georgia] Skipping (no ingestion service): ${pendingCounties.join(', ')}`);
+      result.summary.skippedCounties.push(...pendingCounties);
+    }
+
+    console.log(`[Georgia] Starting ingestion for counties: ${activeCounties.join(', ')}`);
     console.log(`[Georgia] Mode: ${parallel ? 'parallel' : 'sequential'}`);
-    
+
     if (parallel) {
       // Run all counties in parallel
       const promises: Promise<void>[] = [];
       
-      if (counties.includes('cobb')) {
+      if (activeCounties.includes('cobb')) {
         promises.push(this.runCobb(config, result));
       }
-      if (counties.includes('gwinnett')) {
+      if (activeCounties.includes('gwinnett')) {
         promises.push(this.runGwinnett(config, result));
       }
-      if (counties.includes('dekalb')) {
+      if (activeCounties.includes('dekalb')) {
         promises.push(this.runDeKalb(config, result));
       }
-      if (counties.includes('fulton')) {
+      if (activeCounties.includes('fulton')) {
         promises.push(this.runFulton(config, result));
+      }
+      if (activeCounties.includes('clayton')) {
+        promises.push(this.runClayton(config, result));
       }
       
       await Promise.all(promises);
     } else {
       // Run sequentially (recommended to avoid rate limits)
-      if (counties.includes('cobb')) {
+      if (activeCounties.includes('cobb')) {
         await this.runCobb(config, result);
       }
-      if (counties.includes('gwinnett')) {
+      if (activeCounties.includes('gwinnett')) {
         await this.runGwinnett(config, result);
       }
-      if (counties.includes('dekalb')) {
+      if (activeCounties.includes('dekalb')) {
         await this.runDeKalb(config, result);
       }
-      if (counties.includes('fulton')) {
+      if (activeCounties.includes('fulton')) {
         await this.runFulton(config, result);
+      }
+      if (activeCounties.includes('clayton')) {
+        await this.runClayton(config, result);
       }
     }
     
@@ -217,6 +242,28 @@ export class GeorgiaIngestionOrchestrator {
       result.counties.fulton = {
         id: 'fulton-failed',
         county: 'Fulton',
+        state: 'GA',
+        jobType: 'full',
+        status: 'failed',
+        totalRecords: 0,
+        processedRecords: 0,
+        insertedRecords: 0,
+        updatedRecords: 0,
+        errorCount: 1,
+        errors: [String(error)]
+      };
+    }
+  }
+
+  private async runClayton(config: Partial<IngestionConfig>, result: OrchestratorResult): Promise<void> {
+    try {
+      console.log('[Georgia] Starting Clayton County...');
+      result.counties.clayton = await this.claytonService.ingestAll(config);
+    } catch (error) {
+      console.error('[Georgia] Clayton County failed:', error);
+      result.counties.clayton = {
+        id: 'clayton-failed',
+        county: 'Clayton',
         state: 'GA',
         jobType: 'full',
         status: 'failed',

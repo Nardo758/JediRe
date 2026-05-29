@@ -1,6 +1,8 @@
 /**
  * Georgia Metro Data Ingestion
- * Cobb, Gwinnett, DeKalb, Fulton County property data pipelines
+ * Cobb, Gwinnett, DeKalb, Fulton, Clayton County property data pipelines.
+ * Inner-ring counties (Cherokee, Forsyth, Henry, Douglas, Fayette, Paulding, Rockdale)
+ * are wired into the promote/enrich pipeline but lack ArcGIS ingestion services.
  */
 
 // Types
@@ -32,6 +34,12 @@ export {
   FultonIngestionService, 
   getFultonIngestionService 
 } from './fulton-ingestion.service';
+
+// Clayton County
+export {
+  ClaytonIngestionService,
+  getClaytonIngestionService,
+} from './clayton-ingestion.service';
 
 // Orchestrator for running all counties
 export { 

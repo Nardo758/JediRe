@@ -19,7 +19,7 @@
  *   cd backend && npx ts-node --transpile-only scripts/enrich-georgia-comps.ts --min-units=4
  *
  * Flags:
- *   --county=<csv>         Comma-separated county names to process (default: all four)
+ *   --county=<csv>         Comma-separated county names to process (default: all active)
  *   --dry-run              Print what would be done; no writes
  *   --min-units=N          Minimum units to keep as a qualified comp (default: 4)
  *   --skip-ingest          Skip the ArcGIS county ingestion phase
@@ -39,10 +39,20 @@ import { CompSetService } from '../src/services/saleComps/compSet.service';
 // Canonical county name spellings used in georgia_property_sales / property_info_cache.
 // Must match exactly — DeKalb is mixed-case, not "Dekalb".
 const COUNTY_DB_NAME: Record<string, string> = {
+  // Core 5 — ArcGIS ingestion services implemented
   cobb:     'Cobb',
   gwinnett: 'Gwinnett',
   dekalb:   'DeKalb',
   fulton:   'Fulton',
+  clayton:  'Clayton',
+  // Inner ring — ingestion services pending; promote/enrich steps run on any existing rows
+  cherokee: 'Cherokee',   // endpoint confirmed; sales layer TBD
+  forsyth:  'Forsyth',    // endpoint not yet researched
+  henry:    'Henry',      // unreachable from cloud IPs (firewall blocks VPS ranges)
+  douglas:  'Douglas',    // endpoint not yet researched
+  fayette:  'Fayette',    // endpoint not yet researched
+  paulding: 'Paulding',   // endpoint not yet researched
+  rockdale: 'Rockdale',   // endpoint not yet researched
 };
 
 // ── CLI args ──────────────────────────────────────────────────────────────────
@@ -69,12 +79,27 @@ const MULTIFAMILY_ONLY = !hasFlag('no-multifamily-filter');
 const MIN_UNITS = parseInt(getArg('min-units') ?? '4', 10);
 
 const COUNTY_ARG = getArg('county');
-const VALID_COUNTIES = ['cobb', 'gwinnett', 'dekalb', 'fulton'] as const;
+
+// Core 5 have ArcGIS ingestion services. Inner-ring counties are wired into the
+// promote/enrich/validate pipeline; their ArcGIS ingest step is skipped until a
+// confirmed-reachable sales endpoint is implemented (see COUNTY_DB_NAME comments).
+const VALID_COUNTIES = [
+  // Core 5
+  'cobb', 'gwinnett', 'dekalb', 'fulton', 'clayton',
+  // Inner ring (ingest pending)
+  'cherokee', 'forsyth', 'henry', 'douglas', 'fayette', 'paulding', 'rockdale',
+] as const;
 type County = typeof VALID_COUNTIES[number];
+
+// Counties that have fully implemented ArcGIS ingestion services.
+// Ingest step is silently skipped for counties not in this set.
+const INGEST_CAPABLE_COUNTIES: ReadonlySet<string> = new Set([
+  'cobb', 'gwinnett', 'dekalb', 'fulton', 'clayton',
+]);
 
 const targetCounties: County[] = COUNTY_ARG
   ? (COUNTY_ARG.split(',').map(c => c.trim().toLowerCase()) as County[]).filter(c =>
-      VALID_COUNTIES.includes(c)
+      (VALID_COUNTIES as ReadonlyArray<string>).includes(c)
     )
   : [...VALID_COUNTIES];
 
@@ -132,9 +157,18 @@ async function main() {
     if (!DRY_RUN) {
       const orchestrator = new GeorgiaIngestionOrchestrator();
 
+      // Only pass counties that have an implemented ArcGIS ingestion service.
+      // Inner-ring counties (cherokee, forsyth, henry, etc.) are skipped here;
+      // the orchestrator will also log + skip them gracefully.
+      const ingestCounties = targetCounties.filter(c => INGEST_CAPABLE_COUNTIES.has(c));
+      if (ingestCounties.length < targetCounties.length) {
+        const skipped = targetCounties.filter(c => !INGEST_CAPABLE_COUNTIES.has(c));
+        console.log(`  Skipping ingest for counties without ArcGIS service: ${skipped.join(', ')}`);
+      }
+
       const orchResult = await orchestrator.ingestAll(
         { filterMultifamilyOnly: MULTIFAMILY_ONLY, batchSize: 1000 },
-        { counties: targetCounties }
+        { counties: ingestCounties }
       );
 
       for (const [county, job] of Object.entries(orchResult.counties)) {

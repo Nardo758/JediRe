@@ -22,10 +22,18 @@
  *   market_sale_comps record so that the Phase 5 spatial query (ST_DWithin) finds
  *   the comps and new_path_n > 0 in the shadow log.
  *
+ * Pass 4 — Time-series report (--time-series):
+ *   Prints quarterly P50 cap rates for the Atlanta metro core to validate date
+ *   preservation. Uses propertySalesService.getCapRateTimeSeries at two reference
+ *   points — Atlanta urban core (33.7490, -84.3880) and South Atlanta / DeKalb
+ *   border (33.6877, -84.3516) — with a 25-mile radius and 20-quarter lookback.
+ *   No DB writes; dry-run flag is ignored for this pass.
+ *
  * Usage:
  *   npx ts-node --transpile-only scripts/synthesize-implied-cap-rates.ts
  *   npx ts-node --transpile-only scripts/synthesize-implied-cap-rates.ts --dry-run
  *   npx ts-node --transpile-only scripts/synthesize-implied-cap-rates.ts --limit=1000
+ *   npx ts-node --transpile-only scripts/synthesize-implied-cap-rates.ts --time-series
  */
 
 import '../src/database/connection';
@@ -34,6 +42,7 @@ import { propertySalesService } from '../src/services/property-entity/property-s
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
+  const timeSeries = args.includes('--time-series');
   const limitArg = args.find(a => a.startsWith('--limit='));
   const limit = limitArg ? parseInt(limitArg.split('=')[1], 10) : 5000;
 
@@ -64,6 +73,33 @@ async function main() {
   console.log(`  Total rows with implied_cap_rate written: ${totalUpdated}`);
   console.log(`  Properties with coordinates back-filled:  ${coordResult.updated}`);
   console.log(`  dry-run (no DB writes):                   ${dryRun}`);
+
+  if (timeSeries) {
+    console.log('\n── Pass 4 (time-series): Cap rate by quarter — date preservation check ──');
+    const REFERENCE_POINTS = [
+      { label: 'Atlanta Urban Core', lat: 33.7490, lng: -84.3880 },
+      { label: 'South Atlanta / DeKalb border', lat: 33.6877, lng: -84.3516 },
+    ];
+    for (const pt of REFERENCE_POINTS) {
+      console.log(`\n  Reference: ${pt.label} (${pt.lat}, ${pt.lng}) — 25mi radius, last 20 quarters`);
+      const series = await propertySalesService.getCapRateTimeSeries({
+        lat: pt.lat,
+        lng: pt.lng,
+        radiusMiles: 25,
+        quartersBack: 20,
+      });
+      if (series.length === 0) {
+        console.log('    (no data — run synthesize passes first to populate implied_cap_rate)');
+      } else {
+        console.log('    Quarter    P50 cap   N comps');
+        console.log('    ─────────  ────────  ───────');
+        for (const row of series) {
+          const pct = row.p50CapRate != null ? (row.p50CapRate * 100).toFixed(2) + '%' : '  —   ';
+          console.log(`    ${row.quarter.padEnd(9)}  ${pct.padStart(7)}  ${String(row.n).padStart(7)}`);
+        }
+      }
+    }
+  }
 
   process.exit(0);
 }

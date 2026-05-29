@@ -652,6 +652,19 @@ output which depends on `PropertySalesService.getSalesByCriteria()`.
 
 **New path:** `PropertySalesService.getSalesByCriteria()` with strategy filters
 
+**Canary gate clarification (2026-05-29):**
+
+The Phase 5 `valuation_comps` reader (R-032 / `USE_NEW_PROPERTY_SCHEMA_VALUATION_COMPS`) and R-033 are **separate gates** that must not be conflated:
+
+| Gate | What it tests | Comp selection | Expected comp count |
+|---|---|---|---|
+| Phase 5 canary (`=canary`) | Data pipeline correctness: does `property_sales.implied_cap_rate` exist and spatial query return a number? | Broad market distribution — 25-mile radius, no class/strategy filter | ~200–500 |
+| R-033 canary | Strategy-aware quality: do the right 5–8 comps drive the cap rate? | Filtered by strategy matrix (stabilized/core_plus/value_add/opportunistic/development) via `getSalesByCriteria` | 5–8 |
+
+Promoting `USE_NEW_PROPERTY_SCHEMA_VALUATION_COMPS` to canary validates that the Phase 5 **data pipeline** works end-to-end. It does **not** validate that the algorithm narrows to the correct comp cohort — that is R-033's gate.
+
+Reviewers encountering the Phase 5 canary cap rates (broad distribution P50) should expect them to differ from the final R-033 output (narrow strategy-aware P50). The divergence between Phase 5 canary and legacy path reflects both data geography and selection methodology differences. Do not treat Phase 5 canary divergence as a signal that the final methodology is better or worse than legacy until R-033 narrows the selection appropriately.
+
 ---
 
 ### R-034 — Strategy projection service
