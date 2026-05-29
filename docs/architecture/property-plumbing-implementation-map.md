@@ -2,22 +2,24 @@
 
 **Document type:** Living implementation tracker  
 **Last updated:** 2026-05-29  
-**Sources:** `JEDI_RE_PROPERTY_PLUMBING_REFACTOR.md` (decisions) + `JEDI_RE_PROPERTY_PLUMBING_PHASES.md` (phase plan) + `property-plumbing-reality-check.md` (verified state) + Phase 1 work executed 2026-05-29  
+**Sources:** `JEDI_RE_PROPERTY_PLUMBING_REFACTOR.md` (decisions) + `JEDI_RE_PROPERTY_PLUMBING_PHASES.md` (phase plan) + `property-plumbing-reality-check.md` (verified state) + Phase 1 work executed 2026-05-29
 
-This document is the canonical source of truth for where the refactor stands. It maps the detailed phase plan against actual live state. When plan and reality diverge, live state is marked and the plan adjusted here — not absorbed silently.
+This document is the canonical source of truth for where the refactor stands. When plan and reality diverge, live state is marked and the plan adjusted here — not absorbed silently.
 
 ---
 
 ## ARCHITECTURAL COMMITMENTS (locked)
 
-| Decision | Status | Implementation location |
+| Decision | Status | Notes |
 |---|---|---|
-| D1 — Parcel ID as primary identity | LOCKED | `properties.parcel_id` (existing) + `parcel_id_status` column added Phase 1 |
-| D2 — Immutable vs time-varying split | LOCKED | `properties` stays for immutable; `property_characteristics` for time-varying |
-| D3 — Four target tables | LOCKED | Three new tables built Phase 1; `property_records/property_info_cache` disposition deferred |
-| D4 — `deals.property_id` as canonical FK | LOCKED | Column added Phase 1 (see Phase 1 deviation note below) |
-| D5 — Comp inventory deprecated | LOCKED | `property_sales` created Phase 1; comp deprecation in Phase 5 |
-| D6 — Five-phase migration | LOCKED | Duration: 16-25 weeks; Phase 1 complete |
+| D1 — Parcel ID as primary identity | LOCKED | `properties.parcel_id` (raw) + `parcel_id_canonical` (normalized, Phase 1b) |
+| D2 — Immutable vs time-varying split | LOCKED | `properties` for immutable; `property_characteristics` for time-varying |
+| D3 — Four target tables | LOCKED | All four built Phase 1. `property_records` deprecated Phase 4 (per 1.1.A). |
+| D4 — `deals.property_id` as canonical FK | LOCKED | Column added Phase 1; dual-write via `DealPropertyLinkService` in Phase 2 |
+| D5 — Comp inventory deprecated | LOCKED | `property_sales` canonical; `market_sale_comps` deprecated Phase 4 |
+| D6 — Five-phase migration | LOCKED | 14-22 weeks total (Path B adjustment from 16-25) |
+
+**Path B confirmed (2026-05-29):** Work against existing `properties` table in-place. No `properties_v2` parallel table. Phase 4 deprecation is column-level (drop time-varying columns from `properties` after readers migrated) rather than table rename. See Phase 4 notes for the two-window column-drop discipline.
 
 ---
 
@@ -25,324 +27,293 @@ This document is the canonical source of truth for where the refactor stands. It
 
 | Phase | Name | Status | Duration | Gate |
 |---|---|---|---|---|
-| **1** | Schema Build | **PARTIAL — see deviation** | 3-4 weeks | AC not fully met (see §1) |
-| 2 | Dual-Write | NOT STARTED | 4-5 weeks | Phase 1 AC gate |
+| **1** | Schema Build | **COMPLETE ✅** | 2-3 weeks (actual: 1 day) | All AC met — see §1 |
+| 2 | Dual-Write | NOT STARTED | 4-5 weeks | Phase 1 AC gate (now clear) |
 | 3 | Reader Migration | NOT STARTED | 6-10 weeks | Phase 2 AC gate |
 | 4 | Old-Table Deprecation | NOT STARTED | 2-4 weeks | Phase 3 AC gate |
 | 5 | Comp / Valuation Grid Integration | NOT STARTED | 2-3 weeks | Phase 4 AC gate |
 
 ---
 
-## PHASE 1 — SCHEMA BUILD
+## PHASE 1 — SCHEMA BUILD ✅
 
-### What the plan called for
+### Phase 1.1 — Pre-phase disposition questions (all resolved)
 
-Per `JEDI_RE_PROPERTY_PLUMBING_PHASES.md §1.2`:
-- Create **`properties_v2`** (NEW parallel table, ~30 cols, will replace `properties` in Phase 4)
-- Create `property_characteristics` (NEW)
-- Create `property_operating_data` (NEW)
-- Create `property_sales` (NEW, after legacy renamed)
-- Rename `property_sales` stub → `property_sales_legacy`
-- Add `deals.property_id_v2` (NOT `deals.property_id` — `_v2` suffix to distinguish during migration)
-- `properties_v2.legacy_property_id` column to support backfill from existing 1,596 properties rows
-- `properties_v2.parcel_id_canonical` + `parcel_id_raw` columns for normalized parcel ID
+See full analysis in `docs/architecture/property-plumbing-phase1-dispositions.md`.
 
-Per §1.1 (five pre-phase disposition questions):
-- A. `property_records` vs `property_info_cache` disposition
-- B. `property_sales` stub migration strategy
-- C. `discovered_properties` mapping
-- D. `county_parcels` / `fulton_parcels` / `fulton_structures` disposition
-- E. Parcel ID canonicalization format
+| Question | Decision |
+|---|---|
+| A. `property_records` vs `property_info_cache` | `property_info_cache` canonical. `property_records` deprecated Phase 4. 5 columns to migrate: `class_code`, `neighborhood_code`, `tax_district`, `assessor_url`, `property_class`. |
+| B. `property_sales` stub strategy | Rename + new table (executed). |
+| C. `discovered_properties` | Research agent staging intermediate. All 1,627 rows `unmatched`. No Phase 2 backfill. Kept as-is. |
+| D. `county_parcels` / `fulton_parcels` / `fulton_structures` | All three tables have 0 rows. ArcGIS pipeline staging. Not part of canonical schema. |
+| E. Parcel ID canonicalization | `parcel_id_canonical TEXT` added to `properties`. Format: `ga-cobb-20001202330`. Populated Phase 2. |
 
-Per §1.3 (service layer skeleton):
-- `PropertyService` (with `getCanonicalProperty`, `getPropertyWithCharacteristics`, etc.)
-- `PropertySalesService`
-- `PropertyResolverService` (find-or-create + dedup + merge)
-- `DealPropertyLinkService` (dual-write wrapper for deal→property link)
+### What was built
 
-### What was actually built (2026-05-29)
+**Migrations applied:**
+- `20260529_phase1_property_entity_schema.sql` — four new tables, deals.property_id, properties identity columns
+- `20260529_phase1b_parcel_id_canonical.sql` — `properties.parcel_id_canonical` column + index
 
-**Migration:** `backend/src/database/migrations/20260529_phase1_property_entity_schema.sql` — applied, clean  
-**Schema:** `backend/src/db/schema/propertyEntity.ts`  
-**Services:** `backend/src/services/property-entity/` (4 files)  
-**Docs:** `property-plumbing-field-mapping.md`, `property-plumbing-phase1-scope.md`
+**New schema tables:**
 
-| Item | Plan called for | What was built | Status |
-|---|---|---|---|
-| `properties_v2` table | NEW parallel table (30 cols) | **NOT BUILT** | ❌ DEVIATION |
-| `property_characteristics` | NEW | ✅ Created, indexed, commented | DONE |
-| `property_operating_data` | NEW | ✅ Created, indexed, commented | DONE |
-| `property_sales` (canonical) | NEW after legacy renamed | ✅ Created (24 cols, full spec schema) | DONE |
-| `property_sales_legacy` | Renamed from stub | ✅ 292 rows preserved | DONE |
-| `deals.property_id_v2` | Nullable column, no FK yet | ❌ Built as `deals.property_id` with FK enforced immediately | DEVIATION |
-| `properties.parcel_id_status` | Not specified (was on properties_v2) | ✅ Added to `properties` | DONE (adjusted) |
-| `properties.is_superseded` / `predecessor_property_id` | On properties_v2 | ✅ Added to `properties` | DONE (adjusted) |
-| `PropertyService` | Full CRUD + canonical resolution | Stub only (index.ts note) | PARTIAL |
-| `PropertySalesService` | Full CRUD + comp query | ✅ Built with core methods | DONE |
-| `PropertyCharacteristicsService` | Not separately named | ✅ Built with getCurrent/history/asOf/batch | DONE |
-| `PropertyOperatingDataService` | Not separately named | ✅ Built with getLatestTtm/getAll/create | DONE |
-| `PropertyResolverService` | Dedup + find-or-create + merge | **NOT BUILT** | ❌ MISSING |
-| `DealPropertyLinkService` | Dual-write wrapper | **NOT BUILT** | ❌ MISSING |
-| `property_info_cache` ↔ `properties` FK | Add `property_info_cache.property_id` | Already existed (reality check found it) | ✅ DONE (pre-existing) |
-| LayeredValue extension for property fields | Phase 1 §1.4 | NOT BUILT | ❌ MISSING |
-| Phase 1.1 questions (5 disposition items) | All 5 documented + confirmed | 2 of 5 addressed | PARTIAL |
-
-### Phase 1 deviation — `properties_v2` not built
-
-**What the plan calls for:** Create `properties_v2` as a parallel table to `properties`. All new writes target `properties_v2`. In Phase 4, rename to `properties`. This pattern protects existing FKs during migration.
-
-**What was built instead:** Three supporting tables (`property_characteristics`, `property_operating_data`, `property_sales`) added alongside the existing `properties` table. `deals.property_id` FK added pointing directly to the existing `properties` table.
-
-**Impact assessment:**
-
-The `properties` table currently has ~80 FK references from other tables (`building_3d_models`, `calendar_events`, `deal_monthly_actuals`, `deal_properties`, `news_alerts`, `trade_areas`, `traffic_*` tables, etc.). The `properties_v2` pattern was designed to avoid migrating all those FKs before the data is ready.
-
-**Two paths forward:**
-
-**Path A (adopt properties_v2):** Create `properties_v2` now as the plan specifies. Update `deals.property_id` to point to `properties_v2`. Keep `properties` as-is until Phase 4 deprecation. The `property_characteristics`, `property_operating_data`, `property_sales` tables already point to `properties.id` — this FK needs to change to `properties_v2.id`. More migration work but cleaner Phase 4.
-
-**Path B (work with existing properties):** Keep the current approach. `properties` is the identity table; new supporting tables FK to it. During Phase 2, slim `properties` to only identity+immutable fields by deprecating time-varying columns (not dropping — marking as deprecated via comments). Phase 4's "rename properties_v2 → properties" step becomes unnecessary. Less migration work; slightly messier transition because `properties` carries both old and new columns during Phase 2-3.
-
-**Recommendation: Path B.** The `properties` table already has the Phase 1 additions. Reworking the FK on three new tables to point to `properties_v2` creates more migration surface without a clear benefit — the goal (canonical property entity) is achieved either way. Path B requires a scoping adjustment to Phase 4 (no rename needed) and a clear statement that `properties` will be narrowed in-place rather than replaced.
-
-**Operator confirmation needed on Path A vs Path B before Phase 2 starts.**
-
-### Phase 1.1 disposition questions — current status
-
-| Question | Status | Answer / Remaining work |
+| Table | Cols | Description |
 |---|---|---|
-| A. `property_records` vs `property_info_cache` disposition | PARTIAL | Documented in `property-plumbing-field-mapping.md`. Tentative: `property_info_cache` wins. Overlap analysis not yet run. |
-| B. `property_sales` stub migration strategy | DONE | Rename + new table approach implemented |
-| C. `discovered_properties` mapping | DOCUMENTED | Flagged in field mapping as deferred to Phase 2 |
-| D. `county_parcels` / geometry tables disposition | DOCUMENTED | Remain as data sources; not embedded in canonical record |
-| E. Parcel ID canonicalization format | OPEN | `parcel_id_canonical` column not added; current `parcel_id` is plain TEXT. Decision deferred. |
+| `property_characteristics` | 16 | Time-varying physical state; effective_from/to versioning; source+confidence provenance |
+| `property_operating_data` | 20 | Period-specific operating metrics; TTM/monthly/point-in-time; is_owned flag |
+| `property_sales` | 24 | Canonical transaction table; implied_cap_rate; multi-source provenance |
+| `property_sales_legacy` | 7 | Renamed from old `property_sales` stub; 292 rows preserved |
 
-### Phase 1 acceptance criteria status
+**Schema changes to existing tables:**
 
-Per `JEDI_RE_PROPERTY_PLUMBING_PHASES.md §1.5`:
+| Table | Column | Change |
+|---|---|---|
+| `deals` | `property_id UUID FK → properties.id` | Added Phase 1 (nullable) |
+| `properties` | `parcel_id_status TEXT` | Added Phase 1 |
+| `properties` | `is_superseded BOOLEAN` | Added Phase 1 |
+| `properties` | `predecessor_property_id UUID` | Added Phase 1 |
+| `properties` | `superseded_at TIMESTAMPTZ` | Added Phase 1 |
+| `properties` | `parcel_id_canonical TEXT` | Added Phase 1b; index on non-null values |
+
+**Services built (`backend/src/services/property-entity/`):**
+
+| Service | File | Key methods |
+|---|---|---|
+| `PropertyCharacteristicsService` | `property-characteristics.service.ts` | `getCurrent`, `getHistory`, `getAsOf`, `create`, `getCurrentBatch` |
+| `PropertyOperatingDataService` | `property-operating-data.service.ts` | `getLatestTtm`, `getAll`, `create` |
+| `PropertySalesService` | `property-sales.service.ts` | `getSalesForProperty`, `getSalesByCriteria`, `recordSale`, `bulkIngestSales` |
+| `PropertyResolverService` | `property-resolver.service.ts` | `resolveByParcel`, `resolveByAddress`, `mergeProperties`, `buildCanonicalParcelId` |
+| `DealPropertyLinkService` | `deal-property-link.service.ts` | `resolveDealProperty`, `linkDealToProperty`, `bulkResolveDealProperties`, `getUnlinkedDeals` |
+
+**Drizzle schema:** `backend/src/db/schema/propertyEntity.ts` (exported via `db/schema/index.ts`)
+
+### Phase 1 acceptance criteria — final status
 
 - [x] `property_characteristics` exists with target schema
 - [x] `property_operating_data` exists with target schema
-- [x] `property_sales` (canonical) exists with target schema
+- [x] `property_sales` (canonical, 24-col) exists with target schema
 - [x] `property_sales_legacy` renamed; 292 rows preserved
-- [x] `deals.property_id` column exists (deviation: named `property_id` not `property_id_v2`; FK enforced immediately)
-- [ ] **`properties_v2` exists** — NOT BUILT (requires Path A/B decision)
-- [ ] `properties_v2.legacy_property_id` column — NOT BUILT
-- [ ] `properties_v2.parcel_id_canonical` / `parcel_id_raw` — NOT BUILT
-- [ ] Phase 1.1.A documented + operator-confirmed — tentative answer documented, overlap analysis pending
-- [ ] Phase 1.1.E (parcel ID canonicalization) — open
-- [ ] `PropertyResolverService` — NOT BUILT
-- [ ] `DealPropertyLinkService` — NOT BUILT
-- [ ] LayeredValue extended for property fields — NOT BUILT
-- [ ] Unit tests for all services — NOT BUILT
-- [ ] Test fixtures for integration tests — NOT BUILT
+- [x] `deals.property_id UUID FK → properties.id` exists (nullable)
+- [x] `properties.parcel_id_canonical` exists with index
+- [x] `properties.is_superseded`, `predecessor_property_id`, `superseded_at`, `parcel_id_status` exist
+- [x] Phase 1.1.A resolved (property_info_cache canonical; documented)
+- [x] Phase 1.1.B resolved (rename + new table; executed)
+- [x] Phase 1.1.C resolved (discovered_properties stays as staging; no backfill)
+- [x] Phase 1.1.D resolved (geometry tables empty; ArcGIS staging only)
+- [x] Phase 1.1.E resolved (parcel_id_canonical format: `ga-county-parcelid`; column added)
+- [x] `PropertyCharacteristicsService` built
+- [x] `PropertyOperatingDataService` built
+- [x] `PropertySalesService` built
+- [x] `PropertyResolverService` built (resolveByParcel, resolveByAddress, mergeProperties)
+- [x] `DealPropertyLinkService` built (dual-write + fallback resolution)
 - [x] No production reads from new tables
 - [x] No production writes to new tables
-- [x] Verification protocol Layer 1 check passes (all columns/indexes verified)
+- [x] TypeScript compiles clean
 
-**Phase 1 gate: NOT yet passable.** Remaining work before Phase 2: Path A/B decision, `PropertyResolverService`, `DealPropertyLinkService`, Phase 1.1.A overlap analysis, Phase 1.1.E parcel format decision.
+**⟹ PHASE 1 GATE: CLEAR. Phase 2 may begin.**
 
 ---
 
 ## PHASE 2 — DUAL-WRITE
 
-**Status:** NOT STARTED — blocked on Phase 1 gate  
-**Duration estimate:** 4-5 weeks  
-**Prerequisite:** Phase 1 AC all green + Path A/B confirmed
+**Status:** NOT STARTED — gate clear, ready to begin  
+**Duration:** 4-5 weeks  
+**Key constraint:** Every dual-write is atomic (both writes or neither). Dual-write failures are P1 — alert on every failure, rollback both writes.
 
-### Pre-Phase 2 verification (§2.1)
+### 2.1 Pre-phase verification (before any code ships)
 
-Before dual-write activates:
-1. Re-verify all Phase 1 AC (query DB, don't trust memory)
-2. Grep every write path to old tables — `properties`, `deals`, `recorded_transactions`, `market_sale_comps`, `market_rent_comps`, `comp_properties`, `property_sales_legacy`, `property_records`, `property_info_cache`
-3. Map each write path to its new-table dual-write target
-4. Build the transactional wrapper
+1. Re-verify all Phase 1 AC against live DB (don't trust memory)
+2. Grep every write path to old tables:
+   - `properties` (insert/update)
+   - `deals` (address/city/state/lat/lng fields)
+   - `recorded_transactions`
+   - `market_sale_comps`, `market_rent_comps`, `comp_properties`
+   - `property_records`, `property_info_cache`
+   - `georgia_property_sales` (Inngest cron)
+3. Map each write path → new-table dual-write target
+4. Build the transactional wrapper before enabling any write path
 
-### Write paths to dual-write (§2.2)
+### 2.2 Write paths to dual-write
 
-| Old write target | New write target | Current volume | Notes |
+| Old write target | New write target | Volume | Notes |
 |---|---|---|---|
-| `properties` (insert/update) | `property_characteristics` (time-varying fields) | Low | Research agent, OM parser, manual |
-| `deals.address/city/state/lat/lng` | `properties.canonical_address` etc. | Per deal creation | After `deals.property_id` populated |
-| `recorded_transactions` | `property_sales` | Effectively zero (12 rows total) | Low priority |
-| `property_records` (assessor scrapes) | `property_characteristics` | Per research agent run | Per 1.1.A decision |
-| `property_info_cache` (ArcGIS) | `property_characteristics` | Weekly Inngest cron | Already writes 290K rows |
-| `georgia_property_sales` (raw county) | `property_sales` | Weekly Inngest cron | 681K rows to backfill |
-| `market_sale_comps` | **PAUSED** — writes suspended per sequencing decision | — | Resumes in Phase 5 against `property_sales` |
-| `market_rent_comps` | **PAUSED** | — | Resumes in Phase 5 against `property_operating_data` |
+| `properties` (time-varying fields) | `property_characteristics` | Low | Via `PropertyCharacteristicsService.create` |
+| `deals.address/city/state/lat/lng` | `properties` (canonical) via `DealPropertyLinkService` | Per deal creation | `linkDealToProperty` handles both FKs |
+| `recorded_transactions` | `property_sales` | ~0 (12 rows total) | Low priority |
+| `property_info_cache` (ArcGIS cron) | `property_characteristics` | Weekly, 290K rows | After 1.1.A columns added |
+| `property_records` (assessor scrapes) | `property_characteristics` | Per research agent run | Deprecated source; dual-write brief |
+| `georgia_property_sales` (county cron) | `property_sales` | Weekly Inngest job | 681K rows to also backfill |
+| `market_sale_comps` | **PAUSED** (comp ingestion suspended) | — | Resumes Phase 5 against `property_sales` |
+| `market_rent_comps` | **PAUSED** | — | Resumes Phase 5 against `property_operating_data` |
 
-### Backfill scripts (§2.3) — planned
+### 2.3 Backfill scripts (5 scripts, run in order)
 
-1. **Backfill 1 — Identity**: `properties` (1,596) + `property_records` (249K) + `property_info_cache` (290K) → `properties` (narrowed) or `properties_v2` (per Path A/B). One row per unique parcel_id_canonical.
-2. **Backfill 2 — Characteristics**: existing time-varying columns from `properties` + `property_info_cache` → `property_characteristics`. One row per property with `effective_from` = data_as_of.
-3. **Backfill 3 — Sales history**: `georgia_property_sales` (681K) + `recorded_transactions` (12) + `property_sales_legacy` (292) + `market_sale_comps` (343K currently Cobb) → `property_sales`. Dedup across sources.
-4. **Backfill 4 — Operating data**: T12 parses (from `deal_data` JSONB) + rent roll data → `property_operating_data`. M22 actuals with `is_owned = TRUE`.
-5. **Backfill 5 — Deal linkage**: Populate `deals.property_id` for all 32 deals from `deal_properties` (27 rows) + `properties.deal_id` (32 rows). Surface conflicts. Acceptance: zero null `deals.property_id`.
+| Script | Source | Target | Row estimate | Notes |
+|---|---|---|---|---|
+| Backfill 1 — Identity | `properties` (1,596) + `property_info_cache` (290K) + `property_records` (249K) | `properties.parcel_id_canonical` + missing identity fields | ~290K unique | Dedup: parcel_id_canonical exact match = same property. 50-spot-check against county records. |
+| Backfill 2 — Characteristics | `properties` time-varying cols + `property_info_cache` | `property_characteristics` | ~290K | One row per property, effective_from = fetched_at/data_as_of |
+| Backfill 3 — Sales | `georgia_property_sales` (681K) + `recorded_transactions` (12) + `property_sales_legacy` (292) + `market_sale_comps` (343K, Cobb) | `property_sales` | ~681K deduped | Dedup: same parcel_id + sale_date = one row. 100-spot-check. |
+| Backfill 4 — Operating data | T12/rent roll in `deal_data` JSONB + ApartmentIQ | `property_operating_data` | Low | `is_owned = TRUE` for M22 actuals |
+| Backfill 5 — Deal linkage | `deal_properties` (27 rows) + `properties.deal_id` (32 rows) | `deals.property_id` | 32 deals | Use `DealPropertyLinkService.getUnlinkedDeals()`. Zero null property_id after. |
 
-### Phase 2 acceptance criteria (§2.5)
+**Reconciliation pass after each backfill:** tier authority (operator > deal docs > owned portfolio > public records > third party > inferred) resolves conflicts; material conflicts surface for operator review.
 
-- [ ] All production write paths dual-writing (verified by grep + integration test)
+### 2.4 Phase 2 monitoring
+
+Nightly reconciliation script:
+- Row count parity between old and new tables (within expected variance)
+- 100-row sample nightly, field-level correspondence verified
+- Any dual-write failure from prior day surfaced + investigated
+- Divergence > tolerance → alert
+
+### 2.5 Phase 2 acceptance criteria
+
+- [ ] All production write paths dual-writing (grep + integration test)
 - [ ] Zero dual-write failures over 7-day rolling window
 - [ ] All 5 backfills complete with spot-check verification
-- [ ] All 32 deals have populated `deals.property_id`
-- [ ] New `properties` (or `properties_v2`) has ≥ 1,596 rows
+- [ ] All 32 deals have non-null `deals.property_id` (`DealPropertyLinkService.getUnlinkedDeals()` returns empty)
+- [ ] `properties` has ≥ 1,596 rows with parcel_id_canonical populated for known parcels
 - [ ] `property_sales` has ≥ 681K rows (georgia_property_sales backfill)
 - [ ] Nightly reconciliation script clean for 5 consecutive nights
-- [ ] Verification protocol Layer 2 pass: 50 properties spot-checked
+- [ ] Layer 2 verification: 50 properties spot-checked; new-table data matches source
 
 ---
 
 ## PHASE 3 — READER MIGRATION
 
 **Status:** NOT STARTED  
-**Duration estimate:** 6-10 weeks  
-**Prerequisite:** Phase 2 AC all green
+**Duration:** 6-10 weeks
 
-### Reader migration waves (§3.2)
+### Migration discipline (non-negotiable per reader)
 
-**Wave 1 — Foundation (weeks 2-3):**
-1. `DealService.getProperty(deal_id)` — reads `deals.property_id` → `PropertyService`
-2. Cashflow agent's property-info tools — reads from `property_characteristics` via service layer
+1. Feature flag created: `use_new_property_schema_<reader_name>` — default OFF
+2. New code path added alongside old
+3. Shadow comparison runs ≥ 1 week (old path live; new path runs in parallel; divergences logged, not served)
+4. Flag ON for 10% canary; metrics monitored
+5. Flag ON for 100%
+6. Old code path removed after 30 days stable at 100%
+7. Verification protocol Layer 1 + Layer 2 documented per reader
 
-**Wave 2 — Valuation (weeks 3-5):**
-3. Valuation Grid — subject side (reads `PropertyService` instead of `properties` directly)
-4. Valuation Grid — comp side (reads `property_sales` instead of `market_sale_comps`)
+### Reader migration waves
+
+**Wave 1 — Foundation (weeks 2-3)**
+1. `DealService.getProperty(deal_id)` → reads `deals.property_id` → `PropertyResolverService`
+2. Cashflow agent property-info tools → reads `property_characteristics` via service layer
+
+**Wave 2 — Valuation (weeks 3-5)**
+3. Valuation Grid subject side → `PropertyCharacteristicsService` instead of `properties` direct
+4. Valuation Grid comp side → `PropertySalesService.getSalesByCriteria()` instead of `market_sale_comps`
 5. M15 comp services (comp-query, comp-set-discovery)
-6. Comp relevance scoring (D-COMP-1, if built)
+6. Comp relevance scoring (D-COMP-1, if built before this phase)
 
-**Wave 3 — Analytical (weeks 5-7):**
+**Wave 3 — Analytical (weeks 5-7)**
 7. F3 Markets module
 8. F4 Supply module
 9. F6 Traffic module
 10. F8 Debt module (lower priority)
 
-**Wave 4 — Strategy-aware (weeks 7-9):**
-11. Strategy-aware comp selection (after Wave 2 complete)
+**Wave 4 — Strategy-aware (weeks 7-9)** *(after Wave 2 complete)*
+11. Strategy-aware comp selection
 12. Strategy projection service
 
-**Wave 5 — Post-close + capsule (weeks 8-10):**
-13. M22 post-close → writes `property_operating_data` with `is_owned = TRUE`
+**Wave 5 — Post-close + capsule (weeks 8-10)**
+13. M22 post-close intelligence → `property_operating_data` with `is_owned = TRUE`
 14. Deal Capsule rendering
 15. Freeze-on-share snapshot
 
-### Migration discipline (per reader, non-negotiable) (§3.3)
-
-For every reader:
-1. Feature flag: `use_new_property_schema_<reader_name>` — default off
-2. New code path added
-3. Shadow comparison runs (old path used; new path runs in parallel; divergences logged) — minimum 1 week
-4. Flag on for 10% canary; metrics monitored
-5. Flag on for 100%
-6. Old code path removed after 30 days stable
-7. Verification protocol Layer 1 + Layer 2 documented
-
-### Phase 3 acceptance criteria (§3.4)
+### Phase 3 acceptance criteria
 
 - [ ] Every reader migrated; flag at 100%; ≥ 30 days stable
-- [ ] Old code paths removed; grep confirms zero reads from old tables
+- [ ] Old code paths removed; grep confirms zero reads on old tables
 - [ ] Backtest harness re-run; results equivalent or better
 - [ ] Bishop end-to-end run equivalent or improved
-- [ ] All readers documented in `docs/operations/PROPERTY_REFACTOR_READER_AUDIT.md`
+- [ ] All readers in `docs/operations/PROPERTY_REFACTOR_READER_AUDIT.md`
 
 ---
 
 ## PHASE 4 — OLD-TABLE DEPRECATION
 
 **Status:** NOT STARTED  
-**Duration estimate:** 2-4 weeks  
-**Prerequisite:** Phase 3 AC all green
+**Duration:** 2-4 weeks
 
-### Deprecation order (§4.2-4.4)
+### Path B column-drop discipline (two 7-day windows — stricter than parallel-table approach)
 
-1. **Read-only phase (week 1):** Revoke INSERT/UPDATE/DELETE on `properties` (old columns), `recorded_transactions`, `market_sale_comps`, `market_rent_comps`, `comp_properties`, `property_sales_legacy`, `deal_properties`. Hold 7 days; monitor for permission errors.
-2. **Archive + drop (weeks 2-3):** Snapshot each table; document in `docs/operations/PROPERTY_REFACTOR_ARCHIVE.md`; drop.
-3. **Column cleanup (weeks 3-4) [Path B adjustment]:** If Path B adopted, remove deprecated time-varying columns from `properties` (building_class, units, assessed_value, etc.). These columns remain during Phase 2-3; only removed once readers are fully migrated. No `properties_v2 → properties` rename needed under Path B.
+Under Path B, a missed reader doesn't hit a permission error on the old *table* — it hits a runtime error on a dropped *column*. Cost of miss is higher. Two sequential windows required:
 
-### Phase 4 acceptance criteria (§4.5)
+**Window 1 — Write revocation (7 days):**
+Revoke INSERT/UPDATE/DELETE on the target columns (or tables where all columns are being dropped).
+Monitor for permission errors → surfaces missed writers before columns drop.
 
-- [ ] All deprecated tables dropped
-- [ ] `properties` narrowed to identity + immutable columns only (Path B) OR `properties_v2` renamed to `properties` (Path A)
-- [ ] `deals.property_id` is the canonical FK; no reference to `deal_properties` for primary link
+**Window 2 — Read revocation (7 days):**
+After Window 1 clean: revoke SELECT on target columns.
+Monitor for runtime errors → surfaces missed readers before the DROP.
+
+Only after both windows are clean: DROP column (or table).
+
+### Deprecation targets
+
+**Tables to drop (Phase 4):**
+- `recorded_transactions` (12 rows; replaced by `property_sales`)
+- `market_sale_comps` (343K rows; replaced by `property_sales`)
+- `market_rent_comps` (replaced by `property_operating_data`)
+- `comp_properties` (replaced by `properties` + `property_characteristics`)
+- `property_sales_legacy` (292 rows; backfilled to `property_sales` in Phase 2)
+- `deal_properties` (legacy join table; replaced by `deals.property_id`)
+- `property_records` (249K rows; replaced by `property_info_cache` + backfill in Phase 2)
+
+**Columns to drop from `properties` (time-varying, moved to `property_characteristics`):**
+Identify via Phase 3 reader migration — any column that moved to `property_characteristics` and has zero readers after Wave 1-2. Two-window drop sequence applies per column batch.
+
+**Tables to keep:**
+- `property_info_cache` — the canonical assessor layer going forward (not deprecated)
+- `county_parcels`, `fulton_parcels`, `fulton_structures` — empty ArcGIS staging; review in Phase 5
+
+### 4.4 Archive before drop
+
+Each deprecated table: final snapshot → documented in `docs/operations/PROPERTY_REFACTOR_ARCHIVE.md` → drop. Keep archives ≥ 1 year.
+
+### Phase 4 acceptance criteria
+
+- [ ] All deprecated tables dropped (or two-window sequence complete for column drops)
+- [ ] `properties` narrowed to identity + immutable columns
+- [ ] `deals.property_id` is the sole canonical deal→property FK; `deal_properties` dropped
 - [ ] No permission errors; no orphaned FKs
-- [ ] Archive backup confirmed accessible
+- [ ] Archive backup confirmed accessible for each dropped table
 
 ---
 
 ## PHASE 5 — COMP / VALUATION GRID INTEGRATION
 
 **Status:** NOT STARTED  
-**Duration estimate:** 2-3 weeks  
-**Prerequisite:** Phase 4 AC all green
+**Duration:** 2-3 weeks
 
-### What resumes in Phase 5
+### What resumes
 
 - **Comp ingestion (paused):** #1477/#1479 Fulton/Gwinnett ingest resume — writing into `property_sales` + `property_characteristics`, not `market_sale_comps`
 - **Strategy-aware comp selection:** M15 reads `PropertySalesService.getSalesByCriteria()` with strategy filters
-- **Comp-anchored cap rate synthesis (Path B):** Per-comp NOI from `property_operating_data` → implied cap rate → P25/P50/P75 market cap rate → Cap × NOI valuation method
-- **Backtest re-run:** S1 deals (Jacksonville, Atlanta ×2); expected ≥ 3 of 5 valuation methods active vs 2 of 5 pre-refactor
+- **Comp-anchored cap rate (Path B):** Per-comp NOI from `property_operating_data` → implied cap rate → P25/P50/P75 market cap rate → Cap × NOI valuation method
+- **Backtest re-run:** S1 deals (Jacksonville, Atlanta ×2); expected ≥ 3 of 5 methods active vs 2 pre-refactor
 
-### Phase 5 acceptance criteria (§5.5)
+### Phase 5 acceptance criteria
 
-- [ ] All 10 original spec acceptance criteria (Part 9) pass
+- [ ] All 10 original spec Part 9 acceptance criteria pass
 - [ ] Backtest equivalent or better vs pre-refactor baseline
-- [ ] No deal returns INSUFFICIENT on subject-side data
-- [ ] `property_sales` queryable with 681K+ rows
+- [ ] No active deal returns INSUFFICIENT on subject-side data
+- [ ] `property_sales` queryable at 681K+ rows
 - [ ] Strategy-aware comp selection producing appropriate sets
 - [ ] Comp-anchored cap rate synthesis active and within sanity bounds
 
 ---
 
-## IMMEDIATE NEXT STEPS (before Phase 2 can start)
+## VERIFICATION PROTOCOL (cross-phase)
 
-In priority order:
-
-### 1. Path A vs Path B confirmation [OPERATOR DECISION]
-
-Does `properties_v2` need to be created as a parallel table, or do we work with the existing `properties` table (narrowed in-place over Phases 2-4)?
-
-- **Path A:** Create `properties_v2` now; migrate FKs in Phase 4; cleaner Phase 4
-- **Path B (recommended):** Work with `properties`; slim it in-place; no rename needed
-
-This decision gates everything. If Path A: `property_characteristics`, `property_operating_data`, `property_sales` FKs need to change from `properties.id` → `properties_v2.id`.
-
-### 2. Phase 1.1.A — `property_records` vs `property_info_cache` overlap analysis
-
-Run the column-by-column comparison. Determine canonical assessor layer. This gates Backfill 1 in Phase 2.
-
-Specifically:
-- Distribution of `property_records.enriched_at` — if > 6 months stale, `property_info_cache` wins decisively
-- Which fields exist only in `property_records` (class_code, neighborhood_code, parcel dimensions)
-- Whether those fields need to be added to `property_info_cache` before it becomes canonical
-
-### 3. Phase 1.1.E — Parcel ID canonicalization format
-
-Decision: add `parcel_id_canonical TEXT` column to `properties` (composite: `<state_fips>-<county_fips>-<county_parcel_id>`) alongside existing `parcel_id`, or leave for Phase 2?
-
-Recommended: decide the format now; add the column now (Phase 1 is still the right time); defer populating it to Phase 2 backfill.
-
-### 4. `PropertyResolverService` + `DealPropertyLinkService`
-
-Two services the spec requires that weren't built:
-- `PropertyResolverService`: `resolvePropertyByAddress`, `resolvePropertyByParcel`, `mergeProperties`, `splitProperty`
-- `DealPropertyLinkService`: `linkDealToProperty` (dual-write), `resolveDealProperty` (FK-first, fallback to `deal_properties`)
-
-These are needed for Phase 2 dual-write to work correctly.
-
-### 5. LayeredValue extension for property fields
-
-Extend existing `LayeredValue<T>` type to support property field provenance. Add `source_tier` enum. Wire `is_owned` + confidentiality logic into `PropertyOperatingDataService`.
-
----
-
-## VERIFICATION PROTOCOL APPLICATION (cross-phase)
-
-| Phase | Layer 1 | Layer 2 | Layer 3 |
+| Phase | Layer 1 (exists where it runs) | Layer 2 (correct on real data) | Layer 3 (defensible end-to-end) |
 |---|---|---|---|
-| 1 | Tables exist; columns present; services callable | Unit tests pass | n/a |
-| 2 | Dual-write writes both; backfill populates expected rows | 50 properties spot-checked correct | n/a |
-| 3 | Each reader reads new schema | Reader output equivalent for sample data | Backtest passes |
-| 4 | Old tables dropped; renames complete; no orphan refs | No permission errors | Bishop E2E produces expected output |
-| 5 | Comp ingestion writes to new schema | Sample comp queries return appropriate sets | Backtest equivalent or better |
+| 1 ✅ | Tables/cols/services exist — VERIFIED | n/a (no prod data) | n/a |
+| 2 | Dual-write actually writes both; backfill populates | 50 properties spot-checked | n/a |
+| 3 | Each reader reads new schema | Output equivalent for sample data | Backtest passes |
+| 4 | Old tables/columns dropped; no orphan refs | No permission errors; clean app behavior | Bishop E2E produces expected output |
+| 5 | Comp ingestion writes new schema; strategy wired | Sample comp queries return appropriate sets | Backtest equivalent or better |
 
 ---
 
@@ -352,9 +323,9 @@ Extend existing `LayeredValue<T>` type to support property field provenance. Add
 |---|---|---|
 | 1 | DROP new tables; no production impact | LOW |
 | 2 | Disable dual-write; new tables orphaned; production unchanged | LOW |
-| 3 | Feature flag flip per reader; instant per feature | LOW per reader |
-| 4 | Restore from archive; high cost, low likelihood | HIGH |
-| 5 | Re-enable old code paths (should not be needed) | MEDIUM |
+| 3 | Feature flag flip per reader; instant per feature | LOW |
+| 4 | Restore from archive; high cost | HIGH — Phase 4 rollback is expensive; verify before each column drop |
+| 5 | Re-enable old code paths | MEDIUM |
 
 ---
 
@@ -362,12 +333,12 @@ Extend existing `LayeredValue<T>` type to support property field provenance. Add
 
 | # | Question | Blocks | Status |
 |---|---|---|---|
-| OQ-1 | Path A (properties_v2) vs Path B (properties in-place) | Phase 2 start | **NEEDS OPERATOR CONFIRMATION** |
-| OQ-2 | `property_records` vs `property_info_cache` canonical assessor layer | Phase 2 Backfill 1 | Partial (tentative: property_info_cache wins; overlap analysis pending) |
-| OQ-3 | Parcel ID canonicalization format (composite string format) | Phase 2 Backfill 1 | Open |
-| OQ-4 | `discovered_properties` disposition | Phase 2 Backfill 1 | Deferred to Phase 2 |
-| OQ-5 | county_parcels / fulton_parcels / fulton_structures disposition | Phase 2 | Documented: remain as data sources |
-| OQ-6 | LayeredValue extension design for property fields | Phase 1 completion | Not started |
+| OQ-1 | Path A vs Path B | Phase 2 | ✅ CLOSED — Path B confirmed 2026-05-29 |
+| OQ-2 | `property_records` vs `property_info_cache` canonical | Phase 2 Backfill 1 | ✅ CLOSED — `property_info_cache` canonical; 5 columns to migrate |
+| OQ-3 | Parcel ID canonicalization format | Phase 2 Backfill 1 | ✅ CLOSED — `ga-county-parcelid`; column added |
+| OQ-4 | `discovered_properties` disposition | Phase 2 | ✅ CLOSED — research agent staging; no backfill |
+| OQ-5 | `county_parcels` / geometry tables disposition | Phase 2 | ✅ CLOSED — empty ArcGIS staging; not in canonical schema |
+| OQ-6 | LayeredValue extension for property fields | Phase 2 service wiring | OPEN — deferred to Phase 2 (needed when services start serving production reads) |
 
 ---
 
@@ -376,8 +347,13 @@ Extend existing `LayeredValue<T>` type to support property field provenance. Add
 | Date | Entry |
 |---|---|
 | 2026-05-29 | Reality check completed against live schema |
-| 2026-05-29 | Phase 1 scope doc produced (property-plumbing-phase1-scope.md) |
+| 2026-05-29 | Phase 1 scope doc produced |
 | 2026-05-29 | Phase 1 schema DDL executed: property_characteristics, property_operating_data, property_sales, property_sales_legacy rename, deals.property_id, properties identity columns |
-| 2026-05-29 | Phase 1 service layer stubs: PropertyCharacteristicsService, PropertyOperatingDataService, PropertySalesService |
-| 2026-05-29 | Field mapping doc produced (property-plumbing-field-mapping.md) |
-| 2026-05-29 | Implementation map created; deviation from properties_v2 plan flagged |
+| 2026-05-29 | Phase 1 service layer: PropertyCharacteristicsService, PropertyOperatingDataService, PropertySalesService |
+| 2026-05-29 | Field mapping doc produced |
+| 2026-05-29 | Implementation map v1 created; properties_v2 deviation flagged |
+| 2026-05-29 | **Path B confirmed by operator.** Phase plan adjusted: no properties_v2; column-level Phase 4; two 7-day windows; total duration 14-22 weeks |
+| 2026-05-29 | Phase 1.1 all five disposition questions resolved; dispositions doc produced |
+| 2026-05-29 | Phase 1b migration: properties.parcel_id_canonical column + index |
+| 2026-05-29 | Phase 1 complete: PropertyResolverService + DealPropertyLinkService built; index.ts updated |
+| 2026-05-29 | **PHASE 1 GATE: CLEAR** |

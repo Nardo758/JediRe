@@ -1,0 +1,50 @@
+Path B confirmed. Your recommendation is right — the architectural 
+endpoint is identical, Path B's migration surface is genuinely 
+smaller, and the data quality concerns that would have favored 
+parallel-table aren't actually solved by parallel-table; they're 
+solved by validation discipline that applies either way.
+
+Adjustments to the phase plan:
+
+Phase 1:
+- No properties_v2; new tables FK to existing properties.id
+- deals.property_id (no _v2 suffix); the table is already correctly 
+  named
+- Estimated duration: 2-3 weeks (was 3-4)
+
+Phase 2:
+- Backfill targets existing properties for in-place updates + new 
+  tables for related data
+- Dual-write writes to existing properties (legacy columns still 
+  in use) + new tables
+
+Phase 4:
+- No properties_v2 rename
+- Deprecation shifts to column-level: drop time-varying columns 
+  from properties after property_characteristics is fully populated 
+  and readers are migrated
+- 7-day read-only phase becomes column-level
+
+Total estimated duration: 14-22 weeks (down from 16-25).
+
+One discipline note worth surfacing:
+
+The 7-day read-only phase before column drops is MORE important 
+under Path B, not less. Under Path A, a missed reader keeps reading 
+the old table — degraded but functional. Under Path B, a missed 
+reader breaks at runtime when it hits the dropped column. Cost of 
+miss is higher; verification before column drop is correspondingly 
+critical.
+
+Recommend the column-drop sequence be: revoke write permissions on 
+target column → monitor 7 days for permission errors that would 
+indicate a missed writer → revoke read permissions → monitor 7 days 
+for runtime errors that would indicate a missed reader → drop column. 
+Two 7-day windows rather than one, because Path B's failure mode at 
+this step is more abrupt.
+
+Otherwise proceed with the phase plan as written, substituting in-place 
+column work for parallel-table work throughout.
+
+Phase 1 cleared to start once the five disposition questions in 1.1 
+are resolved.

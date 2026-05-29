@@ -2,21 +2,26 @@
  * Property Entity Service Layer
  * Phase 1 — Property Plumbing Refactor
  *
- * Exports the three new services for the new schema tables.
- * A fourth service (PropertyService) operates against the existing
- * `properties` table and will be built during Phase 2 once
- * deals.property_id is being populated via dual-write.
+ * Four services covering the new schema tables and identity resolution.
+ * No production reads/writes yet — Phase 2 dual-write wires these in.
  *
- * Phase 2 will add:
- *   - PropertyService.linkDeal(dealId, propertyId) — dual-writes to
- *     both deals.property_id and deal_properties
- *   - PropertyService.getForDeal(dealId) — reads from deals.property_id
- *     (falling back to deal_properties during transition)
+ * Services:
+ *   PropertyCharacteristicsService — time-varying physical state
+ *   PropertyOperatingDataService   — period-specific operating metrics
+ *   PropertySalesService           — canonical transaction history
+ *   PropertyResolverService        — identity resolution (find-or-create, dedup, merge)
+ *   DealPropertyLinkService        — dual-write deal→property link (new FK + legacy join)
+ *
+ * Phase 2 will activate dual-write by calling DealPropertyLinkService.linkDealToProperty
+ * from DealService write paths, and PropertyResolverService.resolveByAddress/Parcel
+ * from all ingest pipelines.
  */
 
 export { propertyCharacteristicsService, PropertyCharacteristicsService } from './property-characteristics.service';
 export { propertyOperatingDataService, PropertyOperatingDataService } from './property-operating-data.service';
 export { propertySalesService, PropertySalesService } from './property-sales.service';
+export { propertyResolverService, PropertyResolverService } from './property-resolver.service';
+export { dealPropertyLinkService, DealPropertyLinkService } from './deal-property-link.service';
 
 export type {
   PropertyCharacteristic,
@@ -29,3 +34,12 @@ export type {
   CreatePropertySaleInput,
   SaleSource,
 } from './types';
+
+export type {
+  ResolvedProperty,
+  ResolveByAddressInput,
+  ResolveByParcelInput,
+  MergeResult,
+} from './property-resolver.service';
+
+export type { DealPropertyLink } from './deal-property-link.service';
