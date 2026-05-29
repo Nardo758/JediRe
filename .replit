@@ -103,6 +103,10 @@ args = "Inngest Dev Server"
 task = "workflow.run"
 args = "agent-runtime-tests"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Georgia DeKalb+Fulton Ingest"
+
 [[workflows.workflow]]
 name = "JediRe"
 author = "agent"
@@ -137,6 +141,17 @@ isValidation = true
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd backend && npm test -- --reporter=verbose src/agents/runtime/__tests__/"
+
+[[workflows.workflow]]
+name = "Georgia DeKalb+Fulton Ingest"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd backend && npx ts-node --transpile-only scripts/enrich-georgia-comps.ts --county=DeKalb,Fulton 2>&1 | tee /tmp/dekalb-fulton-ingest.log"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [userenv]
 

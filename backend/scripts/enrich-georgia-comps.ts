@@ -156,25 +156,31 @@ async function main() {
         console.log('\n  Running Fulton parcel geometry + structures → property_info_cache spatial join...');
         const fulton = getFultonIngestionService();
 
-        // Step A: Populate fulton_parcels geometry (prerequisite for spatial join)
-        const geomResult = await fulton.ingestParcelGeometry();
-        console.log(`  ✓ Fulton parcel geometry: ${fmt(geomResult.ingested)} parcels staged, ${geomResult.errors} errors`);
+        try {
+          // Step A: Populate fulton_parcels geometry (prerequisite for spatial join)
+          const geomResult = await fulton.ingestParcelGeometry();
+          console.log(`  ✓ Fulton parcel geometry: ${fmt(geomResult.ingested)} parcels staged, ${geomResult.errors} errors`);
 
-        // Step B: Ingest structures layer
-        const structResult = await fulton.ingestStructures();
-        console.log(`  ✓ Fulton structures: ${fmt(structResult.ingested)} ingested, ${structResult.errors} errors`);
+          // Step B: Ingest structures layer
+          const structResult = await fulton.ingestStructures();
+          console.log(`  ✓ Fulton structures: ${fmt(structResult.ingested)} ingested, ${structResult.errors} errors`);
 
-        // Step C: Precheck — warn and skip spatial join if geometry staging produced nothing
-        const geomCheck = await pool.query(
-          `SELECT COUNT(*) AS cnt FROM fulton_parcels WHERE geometry IS NOT NULL`
-        );
-        const geomCount = parseInt(geomCheck.rows[0].cnt);
-        if (geomCount === 0) {
-          console.warn('  ! Fulton parcel geometry is empty after ingestParcelGeometry() — skipping spatial join.');
-          console.warn('    Possible cause: ArcGIS geometry endpoint unavailable or returned no features.');
-        } else {
-          const joinResult = await fulton.runSpatialJoin();
-          console.log(`  ✓ Fulton spatial join: ${fmt(joinResult.updated)} property_info_cache rows updated`);
+          // Step C: Precheck — warn and skip spatial join if geometry staging produced nothing
+          const geomCheck = await pool.query(
+            `SELECT COUNT(*) AS cnt FROM fulton_parcels WHERE geometry IS NOT NULL`
+          );
+          const geomCount = parseInt(geomCheck.rows[0].cnt);
+          if (geomCount === 0) {
+            console.warn('  ! Fulton parcel geometry is empty after ingestParcelGeometry() — skipping spatial join.');
+            console.warn('    Possible cause: ArcGIS geometry endpoint unavailable or returned no features.');
+          } else {
+            const joinResult = await fulton.runSpatialJoin();
+            console.log(`  ✓ Fulton spatial join: ${fmt(joinResult.updated)} property_info_cache rows updated`);
+          }
+        } catch (fultonErr) {
+          console.warn(`  ! Fulton parcel geometry / structures step failed (skipped): ${(fultonErr as Error).message}`);
+          console.warn('    The Fulton ArcGIS FeatureServer endpoints may be offline or the org ID has changed.');
+          console.warn('    Fulton will contribute 0 comps this run. Re-run once endpoints are restored.');
         }
       }
 

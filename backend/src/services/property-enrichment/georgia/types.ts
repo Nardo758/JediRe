@@ -53,6 +53,9 @@ export interface GwinnettParcel {
   TAXPIN: string;
   LRSN: string; // Primary join key
   ADDRESS: string;
+  // Populated by ArcGIS returnCentroid=true, outSR=4326
+  centroid_x?: number; // longitude (WGS84)
+  centroid_y?: number; // latitude  (WGS84)
 }
 
 export interface GwinnettTaxMaster {
@@ -106,6 +109,15 @@ export interface DeKalbParcel {
   CNTASSDVAL: number;
   TOTAPR1: number;
   ZONING: string;
+  // Populated by ArcGIS returnCentroid=true, outSR=4326
+  centroid_x?: number; // longitude (WGS84)
+  centroid_y?: number; // latitude  (WGS84)
+  // Potential sale fields — present on some DeKalb MapServer versions
+  SALEDATE?: number;  // Epoch ms or YYYYMMDD integer
+  SALEPRICE?: number;
+  SALEAMT?: number;
+  LSALEAMT?: number;  // Last sale amount
+  LSALEDT?: number;   // Last sale date (epoch ms)
 }
 
 export interface DeKalbPermit {
@@ -125,8 +137,12 @@ export interface DeKalbPermit {
 export interface FultonParcel {
   ParcelID: string;
   LivUnits: number;
-  TotAppr: number;
+  TotAppr?: number;  // not exposed by gismaps.fultoncountyga.gov/arcgispub
   LUCode: string;
+  ClassCode?: string;
+  // Populated by centroid extraction from polygon rings (server doesn't support returnCentroid)
+  centroid_x?: number; // longitude (WGS84)
+  centroid_y?: number; // latitude  (WGS84)
 }
 
 export interface FultonYearlySale {

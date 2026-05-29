@@ -143,6 +143,8 @@ export class GwinnettIngestionService {
     const parcels = await this.client.queryAll<GwinnettParcel>(LAYER_IDS.PARCELS, {
       where: '1=1',
       outFields: ['PIN', 'TAXPIN', 'LRSN', 'ADDRESS'],
+      returnCentroid: true,
+      outSR: 4326,
       batchSize: cfg.batchSize,
       maxRecords: cfg.maxRecords,
       onProgress: (processed, total) => {
@@ -340,6 +342,9 @@ export class GwinnettIngestionService {
       
       sales: landValue ? this.extractSalesFromLandValue(parcel.LRSN, landValue) : [],
       
+      latitude: parcel.centroid_y ?? undefined,
+      longitude: parcel.centroid_x ?? undefined,
+
       provider: 'gwinnett_ga',
       fetchedAt: new Date()
     };
@@ -356,8 +361,9 @@ export class GwinnettIngestionService {
         just_value,
         land_use_code, property_type, zoning,
         owner_name, owner_name_2,
+        latitude, longitude,
         provider, fetched_at, raw_data
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
       ON CONFLICT (parcel_id, county, state) DO UPDATE SET
         year_built       = COALESCE(EXCLUDED.year_built, property_info_cache.year_built),
         number_of_units  = COALESCE(EXCLUDED.number_of_units, property_info_cache.number_of_units),
@@ -369,6 +375,8 @@ export class GwinnettIngestionService {
         zoning           = COALESCE(EXCLUDED.zoning, property_info_cache.zoning),
         owner_name       = COALESCE(EXCLUDED.owner_name, property_info_cache.owner_name),
         owner_name_2     = COALESCE(EXCLUDED.owner_name_2, property_info_cache.owner_name_2),
+        latitude         = COALESCE(EXCLUDED.latitude, property_info_cache.latitude),
+        longitude        = COALESCE(EXCLUDED.longitude, property_info_cache.longitude),
         provider         = EXCLUDED.provider,
         fetched_at       = EXCLUDED.fetched_at,
         updated_at       = NOW()`,
@@ -388,6 +396,8 @@ export class GwinnettIngestionService {
         property.zoning || null,
         property.ownerName || null,
         property.ownerName2 || null,
+        property.latitude ?? null,
+        property.longitude ?? null,
         property.provider,
         property.fetchedAt,
         JSON.stringify({ isMultifamily: property.isMultifamily })

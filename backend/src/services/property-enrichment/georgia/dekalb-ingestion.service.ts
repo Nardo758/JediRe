@@ -75,13 +75,16 @@ export class DeKalbIngestionService {
       const addressMap = this.buildAddressMap(parcels);
       console.log(`[DeKalb] Built address map with ${addressMap.size} entries`);
       
-      // Step 3: Fetch CO permits (for year built)
-      const permits = await this.fetchCOPermits(cfg);
-      console.log(`[DeKalb] Loaded ${permits.length} CO permits`);
-      
-      // Step 4: Match permits to parcels by address
-      const yearBuiltMap = this.matchPermitsToParcels(permits, addressMap);
-      console.log(`[DeKalb] Matched ${yearBuiltMap.size} permits to parcels`);
+      // Step 3: Fetch CO permits (for year built) — endpoint may be unavailable
+      let yearBuiltMap = new Map<string, any>();
+      try {
+        const permits = await this.fetchCOPermits(cfg);
+        console.log(`[DeKalb] Loaded ${permits.length} CO permits`);
+        yearBuiltMap = this.matchPermitsToParcels(permits, addressMap);
+        console.log(`[DeKalb] Matched ${yearBuiltMap.size} permits to parcels`);
+      } catch (permitErr) {
+        console.warn(`[DeKalb] CO permits endpoint unavailable (${(permitErr as Error).message}) — skipping year_built enrichment`);
+      }
       
       // Step 5: Enrich and save
       for (const parcel of parcels) {
@@ -89,8 +92,10 @@ export class DeKalbIngestionService {
           const permitData = yearBuiltMap.get(parcel.PARCELID);
           const enriched = this.buildEnrichedProperty(parcel, permitData);
           
-          // TODO: Save to database
           await this.saveProperty(enriched);
+
+          // Opportunistically save sale record if parcel layer exposed sale fields
+          await this.saveSales(parcel);
           
           job.processedRecords++;
           job.insertedRecords++;
@@ -122,8 +127,10 @@ export class DeKalbIngestionService {
     
     const parcels = await this.parcelsClient.queryAll<DeKalbParcel>(LAYER_IDS.PARCELS, {
       where: '1=1',
-      outFields: ['PARCELID', 'CLASSCD', 'SITEADDRESS', 'OWNERNME1', 
+      outFields: ['PARCELID', 'CLASSCD', 'SITEADDRESS', 'OWNERNME1',
                   'CNTASSDVAL', 'TOTAPR1', 'ZONING'],
+      returnCentroid: true,
+      outSR: 4326,
       batchSize: cfg.batchSize,
       maxRecords: cfg.maxRecords,
       onProgress: (processed, total) => {
@@ -304,6 +311,9 @@ export class DeKalbIngestionService {
       zoning: parcel.ZONING,
       isMultifamily,
       
+      latitude: parcel.centroid_y ?? undefined,
+      longitude: parcel.centroid_x ?? undefined,
+
       provider: 'dekalb_ga',
       fetchedAt: new Date()
     };
@@ -320,8 +330,9 @@ export class DeKalbIngestionService {
         assessed_value, just_value,
         land_use_code, property_type, zoning,
         owner_name,
+        latitude, longitude,
         provider, fetched_at, raw_data
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
       ON CONFLICT (parcel_id, county, state) DO UPDATE SET
         year_built       = COALESCE(EXCLUDED.year_built, property_info_cache.year_built),
         living_area_sqft = COALESCE(EXCLUDED.living_area_sqft, property_info_cache.living_area_sqft),
@@ -331,6 +342,8 @@ export class DeKalbIngestionService {
         property_type    = COALESCE(EXCLUDED.property_type, property_info_cache.property_type),
         zoning           = COALESCE(EXCLUDED.zoning, property_info_cache.zoning),
         owner_name       = COALESCE(EXCLUDED.owner_name, property_info_cache.owner_name),
+        latitude         = COALESCE(EXCLUDED.latitude, property_info_cache.latitude),
+        longitude        = COALESCE(EXCLUDED.longitude, property_info_cache.longitude),
         provider         = EXCLUDED.provider,
         fetched_at       = EXCLUDED.fetched_at,
         updated_at       = NOW()`,
@@ -348,11 +361,60 @@ export class DeKalbIngestionService {
         property.isMultifamily ? 'multifamily' : 'other',
         property.zoning || null,
         property.ownerName || null,
+        property.latitude ?? null,
+        property.longitude ?? null,
         property.provider,
         property.fetchedAt,
         JSON.stringify({ isMultifamily: property.isMultifamily })
       ]
     );
+  }
+
+  /**
+   * Save any sale records found in parcel attributes to georgia_property_sales.
+   * DeKalb's main parcel layer may expose LSALEDT/LSALEAMT or SALEDATE/SALEPRICE
+   * fields (varies by MapServer version). Rows with no valid price/date are skipped.
+   */
+  async saveSales(parcel: DeKalbParcel): Promise<void> {
+    const rawAmt  = parcel.LSALEAMT  ?? parcel.SALEPRICE ?? parcel.SALEAMT;
+    const rawDate = parcel.LSALEDT   ?? parcel.SALEDATE;
+
+    if (!rawAmt || rawAmt <= 0 || !rawDate) return;
+
+    // rawDate may be epoch-ms (> 1e9) or YYYYMMDD integer (< 1e9)
+    let saleDate: Date;
+    if (rawDate > 1_000_000_000) {
+      saleDate = new Date(rawDate);
+    } else {
+      // YYYYMMDD → "YYYY-MM-DD"
+      const s = String(rawDate);
+      saleDate = new Date(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`);
+    }
+
+    if (isNaN(saleDate.getTime())) return;
+    if (rawAmt < 200_000) return; // below promote threshold — skip
+
+    try {
+      await dbQuery(
+        `INSERT INTO georgia_property_sales (
+          parcel_id, county, state,
+          sale_date, sale_year, sale_price,
+          provider
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (parcel_id, county, state, sale_date, sale_price) DO NOTHING`,
+        [
+          parcel.PARCELID,
+          'DeKalb',
+          'GA',
+          saleDate.toISOString().split('T')[0],
+          saleDate.getFullYear(),
+          rawAmt,
+          'dekalb_ga'
+        ]
+      );
+    } catch (err) {
+      console.warn(`[DeKalb] saveSales skip (${parcel.PARCELID}): ${err}`);
+    }
   }
   
   /**
