@@ -20,7 +20,7 @@
  *   --skip-legacy   Skip property_sales_legacy source
  */
 
-import '../src/utils/env-loader';
+import 'dotenv/config';
 import { query } from '../src/database/connection';
 import { propertyResolverService } from '../src/services/property-entity/property-resolver.service';
 
@@ -232,7 +232,7 @@ async function backfillLegacySales(): Promise<{ inserted: number; skipped: numbe
   console.log('[Backfill3] Source 3: property_sales_legacy (292 rows)...');
 
   const rows = await query(
-    `SELECT id, parcel_id, sale_year, sale_price, county, state, is_current
+    `SELECT id, parcel_id, sale_year, sale_price, is_current
      FROM property_sales_legacy
      ORDER BY id`
   );
@@ -258,8 +258,8 @@ async function backfillLegacySales(): Promise<{ inserted: number; skipped: numbe
     try {
       const property = await propertyResolverService.resolveByParcel({
         parcelIdRaw: parcelId,
-        county: (row.county as string) ?? 'unknown',
-        state: (row.state as string) ?? 'GA',
+        county: 'unknown',
+        state: 'GA',
         createIfMissing: true,
       });
 
@@ -315,7 +315,7 @@ async function backfillMarketSaleComps(): Promise<{ inserted: number; skipped: n
 
   const cntRes = await query(
     `SELECT COUNT(*) AS cnt FROM market_sale_comps
-     WHERE parcel_id IS NOT NULL
+     WHERE address IS NOT NULL
        AND sale_date IS NOT NULL
        AND sale_price IS NOT NULL AND sale_price > 0
        ${COUNTY_FILTER ? `AND LOWER(county) = '${COUNTY_FILTER}'` : ''}`
@@ -332,14 +332,14 @@ async function backfillMarketSaleComps(): Promise<{ inserted: number; skipped: n
     if (LIMIT > 0 && inserted >= LIMIT) break;
 
     const rows = await query(
-      `SELECT id, parcel_id, county, state, sale_date, sale_price,
-              grantor_name, qualified
+      `SELECT id, address, city, county, state, sale_date, sale_price,
+              seller, qualified
        FROM market_sale_comps
-       WHERE parcel_id IS NOT NULL
+       WHERE address IS NOT NULL
          AND sale_date IS NOT NULL
          AND sale_price IS NOT NULL AND sale_price > 0
          ${COUNTY_FILTER ? `AND LOWER(county) = '${COUNTY_FILTER}'` : ''}
-       ORDER BY parcel_id, sale_date
+       ORDER BY id, sale_date
        LIMIT $1 OFFSET $2`,
       [batchLimit, offset]
     );
@@ -355,10 +355,11 @@ async function backfillMarketSaleComps(): Promise<{ inserted: number; skipped: n
       }
 
       try {
-        const property = await propertyResolverService.resolveByParcel({
-          parcelIdRaw: row.parcel_id as string,
-          county: (row.county as string) ?? 'unknown',
+        const property = await propertyResolverService.resolveByAddress({
+          address: row.address as string,
+          city: (row.city as string) ?? null,
           state: (row.state as string) ?? 'GA',
+          county: (row.county as string) ?? null,
           createIfMissing: true,
         });
 
@@ -384,7 +385,7 @@ async function backfillMarketSaleComps(): Promise<{ inserted: number; skipped: n
             property.id,
             row.sale_date ?? null,
             row.sale_price ?? null,
-            row.grantor_name ?? null,
+            row.seller ?? null,
             qualified,
             'broker_comp',
             sourceId,

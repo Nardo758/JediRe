@@ -14,7 +14,7 @@
  *   --limit=N     Process at most N deals
  */
 
-import '../src/utils/env-loader';
+import 'dotenv/config';
 import { query } from '../src/database/connection';
 import { dealPropertyLinkService } from '../src/services/property-entity/deal-property-link.service';
 

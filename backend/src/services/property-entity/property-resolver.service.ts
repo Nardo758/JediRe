@@ -72,14 +72,15 @@ function buildCanonicalParcelId(
   return `${state.toLowerCase()}-${county.toLowerCase().replace(/\s+/g, '_')}-${stripped}`;
 }
 
+// Maps a DB row to ResolvedProperty; properties table uses address_line1 / state_code
 function mapRow(row: Record<string, unknown>): ResolvedProperty {
   return {
     id: row.id as string,
     parcelId: (row.parcel_id as string) ?? null,
     parcelIdCanonical: (row.parcel_id_canonical as string) ?? null,
-    address: (row.address as string) ?? null,
+    address: (row.address_line1 as string) ?? null,
     city: (row.city as string) ?? null,
-    state: (row.state as string) ?? null,
+    state: (row.state_code as string) ?? null,
     county: (row.county as string) ?? null,
     lat: row.lat != null ? parseFloat(row.lat as string) : null,
     lng: row.lng != null ? parseFloat(row.lng as string) : null,
@@ -99,7 +100,7 @@ export class PropertyResolverService {
    */
   async findByParcelCanonical(parcelIdCanonical: string): Promise<ResolvedProperty | null> {
     const result = await query(
-      `SELECT id, parcel_id, parcel_id_canonical, address, city, state, county,
+      `SELECT id, parcel_id, parcel_id_canonical, address_line1, city, state_code, county,
               lat, lng, is_superseded, predecessor_property_id
        FROM properties
        WHERE parcel_id_canonical = $1
@@ -127,10 +128,10 @@ export class PropertyResolverService {
     if (!input.createIfMissing) return null;
 
     const result = await query(
-      `INSERT INTO properties (parcel_id, parcel_id_canonical, county, state)
+      `INSERT INTO properties (parcel_id, parcel_id_canonical, county, state_code)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT DO NOTHING
-       RETURNING id, parcel_id, parcel_id_canonical, address, city, state, county,
+       RETURNING id, parcel_id, parcel_id_canonical, address_line1, city, state_code, county,
                  lat, lng, is_superseded, predecessor_property_id`,
       [input.parcelIdRaw, canonical, input.county, state]
     );
@@ -154,12 +155,12 @@ export class PropertyResolverService {
 
     // 1. Exact address + city + state match
     const exactResult = await query(
-      `SELECT id, parcel_id, parcel_id_canonical, address, city, state, county,
+      `SELECT id, parcel_id, parcel_id_canonical, address_line1, city, state_code, county,
               lat, lng, is_superseded, predecessor_property_id
        FROM properties
-       WHERE LOWER(TRIM(address)) = $1
+       WHERE LOWER(TRIM(address_line1)) = $1
          AND ($2::TEXT IS NULL OR LOWER(city) = LOWER($2))
-         AND ($3::TEXT IS NULL OR LOWER(state) = LOWER($3))
+         AND ($3::TEXT IS NULL OR LOWER(state_code) = LOWER($3))
          AND (is_superseded IS NULL OR is_superseded = FALSE)
        LIMIT 1`,
       [normalizedAddress, input.city ?? null, input.state ?? null]
@@ -169,7 +170,7 @@ export class PropertyResolverService {
     // 2. Geocode proximity match (within ~50 m) when lat/lng provided
     if (input.lat != null && input.lng != null) {
       const geoResult = await query(
-        `SELECT id, parcel_id, parcel_id_canonical, address, city, state, county,
+        `SELECT id, parcel_id, parcel_id_canonical, address_line1, city, state_code, county,
                 lat, lng, is_superseded, predecessor_property_id,
                 ( 6371000 * acos(
                     cos(radians($1)) * cos(radians(lat::FLOAT)) *
@@ -197,9 +198,9 @@ export class PropertyResolverService {
 
     // 3. Create new property record
     const result = await query(
-      `INSERT INTO properties (address, city, state, county, lat, lng)
+      `INSERT INTO properties (address_line1, city, state_code, county, lat, lng)
        VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, parcel_id, parcel_id_canonical, address, city, state, county,
+       RETURNING id, parcel_id, parcel_id_canonical, address_line1, city, state_code, county,
                  lat, lng, is_superseded, predecessor_property_id`,
       [
         input.address,
@@ -244,15 +245,15 @@ export class PropertyResolverService {
     await query(
       `UPDATE properties p_surviving
        SET
-         parcel_id          = COALESCE(p_surviving.parcel_id, p_merged.parcel_id),
-         parcel_id_canonical= COALESCE(p_surviving.parcel_id_canonical, p_merged.parcel_id_canonical),
-         address            = COALESCE(p_surviving.address, p_merged.address),
-         city               = COALESCE(p_surviving.city, p_merged.city),
-         state              = COALESCE(p_surviving.state, p_merged.state),
-         county             = COALESCE(p_surviving.county, p_merged.county),
-         lat                = COALESCE(p_surviving.lat, p_merged.lat),
-         lng                = COALESCE(p_surviving.lng, p_merged.lng),
-         updated_at         = NOW()
+         parcel_id           = COALESCE(p_surviving.parcel_id, p_merged.parcel_id),
+         parcel_id_canonical = COALESCE(p_surviving.parcel_id_canonical, p_merged.parcel_id_canonical),
+         address_line1       = COALESCE(p_surviving.address_line1, p_merged.address_line1),
+         city                = COALESCE(p_surviving.city, p_merged.city),
+         state_code          = COALESCE(p_surviving.state_code, p_merged.state_code),
+         county              = COALESCE(p_surviving.county, p_merged.county),
+         lat                 = COALESCE(p_surviving.lat, p_merged.lat),
+         lng                 = COALESCE(p_surviving.lng, p_merged.lng),
+         updated_at          = NOW()
        FROM properties p_merged
        WHERE p_surviving.id = $1 AND p_merged.id = $2`,
       [survivingPropertyId, mergedPropertyId]
@@ -261,7 +262,7 @@ export class PropertyResolverService {
     return {
       survivingPropertyId,
       mergedPropertyId,
-      fieldsTransferred: ['parcel_id', 'parcel_id_canonical', 'address', 'city', 'state', 'county', 'lat', 'lng'],
+      fieldsTransferred: ['parcel_id', 'parcel_id_canonical', 'address_line1', 'city', 'state_code', 'county', 'lat', 'lng'],
     };
   }
 

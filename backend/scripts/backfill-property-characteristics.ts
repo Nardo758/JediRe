@@ -16,7 +16,7 @@
  *   --skip-check  Skip spot-check at end
  */
 
-import '../src/utils/env-loader';
+import 'dotenv/config';
 import { query } from '../src/database/connection';
 import { propertyResolverService } from '../src/services/property-entity/property-resolver.service';
 
@@ -51,7 +51,7 @@ async function main() {
   // Keyset cursor on pic.id — avoids skipping rows as the NOT EXISTS condition
   // shrinks the candidate set after each batch (OFFSET-based paging would skip rows
   // because successfully processed rows fall out of the WHERE but unprocessed ones shift).
-  let lastCacheId = 0;
+  let lastCacheId = '00000000-0000-0000-0000-000000000000';
 
   while (true) {
     const batchLimit = LIMIT > 0 ? Math.min(BATCH, LIMIT - inserted) : BATCH;
@@ -81,7 +81,7 @@ async function main() {
            WHERE pc.property_id = pic.property_id
              AND pc.effective_from = pic.fetched_at::date
          )
-         AND pic.id > $2
+         AND pic.id > $2::uuid
        ORDER BY pic.id
        LIMIT $1`,
       [batchLimit, lastCacheId]
@@ -110,7 +110,7 @@ async function main() {
             source, source_date, confidence,
             provenance
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          ON CONFLICT DO NOTHING`,
+          ON CONFLICT (property_id, effective_from) DO NOTHING`,
           [
             row.property_id,
             effectiveFrom,

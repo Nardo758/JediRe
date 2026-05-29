@@ -20,7 +20,7 @@
  *   --county=X    Only process rows for county X (case-insensitive)
  */
 
-import '../src/utils/env-loader';
+import 'dotenv/config';
 import { query, getPool } from '../src/database/connection';
 import { propertyResolverService } from '../src/services/property-entity/property-resolver.service';
 import { logger } from '../src/utils/logger';
@@ -55,7 +55,7 @@ async function phase1UpdateExistingProperties(): Promise<{ updated: number; skip
   const total = parseInt(countRes.rows[0].cnt, 10);
   console.log(`[Backfill1] Phase 1: ${total} rows to process`);
 
-  let lastId = '';
+  let lastId = '00000000-0000-0000-0000-000000000000';
   let updated = 0;
   let skipped = 0;
 
@@ -66,12 +66,12 @@ async function phase1UpdateExistingProperties(): Promise<{ updated: number; skip
     // Keyset pagination: id > lastId ensures we never re-visit or skip rows
     // even as parcel_id_canonical IS NULL candidates shrink between batches.
     const rows = await query(
-      `SELECT id, parcel_id, county, state
+      `SELECT id, parcel_id, county, state_code AS state
        FROM properties
        WHERE parcel_id IS NOT NULL
          AND parcel_id_canonical IS NULL
          ${COUNTY_FILTER ? `AND LOWER(county) = '${COUNTY_FILTER}'` : ''}
-         AND id > $2
+         AND id > $2::uuid
        ORDER BY id
        LIMIT $1`,
       [limit, lastId]
@@ -132,7 +132,7 @@ async function phase2LinkInfoCacheToProperties(): Promise<{ created: number; lin
   const total = parseInt(countRes.rows[0].cnt, 10);
   console.log(`[Backfill1] Phase 2: ${total} unlinked property_info_cache rows`);
 
-  let lastId = 0;
+  let lastId = '00000000-0000-0000-0000-000000000000';
   let created = 0;
   let linked = 0;
   let skipped = 0;
@@ -149,7 +149,7 @@ async function phase2LinkInfoCacheToProperties(): Promise<{ created: number; lin
        FROM property_info_cache
        WHERE property_id IS NULL
          ${COUNTY_FILTER ? `AND LOWER(county) = '${COUNTY_FILTER}'` : ''}
-         AND id > $2
+         AND id > $2::uuid
        ORDER BY id
        LIMIT $1`,
       [limit, lastId]
@@ -165,7 +165,7 @@ async function phase2LinkInfoCacheToProperties(): Promise<{ created: number; lin
       if (DRY_RUN) {
         console.log(`  [dry-run] would resolve/create property for parcel=${parcelId} county=${county}`);
         created++;
-        if (row.id > lastId) lastId = row.id as number;
+        if (row.id > lastId) lastId = row.id as string;
         continue;
       }
 
@@ -179,7 +179,7 @@ async function phase2LinkInfoCacheToProperties(): Promise<{ created: number; lin
 
         if (!property) {
           skipped++;
-          if (row.id > lastId) lastId = row.id as number;
+          if (row.id > lastId) lastId = row.id as string;
           continue;
         }
 
@@ -202,7 +202,7 @@ async function phase2LinkInfoCacheToProperties(): Promise<{ created: number; lin
       }
 
       // Always advance cursor past current row
-      if (row.id > lastId) lastId = row.id as number;
+      if (row.id > lastId) lastId = row.id as string;
     }
 
     if (rows.rows.length < limit) break;
@@ -217,7 +217,7 @@ async function phase2LinkInfoCacheToProperties(): Promise<{ created: number; lin
 async function spotCheck(): Promise<void> {
   console.log('\n[Backfill1] Spot-check (50 rows):');
   const rows = await query(
-    `SELECT id, parcel_id, parcel_id_canonical, county, state
+    `SELECT id, parcel_id, parcel_id_canonical, county, state_code AS state
      FROM properties
      WHERE parcel_id_canonical IS NOT NULL
      ORDER BY RANDOM()

@@ -18,7 +18,7 @@
  *   --verbose     Log every deal's resolution path
  */
 
-import '../src/utils/env-loader';
+import 'dotenv/config';
 import { query } from '../src/database/connection';
 import { dealPropertyLinkService } from '../src/services/property-entity/deal-property-link.service';
 

@@ -50,13 +50,13 @@ export class RentScraperAggregationService {
 
     const { property_name, address, city, unit_count } = target.rows[0];
 
-    // Look for existing comp_properties match by name similarity
+    // Look for matching property entity by name/address similarity (migrated from comp_properties — Phase 4)
     const namePattern = `%${property_name.toLowerCase().substring(0, 20)}%`;
-    let compMatchQuery = `SELECT id, total_units FROM comp_properties WHERE LOWER(name) ILIKE $1`;
+    let compMatchQuery = `SELECT id, units AS total_units FROM properties WHERE LOWER(name) ILIKE $1`;
     const compMatchParams: any[] = [namePattern];
 
     if (address && address.trim().length > 3) {
-      compMatchQuery += ` OR LOWER(address) ILIKE $2`;
+      compMatchQuery += ` OR LOWER(address_line1) ILIKE $2`;
       compMatchParams.push(`%${address.toLowerCase().substring(0, 20)}%`);
     }
     compMatchQuery += ` LIMIT 1`;
@@ -64,8 +64,8 @@ export class RentScraperAggregationService {
     const compMatch = await this.pool.query(compMatchQuery, compMatchParams);
 
     if (compMatch.rows.length === 0) {
-      logger.info(`[aggregation] No comp_properties match for "${property_name}" — skipping comp_unit_types backflow`);
-      return { compId: null, rowsUpserted: 0, message: `No comp match for "${property_name}"` };
+      logger.info(`[aggregation] No properties match for "${property_name}" — skipping comp_unit_types backflow`);
+      return { compId: null, rowsUpserted: 0, message: `No property match for "${property_name}"` };
     }
 
     const compId = compMatch.rows[0].id;

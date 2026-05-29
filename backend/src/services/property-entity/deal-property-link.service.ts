@@ -81,8 +81,8 @@ export class DealPropertyLinkService {
 
       // Write legacy join table (upsert — deal_properties may already have a row)
       await query(
-        `INSERT INTO deal_properties (deal_id, property_id)
-         VALUES ($1, $2)
+        `INSERT INTO deal_properties (deal_id, property_id, relationship)
+         VALUES ($1, $2, 'subject')
          ON CONFLICT (deal_id, property_id) DO NOTHING`,
         [dealId, propertyId]
       );
