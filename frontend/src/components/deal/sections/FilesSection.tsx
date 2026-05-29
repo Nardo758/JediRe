@@ -10,22 +10,62 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
 import { apiClient } from '../../../services/api.client';
-import {
-  acquisitionStats,
-  acquisitionFolderStructure,
-  acquisitionRecentFiles,
-  performanceStats,
-  performanceFolderStructure,
-  performanceRecentFiles,
-  quickActions,
-  FileItem,
-  FileStats,
-  RecentFile,
-  QuickAction,
-  getFileIcon,
-  formatFileSize,
-  getStatusBadgeColor
-} from '../../../data/filesMockData';
+export interface FileItem {
+  id: string;
+  name: string;
+  type: 'folder' | 'file';
+  fileType?: 'pdf' | 'doc' | 'xls' | 'jpg' | 'png' | 'zip' | 'txt' | 'dwg';
+  size?: number;
+  modified: string;
+  modifiedBy: string;
+  path: string[];
+  thumbnail?: string;
+  tags?: string[];
+  status?: 'draft' | 'final' | 'review' | 'approved';
+  children?: FileItem[];
+}
+
+export interface FileStats {
+  label: string;
+  value: string | number;
+  icon: string;
+  trend?: { direction: 'up' | 'down' | 'neutral'; value: string };
+  format?: 'number' | 'size' | 'text';
+}
+
+export interface RecentFile {
+  id: string;
+  name: string;
+  fileType: string;
+  action: string;
+  timestamp: string;
+  user: string;
+}
+
+export interface QuickAction {
+  id: string;
+  label: string;
+  icon: string;
+  color: 'blue' | 'purple' | 'green' | 'orange' | 'indigo';
+}
+
+const getFileIcon = (fileType: string): string => {
+  const icons: Record<string, string> = { pdf: '📄', doc: '📝', xls: '📊', jpg: '🖼️', png: '🖼️', zip: '📦', txt: '📃', dwg: '📐', folder: '📁' };
+  return icons[fileType] || '📄';
+};
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+};
+
+const getStatusBadgeColor = (status?: string): string => {
+  const colors: Record<string, string> = { draft: 'bg-gray-100 text-gray-700', review: 'bg-yellow-100 text-yellow-700', approved: 'bg-green-100 text-green-700', final: 'bg-blue-100 text-blue-700' };
+  return status ? colors[status] || 'bg-gray-100 text-gray-700' : '';
+};
 
 interface FilesSectionProps {
   deal: Deal;
@@ -294,14 +334,22 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
     }
   };
 
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+
   const handleDeleteFile = async (fileId: string) => {
     if (!dealId) return;
+    if (!window.confirm('Delete this file? This cannot be undone.')) return;
+    setDeletingFileId(fileId);
     try {
       await apiClient.delete(`/api/v1/deals/${dealId}/files/${fileId}`);
       await fetchFiles();
     } catch (err: any) {
       console.error('Delete failed:', err);
-      setError(err?.response?.data?.message || 'Delete failed');
+      const msg = err?.response?.data?.message || 'Delete failed. Please try again.';
+      setError(msg);
+      setTimeout(() => setError(null), 6000);
+    } finally {
+      setDeletingFileId(null);
     }
   };
 
@@ -322,16 +370,14 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
       console.error('Download failed:', err);
+      setError('Download failed. Please try again.');
+      setTimeout(() => setError(null), 6000);
     }
   };
 
-  const stats = liveStats || (isPipeline ? acquisitionStats : performanceStats);
-  const folderStructure = hasLiveData && liveFolderStructure
-    ? [...liveFolderStructure, ...(isPipeline ? acquisitionFolderStructure : performanceFolderStructure)]
-    : (isPipeline ? acquisitionFolderStructure : performanceFolderStructure);
-  const recentFiles = hasLiveData && liveRecentFiles
-    ? liveRecentFiles
-    : (isPipeline ? acquisitionRecentFiles : performanceRecentFiles);
+  const stats: FileStats[] = liveStats || [];
+  const folderStructure: FileItem[] = hasLiveData && liveFolderStructure ? liveFolderStructure : [];
+  const recentFiles: RecentFile[] = hasLiveData && liveRecentFiles ? liveRecentFiles : [];
 
   const navigateToFolder = (folder: FileItem) => {
     setSelectedFolder(folder);
@@ -429,7 +475,7 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
 
       <StatsGrid stats={stats} />
 
-      <QuickActionsBar actions={quickActions} />
+      <QuickActionsBar actions={[]} />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         

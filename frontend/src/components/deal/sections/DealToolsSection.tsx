@@ -118,7 +118,7 @@ export const DealToolsSection: React.FC<DealToolsSectionProps> = ({ deal, dealId
         {activeTab === 'contacts' && <ContactsTab dealId={resolvedDealId} />}
         {activeTab === 'dates' && <DatesTab dealId={resolvedDealId} />}
         {activeTab === 'decisions' && <DecisionsTab dealId={resolvedDealId} />}
-        {activeTab === 'documents' && <DocumentsFilesTab dealId={resolvedDealId} />}
+        {activeTab === 'documents' && <DocumentsFilesTab dealId={resolvedDealId} deal={deal} />}
         {activeTab === 'team' && (
           resolvedDealId ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -668,8 +668,9 @@ const DOC_CATEGORIES = [
   { id: 'permits',      name: 'Permits & Approvals',  icon: '✅' },
 ];
 
-function DocumentsFilesTab({ dealId }: { dealId: string }) {
+function DocumentsFilesTab({ dealId, deal }: { dealId: string; deal?: any }) {
   const [files, setFiles] = useState<any[]>([]);
+  const [marketFiles, setMarketFiles] = useState<any[]>([]);
   const [versions, setVersions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['om', 'financial', 'legal']));
@@ -677,6 +678,11 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
   const [uploadQueue, setUploadQueue] = useState<Array<{ file: File; category: string }>>([]);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [retrying, setRetrying] = useState<Set<string>>(new Set());
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [docToast, setDocToast] = useState<{ msg: string; type: 'error' | 'success' } | null>(null);
+
+  const submarketId: string | undefined = deal?.submarket_id;
+  const submarketName: string = deal?.submarket_name || deal?.submarket_id || 'this submarket';
 
   const fetchAll = useCallback(async () => {
     if (!dealId) return;
@@ -685,6 +691,16 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
       const fileRes = await apiClient.get(`/api/v1/deals/${dealId}/files`);
       const fetched = fileRes.data?.files || [];
       setFiles(fetched);
+
+      // Fetch submarket-scoped Market Documents if a submarket is assigned
+      if (submarketId) {
+        try {
+          const mktRes = await apiClient.get(`/api/v1/submarkets/${submarketId}/documents`);
+          setMarketFiles(mktRes.data?.files || []);
+        } catch {
+          setMarketFiles([]);
+        }
+      }
 
       // Fetch model version history
       let fetchedVersions: any[] = [];
@@ -793,6 +809,9 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
         const formData = new FormData();
         formData.append('files', entry.file);
         formData.append('category', entry.category);
+        if (entry.category === 'market' && submarketId) {
+          formData.append('submarketId', submarketId);
+        }
         await apiClient.post(`/api/v1/deals/${dealId}/files`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
@@ -805,11 +824,12 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
     await fetchAll();
   };
 
-  const downloadFile = async (fileId: string, filename: string) => {
+  const downloadFile = async (fileId: string, filename: string, isMarket = false) => {
+    const endpoint = isMarket && submarketId
+      ? `/api/v1/submarkets/${submarketId}/documents/${fileId}/download`
+      : `/api/v1/deals/${dealId}/files/${fileId}/download`;
     try {
-      const res = await apiClient.get(`/api/v1/deals/${dealId}/files/${fileId}/download`, {
-        responseType: 'blob',
-      });
+      const res = await apiClient.get(endpoint, { responseType: 'blob' });
       const url = URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement('a');
       a.href = url;
@@ -818,15 +838,26 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Failed to download file:', err);
+      setDocToast({ msg: 'Download failed. Please try again.', type: 'error' });
+      setTimeout(() => setDocToast(null), 6000);
     }
   };
 
-  const deleteFile = async (fileId: string) => {
+  const deleteFile = async (fileId: string, filename: string, isMarket = false) => {
+    if (!window.confirm(`Delete "${filename}"? This cannot be undone.`)) return;
+    setDeletingId(fileId);
+    const endpoint = isMarket && submarketId
+      ? `/api/v1/submarkets/${submarketId}/documents/${fileId}`
+      : `/api/v1/deals/${dealId}/files/${fileId}`;
     try {
-      await apiClient.delete(`/api/v1/deals/${dealId}/files/${fileId}`);
-      fetchAll();
+      await apiClient.delete(endpoint);
+      await fetchAll();
     } catch (err) {
       console.error('Failed to delete file:', err);
+      setDocToast({ msg: 'Delete failed. Please try again.', type: 'error' });
+      setTimeout(() => setDocToast(null), 6000);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -857,11 +888,27 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
   if (loading) return <LoadingState />;
 
   const filesByCategory = (catId: string) =>
-    files.filter(f => (f.category || 'financial') === catId);
+    catId === 'market'
+      ? marketFiles
+      : files.filter(f => (f.category || 'financial') === catId);
 
   const totalFiles = files.length;
 
   return (
+    <>
+    {docToast && (
+      <div style={{
+        position: 'fixed', bottom: 24, right: 24, zIndex: 9998,
+        minWidth: 240, background: BT.bg.panel,
+        border: `1px solid ${docToast.type === 'error' ? BT.text.red : BT.text.green}`,
+        borderLeft: `3px solid ${docToast.type === 'error' ? BT.text.red : BT.text.green}`,
+        padding: '8px 12px', fontSize: 11,
+        color: docToast.type === 'error' ? BT.text.red : BT.text.green,
+        fontFamily: BT.font.mono,
+      }}>
+        {docToast.msg}
+      </div>
+    )}
     <div style={{ display: 'flex', gap: 16, height: '100%' }}>
       {/* ─── LEFT: SCROLLABLE DIRECTORY ─── */}
       <div style={{
@@ -897,6 +944,16 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: BT.text.primary }}>{cat.name}</div>
                   <div style={{ fontSize: 9, color: BT.text.muted }}>{catFiles.length} file{catFiles.length !== 1 ? 's' : ''}</div>
+                  {cat.id === 'market' && submarketId && (
+                    <div style={{ fontSize: 8, color: BT.text.amber, fontFamily: BT.font.mono }}>
+                      Visible to all deals in {submarketName}
+                    </div>
+                  )}
+                  {cat.id === 'market' && !submarketId && (
+                    <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>
+                      Assign a submarket to enable market documents
+                    </div>
+                  )}
                 </div>
                 {isEmpty && (
                   <div
@@ -929,18 +986,19 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
                   <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>{formatSize(f.size || f.file_size)}</span>
                   <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>{new Date(f.created_at).toLocaleDateString()}</span>
                   {getStatusBadge(f)}
-                  <button onClick={() => downloadFile(f.id, f.name || f.original_filename)} title="Download" style={{
-                    background: 'transparent', border: 'none',
-                    cursor: 'pointer', color: BT.text.cyan,
-                    padding: 2, display: 'flex',
-                  }}>
+                  <button
+                    onClick={() => downloadFile(f.id, f.name || f.original_filename, cat.id === 'market')}
+                    title="Download"
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: BT.text.cyan, padding: 2, display: 'flex' }}
+                  >
                     <Download size={12} />
                   </button>
-                  <button onClick={() => deleteFile(f.id)} title="Delete" style={{
-                    background: 'transparent', border: 'none',
-                    cursor: 'pointer', color: BT.text.muted,
-                    padding: 2, display: 'flex',
-                  }}>
+                  <button
+                    onClick={() => deleteFile(f.id, f.name || f.original_filename, cat.id === 'market')}
+                    title="Delete"
+                    disabled={deletingId === f.id}
+                    style={{ background: 'transparent', border: 'none', cursor: deletingId === f.id ? 'wait' : 'pointer', color: deletingId === f.id ? BT.text.muted + '55' : BT.text.muted, padding: 2, display: 'flex' }}
+                  >
                     <Trash2 size={12} />
                   </button>
                 </div>
@@ -1154,6 +1212,7 @@ function DocumentsFilesTab({ dealId }: { dealId: string }) {
         )}
       </div>
     </div>
+    </>
   );
 }
 

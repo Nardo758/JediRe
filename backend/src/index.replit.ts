@@ -563,6 +563,8 @@ app.use('/api/v1/deals', requireAuth, sceneStorageRouter);
 
 import documentsFilesRoutes from './api/rest/documentsFiles.routes';
 app.use('/api/v1', documentsFilesRoutes);
+import submarketDocumentsRoutes from './api/rest/submarketDocuments.routes';
+app.use('/api/v1', submarketDocumentsRoutes);
 
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);

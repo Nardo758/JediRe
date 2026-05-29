@@ -99,6 +99,7 @@ router.post(
         isRequired,
         expirationDate,
         status,
+        submarketId,
       } = req.body;
 
       // Parse tags if it's a string
@@ -118,6 +119,7 @@ router.post(
             isRequired: isRequired === 'true' || isRequired === true,
             expirationDate: expirationDate ? new Date(expirationDate) : undefined,
             status: status || 'draft',
+            submarketId: submarketId || undefined,
           })
         )
       );
@@ -489,17 +491,30 @@ router.put(
 
 /**
  * DELETE /api/v1/deals/:dealId/files/:fileId
- * Delete a file (soft delete)
+ * Delete a file (soft delete). Caller must own the parent deal.
  */
 router.delete(
   '/deals/:dealId/files/:fileId',
   authMiddleware.requireAuth,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { fileId } = req.params;
-      const userId = req.user?.id;
+      const { dealId, fileId } = req.params;
+      const authUser = req.user as { userId?: string; id?: string } | undefined;
+      const userId = authUser?.userId ?? authUser?.id ?? null;
 
-      const deleted = await documentsFilesService.deleteFile(fileId, userId);
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+
+      const dealCheck = await dbQuery(
+        'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+        [dealId, userId]
+      );
+      if (dealCheck.rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Deal not found' });
+      }
+
+      const deleted = await documentsFilesService.deleteFile(fileId, userId, dealId);
 
       if (!deleted) {
         return res.status(404).json({

@@ -83,6 +83,30 @@ export const api = {
     get3DDesign: (dealId: string) => apiClient.get(`/api/v1/deals/${dealId}/3d-design`),
     save3DDesign: (dealId: string, design: any) =>
       apiClient.post(`/api/v1/deals/${dealId}/3d-design`, design),
+    files: {
+      list: (dealId: string, params?: any) =>
+        apiClient.get(`/api/v1/deals/${dealId}/files`, { params }),
+      upload: (dealId: string, formData: FormData) =>
+        apiClient.post(`/api/v1/deals/${dealId}/files`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        }),
+      download: (dealId: string, fileId: string) =>
+        apiClient.get(`/api/v1/deals/${dealId}/files/${fileId}/download`, { responseType: 'blob' }),
+      delete: (dealId: string, fileId: string) =>
+        apiClient.delete(`/api/v1/deals/${dealId}/files/${fileId}`),
+    },
+  },
+
+  // Submarkets — Market Documents
+  submarkets: {
+    documents: {
+      list: (submarketId: string) =>
+        apiClient.get(`/api/v1/submarkets/${submarketId}/documents`),
+      download: (submarketId: string, fileId: string) =>
+        apiClient.get(`/api/v1/submarkets/${submarketId}/documents/${fileId}/download`, { responseType: 'blob' }),
+      delete: (submarketId: string, fileId: string) =>
+        apiClient.delete(`/api/v1/submarkets/${submarketId}/documents/${fileId}`),
+    },
   },
 
   // Properties

@@ -56,6 +56,7 @@ export interface FileUploadOptions {
   isRequired?: boolean;
   expirationDate?: Date;
   status?: string;
+  submarketId?: string;
 }
 
 export interface FileFilters {
@@ -164,20 +165,20 @@ class DocumentsFilesService {
           mime_type, file_extension, category, folder_path, tags,
           version, parent_file_id, is_latest_version, status,
           is_required, expiration_date, description, auto_category_confidence,
-          uploaded_by, shared_with, is_public
+          uploaded_by, shared_with, is_public, submarket_id
         ) VALUES (
           $1, $2, $3, $4, $5,
           $6, $7, $8, $9, $10,
           $11, $12, $13, $14,
           $15, $16, $17, $18,
-          $19, $20, $21
+          $19, $20, $21, $22
         ) RETURNING *`,
         [
           dealId, uniqueFilename, file.originalname, filePath, file.size,
           file.mimetype, fileExtension, category || 'other', folderPath, tags,
           version, parentFileId, true, options.status || 'draft',
           options.isRequired || false, options.expirationDate || null, options.description || null, autoConfidence,
-          userId, [], false
+          userId, [], false, options.submarketId || null
         ]
       );
 
@@ -293,18 +294,43 @@ class DocumentsFilesService {
   }
 
   /**
-   * Delete a file (soft delete)
+   * Delete a file (soft delete). Returns true if a row was updated, false if not found / not owned.
    */
-  async deleteFile(fileId: string, userId: string): Promise<void> {
+  async deleteFile(fileId: string, userId: string, dealId?: string): Promise<boolean> {
     try {
-      await query(
-        'UPDATE deal_files SET deleted_at = NOW() WHERE id = $1',
-        [fileId]
-      );
-      await this.logAccess(fileId, userId, 'deleted');
-      logger.info(`File deleted: ${fileId}`);
+      let sql = 'UPDATE deal_files SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL';
+      const params: (string | null)[] = [fileId];
+      if (dealId) {
+        sql += ` AND deal_id = $2`;
+        params.push(dealId);
+      }
+      const result = await query(sql, params);
+      if ((result.rowCount ?? 0) > 0) {
+        await this.logAccess(fileId, userId, 'deleted');
+        logger.info(`File deleted: ${fileId}`);
+        return true;
+      }
+      return false;
     } catch (error) {
       logger.error('Error deleting file:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * List all files scoped to a submarket (Market Documents surface).
+   */
+  async getSubmarketFiles(submarketId: string): Promise<DealFile[]> {
+    try {
+      const result = await query(
+        `SELECT * FROM deal_files
+          WHERE submarket_id = $1 AND deleted_at IS NULL AND is_latest_version = true
+          ORDER BY created_at DESC`,
+        [submarketId]
+      );
+      return result.rows;
+    } catch (error) {
+      logger.error('Error getting submarket files:', error);
       throw error;
     }
   }
