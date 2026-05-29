@@ -1,0 +1,50 @@
+The work is solid and the three bug fixes are good catches. 
+The discipline of finding mismatches between shadow and active 
+paths before treating them as comparable is exactly right.
+
+On the divergence interpretation — "real and expected" deserves 
+verification before treating as resolved. Three things worth 
+doing before the 7-day shadow log decides canary readiness:
+
+1. Inspect the 500-comp set for Atlanta MF #1. Class-match, 
+   vintage-match, submarket distribution. If Cobb County 
+   class A comps are 60%+ of the set for a south Atlanta 
+   class B subject, the 110bps spread is a comp quality 
+   issue, not a methodology difference. Same check for 
+   Atlanta MF #2.
+
+2. Confirm whether the canary will include strategy-aware 
+   comp selection (D-COMP-1 from the strategy-aware modules 
+   document) or whether the canary is testing the 
+   pre-strategy-aware version. 500 comps within 25 miles 
+   isn't the intended end state; strategy-aware selection 
+   narrows to 5-8 high-relevance comps. If canary tests 
+   pre-narrowing, the canary is testing a worse version 
+   than will ship — worth being explicit about which version 
+   is being canaried.
+
+3. Run the backtest harness against the new path's output 
+   for the S1 deals (Atlanta MF #1, #2, Jacksonville). The 
+   harness produces per-method per-deal price/cap error 
+   against ground truth. If the new path's median price 
+   error is worse than the legacy path's (pre-refactor 
+   baseline), promotion to canary should pause regardless 
+   of what the divergence summary shows.
+
+The 110bps cap rate divergence, if it translates to 
+proportional price divergence (~20%), would be larger than 
+the legacy path's existing error. That would make the new 
+path a regression, not an improvement. The backtest is the 
+only test that distinguishes "different methodology, both 
+valid" from "new methodology produces worse valuations."
+
+Verification protocol Layer 1 (path runs) and partial 
+Layer 2 (divergence measurable) are confirmed. Layer 3 
+(equivalent or better against ground truth) is not yet 
+confirmed. Per the phase plan, all three should pass 
+before canary.
+
+Otherwise the 7-day shadow log accumulation is the right 
+next step. Investigate the comps + run the backtest in 
+parallel with the shadow log accumulating; all three 
+inform the canary decision together.
