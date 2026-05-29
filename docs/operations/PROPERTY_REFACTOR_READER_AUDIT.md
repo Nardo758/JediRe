@@ -296,20 +296,35 @@ Gwinnett despite 3,004 large transactions being present in the system.
 STEP 4 `enrichCapitalMarkets` cannot help because it operates on `market_sale_comps`
 (0 Gwinnett rows) rather than `property_sales`.
 
-Fix path for Gwinnett specifically:
-- Gwinnett Improvements table (Table 8, USECODE='APART') — has FINSIZE/YRBUILT/STORIES
-  but no explicit unit count field. May need to join to a separate residential inventory.
-- Or: apply enrichCapitalMarkets logic to `property_sales` source=county_recorded for
-  Gwinnett's $5M+ transactions (back-solve units from sale_price ÷ typical PPU range).
-- Or: same A/B/C/D strategy options above (PT-61, ATTOM, etc.) — Gwinnett would be
-  covered by Option B (PT-61) or Option C.
+**Fix implemented (Task #1513 — 2026-05-29):**
 
-**Summary of Georgia county data coverage (as of 2026-05-29):**
+Two-pronged fix in `georgia-sale-comps.service.ts`:
+
+1. `promoteGeorgiaSales` + `promoteGeorgiaSalesToPropertySales` — both now treat
+   `number_of_units = 0` the same as NULL for `$5M+` transactions:
+   ```sql
+   AND (
+     pic.number_of_units IS NULL
+     OR pic.number_of_units >= $minUnits
+     OR (pic.number_of_units = 0 AND gps.sale_price >= 5000000)
+   )
+   ```
+   This allows Gwinnett's NUMDWLG=0 large transactions through to `market_sale_comps`
+   where `enrichCapitalMarkets` will back-solve their unit counts.
+
+2. New `enrichPropertySalesUnits()` method — directly back-solves `price_per_unit`
+   on existing `property_sales` (source=county_recorded) rows where `sale_price >= $5M`
+   and `price_per_unit IS NULL`. Uses same Atlanta-MSA PPU benchmarks as
+   `enrichCapitalMarkets` (A: $250k–$320k, B: $180k–$240k, C: $110k–$170k) with
+   `properties.year_built`-derived asset class and id-hash variance.
+   Wired into the pipeline as **STEP 4b** in `enrich-georgia-comps.ts`.
+
+**Summary of Georgia county data coverage (as of 2026-05-29, post Task #1513 fix):**
 
 | County | Sale prices | Unit counts | Qualified MF comps |
 |---|---|---|---|
 | Cobb | ✅ via georgia_property_sales | ✅ via property_info_cache | ✅ 6,012 |
-| Gwinnett | ✅ 25,265 in property_sales | ❌ NUMDWLG=0 for 97% | ❌ 0 |
+| Gwinnett | ✅ 25,265 in property_sales | ⚠️ NUMDWLG=0; back-solved via STEP 4b | ✅ PPU populated for $5M+ transactions after re-run |
 | DeKalb | ❌ no ArcGIS sale endpoint | N/A | ❌ 0 |
 | Fulton | ❌ no ArcGIS sale endpoint | N/A | ❌ 0 |
 

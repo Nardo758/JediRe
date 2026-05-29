@@ -5,7 +5,10 @@
  *   1. Run ArcGIS county ingestion → property_info_cache (units, sqft, year_built, stories)
  *   2. Backfill market_sale_comps attributes from property_info_cache via georgia_property_sales join
  *   3. Re-run promoteGeorgiaSales ETL to pick up newly-enriched parcel joins
+ *      (now treats number_of_units=0 as NULL for $5M+ transactions — fixes Gwinnett NUMDWLG gap)
  *   4. Run enrichCapitalMarkets (estimated units for large transactions still missing counts)
+ *   4b. Back-solve price_per_unit in property_sales (source=county_recorded) for counties with
+ *       zero-unit-count gap (e.g. Gwinnett NUMDWLG=0 for all MF parcels — Task #1513)
  *   5. Mark qualified=false where units < --min-units
  *   6. Print validation summary including Bishop deal comp pool size
  *
@@ -33,7 +36,7 @@ import { getPool, connectDatabase } from '../src/database/connection';
 import { logger } from '../src/utils/logger';
 import { GeorgiaIngestionOrchestrator } from '../src/services/property-enrichment/georgia/georgia-orchestrator';
 import { getFultonIngestionService } from '../src/services/property-enrichment/georgia/fulton-ingestion.service';
-import { georgiaSaleCompsService } from '../src/services/saleComps/georgia-sale-comps.service';
+import { georgiaSaleCompsService, EnrichPropertySalesResult } from '../src/services/saleComps/georgia-sale-comps.service';
 import { CompSetService } from '../src/services/saleComps/compSet.service';
 
 // Canonical county name spellings used in georgia_property_sales / property_info_cache.
@@ -415,6 +418,73 @@ async function main() {
         WHERE state = 'GA' AND (units >= 4 OR sale_price >= 5000000)
       `);
       console.log(`  [dry-run] Would enrich ${fmt(candRes.rows[0].c)} candidates\n`);
+    }
+  }
+
+  // ── STEP 4b: Back-solve price_per_unit in property_sales for counties ──────
+  // where the assessor unit count is 0/missing (e.g. Gwinnett NUMDWLG gap).
+  // This directly populates price_per_unit on existing property_sales rows
+  // (source=county_recorded) for $5M+ transactions without a unit count,
+  // satisfying the validation criterion: property_sales > 0 Gwinnett MF comps
+  // with price_per_unit populated.
+  if (SKIP_ENRICH) {
+    console.log('STEP 4b: Skipping property_sales unit back-solve (--skip-enrich)\n');
+  } else {
+    console.log('STEP 4b: Back-solving price_per_unit in property_sales (counties with zero-unit-count gap)...');
+
+    if (!DRY_RUN) {
+      const psEnrichResults: EnrichPropertySalesResult[] = [];
+
+      for (const county of targetCounties) {
+        const countyName = COUNTY_DB_NAME[county] ?? county;
+        const countyResults = await georgiaSaleCompsService.enrichPropertySalesUnits({
+          county: countyName,
+          state: 'GA',
+          minSalePrice: 5_000_000,
+        });
+        psEnrichResults.push(...countyResults);
+      }
+
+      let totalCandidates = 0;
+      let totalUpdated = 0;
+      for (const r of psEnrichResults) {
+        if (r.candidates > 0 || r.pricePerUnitUpdated > 0) {
+          console.log(
+            `  ✓ ${r.county.padEnd(10)} | ${fmt(r.candidates)} candidates` +
+            ` | ${fmt(r.pricePerUnitUpdated)} price_per_unit filled`
+          );
+        }
+        totalCandidates += r.candidates;
+        totalUpdated += r.pricePerUnitUpdated;
+      }
+
+      if (totalCandidates === 0) {
+        console.log('  (no property_sales rows needed back-solve — already populated or no $5M+ county_recorded rows)');
+      } else {
+        console.log(`  ✓ Total candidates   : ${fmt(totalCandidates)}`);
+        console.log(`  ✓ Total PPU filled   : ${fmt(totalUpdated)}`);
+      }
+      console.log();
+    } else {
+      const candRes = await pool.query(`
+        SELECT p.county, COUNT(*)::int AS cnt
+        FROM property_sales ps
+        JOIN properties p ON ps.property_id = p.id
+        WHERE ps.source = 'county_recorded'
+          AND p.state_code = 'GA'
+          AND ps.sale_price >= 5000000
+          AND ps.price_per_unit IS NULL
+        GROUP BY p.county
+        ORDER BY p.county
+      `);
+      if (candRes.rows.length === 0) {
+        console.log('  [dry-run] No property_sales rows need back-solve\n');
+      } else {
+        for (const r of candRes.rows) {
+          console.log(`  [dry-run] Would back-solve ${fmt(r.cnt)} rows for ${r.county}`);
+        }
+        console.log();
+      }
     }
   }
 

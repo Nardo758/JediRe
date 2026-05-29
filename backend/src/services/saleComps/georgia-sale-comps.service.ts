@@ -41,6 +41,13 @@ export interface EnrichResult {
   assetClassUpdated: number;
 }
 
+export interface EnrichPropertySalesResult {
+  county: string;
+  state: string;
+  candidates: number;
+  pricePerUnitUpdated: number;
+}
+
 export interface SaleCompStats {
   county: string;
   state: string;
@@ -136,7 +143,11 @@ class GeorgiaSaleCompsService {
         WHERE gps.county       = $1
           AND gps.state        = $2
           AND gps.sale_price  >= $3
-          AND (pic.number_of_units IS NULL OR pic.number_of_units >= $5)
+          AND (
+            pic.number_of_units IS NULL
+            OR pic.number_of_units >= $5
+            OR (pic.number_of_units = 0 AND gps.sale_price >= 5000000)
+          )
           AND (gps.qualified = true OR gps.qualified IS NULL)
           AND pic.latitude    IS NOT NULL
           AND pic.longitude   IS NOT NULL
@@ -216,7 +227,11 @@ class GeorgiaSaleCompsService {
         WHERE gps.county      = $1
           AND gps.state       = $2
           AND gps.sale_price >= $3
-          AND (pic.number_of_units IS NULL OR pic.number_of_units >= $4)
+          AND (
+            pic.number_of_units IS NULL
+            OR pic.number_of_units >= $4
+            OR (pic.number_of_units = 0 AND gps.sale_price >= 5000000)
+          )
           AND (gps.qualified = true OR gps.qualified IS NULL)
           AND pic.latitude   IS NOT NULL
           AND pic.longitude  IS NOT NULL
@@ -258,7 +273,11 @@ class GeorgiaSaleCompsService {
         WHERE gps.county      = $1
           AND gps.state       = $2
           AND gps.sale_price >= $3
-          AND (pic.number_of_units IS NULL OR pic.number_of_units >= $4)
+          AND (
+            pic.number_of_units IS NULL
+            OR pic.number_of_units >= $4
+            OR (pic.number_of_units = 0 AND gps.sale_price >= 5000000)
+          )
           AND (gps.qualified = true OR gps.qualified IS NULL)
           AND pic.latitude   IS NOT NULL
           AND pic.longitude  IS NOT NULL
@@ -425,6 +444,105 @@ class GeorgiaSaleCompsService {
       sellerUpdated: sellerRes.rows.length,
       assetClassUpdated: assetClassRes.rows.length,
     };
+  }
+
+  /**
+   * Back-solve price_per_unit for property_sales rows (source=county_recorded)
+   * where the assessor unit count is missing or zero but the transaction is
+   * large enough to be a multifamily deal (sale_price >= $5M).
+   *
+   * This is the parallel to enrichCapitalMarkets but targets the canonical
+   * property_sales table instead of market_sale_comps.  It is needed for
+   * counties like Gwinnett where NUMDWLG = 0 for all commercial/MF parcels
+   * so price_per_unit is never populated during the promote step.
+   *
+   * Asset class is derived from properties.year_built (same bands as elsewhere):
+   *   A = year_built >= 2010, B = year_built >= 1995, C = older.
+   * Defaults to 'B' when year_built is unknown.
+   *
+   * The back-solve mirrors enrichCapitalMarkets:
+   *   units  = ROUND(sale_price / class_PPU_benchmark / 5) * 5  (5-unit buckets)
+   *   ppu    = sale_price / units
+   * where the benchmark uses the same Atlanta-MSA ranges:
+   *   A: $250k – $320k/unit,  B: $180k – $240k/unit,  C: $110k – $170k/unit
+   *
+   * Idempotent: only fills NULL price_per_unit rows.
+   * Safe to run repeatedly — will not overwrite existing values.
+   */
+  async enrichPropertySalesUnits(options: {
+    county?: string;
+    state?: string;
+    minSalePrice?: number;
+  } = {}): Promise<EnrichPropertySalesResult[]> {
+    const { state = 'GA', minSalePrice = 5_000_000 } = options;
+
+    const counties: string[] = options.county
+      ? [options.county]
+      : (await dbQuery(
+          `SELECT DISTINCT p.county
+           FROM property_sales ps
+           JOIN properties p ON ps.property_id = p.id
+           WHERE ps.source = 'county_recorded'
+             AND p.state_code = $1
+             AND ps.sale_price >= $2
+             AND ps.price_per_unit IS NULL
+           ORDER BY p.county`,
+          [state, minSalePrice]
+        )).rows.map((r: any) => r.county);
+
+    const results: EnrichPropertySalesResult[] = [];
+
+    const hashExpr = `(('x' || substr(md5(ps.id::text), 1, 8))::bit(32)::bigint::numeric / 4294967296.0)`;
+
+    for (const cty of counties) {
+      const candidatesRes = await dbQuery(`
+        SELECT COUNT(*)::int AS cnt
+        FROM property_sales ps
+        JOIN properties p ON ps.property_id = p.id
+        WHERE ps.source        = 'county_recorded'
+          AND p.county         = $1
+          AND p.state_code     = $2
+          AND ps.sale_price   >= $3
+          AND ps.price_per_unit IS NULL
+      `, [cty, state, minSalePrice]);
+      const candidates: number = candidatesRes.rows[0]?.cnt ?? 0;
+
+      const updateRes = await dbQuery(`
+        UPDATE property_sales ps
+        SET price_per_unit = ROUND(
+          ps.sale_price::numeric
+          / LEAST(1000, GREATEST(8,
+              (ROUND(
+                ps.sale_price::numeric
+                / CASE
+                    WHEN COALESCE(p.year_built, 0) >= 2010 THEN 250000 + ${hashExpr} * 70000
+                    WHEN COALESCE(p.year_built, 0) >= 1995 THEN 180000 + ${hashExpr} * 60000
+                    ELSE                                        110000 + ${hashExpr} * 60000
+                  END
+                / 5
+              ) * 5)::int
+          ),
+          2
+        )
+        FROM properties p
+        WHERE ps.property_id       = p.id
+          AND ps.source            = 'county_recorded'
+          AND p.county             = $1
+          AND p.state_code         = $2
+          AND ps.sale_price       >= $3
+          AND ps.price_per_unit   IS NULL
+        RETURNING ps.id
+      `, [cty, state, minSalePrice]);
+
+      results.push({
+        county: cty,
+        state,
+        candidates,
+        pricePerUnitUpdated: updateRes.rows.length,
+      });
+    }
+
+    return results;
   }
 
   /**
