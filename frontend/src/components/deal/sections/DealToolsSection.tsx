@@ -659,6 +659,7 @@ function DecisionsTab({ dealId }: { dealId: string }) {
 const DOC_CATEGORIES = [
   { id: 'om',           name: 'Offering Memorandum',  icon: '📋' },
   { id: 'financial',    name: 'Financial Statements', icon: '💰' },
+  { id: 'market',       name: 'Market Documents',     icon: '📊' },
   { id: 'legal',        name: 'Legal Documents',      icon: '⚖️' },
   { id: 'environmental',name: 'Environmental Reports',icon: '🌿' },
   { id: 'inspection',   name: 'Inspection Reports',   icon: '🔍' },
