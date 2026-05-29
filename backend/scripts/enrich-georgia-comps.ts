@@ -34,6 +34,16 @@ import { logger } from '../src/utils/logger';
 import { GeorgiaIngestionOrchestrator } from '../src/services/property-enrichment/georgia/georgia-orchestrator';
 import { getFultonIngestionService } from '../src/services/property-enrichment/georgia/fulton-ingestion.service';
 import { georgiaSaleCompsService } from '../src/services/saleComps/georgia-sale-comps.service';
+import { CompSetService } from '../src/services/saleComps/compSet.service';
+
+// Canonical county name spellings used in georgia_property_sales / property_info_cache.
+// Must match exactly — DeKalb is mixed-case, not "Dekalb".
+const COUNTY_DB_NAME: Record<string, string> = {
+  cobb:     'Cobb',
+  gwinnett: 'Gwinnett',
+  dekalb:   'DeKalb',
+  fulton:   'Fulton',
+};
 
 // ── CLI args ──────────────────────────────────────────────────────────────────
 
@@ -139,14 +149,33 @@ async function main() {
         }
       }
 
-      // Fulton structures spatial join (year_built, stories, sqft, live_units)
+      // Fulton structures spatial join (year_built, stories, sqft, live_units).
+      // Requires: fulton_parcels geometry populated first (ingestParcelGeometry),
+      // then fulton_structures loaded (ingestStructures), then ST_Intersects join.
       if (targetCounties.includes('fulton')) {
-        console.log('\n  Running Fulton structures → property_info_cache spatial join...');
+        console.log('\n  Running Fulton parcel geometry + structures → property_info_cache spatial join...');
         const fulton = getFultonIngestionService();
+
+        // Step A: Populate fulton_parcels geometry (prerequisite for spatial join)
+        const geomResult = await fulton.ingestParcelGeometry();
+        console.log(`  ✓ Fulton parcel geometry: ${fmt(geomResult.ingested)} parcels staged, ${geomResult.errors} errors`);
+
+        // Step B: Ingest structures layer
         const structResult = await fulton.ingestStructures();
         console.log(`  ✓ Fulton structures: ${fmt(structResult.ingested)} ingested, ${structResult.errors} errors`);
-        const joinResult = await fulton.runSpatialJoin();
-        console.log(`  ✓ Fulton spatial join: ${fmt(joinResult.updated)} property_info_cache rows updated`);
+
+        // Step C: Precheck — warn and skip spatial join if geometry staging produced nothing
+        const geomCheck = await pool.query(
+          `SELECT COUNT(*) AS cnt FROM fulton_parcels WHERE geometry IS NOT NULL`
+        );
+        const geomCount = parseInt(geomCheck.rows[0].cnt);
+        if (geomCount === 0) {
+          console.warn('  ! Fulton parcel geometry is empty after ingestParcelGeometry() — skipping spatial join.');
+          console.warn('    Possible cause: ArcGIS geometry endpoint unavailable or returned no features.');
+        } else {
+          const joinResult = await fulton.runSpatialJoin();
+          console.log(`  ✓ Fulton spatial join: ${fmt(joinResult.updated)} property_info_cache rows updated`);
+        }
       }
 
       console.log(`\n  ✓ Ingestion complete`);
@@ -278,7 +307,7 @@ async function main() {
       await pool.query(`SET statement_timeout = '10min'`);
       try {
         for (const county of targetCounties) {
-          const countyName = county.charAt(0).toUpperCase() + county.slice(1);
+          const countyName = COUNTY_DB_NAME[county] ?? county;
           console.log(`  → ${countyName}...`);
           const results = await georgiaSaleCompsService.promoteGeorgiaSales({
             county: countyName,
@@ -392,48 +421,38 @@ async function main() {
     );
   }
 
-  // Bishop deal validation
+  // Bishop deal validation — uses CompSetService.generateCompSet with canonical
+  // parameters (3mi radius, 60-month window) that match real comp-set generation.
+  // dry_run=true so no record is written to sale_comp_sets.
   const BISHOP_DEAL_ID = '3f32276f-aacd-4da3-b306-317c5109b403';
-  console.log('\n  Bishop deal comp pool (deal_id = Bishop):');
+  console.log('\n  Bishop deal comp pool (CompSetService 3mi / 60mo):');
 
-  const bishopRes = await pool.query(`
-    SELECT d.id, p.latitude, p.longitude, p.units AS subj_units
-    FROM deals d
-    LEFT JOIN properties p ON p.deal_id = d.id
-    WHERE d.id = $1
-    LIMIT 1
-  `, [BISHOP_DEAL_ID]);
+  try {
+    const compSetSvc = new CompSetService();
+    const bishopCompSet = await compSetSvc.generateCompSet({
+      deal_id: BISHOP_DEAL_ID,
+      radius_miles: 3,
+      date_range_months: 60,
+      min_units: 50,
+      max_units: 500,
+      property_classes: ['A', 'B', 'C'],
+      dry_run: true,
+    });
 
-  if (bishopRes.rows.length > 0 && bishopRes.rows[0].latitude) {
-    const b = bishopRes.rows[0];
-    const compPoolRes = await pool.query(`
-      SELECT COUNT(*)::int AS cnt,
-             COUNT(*) FILTER (WHERE price_per_unit > 0)::int AS with_ppu,
-             ROUND(AVG(price_per_unit) FILTER (WHERE price_per_unit > 0)) AS avg_ppu
-      FROM market_sale_comps t
-      WHERE t.property_type = 'multifamily'
-        AND t.sale_date >= NOW() - INTERVAL '24 months'
-        AND (t.units IS NULL OR t.units >= 50)
-        AND (t.units IS NULL OR t.units <= 500)
-        AND t.sale_price > 0
-        AND (t.qualified IS NULL OR t.qualified = true)
-        AND t.latitude  IS NOT NULL
-        AND t.longitude IS NOT NULL
-        AND (
-          point(t.longitude::float, t.latitude::float)
-          <@> point($1::float, $2::float)
-        ) <= 9
-    `, [b.longitude, b.latitude]);
+    const compCount = bishopCompSet.comp_count;
+    const medPpu = bishopCompSet.median_price_per_unit;
+    const ppuPass = medPpu > 0;
+    const countPass = compCount >= 5;
+    const pass = countPass && ppuPass;
 
-    const pool2 = compPoolRes.rows[0];
-    console.log(`    Comps within 9mi (24mo, 50-500 units): ${fmt(pool2.cnt)}`);
-    console.log(`    With PPU                              : ${fmt(pool2.with_ppu)}`);
-    console.log(`    Average PPU                           : ${pool2.avg_ppu ? '$' + fmt(parseInt(pool2.avg_ppu)) : '—'}`);
-
-    const pass = pool2.cnt >= 5;
-    console.log(`    Target ≥ 5 comps                      : ${pass ? '✓ PASS' : '✗ FAIL (run full ingest for more data)'}`);
-  } else {
-    console.log('    Bishop deal not found or missing coordinates — skipping');
+    console.log(`    Comp count (M1+)                      : ${fmt(compCount)}`);
+    console.log(`    Median PPU                            : ${medPpu > 0 ? '$' + fmt(Math.round(medPpu)) : '—'}`);
+    console.log(`    Avg PPU                               : ${bishopCompSet.avg_price_per_unit > 0 ? '$' + fmt(Math.round(bishopCompSet.avg_price_per_unit)) : '—'}`);
+    console.log(`    Target ≥ 5 comps                      : ${countPass ? '✓ PASS' : '✗ FAIL'}`);
+    console.log(`    Median PPU > 0                        : ${ppuPass ? '✓ PASS' : '✗ FAIL (run full ingest for unit data)'}`);
+    console.log(`    Overall                               : ${pass ? '✓ PASS' : '✗ NEEDS MORE DATA'}`);
+  } catch (err: any) {
+    console.log(`    Bishop validation skipped: ${err.message}`);
   }
 
   console.log('\n══════════════════════════════════════════════════════');
