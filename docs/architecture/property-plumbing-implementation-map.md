@@ -454,11 +454,16 @@ Usage: `cd backend && npx ts-node --transpile-only scripts/synthesize-implied-ca
 - [x] Apartment Locator dual-write to `property_characteristics` + `property_operating_data` wired
 - [x] Valuation grid Phase 5 path added (behind `VALUATION_COMPS_FLAG`)
 - [x] `apartment_locator_properties` disposition documented (KEEP as raw-scrape staging)
+- [x] Georgia county ingest (Gwinnett/DeKalb/Cobb/Fulton) dual-write to `property_sales` wired (Task #1498)
+  - `GwinnettIngestionService.saveSales()` — already had `writeSaleInTx`; upgraded GPS INSERT to return `id` so source_id = GPS UUID (idempotent across both write paths)
+  - `GeorgiaSaleCompsService.promoteGeorgiaSalesToPropertySales()` — new bulk ETL method; called in STEP 3b of `enrich-georgia-comps.ts`; joins `georgia_property_sales → properties` via `parcel_id_canonical`; `source=county_recorded`, `source_id=gps.id::text`, `confidence=0.80`
+  - `VALUATION_COMPS_FLAG` evidence trail updated to show `county_recorded` comp breakdown + `getMarketCapRateDistribution()` sources array now includes `source` field
+  - STEP 6 validation in `enrich-georgia-comps.ts` now includes `property_sales` coverage table
 - [ ] `VALUATION_COMPS_FLAG=shadow` deployed and confirmed logging both paths on real deals
 - [ ] `synthesize-implied-cap-rates.ts` run against production — `updated > 0`
 - [ ] Backtest S1 deals (Jacksonville, Atlanta ×2) equivalent or better vs pre-refactor
 - [ ] No active deal returns INSUFFICIENT on subject-side data
-- [ ] `property_sales` row count growing with each FL municipal ingest cycle
+- [ ] `property_sales` row count growing with each Georgia county ingest cycle (verify after next enrich-georgia-comps run)
 
 ---
 

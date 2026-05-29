@@ -478,13 +478,15 @@ export class GwinnettIngestionService {
       try {
         await client.query('BEGIN');
 
-        await client.query(
+        const gpsResult = await client.query(
           `INSERT INTO georgia_property_sales (
             parcel_id, county, state,
             sale_date, sale_year, sale_price,
             grantor_name, provider
           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-          ON CONFLICT (parcel_id, county, state, sale_date, sale_price) DO NOTHING`,
+          ON CONFLICT (parcel_id, county, state, sale_date, sale_price)
+          DO UPDATE SET provider = EXCLUDED.provider
+          RETURNING id`,
           [
             lrsn,
             sale.county,
@@ -496,6 +498,7 @@ export class GwinnettIngestionService {
             'gwinnett_ga',
           ]
         );
+        const gpsId: string | undefined = gpsResult.rows[0]?.id;
 
         if (resolvedPropertyId) {
           await propertyDualWriteService.writeSaleInTx(resolvedPropertyId, {
@@ -506,6 +509,7 @@ export class GwinnettIngestionService {
             salePrice: sale.salePrice,
             grantorName: sale.grantorName || null,
             provider: 'gwinnett_ga',
+            sourceId: gpsId,
           }, client);
         }
 

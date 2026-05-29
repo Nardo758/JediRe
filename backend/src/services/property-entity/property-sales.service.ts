@@ -530,7 +530,7 @@ export class PropertySalesService {
     p50: number;
     p75: number;
     n: number;
-    sources: Array<{ saleId: string; impliedCapRate: number; saleDate: string; distanceMiles: number }>;
+    sources: Array<{ saleId: string; impliedCapRate: number; saleDate: string; distanceMiles: number; source: string }>;
   } | null> {
     const comps = await this.getSalesByCriteria({
       lat: opts.lat,
@@ -560,6 +560,7 @@ export class PropertySalesService {
         impliedCapRate: c.impliedCapRate!,
         saleDate: c.saleDate ?? '',
         distanceMiles: c.distanceMiles ?? 0,
+        source: c.source ?? '',
       })),
     };
   }

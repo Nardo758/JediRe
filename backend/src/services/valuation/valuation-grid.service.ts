@@ -650,9 +650,18 @@ export class ValuationGridService {
             : 'LOW';
 
           const fmtCap = (v: number) => `${(v * 100).toFixed(2)}%`;
+
+          // Count Georgia county-recorded comps (source=county_recorded) for shadow-log
+          // confirmation that Gwinnett/DeKalb/Cobb/Fulton ingest is populating the pool.
+          const georgiaSources = distribution.sources.filter(
+            (s: any) => (s.source ?? '') === 'county_recorded'
+          );
+          const georgiaCount = georgiaSources.length;
+
           const ps5evidence: EvidenceLine[] = [
             { label: 'Stabilized NOI', value: fmt$(noi), source: subject.noiSource },
             { label: 'Comp Pool (property_sales)', value: `${distribution.n} comps with implied cap rate` },
+            { label: 'Georgia county_recorded', value: `${georgiaCount} of ${distribution.n} comps`, source: 'property_sales' },
             { label: 'Implied Cap P25', value: fmtCap(distribution.p25), source: 'property_sales' },
             { label: 'Implied Cap P50', value: fmtCap(distribution.p50), source: 'property_sales' },
             { label: 'Implied Cap P75', value: fmtCap(distribution.p75), source: 'property_sales' },
@@ -680,7 +689,7 @@ export class ValuationGridService {
             compCount: distribution.n,
             staleCompCount: 0,
             capRateSpreadBps,
-            sourceProvenance: `${distribution.n} property_sales implied cap rates (Phase 5 — synthesized from operating data)`,
+            sourceProvenance: `${distribution.n} property_sales implied cap rates (Phase 5 — synthesized from operating data; ${georgiaCount} Georgia county_recorded)`,
             evidenceTrail: ps5evidence,
             warningFlags: distribution.n < 5
               ? [`Thin comp pool from property_sales (n=${distribution.n}) — consider widening radius.`]

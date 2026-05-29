@@ -17,6 +17,13 @@ export interface PromoteOptions {
   minUnits?: number;
 }
 
+export interface PromoteToPropertySalesResult {
+  county: string;
+  state: string;
+  inserted: number;
+  skipped: number;
+}
+
 export interface PromoteResult {
   promoted: number;
   county: string;
@@ -145,6 +152,126 @@ class GeorgiaSaleCompsService {
       `, [cty, state, minSalePrice, cty, minUnits]);
 
       results.push({ county: cty, state, promoted: res.rows.length });
+    }
+
+    return results;
+  }
+
+  /**
+   * ETL: Bulk-promote qualified Georgia sales → property_sales (Phase 5 / D5)
+   *
+   * Mirrors promoteGeorgiaSales but targets the canonical property_sales table
+   * instead of market_sale_comps. Joins georgia_property_sales → properties via
+   * parcel_id_canonical so each row is tied to a canonical property entity.
+   *
+   * source        = 'county_recorded'
+   * source_id     = gps.id::text  (UUID of the georgia_property_sales row)
+   * confidence    = 0.80 (standard county-recorded quality)
+   *
+   * Idempotent: ON CONFLICT (source, source_id) DO NOTHING.
+   * Rows without a matching properties record are silently skipped — they will
+   * be resolved when the individual ingestion service next runs with dual-write
+   * enabled (e.g. GwinnettIngestionService.saveSales).
+   */
+  async promoteGeorgiaSalesToPropertySales(
+    options: PromoteOptions = {}
+  ): Promise<PromoteToPropertySalesResult[]> {
+    const {
+      county,
+      state = 'GA',
+      minSalePrice = 200_000,
+      minUnits = 4,
+    } = options;
+
+    const counties = county
+      ? [county]
+      : (await dbQuery(
+          `SELECT DISTINCT county FROM georgia_property_sales WHERE state = $1 ORDER BY county`,
+          [state]
+        )).rows.map((r: any) => r.county);
+
+    const results: PromoteToPropertySalesResult[] = [];
+
+    for (const cty of counties) {
+      // Canonical parcel ID formula must match buildCanonicalParcelId() in
+      // property-resolver.service.ts:
+      //   `${state.lower}-${county.lower.replace(' ','_')}-${parcel_id.lower}`
+      const canonicalExpr = `
+        LOWER(gps.state) || '-' ||
+        LOWER(REPLACE(gps.county, ' ', '_')) || '-' ||
+        LOWER(TRIM(gps.parcel_id))
+      `;
+
+      // COUNT eligible GPS rows before insert to compute skipped.
+      const eligibleRes = await dbQuery(`
+        SELECT COUNT(*)::int AS cnt
+        FROM georgia_property_sales gps
+        JOIN property_info_cache pic
+          ON  pic.parcel_id = gps.parcel_id
+          AND pic.county    = gps.county
+          AND pic.state     = gps.state
+        JOIN properties p
+          ON  p.parcel_id_canonical = ${canonicalExpr}
+          AND (p.is_superseded IS NULL OR p.is_superseded = FALSE)
+        WHERE gps.county      = $1
+          AND gps.state       = $2
+          AND gps.sale_price >= $3
+          AND (pic.number_of_units IS NULL OR pic.number_of_units >= $4)
+          AND (gps.qualified = true OR gps.qualified IS NULL)
+          AND pic.latitude   IS NOT NULL
+          AND pic.longitude  IS NOT NULL
+      `, [cty, state, minSalePrice, minUnits]);
+      const eligible: number = eligibleRes.rows[0]?.cnt ?? 0;
+
+      const res = await dbQuery(`
+        INSERT INTO property_sales (
+          property_id,
+          sale_date, sale_price,
+          price_per_unit, price_per_sf,
+          seller, qualified,
+          source, source_id, source_date, confidence,
+          is_jedi_tracked
+        )
+        SELECT
+          p.id                                                        AS property_id,
+          gps.sale_date,
+          gps.sale_price,
+          CASE WHEN pic.number_of_units > 0
+            THEN ROUND(gps.sale_price / pic.number_of_units, 2) END  AS price_per_unit,
+          CASE WHEN pic.living_area_sqft > 0
+            THEN ROUND(gps.sale_price / pic.living_area_sqft, 2) END AS price_per_sf,
+          gps.grantor_name                                            AS seller,
+          gps.qualified,
+          'county_recorded'                                           AS source,
+          gps.id::text                                                AS source_id,
+          gps.sale_date                                               AS source_date,
+          0.80                                                        AS confidence,
+          false                                                       AS is_jedi_tracked
+        FROM georgia_property_sales gps
+        JOIN property_info_cache pic
+          ON  pic.parcel_id = gps.parcel_id
+          AND pic.county    = gps.county
+          AND pic.state     = gps.state
+        JOIN properties p
+          ON  p.parcel_id_canonical = ${canonicalExpr}
+          AND (p.is_superseded IS NULL OR p.is_superseded = FALSE)
+        WHERE gps.county      = $1
+          AND gps.state       = $2
+          AND gps.sale_price >= $3
+          AND (pic.number_of_units IS NULL OR pic.number_of_units >= $4)
+          AND (gps.qualified = true OR gps.qualified IS NULL)
+          AND pic.latitude   IS NOT NULL
+          AND pic.longitude  IS NOT NULL
+        ON CONFLICT (source, source_id) DO NOTHING
+        RETURNING id
+      `, [cty, state, minSalePrice, minUnits]);
+
+      results.push({
+        county: cty,
+        state,
+        inserted: res.rows.length,
+        skipped: eligible - res.rows.length,
+      });
     }
 
     return results;

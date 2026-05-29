@@ -322,7 +322,32 @@ async function main() {
             minUnits: MIN_UNITS,
           });
           for (const r of results) {
-            console.log(`  ✓ ${r.county.padEnd(10)} | ${fmt(r.promoted)} comps upserted`);
+            console.log(`  ✓ ${r.county.padEnd(10)} | ${fmt(r.promoted)} comps upserted → market_sale_comps`);
+          }
+        }
+      } finally {
+        await pool.query(`RESET statement_timeout`);
+      }
+      console.log();
+
+      // ── STEP 3b: Dual-write to property_sales (D5 canonical comp table) ────
+      console.log('STEP 3b: Promoting Georgia sales → property_sales (source=county_recorded)...');
+      await pool.query(`SET statement_timeout = '10min'`);
+      try {
+        for (const county of targetCounties) {
+          const countyName = COUNTY_DB_NAME[county] ?? county;
+          console.log(`  → ${countyName}...`);
+          const psResults = await georgiaSaleCompsService.promoteGeorgiaSalesToPropertySales({
+            county: countyName,
+            state: 'GA',
+            minSalePrice: 200_000,
+            minUnits: MIN_UNITS,
+          });
+          for (const r of psResults) {
+            console.log(
+              `  ✓ ${r.county.padEnd(10)} | ${fmt(r.inserted)} inserted → property_sales` +
+              ` | ${fmt(r.skipped)} skipped (no properties row yet)`
+            );
           }
         }
       } finally {
@@ -331,6 +356,7 @@ async function main() {
       console.log();
     } else {
       console.log('  [dry-run] Would call promoteGeorgiaSales for:', targetCounties.join(', '));
+      console.log('  [dry-run] Would call promoteGeorgiaSalesToPropertySales for:', targetCounties.join(', '));
       console.log();
     }
   }
@@ -392,6 +418,41 @@ async function main() {
   // ── STEP 6: Validation report ───────────────────────────────────────────────
   console.log('STEP 6: Validation report');
   console.log('──────────────────────────────────────────────────────');
+
+  // property_sales counts by county for Georgia (source=county_recorded)
+  const psCoverageRes = await pool.query(`
+    SELECT
+      p.county,
+      COUNT(*)::int                                                         AS total,
+      COUNT(*) FILTER (WHERE ps.price_per_unit > 0)::int                   AS with_ppu,
+      COUNT(*) FILTER (WHERE ps.qualified = true)::int                     AS qualified,
+      ROUND(AVG(ps.price_per_unit) FILTER (WHERE ps.price_per_unit > 0))   AS avg_ppu
+    FROM property_sales ps
+    JOIN properties p ON ps.property_id = p.id
+    WHERE ps.source = 'county_recorded'
+      AND p.state   = 'GA'
+    GROUP BY p.county
+    ORDER BY p.county
+  `);
+
+  console.log('\n  property_sales coverage by county (source=county_recorded, state=GA):');
+  if (psCoverageRes.rows.length === 0) {
+    console.log('  (no rows yet — run without --skip-promote to populate)');
+  } else {
+    console.log(`  ${'County'.padEnd(12)} ${'Total'.padStart(8)} ${'w/PPU'.padStart(8)} ${'Qualified'.padStart(10)} ${'Avg PPU'.padStart(10)}`);
+    console.log(`  ${'-'.repeat(52)}`);
+    for (const r of psCoverageRes.rows) {
+      const avgPpu = r.avg_ppu ? `$${fmt(parseInt(r.avg_ppu))}` : '—';
+      console.log(
+        `  ${(r.county ?? '?').padEnd(12)} ` +
+        `${fmt(r.total).padStart(8)} ` +
+        `${fmt(r.with_ppu).padStart(8)} ` +
+        `${fmt(r.qualified).padStart(10)} ` +
+        `${avgPpu.padStart(10)}`
+      );
+    }
+  }
+  console.log();
 
   // Overall GA coverage
   const coverageRes = await pool.query(`
