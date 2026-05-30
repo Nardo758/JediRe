@@ -886,6 +886,23 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     return () => window.removeEventListener('basis.changed', handleBasisChanged);
   }, [props.onF9Refresh]);
 
+  // ── waterfall:split-changed subscriber ───────────────────────────────────
+  // When WaterfallTab saves an LP/GP split change, this tab must refresh so
+  // the Capital Structure section shows the updated values rather than going
+  // stale until a full page navigation. The incoming event detail carries the
+  // new lpShare/gpShare (0-1 decimals) so local state can be updated
+  // immediately before the F9 re-fetch completes.
+  useEffect(() => {
+    function handleSplitChanged(e: Event) {
+      const { lpShare, gpShare } = (e as CustomEvent<{ lpShare: number; gpShare: number }>).detail ?? {};
+      if (lpShare != null) setLpSharePct((lpShare * 100).toFixed(0));
+      if (gpShare != null) setGpSharePct((gpShare * 100).toFixed(0));
+      props.onF9Refresh?.();
+    }
+    window.addEventListener('waterfall:split-changed', handleSplitChanged);
+    return () => window.removeEventListener('waterfall:split-changed', handleSplitChanged);
+  }, [props.onF9Refresh]);
+
   // ── Resolved values (server side of truth) ─────────────────────────────────
   const purchasePriceResolved = fin?.capitalStack?.purchasePrice ?? null;
   const pricePerUnitResolved  = fin?.capitalStack?.pricePerUnit ?? null;
@@ -1140,6 +1157,9 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
         }),
       ]);
       props.onF9Refresh?.();
+      window.dispatchEvent(new CustomEvent('waterfall:split-changed', {
+        detail: { dealId: props.dealId, lpShare: triggerField === 'lpShare' ? dec : complement, gpShare: triggerField === 'gpShare' ? dec : complement },
+      }));
     });
   }
 

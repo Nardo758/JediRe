@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { SectionPanel, DataRow, Bd, KpiTile } from '../../../components/deal/bloomberg-ui';
 import type { FinancialEngineTabProps } from './types';
@@ -442,6 +442,19 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wfBe?.lpShare, wfBe?.gpShare, wfBe?.prefRate, wfBe?.waterfallType, wfBe?.tiers?.length, capBe?.tranches?.length]);
 
+  // ── waterfall:split-changed subscriber ───────────────────────────────────
+  // When DealTermsTab saves an LP/GP split change it dispatches this event so
+  // this tab stays in sync without requiring a full page navigation.
+  // onF9Refresh re-fetches f9Financials; the useEffect above then re-syncs
+  // the tranche/tier state from the refreshed wfBe.
+  useEffect(() => {
+    function handleSplitChanged() {
+      onF9Refresh?.();
+    }
+    window.addEventListener('waterfall:split-changed', handleSplitChanged);
+    return () => window.removeEventListener('waterfall:split-changed', handleSplitChanged);
+  }, [onF9Refresh]);
+
   const patch = useCallback(async (key: string, value: number | string | null) => {
     await patchWf(dealId, key, value);
     onF9Refresh?.();
@@ -476,7 +489,12 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
     const newGp = next.filter(t => t.role === 'gp').reduce((s, t) => s + t.pct, 0);
     await patchWf(dealId, 'lpShare', newLp);
     await patchWf(dealId, 'gpShare', newGp);
-    if (!skipRefresh) onF9Refresh?.();
+    if (!skipRefresh) {
+      onF9Refresh?.();
+      window.dispatchEvent(new CustomEvent('waterfall:split-changed', {
+        detail: { dealId, lpShare: newLp, gpShare: newGp },
+      }));
+    }
   }, [dealId, onF9Refresh, tranches.length]);
 
   // Persist entire tier array
