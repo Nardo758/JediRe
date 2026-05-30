@@ -13,12 +13,16 @@
  *   for that deal only. Raw CoStar-branded data is never re-exported or served
  *   to third parties with CoStar attribution.
  *
+ * vendorParser: each fileType registers a lazy parse+persist function.
+ *   Lazy dynamic imports (await import(...)) prevent DB connection
+ *   initialisation when this declaration is imported in test environments.
+ *
  * Source of truth for classifier.ts CoStar patterns:
  *   This file replaces all hardcoded CoStar branches in classifier.ts.
  *   Any change to CoStar filename fingerprints or header signals belongs here.
  */
 
-import type { VendorDeclaration } from './types';
+import type { VendorDeclaration, VendorParseOptions, VendorParseResult } from './types';
 
 export const COSTAR_VENDOR: VendorDeclaration = {
   vendorId: 'costar',
@@ -62,6 +66,90 @@ export const COSTAR_VENDOR: VendorDeclaration = {
           vendorSourceValue: 'costar',
         },
       },
+      /**
+       * Parse + dual-write for CoStar DataTable (Submarket Time-Series).
+       *
+       * Writes to:
+       *   1. vendor_market_observations — cross-vendor normalized substrate
+       *      (one row per parsed period, tagged vendor_id='costar')
+       *
+       * Note: costar_submarket_stats / costar_market_metrics require a dealId
+       * for their composite unique key (deal_id + submarket + state + period_date).
+       * Those writes happen in the deal-scoped data-router path
+       * (routeCoStarSubmarket) which has the deal context. The vendorParser
+       * here serves the cross-deal Data Library upload path.
+       */
+      vendorParser: async (buffer: Buffer, options: VendorParseOptions): Promise<VendorParseResult> => {
+        const { parseCoStarSubmarket } = await import('../parsers/costar-submarket-parser');
+        const { query } = await import('../../../database/connection');
+        const { randomUUID } = await import('crypto');
+
+        const data = parseCoStarSubmarket(buffer, options.fileId ?? '');
+
+        if (data.rows.length === 0) {
+          return {
+            success: false,
+            error: `No valid CoStar DataTable rows parsed (${data.skippedRows} skipped)`,
+            validRows: 0,
+            invalidRows: data.skippedRows,
+            rowsInserted: 0,
+          };
+        }
+
+        // geography_id: use fileId as a stable per-file anchor.
+        // In the deal-upload path (data-router.ts), the deal's city+state
+        // provides a richer submarket label; here we use what is available.
+        const geographyId = options.fileId ?? `costar-submarket-${Date.now()}`;
+
+        let inserted = 0;
+        let writeErrors = 0;
+
+        for (const row of data.rows) {
+          try {
+            await query(
+              `INSERT INTO vendor_market_observations
+                 (id, vendor_id, vendor_file_type, deal_id, file_id,
+                  observation_date, geography_level, geography_id,
+                  avg_asking_rent, vacancy_rate,
+                  under_construction_units, inventory_units, net_absorption_units,
+                  cap_rate, price_per_unit,
+                  vendor_license_posture, vendor_data_as_of, raw_snapshot)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+               ON CONFLICT DO NOTHING`,
+              [
+                randomUUID(),
+                'costar',
+                'COSTAR_SUBMARKET_EXPORT',
+                options.dealId ?? null,
+                options.fileId ?? null,
+                row.periodDate,
+                'submarket',
+                geographyId,
+                row.askingRentPerUnit,
+                row.vacancyRate,
+                row.underConstructionUnits,
+                row.inventoryUnits,
+                row.absorption12mo,
+                row.capRate,
+                row.salePricePerUnit,
+                'restricted',
+                options.dataAsOf ?? null,
+                JSON.stringify(row),
+              ],
+            );
+            inserted++;
+          } catch {
+            writeErrors++;
+          }
+        }
+
+        return {
+          success: inserted > 0 || (data.rows.length > 0 && writeErrors === 0),
+          rowsInserted: inserted,
+          validRows: data.rows.length,
+          invalidRows: data.skippedRows + writeErrors,
+        };
+      },
     },
 
     // ── COSTAR_SALE_COMPS ("Near By Sales") ─────────────────────────────────
@@ -82,6 +170,49 @@ export const COSTAR_VENDOR: VendorDeclaration = {
         vendorSpecific: {
           market_sale_comps: 'costar_upload',
         },
+      },
+      /**
+       * Registry-driven dispatch for CoStar sale comps (data-library upload path).
+       *
+       * Sale comps are property-level comp records, not submarket time-series
+       * observations. Full database writes (market_sale_comps) require a dealId
+       * because the table is deal-scoped. Without dealId the file is classified
+       * and acknowledged as a success so the data_library_files row is marked
+       * parsed; the operator can then associate it with a deal for extraction.
+       *
+       * When dealId is provided, delegates to processCoStarUpload for the
+       * full 3-tier dedup pipeline.
+       */
+      vendorParser: async (buffer: Buffer, options: VendorParseOptions): Promise<VendorParseResult> => {
+        if (!options.dealId) {
+          // Classify-only: no deal context available for deal-scoped writes.
+          // Return success so parser_status is set to 'success' and the file
+          // is visible in the data library. The operator can link to a deal later.
+          return { success: true, rowsInserted: 0, validRows: 0, invalidRows: 0 };
+        }
+
+        const { getPool } = await import('../../../database/connection');
+        const { processCoStarUpload } = await import('../../valuation/costar-comp-upload.service');
+
+        const pool = getPool();
+        const result = await processCoStarUpload(pool, {
+          buffer,
+          filename: options.fileId ?? 'Near By Sales.xlsx',
+          fileId: options.fileId ?? null,
+          compType: 'sale',
+          dealId: options.dealId,
+        });
+
+        if (result.rejected) {
+          return { success: false, error: result.rejectReason, rowsInserted: 0, validRows: 0 };
+        }
+
+        return {
+          success: true,
+          rowsInserted: result.inserted + (result.merged ?? 0),
+          validRows: result.totalRows - result.skippedInvalid,
+          invalidRows: result.skippedInvalid,
+        };
       },
     },
 
@@ -111,6 +242,40 @@ export const COSTAR_VENDOR: VendorDeclaration = {
         vendorSpecific: {
           market_rent_comps: 'costar_upload',
         },
+      },
+      /**
+       * Registry-driven dispatch for CoStar rent comps (data-library upload path).
+       *
+       * Mirrors COSTAR_SALE_COMPS vendorParser behaviour: classify-only when no
+       * dealId; full processCoStarUpload pipeline when dealId is present.
+       */
+      vendorParser: async (buffer: Buffer, options: VendorParseOptions): Promise<VendorParseResult> => {
+        if (!options.dealId) {
+          return { success: true, rowsInserted: 0, validRows: 0, invalidRows: 0 };
+        }
+
+        const { getPool } = await import('../../../database/connection');
+        const { processCoStarUpload } = await import('../../valuation/costar-comp-upload.service');
+
+        const pool = getPool();
+        const result = await processCoStarUpload(pool, {
+          buffer,
+          filename: options.fileId ?? 'Rent Comp Properties.xlsx',
+          fileId: options.fileId ?? null,
+          compType: 'rent',
+          dealId: options.dealId,
+        });
+
+        if (result.rejected) {
+          return { success: false, error: result.rejectReason, rowsInserted: 0, validRows: 0 };
+        }
+
+        return {
+          success: true,
+          rowsInserted: result.inserted + (result.merged ?? 0),
+          validRows: result.totalRows - result.skippedInvalid,
+          invalidRows: result.skippedInvalid,
+        };
       },
     },
   ],

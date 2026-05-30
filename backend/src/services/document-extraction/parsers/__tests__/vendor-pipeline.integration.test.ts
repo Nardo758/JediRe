@@ -5,7 +5,7 @@
  *
  *   XLSX buffer → parse → vendor table write → historical_observations write
  *
- * Four test suites with increasing scope:
+ * Six test suites with increasing scope:
  *
  *   Suite 1 — Parse layer (no DB)
  *     Validates that parseYardiRentSurvey correctly extracts rows from a
@@ -29,6 +29,17 @@
  *     download stubbed via vi.mock('@aws-sdk/client-s3') to return our synthetic
  *     XLSX buffer. This is the true E2E boundary — the same entry point that
  *     the intake worker calls in production.
+ *
+ *   Suite 5 — CoStar classification layer (no DB)
+ *     Validates that vendorRegistry classifies CoStar filenames correctly for
+ *     all three CoStar document types (DataTable, Near By Sales, Rent Comp
+ *     Properties) and that each resolves to a registered vendorParser.
+ *
+ *   Suite 6 — CoStar DataTable dual-write (real DB, sentinel cleanup)
+ *     Calls the COSTAR_SUBMARKET_EXPORT vendorParser end-to-end. Validates
+ *     dual-write to vendor_market_observations (the cross-vendor substrate)
+ *     with correct vendor attribution (vendor_id='costar',
+ *     vendor_license_posture='restricted').
  *
  * Adding a future vendor:
  *   1. Write a `makeVendorBuffer()` helper for the new vendor's XLSX shape.
@@ -90,6 +101,9 @@ const SENTINEL_SM = `__vendor-pipeline-integration-test-${RUN_ID}__`;
 // Suite 4 — processor layer; separate sentinel so assertions don't mix with Suite 3
 const PROC_SM      = `__proc-integration-test-${RUN_ID}__`;
 const PROC_FILE_ID = randomUUID();
+
+// Suite 6 — CoStar DataTable dual-write; uses file_id as geography_id anchor
+const COSTAR_FILE_ID = `__costar-integration-test-${RUN_ID}__`;
 
 // ── XLSX fixture helpers ──────────────────────────────────────────────────────
 
@@ -160,6 +174,14 @@ afterAll(async () => {
   // Clean up the data_library_files row created by Suite 4
   try {
     await query(`DELETE FROM data_library_files WHERE id = $1`, [PROC_FILE_ID]);
+  } catch (_) {}
+  // Clean up CoStar rows created by Suite 6
+  try {
+    await query(
+      `DELETE FROM vendor_market_observations
+         WHERE vendor_id = 'costar' AND file_id = $1`,
+      [COSTAR_FILE_ID],
+    );
   } catch (_) {}
 });
 
@@ -599,5 +621,258 @@ describe('Suite 4 — Processor layer (processDataLibraryUploadFile, real DB + R
 
     const result = await processDataLibraryUploadFile(PROC_FILE_ID, {});
     expect(result.success).toBe(true);
+  });
+});
+
+// ── CoStar XLSX fixture helper ────────────────────────────────────────────────
+//
+// Builds a structurally valid CoStar DataTable XLSX buffer.
+// Column names match the canonical CoStar export format that
+// parseCoStarSubmarket is designed to read. One data row per call.
+
+function makeCoStarDataTableBuffer(
+  periodStr = '2025 Q1',
+  vacancyRate = '5.2',
+  askingRent = '2250',
+): Buffer {
+  const ws = XLSX.utils.aoa_to_sheet([
+    [
+      'Period',
+      'Vacancy Rate',
+      'Market Asking Rent/Unit',
+      'Annual Rent Growth',
+      'Inventory Units',
+      'Under Constr Units',
+      '12 Mo Absorp Units',
+      'Market Cap Rate',
+      'Market Sale Price/Unit',
+    ],
+    [
+      periodStr,
+      vacancyRate,
+      askingRent,
+      '3.5',
+      '12000',
+      '450',
+      '200',
+      '5.25',
+      '185000',
+    ],
+  ]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Suite 5 — CoStar classification layer (no DB)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Validates that vendorRegistry classifies CoStar filenames + headers correctly
+// for all three document types (DataTable, Near By Sales, Rent Comp Properties)
+// and that each resolves to a registered vendorParser. No DB interaction.
+
+describe('Suite 5 — CoStar classification layer (no DB)', () => {
+  it('classifyByFilename identifies DataTable.xlsx as COSTAR_SUBMARKET_EXPORT', () => {
+    const match = vendorRegistry.classifyByFilename('DataTable.xlsx');
+
+    expect(match).not.toBeNull();
+    expect(match!.match.vendorId).toBe('costar');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(match!.match.fileType.documentType).toBe('COSTAR_SUBMARKET_EXPORT' as any);
+    expect(match!.confidence).toBeGreaterThanOrEqual(0.6);
+  });
+
+  it('classifyByFilename identifies "Near By Sales Export.xlsx" as COSTAR_SALE_COMPS', () => {
+    const match = vendorRegistry.classifyByFilename('Near By Sales Export.xlsx');
+
+    expect(match).not.toBeNull();
+    expect(match!.match.vendorId).toBe('costar');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(match!.match.fileType.documentType).toBe('COSTAR_SALE_COMPS' as any);
+  });
+
+  it('classifyByFilename identifies "Rent Comp Properties.xlsx" as COSTAR_RENT_COMPS', () => {
+    const match = vendorRegistry.classifyByFilename('Rent Comp Properties.xlsx');
+
+    expect(match).not.toBeNull();
+    expect(match!.match.vendorId).toBe('costar');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(match!.match.fileType.documentType).toBe('COSTAR_RENT_COMPS' as any);
+  });
+
+  it('vendorRegistry resolves COSTAR_SUBMARKET_EXPORT to a registered vendorParser', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = vendorRegistry.getVendorByDocType('COSTAR_SUBMARKET_EXPORT' as any);
+
+    expect(entry).toBeDefined();
+    expect(entry!.vendor.vendorId).toBe('costar');
+    expect(entry!.vendor.licensePosture).toBe('restricted');
+    expect(entry!.fileType.vendorParser).toBeDefined();
+    expect(typeof entry!.fileType.vendorParser).toBe('function');
+  });
+
+  it('vendorRegistry resolves COSTAR_SALE_COMPS to a registered vendorParser', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = vendorRegistry.getVendorByDocType('COSTAR_SALE_COMPS' as any);
+
+    expect(entry).toBeDefined();
+    expect(entry!.vendor.vendorId).toBe('costar');
+    expect(entry!.fileType.vendorParser).toBeDefined();
+  });
+
+  it('vendorRegistry resolves COSTAR_RENT_COMPS to a registered vendorParser', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = vendorRegistry.getVendorByDocType('COSTAR_RENT_COMPS' as any);
+
+    expect(entry).toBeDefined();
+    expect(entry!.vendor.vendorId).toBe('costar');
+    expect(entry!.fileType.vendorParser).toBeDefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Suite 6 — CoStar DataTable dual-write (real DB, sentinel cleanup)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Exercises the COSTAR_SUBMARKET_EXPORT vendorParser end-to-end.
+// Validates that each parsed DataTable period row is dual-written to
+// vendor_market_observations with correct CoStar vendor attribution.
+// Uses COSTAR_FILE_ID as both fileId and geography_id (the registry uses
+// fileId as the geography anchor when no deal context is available).
+// The afterAll cleanup deletes all rows with file_id = COSTAR_FILE_ID.
+
+describe('Suite 6 — CoStar DataTable dual-write (real DB, sentinel cleanup)', () => {
+  it('vendorParser: buffer → parse → vendor_market_observations write (real DB)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = vendorRegistry.getVendorByDocType('COSTAR_SUBMARKET_EXPORT' as any);
+    expect(entry?.fileType.vendorParser).toBeDefined();
+
+    const buffer = makeCoStarDataTableBuffer('2025 Q1', '5.2', '2250');
+
+    const result = await entry!.fileType.vendorParser!(buffer, {
+      fileId: COSTAR_FILE_ID,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.rowsInserted).toBeGreaterThanOrEqual(1);
+    expect(result.validRows).toBeGreaterThanOrEqual(1);
+
+    // ── vendor_market_observations (cross-vendor substrate) ──────────────────
+    const vmoRes = await query<{
+      vendor_id:               string;
+      vendor_file_type:        string;
+      vendor_license_posture:  string;
+      observation_date:        string;
+      geography_level:         string;
+      geography_id:            string;
+      avg_asking_rent:         string;
+      vacancy_rate:            string;
+      cap_rate:                string;
+      price_per_unit:          string;
+      raw_snapshot:            Record<string, unknown>;
+    }>(
+      `SELECT vendor_id, vendor_file_type, vendor_license_posture,
+              observation_date::text, geography_level, geography_id,
+              avg_asking_rent, vacancy_rate, cap_rate, price_per_unit,
+              raw_snapshot
+         FROM vendor_market_observations
+        WHERE vendor_id = 'costar'
+          AND file_id = $1`,
+      [COSTAR_FILE_ID],
+    );
+
+    expect(vmoRes.rows.length).toBeGreaterThan(0);
+
+    const obs = vmoRes.rows[0];
+
+    // Vendor attribution
+    expect(obs.vendor_id).toBe('costar');
+    expect(obs.vendor_file_type).toBe('COSTAR_SUBMARKET_EXPORT');
+    expect(obs.vendor_license_posture).toBe('restricted');
+
+    // Geography
+    expect(obs.geography_level).toBe('submarket');
+    expect(obs.geography_id).toBe(COSTAR_FILE_ID);
+
+    // Metric correctness
+    expect(parseFloat(obs.avg_asking_rent)).toBe(2250);
+    expect(parseFloat(obs.vacancy_rate)).toBeCloseTo(5.2, 1);
+    expect(parseFloat(obs.cap_rate)).toBeCloseTo(5.25, 2);
+    expect(parseFloat(obs.price_per_unit)).toBe(185000);
+
+    // Observation date (2025 Q1 → 2025-01-01)
+    expect(obs.observation_date).toBe('2025-01-01');
+
+    // raw_snapshot round-trip
+    const snap =
+      typeof obs.raw_snapshot === 'string'
+        ? JSON.parse(obs.raw_snapshot)
+        : obs.raw_snapshot;
+    expect(snap.askingRentPerUnit).toBe(2250);
+    expect(snap.vacancyRate).toBeCloseTo(5.2, 1);
+  });
+
+  it('deal_id is NULL when no dealId option is provided', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = vendorRegistry.getVendorByDocType('COSTAR_SUBMARKET_EXPORT' as any);
+    const buffer = makeCoStarDataTableBuffer();
+
+    await entry!.fileType.vendorParser!(buffer, { fileId: COSTAR_FILE_ID });
+
+    const res = await query<{ deal_id: string | null }>(
+      `SELECT deal_id FROM vendor_market_observations
+        WHERE vendor_id = 'costar' AND file_id = $1 LIMIT 1`,
+      [COSTAR_FILE_ID],
+    );
+    expect(res.rows.length).toBeGreaterThan(0);
+    expect(res.rows[0].deal_id).toBeNull();
+  });
+
+  it('ON CONFLICT DO NOTHING: re-running vendorParser for the same file_id does not error', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = vendorRegistry.getVendorByDocType('COSTAR_SUBMARKET_EXPORT' as any);
+    const buffer = makeCoStarDataTableBuffer('2025 Q1', '5.2', '2250');
+
+    const result = await entry!.fileType.vendorParser!(buffer, {
+      fileId: COSTAR_FILE_ID,
+    });
+
+    // Should succeed without errors even if rows conflict on the dedup index
+    expect(result.success).toBe(true);
+  });
+
+  it('COSTAR_SALE_COMPS vendorParser returns success when no dealId (classify-only path)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = vendorRegistry.getVendorByDocType('COSTAR_SALE_COMPS' as any);
+    expect(entry?.fileType.vendorParser).toBeDefined();
+
+    // Minimal buffer — content doesn't matter for the no-dealId path
+    const ws = XLSX.utils.aoa_to_sheet([['Sale Date', 'Sale Price', 'Address'], ['2025-01-01', '5000000', '123 Main St']]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    const buffer = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+
+    const result = await entry!.fileType.vendorParser!(buffer, { fileId: COSTAR_FILE_ID });
+
+    // No dealId → classify-only, no DB writes but not an error
+    expect(result.success).toBe(true);
+    expect(result.rowsInserted).toBe(0);
+  });
+
+  it('COSTAR_RENT_COMPS vendorParser returns success when no dealId (classify-only path)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = vendorRegistry.getVendorByDocType('COSTAR_RENT_COMPS' as any);
+    expect(entry?.fileType.vendorParser).toBeDefined();
+
+    const ws = XLSX.utils.aoa_to_sheet([['Address', 'Asking Rent', 'Occ %'], ['123 Main St', '1800', '95']]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    const buffer = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+
+    const result = await entry!.fileType.vendorParser!(buffer, { fileId: COSTAR_FILE_ID });
+
+    expect(result.success).toBe(true);
+    expect(result.rowsInserted).toBe(0);
   });
 });
