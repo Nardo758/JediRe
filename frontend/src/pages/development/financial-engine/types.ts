@@ -344,7 +344,13 @@ export interface F9DealFinancials {
   ltlSignals?: {
     t12Pct: number | null;
     livePct: number | null;
+    /** Which source was actually used to seed the trajectory. */
     trajectorySource: 'live' | 't12' | 'resolved';
+    /**
+     * Operator's persisted baseline preference from deal_assumptions.ltl_baseline_source.
+     * null = auto (engine chooses). Written via PATCH /:dealId/assumptions/ltl-controls.
+     */
+    operatorBaselineSource: 'live' | 't12' | null;
     byYear: number[];
     captureRate: number;
   } | null;

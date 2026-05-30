@@ -1071,6 +1071,80 @@ router.patch('/:dealId/assumptions/strategy', requireAuth, async (req: Authentic
 });
 
 /**
+ * PATCH /:dealId/assumptions/ltl-controls
+ *
+ * Task #1540 (Piece B1) — Operator controls for LTL forward trajectory.
+ *
+ * Fields (both optional; send only what is changing):
+ *   ltlBaselineSource      — 'live' | 't12' | null (null = auto: live when present, else T12)
+ *   markToMarketCaptureRate — 0–1 decimal fraction (null = revert to platform default 0.33)
+ *
+ * Body: { ltlBaselineSource?: 'live' | 't12' | null, markToMarketCaptureRate?: number | null }
+ */
+router.patch('/:dealId/assumptions/ltl-controls', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+    const body = req.body as {
+      ltlBaselineSource?: 'live' | 't12' | null;
+      markToMarketCaptureRate?: number | null;
+    };
+
+    // Validate ltlBaselineSource
+    if ('ltlBaselineSource' in body && body.ltlBaselineSource !== null) {
+      if (body.ltlBaselineSource !== 'live' && body.ltlBaselineSource !== 't12') {
+        return res.status(400).json({ error: 'ltlBaselineSource must be "live", "t12", or null' });
+      }
+    }
+
+    // Validate markToMarketCaptureRate
+    if ('markToMarketCaptureRate' in body && body.markToMarketCaptureRate !== null) {
+      const r = body.markToMarketCaptureRate;
+      if (typeof r !== 'number' || r < 0 || r > 1) {
+        return res.status(400).json({ error: 'markToMarketCaptureRate must be a decimal between 0 and 1' });
+      }
+    }
+
+    if (!('ltlBaselineSource' in body) && !('markToMarketCaptureRate' in body)) {
+      return res.status(400).json({ error: 'At least one of ltlBaselineSource or markToMarketCaptureRate must be provided' });
+    }
+
+    const own = await pool.query(
+      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (own.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized for this deal' });
+    }
+
+    const sets: string[] = ['updated_at = NOW()'];
+    const params: unknown[] = [dealId];
+
+    if ('ltlBaselineSource' in body) {
+      params.push(body.ltlBaselineSource ?? null);
+      sets.push(`ltl_baseline_source = $${params.length}`);
+    }
+
+    if ('markToMarketCaptureRate' in body) {
+      params.push(body.markToMarketCaptureRate ?? null);
+      sets.push(`mark_to_market_capture_rate = $${params.length}`);
+    }
+
+    await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, updated_at)
+       VALUES ($1, NOW())
+       ON CONFLICT (deal_id) DO UPDATE SET ${sets.join(', ')}`,
+      params
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('Error patching LTL controls:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * PATCH /:dealId/assumptions/selling-costs
  *
  * Surgical write for selling/disposition cost % (Item 5 — DealTermsTab).

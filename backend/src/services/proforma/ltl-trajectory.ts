@@ -39,7 +39,14 @@ export interface LTLTrajectoryResult {
 export interface LTLSignals {
   t12Pct: number | null;
   livePct: number | null;
+  /** Which source was actually used to seed the trajectory (after applying operator preference). */
   trajectorySource: 'live' | 't12' | 'resolved';
+  /**
+   * Operator's explicit baseline preference stored in deal_assumptions.ltl_baseline_source.
+   * null = auto (engine picks live when present, T12 otherwise).
+   * Surfaced to the UI so the toggle shows the saved state.
+   */
+  operatorBaselineSource: 'live' | 't12' | null;
   byYear: number[];
   captureRate: number;
 }

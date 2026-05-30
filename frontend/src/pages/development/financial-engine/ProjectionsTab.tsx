@@ -397,13 +397,57 @@ function GprDecompPanel({ decomp, totalUnits }: { decomp: GprDecomposition; tota
 // ─── LTL Trajectory Panel — Task #1540 (Piece B1) ─────────────────────────
 // Shows both LTL source signals (T12 trailing avg vs live lease-level) and an
 // inline sparkline of the per-year decay trajectory used by Engine A.
-function LTLTrajectoryPanel({ ltlSignals }: { ltlSignals: NonNullable<DealFinancials['ltlSignals']> }) {
+// Operator controls: baseline source toggle (LIVE / T12 / AUTO) and capture rate.
+function LTLTrajectoryPanel({
+  ltlSignals,
+  dealId,
+  onRefresh,
+}: {
+  ltlSignals: NonNullable<DealFinancials['ltlSignals']>;
+  dealId?: string;
+  onRefresh?: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
-  const { t12Pct, livePct, trajectorySource, byYear, captureRate } = ltlSignals;
+  const { t12Pct, livePct, trajectorySource, operatorBaselineSource, byYear, captureRate } = ltlSignals;
 
   const hasLive = livePct != null;
-  const startPct = (hasLive ? livePct! : t12Pct ?? 0) * 100;
+  const startPct = (trajectorySource === 't12' ? (t12Pct ?? 0) : (livePct ?? t12Pct ?? 0)) * 100;
   const endPct   = (byYear[byYear.length - 1] ?? 0) * 100;
+
+  // Local editable capture rate (fraction, 0–1)
+  const [captureInput, setCaptureInput] = useState(() => (captureRate * 100).toFixed(0));
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
+  // Sync captureInput when the panel re-mounts with new financials
+  React.useEffect(() => {
+    setCaptureInput((captureRate * 100).toFixed(0));
+  }, [captureRate]);
+
+  const saveLTLControls = async (patch: { ltlBaselineSource?: 'live' | 't12' | null; markToMarketCaptureRate?: number | null }) => {
+    if (!dealId) return;
+    setSaving(true); setSaveMsg(null);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/assumptions/ltl-controls`, patch);
+      setSaveMsg('Saved');
+      setTimeout(() => setSaveMsg(null), 2500);
+      onRefresh?.();
+    } catch {
+      setSaveMsg('Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setBaseline = (src: 'live' | 't12' | null) => {
+    saveLTLControls({ ltlBaselineSource: src });
+  };
+
+  const commitCaptureRate = () => {
+    const n = parseFloat(captureInput);
+    if (isNaN(n) || n < 0 || n > 100) { setCaptureInput((captureRate * 100).toFixed(0)); return; }
+    saveLTLControls({ markToMarketCaptureRate: n / 100 });
+  };
 
   // Inline SVG sparkline — no external deps
   const W = 120; const H = 24; const PAD = 2;
@@ -415,6 +459,16 @@ function LTLTrajectoryPanel({ ltlSignals }: { ltlSignals: NonNullable<DealFinanc
   }).join(' ');
 
   const TEAL = '#00B4D8';
+
+  // Baseline button styles
+  const baselineBtn = (active: boolean, disabled?: boolean) => ({
+    fontFamily: MONO, fontSize: 8, fontWeight: active ? 700 : 400,
+    padding: '2px 7px', cursor: disabled ? 'default' : 'pointer',
+    borderRadius: 2, border: `1px solid ${active ? TEAL : BT.border.subtle}`,
+    background: active ? `${TEAL}22` : 'transparent',
+    color: active ? TEAL : disabled ? BT.text.muted : BT.text.secondary,
+    opacity: disabled ? 0.4 : 1,
+  } as React.CSSProperties);
 
   return (
     <div style={{ borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.panel, flexShrink: 0 }}>
@@ -478,13 +532,72 @@ function LTLTrajectoryPanel({ ltlSignals }: { ltlSignals: NonNullable<DealFinanc
             </span>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 90 }}>
-            <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5, marginBottom: 2 }}>CAPTURE RATE</span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: BT.text.secondary, fontFamily: MONO }}>
-              {(captureRate * 100).toFixed(0)}%
-            </span>
-            <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>per roll event</span>
-          </div>
+          {/* ── Baseline source toggle — operator control ── */}
+          {dealId && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5 }}>BASELINE SOURCE</span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  style={baselineBtn(operatorBaselineSource === 'live', !hasLive)}
+                  disabled={saving || !hasLive}
+                  onClick={e => { e.stopPropagation(); setBaseline('live'); }}
+                  title={!hasLive ? 'No live M07 signal for this deal' : undefined}
+                >
+                  LIVE
+                </button>
+                <button
+                  style={baselineBtn(operatorBaselineSource === 't12')}
+                  disabled={saving}
+                  onClick={e => { e.stopPropagation(); setBaseline('t12'); }}
+                >
+                  T12
+                </button>
+                <button
+                  style={baselineBtn(operatorBaselineSource === null)}
+                  disabled={saving}
+                  onClick={e => { e.stopPropagation(); setBaseline(null); }}
+                  title="Auto: live when present, T12 otherwise"
+                >
+                  AUTO
+                </button>
+              </div>
+              <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>
+                {operatorBaselineSource === null ? 'auto-selected' : 'operator override'}
+              </span>
+            </div>
+          )}
+
+          {/* ── Mark-to-market capture rate — operator control ── */}
+          {dealId && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5 }}>CAPTURE RATE %</span>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  min={0} max={100} step={1}
+                  value={captureInput}
+                  onChange={e => setCaptureInput(e.target.value)}
+                  onBlur={commitCaptureRate}
+                  onKeyDown={e => { if (e.key === 'Enter') commitCaptureRate(); }}
+                  style={{
+                    width: 52, fontFamily: MONO, fontSize: 10, background: BT.bg.terminal,
+                    border: `1px solid ${BT.border.subtle}`, color: BT.text.white,
+                    padding: '2px 4px', borderRadius: 2,
+                  }}
+                  onClick={e => e.stopPropagation()}
+                />
+                <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO }}>% per roll</span>
+              </div>
+              <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>
+                default 33% · gap closure per roll event
+              </span>
+              {saveMsg && (
+                <span style={{ fontSize: 7, fontFamily: MONO, color: saveMsg === 'Saved' ? '#4ADE80' : BT.text.red }}>
+                  {saveMsg}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Full year-by-year table */}
           <div style={{ width: '100%', display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
@@ -2357,7 +2470,11 @@ export function ProjectionsTab({
               {financials?.ltlSignals && isAnnual && (
                 <tr>
                   <td colSpan={colCount + 1} style={{ padding: 0 }}>
-                    <LTLTrajectoryPanel ltlSignals={financials.ltlSignals} />
+                    <LTLTrajectoryPanel
+                      ltlSignals={financials.ltlSignals}
+                      dealId={dealId}
+                      onRefresh={onF9Refresh}
+                    />
                   </td>
                 </tr>
               )}

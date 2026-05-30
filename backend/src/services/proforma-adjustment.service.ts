@@ -2184,7 +2184,8 @@ export async function getDealFinancials(
               selling_costs_pct,
               construction_months, lease_up_months, absorption_units_per_month,
               stabilization_target_pct,
-              lease_roll_velocity_per_year, mark_to_market_capture_rate
+              lease_roll_velocity_per_year, mark_to_market_capture_rate,
+              ltl_baseline_source
          FROM deal_assumptions WHERE deal_id = $1`,
       [dealId]
     ),
@@ -4497,10 +4498,16 @@ export async function getDealFinancials(
     const _ltlLivePct: number | null =
       typeof _ltlLiveRaw === 'number' && _ltlLiveRaw > 0 ? _ltlLiveRaw / 100 : null;
 
-    // Trajectory start: live signal preferred (current lease-level gap) over T12 (trailing average)
-    const _ltlStart: number = _ltlLivePct ?? _ltlT12;
+    // Trajectory start: operator-selected baseline, or auto (live when present, else T12)
+    // Operator preference stored in deal_assumptions.ltl_baseline_source ('live' | 't12' | null).
+    // null = auto: live when present (M07 lease-level gap is more accurate), T12 as fallback.
+    const _operatorBaselineSrc = (_atRow?.ltl_baseline_source ?? null) as 'live' | 't12' | null;
+    const _ltlAutoSource: 'live' | 't12' = _ltlLivePct != null ? 'live' : 't12';
     const _ltlTrajectorySource: 'live' | 't12' | 'resolved' =
-      _ltlLivePct != null ? 'live' : 't12';
+      _operatorBaselineSrc ?? _ltlAutoSource;
+    // Resolve start value from the chosen source
+    const _ltlStart: number =
+      _ltlTrajectorySource === 't12' ? _ltlT12 : (_ltlLivePct ?? _ltlT12);
 
     // Lease roll velocity: use persisted per-year array or uniform fallback
     const _rawVelocity = _atRow?.lease_roll_velocity_per_year;
@@ -4525,11 +4532,12 @@ export async function getDealFinancials(
 
     // Surface signals for the response (set once here; read by outer scope after IIFE)
     _ltlSignalsOut = {
-      t12Pct:           _ltlT12,
-      livePct:          _ltlLivePct,
-      trajectorySource: _ltlTrajectorySource,
-      byYear:           _lossToLeaseByYear,
-      captureRate:      _captureRate,
+      t12Pct:                _ltlT12,
+      livePct:               _ltlLivePct,
+      trajectorySource:      _ltlTrajectorySource,
+      operatorBaselineSource: _operatorBaselineSrc,
+      byYear:                _lossToLeaseByYear,
+      captureRate:           _captureRate,
     };
 
     const concPct      = ry1('concessions_pct');
