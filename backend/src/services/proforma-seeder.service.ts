@@ -1009,11 +1009,17 @@ function buildSeed(
     ? egi_platform - total_opex_platform
     : null;
 
+  // NOI is always a computed aggregate (EGI − OpEx), never a raw extraction.
+  // The OM headline NOI is stored in the 'om' layer as a reference/comparison
+  // value only — it must not be used as 'resolved' because that would hide the
+  // arithmetic relationship between EGI, OpEx, and NOI from downstream consumers.
+  // resolution is always 'computed'; the UI can still surface noi.om for the
+  // broker-column comparison alongside the arithmetic result.
   const noi: LayeredValue<number> = {
     platform: noi_platform, override: null,
     om: bpNOI,
     resolved: noi_resolved,
-    resolution: 'platform_fallback',
+    resolution: 'computed' as any,
     updated_at: now(),
   };
 
@@ -1061,7 +1067,7 @@ function buildSeed(
       platform: noi_platform != null && totalUnits > 0 ? noi_platform / totalUnits : null,
       override: null,
       resolved: totalUnits > 0 ? noi_resolved / totalUnits : null,
-      resolution: 'platform_fallback',
+      resolution: 'computed' as any,
       updated_at: now(),
     },
     source_docs: {
@@ -2191,12 +2197,18 @@ function recomputeDerived(seed: ProFormaYear1Seed): void {
   const noi = egi - opex;
   seed.noi.resolved = noi;
   seed.noi.updated_at = ts;
+  // recomputeDerived is called after a user override, meaning at least one
+  // leaf item has real data.  NOI is a computed field — update its resolution
+  // label to 'computed' so downstream consumers (integrity checks, proforma
+  // display) see the correct provenance and don't treat it as platform_fallback.
+  seed.noi.resolution = 'computed' as any;
   // Re-sync derived per-unit NOI so the F11 panel + downstream consumers
   // stay consistent after user-line CRUD or any other layered override that
   // shifts the EGI / opex total.
   if ((seed as any).noi_per_unit && unitCount > 0) {
     (seed as any).noi_per_unit.resolved = noi / unitCount;
     (seed as any).noi_per_unit.updated_at = ts;
+    (seed as any).noi_per_unit.resolution = 'computed';
   }
 }
 

@@ -2786,17 +2786,29 @@ export async function getDealFinancials(
       }
     }
 
-    // noi — egi minus total_opex (uses the recomputed values from above;
-    //   skip if operator has pinned a specific NOI)
+    // noi — always EGI minus total_opex.  NOI is a computed aggregate, not a
+    // raw extraction.  The OM headline NOI lives in the row's 'broker' column
+    // for reference; it must not replace the arithmetic resolved value.
+    // Skip only when the operator has pinned a specific NOI override.
     if (!_hasOperatorOverride('noi')) {
       const _egiResolved   = _rf('egi')?.resolved;
       const _topexResolved = _rf('total_opex')?.resolved;
       if (_egiResolved != null && _topexResolved != null) {
         const _computedNoi = _egiResolved - _topexResolved;
         const _noiRow = _rf('noi');
-        if (_noiRow && Math.abs(_computedNoi - (_noiRow.resolved ?? 0)) > 1) {
-          _noiRow.resolved = Math.round(_computedNoi);
-          if (totalUnits > 0) _noiRow.perUnit = Math.round(_computedNoi / totalUnits);
+        if (_noiRow) {
+          if (Math.abs(_computedNoi - (_noiRow.resolved ?? 0)) > 1) {
+            _noiRow.resolved = Math.round(_computedNoi);
+            if (totalUnits > 0) _noiRow.perUnit = Math.round(_computedNoi / totalUnits);
+          }
+          // NOI is always a derived/computed field.  Correct any stale
+          // 'platform_fallback' label left by an earlier seed run so the UI
+          // shows accurate provenance regardless of what the DB stores.
+          if ((_noiRow.resolution as string) !== 'override') {
+            _noiRow.resolution = 'computed';
+            _noiRow.source     = 'computed';
+            _noiRow.confidence = SOURCE_CONFIDENCE['computed'] ?? null;
+          }
         }
       }
     }
