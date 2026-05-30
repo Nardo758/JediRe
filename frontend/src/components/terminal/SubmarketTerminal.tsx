@@ -74,6 +74,7 @@ interface SubmarketTerminalProps {
   submarketName?: string;
   msaId?: string;
   msaName?: string;
+  dealId?: string; // optional — when provided, enables deal-scoped vendor survey data in OVERVIEW tab
   onPropertySelect?: (propertyId: string, propertyName?: string) => void;
   onMsaNavigate?: () => void;
   embedded?: boolean; // Hide header/footer when embedded in F4MarketsView
@@ -85,6 +86,7 @@ export const SubmarketTerminal: React.FC<SubmarketTerminalProps> = ({
   submarketName,
   msaId,
   msaName,
+  dealId,
   onPropertySelect,
   embedded = false,
   onMsaNavigate,
@@ -237,7 +239,7 @@ export const SubmarketTerminal: React.FC<SubmarketTerminalProps> = ({
 
     switch (activeTab) {
       case 'overview':
-        return <SubmarketOverviewTab {...tabProps} />;
+        return <SubmarketOverviewTab {...tabProps} dealId={dealId} />;
       case 'traffic':
         return <SubmarketTrafficTab {...tabProps} />;
       case 'financials':
@@ -257,7 +259,7 @@ export const SubmarketTerminal: React.FC<SubmarketTerminalProps> = ({
       case 'events':
         return <SubmarketEventsTab submarketId={submarketId} submarket={submarket} />;
       default:
-        return <SubmarketOverviewTab {...tabProps} />;
+        return <SubmarketOverviewTab {...tabProps} dealId={dealId} />;
     }
   };
 

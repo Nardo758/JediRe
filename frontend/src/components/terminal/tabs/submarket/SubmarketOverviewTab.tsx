@@ -2,7 +2,7 @@
  * SubmarketOverviewTab - Key metrics, health score, trends
  */
 
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, Building2, Users, Briefcase, Home, Award, Activity } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint, ChartSeries } from '../../TerminalChart';
@@ -11,13 +11,37 @@ import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { MarketNarrative, StrategyScoreBadge, InvestmentThesis } from '../../commentary';
 import { ContextIndicator } from '../../../intelligence/ContextIndicator';
 import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
+import { apiClient } from '../../../../services/api.client';
+
+// Minimal local type for vendor survey rows from historical_observations
+interface VendorSurveyRow {
+  id: string;
+  observation_date: string;
+  vendor_source: string;
+  vendor_license_posture: string;
+  vendor_data_as_of: string | null;
+  submarket_avg_asking_rent: number | null;
+  submarket_avg_effective_rent: number | null;
+  submarket_vacancy_rate: number | null;
+  market_survey_snapshot: Record<string, unknown> | null;
+}
+
+const VENDOR_LABELS: Record<string, string> = {
+  yardi_matrix: 'Yardi Matrix',
+  costar:       'CoStar',
+};
+function vendorLabel(s: string): string { return VENDOR_LABELS[s] ?? s; }
+function vendorColor(s: string): string {
+  return s === 'yardi_matrix' ? '#f59e0b' : s === 'costar' ? '#3b82f6' : '#6b7280';
+}
 
 interface SubmarketOverviewTabProps {
   submarketId: string;
   submarket: SubmarketData;
+  dealId?: string;
 }
 
-export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ submarketId, submarket }) => {
+export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ submarketId, submarket, dealId }) => {
   // Neural network context awareness
   const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
   { context: 'submarket_deep_dive', submarketId }
@@ -33,6 +57,29 @@ export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ subm
   // hook intentionally captures fetchCommentary via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submarketId, submarket.name]);
+
+  // ── Vendor survey data from historical_observations ────────────────────────
+  const [vendorRows, setVendorRows] = useState<VendorSurveyRow[]>([]);
+
+  useEffect(() => {
+    const params = new URLSearchParams({ name: submarket.name });
+    if (dealId) params.set('dealId', dealId);
+    apiClient
+      .get(`/api/v1/historical-observations/submarket/${encodeURIComponent(submarketId)}/vendor-surveys?${params}`)
+      .then(r => setVendorRows(r.data?.rows ?? []))
+      .catch(() => setVendorRows([]));
+  // Intentionally excludes `submarket.name` string reference to avoid re-fetching on every render;
+  // submarketId is the stable key — name is used only as a hint for JSONB matching.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submarketId, dealId]);
+
+  // Unique vendor sources present in the fetched rows
+  const vendorSources = useMemo(
+    () => [...new Set(vendorRows.map(r => r.vendor_source))],
+    [vendorRows],
+  );
+  const hasVendorData = vendorRows.length > 0;
+
   // Calculate submarket health score
   const healthScore = useMemo(() => {
     const occupancyScore = Math.min(100, (submarket.occupancy / 95) * 100) * 0.25;
@@ -43,24 +90,42 @@ export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ subm
     return Math.round(occupancyScore + rentGrowthScore + absorptionScore + employmentScore + pipelineRisk);
   }, [submarket]);
 
-  // Historical data for charts
+  // ── Chart data — real when vendor rows exist, simulated otherwise ──────────
   const rentTrendData: ChartDataPoint[] = useMemo(() => {
+    const withRent = vendorRows.filter(r => r.submarket_avg_asking_rent != null);
+    if (withRent.length > 0) {
+      return [...withRent]
+        .sort((a, b) => new Date(a.observation_date).getTime() - new Date(b.observation_date).getTime())
+        .map(r => ({
+          date: new Date(r.observation_date).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+          rent: Math.round(Number(r.submarket_avg_asking_rent)),
+        }));
+    }
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     let rent = submarket.avgRent * 0.92;
     return months.map((m) => {
       rent = rent * (1 + (Math.random() * 0.01 + 0.002));
       return { date: `${m} '25`, rent: Math.round(rent) };
     });
-  }, [submarket]);
+  }, [vendorRows, submarket.avgRent]);
 
   const occupancyTrendData: ChartDataPoint[] = useMemo(() => {
+    const withVacancy = vendorRows.filter(r => r.submarket_vacancy_rate != null);
+    if (withVacancy.length > 0) {
+      return [...withVacancy]
+        .sort((a, b) => new Date(a.observation_date).getTime() - new Date(b.observation_date).getTime())
+        .map(r => ({
+          date: new Date(r.observation_date).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+          occupancy: Number((100 - Number(r.submarket_vacancy_rate)).toFixed(1)),
+        }));
+    }
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     let occ = submarket.occupancy - 2;
     return months.map((m) => {
       occ = Math.min(98, occ + (Math.random() * 0.5 - 0.1));
       return { date: `${m} '25`, occupancy: Number(occ.toFixed(1)) };
     });
-  }, [submarket]);
+  }, [vendorRows, submarket.occupancy]);
 
   const chartSeries: ChartSeries[] = [
     { key: 'rent', name: 'Avg Rent', color: BT.text.green, data: [] },
@@ -162,17 +227,52 @@ export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ subm
         </div>
       </div>
 
+      {/* Vendor data source badges — shown when real market survey data is available */}
+      {hasVendorData && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          padding: '5px 10px',
+          background: 'rgba(255,255,255,0.03)',
+          border: `1px solid rgba(255,255,255,0.08)`,
+          borderRadius: 4,
+        }}>
+          <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono, letterSpacing: 0.4 }}>
+            MARKET DATA SOURCE
+          </span>
+          {vendorSources.map(src => (
+            <span
+              key={src}
+              style={{
+                fontSize: 8, fontWeight: 700,
+                padding: '1px 6px',
+                background: vendorColor(src) + '22',
+                color: vendorColor(src),
+                border: `1px solid ${vendorColor(src)}55`,
+                borderRadius: 3,
+                fontFamily: BT.font.mono,
+                letterSpacing: 0.3,
+              }}
+            >
+              {vendorLabel(src).toUpperCase()}
+            </span>
+          ))}
+          <span style={{ marginLeft: 'auto', fontSize: 7, color: BT.text.muted, fontFamily: BT.font.mono }}>
+            {vendorRows.length} period{vendorRows.length !== 1 ? 's' : ''} · replacing estimated trend
+          </span>
+        </div>
+      )}
+
       {/* Charts Row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <TerminalChart
-          title="Rent Trend"
+          title={hasVendorData ? `Rent Trend — ${vendorSources.map(vendorLabel).join(' / ')}` : 'Rent Trend'}
           data={rentTrendData}
           series={[{ key: 'rent', name: 'Avg Rent', color: BT.text.green, data: [] }]}
           height={180}
           valueFormatter={(v) => `$${v.toLocaleString()}`}
         />
         <TerminalChart
-          title="Occupancy Trend"
+          title={hasVendorData ? `Occupancy Trend — ${vendorSources.map(vendorLabel).join(' / ')}` : 'Occupancy Trend'}
           data={occupancyTrendData}
           series={[{ key: 'occupancy', name: 'Occupancy', color: BT.text.cyan, data: [] }]}
           height={180}

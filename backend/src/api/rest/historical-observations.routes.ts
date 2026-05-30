@@ -308,6 +308,97 @@ router.get('/deals/:dealId/coverage', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/v1/historical-observations/submarket/:submarketId/vendor-surveys
+ *
+ * Returns vendor-sourced historical_observations rows for a given submarket.
+ * Used by SubmarketOverviewTab in the F4 market intelligence view.
+ *
+ * Matching strategy (OR):
+ *   1. submarket_id column matches :submarketId (exact FK match)
+ *   2. market_survey_snapshot->>'submarket' ILIKE ?name? (vendor text match)
+ *
+ * Query params:
+ *   name    — submarket display name for JSONB text matching
+ *   dealId  — optional; when provided, also matches by deal_id (tighter scope)
+ *
+ * Rows are ordered newest-first. Max 200 rows.
+ *
+ * Auth: requireAuth is already applied at the router mount; no deal-ownership
+ * check here since submarket data has no inherent owner — it is aggregated
+ * market context.
+ */
+router.get('/submarket/:submarketId/vendor-surveys', async (req: Request, res: Response) => {
+  try {
+    const { submarketId } = req.params;
+    const { name, dealId } = req.query;
+
+    const namePct = name ? `%${(name as string).trim()}%` : null;
+
+    let sql: string;
+    let params: unknown[];
+
+    if (dealId) {
+      // Deal-scoped: precise match via deal_id (also OR submarket_id / name)
+      sql = `
+        SELECT
+          id, deal_id, observation_date, geography_level,
+          submarket_avg_asking_rent, submarket_avg_effective_rent,
+          submarket_vacancy_rate, submarket_under_construction,
+          vendor_source, vendor_license_posture, vendor_data_as_of,
+          market_survey_source, market_survey_snapshot
+        FROM historical_observations
+        WHERE vendor_source IS NOT NULL
+          AND (
+            deal_id = $1::uuid
+            OR submarket_id = $2
+            OR (
+              $3::text IS NOT NULL
+              AND market_survey_snapshot->>'submarket' ILIKE $3::text
+            )
+          )
+        ORDER BY observation_date DESC
+        LIMIT 200
+      `;
+      params = [dealId, submarketId, namePct];
+    } else {
+      // Submarket-only: match by submarket_id FK or JSONB name
+      sql = `
+        SELECT
+          id, deal_id, observation_date, geography_level,
+          submarket_avg_asking_rent, submarket_avg_effective_rent,
+          submarket_vacancy_rate, submarket_under_construction,
+          vendor_source, vendor_license_posture, vendor_data_as_of,
+          market_survey_source, market_survey_snapshot
+        FROM historical_observations
+        WHERE vendor_source IS NOT NULL
+          AND (
+            submarket_id = $1
+            OR (
+              $2::text IS NOT NULL
+              AND market_survey_snapshot->>'submarket' ILIKE $2::text
+            )
+          )
+        ORDER BY observation_date DESC
+        LIMIT 200
+      `;
+      params = [submarketId, namePct];
+    }
+
+    const result = await query(sql, params);
+
+    res.json({
+      submarketId,
+      total: result.rows.length,
+      rows: result.rows,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[HistoricalObs] GET /submarket/:submarketId/vendor-surveys failed', { error: msg });
+    res.status(500).json({ error: 'Failed to load submarket vendor surveys' });
+  }
+});
+
+/**
  * GET /api/v1/historical-observations/deals/:dealId/vendor-surveys
  *
  * Returns all historical_observations rows for a deal that came from a
