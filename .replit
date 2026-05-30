@@ -111,6 +111,10 @@ args = "Georgia DeKalb+Fulton Ingest"
 task = "workflow.run"
 args = "Georgia Gwinnett+DeKalb Ingest"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "vendor-pipeline-integration"
+
 [[workflows.workflow]]
 name = "JediRe"
 author = "agent"
@@ -167,6 +171,17 @@ args = "cd backend && npx ts-node --transpile-only scripts/enrich-georgia-comps.
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow]]
+name = "vendor-pipeline-integration"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd backend && npm test -- --reporter=verbose src/services/document-extraction/parsers/__tests__/vendor-pipeline.integration.test.ts"
+
+[workflows.workflow.metadata]
+isValidation = true
 
 [userenv]
 

@@ -416,17 +416,18 @@ export async function upsertYardiHistoricalObservations(
     try {
       await queryFn(
         `INSERT INTO historical_observations
-           (id, deal_id, observation_date, geography_level,
+           (id, deal_id, observation_date, observation_window, geography_level,
             submarket_avg_asking_rent, submarket_avg_effective_rent, submarket_vacancy_rate,
             submarket_under_construction,
             vendor_source, vendor_license_posture, vendor_data_as_of,
             market_survey_source, market_survey_snapshot)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          ON CONFLICT DO NOTHING`,
         [
           randomUUID(),
           row.deal_id,
           row.period_date,
+          'quarterly',
           'submarket',
           row.avg_asking_rent,
           row.avg_effective_rent,
