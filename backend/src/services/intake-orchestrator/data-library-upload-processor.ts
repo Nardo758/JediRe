@@ -251,6 +251,16 @@ async function parseSpreadsheetFile(
         result = parseLeasingStats(buffer, filename);
         break;
       }
+      case 'YARDI_MATRIX_RENT_SURVEY': {
+        const { parseYardiRentSurvey } = await import('../document-extraction/parsers/yardi-matrix-parser');
+        result = parseYardiRentSurvey(buffer);
+        break;
+      }
+      case 'YARDI_MATRIX_SUPPLY_PIPELINE': {
+        const { parseYardiSupplyPipeline } = await import('../document-extraction/parsers/yardi-matrix-parser');
+        result = parseYardiSupplyPipeline(buffer);
+        break;
+      }
       default:
         result = { success: false, error: `No spreadsheet parser for type: ${resolvedType}` };
     }

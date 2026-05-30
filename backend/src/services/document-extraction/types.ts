@@ -12,6 +12,8 @@ export type DocumentType =
   | 'COSTAR_SUBMARKET_EXPORT'
   | 'COSTAR_SALE_COMPS'
   | 'COSTAR_RENT_COMPS'
+  | 'YARDI_MATRIX_RENT_SURVEY'
+  | 'YARDI_MATRIX_SUPPLY_PIPELINE'
   | 'UNKNOWN';
 
 export interface ClassificationResult {

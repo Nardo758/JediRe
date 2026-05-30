@@ -26,9 +26,7 @@ export type {
 
 import { vendorRegistry } from './registry';
 import { COSTAR_VENDOR } from './costar.vendor';
+import { YARDI_MATRIX_VENDOR } from './yardi-matrix.vendor';
 
 vendorRegistry.register(COSTAR_VENDOR);
-
-// Future vendors:
-// import { YARDI_MATRIX_VENDOR } from './yardi-matrix.vendor';
-// vendorRegistry.register(YARDI_MATRIX_VENDOR);
+vendorRegistry.register(YARDI_MATRIX_VENDOR);
