@@ -1,0 +1,71 @@
+Both answers:
+
+Q1 — Use historical_observations, don't create a parallel table.
+
+My Piece A doc proposed vendor_market_observations without 
+verifying that historical_observations already exists. That was 
+the same pattern that bit the property plumbing spec earlier in 
+the session — proposing parallel infrastructure without checking 
+what's already there. Use historical_observations with its source 
+field as the vendor-agnostic substrate.
+
+If Piece B's reconciliation needs columns that historical_observations 
+doesn't currently have (per-vendor freshness, license posture flag, 
+divergence_signature), audit the schema in T-A's planning phase 
+and surface findings. Additions to existing table preferred over 
+parallel table.
+
+The vendor registry's write_targets point at historical_observations 
+for cross-vendor reconciliation; vendor-specific tables (costar_
+submarket_stats, costar_market_metrics, etc.) remain for vendor-
+unique columns.
+
+Q2 — Run #1536/#1537/#1538 as a precursor, then Piece B's T-B1 
+absorbs and supersedes.
+
+The tactical fixes ship first because:
+  1. Operators are making decisions on broken LTL data today; the 
+     tactical fixes close that bleed in 1-2 weeks while T-B1 takes 
+     3-4 weeks
+  2. Empirical behavior from the tactical fixes (do operators 
+     heavily use per-year override? does the live signal stabilize?) 
+     informs T-B1's trajectory math design
+  3. Absorbing them into T-B1 holds tactical fixes hostage to 
+     architecture timing — if Piece B encounters audit-style scope 
+     expansion (which happens consistently in this session), the 
+     fixes ship months later
+
+Sequence:
+  #1536 (LTL per-year override) → ship in 1-2 weeks
+  #1538 (live LTL into Engine A) → ship in parallel with #1536
+  #1537 (other income discrepancy) → ship in parallel
+  T-B1 (LTL trajectory) → starts after the three tactical fixes 
+    ship; trajectory math replaces/extends the tactical foundation 
+    with forward projection from inputs
+
+LP/GP wiring acknowledged — Pieces B reference is stale; my doc 
+hadn't been updated against Tasks #1522/#1523/#1525. Worth removing 
+from the override wiring gap list. Other gaps named in Piece B may 
+have similar staleness; verify against current implementation 
+status before treating the list as authoritative.
+
+Two refinements to your task structure:
+
+R1 — T-B1's dependencies should be explicit. T-B1 depends on 
+#1536 + #1537 + #1538 shipping. Mark this in the dependency chain 
+so T-B1 doesn't accidentally start before its tactical foundation 
+exists.
+
+R2 — T-A2 (Yardi onboarding) needs a real second-vendor data 
+question. Do operators currently have Yardi Matrix uploads in 
+their data libraries, or is Yardi hypothetical for now? If 
+hypothetical, T-A2 might be better framed as "build the abstraction 
+to receive a second vendor cleanly" rather than "onboard Yardi as 
+the second vendor." The abstraction proves itself when real second-
+vendor data tests it.
+
+The task batch is otherwise well-structured. Build the plan files.
+
+Piece D acknowledged as deferred until A+B accumulate data; no 
+task needed now. Revisit decision after T-B3 (divergence surfacing) 
+is operational and the ledger starts accumulating.
