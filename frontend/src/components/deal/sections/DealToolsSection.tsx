@@ -18,6 +18,7 @@ import { CommentThread } from '../CommentThread';
 import { ActivityFeed } from '../ActivityFeed';
 import { CoStarDataPanel } from './DocumentsFiles/CoStarDataPanel';
 import { MarketDataUploadPanel } from './DocumentsFiles/MarketDataUploadPanel';
+import { VendorMarketSurveyPanel } from './DocumentsFiles/VendorMarketSurveyPanel';
 
 interface DealToolsSectionProps {
   deal?: any;
@@ -1099,6 +1100,9 @@ function DocumentsFilesTab({ dealId, deal }: { dealId: string; deal?: any }) {
           submarketId={submarketId}
           onUploaded={fetchAll}
         />
+
+        {/* ─── VENDOR SURVEY DATA (historical_observations, vendor_source IS NOT NULL) ─── */}
+        <VendorMarketSurveyPanel dealId={dealId} />
 
         {/* ─── COSTAR EXPORTS ─── */}
         <CoStarDataPanel dealId={dealId} />

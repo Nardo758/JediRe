@@ -307,4 +307,77 @@ router.get('/deals/:dealId/coverage', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/v1/historical-observations/deals/:dealId/vendor-surveys
+ *
+ * Returns all historical_observations rows for a deal that came from a
+ * registered market data vendor (vendor_source IS NOT NULL). Used by the
+ * VendorMarketSurveyPanel in the deal's Market Data tab.
+ *
+ * Rows are ordered newest-first. A max of 200 rows is returned.
+ *
+ * License posture note: `platform_only` and `restricted` rows ARE returned
+ * here because this is an internal, authenticated, deal-scoped endpoint.
+ * The platform_only constraint governs public export paths, not this view.
+ */
+router.get('/deals/:dealId/vendor-surveys', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const requestingUserId = req.user?.userId;
+
+    // Verify the requesting user has access to this deal
+    const accessSql = `
+      SELECT d.id
+      FROM deals d
+      WHERE d.id = $1
+        AND (
+          d.user_id = $2
+          OR EXISTS (
+            SELECT 1 FROM deal_team_members
+            WHERE deal_id = $1 AND user_id = $2 AND status = 'active'
+          )
+        )
+      LIMIT 1
+    `;
+    const accessResult = await query(accessSql, [dealId, requestingUserId]);
+    if (accessResult.rows.length === 0) {
+      res.status(404).json({ error: 'Deal not found or access denied' });
+      return;
+    }
+
+    const surveysSql = `
+      SELECT
+        id,
+        deal_id,
+        observation_date,
+        geography_level,
+        submarket_avg_asking_rent,
+        submarket_avg_effective_rent,
+        submarket_vacancy_rate,
+        submarket_under_construction,
+        vendor_source,
+        vendor_license_posture,
+        vendor_data_as_of,
+        market_survey_source,
+        market_survey_snapshot
+      FROM historical_observations
+      WHERE deal_id = $1
+        AND vendor_source IS NOT NULL
+      ORDER BY observation_date DESC
+      LIMIT 200
+    `;
+    const result = await query(surveysSql, [dealId]);
+
+    res.json({
+      dealId,
+      total: result.rows.length,
+      rows: result.rows,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[HistoricalObs] GET /deals/:dealId/vendor-surveys failed', { error: msg });
+    res.status(500).json({ error: 'Failed to load vendor survey data' });
+  }
+});
+
 export default router;
