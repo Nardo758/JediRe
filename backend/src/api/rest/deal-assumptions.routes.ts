@@ -1117,23 +1117,47 @@ router.patch('/:dealId/assumptions/ltl-controls', requireAuth, async (req: Authe
       return res.status(403).json({ error: 'Not authorized for this deal' });
     }
 
-    const sets: string[] = ['updated_at = NOW()'];
+    // Always pass both column values; use COALESCE on the conflict path to
+    // preserve the existing value when the caller omits a field.
+    // Both columns are also included in the INSERT column list so that a fresh
+    // deal_assumptions row (no prior conflict) has them written correctly.
+    const baselineSrc = 'ltlBaselineSource' in body ? (body.ltlBaselineSource ?? null) : undefined;
+    const captureRate = 'markToMarketCaptureRate' in body ? (body.markToMarketCaptureRate ?? null) : undefined;
+
+    // Build parameterised INSERT so values are written on both INSERT and UPDATE paths.
+    const cols = ['deal_id', 'updated_at'];
+    const vals: string[] = ['$1', 'NOW()'];
     const params: unknown[] = [dealId];
 
-    if ('ltlBaselineSource' in body) {
-      params.push(body.ltlBaselineSource ?? null);
-      sets.push(`ltl_baseline_source = $${params.length}`);
+    if (baselineSrc !== undefined) {
+      params.push(baselineSrc);
+      cols.push('ltl_baseline_source');
+      vals.push(`$${params.length}`);
+    }
+    if (captureRate !== undefined) {
+      params.push(captureRate);
+      cols.push('mark_to_market_capture_rate');
+      vals.push(`$${params.length}`);
     }
 
-    if ('markToMarketCaptureRate' in body) {
-      params.push(body.markToMarketCaptureRate ?? null);
-      sets.push(`mark_to_market_capture_rate = $${params.length}`);
+    // Conflict SET: re-use the same positional params.
+    // pIdx starts at 1 ($1 = dealId); each optional column increments to match
+    // the position assigned during the INSERT values build above.
+    const conflictSets = ['updated_at = NOW()'];
+    let pIdx = 1; // $1 already consumed by dealId
+    if (baselineSrc !== undefined) {
+      pIdx++;
+      conflictSets.push(`ltl_baseline_source = $${pIdx}`);
+    }
+    if (captureRate !== undefined) {
+      pIdx++;
+      conflictSets.push(`mark_to_market_capture_rate = $${pIdx}`);
     }
 
     await pool.query(
-      `INSERT INTO deal_assumptions (deal_id, updated_at)
-       VALUES ($1, NOW())
-       ON CONFLICT (deal_id) DO UPDATE SET ${sets.join(', ')}`,
+      `INSERT INTO deal_assumptions (${cols.join(', ')})
+       VALUES (${vals.join(', ')})
+       ON CONFLICT (deal_id) DO UPDATE SET ${conflictSets.join(', ')}`,
       params
     );
 
