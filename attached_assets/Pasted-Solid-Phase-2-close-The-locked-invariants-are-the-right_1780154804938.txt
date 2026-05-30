@@ -1,0 +1,67 @@
+Solid Phase 2 close. The locked invariants are the right invariants 
+— costar_market_metrics writer gap closed, Task #1407/#1410 dedup 
+preserved, both-condition skip logic enforced, no TypeScript 
+regression surface introduced.
+
+Three things to address in Phase 3 verification:
+
+V1 — End-to-end fixture run. Upload each of the three CoStar files 
+via the document library upload endpoint. Confirm:
+  - Classifier identifies correct DocumentType
+  - Parser produces expected row count (DataTable: N historical 
+    quarters excluding EST/QTD/future, sale comps: 17, rent comps: 14)
+  - Rows land in expected tables (corpus + costar_submarket_stats + 
+    costar_market_metrics for DataTable; corpus snapshot + 
+    market_sale_comps/market_rent_comps via processCoStarUpload for 
+    comps)
+  - Dedup fires correctly when uploading the same comp file twice
+
+V2 — Correlation engine verification. After uploading a DataTable 
+for any submarket+deal:
+  - Query costar_market_metrics and confirm rows present
+  - Confirm the "table not yet populated" warning at 
+    correlationEngine.service.ts:1686 stops firing for that deal
+  - Confirm COR-04, COR-13, COR-22 produce non-fallback values
+  
+  This is the empirical proof the writer gap is closed end-to-end, 
+  not just at the write level.
+
+V3 — F3 reader audit. Map F3 Markets' actual read paths:
+  - Does F3 query costar_market_metrics directly?
+  - Via correlation engine output?
+  - Via costar_submarket_stats?
+  - Via something else (apartmentMarketService, etc.)?
+  
+  Output: one-page mapping of F3's data sources for submarket views, 
+  with explicit note on which sources will see CoStar data after 
+  this dispatch and which won't.
+  
+  This determines whether the dispatch closes the F3 operator-facing 
+  gap (yes if F3 reads costar_market_metrics) or just the ingestion 
+  gap (gap remains, separate dispatch needed for F3 reader wiring).
+
+Two things to surface as findings, not blockers:
+
+F1 — The interim geography_id = dealId mapping in costar_market_metrics. 
+This works for deal-scoped reads. It produces a gap for submarket-scoped 
+reads (two different deals in the same submarket won't share CoStar 
+evidence). Note this in the F3 reader audit output: if F3 reads 
+by submarket_id, the interim mapping creates a per-deal data 
+isolation that may not be the intended behavior.
+
+F2 — Comp data is NOT preserved in the corpus. Only one 
+market_survey_snapshot metadata row per upload. The actual comp 
+rows live in market_sale_comps / market_rent_comps via the existing 
+service. This is a deliberate scope choice but worth being explicit 
+about: §7.8's long-term vision of C1-tier comp observations in the 
+corpus is NOT implemented yet. Future work if/when that becomes 
+needed.
+
+Phase 3 verification produces three artifacts:
+1. Pipeline end-to-end test results
+2. Correlation engine empirical confirmation (warnings stopped firing)
+3. F3 reader source map
+
+Once those three land, the next dispatch decision (F3 reader 
+wiring vs other priorities) can be made with empirical data 
+rather than assumption.

@@ -1683,24 +1683,24 @@ export class CorrelationEngineService {
       const lagCount = parseInt(lagRes.rows[0]?.lag_count ?? '0', 10);
       if (lagCount === 0) {
         base.missingData.push('apartment_supply_pipeline: no deliveries with available_date ≥18mo ago for city');
-        base.missingData.push('costar_market_metrics.effective_rent required for yValue (rent growth) — table not yet populated');
+        base.missingData.push('costar_market_metrics.avg_asking_rent required for yValue (rent growth) — table not yet populated');
         return base;
       }
       const lagUnits = parseInt(lagRes.rows[0].lag_units, 10);
       base.xValue = lagUnits;
 
       // Step 2 (Y): current effective rent growth from costar_market_metrics
-      // per spec: yValue = costar_market_metrics.effective_rent time-delta
+      // per spec: yValue = costar_market_metrics.avg_asking_rent time-delta
       interface RentRow { current_rent: string; prior_rent: string }
       let rentGrowthPct: number | null = null;
       try {
         const cmRes = await this.pool.query<RentRow>(
           `SELECT
-             FIRST_VALUE(effective_rent) OVER (ORDER BY period_date DESC) AS current_rent,
-             FIRST_VALUE(effective_rent) OVER (ORDER BY period_date ASC)  AS prior_rent
+             FIRST_VALUE(avg_asking_rent) OVER (ORDER BY as_of_date DESC) AS current_rent,
+             FIRST_VALUE(avg_asking_rent) OVER (ORDER BY as_of_date ASC)  AS prior_rent
            FROM costar_market_metrics
-           WHERE LOWER(market_name) LIKE LOWER($1)
-             AND effective_rent IS NOT NULL
+           WHERE LOWER(geography_name) LIKE LOWER($1)
+             AND avg_asking_rent IS NOT NULL
            LIMIT 1`,
           [`%${city}%`]
         );
@@ -1712,7 +1712,7 @@ export class CorrelationEngineService {
       } catch { /* costar_market_metrics not present */ }
 
       if (rentGrowthPct === null) {
-        base.missingData.push('costar_market_metrics.effective_rent not populated — cannot compute rent growth yValue; confidence insufficient');
+        base.missingData.push('costar_market_metrics.avg_asking_rent not populated — cannot compute rent growth yValue; confidence insufficient');
         return base;
       }
 
@@ -1762,12 +1762,12 @@ export class CorrelationEngineService {
       let sourceTable = 'costar_market_metrics';
       try {
         const costarRes = await this.pool.query<SnapRow>(
-          `SELECT job_growth_yoy, net_absorption_units, period_date AS snapshot_date
+          `SELECT job_growth_yoy, net_absorption_units, as_of_date AS snapshot_date
            FROM costar_market_metrics
-           WHERE LOWER(market_name) LIKE LOWER($1)
+           WHERE LOWER(geography_name) LIKE LOWER($1)
              AND job_growth_yoy IS NOT NULL
              AND net_absorption_units IS NOT NULL
-           ORDER BY period_date ASC`,
+           ORDER BY as_of_date ASC`,
           [`%${city}%`]
         );
         snapRows = costarRes.rows;
@@ -2236,13 +2236,13 @@ export class CorrelationEngineService {
             this.pool.query<AbsRow>(
               `SELECT ROUND(AVG(net_absorption_units)::numeric, 0) AS avg_absorption, COUNT(*) AS row_count
                FROM costar_market_metrics
-               WHERE LOWER(market_name) LIKE LOWER($1) AND period_date < $2`,
+               WHERE LOWER(geography_name) LIKE LOWER($1) AND as_of_date < $2`,
               [`%${city}%`, oldestEventDate]
             ),
             this.pool.query<AbsRow>(
               `SELECT ROUND(AVG(net_absorption_units)::numeric, 0) AS avg_absorption, COUNT(*) AS row_count
                FROM costar_market_metrics
-               WHERE LOWER(market_name) LIKE LOWER($1) AND period_date >= $2`,
+               WHERE LOWER(geography_name) LIKE LOWER($1) AND as_of_date >= $2`,
               [`%${city}%`, oldestEventDate]
             ),
           ]);
@@ -2356,11 +2356,11 @@ export class CorrelationEngineService {
       let currentCap: number | null = null;
       try {
         const costarRes = await this.pool.query<CostarCapRow>(
-          `SELECT avg_cap_rate, period_date
+          `SELECT avg_cap_rate, as_of_date
            FROM costar_market_metrics
-           WHERE LOWER(market_name) LIKE LOWER($1)
+           WHERE LOWER(geography_name) LIKE LOWER($1)
              AND avg_cap_rate IS NOT NULL
-           ORDER BY period_date DESC
+           ORDER BY as_of_date DESC
            LIMIT 1`,
           [`%${city}%`]
         );

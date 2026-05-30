@@ -61,14 +61,17 @@ function classifyByHeaders(headers: string[], sampleRows: any[]): { type: Docume
     return { type: 'COSTAR_SALE_COMPS', confidence: 0.92, hints };
   }
 
-  // Rent Comp Properties (COSTAR_RENT_COMPS): property comp list with asking rent + occupancy, no sale date
+  // Rent Comp Properties (COSTAR_RENT_COMPS): property comp list with rent metrics + occupancy, no sale date.
+  // CoStar exports "Rent/Unit" and "Rent/SF" rather than "Asking Rent" when exporting via the comp grid,
+  // so we accept those forms in addition to the canonical asking/effective rent labels.
   if (
-    (headerStr.includes('asking rent') || headerStr.includes('effective rent')) &&
+    (headerStr.includes('asking rent') || headerStr.includes('effective rent') ||
+     headerStr.includes('rent/unit') || headerStr.includes('rent/sf')) &&
     (headerStr.includes('occ %') || headerStr.includes('occupancy')) &&
     headerStr.includes('address') &&
     !headerStr.includes('sale date')
   ) {
-    hints.push('CoStar rent comp headers: asking rent + occupancy + address');
+    hints.push('CoStar rent comp headers: rent metric + occupancy + address');
     return { type: 'COSTAR_RENT_COMPS', confidence: 0.90, hints };
   }
 
