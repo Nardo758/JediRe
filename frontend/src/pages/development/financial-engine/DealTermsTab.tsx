@@ -772,6 +772,10 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     () => isStrategyReleaseNoticeDismissed(props.dealId),
   );
 
+  // ── LP / GP EQUITY SPLIT ────────────────────────────────────────────────────
+  const [lpSharePct, setLpSharePct] = useState('90');
+  const [gpSharePct, setGpSharePct] = useState('10');
+
   // ── EXIT / DISPOSITION ─────────────────────────────────────────────────────
   const [exitStrategy,   setExitStrategy]       = useState('');
   const [exitCap,        setExitCap]            = useState('');
@@ -826,6 +830,9 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     if (exitStrategyLvH?.resolved != null)   setExitStrategy(exitStrategyLvH.resolved);
     if (investStrategyLvH?.resolved != null) setInvestmentStrategy(investStrategyLvH.resolved);
     if ((fin.assumptions as any)?.sellingCostsPct != null) setSellingCosts(((fin.assumptions as any).sellingCostsPct * 100).toFixed(2));
+    // LP / GP equity split
+    if (fin.waterfall?.lpShare != null) setLpSharePct((fin.waterfall.lpShare * 100).toFixed(0));
+    if (fin.waterfall?.gpShare != null) setGpSharePct((fin.waterfall.gpShare * 100).toFixed(0));
     // Closing cost sub-lines
     const uovr = (fin.sourcesUses?.userOverrides ?? {}) as Record<string, number | null>;
     if (uovr.closingCostsBrokerFee  != null) setCloseBrokerFee(fmtInputNum(uovr.closingCostsBrokerFee));
@@ -1110,6 +1117,28 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     if (dec == null) return;
     await withSave(async () => {
       await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/targets`, { targetCoc: dec });
+      props.onF9Refresh?.();
+    });
+  }
+
+  async function saveLpGpSplit(triggerField: 'lpShare' | 'gpShare', rawPct: string) {
+    const pct = parseFloat(rawPct.replace(/[%,\s]/g, ''));
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) return;
+    const dec        = +(pct / 100).toFixed(6);
+    const complement = +(1 - dec).toFixed(6);
+    const otherField = triggerField === 'lpShare' ? 'gpShare' : 'lpShare';
+    await withSave(async () => {
+      // Always persist BOTH shares together so backend never sees an inconsistent split.
+      // wf:lpShare and wf:gpShare are independent override keys; saving only one leaves
+      // the other at its prior/default value, causing LP+GP ≠ 1 in the model inputs.
+      await Promise.all([
+        apiClient.patch(`/api/v1/deals/${props.dealId}/financials/override`, {
+          field: `wf:${triggerField}`, year: null, value: dec,
+        }),
+        apiClient.patch(`/api/v1/deals/${props.dealId}/financials/override`, {
+          field: `wf:${otherField}`, year: null, value: complement,
+        }),
+      ]);
       props.onF9Refresh?.();
     });
   }
@@ -1657,43 +1686,133 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
           override has no persistence path yet (see TODO_DEAL_TERMS_FOLLOWUP.md).
         </div>
 
-        {/* § 4 — LP / GP SPLIT cross-reference (read-only; canonical edit surface is WATERFALL tab) */}
-      <div style={{
-        margin: '0 14px 16px',
-        border: `1px solid ${BT.border.subtle}`,
-        borderRadius: 4,
-        overflow: 'hidden',
-      }}>
-        <div style={{
-          padding: '5px 10px',
-          background: `${BT.text.cyan}12`,
-          borderLeft: `3px solid ${BT.text.cyan}`,
-          borderBottom: `1px solid ${BT.text.cyan}30`,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.cyan, letterSpacing: 0.8 }}>
-            § 4  LP / GP SPLIT
-          </span>
-          <span
-            style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan, cursor: 'pointer', letterSpacing: 0.3 }}
-            onClick={() => props.onTabChange?.(4)}
-          >
-            Edit in WATERFALL →
-          </span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
-          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>LP Equity Share</span>
-          <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 600, color: BT.text.primary }}>
-            {fin?.waterfall?.lpShare != null ? `${(fin.waterfall.lpShare * 100).toFixed(0)}%` : '—'}
-          </span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 10px' }}>
-          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>GP Equity Share</span>
-          <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 600, color: BT.text.primary }}>
-            {fin?.waterfall?.gpShare != null ? `${(fin.waterfall.gpShare * 100).toFixed(0)}%` : '—'}
-          </span>
-        </div>
-      </div>
+        {/* § 4 — LP / GP SPLIT — editable; changes persisted to wf:lpShare / wf:gpShare overrides */}
+      {(() => {
+        const lpNum  = parseFloat(lpSharePct) || 0;
+        const gpNum  = parseFloat(gpSharePct) || 0;
+        const total  = lpNum + gpNum;
+        const sumOk  = Math.abs(total - 100) < 0.5;
+        const sumColor = sumOk ? BT.text.green : BT.text.red;
+        const lpSaved = fin?.waterfall?.lpShare != null ? (fin.waterfall.lpShare * 100).toFixed(0) : null;
+        const gpSaved = fin?.waterfall?.gpShare != null ? (fin.waterfall.gpShare * 100).toFixed(0) : null;
+        return (
+          <div style={{ margin: '0 14px 16px', border: `1px solid ${BT.border.subtle}`, borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{
+              padding: '5px 10px',
+              background: `${BT.text.cyan}12`,
+              borderLeft: `3px solid ${BT.text.cyan}`,
+              borderBottom: `1px solid ${BT.text.cyan}30`,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.cyan, letterSpacing: 0.8 }}>
+                § 4  LP / GP EQUITY SPLIT
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: sumColor, fontWeight: 700 }}>
+                  ∑ {total.toFixed(0)}% {sumOk ? '✓' : '≠ 100'}
+                </span>
+                <span
+                  style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan, cursor: 'pointer', letterSpacing: 0.3 }}
+                  onClick={() => props.onTabChange?.(4)}
+                >
+                  Full config in WATERFALL →
+                </span>
+              </div>
+            </div>
+
+            {/* LP row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>LP Equity Share</span>
+                {lpSaved && (
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
+                    saved: {lpSaved}%
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  type="text"
+                  value={lpSharePct}
+                  onChange={e => {
+                    setLpSharePct(e.target.value);
+                    const lp = parseFloat(e.target.value);
+                    if (Number.isFinite(lp)) setGpSharePct((100 - lp).toFixed(0));
+                  }}
+                  onBlur={() => void saveLpGpSplit('lpShare', lpSharePct)}
+                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                  style={{
+                    fontFamily: MONO, fontSize: 10, fontWeight: 700,
+                    color: TEAL, background: BT.bg.input,
+                    border: `1px solid ${TEAL}99`,
+                    padding: '3px 6px', width: 52, textAlign: 'right',
+                    outline: 'none', borderRadius: 2,
+                  }}
+                />
+                <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>%</span>
+              </div>
+            </div>
+
+            {/* GP row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>GP Equity Share</span>
+                {gpSaved && (
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
+                    saved: {gpSaved}%
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  type="text"
+                  value={gpSharePct}
+                  onChange={e => {
+                    setGpSharePct(e.target.value);
+                    const gp = parseFloat(e.target.value);
+                    if (Number.isFinite(gp)) setLpSharePct((100 - gp).toFixed(0));
+                  }}
+                  onBlur={() => void saveLpGpSplit('gpShare', gpSharePct)}
+                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                  style={{
+                    fontFamily: MONO, fontSize: 10, fontWeight: 700,
+                    color: TEAL, background: BT.bg.input,
+                    border: `1px solid ${TEAL}99`,
+                    padding: '3px 6px', width: 52, textAlign: 'right',
+                    outline: 'none', borderRadius: 2,
+                  }}
+                />
+                <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>%</span>
+              </div>
+            </div>
+
+            {/* Derived equity breakdown */}
+            {fin?.capitalStack?.equityAtClose != null && (
+              <div style={{ display: 'flex', gap: 0, borderBottom: `1px solid ${BT.border.subtle}` }}>
+                {[
+                  { label: 'LP Equity $', pct: lpNum / 100, color: BT.met.financial },
+                  { label: 'GP Equity $', pct: gpNum / 100, color: BT.text.orange },
+                ].map(({ label, pct, color }) => (
+                  <div key={label} style={{ flex: 1, padding: '4px 10px', borderRight: `1px solid ${BT.border.subtle}` }}>
+                    <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 1 }}>{label}</div>
+                    <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color }}>
+                      {fin?.capitalStack?.equityAtClose != null
+                        ? `$${Math.round((fin.capitalStack.equityAtClose as number) * pct).toLocaleString()}`
+                        : '—'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ padding: '4px 10px' }}>
+              <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
+                Tip: Editing LP% auto-updates GP%. For multi-tranche structures, use the WATERFALL tab.
+              </span>
+            </div>
+          </div>
+        );
+      })()}
       {/* ── Capital Structure Guidance panel ─────────────────────────────── */}
       <div style={{
         margin: '0 14px 16px',
