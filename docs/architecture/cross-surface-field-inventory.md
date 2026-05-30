@@ -5,59 +5,83 @@ Established by Task #1541 (Piece B2). Update when new surfaces are added.
 
 **Status legend:**
 - ✅ Migrated — uses canonical path as of Task #1541
-- 🔵 Native — surface owns this field; no cross-surface risk
-- ⚠️ Deferred — known non-canonical path; scheduled for a later piece
+- 🔵 Native — surface reads exclusively from Engine A (`getDealFinancials`) response; no cross-surface risk
+- ⚠️ Deferred — known non-canonical path; scheduled for Piece B3 (Engine A write-back)
 - — Not displayed on this surface
 
 ---
 
-## Leaf fields (set by operator or seeder)
+## F9 Financial Engine — surface inventory
 
-| Field | Pro Forma | Valuation Grid | Returns Tab | Overview Tab | Validation Grid | Decision Tab |
-|---|---|---|---|---|---|---|
-| `exit_cap` | 🔵 `getDealFinancials` computes internally | ⚠️ SQL `year1.exit_cap.resolved` (deferred B3) | 🔵 `getDealFinancials → ret.exitCapRate` | 🔵 `f9Financials.proforma.valuationSnapshot` | ✅ `fin != null ? fin.assumptions.exitCap` (CF-02) | — |
-| `hold_period_years` | 🔵 `getDealFinancials` | ⚠️ SQL `year1.hold_period_years.resolved` (deferred B3) | 🔵 `getDealFinancials → ret.holdPeriod` | `assumptions.holdPeriod` (local store) | ✅ `fin != null ? fin.assumptions.holdYears` (CF-03) | — |
-| `rent_growth_yr1` | 🔵 `getDealFinancials` | — | — | — | ✅ `fin != null ? fin.assumptions.rentGrowthYr1` (CF-04) | — |
-| `purchase_price` | 🔵 `getDealFinancials` | ⚠️ SQL `da.year1.purchase_price` (deferred B3) | 🔵 `getDealFinancials → capitalStack.purchasePrice` | `f9Financials.capitalStack.purchasePrice` | ✅ `fin != null ? fin.capitalStack.purchasePrice` (CF-05) | — |
-| `loan_amount` | 🔵 `getDealFinancials` | — | — | — | ✅ `fin != null ? fin.capitalStack.loanAmount` (CF-06) | — |
-| `interest_rate` | 🔵 `getDealFinancials` | — | — | — | ✅ `fin != null ? fin.assumptions.interestRate` (CF-06) | — |
-| `egi` | 🔵 `getDealFinancials` | ⚠️ SQL `year1.egi.resolved` (deferred B3) | 🔵 `getDealFinancials → proforma` | `f9Financials.proforma.unitEconomics.egiPerUnit` | — | — |
-| `total_opex` | 🔵 `getDealFinancials` | ⚠️ SQL `year1.total_opex.resolved` (deferred B3) | 🔵 `getDealFinancials → proforma` | `f9Financials.proforma.unitEconomics.opexPerUnit` | — | — |
-| `replacement_reserves` | 🔵 `getDealFinancials` | — | — | — | — | — |
+### Sub-tabs within F9 that read from `getDealFinancials` (Engine A) response
 
-## Computed aggregates (Engine A formula)
+All sub-tabs below receive `f9Financials` (the Engine A response) as a prop.
+They never perform independent DB reads for deal-assumption fields.
 
-| Field | Formula | Pro Forma | Valuation Grid | Returns Tab | Overview Tab | Validation Grid |
-|---|---|---|---|---|---|---|
-| `noi` | `egi − total_opex` | 🔵 `getDealFinancials` | ✅ `getFieldValue('noi')` (CF-01) | 🔵 `getDealFinancials → proforma.year1 noi row` | `f9Financials.proforma.unitEconomics.noiPerUnit` | — |
-| `noi_after_reserves` | `(egi − total_opex) − replacement_reserves` | 🔵 `getDealFinancials` | — | 🔵 `getDealFinancials → proforma` | — | — |
+| Sub-tab | Key field reads | Read source | Status |
+|---|---|---|---|
+| **ProFormaSummaryTab** | All Pro Forma year-1 rows (GPR → NOI → NOI after reserves) | `f9Financials.proforma.year1[]` — full row array | 🔵 Native |
+| **ProjectionsTab** | Multi-year rent growth, cashflow, NOI projections | `f9Financials.proforma.year1[]`, `f9Financials.trafficProjection` | 🔵 Native |
+| **OverviewTab** | Purchase price, loan amount, equity at close, NOI/unit/mo, EGI/unit/mo, cap rate, hold period | `f9Financials.capitalStack.*`, `f9Financials.proforma.unitEconomics.*`, `f9Financials.proforma.valuationSnapshot` | 🔵 Native |
+| **ReturnsTab** | IRR, EM, LP/GP returns, DSCR, LTV, debt yield, positive leverage | `f9Financials.returns.*`, `f9Financials.capitalStack.*`, `f9Financials.debtMetrics.*` | 🔵 Native |
+| **SourcesUsesTab** | Purchase price, loan amount, equity at close, fees, transfer tax | `f9Financials.sourcesUses`, `f9Financials.capitalStack.*`, `f9Financials.taxes.transferTax.*` | 🔵 Native |
+| **DebtTab** | NOI Y1 (integrity check input), loan terms, hold years, refi, coverage metrics | `f9Financials.proforma.year1.find(noi).resolved`, `f9Financials.debt.*`, `f9Financials.capitalStack.*` | 🔵 Native |
+| **DecisionTab** | Integrity checks, all year-1 Pro Forma rows, concession recognition, capital stack | `f9Financials.proforma.year1[]`, `f9Financials.proforma.integrityChecks`, `f9Financials.concessionRecognition`, `f9Financials.capitalStack` | 🔵 Native |
+| **AssumptionsTab** | Rent growth, vacancy, expense growth, exit cap assumption inputs | `f9Financials.assumptions.*` | 🔵 Native |
+| **SensitivityTab** | Interest rate, LTV, exit cap — for sensitivity ranges | `f9Financials.assumptions.*`, `assumptions.*` (local store — presentation only, not underwriting) | 🔵 Native |
+| **StanceTab** | OperatorStance posture fields | `f9Financials.operatorStance` (dedicated API) | 🔵 Native |
 
-## Canonical read path rules
+### Cross-surface discrepancies audited
 
-| Surface | Canonical source | Notes |
+| Code | From Surface | To Surface | Field | Status |
+|---|---|---|---|---|
+| **CF-01** | Pro Forma | Valuation Grid | `noi` | ✅ Fixed — `getFieldValue('noi')` in `getSubjectProperty()` |
+| **CF-02** | Pro Forma | Validation Grid | `exit_cap` | ✅ Fixed — `fin != null` guard |
+| **CF-03** | Pro Forma | Validation Grid | `hold_period_years` | ✅ Fixed — `fin != null` guard |
+| **CF-04** | Pro Forma | Validation Grid | `rent_growth_yr1` | ✅ Fixed — `fin != null` guard |
+| **CF-05** | Pro Forma | Validation Grid | `purchase_price` | ✅ Fixed — `fin != null` guard |
+| **CF-06** | Pro Forma | Validation Grid | `loan_amount` / `interest_rate` | ✅ Fixed — `fin != null` guard |
+
+---
+
+## Valuation Grid — backend field reads
+
+Handled in `ValuationGridService.getSubjectProperty()` (backend, SQL).
+
+| Field | Read path | Status |
 |---|---|---|
-| Pro Forma (all tabs) | `getDealFinancials()` response | Engine A computes and returns all fields. No direct DB reads in the Pro Forma render layer. |
-| Valuation Grid (backend) | `ValuationGridService` → `getSubjectProperty()` | Aggregates: `getFieldValue()`. Leaf fields: direct SQL (deferred to B3). |
-| Returns Tab | `getDealFinancials()` → `ret.*` and `capitalStack.*` | All reads from the same Engine A response as Pro Forma. |
-| Overview Tab | `f9Financials.*` (Engine A response stored in React state) | Hold period falls back to `assumptions.holdPeriod` from local store — acceptable since overview is summary only. |
-| Validation Grid (frontend) | `f9Financials` with `fin != null` guard | Falls back to `ModelAssumptions` only while Engine A hasn't responded (loading state). |
-| Decision Tab | Not yet audited — deferred to Piece B4 | — |
+| `noi` | `getFieldValue(pool, dealId, 'noi', 1)` | ✅ Migrated (CF-01) |
+| `exit_cap` | `da.year1.exit_cap.resolved` (SQL) | ⚠️ Deferred to B3 |
+| `hold_period_years` | `da.year1.hold_period_years.resolved` (SQL) | ⚠️ Deferred to B3 |
+| `purchase_price` | `da.acquisition_price` (property table column) | 🔵 Native (not a LV field) |
+| `egi` | `da.year1.egi.resolved` (SQL) | ⚠️ Deferred to B3 |
+| `total_opex` | `da.year1.total_opex.resolved` (SQL) | ⚠️ Deferred to B3 |
 
-## Fields not yet in ALLOWED_FIELDS (getFieldValue whitelist)
+---
 
-These fields appear in `deal_assumptions.year1` but are read via direct SQL or the
-Engine A path only. They can be added to `ALLOWED_FIELDS` in
-`backend/src/services/field-access/get-field-value.service.ts` when a surface needs
-to read them via the canonical accessor:
+## Other product surfaces (F4, F8)
+
+| Surface | Field reads | Status |
+|---|---|---|
+| **F4 Market Intelligence** | Submarket/MSA metrics — from `market_sale_comps`, `historical_observations`, `ValuationGridService` | Not a deal-field surface; no cross-surface read risk |
+| **F8 Investor / Capital** | LP/GP capital calls, distributions, waterfall — from `deals.investor_data` and dedicated investor services | Not a deal-assumption-field surface |
+
+---
+
+## Deferred to Piece B3 (Engine A write-back)
+
+The fields marked ⚠️ above are still read from stored `da.year1[field].resolved` in raw
+SQL within `ValuationGridService`. These will be migrated to `getFieldValue()` when
+Piece B3 implements Engine A write-back — ensuring the stored `.resolved` is always
+up-to-date before being read.
+
+## Fields not yet in ALLOWED_FIELDS
+
+These appear in `deal_assumptions.year1` but have no caller needing `getFieldValue` yet.
+Add to the whitelist in `backend/src/services/field-access/get-field-value.service.ts`
+when a surface needs canonical access:
 
 `gpr`, `vacancy_loss`, `other_income`, `insurance`, `real_estate_taxes`, `management_fees`,
 `payroll`, `repairs_maintenance`, `utilities`, `general_admin`, `marketing`,
 `target_irr`, `target_em`, `pref_rate`, `gp_promote`, `construction_cost`,
 `soft_costs`, `land_cost`.
-
-## Deferred (Piece B3 — Engine A write-back)
-
-Valuation Grid leaf fields (exitCap, holdYears, purchasePrice, EGI, total_opex) are
-still read from stored `da.year1[field].resolved` in SQL. These will be migrated to
-`getFieldValue()` when Piece B3 implements Engine A write-back, ensuring the stored
-`.resolved` is always current before being read.

@@ -106,6 +106,16 @@ const ALLOWED_FIELDS = new Set([
   'year1_noi',
 ]);
 
+// ── Legacy field aliases ──────────────────────────────────────────────────────
+//
+// Some older deals stored a field under a different key in year1.
+// When the primary key resolves to null, we try these fallbacks in order.
+// Alias keys must also be in ALLOWED_FIELDS so they can be safely interpolated.
+
+const FIELD_LEGACY_ALIASES: Record<string, string[]> = {
+  noi: ['year1_noi'],
+};
+
 // ── Aggregate field definitions ───────────────────────────────────────────────
 //
 // Fields whose canonical value is Engine A's formula result.
@@ -144,10 +154,20 @@ function extractNum(v: unknown): number | null {
   return isNaN(n) ? null : n;
 }
 
-/** Parse a raw JSONB blob returned by pg into a record, safely. */
+/**
+ * Parse a raw JSONB blob returned by pg into a LayeredValue record, safely.
+ * Handles three cases:
+ *   - Object  : standard LayeredValue blob  { resolved, override, agent, t12, … }
+ *   - Scalar  : legacy deals where field was stored as raw number (not a LayeredValue object).
+ *               Treated as a degenerate LV with only storedResolved populated.
+ *   - null/undefined : returns null (field is absent from year1)
+ */
 function parseLv(raw: unknown): Record<string, unknown> | null {
   if (raw == null) return null;
   if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  // Scalar numeric JSONB — legacy shape
+  const n = extractNum(raw);
+  if (n != null) return { resolved: n };
   return null;
 }
 
@@ -226,10 +246,12 @@ export async function getFieldValue(
   if (year !== 1) return null;
 
   const aggDef: AggDef | undefined = !options?.raw ? COMPUTED_AGGREGATES[fieldName] : undefined;
+  const aliases: string[] = FIELD_LEGACY_ALIASES[fieldName] ?? [];
 
-  // Collect all field keys we need to fetch (primary + aggregate deps)
+  // Collect all field keys to fetch: primary + aggregate deps + legacy alias keys
   const allKeys = new Set<string>([fieldName]);
   if (aggDef) aggDef.deps.forEach(d => allKeys.add(d));
+  aliases.forEach(a => allKeys.add(a));
 
   const colExpressions = [...allKeys]
     .map(k => `da.year1->'${k}' AS lv_${k.replace(/-/g, '_')}`)
@@ -246,8 +268,17 @@ export async function getFieldValue(
   if (res.rows.length === 0) return null;
 
   const row = res.rows[0];
+
+  // Primary field may be absent entirely — try legacy aliases as last resort
   const primaryKey = `lv_${fieldName.replace(/-/g, '_')}`;
-  const lv = parseLv(row[primaryKey]);
+  let lv = parseLv(row[primaryKey]);
+  let usingAlias = false;
+  if (!lv) {
+    for (const alias of aliases) {
+      const aliasLv = parseLv(row[`lv_${alias.replace(/-/g, '_')}`]);
+      if (aliasLv) { lv = aliasLv; usingAlias = true; break; }
+    }
+  }
   if (!lv) return null;
 
   const override       = extractNum(lv.override);
@@ -261,9 +292,10 @@ export async function getFieldValue(
   // Dependency resolution: each dep is resolved through its own layered chain
   // (override > agent > storedResolved) so operator overrides on egi/total_opex
   // propagate correctly into the NOI computation.
+  // Skip formula if using a legacy alias — aliases store scalar resolved only.
   let computedValue: number | null = null;
   let computedAs: string | undefined;
-  if (aggDef && override == null) {
+  if (aggDef && !usingAlias && override == null) {
     const depVals: Record<string, number> = {};
     let allDepsPresent = true;
     for (const dep of aggDef.deps) {
@@ -328,11 +360,12 @@ export async function getFieldValues(
 
   if (safeNames.length === 0) return result;
 
-  // Collect all dep fields we'll need alongside the requested fields
+  // Collect all dep fields + legacy alias keys we'll need alongside the requested fields
   const allKeys = new Set<string>(safeNames);
   if (!options?.raw) {
     for (const f of safeNames) {
       COMPUTED_AGGREGATES[f]?.deps.forEach(d => allKeys.add(d));
+      (FIELD_LEGACY_ALIASES[f] ?? []).forEach(a => allKeys.add(a));
     }
   }
 
@@ -359,7 +392,15 @@ export async function getFieldValues(
     parseLv(row[`lv_${f.replace(/-/g, '_')}`]);
 
   for (const fieldName of safeNames) {
-    const lv = getLv(fieldName);
+    // Primary key — fall back to legacy aliases if absent
+    let lv = getLv(fieldName);
+    let usingAlias = false;
+    if (!lv) {
+      for (const alias of (FIELD_LEGACY_ALIASES[fieldName] ?? [])) {
+        const aliasLv = getLv(alias);
+        if (aliasLv) { lv = aliasLv; usingAlias = true; break; }
+      }
+    }
     if (!lv) { result[fieldName] = null; continue; }
 
     const override      = extractNum(lv.override);
@@ -373,7 +414,7 @@ export async function getFieldValues(
     let computedAs: string | undefined;
     const aggDef: AggDef | undefined = !options?.raw ? COMPUTED_AGGREGATES[fieldName] : undefined;
 
-    if (aggDef && override == null) {
+    if (aggDef && !usingAlias && override == null) {
       const depVals: Record<string, number> = {};
       let allDepsPresent = true;
       for (const dep of aggDef.deps) {
