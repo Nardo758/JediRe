@@ -405,7 +405,7 @@ router.get(
     try {
       const { dealId, fileId } = req.params;
 
-      const file = await documentsFilesService.getFileById(fileId);
+      const file = await documentsFilesService.getFile(fileId);
 
       if (!file || file.deal_id !== dealId) {
         return res.status(404).json({
@@ -414,7 +414,7 @@ router.get(
         });
       }
 
-      const filePath = documentsFilesService.getFilePath(dealId, file.filename);
+      const filePath = file.file_path;
 
       // Check if file exists
       try {
