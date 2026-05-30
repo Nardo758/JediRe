@@ -379,7 +379,11 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
     const rows: ValidationRow[] = [];
 
     // Purchase Price
-    const pp     = fin?.capitalStack?.purchasePrice ?? assum?.acquisition?.purchasePrice ?? null;
+    // Canonical source: f9Financials.capitalStack.purchasePrice (Engine A output).
+    // Fallback to ModelAssumptions only when f9Financials is not yet loaded (loading state).
+    const pp     = fin != null
+      ? (fin.capitalStack?.purchasePrice ?? null)
+      : (assum?.acquisition?.purchasePrice ?? null);
     const ppPyo  = pyoSrc(pyo, 'acquisition.purchasePrice');
     const ppQ: QualityBand =
       pp != null && pp > 0
@@ -420,7 +424,11 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
     const rows: ValidationRow[] = [];
 
     // Exit Cap Rate — core comp-validation row
-    const exitCapVal = fin?.assumptions?.exitCap ?? assum?.disposition?.exitCapRate ?? null;
+    // CF-02: canonical source is f9Financials.assumptions.exitCap (Engine A).
+    // Fall back to ModelAssumptions only when f9Financials hasn't loaded yet.
+    const exitCapVal = fin != null
+      ? (fin.assumptions?.exitCap ?? null)
+      : (assum?.disposition?.exitCapRate ?? null);
     const exitPyo    = pyoSrc(pyo, 'disposition.exitCapRate');
 
     let exitQ: QualityBand    = exitCapVal == null ? 'UNVALIDATED' : 'WATCH';
@@ -478,7 +486,11 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
     });
 
     // Hold Period
-    const holdYrs   = fin?.assumptions?.holdYears ?? assum?.holdPeriod ?? null;
+    // CF-03: canonical source is f9Financials.assumptions.holdYears (Engine A).
+    // Fall back to ModelAssumptions only when f9Financials hasn't loaded yet.
+    const holdYrs   = fin != null
+      ? (fin.assumptions?.holdYears ?? null)
+      : (assum?.holdPeriod ?? null);
     const holdPyo   = pyoSrc(pyo, 'hold.holdPeriodYears');
     const holdQ: QualityBand =
       holdYrs != null && holdYrs > 0
@@ -583,7 +595,11 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
     });
 
     // Rent Growth Y1
-    const rentGrowthY1  = fin?.assumptions?.rentGrowthYr1 ?? assum?.revenue?.rentGrowth?.[0] ?? null;
+    // CF-04: canonical source is f9Financials.assumptions.rentGrowthYr1 (Engine A).
+    // Fall back to ModelAssumptions only when f9Financials hasn't loaded yet.
+    const rentGrowthY1  = fin != null
+      ? (fin.assumptions?.rentGrowthYr1 ?? null)
+      : (assum?.revenue?.rentGrowth?.[0] ?? null);
     const rentGrPyo     = pyoSrc(pyo, 'revenue.rentGrowth[0]');
     const rentGrQ: QualityBand =
       rentGrowthY1 != null ? 'WATCH'
@@ -709,8 +725,14 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
   {
     const rows: ValidationRow[] = [];
 
-    const loanAmt   = fin?.capitalStack?.loanAmount ?? assum?.financing?.loanAmount ?? null;
-    const pp2       = fin?.capitalStack?.purchasePrice ?? assum?.acquisition?.purchasePrice ?? null;
+    // CF-05/CF-06: canonical source is f9Financials.capitalStack (Engine A).
+    // Fall back to ModelAssumptions only when f9Financials hasn't loaded yet.
+    const loanAmt   = fin != null
+      ? (fin.capitalStack?.loanAmount ?? null)
+      : (assum?.financing?.loanAmount ?? null);
+    const pp2       = fin != null
+      ? (fin.capitalStack?.purchasePrice ?? null)
+      : (assum?.acquisition?.purchasePrice ?? null);
     const ltvCalc   = loanAmt != null && pp2 != null && pp2 > 0 ? loanAmt / pp2 : null;
     const ltvRaw    = rawA?.ltc ?? null;
     const ltvDisplay = ltvCalc ?? ltvRaw;
@@ -738,7 +760,9 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
         : undefined,
     });
 
-    const intRate = fin?.capitalStack?.interestRate ?? assum?.financing?.interestRate ?? null;
+    const intRate = fin != null
+      ? (fin.capitalStack?.interestRate ?? null)
+      : (assum?.financing?.interestRate ?? null);
     const intQ: QualityBand =
       hasDebt                            ? 'STRONG'
       : intRate != null && intRate > 0   ? 'WATCH'
