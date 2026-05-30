@@ -204,6 +204,24 @@ export function buildProjectionsForExport(
   // TODO(agent): concessionBurnOffPct — agent integration out of scope here.
   let accumulatedBurnOff = 0; // grows each year; concessions = Y1 × max(0, 1 - accumulated)
 
+  // ── Running bases for per-year override-aware compounding ─────────────────
+  // Rule: when an operator override exists at year Y for field F, that overridden
+  // value becomes the new compounding base for year Y+1 onward.  This prevents
+  // discontinuities (e.g., payroll overridden to $300K at yr3 → yr4 = $300K × (1+g))
+  // and mirrors the proforma-adjustment.service.ts projections loop exactly.
+  let runGpr       = gprY1;
+  let runOtherInc  = breakdownOtherY1Export; // annual $ excluding user adoption lines
+  let runPayroll   = payrollY1;
+  let runRepairs   = repairsY1;
+  let runTurnover  = turnoverY1;
+  let runContract  = contractY1;
+  let runMarketing = marketingY1;
+  let runUtilities = utilitiesY1;
+  let runGAndA     = gAndAY1;
+  let runInsurance = insuranceY1;
+  let runReTax     = reTaxY1;
+  let runReserves  = reservesY1;
+
   // ── Regime Bridge: deal-type-aware year-by-year trajectory ────────────────
   // Detect deal mode from M07 traffic signals — the most reliable automated source.
   // postRenoAbsorptionLagWks > 0  →  value-add renovation regime
@@ -233,29 +251,26 @@ export function buildProjectionsForExport(
     const tv = tyr(yr);
     const pv = pyr(yr);
 
-    // Compound rent growth from Year 1 base
-    let rentMult = 1;
-    for (let y = 1; y < yr; y++) {
-      const g = pyr(y)?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03;
-      rentMult *= 1 + (g ?? 0.03);
-    }
+    // Per-year override resolver: reads operator-saved dollar amounts from
+    // per_year_overrides JSONB (surfaced here as f.userOverrides[field][yr]).
+    // Keys are snake_case for Section 1/3 fields, matching the save path in
+    // proforma-adjustment.service.ts (field `year1Key` → `year1Key:yrN`).
+    const pyOvr = (field: string): number | null => {
+      const v = f.userOverrides[field]?.[yr];
+      return v != null ? v : null;
+    };
 
-    // Compound OpEx growth from user override (per-year or flat), falling back
-    // to the DB-seeded platform value (assumptions.opexGrowthPct), then to 3%.
-    // Replaces the former hardcoded Math.pow(1.03, yr-1) so that user inputs
-    // from the Assumptions tab Section B actually affect Y2+ projections.
+    // Growth step applied TO this year (relative to year yr-1).
+    // yr=1 → 0 (Y1 seeds are already the base; no growth applied to themselves).
+    const rentStep = yr === 1 ? 0 : (pyr(yr - 1)?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03);
     // TODO(M36): opexGrowthPct is a Section B trajectory driver — add to covariance matrix when M36 integrates.
-    let opexMult = 1;
-    let insMult  = 1;
-    for (let y = 1; y < yr; y++) {
-      const opexG = f.userOverrides['growthOpexPct']?.[y] ?? assumptions.opexGrowthPct ?? 0.03;
-      const insG  = f.userOverrides['growthInsurancePct']?.[y] ?? 0.035;
-      opexMult *= 1 + opexG;
-      insMult  *= 1 + insG;
-    }
+    const opexStep = yr === 1 ? 0 : (f.userOverrides['growthOpexPct']?.[yr - 1] ?? assumptions.opexGrowthPct ?? 0.03);
+    const insStep  = yr === 1 ? 0 : (f.userOverrides['growthInsurancePct']?.[yr - 1] ?? 0.035);
 
-    // GPR = resolvedAnnual × compound rent growth (vacancy handled separately)
-    const gpr = Math.round(gprY1 * rentMult);
+    // GPR: operator dollar override wins; else compound running base with rent step.
+    const gprOvr = pyOvr('gpr');
+    const gpr    = gprOvr != null ? Math.round(gprOvr) : Math.round(runGpr * (1 + rentStep));
+    runGpr       = gpr;
 
     // Vacancy: per-year traffic data wins when available
     const vacPct      = tv?.vacancyPct ?? pv?.vacancyPct ?? y1('vacancy_pct') ?? 0.05;
@@ -291,26 +306,61 @@ export function buildProjectionsForExport(
     const nru         = Math.round(gpr * nruPctY1);
     const nri         = gpr - vacancyLoss - lossToLease - concessions - badDebt - nru;
 
-    // Adoption ramp: breakdown grows with rent; user lines get per-year ramp values. Task #1147.
+    // Other income: grows with rent on the running base (adoption-ramp user lines unchanged).
     const userLinesThisYrExport = _exportUserLines.reduce((s, l) => s + getULAExport(l, yr - 1), 0);
-    const otherIncome = Math.round(breakdownOtherY1Export * rentMult + userLinesThisYrExport);
+    runOtherInc = runOtherInc * (1 + rentStep);
+    const otherIncome = Math.round(runOtherInc + userLinesThisYrExport);
     const egi         = nri + otherIncome;
 
-    const payroll    = Math.round(payrollY1    * opexMult);
-    // Regime-sensitive lines: regime multiplier applied before the growth compounding.
-    // For value-add: repairs & turnover are elevated during the renovation period.
-    // For lease-up: turnover is suppressed; marketing is elevated during the lease-up period.
-    // regXxxMult = 1.0 for stabilised deals → no change to existing behaviour.
-    const repairs    = Math.round(repairsY1    * regRepairsMult   * opexMult);
-    const turnover   = Math.round(turnoverY1   * regTurnoverMult  * opexMult);
-    const contractSvc = Math.round(contractY1  * opexMult);
-    const marketing  = Math.round(marketingY1  * regMarketingMult * opexMult);
-    const utilities  = Math.round(utilitiesY1  * opexMult);
-    const gAndA      = Math.round(gAndAY1      * opexMult);
-    const mgmtFee    = Math.round(egi          * (mgmtFeePctY1 ?? 0.05));
-    const insurance  = Math.round(insuranceY1  * insMult);
-    const reTaxes    = Math.round(reTaxY1      * opexMult);
-    const reserves   = Math.round(reservesY1   * opexMult);
+    // Expenses — override-aware running-base compounding.
+    // Dollar-amount operator overrides always take priority; when present, the
+    // overridden value becomes the new compounding base for subsequent years.
+    // Regime multipliers (value-add / lease-up) are preserved and applied before
+    // the growth step on lines where they were already active.
+    const payrollOvr   = pyOvr('payroll');
+    const payroll      = payrollOvr != null ? Math.round(payrollOvr) : Math.round(runPayroll * (1 + opexStep));
+    runPayroll         = payroll;
+
+    // Regime-sensitive lines: regime multiplier applied before the growth step so the
+    // compounding base already reflects the regime adjustment each year.
+    const repairsOvr   = pyOvr('repairs_maintenance');
+    const repairs      = repairsOvr != null ? Math.round(repairsOvr) : Math.round(runRepairs * regRepairsMult * (1 + opexStep));
+    runRepairs         = repairsOvr != null ? repairsOvr : runRepairs * (1 + opexStep);
+
+    const turnoverOvr  = pyOvr('turnover');
+    const turnover     = turnoverOvr != null ? Math.round(turnoverOvr) : Math.round(runTurnover * regTurnoverMult * (1 + opexStep));
+    runTurnover        = turnoverOvr != null ? turnoverOvr : runTurnover * (1 + opexStep);
+
+    const contractOvr  = pyOvr('contract_services');
+    const contractSvc  = contractOvr != null ? Math.round(contractOvr) : Math.round(runContract * (1 + opexStep));
+    runContract        = contractSvc;
+
+    const marketingOvr = pyOvr('marketing');
+    const marketing    = marketingOvr != null ? Math.round(marketingOvr) : Math.round(runMarketing * regMarketingMult * (1 + opexStep));
+    runMarketing       = marketingOvr != null ? marketingOvr : runMarketing * (1 + opexStep);
+
+    const utilitiesOvr = pyOvr('utilities');
+    const utilities    = utilitiesOvr != null ? Math.round(utilitiesOvr) : Math.round(runUtilities * (1 + opexStep));
+    runUtilities       = utilities;
+
+    const gAndAOvr     = pyOvr('g_and_a');
+    const gAndA        = gAndAOvr != null ? Math.round(gAndAOvr) : Math.round(runGAndA * (1 + opexStep));
+    runGAndA           = gAndA;
+
+    const mgmtFee      = Math.round(egi * (mgmtFeePctY1 ?? 0.05));
+
+    const insuranceOvr = pyOvr('insurance');
+    const insurance    = insuranceOvr != null ? Math.round(insuranceOvr) : Math.round(runInsurance * (1 + insStep));
+    runInsurance       = insurance;
+
+    const reTaxesOvr   = pyOvr('real_estate_tax');
+    const reTaxes      = reTaxesOvr != null ? Math.round(reTaxesOvr) : Math.round(runReTax * (1 + opexStep));
+    runReTax           = reTaxes;
+
+    const reservesOvr  = pyOvr('replacement_reserves');
+    const reserves     = reservesOvr != null ? Math.round(reservesOvr) : Math.round(runReserves * (1 + opexStep));
+    runReserves        = reserves;
+
     const totalOpex  = payroll + repairs + turnover + contractSvc + marketing +
                        utilities + gAndA + mgmtFee + insurance + reTaxes + reserves;
     const noi        = egi - totalOpex;
