@@ -310,55 +310,123 @@ router.get('/deals/:dealId/coverage', async (req: Request, res: Response) => {
 /**
  * GET /api/v1/historical-observations/submarket/:submarketId/vendor-surveys
  *
- * Returns PLATFORM-AGGREGATED vendor-sourced rows from historical_observations
- * for a given submarket. Used by SubmarketOverviewTab in the F4 market
- * intelligence view.
+ * Returns vendor-sourced historical_observations rows for the submarket
+ * intelligence view (F4 / SubmarketOverviewTab).
  *
- * Security contract: only rows where deal_id IS NULL are returned. Deal-scoped
- * vendor uploads (uploaded by specific users for specific deals) are private and
- * must NOT flow into this shared submarket view — they are accessible via the
- * deal-scoped GET /deals/:dealId/vendor-surveys endpoint which validates
- * deal-team membership. This prevents cross-tenant data exposure.
+ * Data scope — two buckets are merged:
+ *   1. Platform-aggregated rows (deal_id IS NULL) — always included when
+ *      submarket matches. No ownership check needed; no private data exposed.
+ *   2. Deal-scoped rows (deal_id = ?dealId) — included ONLY when `dealId` is
+ *      provided AND the requesting user is the deal owner or active team member.
+ *      This lets an operator's own uploaded Yardi/CoStar file appear in the F4
+ *      submarket view when they are viewing it in deal context.
  *
- * Matching strategy (AND deal_id IS NULL, AND one of):
- *   1. submarket_id = :submarketId (direct FK — fires once vendors write it)
- *   2. market_survey_snapshot->>'submarket' ILIKE '%name%' (JSONB text match)
+ * Security contract: deal-scoped rows are gated by an explicit ownership check
+ * before the deal_id is used in the SQL. A user who provides a dealId they do
+ * not own receives only platform-aggregated rows (graceful degradation, not 403).
+ * SQL parameters are never derived from unvalidated user input.
+ *
+ * Submarket matching (within each bucket):
+ *   a. submarket_id = :submarketId (FK — future-proof)
+ *   b. market_survey_snapshot->>'submarket' ILIKE '%name%' (JSONB text match for
+ *      vendor rows that store the submarket name in the snapshot)
  *
  * Query params:
- *   name — submarket display name for JSONB text matching
+ *   name   — submarket display name for JSONB text matching
+ *   dealId — (optional) UUID of the deal; enables bucket 2 when ownership is confirmed
  *
  * Rows are ordered newest-first. Max 200 rows.
- * deal_id is excluded from the response (it is always NULL in this path).
+ * deal_id is excluded from the response for platform rows (NULL); included for
+ * deal-scoped rows so the frontend can distinguish provenance.
  */
 router.get('/submarket/:submarketId/vendor-surveys', async (req: Request, res: Response) => {
   try {
     const { submarketId } = req.params;
-    const { name } = req.query;
+    const { name, dealId } = req.query;
+    const requestingUserId = req.user?.userId;
 
     const namePct = name ? `%${(name as string).trim()}%` : null;
 
-    const sql = `
-      SELECT
-        id, observation_date, geography_level,
-        submarket_avg_asking_rent, submarket_avg_effective_rent,
-        submarket_vacancy_rate, submarket_under_construction,
-        vendor_source, vendor_license_posture, vendor_data_as_of,
-        market_survey_source, market_survey_snapshot
-      FROM historical_observations
-      WHERE vendor_source IS NOT NULL
-        AND deal_id IS NULL
-        AND (
-          submarket_id = $1
-          OR (
-            $2::text IS NOT NULL
-            AND market_survey_snapshot->>'submarket' ILIKE $2::text
+    // ── Validate deal ownership when dealId is provided ─────────────────────
+    let validatedDealId: string | null = null;
+    if (dealId && typeof dealId === 'string' && requestingUserId) {
+      const accessSql = `
+        SELECT d.id
+        FROM deals d
+        WHERE d.id = $1
+          AND (
+            d.user_id = $2
+            OR EXISTS (
+              SELECT 1 FROM deal_team_members
+              WHERE deal_id = $1 AND user_id = $2 AND status = 'active'
+            )
           )
-        )
-      ORDER BY observation_date DESC
-      LIMIT 200
-    `;
+        LIMIT 1
+      `;
+      const accessResult = await query(accessSql, [dealId, requestingUserId]);
+      if (accessResult.rows.length > 0) {
+        validatedDealId = dealId;
+      }
+      // If ownership check fails: silently degrade to platform-only rows.
+      // No 403 — the submarket view itself is not deal-gated.
+    }
 
-    const result = await query(sql, [submarketId, namePct]);
+    // ── Build query: platform rows always + validated deal rows when available
+    let sql: string;
+    let params: unknown[];
+
+    if (validatedDealId) {
+      // Two buckets: platform (deal_id IS NULL) + user's own deal (deal_id = validatedDealId)
+      sql = `
+        SELECT
+          id, deal_id, observation_date, geography_level,
+          submarket_avg_asking_rent, submarket_avg_effective_rent,
+          submarket_vacancy_rate, submarket_under_construction,
+          vendor_source, vendor_license_posture, vendor_data_as_of,
+          market_survey_source, market_survey_snapshot
+        FROM historical_observations
+        WHERE vendor_source IS NOT NULL
+          AND (
+            submarket_id = $1
+            OR (
+              $2::text IS NOT NULL
+              AND market_survey_snapshot->>'submarket' ILIKE $2::text
+            )
+          )
+          AND (
+            deal_id IS NULL
+            OR deal_id = $3::uuid
+          )
+        ORDER BY observation_date DESC
+        LIMIT 200
+      `;
+      params = [submarketId, namePct, validatedDealId];
+    } else {
+      // Platform-aggregated only (deal_id IS NULL)
+      sql = `
+        SELECT
+          id, observation_date, geography_level,
+          submarket_avg_asking_rent, submarket_avg_effective_rent,
+          submarket_vacancy_rate, submarket_under_construction,
+          vendor_source, vendor_license_posture, vendor_data_as_of,
+          market_survey_source, market_survey_snapshot
+        FROM historical_observations
+        WHERE vendor_source IS NOT NULL
+          AND deal_id IS NULL
+          AND (
+            submarket_id = $1
+            OR (
+              $2::text IS NOT NULL
+              AND market_survey_snapshot->>'submarket' ILIKE $2::text
+            )
+          )
+        ORDER BY observation_date DESC
+        LIMIT 200
+      `;
+      params = [submarketId, namePct];
+    }
+
+    const result = await query(sql, params);
 
     res.json({
       submarketId,
