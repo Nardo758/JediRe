@@ -90,46 +90,102 @@ export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ subm
     return Math.round(occupancyScore + rentGrowthScore + absorptionScore + employmentScore + pipelineRisk);
   }, [submarket]);
 
-  // ── Chart data — real when vendor rows exist, simulated otherwise ──────────
-  const rentTrendData: ChartDataPoint[] = useMemo(() => {
-    const withRent = vendorRows.filter(r => r.submarket_avg_asking_rent != null);
-    if (withRent.length > 0) {
-      return [...withRent]
-        .sort((a, b) => new Date(a.observation_date).getTime() - new Date(b.observation_date).getTime())
-        .map(r => ({
-          date: new Date(r.observation_date).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-          rent: Math.round(Number(r.submarket_avg_asking_rent)),
-        }));
-    }
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    let rent = submarket.avgRent * 0.92;
-    return months.map((m) => {
-      rent = rent * (1 + (Math.random() * 0.01 + 0.002));
-      return { date: `${m} '25`, rent: Math.round(rent) };
-    });
-  }, [vendorRows, submarket.avgRent]);
+  // ── Per-vendor chart data — one series per vendor_source, simulated fallback
+  const {
+    rentChartData,
+    rentChartSeries,
+    occupancyChartData,
+    occupancyChartSeries,
+  } = useMemo<{
+    rentChartData: ChartDataPoint[];
+    rentChartSeries: ChartSeries[];
+    occupancyChartData: ChartDataPoint[];
+    occupancyChartSeries: ChartSeries[];
+  }>(() => {
+    const fmtPeriod = (d: string) =>
+      new Date(d).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 
-  const occupancyTrendData: ChartDataPoint[] = useMemo(() => {
-    const withVacancy = vendorRows.filter(r => r.submarket_vacancy_rate != null);
-    if (withVacancy.length > 0) {
-      return [...withVacancy]
-        .sort((a, b) => new Date(a.observation_date).getTime() - new Date(b.observation_date).getTime())
-        .map(r => ({
-          date: new Date(r.observation_date).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-          occupancy: Number((100 - Number(r.submarket_vacancy_rate)).toFixed(1)),
-        }));
+    if (vendorRows.length === 0) {
+      // Simulated fallback — exact pre-existing random-walk behaviour
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      let rent = submarket.avgRent * 0.92;
+      let occ  = submarket.occupancy - 2;
+      return {
+        rentChartData: months.map(m => {
+          rent = rent * (1 + (Math.random() * 0.01 + 0.002));
+          return { date: `${m} '25`, rent: Math.round(rent) };
+        }),
+        rentChartSeries: [{ key: 'rent', name: 'Avg Rent (est.)', color: BT.text.green, data: [] }],
+        occupancyChartData: months.map(m => {
+          occ = Math.min(98, occ + (Math.random() * 0.5 - 0.1));
+          return { date: `${m} '25`, occupancy: Number(occ.toFixed(1)) };
+        }),
+        occupancyChartSeries: [{ key: 'occupancy', name: 'Occupancy (est.)', color: BT.text.cyan, data: [] }],
+      };
     }
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    let occ = submarket.occupancy - 2;
-    return months.map((m) => {
-      occ = Math.min(98, occ + (Math.random() * 0.5 - 0.1));
-      return { date: `${m} '25`, occupancy: Number(occ.toFixed(1)) };
-    });
-  }, [vendorRows, submarket.occupancy]);
 
-  const chartSeries: ChartSeries[] = [
-    { key: 'rent', name: 'Avg Rent', color: BT.text.green, data: [] },
-  ];
+    // Group rows by vendor_source
+    const byVendor: Record<string, VendorSurveyRow[]> = {};
+    for (const row of vendorRows) {
+      (byVendor[row.vendor_source] ??= []).push(row);
+    }
+    const vendors = Object.keys(byVendor);
+
+    // Build per-vendor lookup maps keyed by ISO observation_date string
+    const rentByDate: Record<string, Record<string, number>> = {};
+    const occByDate:  Record<string, Record<string, number>> = {};
+    for (const [src, rows] of Object.entries(byVendor)) {
+      for (const row of rows) {
+        const d = row.observation_date;
+        if (row.submarket_avg_asking_rent != null) {
+          (rentByDate[src] ??= {})[d] = Math.round(Number(row.submarket_avg_asking_rent));
+        }
+        if (row.submarket_vacancy_rate != null) {
+          (occByDate[src] ??= {})[d] = Number((100 - Number(row.submarket_vacancy_rate)).toFixed(1));
+        }
+      }
+    }
+
+    // Union of all dates, sorted oldest → newest
+    const allDates = [...new Set(vendorRows.map(r => r.observation_date))]
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+    // One data point per date; each vendor contributes its own key (gaps = undefined = broken line)
+    const rentChartData: ChartDataPoint[] = allDates.map(d => {
+      const pt: ChartDataPoint = { date: fmtPeriod(d) };
+      for (const src of vendors) {
+        const val = rentByDate[src]?.[d];
+        if (val !== undefined) pt[`rent_${src}`] = val;
+      }
+      return pt;
+    });
+
+    const occupancyChartData: ChartDataPoint[] = allDates.map(d => {
+      const pt: ChartDataPoint = { date: fmtPeriod(d) };
+      for (const src of vendors) {
+        const val = occByDate[src]?.[d];
+        if (val !== undefined) pt[`occ_${src}`] = val;
+      }
+      return pt;
+    });
+
+    // One ChartSeries per vendor — each gets its own color and label
+    const rentChartSeries: ChartSeries[] = vendors.map(src => ({
+      key:   `rent_${src}`,
+      name:  `Ask Rent — ${vendorLabel(src)}`,
+      color: vendorColor(src),
+      data:  [],
+    }));
+
+    const occupancyChartSeries: ChartSeries[] = vendors.map(src => ({
+      key:   `occ_${src}`,
+      name:  `Occupancy — ${vendorLabel(src)}`,
+      color: vendorColor(src),
+      data:  [],
+    }));
+
+    return { rentChartData, rentChartSeries, occupancyChartData, occupancyChartSeries };
+  }, [vendorRows, submarket.avgRent, submarket.occupancy]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -262,19 +318,19 @@ export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ subm
         </div>
       )}
 
-      {/* Charts Row */}
+      {/* Charts Row — per-vendor series when real data exists, simulated fallback otherwise */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <TerminalChart
-          title={hasVendorData ? `Rent Trend — ${vendorSources.map(vendorLabel).join(' / ')}` : 'Rent Trend'}
-          data={rentTrendData}
-          series={[{ key: 'rent', name: 'Avg Rent', color: BT.text.green, data: [] }]}
+          title="Rent Trend"
+          data={rentChartData}
+          series={rentChartSeries}
           height={180}
           valueFormatter={(v) => `$${v.toLocaleString()}`}
         />
         <TerminalChart
-          title={hasVendorData ? `Occupancy Trend — ${vendorSources.map(vendorLabel).join(' / ')}` : 'Occupancy Trend'}
-          data={occupancyTrendData}
-          series={[{ key: 'occupancy', name: 'Occupancy', color: BT.text.cyan, data: [] }]}
+          title="Occupancy Trend"
+          data={occupancyChartData}
+          series={occupancyChartSeries}
           height={180}
           valueFormatter={(v) => `${v}%`}
         />
