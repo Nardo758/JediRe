@@ -80,6 +80,7 @@ export const YARDI_MATRIX_VENDOR: VendorDeclaration = {
           upsertYardiHistoricalObservations,
         } = await import('../parsers/yardi-matrix-parser');
         const { query } = await import('../../../database/connection');
+        const { randomUUID } = await import('crypto');
 
         const parsed = parseYardiRentSurvey(buffer, options);
         if (!parsed.success && parsed.rows.length === 0) {
@@ -91,6 +92,66 @@ export const YARDI_MATRIX_VENDOR: VendorDeclaration = {
 
         // Step 2: Write to cross-vendor corpus (historical_observations)
         await upsertYardiHistoricalObservations(query, parsed.rows);
+
+        // Step 3: Write to vendor_market_observations — the normalized cross-vendor
+        // substrate (mirrors the CoStar DataTable dual-write pattern).
+        // Dedup key: (vendor_id, observation_date, geography_level, geography_id,
+        //             COALESCE(deal_id::text, '')) — ON CONFLICT DO NOTHING is safe.
+        for (const row of parsed.rows) {
+          const vacancyRate =
+            row.occupancy_rate != null
+              ? parseFloat((100 - row.occupancy_rate).toFixed(3))
+              : null;
+
+          try {
+            await query(
+              `INSERT INTO vendor_market_observations
+                 (id, vendor_id, vendor_file_type, deal_id, file_id,
+                  observation_date, geography_level, geography_id, geography_name, state,
+                  avg_asking_rent, avg_effective_rent, vacancy_rate,
+                  under_construction_units, inventory_units, net_absorption_units,
+                  vendor_license_posture, vendor_data_as_of, raw_snapshot)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+               ON CONFLICT DO NOTHING`,
+              [
+                randomUUID(),
+                'yardi_matrix',
+                'YARDI_MATRIX_RENT_SURVEY',
+                options.dealId ?? null,
+                options.fileId ?? null,
+                row.period_date,
+                'submarket',
+                row.submarket,
+                row.submarket,
+                row.state ?? null,
+                row.avg_asking_rent,
+                row.avg_effective_rent,
+                vacancyRate,
+                row.new_supply_units,
+                row.total_inventory_units,
+                row.net_absorption_units,
+                'platform_only',
+                options.dataAsOf ?? row.data_as_of ?? null,
+                JSON.stringify({
+                  submarket:             row.submarket,
+                  metro:                 row.metro,
+                  state:                 row.state,
+                  avg_asking_rent:       row.avg_asking_rent,
+                  avg_effective_rent:    row.avg_effective_rent,
+                  occupancy_rate:        row.occupancy_rate,
+                  concession_value_mo:   row.concession_value_mo,
+                  total_inventory_units: row.total_inventory_units,
+                  new_supply_units:      row.new_supply_units,
+                  net_absorption_units:  row.net_absorption_units,
+                  yardi_matrix_id:       row.yardi_matrix_id,
+                }),
+              ],
+            );
+          } catch {
+            // Non-fatal: vendor_market_observations write failures don't
+            // block the vendor-specific table write (already counted above).
+          }
+        }
 
         return {
           success: vendorWrite.inserted > 0 || parsed.rows.length === 0,

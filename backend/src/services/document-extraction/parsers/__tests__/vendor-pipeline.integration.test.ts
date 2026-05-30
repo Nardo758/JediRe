@@ -105,6 +105,10 @@ const PROC_FILE_ID = randomUUID();
 // Suite 6 — CoStar DataTable dual-write; uses file_id as geography_id anchor
 const COSTAR_FILE_ID = `__costar-integration-test-${RUN_ID}__`;
 
+// Suite 7 — Yardi vendor_market_observations dual-write
+const YARDI_VMO_FILE_ID = `__yardi-vmo-integration-test-${RUN_ID}__`;
+const YARDI_VMO_SM     = `__yardi-vmo-sentinel-${RUN_ID}__`;
+
 // ── XLSX fixture helpers ──────────────────────────────────────────────────────
 
 /**
@@ -181,6 +185,14 @@ afterAll(async () => {
       `DELETE FROM vendor_market_observations
          WHERE vendor_id = 'costar' AND file_id = $1`,
       [COSTAR_FILE_ID],
+    );
+  } catch (_) {}
+  // Clean up Yardi vendor_market_observations rows created by Suite 7
+  try {
+    await query(
+      `DELETE FROM vendor_market_observations
+         WHERE vendor_id = 'yardi_matrix' AND geography_id = $1`,
+      [YARDI_VMO_SM],
     );
   } catch (_) {}
 });
@@ -874,5 +886,123 @@ describe('Suite 6 — CoStar DataTable dual-write (real DB, sentinel cleanup)', 
 
     expect(result.success).toBe(true);
     expect(result.rowsInserted).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Suite 7 — Yardi vendor_market_observations dual-write (real DB, sentinel cleanup)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Validates that the YARDI_MATRIX_RENT_SURVEY vendorParser writes normalized
+// rows to vendor_market_observations (Step 3 of the triple-write) with correct
+// Yardi vendor attribution. This mirrors Suite 6 for CoStar and confirms the
+// registry abstraction holds for a second vendor.
+//
+// Cleanup: afterAll deletes rows WHERE vendor_id='yardi_matrix' AND geography_id=YARDI_VMO_SM.
+
+describe('Suite 7 — Yardi vendor_market_observations dual-write (real DB, sentinel cleanup)', () => {
+  it('vendorParser: buffer → parse → vendor_market_observations write (real DB)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = vendorRegistry.getVendorByDocType('YARDI_MATRIX_RENT_SURVEY' as any);
+    expect(entry?.fileType.vendorParser).toBeDefined();
+
+    const buffer = makeYardiRentSurveyBuffer(YARDI_VMO_SM, '2025-09-30');
+
+    const result = await entry!.fileType.vendorParser!(buffer, {
+      fileId: YARDI_VMO_FILE_ID,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.rowsInserted).toBeGreaterThanOrEqual(1);
+    expect(result.validRows).toBeGreaterThanOrEqual(1);
+
+    // ── vendor_market_observations (cross-vendor substrate) ──────────────────
+    const vmoRes = await query<{
+      vendor_id:              string;
+      vendor_file_type:       string;
+      vendor_license_posture: string;
+      observation_date:       string;
+      geography_level:        string;
+      geography_id:           string;
+      geography_name:         string;
+      avg_asking_rent:        string;
+      avg_effective_rent:     string;
+      vacancy_rate:           string;
+      inventory_units:        string;
+      net_absorption_units:   string;
+      raw_snapshot:           Record<string, unknown>;
+    }>(
+      `SELECT vendor_id, vendor_file_type, vendor_license_posture,
+              observation_date::text, geography_level, geography_id, geography_name,
+              avg_asking_rent, avg_effective_rent, vacancy_rate,
+              inventory_units, net_absorption_units, raw_snapshot
+         FROM vendor_market_observations
+        WHERE vendor_id = 'yardi_matrix'
+          AND geography_id = $1`,
+      [YARDI_VMO_SM],
+    );
+
+    expect(vmoRes.rows.length).toBeGreaterThan(0);
+
+    const obs = vmoRes.rows[0];
+
+    // Vendor attribution
+    expect(obs.vendor_id).toBe('yardi_matrix');
+    expect(obs.vendor_file_type).toBe('YARDI_MATRIX_RENT_SURVEY');
+    expect(obs.vendor_license_posture).toBe('platform_only');
+
+    // Geography
+    expect(obs.geography_level).toBe('submarket');
+    expect(obs.geography_id).toBe(YARDI_VMO_SM);
+    expect(obs.geography_name).toBe(YARDI_VMO_SM);
+
+    // Observation date (2025-09-30 parsed from ISO string)
+    expect(obs.observation_date).toBe('2025-09-30');
+
+    // Metric correctness
+    expect(parseFloat(obs.avg_asking_rent)).toBe(2100);
+    expect(parseFloat(obs.avg_effective_rent)).toBe(2050);
+    // vacancy_rate = 100 - 94.5 = 5.5
+    expect(parseFloat(obs.vacancy_rate)).toBeCloseTo(5.5, 1);
+    expect(parseInt(obs.inventory_units)).toBe(5000);
+    expect(parseInt(obs.net_absorption_units)).toBe(80);
+
+    // raw_snapshot round-trip
+    const snap =
+      typeof obs.raw_snapshot === 'string'
+        ? JSON.parse(obs.raw_snapshot)
+        : obs.raw_snapshot;
+    expect(snap.submarket).toBe(YARDI_VMO_SM);
+    expect(snap.avg_asking_rent).toBe(2100);
+    expect(snap.yardi_matrix_id).toBe('ATL-TEST-001');
+  });
+
+  it('deal_id is NULL when no dealId option is provided', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = vendorRegistry.getVendorByDocType('YARDI_MATRIX_RENT_SURVEY' as any);
+    const buffer = makeYardiRentSurveyBuffer(YARDI_VMO_SM, '2025-09-30');
+
+    await entry!.fileType.vendorParser!(buffer, { fileId: YARDI_VMO_FILE_ID });
+
+    const res = await query<{ deal_id: string | null }>(
+      `SELECT deal_id FROM vendor_market_observations
+        WHERE vendor_id = 'yardi_matrix' AND geography_id = $1 LIMIT 1`,
+      [YARDI_VMO_SM],
+    );
+    expect(res.rows.length).toBeGreaterThan(0);
+    expect(res.rows[0].deal_id).toBeNull();
+  });
+
+  it('ON CONFLICT DO NOTHING: re-running vendorParser for the same sentinel does not error', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = vendorRegistry.getVendorByDocType('YARDI_MATRIX_RENT_SURVEY' as any);
+    const buffer = makeYardiRentSurveyBuffer(YARDI_VMO_SM, '2025-09-30');
+
+    const result = await entry!.fileType.vendorParser!(buffer, {
+      fileId: YARDI_VMO_FILE_ID,
+    });
+
+    // Should succeed without errors even if rows conflict on the dedup index
+    expect(result.success).toBe(true);
   });
 });
