@@ -18,6 +18,12 @@ export interface ClassificationResult {
   documentType: DocumentType;
   confidence: number;
   hints: string[];
+  /**
+   * Present when the classifier matched a vendor-registry pattern.
+   * Consumers can use this to look up the full VendorDeclaration via
+   * `vendorRegistry.getVendorById(vendorId)`.
+   */
+  vendorId?: string;
 }
 
 export type ExtractionData = T12Data | RentRollData | AgedReceivablesData | BoxScoreData | ConcessionBurnoffData | LTOData | TaxBillData | OtherIncomeData | LeasingStatsData | CoStarSubmarketData | CoStarSaleCompsData | CoStarRentCompsData;

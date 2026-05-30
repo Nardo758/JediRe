@@ -1,6 +1,13 @@
 import * as XLSX from 'xlsx';
 import { DocumentType, ClassificationResult } from './types';
 import { findHeaderRow, parseSheetFromRow } from './parsers/workbook-utils';
+import { vendorRegistry } from './vendor-registry';
+
+// ── Non-vendor filename patterns ─────────────────────────────────────────────
+// CoStar and other market-data-vendor patterns have been moved to the vendor
+// registry (vendor-registry/costar.vendor.ts). Add new market-data-vendor
+// patterns there, not here. Only operator-uploaded property document patterns
+// belong in this array.
 
 const FILENAME_PATTERNS: Array<{ pattern: RegExp; type: DocumentType }> = [
   { pattern: /aged[\s_-]*receiv/i, type: 'AGED_RECEIVABLES' },
@@ -13,10 +20,6 @@ const FILENAME_PATTERNS: Array<{ pattern: RegExp; type: DocumentType }> = [
   { pattern: /offering[\s_-]*memorandum|investment[\s_-]*summary|property[\s_-]*offering/i, type: 'OM' },
   { pattern: /rent[\s_+\-]*roll|rr[\s_-]*w[\s_-]*lc|rrwlc/i, type: 'RENT_ROLL' },
   { pattern: /t[\s_-]*12|trailing[\s_-]*12|income[\s_-]*statement|ysi[\s_-]*is/i, type: 'T12' },
-  // CoStar export patterns — matched before LEASING_STATS to avoid false positives
-  { pattern: /DataTable/i, type: 'COSTAR_SUBMARKET_EXPORT' },
-  { pattern: /Near[\s_-]*By[\s_-]*Sales/i, type: 'COSTAR_SALE_COMPS' },
-  { pattern: /Rent[\s_-]*Comp[\s_-]*Prop/i, type: 'COSTAR_RENT_COMPS' },
   { pattern: /leasing/i, type: 'LEASING_STATS' },
 ];
 
@@ -28,7 +31,23 @@ function isExcel(filename: string): boolean {
   return /\.(xlsx?|csv|tsv)$/i.test(filename);
 }
 
-function classifyByFilename(filename: string): { type: DocumentType; confidence: number } | null {
+// ── Filename classification ───────────────────────────────────────────────────
+// Vendor registry is checked first (market data vendors) before non-vendor
+// property-document patterns.
+
+function classifyByFilename(filename: string): { type: DocumentType; confidence: number; hints?: string[]; vendorId?: string } | null {
+  // 1. Vendor registry (CoStar, Yardi Matrix, etc.)
+  const vendorMatch = vendorRegistry.classifyByFilename(filename);
+  if (vendorMatch) {
+    return {
+      type: vendorMatch.match.fileType.documentType,
+      confidence: vendorMatch.confidence,
+      hints: vendorMatch.hints,
+      vendorId: vendorMatch.match.vendorId,
+    };
+  }
+
+  // 2. Non-vendor property document patterns
   for (const { pattern, type } of FILENAME_PATTERNS) {
     if (pattern.test(filename)) {
       return { type, confidence: 0.6 };
@@ -37,44 +56,29 @@ function classifyByFilename(filename: string): { type: DocumentType; confidence:
   return null;
 }
 
-function classifyByHeaders(headers: string[], sampleRows: any[]): { type: DocumentType; confidence: number; hints: string[] } {
-  const headerSet = new Set(headers.map(h => h.toLowerCase().trim()));
+// ── Header classification ────────────────────────────────────────────────────
+// Vendor registry is checked first to avoid false positives on generic signals
+// (e.g. a CoStar DataTable has "period" and "vacancy rate" which could clash
+// with non-vendor T12 or box-score patterns).
+
+function classifyByHeaders(headers: string[], sampleRows: any[]): { type: DocumentType; confidence: number; hints: string[]; vendorId?: string } {
   const headerStr = headers.join(' ').toLowerCase();
+  const headerSet = new Set(headers.map(h => h.toLowerCase().trim()));
   const hints: string[] = [];
 
-  // ── CoStar export detection (must run BEFORE generic signal checks) ──────────
-  // DataTable (COSTAR_SUBMARKET_EXPORT): Period time-series with submarket metrics
-  const costarSubmarketSignals = ['period', 'vacancy rate', 'inventory units', 'absorp'];
-  const costarSubmarketMatches = costarSubmarketSignals.filter(s => headerStr.includes(s)).length;
-  if (costarSubmarketMatches >= 3 && (headerStr.includes('market cap rate') || headerStr.includes('asking rent'))) {
-    hints.push(`CoStar DataTable signals: ${costarSubmarketMatches}/4`);
-    return { type: 'COSTAR_SUBMARKET_EXPORT', confidence: 0.93, hints };
+  // 1. Vendor registry (must run BEFORE generic non-vendor checks)
+  const vendorMatch = vendorRegistry.classifyByHeaders(headerStr, headerSet);
+  if (vendorMatch) {
+    return {
+      type: vendorMatch.match.fileType.documentType,
+      confidence: vendorMatch.confidence,
+      hints: vendorMatch.hints,
+      vendorId: vendorMatch.match.vendorId,
+    };
   }
 
-  // Near By Sales (COSTAR_SALE_COMPS): property comp list with sale date + sale price
-  if (
-    headerStr.includes('sale date') &&
-    headerStr.includes('sale price') &&
-    headerStr.includes('address')
-  ) {
-    hints.push('CoStar sale comp headers: sale date + sale price + address');
-    return { type: 'COSTAR_SALE_COMPS', confidence: 0.92, hints };
-  }
-
-  // Rent Comp Properties (COSTAR_RENT_COMPS): property comp list with rent metrics + occupancy, no sale date.
-  // CoStar exports "Rent/Unit" and "Rent/SF" rather than "Asking Rent" when exporting via the comp grid,
-  // so we accept those forms in addition to the canonical asking/effective rent labels.
-  if (
-    (headerStr.includes('asking rent') || headerStr.includes('effective rent') ||
-     headerStr.includes('rent/unit') || headerStr.includes('rent/sf')) &&
-    (headerStr.includes('occ %') || headerStr.includes('occupancy')) &&
-    headerStr.includes('address') &&
-    !headerStr.includes('sale date')
-  ) {
-    hints.push('CoStar rent comp headers: rent metric + occupancy + address');
-    return { type: 'COSTAR_RENT_COMPS', confidence: 0.90, hints };
-  }
-
+  // 2. Non-vendor property document patterns
+  // ── Yardi GL-code T12 (Yardi-formatted T12, not Yardi Matrix market data) ─
   const hasGLCodes = sampleRows.some(row => {
     const firstVal = String(Object.values(row)[0] || '');
     return /^[45]\d{5}/.test(firstVal);
@@ -143,7 +147,8 @@ export async function classifyDocument(buffer: Buffer, filename: string): Promis
       return {
         documentType: filenameResult.type,
         confidence: filenameResult.confidence,
-        hints: ['PDF filename match'],
+        hints: filenameResult.hints ?? ['PDF filename match'],
+        vendorId: filenameResult.vendorId,
       };
     }
     let textContent = '';
@@ -205,7 +210,8 @@ export async function classifyDocument(buffer: Buffer, filename: string): Promis
     return {
       documentType: filenameResult?.type || 'UNKNOWN',
       confidence: filenameResult ? filenameResult.confidence : 0,
-      hints: ['Unsupported file type'],
+      hints: filenameResult?.hints ?? ['Unsupported file type'],
+      vendorId: filenameResult?.vendorId,
     };
   }
 
@@ -227,12 +233,15 @@ export async function classifyDocument(buffer: Buffer, filename: string): Promis
       /per.*unit|annual|monthly|income|category/i,
       /jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/i,
       /gross|noi|revenue|expense|vacancy/i,
+      // Vendor-specific anchors (kept broad so header scanner reaches the right row)
+      /period|inventory|absorption|cap rate|submarket/i,
+      /sale date|sale price|asking rent|effective rent/i,
     ];
     const headerRow = findHeaderRow(sheet, ALL_DOC_HEADER_PATTERNS, 20, 1);
     const { headers, rows } = parseSheetFromRow(sheet, headerRow);
 
     if (rows.length === 0) {
-      return { documentType: filenameResult?.type || 'UNKNOWN', confidence: filenameResult?.confidence || 0, hints: ['No data rows'] };
+      return { documentType: filenameResult?.type || 'UNKNOWN', confidence: filenameResult?.confidence || 0, hints: ['No data rows'], vendorId: filenameResult?.vendorId };
     }
 
     const sampleRows = rows.slice(0, 20);
@@ -240,24 +249,34 @@ export async function classifyDocument(buffer: Buffer, filename: string): Promis
 
     if (filenameResult && headerResult.type !== 'UNKNOWN') {
       if (filenameResult.type === headerResult.type) {
+        const combinedHints = [
+          ...(filenameResult.hints ?? ['Filename match']),
+          ...headerResult.hints,
+        ];
         return {
           documentType: filenameResult.type,
           confidence: Math.min(0.98, filenameResult.confidence + headerResult.confidence * 0.3),
-          hints: ['Filename + header match', ...headerResult.hints],
+          hints: combinedHints,
+          vendorId: filenameResult.vendorId ?? headerResult.vendorId,
         };
       }
       if (headerResult.confidence >= filenameResult.confidence) {
-        return { documentType: headerResult.type, confidence: headerResult.confidence, hints: headerResult.hints };
+        return { documentType: headerResult.type, confidence: headerResult.confidence, hints: headerResult.hints, vendorId: headerResult.vendorId };
       }
-      return { documentType: filenameResult.type, confidence: filenameResult.confidence, hints: ['Filename match overrides ambiguous headers'] };
+      return {
+        documentType: filenameResult.type,
+        confidence: filenameResult.confidence,
+        hints: filenameResult.hints ?? ['Filename match overrides ambiguous headers'],
+        vendorId: filenameResult.vendorId,
+      };
     }
 
     if (headerResult.type !== 'UNKNOWN') {
-      return { documentType: headerResult.type, confidence: headerResult.confidence, hints: headerResult.hints };
+      return { documentType: headerResult.type, confidence: headerResult.confidence, hints: headerResult.hints, vendorId: headerResult.vendorId };
     }
 
     if (filenameResult) {
-      return { documentType: filenameResult.type, confidence: filenameResult.confidence, hints: ['Filename match only'] };
+      return { documentType: filenameResult.type, confidence: filenameResult.confidence, hints: filenameResult.hints ?? ['Filename match only'], vendorId: filenameResult.vendorId };
     }
 
     return { documentType: 'UNKNOWN', confidence: 0, hints: ['Could not classify document'] };
@@ -265,7 +284,8 @@ export async function classifyDocument(buffer: Buffer, filename: string): Promis
     return {
       documentType: filenameResult?.type || 'UNKNOWN',
       confidence: filenameResult ? filenameResult.confidence : 0,
-      hints: [`Parse error: ${err instanceof Error ? err.message : 'unknown'}`],
+      hints: filenameResult?.hints ?? [`Parse error: ${err instanceof Error ? err.message : 'unknown'}`],
+      vendorId: filenameResult?.vendorId,
     };
   }
 }

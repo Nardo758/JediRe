@@ -67,6 +67,7 @@ JEDI RE is an AI-powered B2B real estate intelligence platform designed for inve
 -   **Traffic Engine (M07):** Prediction-first engine with 3-layer data fusion, self-calibrating coefficients, and real-time traffic data integration.
 -   **Corporate Health Intelligence (M33):** Submarket employer health analysis linking corporate financials to real estate demand.
 -   **Document Extraction:** Automated multi-document financial data extraction (T12, rent roll, tax bill) with cross-validation.
+-   **Vendor Market Data Registry:** `backend/src/services/document-extraction/vendor-registry/` — registry-driven classifier for market-data vendor exports (CoStar, future Yardi Matrix, etc.). Adding a new vendor requires only a new `<vendor-id>.vendor.ts` declaration — zero changes to classifier or upload route. Schema: `historical_observations` extended with `vendor_source`, `vendor_data_as_of`, `vendor_license_posture` columns (migration: `20260530_historical_observations_vendor_fields.sql`).
 -   **CRM Functionalities:** Client, deal, lead, and activity management within the Agent Dashboard.
 -   **Real-time Alerts:** Input-needed alerts, strategy arbitrage alerts, and risk alerts with severity indicators.
 
