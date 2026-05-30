@@ -109,6 +109,34 @@ export interface VendorWriteTargets {
   };
 }
 
+// ── Vendor parser dispatch ────────────────────────────────────────────────────
+
+/**
+ * Options passed to a vendor's registered parse+persist function.
+ */
+export interface VendorParseOptions {
+  /** ID of the data_library_files row being processed (for provenance). */
+  fileId?: string;
+  /** Deal the file is scoped to, if known at upload time. */
+  dealId?: string;
+  /** Vendor's stated data-as-of date (ISO YYYY-MM-DD), if extractable from filename/header. */
+  dataAsOf?: string;
+}
+
+/**
+ * Result returned by a vendor's registered parse+persist function.
+ */
+export interface VendorParseResult {
+  success:        boolean;
+  error?:         string;
+  /** Rows successfully written to vendor-specific table(s). */
+  rowsInserted?:  number;
+  /** Rows that parsed successfully (before DB write). */
+  validRows?:     number;
+  /** Rows skipped due to missing required fields. */
+  invalidRows?:   number;
+}
+
 // ── File type declaration ────────────────────────────────────────────────────
 
 /**
@@ -137,6 +165,18 @@ export interface VendorFileType {
   headerPatterns?: VendorHeaderPattern[];
   /** Which tables rows from this document type are written to. */
   writeTargets: VendorWriteTargets;
+  /**
+   * Optional parse+persist function registered by the vendor declaration.
+   *
+   * When present, the data-library upload processor calls this instead of
+   * falling through to the per-type switch — enabling zero-switch-change
+   * onboarding of new vendors.
+   *
+   * Implementations should use lazy dynamic imports (await import(...)) to
+   * avoid loading parser/DB modules when the registry is imported in test
+   * environments.
+   */
+  vendorParser?: (buffer: Buffer, options: VendorParseOptions) => Promise<VendorParseResult>;
 }
 
 // ── Vendor declaration ───────────────────────────────────────────────────────

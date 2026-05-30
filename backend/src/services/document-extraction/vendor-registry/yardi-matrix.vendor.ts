@@ -23,12 +23,12 @@
  *   Operators upload their own Yardi Matrix exports. Data is used internally
  *   for market intelligence only. Not re-exported with Yardi branding.
  *
- * This declaration requires zero changes to classifier.ts, costar-upload.routes.ts,
- * or any other existing code. Registering this file in vendor-registry/index.ts
- * is the only integration step.
+ * vendorParser: each fileType registers a parse+persist function using lazy
+ * dynamic imports so that importing this declaration in test environments does
+ * NOT trigger DB connection initialization.
  */
 
-import type { VendorDeclaration } from './types';
+import type { VendorDeclaration, VendorParseOptions, VendorParseResult } from './types';
 
 export const YARDI_MATRIX_VENDOR: VendorDeclaration = {
   vendorId: 'yardi_matrix',
@@ -55,9 +55,6 @@ export const YARDI_MATRIX_VENDOR: VendorDeclaration = {
       filenameConfidence: 0.70,
       headerPatterns: [
         {
-          // Requires "geography" (Yardi's term for submarket) + ≥2 of the rent/
-          // occupancy signals, PLUS the "yardi matrix id" anchor OR "concession
-          // value" which is unique to Yardi exports.
           signals: ['geography', 'occ rate', 'avg asking rent'],
           minMatches: 2,
           alsoRequireOneFromEach: [
@@ -67,7 +64,6 @@ export const YARDI_MATRIX_VENDOR: VendorDeclaration = {
           description: 'Yardi Matrix Rent Survey: geography + occ rate + avg asking rent + yardi-unique anchor',
         },
         {
-          // Looser fallback: all three required if no yardi-specific anchor
           signals: ['geography', 'occ rate', 'avg asking rent', 'avg eff rent', 'total inventory'],
           minMatches: 4,
           excluding: ['sale date', 'delivery date'],
@@ -84,6 +80,26 @@ export const YARDI_MATRIX_VENDOR: VendorDeclaration = {
           vendorSourceValue: 'yardi_matrix',
         },
       },
+      // Lazy-imported: safe to use this declaration in test environments without
+      // triggering DB connection initialisation.
+      vendorParser: async (buffer: Buffer, options: VendorParseOptions): Promise<VendorParseResult> => {
+        const { parseYardiRentSurvey, writeYardiRentSurveyRows } =
+          await import('../parsers/yardi-matrix-parser');
+        const { query } = await import('../../../database/connection');
+
+        const parsed = parseYardiRentSurvey(buffer, options);
+        if (!parsed.success && parsed.rows.length === 0) {
+          return { success: false, error: parsed.error, validRows: 0, rowsInserted: 0 };
+        }
+
+        const { inserted, errors } = await writeYardiRentSurveyRows(query, parsed.rows);
+        return {
+          success: inserted > 0 || (parsed.validRows === 0 && parsed.invalidRows === 0),
+          rowsInserted: inserted,
+          validRows: parsed.validRows,
+          invalidRows: parsed.invalidRows + errors,
+        };
+      },
     },
 
     // ── YARDI_MATRIX_SUPPLY_PIPELINE ─────────────────────────────────────────
@@ -98,8 +114,6 @@ export const YARDI_MATRIX_VENDOR: VendorDeclaration = {
       filenameConfidence: 0.70,
       headerPatterns: [
         {
-          // Supply pipeline is distinguished by "delivery date" + "developer"
-          // + a Yardi geography anchor ("geography" or "yardi matrix id").
           signals: ['delivery date', 'developer'],
           alsoRequireOneFromEach: [
             ['geography', 'yardi matrix id'],
@@ -108,7 +122,6 @@ export const YARDI_MATRIX_VENDOR: VendorDeclaration = {
           description: 'Yardi Matrix Supply Pipeline: delivery date + developer + geography anchor',
         },
         {
-          // Looser: delivery date + status + geography + total units
           signals: ['delivery date', 'status', 'geography', 'total units'],
           minMatches: 3,
           excluding: ['sale date', 'asking rent'],
@@ -120,6 +133,24 @@ export const YARDI_MATRIX_VENDOR: VendorDeclaration = {
         vendorSpecific: {
           yardi_matrix_supply_pipeline: 'yardi_matrix',
         },
+      },
+      vendorParser: async (buffer: Buffer, options: VendorParseOptions): Promise<VendorParseResult> => {
+        const { parseYardiSupplyPipeline, writeYardiSupplyRows } =
+          await import('../parsers/yardi-matrix-parser');
+        const { query } = await import('../../../database/connection');
+
+        const parsed = parseYardiSupplyPipeline(buffer, options);
+        if (!parsed.success && parsed.rows.length === 0) {
+          return { success: false, error: parsed.error, validRows: 0, rowsInserted: 0 };
+        }
+
+        const { inserted, errors } = await writeYardiSupplyRows(query, parsed.rows);
+        return {
+          success: inserted > 0 || (parsed.validRows === 0 && parsed.invalidRows === 0),
+          rowsInserted: inserted,
+          validRows: parsed.validRows,
+          invalidRows: parsed.invalidRows + errors,
+        };
       },
     },
   ],

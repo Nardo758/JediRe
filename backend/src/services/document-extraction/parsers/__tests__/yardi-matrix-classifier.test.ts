@@ -17,7 +17,7 @@ import * as XLSX from 'xlsx';
 import { vendorRegistry } from '../../vendor-registry';
 
 // ── Parsers under test ────────────────────────────────────────────────────────
-import { parseYardiRentSurvey, parseYardiSupplyPipeline } from '../yardi-matrix-parser';
+import { parseYardiRentSurvey, parseYardiSupplyPipeline, parseDate } from '../yardi-matrix-parser';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -356,5 +356,58 @@ describe('Abstraction proof — classifier.ts untouched verification', () => {
     const match = vendorRegistry.getVendorByDocType('YARDI_MATRIX_SUPPLY_PIPELINE');
     expect(match?.fileType.writeTargets.vendorSpecific).toHaveProperty('yardi_matrix_supply_pipeline');
     expect(match?.fileType.writeTargets.crossVendor).toBeUndefined();
+  });
+
+  it('YARDI_MATRIX_RENT_SURVEY has a vendorParser function registered', () => {
+    const match = vendorRegistry.getVendorByDocType('YARDI_MATRIX_RENT_SURVEY');
+    expect(typeof match?.fileType.vendorParser).toBe('function');
+  });
+
+  it('YARDI_MATRIX_SUPPLY_PIPELINE has a vendorParser function registered', () => {
+    const match = vendorRegistry.getVendorByDocType('YARDI_MATRIX_SUPPLY_PIPELINE');
+    expect(typeof match?.fileType.vendorParser).toBe('function');
+  });
+});
+
+describe('parseDate — quarter format variants (regression for dual-pattern bug)', () => {
+  it('parses ISO date unchanged', () => {
+    expect(parseDate('2025-12-31')).toBe('2025-12-31');
+  });
+
+  it('parses US slash date M/D/YYYY', () => {
+    expect(parseDate('6/30/2026')).toBe('2026-06-30');
+  });
+
+  it('parses "Q4 2025" → last month of Q4 in 2025', () => {
+    const result = parseDate('Q4 2025');
+    expect(result).toBe('2025-12-01');
+  });
+
+  it('parses "Q1 2026" → first quarter last month', () => {
+    expect(parseDate('Q1 2026')).toBe('2026-03-01');
+  });
+
+  it('parses "Q2 2024" → second quarter last month', () => {
+    expect(parseDate('Q2 2024')).toBe('2024-06-01');
+  });
+
+  it('parses "2025 Q4" (year-first) → same result as "Q4 2025"', () => {
+    // This was the bug: year-first format used wrong capture groups
+    const result = parseDate('2025 Q4');
+    expect(result).toBe('2025-12-01');
+  });
+
+  it('parses "2026 Q1" (year-first) correctly', () => {
+    expect(parseDate('2026 Q1')).toBe('2026-03-01');
+  });
+
+  it('parses "2024, Q3" (year-first with comma) correctly', () => {
+    expect(parseDate('2024, Q3')).toBe('2024-09-01');
+  });
+
+  it('returns null for unparseable input', () => {
+    expect(parseDate('not a date')).toBeNull();
+    expect(parseDate('')).toBeNull();
+    expect(parseDate(null)).toBeNull();
   });
 });

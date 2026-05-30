@@ -13,11 +13,19 @@
  * Column naming: Yardi Matrix exports use "Geography" for submarket,
  * "Market" for metro, "Occ Rate" for occupancy, and "Yardi Matrix ID"
  * as a cross-vendor anchor.
+ *
+ * The write helpers accept a `QueryFn` (the `query` export from
+ * `database/connection`) rather than a raw Pool to avoid circular
+ * dependencies and to stay testable without a live DB.
  */
 
 import * as XLSX from 'xlsx';
 import { randomUUID } from 'crypto';
-import type { Pool } from 'pg';
+
+// ── Query function type ───────────────────────────────────────────────────────
+
+/** Matches the signature of `query` from `src/database/connection`. */
+export type QueryFn = (sql: string, params?: unknown[]) => Promise<unknown>;
 
 // ── Shared utilities ──────────────────────────────────────────────────────────
 
@@ -52,11 +60,24 @@ function parseIntSafe(raw: string | null): number | null {
   return isNaN(n) ? null : n;
 }
 
-function parseDate(raw: string | null): string | null {
+/**
+ * Parse a date value from various Yardi Matrix formats.
+ *
+ * Supported formats:
+ *   - ISO: "2025-12-31"
+ *   - US slash: "12/31/2025" or "12/31/25"
+ *   - "Q4 2025" → 2025-12-01 (first of last quarter month)
+ *   - "2025 Q4" → 2025-12-01
+ *   - XLSX serial number
+ */
+export function parseDate(raw: string | null): string | null {
   if (!raw) return null;
   const s = raw.trim();
+
+  // ISO: YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // M/D/YYYY or M/D/YY
+
+  // US slash: M/D/YYYY or M/D/YY
   const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
   if (mdy) {
     const yr = mdy[3].length === 2
@@ -64,15 +85,26 @@ function parseDate(raw: string | null): string | null {
       : parseInt(mdy[3]);
     return `${yr}-${mdy[1].padStart(2, '0')}-${mdy[2].padStart(2, '0')}`;
   }
-  // "Q4 2025" or "2025 Q4" → last day of quarter
-  const qMatch = s.match(/Q([1-4])[\s,]*(\d{4})/i) || s.match(/(\d{4})[\s,]*Q([1-4])/i);
-  if (qMatch) {
-    const q = parseInt(qMatch[1] ?? qMatch[2]);
-    const yr = parseInt(qMatch[2] ?? qMatch[1]);
+
+  // "Q4 2025" format: Q first, then year
+  const qFirst = s.match(/Q([1-4])[\s,]*(\d{4})/i);
+  if (qFirst) {
+    const q = parseInt(qFirst[1]);
+    const yr = parseInt(qFirst[2]);
     const endMonth = q * 3;
     return `${yr}-${String(endMonth).padStart(2, '0')}-01`;
   }
-  // XLSX serial
+
+  // "2025 Q4" format: year first, then Q
+  const yrFirst = s.match(/(\d{4})[\s,]*Q([1-4])/i);
+  if (yrFirst) {
+    const yr = parseInt(yrFirst[1]);
+    const q = parseInt(yrFirst[2]);
+    const endMonth = q * 3;
+    return `${yr}-${String(endMonth).padStart(2, '0')}-01`;
+  }
+
+  // XLSX serial number (dates stored as numbers in .xlsx)
   const serial = parseFloat(s);
   if (!isNaN(serial) && serial > 1000) {
     const d = XLSX.SSF.parse_date_code(serial);
@@ -82,6 +114,7 @@ function parseDate(raw: string | null): string | null {
       return `${d.y}-${m}-${day}`;
     }
   }
+
   return null;
 }
 
@@ -198,27 +231,27 @@ export function parseYardiRentSurvey(
 // ── Supply Pipeline ───────────────────────────────────────────────────────────
 
 export interface YardiSupplyRow {
-  id:             string;
-  deal_id:        string | null;
-  property_name:  string | null;
-  address:        string | null;
-  city:           string | null;
-  state:          string | null;
-  zip:            string | null;
-  submarket:      string | null;
-  metro:          string | null;
-  status:         string | null;
-  delivery_date:  string | null;
-  total_units:    number | null;
-  stories:        number | null;
-  developer:      string | null;
-  owner:          string | null;
-  latitude:       number | null;
-  longitude:      number | null;
+  id:              string;
+  deal_id:         string | null;
+  property_name:   string | null;
+  address:         string | null;
+  city:            string | null;
+  state:           string | null;
+  zip:             string | null;
+  submarket:       string | null;
+  metro:           string | null;
+  status:          string | null;
+  delivery_date:   string | null;
+  total_units:     number | null;
+  stories:         number | null;
+  developer:       string | null;
+  owner:           string | null;
+  latitude:        number | null;
+  longitude:       number | null;
   yardi_matrix_id: string | null;
-  source:         string;
-  file_id:        string | null;
-  data_as_of:     string | null;
+  source:          string;
+  file_id:         string | null;
+  data_as_of:      string | null;
 }
 
 export interface YardiSupplyParseResult {
@@ -296,11 +329,12 @@ export function parseYardiSupplyPipeline(
 
 // ── DB write helpers ──────────────────────────────────────────────────────────
 //
-// These write parsed rows to the vendor-specific tables AND to
-// historical_observations (for the rent survey) with correct vendor attribution.
+// Accepts a QueryFn (the `query` export from src/database/connection) rather
+// than a raw Pool. This avoids pulling the pool into test environments and
+// makes the helpers independently testable with a mock.
 
 export async function writeYardiRentSurveyRows(
-  pool:    Pool,
+  queryFn: QueryFn,
   rows:    YardiRentSurveyRow[],
 ): Promise<{ inserted: number; errors: number }> {
   if (rows.length === 0) return { inserted: 0, errors: 0 };
@@ -310,7 +344,7 @@ export async function writeYardiRentSurveyRows(
 
   for (const row of rows) {
     try {
-      await pool.query(
+      await queryFn(
         `INSERT INTO yardi_matrix_rent_survey
            (id, deal_id, submarket, metro, state, period_date,
             avg_asking_rent, avg_effective_rent, occupancy_rate, concession_value_mo,
@@ -335,7 +369,7 @@ export async function writeYardiRentSurveyRows(
 }
 
 export async function writeYardiSupplyRows(
-  pool:    Pool,
+  queryFn: QueryFn,
   rows:    YardiSupplyRow[],
 ): Promise<{ inserted: number; errors: number }> {
   if (rows.length === 0) return { inserted: 0, errors: 0 };
@@ -345,7 +379,7 @@ export async function writeYardiSupplyRows(
 
   for (const row of rows) {
     try {
-      await pool.query(
+      await queryFn(
         `INSERT INTO yardi_matrix_supply_pipeline
            (id, deal_id, property_name, address, city, state, zip,
             submarket, metro, status, delivery_date, total_units, stories,

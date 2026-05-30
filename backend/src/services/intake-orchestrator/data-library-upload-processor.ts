@@ -210,7 +210,24 @@ async function parseSpreadsheetFile(
   try {
     let result: { success: boolean; error?: string } | null = null;
 
-    switch (resolvedType) {
+    // ── Registry-driven vendor dispatch ────────────────────────────────────
+    // If the resolved document type belongs to a vendor that has registered a
+    // vendorParser function, call it directly. This means adding a new vendor
+    // requires ZERO changes to this switch — only a new VendorDeclaration with
+    // a `vendorParser` implementation.
+    try {
+      const { vendorRegistry } = await import('../document-extraction/vendor-registry');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vendorEntry = vendorRegistry.getVendorByDocType(resolvedType as any);
+      if (vendorEntry?.fileType.vendorParser) {
+        result = await vendorEntry.fileType.vendorParser(buffer, { fileId });
+      }
+    } catch (vendorErr) {
+      logger.warn(`[data-library-upload-processor] vendor dispatch failed for type=${resolvedType}`, { error: vendorErr });
+      // Fall through to the switch below
+    }
+
+    if (!result) switch (resolvedType) {
       case 'T12': {
         const { parseT12 } = await import('../document-extraction/parsers/t12-parser');
         result = parseT12(buffer, filename);
@@ -249,16 +266,6 @@ async function parseSpreadsheetFile(
       case 'LEASING_STATS': {
         const { parseLeasingStats } = await import('../document-extraction/parsers/leasing-stats-parser');
         result = parseLeasingStats(buffer, filename);
-        break;
-      }
-      case 'YARDI_MATRIX_RENT_SURVEY': {
-        const { parseYardiRentSurvey } = await import('../document-extraction/parsers/yardi-matrix-parser');
-        result = parseYardiRentSurvey(buffer);
-        break;
-      }
-      case 'YARDI_MATRIX_SUPPLY_PIPELINE': {
-        const { parseYardiSupplyPipeline } = await import('../document-extraction/parsers/yardi-matrix-parser');
-        result = parseYardiSupplyPipeline(buffer);
         break;
       }
       default:
