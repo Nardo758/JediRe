@@ -726,7 +726,10 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
     const ltlDelta = ltlT12 != null && ltlLive != null
       ? Math.abs(ltlLive - ltlT12)
       : null;
-    const LTL_THRESHOLD = 0.03;  // 300 bps — matches divergence-thresholds.ts
+    // Use backend-authoritative threshold so frontend stays in sync with the
+    // divergence-thresholds.ts registry. Fall back to 0.03 (300 bps) only
+    // while the API response is still loading.
+    const LTL_THRESHOLD = fieldDivergences['loss_to_lease']?.threshold ?? 0.03;
     const ltlContested = ltlDelta != null && ltlDelta > LTL_THRESHOLD;
     const ltlQ: QualityBand =
       ltlLive != null && ltlContested ? 'WEAK'
@@ -1051,6 +1054,11 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
                             ? `${Math.round(row.divergenceSignature.maxAbsDelta * 10000)} bps`
                             : `$${Math.round(row.divergenceSignature.maxAbsDelta).toLocaleString()}`
                         }
+                        points={row.divergenceSignature.points.map(p => ({
+                          label: p.label,
+                          value: p.value,
+                        }))}
+                        isPct={row.divergenceSignature.isPct}
                       />
                     </div>
                   )}
