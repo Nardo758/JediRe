@@ -221,6 +221,9 @@ export async function getFieldValue(
   options?: { raw?: boolean },
 ): Promise<LayeredFieldValue | null> {
   if (!ALLOWED_FIELDS.has(fieldName)) return null;
+  // Year-N fields are not yet supported — deal_assumptions stores only year1.
+  // Return null rather than silently returning year1 data for a different year.
+  if (year !== 1) return null;
 
   const aggDef: AggDef | undefined = !options?.raw ? COMPUTED_AGGREGATES[fieldName] : undefined;
 
@@ -247,14 +250,17 @@ export async function getFieldValue(
   const lv = parseLv(row[primaryKey]);
   if (!lv) return null;
 
-  const override      = extractNum(lv.override);
-  const agent         = extractNum(lv.agent);
-  const t12           = extractNum(lv.t12);
-  const om            = extractNum(lv.om);
-  const broker        = extractNum(lv.broker);
+  const override       = extractNum(lv.override);
+  const agent          = extractNum(lv.agent);
+  const t12            = extractNum(lv.t12);
+  const om             = extractNum(lv.om);
+  const broker         = extractNum(lv.broker);
   const storedResolved = extractNum(lv.resolved);
 
-  // Compute Engine A formula if applicable
+  // Compute Engine A formula if applicable.
+  // Dependency resolution: each dep is resolved through its own layered chain
+  // (override > agent > storedResolved) so operator overrides on egi/total_opex
+  // propagate correctly into the NOI computation.
   let computedValue: number | null = null;
   let computedAs: string | undefined;
   if (aggDef && override == null) {
@@ -262,9 +268,13 @@ export async function getFieldValue(
     let allDepsPresent = true;
     for (const dep of aggDef.deps) {
       const depLv = parseLv(row[`lv_${dep.replace(/-/g, '_')}`]);
-      const depResolved = extractNum(depLv?.resolved);
-      if (depResolved == null) { allDepsPresent = false; break; }
-      depVals[dep] = depResolved;
+      if (!depLv) { allDepsPresent = false; break; }
+      // Resolve dep through its own layered chain — NOT just raw .resolved.
+      // depLv deps (egi, total_opex, etc.) are not computed aggregates themselves,
+      // so we pass computedValue=null (no formula to apply).
+      const { resolved: depCanonical } = resolveLayeredValue(depLv, null, undefined);
+      if (depCanonical == null) { allDepsPresent = false; break; }
+      depVals[dep] = depCanonical;
     }
     if (allDepsPresent) {
       computedValue = aggDef.compute(depVals);
@@ -305,6 +315,9 @@ export async function getFieldValues(
   year: number = 1,
   options?: { raw?: boolean },
 ): Promise<Record<string, LayeredFieldValue | null>> {
+  // Year-N not yet supported — caller must pass year=1.
+  if (year !== 1) return Object.fromEntries(fieldNames.map(f => [f, null]));
+
   // Filter to allowed fields only
   const safeNames = fieldNames.filter(f => ALLOWED_FIELDS.has(f));
   const unsafeNames = fieldNames.filter(f => !ALLOWED_FIELDS.has(f));
@@ -364,9 +377,13 @@ export async function getFieldValues(
       const depVals: Record<string, number> = {};
       let allDepsPresent = true;
       for (const dep of aggDef.deps) {
-        const depResolved = extractNum(getLv(dep)?.resolved);
-        if (depResolved == null) { allDepsPresent = false; break; }
-        depVals[dep] = depResolved;
+        const depLv = getLv(dep);
+        if (!depLv) { allDepsPresent = false; break; }
+        // Resolve dep through its own layered chain (not just raw .resolved)
+        // so operator overrides on egi/total_opex propagate into the formula.
+        const { resolved: depCanonical } = resolveLayeredValue(depLv, null, undefined);
+        if (depCanonical == null) { allDepsPresent = false; break; }
+        depVals[dep] = depCanonical;
       }
       if (allDepsPresent) {
         computedValue = aggDef.compute(depVals);
