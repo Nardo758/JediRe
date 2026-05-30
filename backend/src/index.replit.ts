@@ -740,6 +740,10 @@ app.use('/api/v1/lease-velocity', leaseVelocityRouter);
 // Historical Observations — empirical calibration substrate
 app.use('/api/v1/historical-observations', requireAuth, historicalObservationsRoutes);
 
+// Vendor Registry — file-type catalogue + filename classifier for Market Data UI
+import vendorRegistryRoutes from './api/rest/vendor-registry.routes';
+app.use('/api/v1/vendor-registry', requireAuth, vendorRegistryRoutes);
+
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
 
 app.get('/api/v1/apartment-sync/trends', requireAuth, async (req: any, res) => {

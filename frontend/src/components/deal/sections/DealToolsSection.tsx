@@ -17,6 +17,7 @@ import { DealTeamPanel } from '../DealTeamPanel';
 import { CommentThread } from '../CommentThread';
 import { ActivityFeed } from '../ActivityFeed';
 import { CoStarDataPanel } from './DocumentsFiles/CoStarDataPanel';
+import { MarketDataUploadPanel } from './DocumentsFiles/MarketDataUploadPanel';
 
 interface DealToolsSectionProps {
   deal?: any;
@@ -1091,6 +1092,13 @@ function DocumentsFilesTab({ dealId, deal }: { dealId: string; deal?: any }) {
             </button>
           </div>
         )}
+
+        {/* ─── MARKET DATA FEEDS (vendor-registry-driven) ─── */}
+        <MarketDataUploadPanel
+          dealId={dealId}
+          submarketId={submarketId}
+          onUploaded={fetchAll}
+        />
 
         {/* ─── COSTAR EXPORTS ─── */}
         <CoStarDataPanel dealId={dealId} />
