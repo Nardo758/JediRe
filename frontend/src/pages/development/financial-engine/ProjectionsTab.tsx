@@ -394,6 +394,115 @@ function GprDecompPanel({ decomp, totalUnits }: { decomp: GprDecomposition; tota
   );
 }
 
+// ─── LTL Trajectory Panel — Task #1540 (Piece B1) ─────────────────────────
+// Shows both LTL source signals (T12 trailing avg vs live lease-level) and an
+// inline sparkline of the per-year decay trajectory used by Engine A.
+function LTLTrajectoryPanel({ ltlSignals }: { ltlSignals: NonNullable<DealFinancials['ltlSignals']> }) {
+  const [expanded, setExpanded] = useState(false);
+  const { t12Pct, livePct, trajectorySource, byYear, captureRate } = ltlSignals;
+
+  const hasLive = livePct != null;
+  const startPct = (hasLive ? livePct! : t12Pct ?? 0) * 100;
+  const endPct   = (byYear[byYear.length - 1] ?? 0) * 100;
+
+  // Inline SVG sparkline — no external deps
+  const W = 120; const H = 24; const PAD = 2;
+  const maxV = Math.max(...byYear) || 0.001;
+  const points = byYear.map((v, i) => {
+    const x = PAD + (i / Math.max(1, byYear.length - 1)) * (W - PAD * 2);
+    const y = H - PAD - ((v / maxV) * (H - PAD * 2));
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+
+  const TEAL = '#00B4D8';
+
+  return (
+    <div style={{ borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.panel, flexShrink: 0 }}>
+      <div
+        onClick={() => setExpanded(e => !e)}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', cursor: 'pointer' }}
+      >
+        <span style={{ fontSize: 9, fontWeight: 700, color: TEAL, fontFamily: MONO, letterSpacing: 1 }}>
+          LTL TRAJECTORY
+        </span>
+        <Bd c={TEAL}>B1</Bd>
+
+        {/* Source pills */}
+        <span style={{ fontSize: 8, fontFamily: MONO, color: hasLive ? '#4ADE80' : BT.text.amber, fontWeight: 700 }}>
+          {hasLive ? `LIVE ${(livePct! * 100).toFixed(1)}%` : `T12 ${((t12Pct ?? 0) * 100).toFixed(2)}%`}
+        </span>
+        {hasLive && t12Pct != null && (
+          <span style={{ fontSize: 8, fontFamily: MONO, color: BT.text.muted }}>
+            T12 {(t12Pct * 100).toFixed(2)}%
+          </span>
+        )}
+        <span style={{ fontSize: 8, fontFamily: MONO, color: BT.text.muted }}>→</span>
+        <span style={{ fontSize: 8, fontFamily: MONO, color: TEAL }}>
+          YR{byYear.length} {endPct.toFixed(2)}%
+        </span>
+
+        {/* Miniature sparkline */}
+        <svg width={W} height={H} style={{ flexShrink: 0 }}>
+          <polyline points={points} fill="none" stroke={TEAL} strokeWidth={1.5} opacity={0.7} />
+        </svg>
+
+        <span style={{ marginLeft: 'auto', fontSize: 9, color: BT.text.muted, fontFamily: MONO }}>{expanded ? '▾' : '▸'}</span>
+      </div>
+
+      {expanded && (
+        <div style={{ padding: '6px 10px', display: 'flex', gap: 16, flexWrap: 'wrap', borderTop: `1px solid ${BT.border.subtle}` }}>
+          {/* Signal source cards */}
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 90 }}>
+            <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5, marginBottom: 2 }}>LIVE (M07)</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: hasLive ? '#4ADE80' : BT.text.muted, fontFamily: MONO }}>
+              {livePct != null ? `${(livePct * 100).toFixed(1)}%` : '—'}
+            </span>
+            <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>lease-level gap</span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 90 }}>
+            <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5, marginBottom: 2 }}>T12 TRAILING</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: BT.text.amber, fontFamily: MONO }}>
+              {t12Pct != null ? `${(t12Pct * 100).toFixed(2)}%` : '—'}
+            </span>
+            <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>12-mo average</span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 90 }}>
+            <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5, marginBottom: 2 }}>ENGINE ANCHORED AT</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: TEAL, fontFamily: MONO }}>
+              {startPct.toFixed(trajectorySource === 't12' ? 2 : 1)}%
+            </span>
+            <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>
+              source: {trajectorySource === 'live' ? 'live M07' : 'T12 avg'}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 90 }}>
+            <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5, marginBottom: 2 }}>CAPTURE RATE</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: BT.text.secondary, fontFamily: MONO }}>
+              {(captureRate * 100).toFixed(0)}%
+            </span>
+            <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>per roll event</span>
+          </div>
+
+          {/* Full year-by-year table */}
+          <div style={{ width: '100%', display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+            {byYear.map((v, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 40 }}>
+                <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>YR{i + 1}</span>
+                <span style={{ fontSize: 9, fontWeight: 600, color: v < 0.02 ? '#4ADE80' : v < 0.08 ? BT.text.amber : BT.text.red, fontFamily: MONO }}>
+                  {(v * 100).toFixed(2)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Integrity Banner ─────────────────────────────────────────────────────
 function IntegrityBanner({ checks }: { checks: IntegrityCheckItem[] }) {
   const errors = checks.filter(c => c.status === 'error');
@@ -2240,6 +2349,15 @@ export function ProjectionsTab({
                       collisions={leasingCollisionEntries.length > 0 ? leasingCollisionEntries : undefined}
                       defaultExpanded={true}
                     />
+                  </td>
+                </tr>
+              )}
+
+              {/* ── LTL Trajectory ── Task #1540 B1: source signals + per-year decay ─── */}
+              {financials?.ltlSignals && isAnnual && (
+                <tr>
+                  <td colSpan={colCount + 1} style={{ padding: 0 }}>
+                    <LTLTrajectoryPanel ltlSignals={financials.ltlSignals} />
                   </td>
                 </tr>
               )}

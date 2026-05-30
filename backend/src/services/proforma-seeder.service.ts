@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import type { LayeredValue, ProFormaYear1Seed } from './document-extraction/types';
 import { logger } from '../utils/logger';
+import { computeLeaseRollVelocityFromDates } from './proforma/ltl-trajectory';
 
 /**
  * Computes the annual income for a single user-added income line for a given
@@ -1549,6 +1550,41 @@ export async function seedProFormaYear1(
     const fieldsSeeded = Object.values(seed).filter(
       (v: unknown) => v && typeof v === 'object' && 'resolved' in v && (v as LayeredValue<number>).resolved != null
     ).length;
+
+    // ── LTL lease roll velocity — Task #1540 (Piece B1) ──────────────────────
+    // Compute per-year lease roll velocity from deal_lease_transactions.lease_end
+    // distribution and persist to deal_assumptions.lease_roll_velocity_per_year.
+    // Non-fatal: failure is logged but does not prevent the seeder from returning.
+    try {
+      const VELOCITY_HOLD_YEARS = 30; // compute for max hold period so any hold length is covered
+      const leaseDateRes = await pool.query<{ lease_end: Date | string | null }>(
+        `SELECT lease_end FROM deal_lease_transactions WHERE deal_id = $1 AND lease_end IS NOT NULL`,
+        [dealId]
+      );
+      if (leaseDateRes.rows.length > 0) {
+        const leaseDates = leaseDateRes.rows.map(r => r.lease_end);
+        const asOfDate   = new Date(); // use today as reference; re-seeded on new rent roll upload
+        const velocity   = computeLeaseRollVelocityFromDates(leaseDates, asOfDate, VELOCITY_HOLD_YEARS);
+        await pool.query(
+          `UPDATE deal_assumptions
+              SET lease_roll_velocity_per_year = $2::jsonb,
+                  updated_at = NOW()
+            WHERE deal_id = $1`,
+          [dealId, JSON.stringify(velocity)]
+        );
+        logger.info('[seedProFormaYear1] LTL velocity seeded', {
+          dealId,
+          leaseCount: leaseDateRes.rows.length,
+          year1Velocity: velocity[0]?.toFixed(3),
+          year2Velocity: velocity[1]?.toFixed(3),
+        });
+      }
+    } catch (velErr) {
+      logger.warn('[seedProFormaYear1] LTL velocity seed failed (non-fatal)', {
+        dealId,
+        error: velErr instanceof Error ? velErr.message : String(velErr),
+      });
+    }
 
     // Structured observability log — stdout only, no DB write.
     // Consumed by the Data Quality Agent (Task #691) as the primary signal

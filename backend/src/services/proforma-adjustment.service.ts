@@ -24,6 +24,8 @@ import { composeOtherIncomeBreakdown, loadTrailingActualsMap } from './financial
 import { projectProforma, type ProjectionYearResult } from './proforma/proforma-projection.service';
 import { provenanced } from '../types/provenanced-value';
 import { pickTemplateForStrategy, defaultTemplateForDealType } from './proforma/blueprint/index';
+import { computeLTLTrajectory, DEFAULT_CAPTURE_RATE } from './proforma/ltl-trajectory';
+import type { LTLSignals } from './proforma/ltl-trajectory';
 
 // ============================================================================
 // Types
@@ -1992,6 +1994,13 @@ export interface DealFinancials {
     transition_year?: { value: number | null; source: string | null; confidence?: 'high' | 'medium' | 'low' | null; note?: string | null } | null;
     transition_timing_label?: string | null;
   }>;
+  /**
+   * LTL forward trajectory signals — Task #1540 (Piece B1).
+   * Exposes both source signals (T12 trailing average vs live lease-level from
+   * deal_traffic_snapshots) and the per-year decay curve used by Engine A.
+   * Index 0 = Year 1, length = holdYears.
+   */
+  ltlSignals?: LTLSignals;
 }
 
 /**
@@ -2159,7 +2168,7 @@ export async function getDealFinancials(
   // No-op when year1 already exists; safe to call on every request
   await ensureDealAssumptionsSeeded(pool, dealId);
 
-  const [dealRes, assumptionsRes, proformaAssumRes, trafficProjection] = await Promise.all([
+  const [dealRes, assumptionsRes, proformaAssumRes, trafficProjection, trafficSnapshotRes] = await Promise.all([
     pool.query(
       'SELECT id, name, city, state_code, target_units, budget, deal_data, operator_stance, timeline_start, deal_type FROM deals WHERE id = $1',
       [dealId]
@@ -2174,7 +2183,8 @@ export async function getDealFinancials(
               investment_strategy_lv, exit_strategy_lv,
               selling_costs_pct,
               construction_months, lease_up_months, absorption_units_per_month,
-              stabilization_target_pct
+              stabilization_target_pct,
+              lease_roll_velocity_per_year, mark_to_market_capture_rate
          FROM deal_assumptions WHERE deal_id = $1`,
       [dealId]
     ),
@@ -2184,6 +2194,10 @@ export async function getDealFinancials(
       [dealId]
     ),
     getTrafficProjection(pool, dealId, holdYears),
+    pool.query(
+      `SELECT summary FROM deal_traffic_snapshots WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [dealId]
+    ),
   ]);
 
   if (dealRes.rows.length === 0) throw new Error(`Deal not found: ${dealId}`);
@@ -4389,6 +4403,9 @@ export async function getDealFinancials(
   // Hoist equity to outer scope so the returns IIFE can access it post-projections
   const projEquityOuter = capitalStackWithOverrides.equityAtClose ?? 0;
 
+  // ── LTL signals hoisted for return — populated inside projections IIFE ──────
+  let _ltlSignalsOut: LTLSignals | undefined;
+
   // ── Server-side Projections Engine ─────────────────────────────────────────
   // Computes authoritative per-year operating statement resolving all upstream tabs:
   // Assumptions (growth rates), Taxes (RE tax per year), Debt (amortization schedule),
@@ -4468,7 +4485,53 @@ export async function getDealFinancials(
 
     // Y1 opex seeds
     const gprY1        = assumptions.gprDecomposition?.resolvedAnnual ?? ry1('gpr');
-    const lossToLeasePct = ry1('loss_to_lease_pct');
+
+    // ── LTL Forward Trajectory — Task #1540 (Piece B1) ───────────────────────
+    // T12 trailing average from deal_assumptions.year1 (e.g. 0.35% for 464 Bishop)
+    const _ltlT12: number = ry1('loss_to_lease_pct');
+
+    // Live lease-level LTL from deal_traffic_snapshots (computed by traffic-analytics.service.ts
+    // from deal_lease_transactions — e.g. 13.8% for 464 Bishop).
+    // Stored as a percentage integer (13.8), so divide by 100 to get a fraction.
+    const _ltlLiveRaw = trafficSnapshotRes?.rows[0]?.summary?.lossToLeasePct;
+    const _ltlLivePct: number | null =
+      typeof _ltlLiveRaw === 'number' && _ltlLiveRaw > 0 ? _ltlLiveRaw / 100 : null;
+
+    // Trajectory start: live signal preferred (current lease-level gap) over T12 (trailing average)
+    const _ltlStart: number = _ltlLivePct ?? _ltlT12;
+    const _ltlTrajectorySource: 'live' | 't12' | 'resolved' =
+      _ltlLivePct != null ? 'live' : 't12';
+
+    // Lease roll velocity: use persisted per-year array or uniform fallback
+    const _rawVelocity = _atRow?.lease_roll_velocity_per_year;
+    const _velocityArr: number[] = Array.isArray(_rawVelocity) && (_rawVelocity as unknown[]).length > 0
+      ? (_rawVelocity as unknown[]).map(Number)
+      : Array<number>(holdYears).fill(1 / Math.max(1, holdYears));
+
+    // Mark-to-market capture rate: operator-controllable, default 0.33
+    const _captureRate: number =
+      _atRow?.mark_to_market_capture_rate != null
+        ? parseFloat(String(_atRow.mark_to_market_capture_rate))
+        : DEFAULT_CAPTURE_RATE;
+
+    // Per-year LTL trajectory (index 0 = Year 1)
+    const _ltlTrajectory = computeLTLTrajectory({
+      ltlStart:                _ltlStart,
+      leaseRollVelocityPerYear: _velocityArr,
+      captureRate:             _captureRate,
+      holdYears,
+    });
+    const _lossToLeaseByYear = _ltlTrajectory.byYear;
+
+    // Surface signals for the response (set once here; read by outer scope after IIFE)
+    _ltlSignalsOut = {
+      t12Pct:           _ltlT12,
+      livePct:          _ltlLivePct,
+      trajectorySource: _ltlTrajectorySource,
+      byYear:           _lossToLeaseByYear,
+      captureRate:      _captureRate,
+    };
+
     const concPct      = ry1('concessions_pct');
     const badDebtPct   = ry1('bad_debt_pct');
     const nruPct       = ry1('non_revenue_units_pct');
@@ -4617,7 +4680,10 @@ export async function getDealFinancials(
       runGpr                = _stabilizedGpr; // always compound from stabilized base
       const vacPct          = tv?.vacancyPct ?? pv?.vacancyPct ?? ry1('vacancy_pct') ?? 0.05;
       const vacancyLoss = Math.round(gpr * vacPct);
-      const lossToLease = Math.round(gpr * lossToLeasePct);
+      // Per-year LTL: operator override (projPyOvr) sits above trajectory, trajectory beats flat T12
+      const _ltlPyOvr = projPyOvr('loss_to_lease_pct');
+      const _ltlPctThisYear = _ltlPyOvr != null ? _ltlPyOvr : (_lossToLeaseByYear[yr - 1] ?? _ltlT12);
+      const lossToLease = Math.round(gpr * _ltlPctThisYear);
       const concessions = Math.round(gpr * concPct);
       // W-04: eviction_moratorium per-year constraint overrides base bad_debt_pct for moratorium years
       const effectiveBadDebtPct = projPyOvr('bad_debt_pct') ?? badDebtPct;
@@ -4976,6 +5042,7 @@ export async function getDealFinancials(
         }>)
       : [],
     regimeDataByField,
+    ltlSignals: _ltlSignalsOut,
     meta: {
       seeded: Object.keys(year1Seed).length > 0,
       updatedAt: assumptionsRow?.updated_at?.toISOString?.() ?? null,

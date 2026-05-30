@@ -336,6 +336,18 @@ export interface F9DealFinancials {
   };
   userOverrides: Record<string, Record<number, number|null>>;
   meta: { seeded: boolean; updatedAt: string|null };
+  /**
+   * LTL forward trajectory signals — Task #1540 (Piece B1).
+   * Exposes the T12 trailing average vs live lease-level LTL and the per-year
+   * decay curve used by Engine A. Present whenever year1 is seeded.
+   */
+  ltlSignals?: {
+    t12Pct: number | null;
+    livePct: number | null;
+    trajectorySource: 'live' | 't12' | 'resolved';
+    byYear: number[];
+    captureRate: number;
+  } | null;
   closeDate: string | null;
   saleDate: string | null;
   taxes: F9TaxData | null;
