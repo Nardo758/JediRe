@@ -67,6 +67,14 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
   const f9VacancyPct = f9Financials?.trafficProjection?.calibrated?.vacancyPct ?? null;
   const f9PurchasePrice = f9Financials?.capitalStack?.purchasePrice ?? null;
 
+  // LP / GP equity dollar split — derived from equityAtClose × lpShare/gpShare
+  const equityAtClose = f9Financials?.capitalStack?.equityAtClose
+    ?? Math.max(0, (f9PurchasePrice ?? 0) - (f9Financials?.capitalStack?.loanAmount ?? 0));
+  const lpShareOv = assumptions?.waterfall?.lpShare ?? 0.90;
+  const gpShareOv = assumptions?.waterfall?.gpShare ?? 0.10;
+  const lpEquityDollar = equityAtClose > 0 ? equityAtClose * lpShareOv : null;
+  const gpEquityDollar = equityAtClose > 0 ? equityAtClose * gpShareOv : null;
+
   type ProFormaRow = { label: string; brokerFmt: string; platformFmt: string; brokerRaw: number | null; platformRaw: number | null };
   const proFormaRows: ProFormaRow[] = [
     { label: 'EXIT CAP RATE',      brokerFmt: brokerCapRate != null ? fmtPct(brokerCapRate * 100) : '—', platformFmt: platformExitCap != null ? fmtPct(platformExitCap * 100) : '—', brokerRaw: brokerCapRate, platformRaw: platformExitCap },
@@ -129,12 +137,39 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
             <SectionPanel title="SOURCES" subtitle="Capital Structure" borderColor={BT.met.financial}>
-              {sourcesArr.length > 0
-                ? sourcesArr.map((r, i) => (
-                    <DataRow key={i} label={r.label} value={fmt$(r.amount)} valueColor={BT.met.financial} border={i < sourcesArr.length - 1} />
-                  ))
-                : <DataRow label="—" value="Awaiting model build" valueColor={BT.text.muted} border={false} />}
-              {sourcesArr.length > 0 && <DataRow label="TOTAL SOURCES" value={fmt$(totalSources)} valueColor={BT.text.white} border={false} />}
+              {(() => {
+                // Filter out any combined equity rows to avoid double-counting with LP/GP split below
+                const nonEquitySources = lpEquityDollar != null
+                  ? sourcesArr.filter(r => !/(equity)/i.test(r.label))
+                  : sourcesArr;
+                const hasAnySource = nonEquitySources.length > 0 || lpEquityDollar != null;
+                return hasAnySource ? (
+                  <>
+                    {nonEquitySources.map((r, i) => (
+                      <DataRow key={i} label={r.label} value={fmt$(r.amount)} valueColor={BT.met.financial} border={true} />
+                    ))}
+                    {lpEquityDollar != null && (
+                      <>
+                        <DataRow
+                          label={`LP EQUITY · ${fmtPct(lpShareOv * 100)}`}
+                          value={fmt$(lpEquityDollar)}
+                          valueColor={BT.met.financial}
+                          border={true}
+                        />
+                        <DataRow
+                          label={`GP EQUITY · ${fmtPct(gpShareOv * 100)}`}
+                          value={fmt$(gpEquityDollar!)}
+                          valueColor={BT.text.orange}
+                          border={false}
+                        />
+                      </>
+                    )}
+                    <DataRow label="TOTAL SOURCES" value={fmt$(totalSources)} valueColor={BT.text.white} border={false} />
+                  </>
+                ) : (
+                  <DataRow label="—" value="Awaiting model build" valueColor={BT.text.muted} border={false} />
+                );
+              })()}
             </SectionPanel>
 
             <SectionPanel title="USES" subtitle="Capital Deployment" borderColor={BT.text.cyan}>

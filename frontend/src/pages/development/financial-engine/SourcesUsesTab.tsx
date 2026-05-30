@@ -165,13 +165,31 @@ export function SourcesUsesTab({
 
   const buildSourceRows = (): RowItem[] => {
     if (su && su.sources.length > 0) {
-      return su.sources
+      const rawRows = su.sources
         .filter(s => s.userOverridable ? true : (s.amount ?? 0) > 0)
         .map(s => ({
           id: s.id, label: s.label, amount: s.amount ?? 0, pct: s.pct ?? 0,
           sub: s.sub ?? '', color: SOURCE_COLORS[s.id] ?? BT.met.financial,
           userOverridable: s.userOverridable ?? false,
         }));
+      // If the backend provided a combined equity row instead of split lpEquity/gpEquity,
+      // replace it with two explicit LP/GP rows so the split is always visible.
+      const hasLpGpSplit = rawRows.some(r => r.id === 'lpEquity' || r.id === 'gpEquity');
+      if (!hasLpGpSplit) {
+        const equityRow = rawRows.find(r => /equity/i.test(r.id) || /equity/i.test(r.label));
+        if (equityRow) {
+          const total = Math.max(su.totalSources ?? equityFb, 1);
+          const lpAmt = equityRow.amount * lpShareFb;
+          const gpAmt = equityRow.amount * gpShareFb;
+          return rawRows
+            .filter(r => r.id !== equityRow.id)
+            .concat([
+              { id: 'lpEquity', label: 'LP EQUITY', amount: lpAmt, pct: lpAmt / total, sub: `${fmtPct(lpShareFb * 100)} LP split`, color: BT.met.financial, userOverridable: false },
+              { id: 'gpEquity', label: 'GP EQUITY', amount: gpAmt, pct: gpAmt / total, sub: `${fmtPct(gpShareFb * 100)} GP co-invest`, color: BT.text.orange, userOverridable: false },
+            ]);
+        }
+      }
+      return rawRows;
     }
     const items: RowItem[] = [];
     const total = Math.max(loanAmountFb + mezzAmtFb + equityFb, 1);
@@ -618,8 +636,9 @@ export function SourcesUsesTab({
         {(() => {
           const lpShare = assumptions?.waterfall?.lpShare ?? 0.90;
           const gpShare = assumptions?.waterfall?.gpShare ?? 0.10;
+          // Sum explicit lpEquity+gpEquity rows; fall back to equityFb when backend hasn't split them
           const totalEq = su
-            ? su.sources.filter(s => s.id === 'lpEquity' || s.id === 'gpEquity').reduce((a, b) => a + (b.amount ?? 0), 0)
+            ? (su.sources.filter(s => s.id === 'lpEquity' || s.id === 'gpEquity').reduce((a, b) => a + (b.amount ?? 0), 0) || equityFb)
             : equityFb;
           const lpEq  = totalEq * lpShare;
           const gpEq  = totalEq * gpShare;
