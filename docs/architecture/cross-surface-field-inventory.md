@@ -1,10 +1,10 @@
 # Cross-Surface Field Inventory
 
 Maps every key deal field to its canonical read source on each surface.
-Established by Task #1541 (Piece B2). Update when new surfaces are added.
+Established by Task #1541 (Piece B2). Updated by Task #1563 (Piece B, Phase 2B-1).
 
 **Status legend:**
-- ✅ Migrated — uses canonical path as of Task #1541
+- ✅ Migrated — uses canonical `getFieldValue()` path
 - 🔵 Native — surface reads exclusively from Engine A (`getDealFinancials`) response; no cross-surface risk
 - ⚠️ Deferred — known non-canonical path; scheduled for Piece B3 (Engine A write-back)
 - — Not displayed on this surface
@@ -35,12 +35,15 @@ They never perform independent DB reads for deal-assumption fields.
 
 | Code | From Surface | To Surface | Field | Status |
 |---|---|---|---|---|
-| **CF-01** | Pro Forma | Valuation Grid | `noi` | ✅ Fixed — `getFieldValue('noi')` in `getSubjectProperty()` |
-| **CF-02** | Pro Forma | Validation Grid | `exit_cap` | ✅ Fixed — `fin != null` guard |
-| **CF-03** | Pro Forma | Validation Grid | `hold_period_years` | ✅ Fixed — `fin != null` guard |
-| **CF-04** | Pro Forma | Validation Grid | `rent_growth_yr1` | ✅ Fixed — `fin != null` guard |
-| **CF-05** | Pro Forma | Validation Grid | `purchase_price` | ✅ Fixed — `fin != null` guard |
-| **CF-06** | Pro Forma | Validation Grid | `loan_amount` / `interest_rate` | ✅ Fixed — `fin != null` guard |
+| **CF-01** | Pro Forma | Valuation Grid | `noi` | ✅ Fixed (Task #1541) — `getFieldValue('noi')` in `getSubjectProperty()` |
+| **CF-02** | Pro Forma | Validation Grid | `exit_cap` | ✅ Fixed (Task #1541) — `fin != null` guard |
+| **CF-03** | Pro Forma | Validation Grid | `hold_period_years` | ✅ Fixed (Task #1541) — `fin != null` guard |
+| **CF-04** | Pro Forma | Validation Grid | `rent_growth_yr1` | ✅ Fixed (Task #1541) — `fin != null` guard |
+| **CF-05** | Pro Forma | Validation Grid | `purchase_price` | ✅ Fixed (Task #1541) — `fin != null` guard |
+| **CF-06** | Pro Forma | Validation Grid | `loan_amount` / `interest_rate` | ✅ Fixed (Task #1541) — `fin != null` guard |
+| **CF-07** | Pro Forma | Valuation Grid | `egi` | ✅ Fixed (Task #1563) — `getFieldValue('egi')` in `getSubjectProperty()`; EGI added to `COMPUTED_AGGREGATES` as `net_rental_income + other_income` |
+| **CF-08** | Pro Forma | Valuation Grid | `gpr` | ✅ Fixed (Task #1563) — `getFieldValue('gpr')` in `getSubjectProperty()`; GRM method activated with implied multiplier in evidence trail |
+| **CF-09** | Pro Forma | Valuation Grid | `total_opex` | ✅ Fixed (Task #1563) — `getFieldValue('total_opex')` in `getSubjectProperty()` |
 
 ---
 
@@ -50,12 +53,22 @@ Handled in `ValuationGridService.getSubjectProperty()` (backend, SQL).
 
 | Field | Read path | Status |
 |---|---|---|
-| `noi` | `getFieldValue(pool, dealId, 'noi', 1)` | ✅ Migrated (CF-01) |
+| `noi` | `getFieldValues(pool, dealId, ['noi', ...], 1)` | ✅ Migrated (CF-01) |
+| `egi` | `getFieldValues(pool, dealId, [..., 'egi', ...], 1)` | ✅ Migrated (CF-07) — computed aggregate `net_rental_income + other_income` |
+| `gpr` | `getFieldValues(pool, dealId, [..., 'gpr', ...], 1)` | ✅ Migrated (CF-08) — leaf field; canary shadow-comparison active |
+| `total_opex` | `getFieldValues(pool, dealId, [..., 'total_opex'], 1)` | ✅ Migrated (CF-09) — leaf field; canary shadow-comparison active |
+| `purchase_price` | `da.acquisition_price` (property table column) | 🔵 Native (not a LV field) |
 | `exit_cap` | `da.year1.exit_cap.resolved` (SQL) | ⚠️ Deferred to B3 |
 | `hold_period_years` | `da.year1.hold_period_years.resolved` (SQL) | ⚠️ Deferred to B3 |
-| `purchase_price` | `da.acquisition_price` (property table column) | 🔵 Native (not a LV field) |
-| `egi` | `da.year1.egi.resolved` (SQL) | ⚠️ Deferred to B3 |
-| `total_opex` | `da.year1.total_opex.resolved` (SQL) | ⚠️ Deferred to B3 |
+
+### Shadow-comparison (canary period)
+
+`getSubjectProperty()` runs **both** the canonical `getFieldValue` path AND fetches
+raw stored `da.year1->'egi'->>'resolved'` / `gpr` / `total_opex` from SQL. When they
+differ by >1% relative, a `[valuation-grid] shadow-divergence` log line is emitted at
+INFO level. This canary pattern runs until all live deals have been confirmed to agree
+across both paths, at which point `_logShadowDivergence` and the shadow SQL columns
+can be removed.
 
 ---
 
@@ -75,13 +88,30 @@ SQL within `ValuationGridService`. These will be migrated to `getFieldValue()` w
 Piece B3 implements Engine A write-back — ensuring the stored `.resolved` is always
 up-to-date before being read.
 
-## Fields not yet in ALLOWED_FIELDS
+## Fields in ALLOWED_FIELDS (available for getFieldValue callers)
 
-These appear in `deal_assumptions.year1` but have no caller needing `getFieldValue` yet.
-Add to the whitelist in `backend/src/services/field-access/get-field-value.service.ts`
-when a surface needs canonical access:
+All fields listed below are in `ALLOWED_FIELDS` in
+`backend/src/services/field-access/get-field-value.service.ts` and can be passed to
+`getFieldValue` / `getFieldValues` without any code change:
 
-`gpr`, `vacancy_loss`, `other_income`, `insurance`, `real_estate_taxes`, `management_fees`,
-`payroll`, `repairs_maintenance`, `utilities`, `general_admin`, `marketing`,
+**Revenue leaf fields:** `gpr`, `vacancy`, `concessions`, `bad_debt`, `non_revenue_units`,
+`loss_to_lease`, `other_income`
+
+**Revenue aggregates (with computed formula):**
+- `net_rental_income` — storedResolved (no Engine A formula added yet)
+- `egi` — ✅ computed aggregate: `net_rental_income + other_income` (Task #1563)
+- `noi` — ✅ computed aggregate: `egi - total_opex` (Task #1541)
+- `noi_after_reserves` — ✅ computed aggregate: `(egi - total_opex) - replacement_reserves` (Task #1541)
+
+**OpEx leaf fields:** `real_estate_tax`, `insurance`, `management_fee`, `repairs_maintenance`,
+`utilities`, `payroll`, `administrative`, `marketing`, `contract_services`
+
+**OpEx aggregates:** `total_opex` — storedResolved (no Engine A formula added yet)
+
+**Capital & deal fields:** `purchase_price`, `equity_at_close`, `loan_amount`, `interest_rate`,
+`ltc_pct`, `exit_cap`, `rent_growth_yr1`, `hold_period_years`
+
+**Fields NOT yet in ALLOWED_FIELDS** (add when a surface needs canonical access):
+`vacancy_loss`, `real_estate_taxes` (alias), `management_fees` (alias), `general_admin`,
 `target_irr`, `target_em`, `pref_rate`, `gp_promote`, `construction_cost`,
 `soft_costs`, `land_cost`.

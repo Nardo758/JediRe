@@ -180,6 +180,21 @@ type AggDef = {
 };
 
 const COMPUTED_AGGREGATES: Record<string, AggDef> = {
+  // ── Revenue aggregates ────────────────────────────────────────────────────
+  //
+  // egi: Effective Gross Income = Net Rental Income + Other Income.
+  // Mirrors Engine A (getDealFinancials): `egi = nri + otherIncome` at
+  // proforma-adjustment.service.ts. Re-running the formula here prevents the
+  // Valuation Grid from reading a stale seeder-stored egi.resolved when the
+  // operator has overridden net_rental_income or other_income since last seed.
+  egi: {
+    formula: 'net_rental_income + other_income',
+    deps: ['net_rental_income', 'other_income'],
+    compute: ({ net_rental_income, other_income }) =>
+      Math.round(net_rental_income + other_income),
+  },
+
+  // ── NOI & derived ─────────────────────────────────────────────────────────
   noi: {
     formula: 'egi - total_opex',
     deps: ['egi', 'total_opex'],

@@ -27,7 +27,8 @@ import { SubjectPopulationService, type SubjectCompletenessResult } from '../sub
 import { propertySalesService } from '../property-entity/property-sales.service';
 import { shouldUseNewPath, shouldRunShadow, VALUATION_COMPS_FLAG } from '../property-entity/phase3-flags';
 import { phase3ShadowService } from '../property-entity/phase3-shadow.service';
-import { getFieldValue } from '../field-access/get-field-value.service';
+import { getFieldValue, getFieldValues } from '../field-access/get-field-value.service';
+import { logger } from '../../utils/logger';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -93,6 +94,15 @@ export interface SubjectProperty {
   purchasePrice: number | null;
   noi: number | null;
   noiSource: string;
+  /** CF-07: EGI resolved via canonical getFieldValue chain (net_rental_income + other_income). */
+  egi: number | null;
+  egiSource: string;
+  /** CF-08: GPR Year-1 resolved via canonical getFieldValue chain. */
+  gpr: number | null;
+  gprSource: string;
+  /** CF-09: Total OpEx Year-1 resolved via canonical getFieldValue chain. */
+  totalOpex: number | null;
+  totalOpexSource: string;
   assetClass: string | null;
   city: string;
   state: string;
@@ -383,9 +393,12 @@ export class ValuationGridService {
 
     methods.push(m5);
 
-    // V1.0 placeholders
-    methods.push(this.placeholder('grm', 'GRM — Gross Rent Multiplier', 'income'));
-    methods.push(this.placeholder('gim', 'GIM — Gross Income Multiplier', 'income'));
+    // GRM / GIM — activated (CF-08 / CF-07): subject GPR and EGI now flow via
+    // canonical getFieldValue chain.  Methods are 'insufficient' when we lack
+    // comp GRM/GIM data to derive a market multiplier; but the subject's implied
+    // multiplier is exposed in the evidence trail so the operator can self-verify.
+    methods.push(this.computeGRM(subject));
+    methods.push(this.computeGIM(subject));
     methods.push(this.placeholder('dcf', 'DCF — Discounted Cash Flow', 'income'));
 
     const reconciliation = this.reconcile(methods, subject);
@@ -415,9 +428,18 @@ export class ValuationGridService {
   // p.submarket_id (not submarket) — aliased to match SubjectProperty type fields.
 
   private async getSubjectProperty(dealId: string): Promise<SubjectProperty> {
-    // Fetch property + deal fields. NOI is resolved separately via getFieldValue
-    // (CF-01 fix: canonical path, same resolution chain as Pro Forma / Engine A).
-    const [result, noiFv] = await Promise.all([
+    // Fetch property + deal fields.
+    // NOI, EGI, GPR, total_opex are resolved via getFieldValues (canonical path).
+    // CF-01: NOI  — override > Engine A formula (EGI − total_opex) > agent > seeder resolved
+    // CF-07: EGI  — override > Engine A formula (NRI + other_income) > agent > seeder resolved
+    // CF-08: GPR  — override > agent > seeder resolved (leaf field, no Engine A formula)
+    // CF-09: totalOpex — override > agent > seeder resolved (leaf field)
+    //
+    // Shadow comparison (canary pattern): the SQL query also fetches raw
+    // da.year1->'egi'->>'resolved' and da.year1->'gpr'->>'resolved' so we can
+    // log when the canonical getFieldValue path disagrees with the stored value.
+    // This validates the migration before any old-read code is cut over.
+    const [result, fvs] = await Promise.all([
       this.pool.query(
         `SELECT
            d.id,
@@ -430,7 +452,13 @@ export class ValuationGridService {
            p.building_class                          AS asset_class,
            p.submarket_id                            AS submarket,
            p.acquisition_price                      AS purchase_price,
-           da.valuation_override_lv                 AS valuation_override_lv
+           da.valuation_override_lv                 AS valuation_override_lv,
+           -- Shadow-comparison: stored seeder-resolved values for EGI, GPR, total_opex.
+           -- Used to detect divergence between the canonical getFieldValue chain and
+           -- the stale seed. Logged but not used as the canonical source.
+           (da.year1->'egi'->>'resolved')::numeric  AS shadow_egi_stored,
+           (da.year1->'gpr'->>'resolved')::numeric  AS shadow_gpr_stored,
+           (da.year1->'total_opex'->>'resolved')::numeric AS shadow_topex_stored
          FROM deals d
          LEFT JOIN properties p ON p.deal_id = d.id
          LEFT JOIN deal_assumptions da ON da.deal_id = d.id
@@ -438,16 +466,15 @@ export class ValuationGridService {
          LIMIT 1`,
         [dealId]
       ),
-      // CF-01: getFieldValue runs the canonical resolution chain for NOI:
-      //   override > Engine A formula (EGI - total_opex) > agent > seeder resolved
-      // This matches getDealFinancials and eliminates the stale-seed discrepancy.
-      getFieldValue(this.pool, dealId, 'noi', 1),
+      // Batch-resolve all four income/opex fields in one SQL round-trip.
+      getFieldValues(this.pool, dealId, ['noi', 'egi', 'gpr', 'total_opex'], 1),
     ]);
 
     const row = result.rows[0];
     if (!row) throw new Error(`Deal ${dealId} not found`);
 
-    // NOI: resolved via getFieldValue canonical chain (CF-01 fix).
+    // ── NOI (CF-01) ─────────────────────────────────────────────────────────
+    const noiFv = fvs['noi'];
     let noi: number | null = null;
     let noiSource = 'none';
     if (noiFv?.resolved != null && noiFv.resolved > 0) {
@@ -455,12 +482,52 @@ export class ValuationGridService {
       noiSource = noiFv.source ?? 'proforma_year1';
     }
 
+    // ── EGI (CF-07) ─────────────────────────────────────────────────────────
+    const egiFv = fvs['egi'];
+    let egi: number | null = null;
+    let egiSource = 'none';
+    if (egiFv?.resolved != null && egiFv.resolved > 0) {
+      egi       = egiFv.resolved;
+      egiSource = egiFv.source ?? 'proforma_year1';
+    }
+
+    // ── GPR (CF-08) ─────────────────────────────────────────────────────────
+    const gprFv = fvs['gpr'];
+    let gpr: number | null = null;
+    let gprSource = 'none';
+    if (gprFv?.resolved != null && gprFv.resolved > 0) {
+      gpr       = gprFv.resolved;
+      gprSource = gprFv.source ?? 'proforma_year1';
+    }
+
+    // ── Total OpEx (CF-09) ───────────────────────────────────────────────────
+    const topexFv = fvs['total_opex'];
+    let totalOpex: number | null = null;
+    let totalOpexSource = 'none';
+    if (topexFv?.resolved != null && topexFv.resolved > 0) {
+      totalOpex       = topexFv.resolved;
+      totalOpexSource = topexFv.source ?? 'proforma_year1';
+    }
+
+    // ── Shadow comparison: log when canonical diverges from stored seed ──────
+    // This runs during the canary period so we can confirm getFieldValue
+    // agrees with stored values before fully cutting over.
+    this._logShadowDivergence(dealId, 'egi', egi, safeFloat(row.shadow_egi_stored, 0) || null);
+    this._logShadowDivergence(dealId, 'gpr', gpr, safeFloat(row.shadow_gpr_stored, 0) || null);
+    this._logShadowDivergence(dealId, 'total_opex', totalOpex, safeFloat(row.shadow_topex_stored, 0) || null);
+
     return {
       units: row.units ? safeFloat(row.units) : null,
       totalSF: row.total_sf ? safeFloat(row.total_sf) : null,
       purchasePrice: row.purchase_price ? safeFloat(row.purchase_price) : null,
       noi,
       noiSource,
+      egi,
+      egiSource,
+      gpr,
+      gprSource,
+      totalOpex,
+      totalOpexSource,
       assetClass: row.asset_class || null,
       city: row.city || '',
       state: row.state || '',
@@ -468,6 +535,35 @@ export class ValuationGridService {
       latitude: row.latitude ? safeFloat(row.latitude) : null,
       longitude: row.longitude ? safeFloat(row.longitude) : null,
     };
+  }
+
+  /**
+   * Shadow-comparison log helper (canary migration pattern).
+   *
+   * Logs at 'info' when the canonical getFieldValue path (canonicalVal) differs
+   * materially from the stored seeder resolved value (storedVal).  A >1% relative
+   * difference qualifies as material for income fields.
+   *
+   * Remove this method and all _logShadowDivergence calls once the canary period
+   * has confirmed the canonical path is correct for all live deals.
+   */
+  private _logShadowDivergence(
+    dealId: string,
+    field: string,
+    canonicalVal: number | null,
+    storedVal: number | null,
+  ): void {
+    if (canonicalVal == null || storedVal == null) return;
+    if (storedVal === 0) return;
+    const relDelta = Math.abs(canonicalVal - storedVal) / Math.abs(storedVal);
+    if (relDelta > 0.01) {
+      logger.info('[valuation-grid] shadow-divergence', {
+        dealId, field,
+        canonical: canonicalVal,
+        stored: storedVal,
+        relDeltaPct: +(relDelta * 100).toFixed(2),
+      });
+    }
   }
 
   // ── Method 1: Cap Rate × NOI ─────────────────────────────────────────────
@@ -679,7 +775,7 @@ export class ValuationGridService {
         });
 
         // Shadow mode: log what the new path would produce, then fall through to old path.
-        if (shouldRunShadow(phase5Flag) && !shouldUseNewPath(phase5Flag)) {
+        if (shouldRunShadow(valuationCompsFlag) && !shouldUseNewPath(valuationCompsFlag)) {
           await phase3ShadowService.logBatch('valuation_comps', dealId, {
             'comp_anchored_cap_rate.new_path_active': {
               old: null,
@@ -1861,6 +1957,111 @@ export class ValuationGridService {
       return `${ppuDiff} Comp pool is thin (n=${m3.compCount}) — transaction sample may not represent the submarket.`;
     }
     return `${ppuDiff} Review NOI margin and cap rate assumptions against comp set characteristics.`;
+  }
+
+  // ── GRM / GIM methods (CF-08 / CF-07) ───────────────────────────────────
+  //
+  // GRM: Gross Rent Multiplier = purchasePrice / GPR
+  // GIM: Gross Income Multiplier = purchasePrice / EGI
+  //
+  // Phase 1 (this task): Subject's IMPLIED multiplier is computed and shown in
+  // the evidence trail so operators can benchmark it against market multiples.
+  // The method remains 'insufficient' because we have no comp GRM/GIM data yet
+  // to derive a MARKET multiplier to apply to the subject's income.
+  //
+  // Phase 2 (future): when market_sale_comps carries gross_rent_annual /
+  // gross_income_annual fields, the comp-pool median multiplier becomes available
+  // and the method can produce an 'active' indicated value.
+  //
+  // GPR and EGI are resolved via the canonical getFieldValue chain (CF-08/CF-07):
+  //   override > Engine A formula > agent > seeder stored resolved
+
+  private computeGRM(subject: SubjectProperty): ValuationMethod {
+    const { purchasePrice, gpr, gprSource } = subject;
+
+    if (!purchasePrice || !gpr || gpr <= 0) {
+      return this.insufficientMethod(
+        'grm',
+        'GRM — Gross Rent Multiplier',
+        'income',
+        'GRM requires GPR (Year 1) and purchase price.',
+        [
+          !purchasePrice ? 'Purchase price not set' : '',
+          !gpr ? 'GPR Year 1 not available — upload T-12 or rent roll' : '',
+        ].filter(Boolean),
+      );
+    }
+
+    const impliedGrm = purchasePrice / gpr;
+
+    return {
+      id:              'grm',
+      label:           'GRM — Gross Rent Multiplier',
+      direction:       'income',
+      status:          'insufficient',
+      placeholderVersion: 'V1.0',
+      confidence:      'INSUFFICIENT',
+      indicatedValueP25: null,
+      indicatedValueP50: null,
+      indicatedValueP75: null,
+      indicatedPPU:    null,
+      indicatedPSF:    null,
+      sourceProvenance: `Subject implied GRM shown (${impliedGrm.toFixed(2)}×). Market-comp GRM pool not yet available — indicated value pending V1.0 comp coverage.`,
+      evidenceTrail: [
+        { label: 'Gross Potential Rent (Y1)',  value: fmt$(gpr),          source: gprSource },
+        { label: 'Purchase Price',             value: fmt$(purchasePrice), source: 'deal_terms' },
+        { label: 'Implied GRM (subject only)', value: `${impliedGrm.toFixed(2)}×` },
+        { label: 'Market GRM source',          value: 'Pending — comp data required' },
+      ],
+      warningFlags: [
+        'No comp GRM pool available — cannot produce market-anchored indicated value.',
+        'Implied GRM shown for self-benchmarking only.',
+      ],
+    };
+  }
+
+  private computeGIM(subject: SubjectProperty): ValuationMethod {
+    const { purchasePrice, egi, egiSource } = subject;
+
+    if (!purchasePrice || !egi || egi <= 0) {
+      return this.insufficientMethod(
+        'gim',
+        'GIM — Gross Income Multiplier',
+        'income',
+        'GIM requires EGI (Year 1) and purchase price.',
+        [
+          !purchasePrice ? 'Purchase price not set' : '',
+          !egi ? 'EGI Year 1 not available — upload T-12 or rent roll' : '',
+        ].filter(Boolean),
+      );
+    }
+
+    const impliedGim = purchasePrice / egi;
+
+    return {
+      id:              'gim',
+      label:           'GIM — Gross Income Multiplier',
+      direction:       'income',
+      status:          'insufficient',
+      placeholderVersion: 'V1.0',
+      confidence:      'INSUFFICIENT',
+      indicatedValueP25: null,
+      indicatedValueP50: null,
+      indicatedValueP75: null,
+      indicatedPPU:    null,
+      indicatedPSF:    null,
+      sourceProvenance: `Subject implied GIM shown (${impliedGim.toFixed(2)}×). Market-comp GIM pool not yet available — indicated value pending V1.0 comp coverage.`,
+      evidenceTrail: [
+        { label: 'Effective Gross Income (Y1)', value: fmt$(egi),           source: egiSource },
+        { label: 'Purchase Price',              value: fmt$(purchasePrice),  source: 'deal_terms' },
+        { label: 'Implied GIM (subject only)',  value: `${impliedGim.toFixed(2)}×` },
+        { label: 'Market GIM source',           value: 'Pending — comp data required' },
+      ],
+      warningFlags: [
+        'No comp GIM pool available — cannot produce market-anchored indicated value.',
+        'Implied GIM shown for self-benchmarking only.',
+      ],
+    };
   }
 
   // ── Shared helpers ────────────────────────────────────────────────────────

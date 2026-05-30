@@ -67,6 +67,7 @@ change. Engine A computes them dynamically:
 
 | Field | Engine A formula |
 |---|---|
+| `egi` | `net_rental_income + other_income` |
 | `noi` | `egi − total_opex` |
 | `noi_after_reserves` | `(egi − total_opex) − replacement_reserves` |
 
@@ -74,7 +75,14 @@ change. Engine A computes them dynamically:
 rounding (both round to whole dollars via `Math.round`). Callers never need to know
 the formula or worry about rounding parity.
 
-## Discrepancies Fixed (Task #1541)
+> **EGI added (Task #1563):** EGI was previously not in `COMPUTED_AGGREGATES`, so callers
+> received only the stale seeder `.resolved` value. Adding `egi` to the computed aggregate
+> table makes `getFieldValue('egi')` dynamically re-derive EGI from its leaf inputs,
+> matching Engine A's behavior for the Valuation Grid GIM method (CF-07).
+
+## Discrepancies Fixed
+
+### Task #1541
 
 | Code | Surface | Description | Fix |
 |---|---|---|---|
@@ -84,6 +92,14 @@ the formula or worry about rounding parity.
 | CF-04 | Validation Grid | Rent growth Y1 dual-source | `fin != null` guard (Rule 2) |
 | CF-05 | Validation Grid | Purchase price dual-source | `fin != null` guard (Rule 2) |
 | CF-06 | Validation Grid | Loan amount / interest rate dual-source | `fin != null` guard (Rule 2) |
+
+### Task #1563
+
+| Code | Surface | Description | Fix |
+|---|---|---|---|
+| CF-07 | Valuation Grid | EGI read from stale `year1.egi.resolved`; GIM method was a placeholder | `getSubjectProperty()` calls `getFieldValues('egi')` — EGI added to `COMPUTED_AGGREGATES` as `net_rental_income + other_income`; GIM method activated with implied multiplier in evidence trail |
+| CF-08 | Valuation Grid | GPR read from stale `year1.gpr.resolved`; GRM method was a placeholder | `getSubjectProperty()` calls `getFieldValues('gpr')` — GRM method activated with implied multiplier in evidence trail; canary shadow-comparison active |
+| CF-09 | Valuation Grid | total_opex not in `SubjectProperty`; available for expense-based methods | `getSubjectProperty()` calls `getFieldValues('total_opex')` — batch-fetched with NOI/EGI/GPR in one SQL round-trip; canary shadow-comparison active |
 
 ## `getFieldValue` API Reference
 
