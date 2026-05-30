@@ -5,7 +5,7 @@
  *
  *   XLSX buffer → parse → vendor table write → historical_observations write
  *
- * Three test suites with increasing scope:
+ * Four test suites with increasing scope:
  *
  *   Suite 1 — Parse layer (no DB)
  *     Validates that parseYardiRentSurvey correctly extracts rows from a
@@ -23,19 +23,51 @@
  *     dispatch path in data-library-upload-processor.ts. Uses a sentinel
  *     submarket name so afterAll can clean up rows.
  *
+ *   Suite 4 — Processor layer (real DB + R2 stub)
+ *     Calls processDataLibraryUploadFile() end-to-end: real data_library_files
+ *     row in DB, real classification + dispatch + dual-write, but with R2
+ *     download stubbed via vi.mock('@aws-sdk/client-s3') to return our synthetic
+ *     XLSX buffer. This is the true E2E boundary — the same entry point that
+ *     the intake worker calls in production.
+ *
  * Adding a future vendor:
  *   1. Write a `makeVendorBuffer()` helper for the new vendor's XLSX shape.
  *   2. Copy Suite 2 + 3 patterns, substituting the new parse/write functions
  *      and the new `documentType` key. Zero framework changes required.
  *
  * Constraints met:
- *   - Real DB connection (no mocked query) — validates schema compatibility.
- *   - Idempotent — Suite 2 uses transaction rollback; Suite 3 uses sentinel
- *     cleanup in afterAll; both are safe to re-run.
+ *   - Real DB connection (no mocked query) — validates actual schema compatibility.
+ *   - Idempotent — Suite 2 uses transaction rollback; Suites 3 + 4 use sentinel
+ *     cleanup in afterAll; all are safe to re-run.
  */
 
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import * as XLSX from 'xlsx';
+import { randomUUID } from 'crypto';
+
+// ── R2 mock ───────────────────────────────────────────────────────────────────
+//
+// vi.mock is hoisted before imports by vitest's transform. The factory function
+// closes over `r2MockBuffer` (a module-scope let) and reads its current value
+// at call time — not at parse time — so `beforeAll` can set it before the test
+// runs and the mock will return the correct buffer.
+
+let r2MockBuffer: Buffer | null = null;
+
+vi.mock('@aws-sdk/client-s3', () => ({
+  S3Client: vi.fn().mockImplementation(() => ({
+    send: vi.fn().mockImplementation(async () => {
+      if (!r2MockBuffer) throw new Error('r2MockBuffer not set by test beforeAll');
+      const bytes = r2MockBuffer;
+      return {
+        Body: {
+          transformToByteArray: async (): Promise<Uint8Array> => new Uint8Array(bytes),
+        },
+      };
+    }),
+  })),
+  GetObjectCommand: vi.fn().mockImplementation(() => ({})),
+}));
 
 import { query, getClient } from '../../../../database/connection';
 import {
@@ -54,6 +86,10 @@ import { vendorRegistry } from '../../vendor-registry';
 
 const RUN_ID      = `ci-${Date.now()}`;
 const SENTINEL_SM = `__vendor-pipeline-integration-test-${RUN_ID}__`;
+
+// Suite 4 — processor layer; separate sentinel so assertions don't mix with Suite 3
+const PROC_SM      = `__proc-integration-test-${RUN_ID}__`;
+const PROC_FILE_ID = randomUUID();
 
 // ── XLSX fixture helpers ──────────────────────────────────────────────────────
 
@@ -108,20 +144,23 @@ function makeYardiRentSurveyBuffer(
 // using the sentinel submarket name.
 
 afterAll(async () => {
-  try {
-    await query(
-      `DELETE FROM yardi_matrix_rent_survey WHERE submarket = $1`,
-      [SENTINEL_SM],
-    );
-    await query(
-      `DELETE FROM historical_observations
-         WHERE vendor_source = 'yardi_matrix'
-           AND market_survey_snapshot->>'submarket' = $1`,
-      [SENTINEL_SM],
-    );
-  } catch (_) {
-    // Best-effort cleanup — test data will remain but won't affect correctness
+  for (const sm of [SENTINEL_SM, PROC_SM]) {
+    try {
+      await query(`DELETE FROM yardi_matrix_rent_survey WHERE submarket = $1`, [sm]);
+    } catch (_) {}
+    try {
+      await query(
+        `DELETE FROM historical_observations
+           WHERE vendor_source = 'yardi_matrix'
+             AND market_survey_snapshot->>'submarket' = $1`,
+        [sm],
+      );
+    } catch (_) {}
   }
+  // Clean up the data_library_files row created by Suite 4
+  try {
+    await query(`DELETE FROM data_library_files WHERE id = $1`, [PROC_FILE_ID]);
+  } catch (_) {}
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -440,6 +479,125 @@ describe('Suite 3 — Registry dispatch layer (vendorParser, real DB)', () => {
     });
 
     // Should succeed without errors even if some rows conflict on the PK
+    expect(result.success).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Suite 4 — Processor layer (processDataLibraryUploadFile, real DB + R2 stub)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// This is the true end-to-end boundary. processDataLibraryUploadFile() is the
+// exact entry point that the intake worker calls in production after it picks up
+// a source_type='data_library_upload' job.
+//
+// What's real:
+//   - data_library_files row in the actual dev DB (INSERT in beforeAll)
+//   - classifyDocument() runs against the real XLSX buffer
+//   - vendorRegistry.getVendorByDocType() dispatch
+//   - writeYardiRentSurveyRows + upsertYardiHistoricalObservations via global query
+//   - setParserStatus UPDATE back into data_library_files
+//
+// What's stubbed:
+//   - @aws-sdk/client-s3 (via vi.mock at top of file) so downloadFromR2() returns
+//     our synthetic XLSX buffer instead of hitting Cloudflare R2
+
+describe('Suite 4 — Processor layer (processDataLibraryUploadFile, real DB + R2 stub)', () => {
+
+  beforeAll(async () => {
+    // Insert a minimal data_library_files row that the processor will fetch.
+    // sha256 is NOT NULL with no default — we provide a test value.
+    // The filename 'YMRS_Q1_2025_Atlanta.xlsx' matches the Yardi Matrix
+    // filename pattern, so classifyDocument will detect YARDI_MATRIX_RENT_SURVEY.
+    // parcel_id satisfies the CHECK (parcel_id IS NOT NULL OR deal_id IS NOT NULL) constraint.
+    await query(
+      `INSERT INTO data_library_files
+         (id, parcel_id, original_filename, sha256, storage_key, storage_bucket, document_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        PROC_FILE_ID,
+        'integration-test-parcel',
+        'YMRS_Q1_2025_Atlanta.xlsx',
+        'integration-test-sha256-suite4',
+        'test/yardi-suite4.xlsx',
+        'test-bucket',
+        'YARDI_MATRIX_RENT_SURVEY',
+      ],
+    );
+
+    // Set the R2 mock buffer. The vi.mock factory reads r2MockBuffer at call
+    // time, so setting it here (after the mock is registered but before the
+    // test runs) ensures downloadFromR2 returns the right bytes.
+    r2MockBuffer = makeYardiRentSurveyBuffer(PROC_SM, '2025-06-30');
+
+    // R2_ACCOUNT_ID must be non-empty or buildR2Client() throws before the
+    // mocked S3Client is even constructed.
+    process.env.R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID ?? 'test-account-id';
+  });
+
+  it('classifies, dispatches, dual-writes, and updates parser_status in one call', async () => {
+    const { processDataLibraryUploadFile } =
+      await import('../../../../services/intake-orchestrator/data-library-upload-processor');
+
+    const result = await processDataLibraryUploadFile(PROC_FILE_ID, {});
+
+    // ── Processor result ────────────────────────────────────────────────────
+    expect(result.success).toBe(true);
+    expect(result.documentType).toBe('YARDI_MATRIX_RENT_SURVEY');
+    // parserUsed is `${docType.toLowerCase()}-extractor` per the processor
+    expect(result.parserUsed).toMatch(/yardi/i);
+    expect(result.error).toBeUndefined();
+
+    // ── data_library_files status updated ────────────────────────────────────
+    const fileRes = await query<{ parser_used: string; parser_status: string }>(
+      `SELECT parser_used, parser_status FROM data_library_files WHERE id = $1`,
+      [PROC_FILE_ID],
+    );
+    expect(fileRes.rows).toHaveLength(1);
+    expect(fileRes.rows[0].parser_status).toBe('success');
+    expect(fileRes.rows[0].parser_used).toMatch(/yardi/i);
+
+    // ── Vendor-specific table ────────────────────────────────────────────────
+    const vtRes = await query<{ submarket: string; source: string; occupancy_rate: string }>(
+      `SELECT submarket, source, occupancy_rate
+         FROM yardi_matrix_rent_survey
+        WHERE submarket = $1`,
+      [PROC_SM],
+    );
+    expect(vtRes.rows.length).toBeGreaterThan(0);
+    expect(vtRes.rows[0].source).toBe('yardi_matrix');
+    expect(parseFloat(vtRes.rows[0].occupancy_rate)).toBe(94.5);
+
+    // ── historical_observations (cross-vendor corpus) ─────────────────────────
+    const hoRes = await query<{
+      vendor_source:          string;
+      vendor_license_posture: string;
+      geography_level:        string;
+      submarket_vacancy_rate: string;
+    }>(
+      `SELECT vendor_source, vendor_license_posture, geography_level, submarket_vacancy_rate
+         FROM historical_observations
+        WHERE vendor_source = 'yardi_matrix'
+          AND market_survey_snapshot->>'submarket' = $1`,
+      [PROC_SM],
+    );
+    expect(hoRes.rows.length).toBeGreaterThan(0);
+
+    const obs = hoRes.rows[0];
+    expect(obs.vendor_source).toBe('yardi_matrix');
+    expect(obs.vendor_license_posture).toBe('platform_only');
+    expect(obs.geography_level).toBe('submarket');
+    // vacancy_rate = 100 - 94.5 = 5.5
+    expect(parseFloat(obs.submarket_vacancy_rate)).toBeCloseTo(5.5, 1);
+  });
+
+  it('is idempotent: re-running the processor for the same file_id does not error', async () => {
+    // The processor is non-fatal by design. Re-running should not throw even
+    // though some underlying INSERTs may silently skip via ON CONFLICT DO NOTHING.
+    const { processDataLibraryUploadFile } =
+      await import('../../../../services/intake-orchestrator/data-library-upload-processor');
+
+    const result = await processDataLibraryUploadFile(PROC_FILE_ID, {});
     expect(result.success).toBe(true);
   });
 });
