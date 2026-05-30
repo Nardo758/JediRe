@@ -310,23 +310,25 @@ router.get('/deals/:dealId/coverage', async (req: Request, res: Response) => {
 /**
  * GET /api/v1/historical-observations/submarket/:submarketId/vendor-surveys
  *
- * Returns vendor-sourced historical_observations rows for a given submarket.
- * Used by SubmarketOverviewTab in the F4 market intelligence view.
+ * Returns PLATFORM-AGGREGATED vendor-sourced rows from historical_observations
+ * for a given submarket. Used by SubmarketOverviewTab in the F4 market
+ * intelligence view.
  *
- * Matching strategy (OR):
- *   1. submarket_id column = :submarketId (direct FK — future-proof)
- *   2. market_survey_snapshot->>'submarket' ILIKE '%name%' (vendor JSONB text match
- *      for rows like Yardi Matrix that store only the submarket name in the snapshot)
+ * Security contract: only rows where deal_id IS NULL are returned. Deal-scoped
+ * vendor uploads (uploaded by specific users for specific deals) are private and
+ * must NOT flow into this shared submarket view — they are accessible via the
+ * deal-scoped GET /deals/:dealId/vendor-surveys endpoint which validates
+ * deal-team membership. This prevents cross-tenant data exposure.
+ *
+ * Matching strategy (AND deal_id IS NULL, AND one of):
+ *   1. submarket_id = :submarketId (direct FK — fires once vendors write it)
+ *   2. market_survey_snapshot->>'submarket' ILIKE '%name%' (JSONB text match)
  *
  * Query params:
  *   name — submarket display name for JSONB text matching
  *
  * Rows are ordered newest-first. Max 200 rows.
- *
- * Auth: requireAuth applied at router mount. No deal-ownership check is needed
- * because this endpoint is purely submarket-scoped — no deal_id filter is
- * accepted or applied. Deal-scoped vendor surveys are served by the separate
- * GET /deals/:dealId/vendor-surveys endpoint which includes deal access validation.
+ * deal_id is excluded from the response (it is always NULL in this path).
  */
 router.get('/submarket/:submarketId/vendor-surveys', async (req: Request, res: Response) => {
   try {
@@ -337,13 +339,14 @@ router.get('/submarket/:submarketId/vendor-surveys', async (req: Request, res: R
 
     const sql = `
       SELECT
-        id, deal_id, observation_date, geography_level,
+        id, observation_date, geography_level,
         submarket_avg_asking_rent, submarket_avg_effective_rent,
         submarket_vacancy_rate, submarket_under_construction,
         vendor_source, vendor_license_posture, vendor_data_as_of,
         market_survey_source, market_survey_snapshot
       FROM historical_observations
       WHERE vendor_source IS NOT NULL
+        AND deal_id IS NULL
         AND (
           submarket_id = $1
           OR (

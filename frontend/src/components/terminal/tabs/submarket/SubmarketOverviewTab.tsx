@@ -13,16 +13,20 @@ import { ContextIndicator } from '../../../intelligence/ContextIndicator';
 import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 import { apiClient } from '../../../../services/api.client';
 
-// Minimal local type for vendor survey rows from historical_observations
+// Minimal local type for platform-aggregated vendor survey rows.
+// deal_id is intentionally absent — the submarket endpoint only returns
+// rows where deal_id IS NULL (platform-level aggregates, not private deal uploads).
 interface VendorSurveyRow {
   id: string;
   observation_date: string;
+  geography_level: string;
   vendor_source: string;
   vendor_license_posture: string;
   vendor_data_as_of: string | null;
   submarket_avg_asking_rent: number | null;
   submarket_avg_effective_rent: number | null;
   submarket_vacancy_rate: number | null;
+  submarket_under_construction: number | null;
   market_survey_snapshot: Record<string, unknown> | null;
 }
 
