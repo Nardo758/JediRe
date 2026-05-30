@@ -314,77 +314,48 @@ router.get('/deals/:dealId/coverage', async (req: Request, res: Response) => {
  * Used by SubmarketOverviewTab in the F4 market intelligence view.
  *
  * Matching strategy (OR):
- *   1. submarket_id column matches :submarketId (exact FK match)
- *   2. market_survey_snapshot->>'submarket' ILIKE ?name? (vendor text match)
+ *   1. submarket_id column = :submarketId (direct FK — future-proof)
+ *   2. market_survey_snapshot->>'submarket' ILIKE '%name%' (vendor JSONB text match
+ *      for rows like Yardi Matrix that store only the submarket name in the snapshot)
  *
  * Query params:
- *   name    — submarket display name for JSONB text matching
- *   dealId  — optional; when provided, also matches by deal_id (tighter scope)
+ *   name — submarket display name for JSONB text matching
  *
  * Rows are ordered newest-first. Max 200 rows.
  *
- * Auth: requireAuth is already applied at the router mount; no deal-ownership
- * check here since submarket data has no inherent owner — it is aggregated
- * market context.
+ * Auth: requireAuth applied at router mount. No deal-ownership check is needed
+ * because this endpoint is purely submarket-scoped — no deal_id filter is
+ * accepted or applied. Deal-scoped vendor surveys are served by the separate
+ * GET /deals/:dealId/vendor-surveys endpoint which includes deal access validation.
  */
 router.get('/submarket/:submarketId/vendor-surveys', async (req: Request, res: Response) => {
   try {
     const { submarketId } = req.params;
-    const { name, dealId } = req.query;
+    const { name } = req.query;
 
     const namePct = name ? `%${(name as string).trim()}%` : null;
 
-    let sql: string;
-    let params: unknown[];
-
-    if (dealId) {
-      // Deal-scoped: precise match via deal_id (also OR submarket_id / name)
-      sql = `
-        SELECT
-          id, deal_id, observation_date, geography_level,
-          submarket_avg_asking_rent, submarket_avg_effective_rent,
-          submarket_vacancy_rate, submarket_under_construction,
-          vendor_source, vendor_license_posture, vendor_data_as_of,
-          market_survey_source, market_survey_snapshot
-        FROM historical_observations
-        WHERE vendor_source IS NOT NULL
-          AND (
-            deal_id = $1::uuid
-            OR submarket_id = $2
-            OR (
-              $3::text IS NOT NULL
-              AND market_survey_snapshot->>'submarket' ILIKE $3::text
-            )
+    const sql = `
+      SELECT
+        id, deal_id, observation_date, geography_level,
+        submarket_avg_asking_rent, submarket_avg_effective_rent,
+        submarket_vacancy_rate, submarket_under_construction,
+        vendor_source, vendor_license_posture, vendor_data_as_of,
+        market_survey_source, market_survey_snapshot
+      FROM historical_observations
+      WHERE vendor_source IS NOT NULL
+        AND (
+          submarket_id = $1
+          OR (
+            $2::text IS NOT NULL
+            AND market_survey_snapshot->>'submarket' ILIKE $2::text
           )
-        ORDER BY observation_date DESC
-        LIMIT 200
-      `;
-      params = [dealId, submarketId, namePct];
-    } else {
-      // Submarket-only: match by submarket_id FK or JSONB name
-      sql = `
-        SELECT
-          id, deal_id, observation_date, geography_level,
-          submarket_avg_asking_rent, submarket_avg_effective_rent,
-          submarket_vacancy_rate, submarket_under_construction,
-          vendor_source, vendor_license_posture, vendor_data_as_of,
-          market_survey_source, market_survey_snapshot
-        FROM historical_observations
-        WHERE vendor_source IS NOT NULL
-          AND (
-            submarket_id = $1
-            OR (
-              $2::text IS NOT NULL
-              AND market_survey_snapshot->>'submarket' ILIKE $2::text
-            )
-          )
-        ORDER BY observation_date DESC
-        LIMIT 200
-      `;
-      params = [submarketId, namePct];
-    }
+        )
+      ORDER BY observation_date DESC
+      LIMIT 200
+    `;
 
-    const result = await query(sql, params);
+    const result = await query(sql, [submarketId, namePct]);
 
     res.json({
       submarketId,

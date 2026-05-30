@@ -62,8 +62,10 @@ export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ subm
   const [vendorRows, setVendorRows] = useState<VendorSurveyRow[]>([]);
 
   useEffect(() => {
+    // The submarket endpoint is purely submarket-scoped (no deal_id filter).
+    // Pass ?name= as a hint for JSONB text matching on vendor rows that store
+    // submarket name in market_survey_snapshot rather than a FK submarket_id.
     const params = new URLSearchParams({ name: submarket.name });
-    if (dealId) params.set('dealId', dealId);
     apiClient
       .get(`/api/v1/historical-observations/submarket/${encodeURIComponent(submarketId)}/vendor-surveys?${params}`)
       .then(r => setVendorRows(r.data?.rows ?? []))
@@ -71,7 +73,7 @@ export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ subm
   // Intentionally excludes `submarket.name` string reference to avoid re-fetching on every render;
   // submarketId is the stable key — name is used only as a hint for JSONB matching.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submarketId, dealId]);
+  }, [submarketId]);
 
   // Unique vendor sources present in the fetched rows
   const vendorSources = useMemo(
