@@ -27,6 +27,7 @@ import { SubjectPopulationService, type SubjectCompletenessResult } from '../sub
 import { propertySalesService } from '../property-entity/property-sales.service';
 import { shouldUseNewPath, shouldRunShadow, VALUATION_COMPS_FLAG } from '../property-entity/phase3-flags';
 import { phase3ShadowService } from '../property-entity/phase3-shadow.service';
+import { getFieldValue } from '../field-access/get-field-value.service';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -414,83 +415,44 @@ export class ValuationGridService {
   // p.submarket_id (not submarket) — aliased to match SubjectProperty type fields.
 
   private async getSubjectProperty(dealId: string): Promise<SubjectProperty> {
-    const result = await this.pool.query(
-      `SELECT
-         d.id,
-         COALESCE(p.city, d.city, d.address, '')  AS city,
-         COALESCE(p.state_code, '')               AS state,
-         p.units,
-         p.building_sf                            AS total_sf,
-         p.latitude,
-         p.longitude,
-         p.building_class                          AS asset_class,
-         p.submarket_id                            AS submarket,
-         p.acquisition_price                      AS purchase_price,
-         da.valuation_override_lv                 AS valuation_override_lv,
-         -- CF-01 fix: canonical NOI resolution matching getDealFinancials (Engine A).
-         -- Resolution chain:
-         --   1. Operator override   (year1.noi.override)
-         --   2. Engine A formula    (EGI − total_opex) — same computation as Pro Forma
-         --   3. Stored resolved     (year1.noi.resolved — seeded, may be stale)
-         --   4. Legacy alt key      (year1.year1_noi.resolved)
-         CASE
-           -- 1. Operator override wins
-           WHEN jsonb_typeof(da.year1->'noi') = 'object'
-            AND da.year1->'noi'->>'override' IS NOT NULL
-            AND da.year1->'noi'->>'override' != 'null'
-            THEN NULLIF(da.year1->'noi'->>'override', '')::numeric
-
-           -- 2. Engine A formula: EGI - total_opex (matches getDealFinancials computation)
-           WHEN jsonb_typeof(da.year1->'egi')       = 'object'
-            AND jsonb_typeof(da.year1->'total_opex') = 'object'
-            AND NULLIF(da.year1->'egi'->>'resolved',       '') IS NOT NULL
-            AND NULLIF(da.year1->'total_opex'->>'resolved', '') IS NOT NULL
-            THEN (NULLIF(da.year1->'egi'->>'resolved', '')::numeric
-                - NULLIF(da.year1->'total_opex'->>'resolved', '')::numeric)
-
-           -- 3. Stored resolved (seeded value — stale if Engine A hasn't been run)
-           WHEN jsonb_typeof(da.year1->'noi') = 'object'
-            THEN NULLIF(da.year1->'noi'->>'resolved', '')::numeric
-
-           -- 4. Legacy scalar or alt key
-           WHEN jsonb_typeof(da.year1->'year1_noi') = 'object'
-            THEN NULLIF(da.year1->'year1_noi'->>'resolved', '')::numeric
-           ELSE NULLIF(da.year1->>'noi', '')::numeric
-         END                                      AS noi_year1_canonical,
-         -- Source of the resolved NOI — used to populate the evidence chain label
-         CASE
-           WHEN jsonb_typeof(da.year1->'noi') = 'object'
-            AND da.year1->'noi'->>'override' IS NOT NULL
-            AND da.year1->'noi'->>'override' != 'null'
-            THEN 'operator_override'
-           WHEN jsonb_typeof(da.year1->'egi')       = 'object'
-            AND jsonb_typeof(da.year1->'total_opex') = 'object'
-            AND NULLIF(da.year1->'egi'->>'resolved',       '') IS NOT NULL
-            AND NULLIF(da.year1->'total_opex'->>'resolved', '') IS NOT NULL
-            THEN 'computed_egi_minus_opex'
-           WHEN jsonb_typeof(da.year1->'noi') = 'object'
-            AND NULLIF(da.year1->'noi'->>'resolved', '') IS NOT NULL
-            THEN 'proforma_year1_seed'
-           ELSE 'none'
-         END                                      AS noi_source_tag
-       FROM deals d
-       LEFT JOIN properties p ON p.deal_id = d.id
-       LEFT JOIN deal_assumptions da ON da.deal_id = d.id
-       WHERE d.id = $1::uuid
-       LIMIT 1`,
-      [dealId]
-    );
+    // Fetch property + deal fields. NOI is resolved separately via getFieldValue
+    // (CF-01 fix: canonical path, same resolution chain as Pro Forma / Engine A).
+    const [result, noiFv] = await Promise.all([
+      this.pool.query(
+        `SELECT
+           d.id,
+           COALESCE(p.city, d.city, d.address, '')  AS city,
+           COALESCE(p.state_code, '')               AS state,
+           p.units,
+           p.building_sf                            AS total_sf,
+           p.latitude,
+           p.longitude,
+           p.building_class                          AS asset_class,
+           p.submarket_id                            AS submarket,
+           p.acquisition_price                      AS purchase_price,
+           da.valuation_override_lv                 AS valuation_override_lv
+         FROM deals d
+         LEFT JOIN properties p ON p.deal_id = d.id
+         LEFT JOIN deal_assumptions da ON da.deal_id = d.id
+         WHERE d.id = $1::uuid
+         LIMIT 1`,
+        [dealId]
+      ),
+      // CF-01: getFieldValue runs the canonical resolution chain for NOI:
+      //   override > Engine A formula (EGI - total_opex) > agent > seeder resolved
+      // This matches getDealFinancials and eliminates the stale-seed discrepancy.
+      getFieldValue(this.pool, dealId, 'noi', 1),
+    ]);
 
     const row = result.rows[0];
     if (!row) throw new Error(`Deal ${dealId} not found`);
 
-    // NOI: use canonical value from the Engine A resolution chain above (CF-01 fix).
+    // NOI: resolved via getFieldValue canonical chain (CF-01 fix).
     let noi: number | null = null;
     let noiSource = 'none';
-    const noiY1 = safeFloat(row.noi_year1_canonical, 0);
-    if (noiY1 > 0) {
-      noi = noiY1;
-      noiSource = row.noi_source_tag ?? 'proforma_year1';
+    if (noiFv?.resolved != null && noiFv.resolved > 0) {
+      noi       = noiFv.resolved;
+      noiSource = noiFv.source ?? 'proforma_year1';
     }
 
     return {

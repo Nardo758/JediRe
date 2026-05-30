@@ -13,27 +13,30 @@
  * ─── Resolution chain (in priority order) ────────────────────────────────────
  *   1. Operator override   (year1[field].override  — user-pinned value)
  *   2. Engine A computed   (for aggregate fields: EGI−total_opex etc.)
- *   3. Agent layer         (year1[field].agent)
- *   4. Source layers       (year1[field].t12 / .om / .broker)
- *   5. Stored resolved     (year1[field].resolved  — seeded value, may be stale)
+ *   3. Agent layer         (year1[field].agent — agent-written intermediate)
+ *   4. Stored resolved     (year1[field].resolved — seeder's best value, already
+ *                           incorporates the seeder's own t12 > om > broker pass)
  *
  * ─── Computed aggregate fields ───────────────────────────────────────────────
- * The following fields are computed by Engine A (getDealFinancials) from leaf
- * values, NOT stored back to deal_assumptions.year1[field].resolved. Reading
- * the stored .resolved directly will return the seeder-sourced (potentially
- * stale) value and will NOT match what the Pro Forma displays.
+ * The following fields are computed by Engine A from leaf values, NOT stored back
+ * to deal_assumptions.year1[field].resolved. Reading .resolved directly returns
+ * the seeder-sourced (potentially stale) value and will NOT match Pro Forma.
  *
- * Instead, getFieldValue re-runs Engine A's formula against the current seed so
- * every surface sees the same number:
+ * getFieldValue re-runs Engine A's formula against the current seed:
  *
  *   noi              = egi − total_opex
- *   noi_after_res    = noi − replacement_reserves
- *   egi              = net_rental_income + other_income          (sum)
- *   total_opex       = sum of 7 controllable opex leaf fields    (sum, no formula here yet — falls back to stored)
- *   net_rental_income = gpr − vacancy − concessions − bad_debt  (sum, no formula here yet — falls back to stored)
+ *   noi_after_res    = (egi − total_opex) − replacement_reserves
  *
- * "No formula here yet" means we defer to stored .resolved for those until
- * Engine A write-back is implemented (Piece B3).
+ * Engine A (getDealFinancials) rounds NOI to whole dollars (Math.round) to
+ * avoid floating-point noise in JSONB storage. getFieldValue preserves that
+ * rounding so Valuation Grid and Pro Forma stay byte-for-byte identical when
+ * the formula path runs.
+ *
+ * ─── Field name safety ───────────────────────────────────────────────────────
+ * Field names are interpolated into SQL as JSONB key paths. To prevent injection
+ * via unexpected field names reaching this service, every name is validated
+ * against ALLOWED_FIELDS before use. Callers passing unknown names get null back
+ * (graceful degradation), never a DB error.
  */
 
 import { Pool } from 'pg';
@@ -51,44 +54,85 @@ export interface LayeredFieldValue {
   year: number;
   /**
    * The canonical value every surface MUST display.
-   * Follows the resolution chain documented above.
+   * Follows the resolution chain documented at the top of this file.
    */
   resolved: number | null;
   /** Layer 1: operator override (highest priority). */
   override: number | null;
-  /** Layer 2: agent-computed value. */
+  /** Layer 2 (Engine A): computed aggregate value (noi, noi_after_reserves). */
+  computedValue: number | null;
+  /** Layer 3: agent-written value. */
   agent: number | null;
-  /** Layer 3: trailing-12-month actuals. */
+  /** Individual source layers (for transparency / audit). */
   t12: number | null;
-  /** Layer 3: offering memorandum. */
   om: number | null;
-  /** Layer 3: broker projection. */
   broker: number | null;
-  /** How the resolved value was determined (e.g. 'override', 'computed', 'om'). */
+  /** Seeder's stored resolved (may be stale for computed aggregates). */
+  storedResolved: number | null;
+  /** How the resolved value was determined (e.g. 'override', 'computed', 'agent', 'seeded'). */
   resolution: string | null;
-  /** Source label (e.g. 'operator_override', 'computed', 'om'). */
+  /** Source label (e.g. 'operator_override', 'computed', 'agent', 'om'). */
   source: string | null;
   /**
-   * When the resolved value is an Engine A aggregate, this describes the formula.
+   * For computed aggregates: describes the formula.
    * E.g. 'egi - total_opex' for noi.
    */
   computedAs?: string;
 }
 
-// ── Aggregate field definitions ───────────────────────────────────────────────
+// ── Field name whitelist ──────────────────────────────────────────────────────
+//
+// All year1 LayeredValue keys that may be requested via getFieldValue.
+// Any field NOT in this set returns null without hitting the DB.
+// Add new fields here when new LayeredValue keys are introduced to year1.
 
-/**
- * Fields whose canonical value is Engine A's formula result, NOT the stored
- * .resolved. For each field we declare which seed keys are summed/subtracted.
- */
-const COMPUTED_AGGREGATES: Record<string, { formula: string; deps: string[] }> = {
+const ALLOWED_FIELDS = new Set([
+  // Revenue leaf fields
+  'gpr', 'vacancy', 'concessions', 'bad_debt', 'non_revenue_units',
+  'loss_to_lease', 'other_income',
+  // Revenue aggregates
+  'net_rental_income', 'egi',
+  // Operating expense leaf fields
+  'real_estate_tax', 'insurance', 'management_fee', 'repairs_maintenance',
+  'utilities', 'payroll', 'administrative', 'marketing', 'contract_services',
+  // Operating expense aggregates
+  'total_opex',
+  // NOI & derived
+  'noi', 'noi_after_reserves', 'replacement_reserves',
+  // Capital & deal fields
+  'purchase_price', 'equity_at_close', 'loan_amount', 'interest_rate',
+  'ltc_pct', 'exit_cap', 'rent_growth_yr1', 'hold_period_years',
+  // Dependency alt keys
+  'year1_noi',
+]);
+
+// ── Aggregate field definitions ───────────────────────────────────────────────
+//
+// Fields whose canonical value is Engine A's formula result.
+// deps: all year1 keys needed by the formula.
+// compute: receives a map of dep field → resolved numeric value (already de-NaN'd).
+// Engine A rounds NOI to whole dollars (avoids JSONB float noise). We preserve
+// that rounding here for byte-for-byte parity with Pro Forma output.
+
+type AggDef = {
+  formula: string;
+  deps: string[];
+  compute: (vals: Record<string, number>) => number;
+};
+
+const COMPUTED_AGGREGATES: Record<string, AggDef> = {
   noi: {
     formula: 'egi - total_opex',
     deps: ['egi', 'total_opex'],
+    compute: ({ egi, total_opex }) => Math.round(egi - total_opex),
   },
   noi_after_reserves: {
-    formula: 'noi - replacement_reserves',
-    deps: ['noi', 'replacement_reserves'],
+    // Dependencies expanded to avoid reading stale noi.resolved:
+    // canonical noi = egi - total_opex, then subtract reserves.
+    formula: '(egi - total_opex) - replacement_reserves',
+    deps: ['egi', 'total_opex', 'replacement_reserves'],
+    compute: ({ egi, total_opex, replacement_reserves }) =>
+      Math.round((egi - total_opex) - replacement_reserves),
   },
 };
 
@@ -100,9 +144,58 @@ function extractNum(v: unknown): number | null {
   return isNaN(n) ? null : n;
 }
 
-function lvResolved(lv: Record<string, unknown> | null): number | null {
-  if (!lv) return null;
-  return extractNum(lv.resolved);
+/** Parse a raw JSONB blob returned by pg into a record, safely. */
+function parseLv(raw: unknown): Record<string, unknown> | null {
+  if (raw == null) return null;
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  return null;
+}
+
+/**
+ * Apply the layered resolution chain to a single parsed LayeredValue blob
+ * plus any pre-computed Engine A value.
+ *
+ * Resolution priority:
+ *   override > computed (Engine A) > agent > storedResolved
+ */
+function resolveLayeredValue(
+  lv: Record<string, unknown>,
+  computedValue: number | null,
+  computedFormula: string | undefined,
+): Pick<LayeredFieldValue, 'resolved' | 'resolution' | 'source'> {
+  const override      = extractNum(lv.override);
+  const agent         = extractNum(lv.agent);
+  const storedResolved = extractNum(lv.resolved);
+  const storedSource  = typeof lv.source === 'string' ? lv.source : null;
+  const storedRes     = typeof lv.resolution === 'string' ? lv.resolution : null;
+
+  // Start with the seeder's stored best value
+  let resolved: number | null = storedResolved;
+  let resolution: string | null = storedRes;
+  let source: string | null = storedSource;
+
+  // Agent layer overrides seeder's stored value
+  if (agent != null) {
+    resolved   = agent;
+    resolution = 'agent';
+    source     = 'agent';
+  }
+
+  // Engine A computed overrides agent (unless operator override present)
+  if (computedValue != null && override == null) {
+    resolved   = computedValue;
+    resolution = 'computed';
+    source     = 'computed';
+  }
+
+  // Operator override is always final winner
+  if (override != null) {
+    resolved   = override;
+    resolution = 'override';
+    source     = 'operator_override';
+  }
+
+  return { resolved, resolution, source };
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -113,12 +206,12 @@ function lvResolved(lv: Record<string, unknown> | null): number | null {
  *
  * @param pool       Active pg Pool
  * @param dealId     Deal UUID
- * @param fieldName  Key in deal_assumptions.year1 JSONB (e.g. 'noi', 'egi',
- *                   'replacement_reserves', 'exit_cap')
+ * @param fieldName  Key in deal_assumptions.year1 JSONB.
+ *                   Must be in ALLOWED_FIELDS — unknown names return null.
  * @param year       Year index — currently only year=1 is supported.
  * @param options
- *   raw: true — skip Engine A formula; return the stored resolved value directly.
- *               Use only for debugging or seeder comparisons.
+ *   raw: true — skip Engine A formula. Returns seeder's stored resolved value.
+ *               Use only for debugging or seeder regression comparisons.
  */
 export async function getFieldValue(
   pool: Pool,
@@ -127,18 +220,20 @@ export async function getFieldValue(
   year: number = 1,
   options?: { raw?: boolean },
 ): Promise<LayeredFieldValue | null> {
-  // Determine which dependency fields we need alongside the primary field
-  const aggDef = !options?.raw ? COMPUTED_AGGREGATES[fieldName] : undefined;
-  const depCols = aggDef
-    ? aggDef.deps
-        .map(dep => `, da.year1->'${dep}' AS dep_${dep.replace(/-/g, '_')}`)
-        .join('')
-    : '';
+  if (!ALLOWED_FIELDS.has(fieldName)) return null;
+
+  const aggDef: AggDef | undefined = !options?.raw ? COMPUTED_AGGREGATES[fieldName] : undefined;
+
+  // Collect all field keys we need to fetch (primary + aggregate deps)
+  const allKeys = new Set<string>([fieldName]);
+  if (aggDef) aggDef.deps.forEach(d => allKeys.add(d));
+
+  const colExpressions = [...allKeys]
+    .map(k => `da.year1->'${k}' AS lv_${k.replace(/-/g, '_')}`)
+    .join(',\n      ');
 
   const sql = `
-    SELECT
-      da.year1->'${fieldName}' AS field_lv
-      ${depCols}
+    SELECT ${colExpressions}
     FROM deal_assumptions da
     WHERE da.deal_id = $1::uuid
     LIMIT 1
@@ -148,59 +243,48 @@ export async function getFieldValue(
   if (res.rows.length === 0) return null;
 
   const row = res.rows[0];
-  if (row.field_lv == null) return null;
+  const primaryKey = `lv_${fieldName.replace(/-/g, '_')}`;
+  const lv = parseLv(row[primaryKey]);
+  if (!lv) return null;
 
-  // Parse the primary LayeredValue JSONB blob
-  const lv: Record<string, unknown> =
-    typeof row.field_lv === 'object' ? (row.field_lv as Record<string, unknown>) : {};
-
-  const override = extractNum(lv.override);
-  const agent    = extractNum(lv.agent);
-  const t12      = extractNum(lv.t12);
-  const om       = extractNum(lv.om);
-  const broker   = extractNum(lv.broker);
+  const override      = extractNum(lv.override);
+  const agent         = extractNum(lv.agent);
+  const t12           = extractNum(lv.t12);
+  const om            = extractNum(lv.om);
+  const broker        = extractNum(lv.broker);
   const storedResolved = extractNum(lv.resolved);
 
-  let resolved: number | null = storedResolved;
+  // Compute Engine A formula if applicable
+  let computedValue: number | null = null;
   let computedAs: string | undefined;
-  let resolution = typeof lv.resolution === 'string' ? lv.resolution : null;
-  let source     = typeof lv.source     === 'string' ? lv.source     : null;
-
-  // ── Engine A formula (overrides stored .resolved when no operator override) ─
   if (aggDef && override == null) {
-    const depValues = aggDef.deps.map(dep => {
-      const key = `dep_${dep.replace(/-/g, '_')}`;
-      const depLv: Record<string, unknown> | null =
-        typeof row[key] === 'object' ? (row[key] as Record<string, unknown>) : null;
-      return lvResolved(depLv);
-    });
-
-    // Only apply formula when all dependencies are non-null
-    if (depValues.every(v => v != null)) {
-      const [a, b] = depValues as [number, number];
-      resolved   = Math.round(a - b);
-      computedAs = aggDef.formula;
-      resolution = 'computed';
-      source     = 'computed';
+    const depVals: Record<string, number> = {};
+    let allDepsPresent = true;
+    for (const dep of aggDef.deps) {
+      const depLv = parseLv(row[`lv_${dep.replace(/-/g, '_')}`]);
+      const depResolved = extractNum(depLv?.resolved);
+      if (depResolved == null) { allDepsPresent = false; break; }
+      depVals[dep] = depResolved;
+    }
+    if (allDepsPresent) {
+      computedValue = aggDef.compute(depVals);
+      computedAs    = aggDef.formula;
     }
   }
 
-  // ── Operator override always wins (highest priority) ──────────────────────
-  if (override != null) {
-    resolved   = override;
-    resolution = 'override';
-    source     = 'operator_override';
-  }
+  const { resolved, resolution, source } = resolveLayeredValue(lv, computedValue, computedAs);
 
   return {
     fieldName,
     year,
     resolved,
     override,
+    computedValue,
     agent,
     t12,
     om,
     broker,
+    storedResolved,
     resolution,
     source,
     computedAs,
@@ -211,6 +295,7 @@ export async function getFieldValue(
  * getFieldValues — batch variant; resolves multiple fields in a single query.
  *
  * Returns a map of fieldName → LayeredFieldValue | null.
+ * Fields not in ALLOWED_FIELDS are silently mapped to null.
  * Useful when a surface needs several fields from the same deal row.
  */
 export async function getFieldValues(
@@ -220,22 +305,30 @@ export async function getFieldValues(
   year: number = 1,
   options?: { raw?: boolean },
 ): Promise<Record<string, LayeredFieldValue | null>> {
-  // Collect all dep fields we'll need
-  const allFields = new Set(fieldNames);
+  // Filter to allowed fields only
+  const safeNames = fieldNames.filter(f => ALLOWED_FIELDS.has(f));
+  const unsafeNames = fieldNames.filter(f => !ALLOWED_FIELDS.has(f));
+
+  // Initialise nulls for unknown / unsafe fields
+  const result: Record<string, LayeredFieldValue | null> = {};
+  for (const f of unsafeNames) result[f] = null;
+
+  if (safeNames.length === 0) return result;
+
+  // Collect all dep fields we'll need alongside the requested fields
+  const allKeys = new Set<string>(safeNames);
   if (!options?.raw) {
-    for (const f of fieldNames) {
-      const agg = COMPUTED_AGGREGATES[f];
-      if (agg) agg.deps.forEach(d => allFields.add(d));
+    for (const f of safeNames) {
+      COMPUTED_AGGREGATES[f]?.deps.forEach(d => allKeys.add(d));
     }
   }
 
-  const cols = [...allFields]
-    .map(f => `da.year1->'${f}' AS lv_${f.replace(/-/g, '_')}`)
+  const colExpressions = [...allKeys]
+    .map(k => `da.year1->'${k}' AS lv_${k.replace(/-/g, '_')}`)
     .join(',\n      ');
 
   const sql = `
-    SELECT
-      ${cols}
+    SELECT ${colExpressions}
     FROM deal_assumptions da
     WHERE da.deal_id = $1::uuid
     LIMIT 1
@@ -243,53 +336,50 @@ export async function getFieldValues(
 
   const res = await pool.query(sql, [dealId]);
   if (res.rows.length === 0) {
-    return Object.fromEntries(fieldNames.map(f => [f, null]));
+    for (const f of safeNames) result[f] = null;
+    return result;
   }
 
   const row = res.rows[0];
 
-  const getLv = (f: string): Record<string, unknown> | null => {
-    const key = `lv_${f.replace(/-/g, '_')}`;
-    return typeof row[key] === 'object' ? (row[key] as Record<string, unknown>) : null;
-  };
+  const getLv = (f: string): Record<string, unknown> | null =>
+    parseLv(row[`lv_${f.replace(/-/g, '_')}`]);
 
-  const result: Record<string, LayeredFieldValue | null> = {};
-
-  for (const fieldName of fieldNames) {
+  for (const fieldName of safeNames) {
     const lv = getLv(fieldName);
     if (!lv) { result[fieldName] = null; continue; }
 
-    const override = extractNum(lv.override);
-    const agent    = extractNum(lv.agent);
-    const t12      = extractNum(lv.t12);
-    const om       = extractNum(lv.om);
-    const broker   = extractNum(lv.broker);
+    const override      = extractNum(lv.override);
+    const agent         = extractNum(lv.agent);
+    const t12           = extractNum(lv.t12);
+    const om            = extractNum(lv.om);
+    const broker        = extractNum(lv.broker);
     const storedResolved = extractNum(lv.resolved);
 
-    let resolved: number | null = storedResolved;
+    let computedValue: number | null = null;
     let computedAs: string | undefined;
-    let resolution = typeof lv.resolution === 'string' ? lv.resolution : null;
-    let source     = typeof lv.source     === 'string' ? lv.source     : null;
+    const aggDef: AggDef | undefined = !options?.raw ? COMPUTED_AGGREGATES[fieldName] : undefined;
 
-    const aggDef = !options?.raw ? COMPUTED_AGGREGATES[fieldName] : undefined;
     if (aggDef && override == null) {
-      const depValues = aggDef.deps.map(dep => lvResolved(getLv(dep)));
-      if (depValues.every(v => v != null)) {
-        const [a, b] = depValues as [number, number];
-        resolved   = Math.round(a - b);
-        computedAs = aggDef.formula;
-        resolution = 'computed';
-        source     = 'computed';
+      const depVals: Record<string, number> = {};
+      let allDepsPresent = true;
+      for (const dep of aggDef.deps) {
+        const depResolved = extractNum(getLv(dep)?.resolved);
+        if (depResolved == null) { allDepsPresent = false; break; }
+        depVals[dep] = depResolved;
+      }
+      if (allDepsPresent) {
+        computedValue = aggDef.compute(depVals);
+        computedAs    = aggDef.formula;
       }
     }
 
-    if (override != null) {
-      resolved   = override;
-      resolution = 'override';
-      source     = 'operator_override';
-    }
+    const { resolved, resolution, source } = resolveLayeredValue(lv, computedValue, computedAs);
 
-    result[fieldName] = { fieldName, year, resolved, override, agent, t12, om, broker, resolution, source, computedAs };
+    result[fieldName] = {
+      fieldName, year, resolved, override, computedValue, agent,
+      t12, om, broker, storedResolved, resolution, source, computedAs,
+    };
   }
 
   return result;

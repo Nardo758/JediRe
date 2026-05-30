@@ -6,12 +6,12 @@
 
 Every surface in the F9 Financial Engine (Pro Forma, Valuation Grid, Returns, Decision,
 Validation Grid) needs to display the same field values for the same deal. Before this
-convention, surfaces read from different code paths and could show different numbers:
+convention, surfaces read from different code paths and showed different numbers:
 
 | Surface | Old read path |
 |---|---|
 | Pro Forma (Projections/Returns) | `getDealFinancials()` — Engine A computes NOI = EGI − total_opex in memory |
-| Valuation Grid (backend) | `deal_assumptions.year1->'noi'->>'resolved'` raw SQL read (stale seed) |
+| Valuation Grid (backend) | `deal_assumptions.year1->'noi'->>'resolved'` raw SQL JSONB (stale seed) |
 | Validation Grid (frontend) | `f9Financials.assumptions.exitCap ?? ModelAssumptions.disposition.exitCapRate` |
 | Overview Tab | `f9Financials.proforma.year1.find(r => r.field === 'noi').resolved` |
 
@@ -25,14 +25,20 @@ exit cap, or hold period values for the same deal.
 For any backend service that needs a deal field value, import and call `getFieldValue`:
 
 ```typescript
-import { getFieldValue } from '../field-access/get-field-value.service';
+import { getFieldValue, getFieldValues } from '../field-access/get-field-value.service';
 
+// Single field — one DB query
 const noiFv = await getFieldValue(pool, dealId, 'noi', 1);
-const noi   = noiFv?.resolved;  // already Engine A canonical
+const noi   = noiFv?.resolved;  // canonical Engine A value
+
+// Batch — one DB query for multiple fields
+const fvs = await getFieldValues(pool, dealId, ['noi', 'egi', 'exit_cap'], 1);
+const noi    = fvs['noi']?.resolved;
+const exitCap = fvs['exit_cap']?.resolved;
 ```
 
 **Never** read `deal_assumptions.year1[field].resolved` directly from SQL for display.
-Use `getFieldValue` — it runs the Engine A resolution chain at read time.
+`getFieldValue` runs the full resolution chain (see below) at read time.
 
 ### Rule 2 — Frontend: prefer `f9Financials`, fall back only on loading
 
@@ -45,38 +51,36 @@ const exitCap = fin != null
   ? (fin.assumptions?.exitCap ?? null)
   : (assum?.disposition?.exitCapRate ?? null);
 
-// WRONG — `??` can silently pick ModelAssumptions even when fin is loaded
-// and fin.assumptions.exitCap happens to be null (not the same as "not loaded")
+// WRONG — `??` picks ModelAssumptions even when fin is loaded
+// but fin.assumptions.exitCap happens to be null (field not set ≠ engine not loaded)
 const exitCap = fin?.assumptions?.exitCap ?? assum?.disposition?.exitCapRate ?? null;
 ```
 
 The `fin != null` guard means: "Engine A has responded — use its output, even if the
-specific field is null (not set). Only use ModelAssumptions while Engine A is loading."
+specific field is null (= not set). Only fall back to ModelAssumptions while loading."
 
 ### Rule 3 — Computed aggregates: derive, don't read stored `.resolved`
 
 These fields are computed by Engine A from leaf values. Their stored `.resolved` in
-`deal_assumptions.year1` JSONB is set by the seeder (T12 extraction, OM data) and
-may not be updated after assumptions change. Engine A computes them dynamically:
+`deal_assumptions.year1` JSONB is set by the seeder and may be stale after assumptions
+change. Engine A computes them dynamically:
 
 | Field | Engine A formula |
 |---|---|
 | `noi` | `egi − total_opex` |
-| `noi_after_reserves` | `noi − replacement_reserves` |
-| `egi` | `net_rental_income + other_income` |
-| `total_opex` | sum of 7 controllable opex leaf fields |
+| `noi_after_reserves` | `(egi − total_opex) − replacement_reserves` |
 
-`getFieldValue` applies these formulas automatically — no caller needs to know the
-formula. `getFieldValue('noi')` always returns `egi − total_opex` (or the operator
-override if set) regardless of what `.resolved` says in the DB.
+`getFieldValue` applies these formulas automatically and matches Engine A's integer
+rounding (both round to whole dollars via `Math.round`). Callers never need to know
+the formula or worry about rounding parity.
 
 ## Discrepancies Fixed (Task #1541)
 
 | Code | Surface | Description | Fix |
 |---|---|---|---|
-| CF-01 | Valuation Grid | NOI read from stale `year1.noi.resolved` in SQL | `getSubjectProperty()` SQL updated to compute `egi − total_opex` (Rule 3) |
-| CF-02 | Validation Grid | Exit cap dual-source `fin.exitCap ?? assum.exitCapRate` | `fin != null` guard (Rule 2) |
-| CF-03 | Validation Grid | Hold years dual-source `fin.holdYears ?? assum.holdPeriod` | `fin != null` guard (Rule 2) |
+| CF-01 | Valuation Grid | NOI read from stale `year1.noi.resolved` in SQL | `getSubjectProperty()` now calls `getFieldValue('noi')` — canonical Engine A chain |
+| CF-02 | Validation Grid | Exit cap `fin?.exitCap ?? assum?.exitCapRate` | `fin != null` guard (Rule 2) |
+| CF-03 | Validation Grid | Hold years `fin?.holdYears ?? assum?.holdPeriod` | `fin != null` guard (Rule 2) |
 | CF-04 | Validation Grid | Rent growth Y1 dual-source | `fin != null` guard (Rule 2) |
 | CF-05 | Validation Grid | Purchase price dual-source | `fin != null` guard (Rule 2) |
 | CF-06 | Validation Grid | Loan amount / interest rate dual-source | `fin != null` guard (Rule 2) |
@@ -89,28 +93,44 @@ import { getFieldValue, getFieldValues } from
 
 // Single field
 const fv = await getFieldValue(pool, dealId, 'noi', 1);
-// fv.resolved  — canonical value (Engine A formula for aggregates, override wins)
-// fv.override  — operator override layer
-// fv.t12       — T-12 actuals layer
-// fv.computedAs — e.g. 'egi - total_opex' when formula was applied
+// fv.resolved       — canonical value (Rule 3 formula for aggregates, override wins)
+// fv.computedValue  — Engine A formula result (null if field is not a computed aggregate)
+// fv.override       — operator override layer (Layer 1)
+// fv.agent          — agent-written layer (Layer 3)
+// fv.storedResolved — seeder's stored value (may be stale for computed aggregates)
+// fv.t12, fv.om, fv.broker — individual source layers (for audit/display)
+// fv.computedAs     — e.g. 'egi - total_opex' when formula was applied
+// fv.resolution     — 'override' | 'computed' | 'agent' | <seeder source>
+// fv.source         — 'operator_override' | 'computed' | 'agent' | 'om' | 't12' | ...
 
 // Batch (one SQL round-trip)
 const fvs = await getFieldValues(pool, dealId, ['noi', 'egi', 'exit_cap'], 1);
-const noi = fvs['noi']?.resolved;
 
-// Raw (skip formula — for debugging only)
+// Raw (skip formula — for debugging / seeder regression only)
 const rawNoi = await getFieldValue(pool, dealId, 'noi', 1, { raw: true });
 ```
 
 ## Resolution Chain (priority order)
 
 ```
-Operator override (year1[field].override)
-  └─ if none → Engine A formula (for aggregate fields)
-       └─ if not applicable → Agent layer (year1[field].agent)
-            └─ if none → Source layers (t12 / om / broker)
-                 └─ if none → Stored resolved (year1[field].resolved — seeder/stale)
+1. Operator override   (year1[field].override)
+     ↓ if null
+2. Engine A formula    (for noi, noi_after_reserves — computed from seed deps)
+     ↓ if not applicable or deps missing
+3. Agent layer         (year1[field].agent)
+     ↓ if null
+4. Seeder stored resolved (year1[field].resolved — already incorporates
+                           seeder's own t12 > om > broker ordering)
 ```
+
+## Field name safety
+
+`getFieldValue` interpolates field names into JSONB key paths in SQL. To prevent
+injection, all callers must pass names from `ALLOWED_FIELDS` (defined in the service).
+Unknown field names return `null` — no DB error, no exception.
+
+To add a new LayeredValue field to `ALLOWED_FIELDS`, edit:
+`backend/src/services/field-access/get-field-value.service.ts`
 
 ## What NOT to do
 
@@ -121,15 +141,13 @@ da.year1->'noi'->>'resolved'
 // WRONG — dual-source ?? that ignores fin-is-loaded state
 fin?.assumptions?.exitCap ?? assum?.disposition?.exitCapRate
 
-// WRONG — iterating proforma row array to find a field
+// WRONG — iterating proforma row array to find a field value for non-projections use
 f9Financials?.proforma?.year1?.find(r => r.field === 'noi')?.resolved
-// (this is OK in the Projections tab where proforma row rendering is intentional,
-//  but must not be used as a source-of-truth elsewhere)
 ```
 
 ## Future Work (Piece B3)
 
 Engine A write-back: after `getDealFinancials` computes NOI, EGI, total_opex, and
-`noi_after_reserves`, write the computed values back to `deal_assumptions.year1` so
-`getFieldValue` can read them without re-computing. This eliminates the in-SQL
-`egi − total_opex` formula and makes every consumer a simple `.resolved` reader.
+`noi_after_reserves`, write the computed values back to `deal_assumptions.year1` so all
+consumers see the same number without re-running formulas. Until then, `getFieldValue`
+re-runs the formula at read time, which is correct but slightly redundant.
