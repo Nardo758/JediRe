@@ -854,21 +854,24 @@ function DocumentsFilesTab({ dealId, deal }: { dealId: string; deal?: any }) {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const EXTRACTABLE_CATEGORIES = new Set(['financial', 'om', 't12', 'rent_roll', 'tax_bill', 'lease', 'legal', 'insurance', 'environmental']);
+
   const getStatusBadge = (file: any) => {
     const exSt = file.extraction_status;
+    const extractable = EXTRACTABLE_CATEGORIES.has(file.category || '');
     if (exSt === 'done' || exSt === 'completed' || exSt === 'parsed' || file.status === 'final') {
       return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.green + '22', color: BT.text.green, fontFamily: BT.font.mono }}>✓ parsed</span>;
     }
-    if (exSt === 'failed') {
+    if (exSt === 'failed' && extractable) {
       return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.red + '22', color: BT.text.red, fontFamily: BT.font.mono }}>✗ failed</span>;
     }
     if (exSt === 'running' || exSt === 'processing') {
       return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.orange + '22', color: BT.text.orange, fontFamily: BT.font.mono }}>↻ processing</span>;
     }
-    if (exSt === 'skipped') {
+    if (exSt === 'skipped' && extractable) {
       return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.muted + '22', color: BT.text.muted, fontFamily: BT.font.mono }}>– skipped</span>;
     }
-    return <span style={{ fontSize: 8, padding: '1px 4px', background: BT.text.muted + '22', color: BT.text.muted, fontFamily: BT.font.mono }}>⏳ queued</span>;
+    return null;
   };
 
   if (loading) return <LoadingState />;
@@ -1107,8 +1110,9 @@ function DocumentsFilesTab({ dealId, deal }: { dealId: string; deal?: any }) {
               const isModelVersion = f.type === 'model_version';
               const uploadedBy = f.uploaded_by_name || f.uploaded_by || 'unknown';
               const note = f.version_notes || '';
+              const isExtractable = EXTRACTABLE_CATEGORIES.has(f.category || '');
               const extraction = !isModelVersion && (f.extraction_status === 'done' || f.extraction_status === 'completed' || f.extraction_status === 'parsed')
-                ? 'parsed' : !isModelVersion && (f.extraction_status === 'running' || f.extraction_status === 'processing') ? 'processing' : !isModelVersion && f.extraction_status === 'failed' ? 'failed' : null;
+                ? 'parsed' : !isModelVersion && (f.extraction_status === 'running' || f.extraction_status === 'processing') ? 'processing' : !isModelVersion && f.extraction_status === 'failed' && isExtractable ? 'failed' : null;
 
               return (
                 <div key={f.id} style={{
@@ -1132,7 +1136,7 @@ function DocumentsFilesTab({ dealId, deal }: { dealId: string; deal?: any }) {
                       <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>{formatSize(f.size || f.file_size)}</span>
                     )}
                     {getStatusBadge(f)}
-                    {!isModelVersion && f.extraction_status === 'failed' && (
+                    {!isModelVersion && f.extraction_status === 'failed' && isExtractable && (
                       <button
                         onClick={() => retryExtraction(f.id)}
                         disabled={retrying.has(f.id)}

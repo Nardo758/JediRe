@@ -125,9 +125,13 @@ router.post(
         )
       );
 
+      // Categories that benefit from AI extraction. Others (market, other) are generic
+      // uploads where the classifier always fails — skip to avoid misleading 'failed' status.
+      const EXTRACTABLE_CATEGORIES = new Set(['financial', 'om', 't12', 'rent_roll', 'tax_bill', 'lease', 'legal', 'insurance', 'environmental']);
+
       // Fire-and-forget auto-extraction for each freshly uploaded file (Task #320).
       for (const f of uploadedFiles) {
-        if (f && f.id) {
+        if (f && f.id && EXTRACTABLE_CATEGORIES.has(f.category || '')) {
           triggerExtractionInBackground({
             fileId: f.id,
             dealId,
