@@ -65,7 +65,11 @@ export async function requireAuth(
     return requireApiKey(req, res, next);
   }
 
-  const token = extractTokenFromHeader(req.headers.authorization);
+  // Accept Bearer header OR ?token= query param (used by direct browser downloads)
+  const token =
+    extractTokenFromHeader(req.headers.authorization) ||
+    (req.query?.token as string | undefined) ||
+    null;
 
   if (!token) {
     res.status(401).json({

@@ -5,7 +5,8 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { authMiddleware } from '../../middleware/auth';
+import { authMiddleware, AuthenticatedRequest } from '../../middleware/auth';
+import { verifyAccessToken, extractTokenFromHeader } from '../../auth/jwt';
 import { documentsFilesService } from '../../services/documentsFiles.service';
 import { query as dbQuery } from '../../database/connection';
 import { logger } from '../../utils/logger';
@@ -33,12 +34,33 @@ router.get(
 );
 
 /**
+ * Auth middleware that accepts Bearer header OR ?token= query param.
+ * Used on download routes so browsers can navigate directly without Axios.
+ */
+function downloadAuth(req: Request, res: Response, next: NextFunction): void {
+  const headerToken = extractTokenFromHeader(req.headers.authorization);
+  const queryToken = req.query.token as string | undefined;
+  const raw = headerToken || queryToken;
+  if (!raw) {
+    res.status(401).json({ error: 'Unauthorized', message: 'No token provided' });
+    return;
+  }
+  const payload = verifyAccessToken(raw);
+  if (!payload) {
+    res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired token' });
+    return;
+  }
+  (req as AuthenticatedRequest).user = payload;
+  next();
+}
+
+/**
  * GET /api/v1/submarkets/:submarketId/documents/:fileId/download
- * Download a submarket-scoped document. Auth required; no deal ownership needed.
+ * Download a submarket-scoped document. Accepts Bearer header OR ?token= query param.
  */
 router.get(
   '/submarkets/:submarketId/documents/:fileId/download',
-  authMiddleware.requireAuth,
+  downloadAuth,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { submarketId, fileId } = req.params;
@@ -59,15 +81,14 @@ router.get(
         return res.status(404).json({ success: false, message: 'File not found on disk' });
       }
 
-      res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${encodeURIComponent(file.original_filename)}"`
-      );
-      res.setHeader('Content-Length', String(file.file_size));
-
-      const fileStream = require('fs').createReadStream(file.file_path);
-      fileStream.pipe(res);
+      res.download(file.file_path, file.original_filename, (err) => {
+        if (err) {
+          logger.error('Error streaming submarket file download:', { message: err.message, headersSent: res.headersSent });
+          if (!res.headersSent) {
+            res.status(500).json({ success: false, message: 'Download failed' });
+          }
+        }
+      });
     } catch (error) {
       logger.error('Error downloading submarket document:', error);
       next(error);

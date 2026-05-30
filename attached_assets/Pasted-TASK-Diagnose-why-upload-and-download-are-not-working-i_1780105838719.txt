@@ -1,0 +1,172 @@
+TASK: Diagnose why upload and download are not working in the Document Library.
+PURE DIAGNOSIS. NO FIXES. Report empirical evidence, not assumptions.
+
+RULES
+- Do not read specs, design docs, or CLAUDE.md to infer what should happen.
+  Look at what the system actually does when exercised.
+- Do not edit any source file.
+- Do not propose a fix in this run. Only diagnose. A separate dispatch will fix.
+- If you find yourself reasoning "the code looks like it should work" — stop.
+  Run the actual call. Read the actual response.
+
+═══════════════════════════════════════════════════════════════════════════
+STEP 0 — STATE CHECK (3 min)
+═══════════════════════════════════════════════════════════════════════════
+
+0A. What branch is checked out? git branch --show-current
+0B. git log --oneline -10  — what are the most recent commits?
+0C. Has the prior "download + delete" PR merged? Look for commits matching
+    "document" or "library" or "download" in the last 20.
+0D. Is the dev server running? Check the workflow status. If not, start it
+    and capture the startup logs. Note any errors at boot.
+
+Report: branch, recent commits, whether the prior fix actually landed, and
+any boot errors.
+
+═══════════════════════════════════════════════════════════════════════════
+STEP 1 — INSTRUMENT THE STACK (5 min)
+═══════════════════════════════════════════════════════════════════════════
+
+1A. Find the auth token. Read frontend/src/services/api.client.ts to see where
+    it pulls from (probably localStorage.auth_token). Get a valid token by
+    either:
+       (a) checking the dev seed users in jedire/backend/scripts/ or
+       (b) hitting POST /api/v1/auth/login with a seed user
+    Report the token (truncate to last 8 chars in the audit doc).
+
+1B. Find one real deal ID. SELECT id, status, submarket_id FROM deals LIMIT 5.
+    Report the deal IDs and a submarket ID for STEP 3.
+
+1C. Tail the backend logs. In a separate shell or by reading the workflow
+    output, get ready to capture every request that hits the server during
+    STEP 2 and STEP 3.
+
+═══════════════════════════════════════════════════════════════════════════
+STEP 2 — REPRODUCE UPLOAD (10 min)
+═══════════════════════════════════════════════════════════════════════════
+
+Do NOT use the browser. Use curl to exactly replicate what the frontend POSTs.
+This bypasses every layer of frontend confusion and tests the actual contract.
+
+2A. Read the FilesSection.tsx upload handler. Find the exact fetch/api call.
+    Note:
+       - HTTP method
+       - Full URL path
+       - Headers (Content-Type, Authorization)
+       - Body shape (FormData? JSON? multipart field name?)
+    Cite the lines.
+
+2B. Reproduce exactly with curl. Use a real file:
+       echo "test content" > /tmp/test-upload.txt
+       curl -v -X <METHOD> \
+         -H "Authorization: Bearer <TOKEN>" \
+         <HEADERS_FROM_2A> \
+         <BODY_SHAPE_FROM_2A> \
+         http://localhost:<PORT>/<PATH>
+    Capture the full response — status code, headers, body.
+
+2C. Same moment, capture the backend log line(s) for this request. Look for:
+       - Did the request hit the route? (express logs the path)
+       - Did it reach the controller? (any console.log or req-id traces)
+       - Did it reach the service?
+       - Did it write to storage?
+       - Did it INSERT into data_library_files?
+       - Did anything throw?
+
+2D. After the request: query the DB.
+       SELECT id, file_name, deal_id, submarket_id, storage_path, deleted_at,
+              created_at FROM data_library_files ORDER BY created_at DESC LIMIT 3;
+    Did a row appear? With what columns populated?
+
+2E. Did the file actually land in storage? If S3: list the bucket prefix. If
+    local disk: ls the upload directory. Compare to storage_path from the row.
+
+CATEGORIZE the failure:
+   [ ] Route 404 — frontend path doesn't match backend mount
+   [ ] Route 401/403 — auth middleware rejects
+   [ ] Route 400 — body shape wrong, multer field name mismatch, etc.
+   [ ] Route 500 — backend exception, capture the stack trace
+   [ ] Route 200 but no DB row — service swallows error or commits to wrong table
+   [ ] Route 200 + DB row but no storage file — storage write failed silently
+   [ ] Route 200 + DB row + file — backend works, problem is purely frontend rendering
+
+═══════════════════════════════════════════════════════════════════════════
+STEP 3 — REPRODUCE DOWNLOAD (10 min)
+═══════════════════════════════════════════════════════════════════════════
+
+3A. Pick the file ID from STEP 2D (or any existing row in data_library_files).
+
+3B. Read the download handler in FilesSection.tsx (or shared DocumentList if
+    refactored). Note the exact request shape — same fields as 2A.
+
+3C. Curl it:
+       curl -v -X <METHOD> \
+         -H "Authorization: Bearer <TOKEN>" \
+         http://localhost:<PORT>/<PATH>/<FILE_ID>/<download_path>
+    Full response — status, headers, body.
+
+3D. Tail backend logs for this request. Same questions as 2C: which layer did
+    it reach, did it throw?
+
+3E. If the response was supposed to be a signed URL — was the URL well-formed?
+    Did curl that URL too:
+       curl -v "<SIGNED_URL>"
+    What did it return? S3 SignatureDoesNotMatch? AccessDenied? Or the file?
+
+3F. If the response was supposed to be raw bytes — did Content-Type and
+    Content-Disposition headers come back correctly?
+
+CATEGORIZE the failure (same buckets as STEP 2, plus):
+   [ ] Endpoint returns URL but URL is invalid/expired/wrong bucket
+   [ ] Endpoint returns bytes but Content-Disposition missing — browser opens
+       inline instead of downloading
+   [ ] Endpoint 404 — file_id route never registered
+   [ ] Endpoint expects different param than frontend sends
+
+═══════════════════════════════════════════════════════════════════════════
+STEP 4 — CROSS-CHECK SUBMARKET DOCUMENTS (5 min)
+═══════════════════════════════════════════════════════════════════════════
+
+Repeat STEP 2 and STEP 3 against the submarket documents endpoints (the new
+surface). Same curl pattern, different URL prefix
+(/api/v1/submarkets/:submarketId/documents).
+
+Report whether failures are the SAME on both surfaces or DIFFERENT.
+   - SAME → the bug is in the shared service or storage layer
+   - DIFFERENT → the bug is in surface-specific routing or handler wiring
+
+═══════════════════════════════════════════════════════════════════════════
+STEP 5 — REPORT
+═══════════════════════════════════════════════════════════════════════════
+
+Write /tmp/upload-download-diagnosis.md with this exact structure:
+
+   # Document Library Diagnosis
+
+   ## State
+   - Branch:
+   - Last 5 commits:
+   - Prior fix merged: yes / no / partial — explain
+
+   ## Upload Failure Mode
+   - Endpoint hit: <METHOD> <PATH>
+   - Curl status: <code>
+   - Curl response body: <first 500 chars>
+   - Backend log excerpt: <relevant lines>
+   - DB state after: <row appeared / no row>
+   - Storage state after: <file present / absent>
+   - Category: <from STEP 2 checkboxes>
+   - Root cause hypothesis: <one sentence>
+
+   ## Download Failure Mode
+   <same structure as Upload>
+
+   ## Submarket Documents Comparison
+   - Same as deal docs / Different — explain
+
+   ## Recommended Fix Surface
+   - Backend route / Backend service / Storage adapter / Frontend handler /
+     Frontend API client / Schema migration / Other
+   - One sentence why.
+
+STOP. Post the diagnosis. Do not write a fix.

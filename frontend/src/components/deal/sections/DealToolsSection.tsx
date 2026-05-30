@@ -692,15 +692,7 @@ function DocumentsFilesTab({ dealId, deal }: { dealId: string; deal?: any }) {
       const fetched = fileRes.data?.files || [];
       setFiles(fetched);
 
-      // Fetch submarket-scoped Market Documents if a submarket is assigned
-      if (submarketId) {
-        try {
-          const mktRes = await apiClient.get(`/api/v1/submarkets/${submarketId}/documents`);
-          setMarketFiles(mktRes.data?.files || []);
-        } catch {
-          setMarketFiles([]);
-        }
-      }
+      // Market Documents are deal files with category='market' — no separate submarket fetch needed
 
       // Fetch model version history
       let fetchedVersions: any[] = [];
@@ -824,23 +816,17 @@ function DocumentsFilesTab({ dealId, deal }: { dealId: string; deal?: any }) {
     await fetchAll();
   };
 
-  const downloadFile = async (fileId: string, filename: string, isMarket = false) => {
-    const endpoint = isMarket && submarketId
+  const downloadFile = (fileId: string, filename: string, isMarket = false) => {
+    const token = localStorage.getItem('auth_token') || '';
+    const base = isMarket && submarketId
       ? `/api/v1/submarkets/${submarketId}/documents/${fileId}/download`
       : `/api/v1/deals/${dealId}/files/${fileId}/download`;
-    try {
-      const res = await apiClient.get(endpoint, { responseType: 'blob' });
-      const url = URL.createObjectURL(new Blob([res.data]));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Failed to download file:', err);
-      setDocToast({ msg: 'Download failed. Please try again.', type: 'error' });
-      setTimeout(() => setDocToast(null), 6000);
-    }
+    const link = document.createElement('a');
+    link.href = `${base}?token=${encodeURIComponent(token)}`;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   const deleteFile = async (fileId: string, filename: string, isMarket = false) => {
@@ -888,9 +874,7 @@ function DocumentsFilesTab({ dealId, deal }: { dealId: string; deal?: any }) {
   if (loading) return <LoadingState />;
 
   const filesByCategory = (catId: string) =>
-    catId === 'market'
-      ? marketFiles
-      : files.filter(f => (f.category || 'financial') === catId);
+    files.filter(f => (f.category || 'financial') === catId);
 
   const totalFiles = files.length;
 

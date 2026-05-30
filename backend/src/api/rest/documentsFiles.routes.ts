@@ -4,7 +4,8 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { authMiddleware } from '../../middleware/auth';
+import { authMiddleware, AuthenticatedRequest } from '../../middleware/auth';
+import { verifyAccessToken, extractTokenFromHeader } from '../../auth/jwt';
 import { documentsFilesService } from '../../services/documentsFiles.service';
 import { triggerExtractionInBackground } from '../../services/document-extraction/auto-extract-on-upload';
 import { query as dbQuery } from '../../database/connection';
@@ -395,12 +396,35 @@ router.get(
 );
 
 /**
+ * Auth middleware that accepts Bearer header OR ?token= query param.
+ * Used exclusively on download routes so browsers can navigate directly
+ * to the URL without needing Axios to set a header.
+ */
+function downloadAuth(req: Request, res: Response, next: NextFunction): void {
+  const headerToken = extractTokenFromHeader(req.headers.authorization);
+  const queryToken = req.query.token as string | undefined;
+  const raw = headerToken || queryToken;
+  if (!raw) {
+    res.status(401).json({ error: 'Unauthorized', message: 'No token provided' });
+    return;
+  }
+  const payload = verifyAccessToken(raw);
+  if (!payload) {
+    res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired token' });
+    return;
+  }
+  (req as AuthenticatedRequest).user = payload;
+  next();
+}
+
+/**
  * GET /api/v1/deals/:dealId/files/:fileId/download
- * Download a file
+ * Download a file. Accepts Bearer header OR ?token= query param so the browser
+ * can trigger a native download via <a href="...?token=..."> without Axios.
  */
 router.get(
   '/deals/:dealId/files/:fileId/download',
-  authMiddleware.requireAuth,
+  downloadAuth,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { dealId, fileId } = req.params;
@@ -428,9 +452,11 @@ router.get(
 
       // Stream file using Express res.download (handles headers, streaming, and errors)
       res.download(filePath, file.original_filename, (err) => {
-        if (err && !res.headersSent) {
-          logger.error('Error streaming file download:', err);
-          res.status(500).json({ success: false, message: 'Download failed' });
+        if (err) {
+          logger.error('Error streaming file download:', { message: err.message, headersSent: res.headersSent });
+          if (!res.headersSent) {
+            res.status(500).json({ success: false, message: 'Download failed' });
+          }
         }
       });
     } catch (error) {

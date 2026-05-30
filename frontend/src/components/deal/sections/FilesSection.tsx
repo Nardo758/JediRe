@@ -353,26 +353,15 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
     }
   };
 
-  const handleDownloadFile = async (fileId: string, filename: string) => {
+  const handleDownloadFile = (fileId: string, filename: string) => {
     if (!dealId) return;
-    try {
-      const response = await apiClient.get(
-        `/api/v1/deals/${dealId}/files/${fileId}/download`,
-        { responseType: 'blob' }
-      );
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', filename);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err: any) {
-      console.error('Download failed:', err);
-      setError('Download failed. Please try again.');
-      setTimeout(() => setError(null), 6000);
-    }
+    const token = localStorage.getItem('auth_token') || '';
+    const link = document.createElement('a');
+    link.href = `/api/v1/deals/${dealId}/files/${fileId}/download?token=${encodeURIComponent(token)}`;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   const stats: FileStats[] = liveStats || [];
