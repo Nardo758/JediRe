@@ -792,6 +792,10 @@ export function ReturnsTab({ f9Financials, onTabChange, dealId, onF9Refresh, pla
           hurdle={irrHurdle} actual={ret?.gpCoInvestIrr ?? null} baseColor={BT.text.orange}
         />
         <HeroTile
+          label="GP EQUITY MULTIPLE" value={fmtEm(ret?.gpCoInvestEm ?? null)}
+          hurdle={emHurdle} actual={ret?.gpCoInvestEm ?? null} isX baseColor={BT.text.orange}
+        />
+        <HeroTile
           label="AVG CASH-ON-CASH" value={fmtIrr(ret?.avgCashOnCash ?? null)}
           hurdle={cocHurdle} actual={ret?.avgCashOnCash ?? null} baseColor={BT.text.purple}
         />
