@@ -874,6 +874,8 @@ export default function PropertyDetailsPage() {
   const [realData, setRealData] = useState<any>(null);
   const [loadingReal, setLoadingReal] = useState(false);
   const [realError, setRealError] = useState<string | null>(null);
+  const [marketComps, setMarketComps] = useState<any>(null);
+  const [marketCompsLoading, setMarketCompsLoading] = useState(false);
 
   const navState = (location.state || {}) as {
     propertyName?: string;
@@ -905,6 +907,24 @@ export default function PropertyDetailsPage() {
       })
       .finally(() => {
         if (!cancelled) setLoadingReal(false);
+      });
+    return () => { cancelled = true; };
+  }, [id]);
+
+  useEffect(() => {
+    if (!id || !UUID_RE.test(id)) return;
+    let cancelled = false;
+    setMarketCompsLoading(true);
+    apiClient
+      .get(`/api/v1/comps/property/${id}/market-comps`)
+      .then((res: any) => {
+        if (!cancelled) setMarketComps(res?.data ?? res);
+      })
+      .catch(() => {
+        if (!cancelled) setMarketComps(null);
+      })
+      .finally(() => {
+        if (!cancelled) setMarketCompsLoading(false);
       });
     return () => { cancelled = true; };
   }, [id]);
@@ -1995,19 +2015,102 @@ export default function PropertyDetailsPage() {
   // ─── COMPS TAB ───────────────────────────────────────────
   const CompsTab = () => {
     const unitTypes = ["Studio", "1BR/1BA", "2BR/2BA", "3BR/2BA"];
+
+    const safeFloat = (v: any): number => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
+    const normOcc = (v: any): number => { const n = safeFloat(v); return n > 0 && n <= 1 ? n * 100 : n; };
+    const normConc = (v: any): number => { const n = safeFloat(v); return n > 0 && n <= 1 ? n * 100 : n; };
+    const normCap = (v: any): number => { const n = safeFloat(v); return n > 1 ? n / 100 : n; };
+
+    const buildRentComps = (): Array<any> => {
+      if (!marketComps) return p.rentComps.map((c: any) => ({ ...c, _source: 'mock' }));
+      const dealRows = (marketComps.rentComps?.deal || []).map((r: any) => ({
+        name: r.property_name || r.address || '—',
+        units: r.units || 0,
+        rent: Math.round(safeFloat(r.avg_asking_rent)),
+        dist: '—',
+        class: r.asset_class || '—',
+        occ: normOcc(r.occupancy_pct),
+        yearBuilt: r.year_built || 0,
+        stories: 0,
+        concessions: normConc(r.concession_pct),
+        monthlyTraffic: 0,
+        unitMix: [],
+        _source: 'costar',
+        _asOf: r.data_as_of || r.snapshot_date,
+      }));
+      const platformRows = (marketComps.rentComps?.platform || []).map((r: any) => ({
+        name: r.property_name || r.address || '—',
+        units: r.units || 0,
+        rent: Math.round(safeFloat(r.avg_asking_rent)),
+        dist: '—',
+        class: r.asset_class || '—',
+        occ: normOcc(r.occupancy_pct),
+        yearBuilt: r.year_built || 0,
+        stories: 0,
+        concessions: normConc(r.concession_pct),
+        monthlyTraffic: 0,
+        unitMix: [],
+        _source: 'platform',
+        _asOf: r.data_as_of || r.snapshot_date,
+      }));
+      const merged = [...dealRows, ...platformRows];
+      return merged.length > 0 ? merged : p.rentComps.map((c: any) => ({ ...c, _source: 'mock' }));
+    };
+
+    const buildSaleComps = (): Array<any> => {
+      if (!marketComps) return p.saleComps.map((c: any) => ({ ...c, _source: 'mock' }));
+      const dealRows = (marketComps.saleComps?.deal || []).map((r: any) => {
+        const units = r.units || 1;
+        const sp = safeFloat(r.sale_price);
+        const ppu = r.price_per_unit ? Math.round(safeFloat(r.price_per_unit)) : (units > 0 ? Math.round(sp / units) : 0);
+        return { name: r.property_name || r.address || '—', units: r.units || 0, ppu, capRate: normCap(r.cap_rate), date: r.sale_date ? String(r.sale_date).slice(0, 7) : '—', dist: '—', _source: 'costar' };
+      });
+      const platformRows = (marketComps.saleComps?.platform || []).map((r: any) => {
+        const units = r.units || 1;
+        const sp = safeFloat(r.sale_price);
+        const ppu = r.price_per_unit ? Math.round(safeFloat(r.price_per_unit)) : (units > 0 ? Math.round(sp / units) : 0);
+        return { name: r.property_name || r.address || '—', units: r.units || 0, ppu, capRate: normCap(r.cap_rate), date: r.sale_date ? String(r.sale_date).slice(0, 7) : '—', dist: '—', _source: 'platform' };
+      });
+      const merged = [...dealRows, ...platformRows];
+      return merged.length > 0 ? merged : p.saleComps.map((c: any) => ({ ...c, _source: 'mock' }));
+    };
+
+    const realRentComps = buildRentComps();
+    const realSaleComps = buildSaleComps();
+
+    const SrcBadge = ({ src }: { src: string }) => {
+      if (src === 'costar') return <span style={{ fontSize: 6, background: '#f97316', color: '#fff', borderRadius: 2, padding: '1px 3px', fontWeight: 700, letterSpacing: '0.04em' }}>CoStar</span>;
+      if (src === 'platform') return <span style={{ fontSize: 6, background: '#334155', color: '#94a3b8', borderRadius: 2, padding: '1px 3px', fontWeight: 600 }}>Platform</span>;
+      return <span style={{ fontSize: 6, color: T.text.muted }}>—</span>;
+    };
+
+    const hasNoDealComps = marketComps && !marketComps.hasDealComps && marketComps.dealId;
+
     return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8, animation: "fadeIn 0.15s" }}>
+      {/* Upload prompt — shown when a deal is linked but no CoStar files have been uploaded */}
+      {hasNoDealComps && (
+        <div style={{ background: '#451a03', border: '1px solid #f97316', borderRadius: 2, padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <span style={{ fontSize: 8, fontFamily: T.font.mono, color: '#f97316', fontWeight: 700, letterSpacing: '0.08em' }}>NO COSTAR DATA UPLOADED</span>
+            <span style={{ fontSize: 8, fontFamily: T.font.mono, color: '#fdba74', marginLeft: 8 }}>Platform comps shown below — upload a CoStar export to add deal-specific rent &amp; sale comps</span>
+          </div>
+          {marketComps.dealId && (
+            <a href={`/deals/${marketComps.dealId}/detail?tab=documents`} style={{ fontSize: 7, fontFamily: T.font.mono, color: '#f97316', textDecoration: 'none', border: '1px solid #f97316', borderRadius: 2, padding: '2px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>UPLOAD →</a>
+          )}
+        </div>
+      )}
       {/* Rent Comps — Full Width Expanded */}
       <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-        <SectionHeader title="RENT COMPS" subtitle="M05 · Trade Area" icon="≡" borderColor={T.text.cyan} />
+        <SectionHeader title="RENT COMPS" subtitle={marketComps ? `M05 · ${marketComps.submarket || 'Submarket'}` : "M05 · Trade Area"} icon="≡" borderColor={T.text.cyan} />
         <div style={{ fontSize: 8, fontFamily: T.font.mono, overflowX: "auto" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 36px 52px 36px 38px 34px 34px 38px 44px 36px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, minWidth: 520 }}>
-            {["PROPERTY","UNITS","RENT","OCC","CLASS","YR","STR","CONC","TRAFFIC","DIST"].map(h => (
+          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 36px 52px 36px 38px 34px 34px 38px 44px 36px 46px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, minWidth: 560 }}>
+            {["PROPERTY","UNITS","RENT","OCC","CLASS","YR","STR","CONC","TRAFFIC","DIST","SRC"].map(h => (
               <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
             ))}
           </div>
           {/* Subject row */}
-          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 36px 52px 36px 38px 34px 34px 38px 44px 36px", padding: "4px 8px", borderBottom: `1px solid ${T.text.amber}40`, background: `${T.text.amber}08`, minWidth: 520 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 36px 52px 36px 38px 34px 34px 38px 44px 36px 46px", padding: "4px 8px", borderBottom: `1px solid ${T.text.amber}40`, background: `${T.text.amber}08`, minWidth: 560 }}>
             <span style={{ color: T.text.amber, fontWeight: 700 }}>SUBJECT</span>
             <span style={{ color: T.text.amber }}>{p.units}</span>
             <span style={{ color: T.text.amber, fontWeight: 700 }}>${p.avgEffectiveRent.toLocaleString()}</span>
@@ -2018,19 +2121,21 @@ export default function PropertyDetailsPage() {
             <span style={{ color: T.text.amber }}>{pct(p.concessionValue)}</span>
             <span style={{ color: T.text.amber }}>{(p.monthlyTraffic/1000).toFixed(1)}k</span>
             <span style={{ color: T.text.amber }}>—</span>
+            <span style={{ color: T.text.amber }}>—</span>
           </div>
-          {p.rentComps.map((c, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.1fr 36px 52px 36px 38px 34px 34px 38px 44px 36px", padding: "4px 8px", borderBottom: `1px solid ${T.border.subtle}08`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt, minWidth: 520 }}>
+          {realRentComps.map((c: any, i: number) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.1fr 36px 52px 36px 38px 34px 34px 38px 44px 36px 46px", padding: "4px 8px", borderBottom: `1px solid ${T.border.subtle}08`, background: c._source === 'costar' ? `${T.text.orange}06` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt), minWidth: 560 }}>
               <span style={{ color: T.text.primary, fontWeight: 500 }}>{c.name}</span>
-              <span style={{ color: T.text.secondary }}>{c.units}</span>
-              <span style={{ color: c.rent > p.avgEffectiveRent ? T.text.green : T.text.red, fontWeight: 600 }}>${c.rent.toLocaleString()}</span>
-              <span style={{ color: T.text.secondary }}>{pct(c.occ)}</span>
-              <span style={{ color: T.text.secondary }}>{c.class}</span>
-              <span style={{ color: T.text.secondary }}>{c.yearBuilt}</span>
-              <span style={{ color: T.text.secondary }}>{c.stories}</span>
-              <span style={{ color: c.concessions > p.concessionValue ? T.text.red : T.text.green }}>{pct(c.concessions)}</span>
-              <span style={{ color: T.text.secondary }}>{(c.monthlyTraffic/1000).toFixed(1)}k</span>
+              <span style={{ color: T.text.secondary }}>{c.units || '—'}</span>
+              <span style={{ color: c.rent > p.avgEffectiveRent ? T.text.green : T.text.red, fontWeight: 600 }}>{c.rent ? `$${c.rent.toLocaleString()}` : '—'}</span>
+              <span style={{ color: T.text.secondary }}>{c.occ ? pct(c.occ) : '—'}</span>
+              <span style={{ color: T.text.secondary }}>{c.class || '—'}</span>
+              <span style={{ color: T.text.secondary }}>{c.yearBuilt || '—'}</span>
+              <span style={{ color: T.text.secondary }}>{c.stories || '—'}</span>
+              <span style={{ color: c.concessions > p.concessionValue ? T.text.red : T.text.green }}>{c.concessions ? pct(c.concessions) : '—'}</span>
+              <span style={{ color: T.text.secondary }}>{c.monthlyTraffic ? `${(c.monthlyTraffic/1000).toFixed(1)}k` : '—'}</span>
               <span style={{ color: T.text.muted }}>{c.dist}</span>
+              <span><SrcBadge src={c._source} /></span>
             </div>
           ))}
           <div style={{ padding: "6px 8px", background: T.bg.panelAlt, display: "flex", gap: 12 }}>
@@ -2113,31 +2218,36 @@ export default function PropertyDetailsPage() {
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
           <SectionHeader title="SALE COMPS" subtitle="M27 · Recent Transactions" icon="◈" borderColor={T.text.green} />
           <div style={{ fontSize: 8, fontFamily: T.font.mono }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 60px 48px 48px 44px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
-              {["PROPERTY","UNITS","$/UNIT","CAP","DATE","DIST"].map(h => (
+            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 60px 48px 48px 44px 46px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
+              {["PROPERTY","UNITS","$/UNIT","CAP","DATE","DIST","SRC"].map(h => (
                 <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
               ))}
             </div>
-            {p.saleComps.map((c, i) => (
-              <div key={i} style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 60px 48px 48px 44px", padding: "5px 8px", borderBottom: `1px solid ${T.border.subtle}08`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt }}>
+            {realSaleComps.length === 0 ? (
+              <div style={{ padding: "16px 8px", textAlign: "center", color: T.text.muted, fontSize: 8 }}>No sale comps available</div>
+            ) : realSaleComps.map((c: any, i: number) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 60px 48px 48px 44px 46px", padding: "5px 8px", borderBottom: `1px solid ${T.border.subtle}08`, background: c._source === 'costar' ? `${T.text.orange}06` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt) }}>
                 <span style={{ color: T.text.primary, fontWeight: 500 }}>{c.name}</span>
-                <span style={{ color: T.text.secondary }}>{c.units}</span>
-                <span style={{ color: T.text.green, fontWeight: 600 }}>${c.ppu.toLocaleString()}</span>
-                <span style={{ color: T.text.cyan }}>{pct(c.capRate)}</span>
+                <span style={{ color: T.text.secondary }}>{c.units || '—'}</span>
+                <span style={{ color: T.text.green, fontWeight: 600 }}>{c.ppu ? `$${c.ppu.toLocaleString()}` : '—'}</span>
+                <span style={{ color: T.text.cyan }}>{c.capRate ? pct(c.capRate) : '—'}</span>
                 <span style={{ color: T.text.secondary }}>{c.date}</span>
                 <span style={{ color: T.text.muted }}>{c.dist}</span>
+                <span><SrcBadge src={c._source} /></span>
               </div>
             ))}
-            <div style={{ padding: "6px 8px", background: T.bg.panelAlt }}>
-              <span style={{ color: T.text.muted, fontSize: 7 }}>MEDIAN $/UNIT:</span>
-              <span style={{ color: T.text.green, marginLeft: 4, fontWeight: 600 }}>
-                ${p.saleComps.sort((a, b) => a.ppu - b.ppu)[Math.floor(p.saleComps.length / 2)].ppu.toLocaleString()}
-              </span>
-              <span style={{ color: T.text.muted, marginLeft: 8, fontSize: 7 }}>MEDIAN CAP:</span>
-              <span style={{ color: T.text.cyan, marginLeft: 4, fontWeight: 600 }}>
-                {pct(p.saleComps.sort((a, b) => a.capRate - b.capRate)[Math.floor(p.saleComps.length / 2)].capRate)}
-              </span>
-            </div>
+            {realSaleComps.length > 0 && (() => {
+              const withPpu = realSaleComps.filter((c: any) => c.ppu > 0);
+              const withCap = realSaleComps.filter((c: any) => c.capRate > 0);
+              const medPpu = withPpu.length > 0 ? [...withPpu].sort((a: any, b: any) => a.ppu - b.ppu)[Math.floor(withPpu.length / 2)].ppu : null;
+              const medCap = withCap.length > 0 ? [...withCap].sort((a: any, b: any) => a.capRate - b.capRate)[Math.floor(withCap.length / 2)].capRate : null;
+              return (
+                <div style={{ padding: "6px 8px", background: T.bg.panelAlt }}>
+                  {medPpu != null && <><span style={{ color: T.text.muted, fontSize: 7 }}>MEDIAN $/UNIT:</span><span style={{ color: T.text.green, marginLeft: 4, fontWeight: 600 }}>${medPpu.toLocaleString()}</span></>}
+                  {medCap != null && <><span style={{ color: T.text.muted, marginLeft: 8, fontSize: 7 }}>MEDIAN CAP:</span><span style={{ color: T.text.cyan, marginLeft: 4, fontWeight: 600 }}>{pct(medCap)}</span></>}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
