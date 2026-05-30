@@ -1,0 +1,96 @@
+Solid audit. Three real findings, one of which is genuinely important.
+
+On the critical finding (1C — routing architecture):
+
+The existing schema (Migration 20260629 + 20260630) was built by 
+someone before this dispatch was drafted. Before picking Option A, 
+B, or C, two things need investigation:
+
+1. Why did the prior task build costar_submarket_stats and the 
+   data_as_of/source_labels columns on market_sale_comps/market_rent_comps? 
+   Was there a specific reason — operational urgency, reader 
+   dependency, schema constraint — or just path of least resistance? 
+   Check git log / PR history for migration 20260629 + 20260630 
+   commit context. If the reasoning is documented, surface it.
+
+2. The dispatch's out-of-scope flag #5 already noted this question 
+   was deferred ("Flow of corpus rows into property_sales / 
+   property_operating_data in the property refactor's Phase 2 
+   backfills"). The audit forced it to surface. So this needs an 
+   operator decision, not a code decision.
+
+Before locking the routing, consider Option D (not in the original 
+three):
+
+Option D — Forward-only routing:
+- DataTable.xlsx → historical_observations corpus + costar_submarket_stats 
+  (both — corpus for the long-term observation record, costar_submarket_stats 
+  for the existing reader integration if any)
+- Near By Sales → historical_observations corpus + property_sales when 
+  CoStar PID can be resolved to JEDI property_id (skip market_sale_comps 
+  entirely — it's slated for deprecation per the property refactor)
+- Rent Comps → historical_observations corpus + property_operating_data 
+  when CoStar PID resolvable (skip market_rent_comps entirely)
+- CoStar PID without JEDI mapping: write corpus row only, defer the 
+  property_sales/operating_data write until mapping is built (the 
+  mapping was already out-of-scope per the original dispatch)
+
+Option D preserves the corpus discipline AND writes forward to the 
+new schema instead of backward to the deprecated tables. It does 
+NOT write to market_sale_comps/market_rent_comps — those are 
+deprecated by the property refactor's Decision 5.
+
+If Option D is technically feasible (depends on whether 
+historical_observations needs the new column migration for 
+comp_for_subject_pid/comp_weight/source_tier), it's architecturally 
+the cleanest. If it requires a migration that's bigger than the 
+dispatch is willing to introduce, then Option A becomes the right 
+answer with the migration scoped explicitly.
+
+Surface to operator: which routing option to pick. The decision 
+affects what data the property refactor's Phase 3 readers find when 
+they migrate.
+
+On Decision 2 (date-skip logic):
+
+Both suffix-match AND future-date check. The current file proved 
+the spec's suffix assumption isn't reliable; defense in depth says 
+check both. Rule: skip if either condition fires. Log in parse 
+output which condition matched per row.
+
+On Decision 3 (Near By / Rent Comp file inspection):
+
+Download them locally and verify column signatures before Phase 2. 
+The DataTable finding already proved spec-assumptions can be wrong; 
+proceeding on faith for two more files compounds the risk. If R2 
+access is a one-time blocker, surface what specifically needs to 
+happen to make the files locally inspectable.
+
+On the 4th CoStar format (DataExport.xlsx):
+
+Correctly surfaced as out-of-scope. Don't expand the dispatch. If 
+the operator confirms they want that format supported, it becomes 
+a separate dispatch with its own audit.
+
+On the strategic context:
+
+The audit's finding that costar_submarket_stats and the existing 
+comp-table columns were built by a prior task is the kind of context 
+this dispatch's "strategic context" section was trying to surface. 
+The work isn't strategy-independent in the way the dispatch claimed — 
+there's a prior architectural commitment in the schema that this 
+dispatch's choices either align with or override. Worth being 
+explicit about which.
+
+REVISED PHASE 2 ENTRY CONDITIONS:
+
+1. Operator picks routing option (A, B, C, or D)
+2. Near By Sales and Rent Comp files inspected locally with column 
+   signatures confirmed
+3. Date-skip logic updated to check both suffix and future-date
+4. Prior task context for migrations 20260629 / 20260630 documented 
+   in audit findings
+
+Once all four conditions met, Phase 2 starts with confidence the 
+implementation aligns with both the dispatch's intent and the 
+platform's prior architectural commitments.
