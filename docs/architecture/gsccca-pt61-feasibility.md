@@ -1,6 +1,6 @@
 # PT-61 / GSCCCA Feasibility Assessment
-**Task #1511 — Georgia Sale Comp Source Strategy**
-**Date:** 2026-05-29 | **Status:** Decision memo — HOLD pending licensing inquiry
+**Task #1511 / #1512 — Georgia Sale Comp Source Strategy**
+**Date:** 2026-05-30 | **Status:** HOLD — Inquiry sent 2026-05-30; awaiting GSCCCA response (follow-up due 2026-06-06)
 
 ---
 
@@ -86,9 +86,29 @@ Option A is preferred if licensing is achievable — it uniquely captures unit c
 
 ---
 
-## Recommendation
+## Outreach Log
 
-**HOLD — initiate licensing inquiry before committing engineering resources.**
+### Inquiry #1 — Dispatched 2026-05-30 | Status: SENT — AWAITING RESPONSE
+
+**Channel:** Email via Resend (ID: `2a123904-dc6e-49b3-a5e7-a01bb10636ae`)
+**To:** data@gsccca.org (primary recipient); forwarded from owner inbox
+**Subject:** PT-61 Bulk Data Licensing Inquiry — Commercial Real Estate Analytics Platform
+**Fallback:** If no reply by 2026-06-06 (5 business days), resubmit via https://www.gsccca.org/contact
+
+**Questions asked:**
+1. Availability — Is a licensed bulk PT-61 data feed available, including historical (2002–present) and ongoing updates?
+2. Field set — Does the feed include: Number of Units, Property Type, Property Description, Parcel ID/GPID, Consideration Amount, Grantor/Grantee, Recording Date, County?
+3. Pricing — Annual cost for statewide coverage? Regional/county-level tier available?
+4. Delivery format — CSV, JSON, SQL dump, SFTP? Update cadence?
+5. Lead time — Time from inquiry to contract execution and first data delivery?
+
+### Response — PENDING
+
+_(Update this section when GSCCCA replies. Record: availability confirmed Y/N, fields included, annual cost, delivery format, lead time. Then apply the decision tree below.)_
+
+---
+
+## Decision Tree & Locked Decision
 
 ```
 Decision tree:
@@ -108,13 +128,12 @@ Decision tree:
       Cobb-only corpus (6,012 comps). Revisit after Phase 5 canary promotion.
 ```
 
-**Immediate next action (1 day effort, no engineering):**
-Contact GSCCCA via `https://www.gsccca.org/contact` or data licensing inquiry to confirm:
-1. Bulk data feed availability for PT-61 records
-2. Field set included (especially "Number of Units" and property type)
-3. Annual licensing cost and contract lead time
+**Current decision: HOLD** _(locked 2026-05-29 — inquiry prepared, awaiting GSCCCA response)_
 
-Until the licensing inquiry returns, no blocking action is required. Canary promotion on Cobb-only (Phase 5, R-009) can proceed independently.
+When response arrives, update this line to one of:
+- `GO — GSCCCA feed confirmed at $[X]/year; PT-61 ingestion service scoped (Task #XXXX)`
+- `FALLBACK — GSCCCA [unavailable / cost $X exceeds budget]; ATTOM quote initiated (Task #XXXX)`
+- `HOLD — [reason]; revisit date: [date]`
 
 ---
 

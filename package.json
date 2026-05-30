@@ -29,5 +29,8 @@
     "stripe-replit-sync": "^1.0.0",
     "xlsx": "^0.18.5",
     "yahoo-finance2": "^3.13.2"
+  },
+  "devDependencies": {
+    "@replit/connectors-sdk": "^0.4.1"
   }
 }
