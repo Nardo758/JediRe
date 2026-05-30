@@ -1,0 +1,58 @@
+Phase 3 verification is excellent work. The column-name bug fixes 
+caught a class of silent failure that wouldn't have surfaced for 
+months otherwise — the "table not yet populated" warnings were 
+masking actual broken queries. That's the kind of finding the 
+audit-first discipline exists for.
+
+The dispatch is closed cleanly:
+- Correlation engine readers (COR-21, COR-24, cap rate) activate ✅
+- COR-22 deferred (separate BLS/FRED ETL) ✅
+- Deal-scoped CoStar overlay panel works ✅
+- F3 primary path remains on fallbacks ⏸
+
+Next dispatch is the submarket mapping service. Scope:
+
+S1 — Define the canonical mapping
+- Take CoStar's "{city} Submarket" naming convention
+- Map to JEDI's submarket UUID system
+- Handle edge cases: name variations, multi-MSA submarkets, 
+  CoStar submarkets that don't have a JEDI equivalent yet
+- Output: a lookup table or service that returns 
+  jedi_submarket_uuid given costar_submarket_name + state
+
+S2 — Update the writer
+- routeCoStarSubmarket() resolves CoStar submarket name → JEDI 
+  UUID before writing
+- If unresolvable: log to ambiguous queue, write with NULL 
+  geography_id, surface for operator review
+- If resolved: store real UUID in costar_market_metrics.geography_id
+
+S3 — Verify F3 sees the data
+- After mapping service ships, upload a DataTable for a known 
+  submarket
+- Confirm SnapshotCaptureService's geography_id = $submarket_uuid 
+  query finds the rows
+- Confirm F3 Markets displays CoStar-derived submarket data 
+  across all deals in that submarket, not just the uploading deal
+
+One scope question worth considering: pair this with the deferred 
+CoStar PID → JEDI property_id mapping. Both are structurally similar 
+(CoStar identifier → JEDI UUID translation). Building them as a 
+single dispatch may be efficient — same architectural pattern, same 
+edge-case handling, same operator review queue for ambiguous matches.
+
+For the operator-facing context: until the mapping service ships, 
+CoStar uploads work deal-by-deal. Operators uploading DataTable.xlsx 
+for Deal A see CoStar signals in that deal's analytical surfaces 
+(correlation engine, deal-scoped CoStar panel) but the data does 
+NOT enrich F3 Markets for Deal B in the same submarket. Each deal 
+needs its own CoStar upload to see CoStar-derived submarket signals.
+
+This is interim, not permanent. The mapping service dispatch closes 
+the gap completely once it ships.
+
+Phase 3 closes here. Next dispatch decision sits with operator: 
+ship the mapping service now (closes F3 gap), or hold for the 
+broader sale-comp acquisition strategy decision (Strategy A/B/C/D 
+still pending — operator-upload vs state-level vs commercial 
+aggregator).
