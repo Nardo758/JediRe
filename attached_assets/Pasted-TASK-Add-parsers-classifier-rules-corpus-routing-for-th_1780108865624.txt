@@ -1,0 +1,348 @@
+TASK: Add parsers + classifier rules + corpus routing for three CoStar export
+file types operators upload to the Document Library. Audit-first, single PR.
+
+THE THREE FILE TYPES
+1. DataTable.xlsx                        — submarket time-series
+2. Near_By_Sales_PID_<pid>.xlsx          — sale comp set for subject PID
+3. Rent_Comp_Properties_PID_<pid>.xlsx   — rent comp set for subject PID
+
+BRANCH
+git checkout -b claude/costar-three-doctypes
+
+REFERENCE
+- HISTORICAL_OBSERVATIONS_SPEC.md §7.3 (document type classification —
+  unified routing). The doctypes COSTAR_SUBMARKET_EXPORT and
+  COSTAR_PROPERTY_EXPORT are already specified there; this dispatch splits
+  COSTAR_PROPERTY_EXPORT into _SALES and _RENTS variants since the column
+  signatures and downstream routing differ.
+
+SAMPLE FILES (operator just uploaded; copy them in as test fixtures)
+- /mnt/user-data/uploads/DataTable.xlsx
+- /mnt/user-data/uploads/Near_By_Sales_PID_9600360.xlsx
+- /mnt/user-data/uploads/Rent_Comp_Properties_PID_9600360.xlsx
+
+Copy to jedire/backend/test/fixtures/costar/ at the start of Phase 2. These
+become the gold-standard fixtures for parser tests. Do not commit any operator
+PII or property identifiers beyond the PID itself, which is CoStar's ID and
+non-sensitive.
+
+═══════════════════════════════════════════════════════════════════════════
+STRATEGIC CONTEXT — READ BEFORE STARTING
+═══════════════════════════════════════════════════════════════════════════
+
+This dispatch operationalizes the operator-upload Layer 2 ingestion path
+per CLAUDE.md P10 (Data Sourcing Hierarchy). The platform's broader
+sale-comp acquisition strategy decision (state-level PT-61/GSCCCA vs
+commercial aggregator vs operator-upload-primary) is deferred per separate
+operator review.
+
+This dispatch's work is strategy-independent: regardless of which acquisition
+strategy is eventually selected, operator-uploaded CoStar files must be
+parsed and ingested. Do not treat this dispatch as committing the platform
+to operator-upload-primary as the canonical strategy.
+
+PROPERTY REFACTOR COUPLING
+
+Output flows to the historical_observations corpus per §7.8, NOT directly
+to market_sale_comps or market_rent_comps. This is intentional — the
+corpus is the long-term destination and survives the property plumbing
+refactor cleanly.
+
+Two known gaps this dispatch does NOT solve:
+
+1. CoStar PID ↔ JEDI property_id mapping is deferred. Until mapping exists,
+   corpus rows have comp_for_subject_pid (raw CoStar PID) but cannot be
+   linked to JEDI properties.id in the unified model.
+
+2. Whether corpus rows ALSO flow through to property_sales /
+   property_operating_data in the property refactor's Phase 2 backfills
+   is an open architectural question. Surface to operator if the audit
+   reveals this matters for Phase 2 implementation.
+
+Neither blocks this dispatch from completing. Flag both as findings if
+encountered.
+
+═══════════════════════════════════════════════════════════════════════════
+PHASE 1 — AUDIT (READ-ONLY, NO EDITS)
+═══════════════════════════════════════════════════════════════════════════
+
+Write /tmp/costar-parser-audit.md with file:line citations.
+
+1A.0 — FILE INVENTORY CHECK (do this BEFORE the classifier audit)
+
+   Inspect the three sample files in /mnt/user-data/uploads/:
+     - DataTable.xlsx
+     - Near_By_Sales_PID_9600360.xlsx
+     - Rent_Comp_Properties_PID_9600360.xlsx
+
+   Confirm these are the file formats described in this dispatch (column
+   headers match the signatures in Phase 2B). If any file's columns diverge
+   from the expected signature, surface this in the audit document and pause
+   before Phase 2 for operator confirmation. Do not adapt the parsers to
+   unknown column structures without explicit operator direction.
+
+   If additional CoStar file types are present in the upload directory beyond
+   these three (e.g., lease comps, listings, market analytics), surface them
+   as out-of-scope findings — do NOT silently expand the parser set.
+
+1A. CLASSIFIER STATE
+   - View backend/src/services/document-extraction/classifier.ts (or
+     extraction-pipeline.ts — find the file that exports classifyDocument()).
+   - List every DocumentType enum value currently recognized.
+   - Does the classifier inspect filename, column headers, or both?
+   - Are COSTAR_SUBMARKET_EXPORT, COSTAR_PROPERTY_EXPORT already in the enum
+     but unimplemented? Cite lines.
+
+1B. EXISTING PARSERS
+   - View backend/src/services/document-extraction/data-router.ts.
+   - List every parser the router currently dispatches to.
+   - Find the closest existing parser to a CoStar Excel export — likely
+     parseT12 or parseRentRoll. Note the function signature pattern (input
+     shape, output shape, error handling).
+
+1C. CORPUS WRITE LAYER
+   - View backend/src/services/historical-observations/ (or wherever the spec
+     §7.8 document-to-corpus.ts is supposed to live). Does it exist? Empty?
+   - Find the table(s) where M1-tier submarket rows and C1-tier comp rows
+     land. Cite the Drizzle schema files.
+   - Is there a redistribution_restricted column on the relevant tables?
+     §7.8 says the migration was planned — has it actually been applied?
+     Check the highest migration in jedire/backend/migrations/.
+
+1D. EXCEL READING
+   - grep -rn "xlsx\|read-excel\|sheetjs\|exceljs" backend/src/services/
+   - What library is in use? ExcelJS, xlsx (SheetJS), node-xlsx? The parsers
+     must use the existing library — don't introduce a new one.
+
+STOP. Post the audit. Wait for human approval before Phase 2.
+
+═══════════════════════════════════════════════════════════════════════════
+PHASE 2 — IMPLEMENTATION (AFTER HUMAN APPROVAL)
+═══════════════════════════════════════════════════════════════════════════
+
+2A. EXTEND THE DOCUMENT TYPE ENUM
+
+   Add to the DocumentType enum (per spec §7.3, split as noted in this dispatch):
+     COSTAR_SUBMARKET_EXPORT   — DataTable.xlsx pattern
+     COSTAR_SALE_COMPS         — Near_By_Sales_PID_*.xlsx pattern
+     COSTAR_RENT_COMPS         — Rent_Comp_Properties_PID_*.xlsx pattern
+
+2B. EXTEND THE CLASSIFIER
+
+   Two-pass classification — filename is cheap, columns are definitive.
+
+   Pass 1 — filename pattern:
+     /^DataTable\.xlsx$/i              → COSTAR_SUBMARKET_EXPORT (provisional)
+     /^Near_?By_?Sales_PID_\d+\.xlsx$/i → COSTAR_SALE_COMPS
+     /^Rent_?Comp_?Properties_PID_\d+\.xlsx$/i → COSTAR_RENT_COMPS
+
+   Pass 2 — column header signature (confirm provisional, or classify when
+   filename was renamed by operator). Read row 1 of sheet 1:
+     COSTAR_SUBMARKET_EXPORT — must contain ALL of:
+       Period, Vacancy Rate, Market Asking Rent/Unit, Market Cap Rate
+     COSTAR_SALE_COMPS — must contain ALL of:
+       Address, Sale Date, Sale Price, Price/Unit, Dist (mi)
+     COSTAR_RENT_COMPS — must contain ALL of:
+       Property Id, % Overlap with Subject Property, Rent/SF, Occ %, Concess %
+
+   If filename matches but columns don't, the file is malformed — return
+   UNKNOWN and surface a user-facing error. Don't silently misclassify.
+
+   Operator override: the upload UI already supports doctype override per
+   spec §7.3. Wire these three new types into the override dropdown.
+
+2C. PARSER 1 — parseCoStarSubmarket()
+
+   Input: Buffer | filepath. Output: array of M1-tier rows ready for corpus.
+
+   Per-row logic for DataTable.xlsx:
+   - Parse Period column. Three shapes to recognize:
+       "2024 Q3"        → historical (load)
+       "2026 Q2 EST"    → forecast (SKIP — these are projections, not observations)
+       "2026 Q2 QTD"    → partial quarter (SKIP — incomplete data)
+     Only historical complete-quarter rows become corpus observations. EST/QTD
+     rows are noted in the parse log but not written.
+   - Convert "-" in numeric columns to NULL, not 0. Affects: Under Constr,
+     12 Mo Sales Vol, 12 Mo Sales Vol Growth, Cap Rate.
+   - Growth rate columns are already decimals (0.0875 = 8.75%). Do not
+     re-divide by 100.
+   - Submarket identity: this export carries no submarket name in the data.
+     The upload UI must capture submarket_id at upload time. Parser signature
+     takes submarketId as a required parameter; throw if missing.
+   - Output row shape (per spec §7.8):
+       { observation_date: YYYY-MM-DD (quarter-end),
+         geography_level: 'submarket',
+         submarket_id,
+         source_tier: 'M1',
+         source: 'CoStar',
+         redistribution_restricted: true,
+         payload: { vacancy_rate, asking_rent_per_unit, ... } }
+
+2D. PARSER 2 — parseCoStarSaleComps()
+
+   Per-row logic for Near_By_Sales_PID_<pid>.xlsx:
+   - Subject PID parsed from filename (regex group). All comps in this file
+     are comps FOR this subject PID.
+   - Sale Date format: "Jun 2024" — parse with %b %Y; day defaults to
+     first of month. If empty, skip row with warning.
+   - Sale Price and Price/Unit can have commas; strip before parsing.
+   - Cap Rate often blank — load as NULL.
+   - Yr Blt/Renov format: split on "/". Examples:
+       "2017"        → year_built=2017, year_renovated=NULL
+       "2017/-"      → year_built=2017, year_renovated=NULL
+       "1925/2024"   → year_built=1925, year_renovated=2024
+   - Submarket column populated per row — use directly.
+   - Output row shape:
+       { observation_date: <sale date>,
+         geography_level: 'parcel',
+         event_subtype: 'sale',
+         comp_for_subject_pid: 9600360,
+         source_tier: 'C1',
+         source: 'CoStar',
+         redistribution_restricted: true,
+         payload: { address, name, units, sale_price, price_per_unit,
+                    price_per_sf, cap_rate, distance_mi, year_built,
+                    year_renovated, submarket } }
+
+2E. PARSER 3 — parseCoStarRentComps()
+
+   Per-row logic for Rent_Comp_Properties_PID_<pid>.xlsx:
+   - Row 1 (where Map # = "-") is the SUBJECT property. Property Id in row 1
+     matches the PID from the filename. Subject row is parsed but flagged:
+       payload.is_subject = true
+   - Subsequent rows are comps. Map # is the CoStar-assigned comp number.
+   - Per-bedroom rent columns (Studio, 1 Beds, 2 Beds, 3 Beds) often have "-"
+     when a property doesn't have that bedroom type. Treat as NULL.
+   - Unit counts per bedroom type (#Studio, #1 Beds, #2 Beds, #3 Beds): when
+     zero, write 0 (not NULL — zero means the property has no studios, which
+     is information).
+   - "% Overlap with Subject Property" — preserve as comp_weight (already
+     0–1 scale; row 1 self-overlap = 1).
+   - Occ % and Concess % — already decimals (0.914, 0.115). Do not re-divide.
+   - Output row shape:
+       { observation_date: <upload date>,  // snapshot date of the export
+         geography_level: 'parcel',
+         comp_for_subject_pid: 9600360,
+         comp_weight: <% Overlap>,
+         source_tier: 'C1',
+         source: 'CoStar',
+         redistribution_restricted: true,
+         payload: { property_id, building_name, address, units, stories,
+                    year_built, year_renovated, avg_sf, distance_mi,
+                    rent_per_sf, rent_per_unit, rent_studio, rent_1br,
+                    rent_2br, rent_3br, occ_pct, concession_pct,
+                    unit_count_studio, unit_count_1br, unit_count_2br,
+                    unit_count_3br, ad_level, views_60d, overlap_pct,
+                    neighborhood, is_subject } }
+
+2F. ROUTE FROM CLASSIFIER → PARSER → CORPUS
+
+   Edit backend/src/services/document-extraction/data-router.ts:
+     case COSTAR_SUBMARKET_EXPORT: → parseCoStarSubmarket → writeHistoricalObs
+     case COSTAR_SALE_COMPS:       → parseCoStarSaleComps → writeHistoricalObs
+     case COSTAR_RENT_COMPS:       → parseCoStarRentComps → writeHistoricalObs
+
+   writeHistoricalObs is the existing function (or §7.8's planned
+   document-to-corpus.ts entry point). If it doesn't exist yet, this dispatch
+   stubs it as a one-line helper that inserts rows; full implementation is
+   out of scope per §7.8 separate work stream.
+
+2G. TESTS
+
+   For each of the three parsers, one Vitest case using the fixture file:
+     - Loads the fixture
+     - Asserts row count (expected: submarket = N historical quarters
+       excluding EST/QTD, sale comps = 17, rent comps = 14)
+     - Asserts redistribution_restricted = true on every row
+     - Asserts subject row identified in rent comps (is_subject = true,
+       comp_weight = 1)
+     - Asserts EST/QTD rows skipped in submarket parser
+     - Asserts "-" → NULL conversion in numeric columns
+
+═══════════════════════════════════════════════════════════════════════════
+PHASE 3 — VERIFICATION
+═══════════════════════════════════════════════════════════════════════════
+
+   Run each fixture through the full pipeline end-to-end:
+     1. Upload via document library upload endpoint
+     2. Classifier identifies correct DocumentType
+     3. Parser produces expected rows
+     4. Rows land in corpus with redistribution_restricted = true
+     5. Query the corpus and confirm rows are retrievable
+
+   This depends on upload/download working — which is the parallel diagnosis
+   workstream. If that's still broken when you reach Phase 3, fall back to
+   invoking parsers directly via a test harness; full end-to-end verification
+   waits on the upload/download fix.
+
+═══════════════════════════════════════════════════════════════════════════
+OUT OF SCOPE — FILE AS FINDINGS, DON'T IMPLEMENT
+═══════════════════════════════════════════════════════════════════════════
+
+- Other CoStar export shapes (lease comps, listings, Yardi Matrix, etc.)
+- CoStar PID ↔ JEDI property_id mapping table (needed eventually for subject
+  lookup; for now, comp_for_subject_pid stores raw PID)
+- Backfill of historical CoStar exports already in operator's possession
+- The submarket-id-at-upload UX (operator must tag submarket since the file
+  doesn't carry it) — flag for UI work, but parser just throws on missing
+- Flow of corpus rows into property_sales / property_operating_data in the
+  property refactor's Phase 2 backfills — flag as architectural question
+  if the audit reveals it matters for Phase 2 implementation
+
+═══════════════════════════════════════════════════════════════════════════
+GENERAL RULE FOR CLAUDE GOING FORWARD — HOW TO HANDLE OPERATOR-UPLOADED
+FILES OF THIS GENERAL SHAPE
+═══════════════════════════════════════════════════════════════════════════
+
+When an operator uploads any vendor-exported Excel/CSV that isn't yet in the
+classifier:
+
+1. Inspect first. Read sheet names + column headers + first 10 data rows
+   before writing any parser. Don't pattern-match to "looks like a T12" and
+   write code; verify the columns.
+
+2. Identify three things explicitly:
+   - The vendor and file family (CoStar submarket, CoStar property, Yardi
+     Matrix, Berkadia survey, JLL, CBRE, internal rent roll, etc.)
+   - The redistribution license posture (CoStar/Yardi = restricted;
+     operator-internal = unrestricted)
+   - The corpus tier per §7.3 (M1/M2 for market data, C1/C2 for comps)
+
+3. Look for "subject vs comp" markers in the file. CoStar uses Map # = "-"
+   for subject; other vendors use first-row tagging or filename PID. Don't
+   collapse subject and comps into the same shape.
+
+4. Distinguish historical / forecast / partial. Submarket time-series files
+   often interleave actuals with projections (EST) and incomplete current
+   periods (QTD). Only actuals become corpus observations; forecasts and
+   partials are noted but not written.
+
+5. Preserve vendor-specific signal columns. CoStar's % Overlap, Apartments.com
+   Ad Level, Common Views 60d are not noise — they're the vendor's
+   proprietary index values and should ride through to the payload, not be
+   dropped.
+
+6. Empty cells: "-" or "" in vendor exports almost always means NULL, not
+   zero. Conversion is destructive in one direction (NULL → 0 implies
+   knowledge that doesn't exist).
+
+7. File naming patterns are useful but not authoritative. Operators rename
+   files. Always fall through to column-signature validation.
+
+8. Sample files for new vendor doctypes go into
+   jedire/backend/test/fixtures/<vendor>/ as gold-standard. Each parser
+   gets at least one fixture-based test asserting exact row count and
+   redistribution flag.
+
+═══════════════════════════════════════════════════════════════════════════
+PR
+═══════════════════════════════════════════════════════════════════════════
+
+Title: CoStar three-doctype parsers (submarket, sale comps, rent comps)
+
+Description must include:
+- Link to /tmp/costar-parser-audit.md contents
+- Files changed grouped by Classifier / Parsers / Router / Tests / Fixtures
+- Out-of-scope findings filed as separate task IDs
+- Note whether end-to-end verification ran (requires upload working) or
+  parsers-only verification ran
