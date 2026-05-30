@@ -1,0 +1,204 @@
+TASK: Audit the Deal Details capsule end-to-end to map (1) every data 
+field operators see, (2) where each field comes from, and (3) who or 
+what authored its current value. Read-only audit, single output document. 
+No code changes.
+
+CONTEXT
+The platform's central purpose is multi-source market data reconciliation 
+that feeds agent-authored research and operator-facing analytical surfaces. 
+Before building that architecture, we need ground truth on how the current 
+Deal Details capsule actually works — what fields exist, what their data 
+sources are, who authors values, and where the gaps are.
+
+This audit produces the foundation for the next architectural specs 
+(vendor data abstraction, field-level reconciliation, agent synthesis 
+interface). Without this audit, those specs would be drafted against 
+assumed state and require reality-check correction.
+
+═══════════════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════════════
+
+Cover every primary surface inside a single deal's Deal Details capsule. 
+Deal context navigation:
+
+  F1 Overview, F2 Property, F3 Market, F4 Supply, F5 Strategy, 
+  F6 ProForma (includes capital structure sizing), F7 Capital, 
+  F8 Risk, F9 Comps, F10 Traffic, F11 Docs, F12 Exit Strategy / 
+  Debt Markets / Exit Timing (the three-tab structure)
+
+Plus cross-cutting surfaces:
+  - The Validation Grid (per-assumption evidence/source triangulation)
+  - The Valuation Grid (per-method indicated values + reconciliation)
+  - The Document Library (uploaded files, parsing status)
+
+═══════════════════════════════════════════════════════════════════════════
+WHAT TO PRODUCE
+═══════════════════════════════════════════════════════════════════════════
+
+A single document: docs/operations/DEAL_DETAILS_DATA_AUDIT.md
+
+Structure per surface (F1, F2, ..., F12 + cross-cutting):
+
+  SURFACE: F<N> <name>
+  
+  Component breakdown:
+    For each distinct data display or component on this surface, capture:
+    
+    - Field/component name (as operators see it)
+    - Backend service/endpoint that produces it
+    - Source table(s) the service reads from
+    - Author class — one of:
+        AGENT — cashflow agent or research agent generated this value
+        OPERATOR — operator manually entered or uploaded
+        RESEARCH-PULL — automated pull from external API (ArcGIS, FRED, 
+          BLS, county GIS, RentCast, ApartmentIQ, etc.)
+        OPERATOR-UPLOAD — operator uploaded vendor file (CoStar, Yardi, 
+          OM, T12, rent roll, broker package)
+        COMPUTED — deterministic calculation from other fields
+        UNKNOWN — author class can't be determined from code inspection
+    - For multi-source fields: list ALL sources that could populate this 
+      field; note which is current authority (if any)
+    - Freshness indicator status — is there a visible as-of date?
+    - Gap status — one of:
+        POPULATED (field has current data)
+        SPARSELY POPULATED (some deals have it, most don't)
+        EMPTY (field exists but no rows / null across deals)
+        BROKEN (field exists but read path is wrong; e.g., column-name 
+          mismatch like the costar_market_metrics queries had)
+        MISSING (operator-visible label with no backend field at all — 
+          UI placeholder)
+
+═══════════════════════════════════════════════════════════════════════════
+INVESTIGATION METHOD
+═══════════════════════════════════════════════════════════════════════════
+
+For each surface, work through this sequence:
+
+1. Identify the UI component file (frontend/src/components/deal/... or similar)
+2. Trace its data props back to the API endpoint(s) it calls
+3. Find the service implementation behind each endpoint
+4. Identify the SQL query or service call inside
+5. Identify the source table(s) being read
+6. Sample the source table for one of the live deals (e.g., 464 Bishop, 
+   or any Atlanta deal in the database) — is the field populated?
+7. Trace backward: what writes to this source table? Is it the cashflow 
+   agent? The research agent? An ingestion pipeline? An operator-upload 
+   parser? Unknown?
+
+Use 464 Bishop or a comparable live deal as the test subject throughout — 
+checking against a real deal grounds the audit in actual state rather 
+than schema-implied possibilities.
+
+═══════════════════════════════════════════════════════════════════════════
+SPECIFIC FINDINGS TO SURFACE
+═══════════════════════════════════════════════════════════════════════════
+
+In addition to the per-surface breakdown, explicitly call out:
+
+1. FIELDS THE AGENT AUTHORS BUT SHOULDN'T
+   Per the calc-vs-assumption boundary (JEDI_RE_F9_CALCULATIONS_VS_ASSUMPTIONS.md), 
+   the cashflow agent should only write Layer 2 assumptions, never Layer 1 
+   calculations. Where does the agent currently write calculated fields 
+   (NOI, IRR, EM, DSCR, EGR, total OpEx)? This is the AI-Compute audit 
+   surfaced in real code, not in the abstract instrument.
+
+2. FIELDS THE AGENT SHOULD AUTHOR BUT DOESN'T
+   Where is the agent silent on a Layer 2 assumption that it should be 
+   reasoning? Where does the platform fall back to "operator must enter" 
+   when agent reasoning would be appropriate?
+
+3. FIELDS WITH NO CURRENT AUTHOR
+   Fields the operator sees with placeholder/empty values where no writer 
+   exists. UI shows a label, backend has nothing. (Like F1 dashboard 
+   would have surfaced for "submarket vacancy" if costar_market_metrics 
+   was empty AND no other source filled it.)
+
+4. FIELDS WITH MULTI-SOURCE CONFLICT POTENTIAL
+   Fields that have multiple potential sources where the resolution logic 
+   is unclear or broken. (Like vacancy could come from CoStar upload, 
+   ApartmentIQ pull, or operator T12 — which wins? Is the precedence rule 
+   in code, or is it accidental based on which writer ran most recently?)
+
+5. FRESHNESS COVERAGE
+   Per the F-key triage's Wave A (FreshnessIndicator component), which 
+   fields currently display as-of dates? Which should but don't? List 
+   them.
+
+6. CROSS-CUTTING DATA DEPENDENCIES
+   Where does one F-key's data feed another? (E.g., F4 Supply data feeds 
+   F12 Exit Timing; F10 Traffic data feeds F6 ProForma's absorption 
+   assumption; F3 Market cap rate feeds F9 Comps.) Document these flows.
+
+7. PROPERTY REFACTOR COUPLING
+   Per the property plumbing refactor, which fields read from tables that 
+   are slated for deprecation (market_sale_comps, market_rent_comps, 
+   comp_properties, the old properties columns)? These are the readers 
+   that need migration in Phase 3 of the refactor.
+
+═══════════════════════════════════════════════════════════════════════════
+OUT OF SCOPE — DON'T DO IN THIS AUDIT
+═══════════════════════════════════════════════════════════════════════════
+
+- Don't recommend fixes or architectural changes. This is observation 
+  only.
+- Don't audit modules outside the Deal Details capsule (portfolio-level 
+  surfaces, settings, etc.)
+- Don't deep-dive on a single field's history; describe current state
+- Don't speculate about why something is the way it is; just document 
+  what it is
+
+═══════════════════════════════════════════════════════════════════════════
+SCOPE EXPECTATION
+═══════════════════════════════════════════════════════════════════════════
+
+This audit is intentionally wider than a single-feature Phase 1 audit. 
+It covers 12+ F-keys plus cross-cutting surfaces. Don't compress it into 
+a 1-2 day window — it deserves the time to be done well. If a surface 
+turns out to have significantly more components than expected, expand 
+the audit scope and surface the expansion in the report rather than 
+truncating.
+
+If you encounter a component that requires deep investigation to understand 
+(e.g., a service with complex multi-source resolution logic), document 
+what you found and flag for follow-up rather than trying to fully untangle 
+it in this audit.
+
+═══════════════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════════════
+
+docs/operations/DEAL_DETAILS_DATA_AUDIT.md
+
+Structure:
+1. Executive summary
+   - Per-surface gap count (POPULATED / SPARSE / EMPTY / BROKEN / MISSING)
+   - Author class distribution (agent-authored, operator-authored, 
+     research-pulled, etc.)
+   - Top 10 critical findings (broken read paths, missing authors, 
+     multi-source conflicts)
+2. Per-surface breakdown (F1 through F12 + cross-cutting)
+3. Specific findings sections (1-7 above)
+4. Test deal verification — which deal(s) you used as ground truth, 
+   what their current population state is per surface
+5. Suggested next audit / spec work that this audit's findings imply
+
+This document becomes the foundation for the next architectural specs 
+(vendor data abstraction, field-level reconciliation, agent synthesis 
+interface). Those specs cannot be drafted accurately until this audit 
+produces ground truth on current state.
+
+═══════════════════════════════════════════════════════════════════════════
+PR
+═══════════════════════════════════════════════════════════════════════════
+
+Branch: claude/deal-details-data-audit
+PR title: Deal Details data audit — author, source, and gap mapping
+Description: Link to the audit document. Note this is a read-only 
+investigation; no production code changes. List the test deal(s) used. 
+Flag any surfaces where the audit could not be completed and why.
+
+Per CLAUDE.md P8: every "current state" claim in the audit must be 
+verified against live state (database queries, code inspection, deal 
+record inspection), not inferred from documentation. Where documentation 
+and live state diverge, live state is authoritative.
