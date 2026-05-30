@@ -89,6 +89,7 @@ import type { DevelopmentPath } from '../types/zoning.types';
 import { EventHeroBanner } from '../components/m35/EventHeroBanner';
 import type { HeroBannerEvent, EventSensitivity } from '../components/m35/EventHeroBanner';
 import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
+import { CompletenesBadge } from '../components/deal/CompletenesBadge';
 import api from '../services/api';
 
 interface DealTab extends Tab {
@@ -1222,6 +1223,13 @@ const DealDetailPage: React.FC = () => {
 
                 return null;
               })()}
+              {/* Deal Completeness Badge — C1 Framework */}
+              {!isRecipient && effectiveDealId && (
+                <>
+                  <span style={{ color: BORDER, margin: '0 8px', fontSize: 10 }}>│</span>
+                  <CompletenesBadge dealId={effectiveDealId} />
+                </>
+              )}
               {deal.jedi_score != null && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, marginLeft: 10 }}>
                   <span style={{ color: AMBER, fontSize: 9, fontWeight: 700, letterSpacing: 0.3 }}>
