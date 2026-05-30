@@ -17,7 +17,16 @@ import * as XLSX from 'xlsx';
 import { vendorRegistry } from '../../vendor-registry';
 
 // ── Parsers under test ────────────────────────────────────────────────────────
-import { parseYardiRentSurvey, parseYardiSupplyPipeline, parseDate } from '../yardi-matrix-parser';
+import {
+  parseYardiRentSurvey,
+  parseYardiSupplyPipeline,
+  parseDate,
+  writeYardiRentSurveyRows,
+  upsertYardiHistoricalObservations,
+  writeYardiSupplyRows,
+  type YardiRentSurveyRow,
+  type YardiSupplyRow,
+} from '../yardi-matrix-parser';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -366,6 +375,80 @@ describe('Abstraction proof — classifier.ts untouched verification', () => {
   it('YARDI_MATRIX_SUPPLY_PIPELINE has a vendorParser function registered', () => {
     const match = vendorRegistry.getVendorByDocType('YARDI_MATRIX_SUPPLY_PIPELINE');
     expect(typeof match?.fileType.vendorParser).toBe('function');
+  });
+});
+
+describe('Corpus write proof — writeYardiRentSurveyRows + upsertYardiHistoricalObservations', () => {
+  function makeRentRow(overrides: Partial<YardiRentSurveyRow> = {}): YardiRentSurveyRow {
+    return {
+      id:                    'test-uuid-1',
+      deal_id:               'deal-uuid-1',
+      submarket:             'Buckhead',
+      metro:                 'Atlanta',
+      state:                 'GA',
+      period_date:           '2025-12-31',
+      avg_asking_rent:       1985,
+      avg_effective_rent:    1910,
+      occupancy_rate:        92.4,
+      concession_value_mo:   75,
+      total_inventory_units: 8420,
+      new_supply_units:      312,
+      net_absorption_units:  288,
+      yardi_matrix_id:       'YM-ATL-001',
+      source:                'yardi_matrix',
+      file_id:               'file-123',
+      data_as_of:            '2025-12-31',
+      ...overrides,
+    };
+  }
+
+  it('writeYardiRentSurveyRows calls INSERT INTO yardi_matrix_rent_survey', async () => {
+    const capturedTables: string[] = [];
+    const mockQuery = async (sql: string) => {
+      const m = sql.match(/INSERT INTO (\w+)/i);
+      if (m) capturedTables.push(m[1]);
+    };
+    await writeYardiRentSurveyRows(mockQuery, [makeRentRow()]);
+    expect(capturedTables).toContain('yardi_matrix_rent_survey');
+    expect(capturedTables).not.toContain('historical_observations');
+  });
+
+  it('upsertYardiHistoricalObservations calls INSERT INTO historical_observations', async () => {
+    const capturedTables: string[] = [];
+    const mockQuery = async (sql: string) => {
+      const m = sql.match(/INSERT INTO (\w+)/i);
+      if (m) capturedTables.push(m[1]);
+    };
+    await upsertYardiHistoricalObservations(mockQuery, [makeRentRow()]);
+    expect(capturedTables).toContain('historical_observations');
+  });
+
+  it('historical_observations insert passes vendor_source="yardi_matrix" as param', async () => {
+    let capturedParams: unknown[] = [];
+    const mockQuery = async (_sql: string, params?: unknown[]) => {
+      capturedParams = params ?? [];
+    };
+    await upsertYardiHistoricalObservations(mockQuery, [makeRentRow()]);
+    expect(capturedParams).toContain('yardi_matrix');
+  });
+
+  it('historical_observations insert passes vendor_license_posture="platform_only"', async () => {
+    let capturedParams: unknown[] = [];
+    const mockQuery = async (_sql: string, params?: unknown[]) => {
+      capturedParams = params ?? [];
+    };
+    await upsertYardiHistoricalObservations(mockQuery, [makeRentRow()]);
+    expect(capturedParams).toContain('platform_only');
+  });
+
+  it('vacancy_rate is correctly computed as 100 - occupancy_rate (92.4 occ → 7.6 vacancy)', async () => {
+    let capturedParams: unknown[] = [];
+    const mockQuery = async (_sql: string, params?: unknown[]) => {
+      capturedParams = params ?? [];
+    };
+    await upsertYardiHistoricalObservations(mockQuery, [makeRentRow({ occupancy_rate: 92.4 })]);
+    const vacancyParam = capturedParams.find(p => typeof p === 'number' && (p as number) > 7 && (p as number) < 8);
+    expect(vacancyParam).toBeCloseTo(7.6, 1);
   });
 });
 

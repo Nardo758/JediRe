@@ -368,6 +368,86 @@ export async function writeYardiRentSurveyRows(
   return { inserted, errors: writeErrors };
 }
 
+// ── Cross-vendor corpus write ─────────────────────────────────────────────────
+//
+// Upserts Yardi Matrix rent survey rows into `historical_observations` — the
+// cross-vendor substrate. Writes:
+//   - observation_date     ← period_date
+//   - geography_level      ← 'submarket'
+//   - submarket_avg_asking_rent  ← avg_asking_rent
+//   - submarket_avg_effective_rent ← avg_effective_rent
+//   - submarket_vacancy_rate     ← 100 - occupancy_rate  (vacancy = 1 - occ)
+//   - vendor_source        ← 'yardi_matrix'
+//   - vendor_license_posture ← 'platform_only'
+//   - vendor_data_as_of    ← data_as_of
+//   - market_survey_source ← 'yardi_matrix'
+//   - market_survey_snapshot ← full row serialised as JSONB
+//   - deal_id              ← deal_id (if scoped to a deal)
+//
+// ON CONFLICT DO NOTHING keeps this safe to re-run.
+
+export async function upsertYardiHistoricalObservations(
+  queryFn: QueryFn,
+  rows:    YardiRentSurveyRow[],
+): Promise<{ inserted: number; errors: number }> {
+  if (rows.length === 0) return { inserted: 0, errors: 0 };
+
+  let inserted = 0;
+  let writeErrors = 0;
+
+  for (const row of rows) {
+    const vacancyRate =
+      row.occupancy_rate != null ? parseFloat((100 - row.occupancy_rate).toFixed(3)) : null;
+
+    const snapshot = JSON.stringify({
+      submarket:             row.submarket,
+      metro:                 row.metro,
+      state:                 row.state,
+      avg_asking_rent:       row.avg_asking_rent,
+      avg_effective_rent:    row.avg_effective_rent,
+      occupancy_rate:        row.occupancy_rate,
+      concession_value_mo:   row.concession_value_mo,
+      total_inventory_units: row.total_inventory_units,
+      new_supply_units:      row.new_supply_units,
+      net_absorption_units:  row.net_absorption_units,
+      yardi_matrix_id:       row.yardi_matrix_id,
+    });
+
+    try {
+      await queryFn(
+        `INSERT INTO historical_observations
+           (id, deal_id, observation_date, geography_level,
+            submarket_avg_asking_rent, submarket_avg_effective_rent, submarket_vacancy_rate,
+            submarket_under_construction,
+            vendor_source, vendor_license_posture, vendor_data_as_of,
+            market_survey_source, market_survey_snapshot)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         ON CONFLICT DO NOTHING`,
+        [
+          randomUUID(),
+          row.deal_id,
+          row.period_date,
+          'submarket',
+          row.avg_asking_rent,
+          row.avg_effective_rent,
+          vacancyRate,
+          row.new_supply_units,
+          'yardi_matrix',
+          'platform_only',
+          row.data_as_of,
+          'yardi_matrix',
+          snapshot,
+        ],
+      );
+      inserted++;
+    } catch {
+      writeErrors++;
+    }
+  }
+
+  return { inserted, errors: writeErrors };
+}
+
 export async function writeYardiSupplyRows(
   queryFn: QueryFn,
   rows:    YardiSupplyRow[],

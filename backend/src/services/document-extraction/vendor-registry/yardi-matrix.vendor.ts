@@ -5,27 +5,22 @@
  * intelligence:
  *
  *   YARDI_MATRIX_RENT_SURVEY    — Quarterly rent/vacancy snapshot per submarket.
- *                                 Filename: "Yardi Matrix - Rent Survey *.xlsx"
- *                                 or "YMRS_*.xlsx"
- *
  *   YARDI_MATRIX_SUPPLY_PIPELINE — Forward-looking supply pipeline per property.
- *                                  Filename: "Yardi Matrix - Supply Pipeline *.xlsx"
- *                                  or "YMSP_*.xlsx"
  *
- * KEY DISCRIMINATORS from CoStar:
- *   - Yardi uses "Geography" for submarket (CoStar uses "Submarket").
- *   - Yardi uses "Occ Rate" (CoStar uses "Occupancy" or "Occupancy Rate").
- *   - "Yardi Matrix ID" is a unique identifier present in all Yardi exports.
- *   - "Concession Value ($ Per Month)" is Yardi-specific (CoStar has "Concession %").
- *   - Supply pipeline uses "Delivery Date" (not a CoStar concept).
+ * Write path for rent survey (triggered by vendorParser):
+ *   1. yardi_matrix_rent_survey   — vendor-specific table (full columns)
+ *   2. historical_observations    — cross-vendor corpus with vendor_source='yardi_matrix'
+ *
+ * Write path for supply pipeline (triggered by vendorParser):
+ *   1. yardi_matrix_supply_pipeline — vendor-specific table
  *
  * License posture: `platform_only`
  *   Operators upload their own Yardi Matrix exports. Data is used internally
  *   for market intelligence only. Not re-exported with Yardi branding.
  *
- * vendorParser: each fileType registers a parse+persist function using lazy
- * dynamic imports so that importing this declaration in test environments does
- * NOT trigger DB connection initialization.
+ * vendorParser: each fileType registers a lazy parse+persist function.
+ *   Lazy dynamic imports (await import(...)) prevent DB connection
+ *   initialisation when this declaration is imported in test environments.
  */
 
 import type { VendorDeclaration, VendorParseOptions, VendorParseResult } from './types';
@@ -36,15 +31,13 @@ export const YARDI_MATRIX_VENDOR: VendorDeclaration = {
   licensePosture: 'platform_only',
 
   freshnessProfile: {
-    staleDays: 120,        // Yardi Matrix surveys are quarterly
+    staleDays: 120,
     criticalStaleDays: 365,
     cadence: 'quarterly',
   },
 
   fileTypes: [
     // ── YARDI_MATRIX_RENT_SURVEY ──────────────────────────────────────────────
-    // Quarterly submarket rent + vacancy snapshot.
-    // Must be checked BEFORE supply pipeline (supply has a "geography" signal too).
     {
       documentType: 'YARDI_MATRIX_RENT_SURVEY',
       label: 'Rent Survey (Submarket Snapshot)',
@@ -80,11 +73,12 @@ export const YARDI_MATRIX_VENDOR: VendorDeclaration = {
           vendorSourceValue: 'yardi_matrix',
         },
       },
-      // Lazy-imported: safe to use this declaration in test environments without
-      // triggering DB connection initialisation.
       vendorParser: async (buffer: Buffer, options: VendorParseOptions): Promise<VendorParseResult> => {
-        const { parseYardiRentSurvey, writeYardiRentSurveyRows } =
-          await import('../parsers/yardi-matrix-parser');
+        const {
+          parseYardiRentSurvey,
+          writeYardiRentSurveyRows,
+          upsertYardiHistoricalObservations,
+        } = await import('../parsers/yardi-matrix-parser');
         const { query } = await import('../../../database/connection');
 
         const parsed = parseYardiRentSurvey(buffer, options);
@@ -92,18 +86,22 @@ export const YARDI_MATRIX_VENDOR: VendorDeclaration = {
           return { success: false, error: parsed.error, validRows: 0, rowsInserted: 0 };
         }
 
-        const { inserted, errors } = await writeYardiRentSurveyRows(query, parsed.rows);
+        // Step 1: Write to vendor-specific table
+        const vendorWrite = await writeYardiRentSurveyRows(query, parsed.rows);
+
+        // Step 2: Write to cross-vendor corpus (historical_observations)
+        await upsertYardiHistoricalObservations(query, parsed.rows);
+
         return {
-          success: inserted > 0 || (parsed.validRows === 0 && parsed.invalidRows === 0),
-          rowsInserted: inserted,
+          success: vendorWrite.inserted > 0 || parsed.rows.length === 0,
+          rowsInserted: vendorWrite.inserted,
           validRows: parsed.validRows,
-          invalidRows: parsed.invalidRows + errors,
+          invalidRows: parsed.invalidRows + vendorWrite.errors,
         };
       },
     },
 
     // ── YARDI_MATRIX_SUPPLY_PIPELINE ─────────────────────────────────────────
-    // Per-property forward-looking supply pipeline.
     {
       documentType: 'YARDI_MATRIX_SUPPLY_PIPELINE',
       label: 'Supply Pipeline (Property-Level)',
@@ -146,7 +144,7 @@ export const YARDI_MATRIX_VENDOR: VendorDeclaration = {
 
         const { inserted, errors } = await writeYardiSupplyRows(query, parsed.rows);
         return {
-          success: inserted > 0 || (parsed.validRows === 0 && parsed.invalidRows === 0),
+          success: inserted > 0 || parsed.rows.length === 0,
           rowsInserted: inserted,
           validRows: parsed.validRows,
           invalidRows: parsed.invalidRows + errors,
