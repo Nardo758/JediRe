@@ -1,6 +1,9 @@
+import fs from 'fs';
+import path from 'path';
 import { Pool } from 'pg';
 import { getPool } from '../../database/connection';
-import { ExtractionResult, DocumentType, T12Data, RentRollData, AgedReceivablesData, BoxScoreData, ConcessionBurnoffData, LTOData, TaxBillData, OtherIncomeData, LeasingStatsData } from './types';
+import { ExtractionResult, DocumentType, T12Data, RentRollData, AgedReceivablesData, BoxScoreData, ConcessionBurnoffData, LTOData, TaxBillData, OtherIncomeData, LeasingStatsData, CoStarSubmarketData } from './types';
+import { processCoStarUpload } from '../valuation/costar-comp-upload.service';
 import type { OMExtraction } from './parsers/om-parser';
 import { buildOmKgEventData } from './om-distribution.service';
 import { getGraphIngestionListener } from '../neural-network/graph-ingestion-listener';
@@ -119,6 +122,141 @@ async function getOrCreatePropertyForDeal(pool: Pool, dealId: string): Promise<s
   return propertyId;
 }
 
+// ── CoStar helper route functions ─────────────────────────────────────────────
+
+/**
+ * Primary writes for COSTAR_SUBMARKET_EXPORT (DataTable.xlsx):
+ *   1. costar_submarket_stats  — deal-scoped, for upload panel visibility
+ *   2. costar_market_metrics   — canonical, for correlation engine / snapshot capture
+ * Returns total period rows written (each row counts as 1 across both writes).
+ * Corpus (historical_observations) is written separately in the setImmediate block.
+ */
+async function routeCoStarSubmarket(
+  pool: Pool,
+  data: CoStarSubmarketData,
+  dealId: string,
+  alerts: string[],
+): Promise<number> {
+  const dealRow = await pool.query(
+    `SELECT name, city, state_code FROM deals WHERE id = $1`,
+    [dealId],
+  );
+  const deal = dealRow.rows[0] ?? {};
+  const submarketLabel =
+    (deal.city ? `${deal.city} Submarket` : null) ?? (deal.name as string | null) ?? dealId;
+  const stateCode: string | null = (deal.state_code as string | null) ?? null;
+
+  let inserted = 0;
+
+  for (const row of data.rows) {
+    try {
+      const { periodDate, vacancyRate, askingRentPerUnit, yoyRentGrowth,
+              absorption12mo, inventoryUnits, underConstructionUnits,
+              capRate, salePricePerUnit } = row;
+
+      await pool.query(
+        `INSERT INTO costar_submarket_stats
+           (id, deal_id, submarket, state, period_date,
+            vacancy_rate, asking_rent_per_unit, yoy_rent_growth,
+            absorption_units, total_inventory_units, under_construction_units,
+            source, ingested_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4::date, $5, $6, $7, $8, $9, $10,
+                 'costar_extraction', NOW())
+         ON CONFLICT (deal_id, submarket, state, period_date) DO UPDATE SET
+           vacancy_rate          = EXCLUDED.vacancy_rate,
+           asking_rent_per_unit  = EXCLUDED.asking_rent_per_unit,
+           yoy_rent_growth       = EXCLUDED.yoy_rent_growth,
+           absorption_units      = EXCLUDED.absorption_units,
+           total_inventory_units = EXCLUDED.total_inventory_units,
+           under_construction_units = EXCLUDED.under_construction_units,
+           ingested_at           = NOW()`,
+        [dealId, submarketLabel, stateCode, periodDate, vacancyRate, askingRentPerUnit,
+         yoyRentGrowth, absorption12mo, inventoryUnits, underConstructionUnits],
+      );
+
+      const occupancyPct = vacancyRate != null ? 100 - vacancyRate : null;
+      await pool.query(
+        `INSERT INTO costar_market_metrics
+           (id, geography_type, geography_id, geography_name, as_of_date,
+            avg_asking_rent, avg_occupancy_pct, vacancy_rate,
+            net_absorption_units, avg_cap_rate, avg_price_per_unit,
+            units_under_construction, source)
+         VALUES (gen_random_uuid(), 'submarket', $1, $2, $3::date,
+                 $4, $5, $6, $7, $8, $9, $10, 'costar_extraction')
+         ON CONFLICT (geography_type, geography_id, as_of_date) DO UPDATE SET
+           geography_name           = EXCLUDED.geography_name,
+           avg_asking_rent          = EXCLUDED.avg_asking_rent,
+           avg_occupancy_pct        = EXCLUDED.avg_occupancy_pct,
+           vacancy_rate             = EXCLUDED.vacancy_rate,
+           net_absorption_units     = EXCLUDED.net_absorption_units,
+           avg_cap_rate             = EXCLUDED.avg_cap_rate,
+           avg_price_per_unit       = EXCLUDED.avg_price_per_unit,
+           units_under_construction = EXCLUDED.units_under_construction`,
+        [dealId, submarketLabel, periodDate, askingRentPerUnit, occupancyPct,
+         vacancyRate, absorption12mo, capRate, salePricePerUnit, underConstructionUnits],
+      );
+
+      inserted++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alerts.push(`CoStar submarket row ${row.periodDate} failed: ${msg}`);
+    }
+  }
+
+  if (data.skippedRows > 0) {
+    alerts.push(`CoStar DataTable: ${data.skippedRows} rows skipped (EST/QTD/future)`);
+  }
+
+  return inserted;
+}
+
+/**
+ * Primary write for COSTAR_SALE_COMPS / COSTAR_RENT_COMPS.
+ * Re-reads the file from filePath and delegates to processCoStarUpload(),
+ * which runs the 3-tier dedup pipeline and writes to market_sale_comps /
+ * market_rent_comps. Corpus (historical_observations) row is written
+ * separately in the setImmediate block.
+ */
+async function routeCoStarComps(
+  pool: Pool,
+  filePath: string | null,
+  compType: 'sale' | 'rent',
+  dealId: string,
+  alerts: string[],
+): Promise<number> {
+  if (!filePath) {
+    alerts.push(`CoStar ${compType} comps: no filePath in context — primary write skipped`);
+    return 0;
+  }
+
+  let buffer: Buffer;
+  try {
+    buffer = fs.readFileSync(filePath);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    alerts.push(`CoStar ${compType} comps: could not read file — ${msg}`);
+    return 0;
+  }
+
+  const filename = path.basename(filePath);
+  const result = await processCoStarUpload(pool, { buffer, filename, compType, dealId });
+
+  if (result.rejected) {
+    alerts.push(`CoStar ${compType} comps rejected: ${result.rejectReason}`);
+    return 0;
+  }
+
+  if (result.errors.length > 0) {
+    alerts.push(`CoStar ${compType} comps: ${result.errors.length} row errors during upload`);
+  }
+
+  if (result.skippedDup > 0) {
+    alerts.push(`CoStar ${compType} comps: ${result.skippedDup} duplicate rows skipped`);
+  }
+
+  return result.inserted + (result.merged ?? 0);
+}
+
 export async function routeExtractionResult(
   result: ExtractionResult,
   ctx: RouteContext
@@ -169,6 +307,15 @@ export async function routeExtractionResult(
     case 'OM':
       rowsInserted = await routeOM(pool, result.data as unknown as OMExtraction, ctx.dealId, sourceRef, sourceDate, alerts);
       break;
+    case 'COSTAR_SUBMARKET_EXPORT':
+      rowsInserted = await routeCoStarSubmarket(pool, result.data as CoStarSubmarketData, ctx.dealId, alerts);
+      break;
+    case 'COSTAR_SALE_COMPS':
+      rowsInserted = await routeCoStarComps(pool, ctx.filePath ?? null, 'sale', ctx.dealId, alerts);
+      break;
+    case 'COSTAR_RENT_COMPS':
+      rowsInserted = await routeCoStarComps(pool, ctx.filePath ?? null, 'rent', ctx.dealId, alerts);
+      break;
   }
 
   // Historical Observations corpus ingestion (Phase 1)
@@ -180,13 +327,17 @@ export async function routeExtractionResult(
     result.documentType === 'T12' ||
     result.documentType === 'RENT_ROLL' ||
     result.documentType === 'OM' ||
-    result.documentType === 'TAX_BILL'
+    result.documentType === 'TAX_BILL' ||
+    result.documentType === 'COSTAR_SUBMARKET_EXPORT' ||
+    result.documentType === 'COSTAR_SALE_COMPS' ||
+    result.documentType === 'COSTAR_RENT_COMPS'
   ) {
     const capturedData = result.data;
     const capturedType = result.documentType;
     const capturedDealId = ctx.dealId;
     const capturedPropertyId = resolvedPropertyId;
     const capturedDocumentId = ctx.documentId;
+    const capturedFilename = ctx.filename;
     setImmediate(async () => {
       try {
         const { writeOMToCorpus, writeTaxBillToCorpus } =
@@ -215,6 +366,20 @@ export async function routeExtractionResult(
           const taxData = capturedData as TaxBillData;
           const taxYear = taxData.taxYear ?? new Date().getFullYear();
           await writeTaxBillToCorpus(pool, capturedDealId, taxData, taxYear);
+        } else if (capturedType === 'COSTAR_SUBMARKET_EXPORT') {
+          const { writeCoStarSubmarketToCorpus } =
+            await import('../historical-observations/document-to-corpus');
+          await writeCoStarSubmarketToCorpus(pool, capturedDealId, capturedData as CoStarSubmarketData);
+        } else if (capturedType === 'COSTAR_SALE_COMPS') {
+          const { writeCoStarCompsCorpusRow } =
+            await import('../historical-observations/document-to-corpus');
+          const saleData = capturedData as import('./types').CoStarSaleCompsData;
+          await writeCoStarCompsCorpusRow(pool, capturedDealId, 'sale', saleData.rowCount, capturedFilename);
+        } else if (capturedType === 'COSTAR_RENT_COMPS') {
+          const { writeCoStarCompsCorpusRow } =
+            await import('../historical-observations/document-to-corpus');
+          const rentData = capturedData as import('./types').CoStarRentCompsData;
+          await writeCoStarCompsCorpusRow(pool, capturedDealId, 'rent', rentData.rowCount, capturedFilename);
         }
 
         // Wire-through: mark the source file as successfully parsed now that

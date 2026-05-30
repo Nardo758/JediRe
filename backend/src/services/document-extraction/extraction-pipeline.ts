@@ -11,9 +11,62 @@ import { parseTaxBill, parseTaxBillAsync } from './parsers/tax-bill-parser';
 import { parseOtherIncome } from './parsers/other-income-parser';
 import { parseLeasingStats } from './parsers/leasing-stats-parser';
 import { parseOM } from './parsers/om-parser';
+import { parseCoStarSubmarket } from './parsers/costar-submarket-parser';
 import { routeExtractionResult } from './data-router';
 import { DocumentType, ExtractionResult, PipelineResult } from './types';
 import { getPool } from '../../database/connection';
+import * as XLSX from 'xlsx';
+
+function wrapCoStarSubmarket(buffer: Buffer, filename: string): ExtractionResult {
+  try {
+    const data = parseCoStarSubmarket(buffer, filename);
+    return {
+      documentType: 'COSTAR_SUBMARKET_EXPORT',
+      success: true,
+      data,
+      summary: { validRows: data.rows.length, skippedRows: data.skippedRows },
+      warnings: data.skipReasons.slice(0, 10),
+    };
+  } catch (err) {
+    return {
+      documentType: 'COSTAR_SUBMARKET_EXPORT',
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+      data: null,
+      summary: {},
+      warnings: [],
+    };
+  }
+}
+
+function wrapCoStarCompCounter(
+  compType: 'COSTAR_SALE_COMPS' | 'COSTAR_RENT_COMPS',
+): (buffer: Buffer, filename: string) => ExtractionResult {
+  return (buffer: Buffer, _filename: string): ExtractionResult => {
+    try {
+      const wb = XLSX.read(buffer, { type: 'buffer' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
+      const rowCount = rows.length;
+      return {
+        documentType: compType,
+        success: true,
+        data: { rowCount },
+        summary: { rowCount },
+        warnings: [],
+      };
+    } catch (err) {
+      return {
+        documentType: compType,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+        data: null,
+        summary: {},
+        warnings: [],
+      };
+    }
+  };
+}
 
 function getParser(docType: DocumentType): ((buffer: Buffer, filename: string) => ExtractionResult) | null {
   switch (docType) {
@@ -26,6 +79,9 @@ function getParser(docType: DocumentType): ((buffer: Buffer, filename: string) =
     case 'TAX_BILL': return parseTaxBill;
     case 'OTHER_INCOME': return parseOtherIncome;
     case 'LEASING_STATS': return parseLeasingStats;
+    case 'COSTAR_SUBMARKET_EXPORT': return wrapCoStarSubmarket;
+    case 'COSTAR_SALE_COMPS': return wrapCoStarCompCounter('COSTAR_SALE_COMPS');
+    case 'COSTAR_RENT_COMPS': return wrapCoStarCompCounter('COSTAR_RENT_COMPS');
     default: return null;
   }
 }

@@ -375,6 +375,161 @@ export async function writeOMToCorpus(
   await upsertCorpusRow(pool, resolved.parcelId, observationDate, fields, ['om'], deriveIsSubjectProperty(resolved.dealStatus), dealId);
 }
 
+// ─── CoStar — shared submarket upsert ────────────────────────────────────────
+
+/**
+ * Upsert a submarket-level corpus row.
+ * Key: (submarket_id × observation_date × geography_level='submarket').
+ * Distinct from upsertCorpusRow which keys on parcel_id for property-level writes.
+ */
+async function upsertSubmarketCorpusRow(
+  pool: Pool,
+  submarketId: string,
+  observationDate: Date,
+  fields: Record<string, unknown>,
+  newSignals: string[],
+  dealId?: string,
+): Promise<string> {
+  const existing = await pool.query(
+    `SELECT id, source_signals FROM historical_observations
+     WHERE submarket_id = $1 AND observation_date = $2::DATE AND geography_level = 'submarket'
+     LIMIT 1`,
+    [submarketId, observationDate],
+  );
+
+  if (existing.rows[0]) {
+    const existingId = existing.rows[0].id as string;
+    const existingSignals: string[] = (existing.rows[0].source_signals as string[]) ?? [];
+    const mergedSignals = Array.from(new Set([...existingSignals, ...newSignals]));
+
+    const assignments: string[] = ['source_signals = $1', 'updated_at = NOW()'];
+    const params: unknown[] = [mergedSignals];
+    let idx = params.length;
+
+    for (const [key, val] of Object.entries(fields)) {
+      if (val !== null && val !== undefined) {
+        idx++;
+        params.push(val);
+        assignments.push(`${key} = $${idx}`);
+      }
+    }
+
+    if (dealId) {
+      idx++;
+      params.push(dealId);
+      assignments.push(`deal_id = COALESCE(deal_id, $${idx})`);
+    }
+
+    params.push(existingId);
+    idx++;
+
+    await pool.query(
+      `UPDATE historical_observations SET ${assignments.join(', ')} WHERE id = $${idx}`,
+      params,
+    );
+    return existingId;
+  }
+
+  const { randomUUID } = await import('crypto');
+  const newId = randomUUID();
+  const allFields: Record<string, unknown> = {
+    id: newId,
+    submarket_id: submarketId,
+    observation_date: observationDate,
+    geography_level: 'submarket',
+    observation_window: 'quarterly',
+    is_subject_property: false,
+    redistribution_restricted: true,
+    source_signals: newSignals,
+    data_quality_tier: 'S4',
+    ...(dealId ? { deal_id: dealId } : {}),
+    ...fields,
+  };
+
+  const cols = Object.keys(allFields);
+  const vals = Object.values(allFields);
+  const placeholders = vals.map((_, i) => `$${i + 1}`);
+
+  await pool.query(
+    `INSERT INTO historical_observations (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`,
+    vals,
+  );
+
+  return newId;
+}
+
+// ─── CoStar Submarket Export (DataTable) ─────────────────────────────────────
+
+/**
+ * Write one historical_observations corpus row per valid DataTable period row.
+ * Geography level: 'submarket'; submarket_id = dealId (interim, until CoStar
+ * submarket → JEDI submarket UUID mapping service exists).
+ * Fills: costar_submarket_rent, costar_submarket_vacancy, costar_submarket_absorption,
+ * costar_submarket_new_supply, costar_submarket_concession_pct (null — DataTable
+ * does not carry concession data).
+ */
+export async function writeCoStarSubmarketToCorpus(
+  pool: Pool,
+  dealId: string,
+  data: import('../document-extraction/types').CoStarSubmarketData,
+): Promise<number> {
+  let written = 0;
+  for (const row of data.rows) {
+    try {
+      const obsDate = new Date(row.periodDate + 'T00:00:00Z');
+      const fields: Record<string, unknown> = {
+        costar_submarket_rent: row.askingRentPerUnit,
+        costar_submarket_vacancy: row.vacancyRate,
+        costar_submarket_absorption: row.absorption12mo,
+        costar_submarket_new_supply: row.underConstructionUnits,
+        costar_submarket_concession_pct: null,
+      };
+      await upsertSubmarketCorpusRow(pool, dealId, obsDate, fields, ['costar_submarket'], dealId);
+      written++;
+    } catch (err) {
+      logger.warn('[DocumentToCorpus] writeCoStarSubmarketToCorpus: row failed', {
+        periodDate: row.periodDate,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  logger.info('[DocumentToCorpus] writeCoStarSubmarketToCorpus complete', { dealId, written });
+  return written;
+}
+
+// ─── CoStar Comp files (corpus metadata row) ──────────────────────────────────
+
+/**
+ * Write a single corpus row per comp file upload as a market_survey snapshot.
+ * Comps represent submarket market evidence — one row per upload, not per comp.
+ * observation_date = today (upload date).
+ * Dedup: on conflict the row is updated, so re-uploads are idempotent.
+ */
+export async function writeCoStarCompsCorpusRow(
+  pool: Pool,
+  dealId: string,
+  compType: 'sale' | 'rent',
+  rowCount: number,
+  filename: string,
+): Promise<void> {
+  try {
+    const obsDate = new Date();
+    obsDate.setUTCHours(0, 0, 0, 0);
+    const signal = compType === 'sale' ? 'costar_sale_comps' : 'costar_rent_comps';
+    const fields: Record<string, unknown> = {
+      market_survey_source: 'costar_upload',
+      market_survey_snapshot: JSON.stringify({ filename, compType, rowCount, uploadedAt: new Date().toISOString() }),
+    };
+    await upsertSubmarketCorpusRow(pool, dealId, obsDate, fields, [signal], dealId);
+    logger.info('[DocumentToCorpus] writeCoStarCompsCorpusRow complete', { dealId, compType, rowCount });
+  } catch (err) {
+    logger.warn('[DocumentToCorpus] writeCoStarCompsCorpusRow failed (non-fatal)', {
+      dealId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 // ─── TaxBill ─────────────────────────────────────────────────────────────────
 
 /**

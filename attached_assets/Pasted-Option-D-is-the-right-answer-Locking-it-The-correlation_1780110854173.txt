@@ -1,0 +1,63 @@
+Option D+ is the right answer. Locking it.
+
+The correlation engine reading from an empty costar_market_metrics 
+is actively degrading the platform's analytical surfaces today. 
+Filling that gap should be a primary outcome of this dispatch, not 
+a side effect.
+
+The reuse of Task #1407 + #1410's existing service is the right 
+discipline — deliberate prior work shouldn't be discarded for the 
+sake of architectural purity. The fact that those tasks built a 
+3-tier dedup pipeline is exactly the kind of operational quality 
+that makes the difference between "comps merged cleanly" and 
+"duplicate comp rows everywhere."
+
+Forward-compatibility with the property refactor is preserved 
+because the refactor's Phase 2 dual-write mechanism will mirror 
+writes from market_sale_comps and market_rent_comps to 
+property_sales and property_operating_data transparently. No work 
+wasted; no migration tax added.
+
+Answers to your four questions:
+Q1 — Option D+ confirmed
+Q2 — Confirmed both-condition skip logic
+Q3 — Confirmed signatures via mapper inspection (no R2 download needed)
+Q4 — Yes, include costar_market_metrics write for DataTable. This 
+    is the most important of the three writes for that file type 
+    because it's the one with active consumers.
+
+Two refinements to lock before Phase 2:
+
+A. For DataTable.xlsx specifically, the write target sequence is:
+   1. historical_observations corpus (long-term record)
+   2. costar_submarket_stats (deal-scoped, for upload panel visibility)
+   3. costar_market_metrics (canonical, for correlation engine / 
+      snapshot capture / F3 Markets / Exit Timing readers)
+   
+   The submarket_id parameter (required at upload) populates the 
+   geography_id in costar_market_metrics. The period_date populates 
+   the time dimension.
+
+B. For Near By Sales and Rent Comp Properties, call through 
+   processCoStarUpload() in costar-comp-upload.service.ts for the 
+   primary write path (preserves dedup), then write a parallel row 
+   to historical_observations corpus for the long-term record. The 
+   corpus write does NOT go through dedup — that's a corpus design 
+   choice (every observation is preserved; dedup is the reader's 
+   problem).
+
+C. CoStar PID → JEDI property_id mapping remains out-of-scope per 
+   the original dispatch. The property_sales write that Option D 
+   would have done conditionally on PID resolution is deferred 
+   entirely — that path can be added when the mapping service 
+   exists.
+
+D. F3 reader wiring verification — surface as a Phase 3 verification 
+   step, not as Phase 2 scope: confirm F3 Markets actually reads 
+   from costar_market_metrics (or its derived signals via the 
+   correlation engine). If yes, this dispatch closes the F3 
+   submarket data gap. If no, F3 reader wiring becomes a separate 
+   dispatch. Either way, the data is in the right place; the 
+   reader question is downstream.
+
+Phase 2 entry conditions met. Proceed.

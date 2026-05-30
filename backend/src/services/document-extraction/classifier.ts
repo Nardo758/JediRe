@@ -5,7 +5,6 @@ import { findHeaderRow, parseSheetFromRow } from './parsers/workbook-utils';
 const FILENAME_PATTERNS: Array<{ pattern: RegExp; type: DocumentType }> = [
   { pattern: /aged[\s_-]*receiv/i, type: 'AGED_RECEIVABLES' },
   { pattern: /box[\s_-]*score/i, type: 'BOX_SCORE' },
-  { pattern: /leasing/i, type: 'LEASING_STATS' },
   { pattern: /concession[\s_-]*burn/i, type: 'CONCESSION_BURNOFF' },
   { pattern: /trade[\s_-]*out|t30[\s_-]*lto|lto[\s_-]*report|lease[\s_-]*trade/i, type: 'T30_LTO' },
   { pattern: /tax[\s_-]*bill|tax[\s_-]*statement|property[\s_-]*tax/i, type: 'TAX_BILL' },
@@ -14,6 +13,11 @@ const FILENAME_PATTERNS: Array<{ pattern: RegExp; type: DocumentType }> = [
   { pattern: /offering[\s_-]*memorandum|investment[\s_-]*summary|property[\s_-]*offering/i, type: 'OM' },
   { pattern: /rent[\s_+\-]*roll|rr[\s_-]*w[\s_-]*lc|rrwlc/i, type: 'RENT_ROLL' },
   { pattern: /t[\s_-]*12|trailing[\s_-]*12|income[\s_-]*statement|ysi[\s_-]*is/i, type: 'T12' },
+  // CoStar export patterns — matched before LEASING_STATS to avoid false positives
+  { pattern: /DataTable/i, type: 'COSTAR_SUBMARKET_EXPORT' },
+  { pattern: /Near[\s_-]*By[\s_-]*Sales/i, type: 'COSTAR_SALE_COMPS' },
+  { pattern: /Rent[\s_-]*Comp[\s_-]*Prop/i, type: 'COSTAR_RENT_COMPS' },
+  { pattern: /leasing/i, type: 'LEASING_STATS' },
 ];
 
 function isPdf(filename: string): boolean {
@@ -37,6 +41,36 @@ function classifyByHeaders(headers: string[], sampleRows: any[]): { type: Docume
   const headerSet = new Set(headers.map(h => h.toLowerCase().trim()));
   const headerStr = headers.join(' ').toLowerCase();
   const hints: string[] = [];
+
+  // ── CoStar export detection (must run BEFORE generic signal checks) ──────────
+  // DataTable (COSTAR_SUBMARKET_EXPORT): Period time-series with submarket metrics
+  const costarSubmarketSignals = ['period', 'vacancy rate', 'inventory units', 'absorp'];
+  const costarSubmarketMatches = costarSubmarketSignals.filter(s => headerStr.includes(s)).length;
+  if (costarSubmarketMatches >= 3 && (headerStr.includes('market cap rate') || headerStr.includes('asking rent'))) {
+    hints.push(`CoStar DataTable signals: ${costarSubmarketMatches}/4`);
+    return { type: 'COSTAR_SUBMARKET_EXPORT', confidence: 0.93, hints };
+  }
+
+  // Near By Sales (COSTAR_SALE_COMPS): property comp list with sale date + sale price
+  if (
+    headerStr.includes('sale date') &&
+    headerStr.includes('sale price') &&
+    headerStr.includes('address')
+  ) {
+    hints.push('CoStar sale comp headers: sale date + sale price + address');
+    return { type: 'COSTAR_SALE_COMPS', confidence: 0.92, hints };
+  }
+
+  // Rent Comp Properties (COSTAR_RENT_COMPS): property comp list with asking rent + occupancy, no sale date
+  if (
+    (headerStr.includes('asking rent') || headerStr.includes('effective rent')) &&
+    (headerStr.includes('occ %') || headerStr.includes('occupancy')) &&
+    headerStr.includes('address') &&
+    !headerStr.includes('sale date')
+  ) {
+    hints.push('CoStar rent comp headers: asking rent + occupancy + address');
+    return { type: 'COSTAR_RENT_COMPS', confidence: 0.90, hints };
+  }
 
   const hasGLCodes = sampleRows.some(row => {
     const firstVal = String(Object.values(row)[0] || '');

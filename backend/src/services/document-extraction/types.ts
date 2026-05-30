@@ -9,6 +9,9 @@ export type DocumentType =
   | 'OTHER_INCOME'
   | 'OM'
   | 'LEASING_STATS'
+  | 'COSTAR_SUBMARKET_EXPORT'
+  | 'COSTAR_SALE_COMPS'
+  | 'COSTAR_RENT_COMPS'
   | 'UNKNOWN';
 
 export interface ClassificationResult {
@@ -17,7 +20,7 @@ export interface ClassificationResult {
   hints: string[];
 }
 
-export type ExtractionData = T12Data | RentRollData | AgedReceivablesData | BoxScoreData | ConcessionBurnoffData | LTOData | TaxBillData | OtherIncomeData | LeasingStatsData;
+export type ExtractionData = T12Data | RentRollData | AgedReceivablesData | BoxScoreData | ConcessionBurnoffData | LTOData | TaxBillData | OtherIncomeData | LeasingStatsData | CoStarSubmarketData | CoStarSaleCompsData | CoStarRentCompsData;
 
 export interface ExtractionResult {
   documentType: DocumentType;
@@ -339,6 +342,34 @@ export interface LeasingStatsData {
     total_occupied: number;
     occupancy_pct: number;
   };
+}
+
+// ─── CoStar Document Types ───────────────────────────────────────────────────
+
+export interface CoStarSubmarketRow {
+  periodDate: string;
+  vacancyRate: number | null;
+  askingRentPerUnit: number | null;
+  yoyRentGrowth: number | null;
+  inventoryUnits: number | null;
+  underConstructionUnits: number | null;
+  absorption12mo: number | null;
+  capRate: number | null;
+  salePricePerUnit: number | null;
+}
+
+export interface CoStarSubmarketData {
+  rows: CoStarSubmarketRow[];
+  skippedRows: number;
+  skipReasons: string[];
+}
+
+export interface CoStarSaleCompsData {
+  rowCount: number;
+}
+
+export interface CoStarRentCompsData {
+  rowCount: number;
 }
 
 export type ChartFormat =
