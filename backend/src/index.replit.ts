@@ -157,6 +157,7 @@ import { createUnitMixRoutes } from './api/rest/unitMix.routes';
 import dealValidationRoutes from './api/rest/deal-validation.routes';
 import fieldDivergencesRoutes from './api/rest/field-divergences.routes';
 import dealCompletenessRoutes from './api/rest/deal-completeness.routes';
+import vendorFreshnessRoutes from './api/rest/vendor-freshness.routes';
 import unitMixPropagationRoutes from './api/rest/unit-mix-propagation.routes';
 import dealAssumptionsRoutes from './api/rest/deal-assumptions.routes';
 import financialDocumentsRoutes from './api/rest/financial-documents.routes';
@@ -541,6 +542,7 @@ app.use('/api/v1/orgs', requireAuth, orgRouter);
 app.use('/api/v1/deals', requireAuth, dealValidationRoutes);
 app.use('/api/v1/deals', requireAuth, fieldDivergencesRoutes);
 app.use('/api/v1/deals', requireAuth, dealCompletenessRoutes);
+app.use('/api/v1/deals', requireAuth, vendorFreshnessRoutes);
 
 // Phase 11: Unit Mix Propagation
 app.use('/api/v1/deals', requireAuth, unitMixPropagationRoutes);

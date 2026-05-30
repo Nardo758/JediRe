@@ -28,6 +28,8 @@ import { opusProformaService, type CustomTabRow } from '../../services/opusProfo
 import { F9SummaryBar } from '../../components/f9/F9SummaryBar';
 import { formatOverrideNote } from './financial-engine/field-labels';
 import { useSourceDocuments } from '../../hooks/useSourceDocuments';
+import { useVendorFreshness } from '../../hooks/useVendorFreshness';
+import { VendorFreshnessPrompt, VendorProvenanceBadge } from '../../components/vendor/VendorFreshnessPrompt';
 
 // ── Safe array coercion — guards against the API returning objects/nulls ──────
 function toArr<T>(v: unknown): T[] {
@@ -524,6 +526,17 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const resolvedDealType: DealType = (propDealType as DealType)
     || (propDeal?.project_type as DealType | undefined)
     || 'existing';
+
+  // Vendor freshness — Phase 2C: non-blocking stale-data prompt + provenance badges
+  const { staleVendors, freshness: vendorFreshness } = useVendorFreshness(resolvedDealId || null);
+
+  // Active-underwriting gate: only surface CoStar stale prompt during deal stages where
+  // market data currency actually affects underwriting decisions
+  const ACTIVE_UNDERWRITING_STATUSES = new Set([
+    'screening', 'underwriting', 'loi', 'due_diligence', 'closing',
+  ]);
+  const dealStatus = (propDeal as Record<string, unknown> | null | undefined)?.status as string | undefined;
+  const isActivelyUnderwriting = dealStatus ? ACTIVE_UNDERWRITING_STATUSES.has(dealStatus) : true;
 
   // Roadmap tab (index 9) is only surfaced for value-add and redevelopment deals.
   // Declared early so all subsequent callbacks close over the correct binding.
@@ -1829,6 +1842,36 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           onFilterChange={setEvidenceFilter}
           activeFilter={evidenceFilter}
         />
+      )}
+
+      {isActivelyUnderwriting && staleVendors.filter(v => v.vendorId === 'costar').length > 0 && (
+        <div style={{ padding: '4px 12px 0' }}>
+          <VendorFreshnessPrompt
+            staleVendors={staleVendors.filter(v => v.vendorId === 'costar')}
+            dealId={resolvedDealId}
+          />
+        </div>
+      )}
+
+      {vendorFreshness && vendorFreshness.vendors.filter(v => v.rowCount > 0).length > 0 && (
+        <div style={{
+          padding: '2px 12px 4px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          flexWrap: 'wrap' as const,
+        }}>
+          {vendorFreshness.vendors
+            .filter(v => v.rowCount > 0)
+            .map(v => (
+              <VendorProvenanceBadge
+                key={v.vendorId}
+                vendorDisplayName={v.displayName}
+                asOfDate={v.mostRecentAsOf}
+                licensePosture={v.licensePosture}
+              />
+            ))}
+        </div>
       )}
 
       <div style={{ position: 'relative' }}>

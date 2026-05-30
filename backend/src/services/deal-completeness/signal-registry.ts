@@ -5,16 +5,20 @@
  * The registry is intentionally additive: new signals are added here without
  * touching the evaluation engine or the REST layer.
  *
- * Initial 4 signals (C1 scope):
+ * Signals (C1 + Phase 2C):
  *   - m07_missing              Traffic Engine (M07) hasn't run → vacancy trajectory flat-constant
  *   - costar_upload_missing    No CoStar market data → rent comp pool empty
  *   - rent_roll_missing        No rent roll document → all LV layers degraded
  *   - material_divergence_high ≥1 block-level source divergence on key assumptions
+ *   - vendor_data_missing      No vendor market data (CoStar/Yardi) uploaded for this deal + submarket
+ *   - vendor_data_stale        Most recent vendor upload has crossed the registry's stale threshold
  */
 
 import { Pool } from 'pg';
 import type { SignalSeverity, SignalStatus } from '../../types/deal-completeness';
 import { getDivergenceSummary } from '../field-access/get-field-value.service';
+import { vendorRegistry } from '../document-extraction/vendor-registry';
+import { computeFreshnessStatus } from '../vendor-freshness.service';
 
 export interface SignalDefinition {
   id:                string;
@@ -145,6 +149,144 @@ const SIGNAL_REGISTRY: SignalDefinition[] = [
         if (summary.blockCount >= 1) return 'incomplete';
         if (summary.warnCount >= 3)  return 'degraded';
         return 'complete';
+      } catch {
+        return 'complete';
+      }
+    },
+  },
+
+  // ── Phase 2C: Vendor data completeness signals ────────────────────────────
+
+  {
+    id:       'vendor_data_missing',
+    severity: 'advisory',
+    title:    'No vendor market data uploaded for this deal',
+    description:
+      'No market data from a registered vendor (CoStar, Yardi Matrix) has been ' +
+      'uploaded for this deal\'s submarket. Rent comp benchmarks, submarket vacancy ' +
+      'trends, and supply pipeline context will use platform estimates only, which ' +
+      'may be less precise than operator-provided vendor exports.',
+    recommendedAction:
+      'Upload a CoStar DataTable, Near-By Sales, or Rent Comp export, or a Yardi ' +
+      'Matrix Rent Survey, from the Data Library tab. The platform accepts vendor ' +
+      'exports directly and parses them automatically.',
+    ctaLabel: 'Upload Market Data',
+    ctaLink:  (dealId) => `/deals/${dealId}?tab=data-library`,
+
+    async evaluate(dealId, _propertyId, pool): Promise<SignalStatus> {
+      try {
+        // Check vendor_market_observations (primary cross-vendor substrate)
+        const obsRes = await pool.query(
+          `SELECT 1 FROM vendor_market_observations WHERE deal_id = $1::uuid LIMIT 1`,
+          [dealId],
+        );
+        if (obsRes.rows.length > 0) return 'complete';
+
+        // Also check data_library_files for vendor-typed uploads (comp files that
+        // write to market_*_comps but not vendor_market_observations)
+        const allVendors = vendorRegistry.getAllVendors();
+        const vendorDocTypes = allVendors.flatMap(v => v.fileTypes.map(ft => ft.documentType));
+
+        const fileRes = await pool.query(
+          `SELECT 1 FROM data_library_files
+           WHERE deal_id = $1::uuid
+             AND document_type = ANY($2::text[])
+             AND parser_status = 'success'
+           LIMIT 1`,
+          [dealId, vendorDocTypes],
+        );
+        return fileRes.rows.length > 0 ? 'complete' : 'incomplete';
+      } catch {
+        // Fail-open: don't falsely alarm if the query fails (table may not exist yet)
+        return 'complete';
+      }
+    },
+  },
+
+  {
+    id:       'vendor_data_stale',
+    severity: 'advisory',
+    title:    'Vendor market data is stale',
+    description:
+      'The most recent vendor market data upload for this deal has exceeded the ' +
+      'vendor\'s declared freshness window. Stale data may not reflect current ' +
+      'submarket conditions, which can affect rent comp benchmarks, cap-rate ' +
+      'context, and supply pipeline projections.',
+    recommendedAction:
+      'Upload a fresh vendor export from the Data Library tab. ' +
+      'CoStar data is considered stale after 90 days; Yardi Matrix after 120 days.',
+    ctaLabel: 'Upload Fresh Data',
+    ctaLink:  (dealId) => `/deals/${dealId}?tab=data-library`,
+
+    async evaluate(dealId, _propertyId, pool): Promise<SignalStatus> {
+      try {
+        const allVendors = vendorRegistry.getAllVendors();
+
+        // Pull the most recent vendor_data_as_of per vendor from observations (primary)
+        const obsRes = await pool.query<{
+          vendor_id:   string;
+          most_recent: string;
+        }>(
+          `SELECT vendor_id,
+                  MAX(COALESCE(vendor_data_as_of, observation_date::date))::text AS most_recent
+             FROM vendor_market_observations
+            WHERE deal_id = $1::uuid
+            GROUP BY vendor_id`,
+          [dealId],
+        );
+
+        // Collect observation-based staleness
+        const staleness = new Map<string, string>(); // vendorId -> mostRecentDate
+        for (const row of obsRes.rows) {
+          staleness.set(row.vendor_id, row.most_recent);
+        }
+
+        // Fallback: also check data_library_files for file-only deals (same as vendor_data_missing)
+        // This ensures consistency: if vendor_data_missing uses files, vendor_data_stale should too.
+        if (staleness.size === 0) {
+          const vendorDocTypes = allVendors.flatMap(v => v.fileTypes.map(ft => ft.documentType));
+          const fileRes = await pool.query<{
+            document_type: string;
+            most_recent:   string;
+          }>(
+            `SELECT document_type,
+                    MAX(created_at)::text AS most_recent
+               FROM data_library_files
+              WHERE deal_id = $1::uuid
+                AND document_type = ANY($2::text[])
+                AND parser_status = 'success'
+              GROUP BY document_type`,
+            [dealId, vendorDocTypes],
+          ).catch(() => ({ rows: [] as { document_type: string; most_recent: string }[] }));
+
+          for (const row of fileRes.rows) {
+            const vendorEntry = vendorRegistry.getVendorByDocType(row.document_type as any);
+            if (!vendorEntry) continue;
+            const vid = vendorEntry.vendor.vendorId;
+            const existing = staleness.get(vid);
+            if (!existing || row.most_recent > existing) {
+              staleness.set(vid, row.most_recent);
+            }
+          }
+        }
+
+        if (staleness.size === 0) {
+          // No vendor data at all — vendor_data_missing signal covers this case
+          return 'complete';
+        }
+
+        let anyStale = false;
+        for (const [vendorId, mostRecent] of staleness.entries()) {
+          const vendor = allVendors.find(v => v.vendorId === vendorId);
+          if (!vendor) continue;
+          const status = computeFreshnessStatus(vendor.freshnessProfile, mostRecent);
+          if (status === 'stale') {
+            anyStale = true;
+            break;
+          }
+        }
+
+        return anyStale ? 'incomplete' : 'complete';
       } catch {
         return 'complete';
       }

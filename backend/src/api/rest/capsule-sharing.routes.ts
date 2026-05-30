@@ -37,6 +37,7 @@ import * as crypto from 'crypto';
 import * as XLSX from 'xlsx';
 import PDFDocument from 'pdfkit';
 import { computeUserLineAnnual } from '../../services/proforma-seeder.service';
+import { redactRestrictedVendorPlatformIntel } from '../../services/vendor-freshness.service';
 
 const router = Router();
 
@@ -488,7 +489,10 @@ router.get('/shares/:shortcode', async (req: Request, res: Response) => {
         jedi_score: capsuleData.jedi_score ?? null,
         collision_score: capsuleData.collision_score ?? null,
         deal_data: (capsuleData.deal_data as Record<string, unknown>) ?? {},
-        platform_intel: (capsuleData.platform_intel as Record<string, unknown>) ?? {},
+        // License posture: restricted-vendor data is redacted from external deal-book
+        platform_intel: redactRestrictedVendorPlatformIntel(
+          (capsuleData.platform_intel as Record<string, unknown>) ?? {},
+        ),
         user_adjustments: (capsuleData.user_adjustments as Record<string, unknown>) ?? {},
         module_outputs: (capsuleData.module_outputs as Record<string, unknown>) ?? {},
         snapshot_taken_at: (capsuleData.snapshot_taken_at as string) ?? null,
@@ -536,7 +540,14 @@ router.get('/shares/:shortcode/export/excel', async (req: Request, res: Response
       [capsuleId]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Capsule not found.' });
-    const wb = buildCapsuleWorkbook(result.rows[0]);
+    // License posture: redact restricted-vendor data from external exports
+    const externalCapsule = {
+      ...result.rows[0],
+      platform_intel: redactRestrictedVendorPlatformIntel(
+        (result.rows[0].platform_intel as Record<string, unknown>) ?? {},
+      ),
+    };
+    const wb = buildCapsuleWorkbook(externalCapsule);
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', bookSST: true });
     const safeName = (result.rows[0].property_address ?? capsuleId)
       .replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 60);
@@ -583,7 +594,10 @@ router.get('/shares/:shortcode/export/pdf', async (req: Request, res: Response) 
 
     const capsule = result.rows[0];
     const dd = flattenLV((capsule.deal_data as Record<string, unknown>) ?? {});
-    const pi = flattenLV((capsule.platform_intel as Record<string, unknown>) ?? {});
+    // License posture: redact restricted-vendor data before rendering external PDF
+    const pi = flattenLV(
+      redactRestrictedVendorPlatformIntel((capsule.platform_intel as Record<string, unknown>) ?? {}),
+    );
     const companyName: string = company_name ?? 'JEDI RE';
     const address: string = capsule.property_address ?? 'Undisclosed Address';
     const assetClass: string = capsule.asset_class ?? '';
@@ -1024,7 +1038,10 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
         jedi_score: capsuleData.jedi_score ?? null,
         collision_score: capsuleData.collision_score ?? null,
         deal_data: (capsuleData.deal_data as Record<string, unknown>) ?? {},
-        platform_intel: (capsuleData.platform_intel as Record<string, unknown>) ?? {},
+        // License posture: restricted-vendor data is redacted from external deal-book
+        platform_intel: redactRestrictedVendorPlatformIntel(
+          (capsuleData.platform_intel as Record<string, unknown>) ?? {},
+        ),
         user_adjustments: (capsuleData.user_adjustments as Record<string, unknown>) ?? {},
         module_outputs: (capsuleData.module_outputs as Record<string, unknown>) ?? {},
         snapshot_taken_at: (capsuleData.snapshot_taken_at as string) ?? null,
@@ -2418,7 +2435,14 @@ router.get('/capsule-links/:accessToken/export/excel', async (req: Request, res:
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Capsule not found' });
 
-    const wb = buildCapsuleWorkbook(result.rows[0]);
+    // License posture: redact restricted-vendor data from external XLSX export
+    const externalCapsule = {
+      ...result.rows[0],
+      platform_intel: redactRestrictedVendorPlatformIntel(
+        (result.rows[0].platform_intel as Record<string, unknown>) ?? {},
+      ),
+    };
+    const wb = buildCapsuleWorkbook(externalCapsule);
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', bookSST: true });
     const safeName = (result.rows[0].property_address ?? capsuleId)
       .replace(/[^a-zA-Z0-9_\- ]/g, '_').slice(0, 60);
@@ -2467,7 +2491,10 @@ router.get('/capsule-links/:accessToken/export/pdf', async (req: Request, res: R
 
     const capsule = result.rows[0];
     const dd = flattenLV((capsule.deal_data as Record<string, unknown>) ?? {});
-    const pi = flattenLV((capsule.platform_intel as Record<string, unknown>) ?? {});
+    // License posture: redact restricted-vendor data before rendering external PDF
+    const pi = flattenLV(
+      redactRestrictedVendorPlatformIntel((capsule.platform_intel as Record<string, unknown>) ?? {}),
+    );
     const companyName: string = company_name ?? 'JEDI RE';
     const address: string = capsule.property_address ?? 'Undisclosed Address';
     const assetClass: string = capsule.asset_class ?? '';

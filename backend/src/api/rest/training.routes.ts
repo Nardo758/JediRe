@@ -9,6 +9,32 @@ import {
   ModuleType,
 } from '../../models/module-training';
 import { Suggestion } from '../../services/training/suggestion-generator';
+import { getRestrictedVendorIds } from '../../services/vendor-freshness.service';
+
+/**
+ * Strip restricted-vendor sourced fields from deal_characteristics before they
+ * are written to the training corpus. Restricted vendors (e.g. CoStar) prohibit
+ * use of their raw data for AI model training per their license terms.
+ *
+ * Keys are pruned when they name a restricted vendorId (substring match, case-insensitive).
+ * Nested vendor_source / _vendorSource annotations are NOT inspected here because
+ * training characteristics are pre-flattened numeric/string scalars — the source
+ * metadata does not survive the feature-extraction step.
+ */
+function sanitizeTrainingCharacteristics(
+  characteristics: Record<string, unknown>,
+): Record<string, unknown> {
+  const restrictedIds = getRestrictedVendorIds();
+  const restrictedPatterns = Array.from(restrictedIds).map(
+    id => new RegExp(id.replace(/_/g, '[_\\s-]*'), 'i'),
+  );
+  const clean: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(characteristics)) {
+    if (restrictedPatterns.some(p => p.test(key))) continue;
+    clean[key] = value;
+  }
+  return clean;
+}
 
 export function createTrainingRoutes(pool: Pool): Router {
   const router = Router();
@@ -33,11 +59,18 @@ export function createTrainingRoutes(pool: Pool): Router {
         return res.status(400).json({ error: 'Missing required fields: training_id, deal_characteristics, user_output' });
       }
 
+      // License posture: strip restricted-vendor fields before writing to training corpus
+      const safeCharacteristics = sanitizeTrainingCharacteristics(
+        typeof deal_characteristics === 'object' && deal_characteristics !== null
+          ? deal_characteristics as Record<string, unknown>
+          : {},
+      );
+
       const result = await pool.query(
         `INSERT INTO training_examples (training_id, deal_characteristics, user_output, source_type, source_file_name)
          VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
-        [training_id, deal_characteristics, user_output, source_type || 'manual', source_file_name || null]
+        [training_id, safeCharacteristics, user_output, source_type || 'manual', source_file_name || null]
       );
 
       res.json({ 
@@ -69,11 +102,17 @@ export function createTrainingRoutes(pool: Pool): Router {
         
         const insertedExamples = [];
         for (const example of examples) {
+          // License posture: strip restricted-vendor fields before writing to training corpus
+          const safeCharacteristics = sanitizeTrainingCharacteristics(
+            typeof example.deal_characteristics === 'object' && example.deal_characteristics !== null
+              ? example.deal_characteristics as Record<string, unknown>
+              : {},
+          );
           const result = await client.query(
             `INSERT INTO training_examples (training_id, deal_characteristics, user_output, source_type, source_file_name)
              VALUES ($1, $2, $3, $4, $5)
              RETURNING *`,
-            [training_id, example.deal_characteristics, example.user_output, example.source_type || 'manual', example.source_file_name || null]
+            [training_id, safeCharacteristics, example.user_output, example.source_type || 'manual', example.source_file_name || null]
           );
           insertedExamples.push(result.rows[0]);
         }
