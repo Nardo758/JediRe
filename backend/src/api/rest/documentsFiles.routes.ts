@@ -416,7 +416,7 @@ router.get(
 
       const filePath = file.file_path;
 
-      // Check if file exists
+      // Check if file exists on disk
       try {
         await fs.access(filePath);
       } catch {
@@ -426,17 +426,13 @@ router.get(
         });
       }
 
-      // Set headers for download
-      res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${encodeURIComponent(file.original_filename)}"`
-      );
-      res.setHeader('Content-Length', file.file_size.toString());
-
-      // Stream file
-      const fileStream = require('fs').createReadStream(filePath);
-      fileStream.pipe(res);
+      // Stream file using Express res.download (handles headers, streaming, and errors)
+      res.download(filePath, file.original_filename, (err) => {
+        if (err && !res.headersSent) {
+          logger.error('Error streaming file download:', err);
+          res.status(500).json({ success: false, message: 'Download failed' });
+        }
+      });
     } catch (error) {
       logger.error('Error downloading file:', error);
       next(error);
