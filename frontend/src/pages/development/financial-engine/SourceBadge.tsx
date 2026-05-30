@@ -41,3 +41,40 @@ export function SourceBadge({ source }: { source: string | null }) {
     }}>{meta.label}</span>
   );
 }
+
+/**
+ * ContestedBadge — provenance badge for fields with material source divergence.
+ *
+ * Renders an amber "CONTESTED" pill when two or more source layers disagree
+ * beyond the field's divergence threshold. Accepts an optional delta string
+ * for display (e.g. "1345 bps").
+ *
+ * alertLevel:
+ *   'warn'  → amber border / background
+ *   'block' → red border / background (extreme divergence)
+ */
+export function ContestedBadge({
+  alertLevel,
+  deltaLabel,
+}: {
+  alertLevel: 'warn' | 'block';
+  deltaLabel?: string;
+}) {
+  const isBlock   = alertLevel === 'block';
+  const color     = isBlock ? '#FF5252' : BT.text.amber;
+  const bg        = isBlock ? '#FF525210' : `${BT.text.amber}10`;
+
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+      padding: '1px 5px', borderRadius: 2,
+      fontFamily: MONO, fontSize: 7, letterSpacing: 0.4, fontWeight: 700,
+      color,
+      background: bg,
+      border: `1px solid ${color}55`,
+      whiteSpace: 'nowrap',
+    }}>
+      ⚡ CONTESTED{deltaLabel ? ` · ${deltaLabel}` : ''}
+    </span>
+  );
+}

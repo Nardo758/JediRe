@@ -40,8 +40,51 @@
  */
 
 import { Pool } from 'pg';
+import {
+  getFieldThreshold,
+  deriveDivergenceAlertLevel,
+  type DivergenceAlertLevel,
+} from './divergence-thresholds';
 
 // ── Public types ──────────────────────────────────────────────────────────────
+
+/**
+ * One non-null source layer that contributed to divergence analysis.
+ * Surfaced in the Validation Grid under the "CONTESTED" badge.
+ */
+export interface DivergencePoint {
+  layer: 'override' | 'computedValue' | 'agent' | 't12' | 'om' | 'broker' | 'storedResolved';
+  label: string;
+  value: number;
+}
+
+/**
+ * Divergence signature computed at field resolution time.
+ * Present when ≥2 source layers are non-null for the same field.
+ *
+ * alertLevel:
+ *   'none'  — all sources agree within threshold
+ *   'warn'  — material divergence (delta ≥ threshold, < threshold × 3)
+ *   'block' — extreme divergence (delta ≥ threshold × 3)
+ */
+export interface DivergenceSignature {
+  /** All non-null source layers used for comparison. */
+  points: DivergencePoint[];
+  /** Maximum absolute pairwise delta across all source pairs. */
+  maxAbsDelta: number;
+  /** Alert level derived from maxAbsDelta vs field threshold. */
+  alertLevel: DivergenceAlertLevel;
+  /** True when alertLevel is 'warn' or 'block'. */
+  exceeds: boolean;
+  /** Threshold applied (in same units as field). */
+  threshold: number;
+  /** Canonical field name. */
+  fieldName: string;
+  /** Display unit hint (e.g. 'bps', '$'). */
+  unit: string;
+  /** True when field is stored in 0–1 decimal scale (% fields). */
+  isPct: boolean;
+}
 
 /**
  * All layers of a LayeredValue<number> as read from deal_assumptions.year1.
@@ -78,6 +121,12 @@ export interface LayeredFieldValue {
    * E.g. 'egi - total_opex' for noi.
    */
   computedAs?: string;
+  /**
+   * Divergence signature — present when ≥2 source layers are non-null.
+   * Used by the Validation Grid to surface CONTESTED badges and by the
+   * deal-completeness signal for T-C1 scoring.
+   */
+  divergenceSignature?: DivergenceSignature;
 }
 
 // ── Field name whitelist ──────────────────────────────────────────────────────
@@ -152,6 +201,75 @@ function extractNum(v: unknown): number | null {
   if (v == null) return null;
   const n = parseFloat(String(v));
   return isNaN(n) ? null : n;
+}
+
+const LAYER_LABELS: Record<string, string> = {
+  override:       'Operator Override',
+  computedValue:  'Engine A Computed',
+  agent:          'Agent Derived',
+  t12:            'T-12 Document',
+  om:             'OM Narrative',
+  broker:         'Broker OM',
+  storedResolved: 'Seeded (Best)',
+};
+
+/**
+ * Build a DivergenceSignature from the resolved layer snapshot.
+ *
+ * Collects all non-null source layers, computes the maximum pairwise absolute
+ * delta, and maps it to an alertLevel via the per-field threshold registry.
+ *
+ * Returns undefined when < 2 layers are non-null (nothing to compare).
+ */
+function buildDivergenceSignature(
+  fieldName: string,
+  layers: {
+    override: number | null;
+    computedValue: number | null;
+    agent: number | null;
+    t12: number | null;
+    om: number | null;
+    broker: number | null;
+    storedResolved: number | null;
+  },
+): DivergenceSignature | undefined {
+  const candidates: DivergencePoint[] = [];
+
+  const push = (layer: DivergencePoint['layer'], val: number | null) => {
+    if (val != null) candidates.push({ layer, label: LAYER_LABELS[layer] ?? layer, value: val });
+  };
+
+  push('override', layers.override);
+  push('computedValue', layers.computedValue);
+  push('agent', layers.agent);
+  push('t12', layers.t12);
+  push('om', layers.om);
+  push('broker', layers.broker);
+  push('storedResolved', layers.storedResolved);
+
+  if (candidates.length < 2) return undefined;
+
+  let maxAbsDelta = 0;
+  for (let i = 0; i < candidates.length; i++) {
+    for (let j = i + 1; j < candidates.length; j++) {
+      const delta = Math.abs(candidates[i].value - candidates[j].value);
+      if (delta > maxAbsDelta) maxAbsDelta = delta;
+    }
+  }
+
+  const thr = getFieldThreshold(fieldName);
+  const alertLevel = deriveDivergenceAlertLevel(maxAbsDelta, thr.absolute);
+
+  return {
+    points:       candidates,
+    maxAbsDelta,
+    alertLevel,
+    exceeds:      alertLevel !== 'none',
+    threshold:    thr.absolute,
+    fieldName,
+    unit:         thr.unit,
+    isPct:        thr.isPct,
+  };
 }
 
 /**
@@ -316,6 +434,10 @@ export async function getFieldValue(
 
   const { resolved, resolution, source } = resolveLayeredValue(lv, computedValue, computedAs);
 
+  const divergenceSignature = buildDivergenceSignature(fieldName, {
+    override, computedValue, agent, t12, om, broker, storedResolved,
+  });
+
   return {
     fieldName,
     year,
@@ -330,6 +452,7 @@ export async function getFieldValue(
     resolution,
     source,
     computedAs,
+    divergenceSignature,
   };
 }
 
@@ -434,11 +557,65 @@ export async function getFieldValues(
 
     const { resolved, resolution, source } = resolveLayeredValue(lv, computedValue, computedAs);
 
+    const divergenceSignature = buildDivergenceSignature(fieldName, {
+      override, computedValue, agent, t12, om, broker, storedResolved,
+    });
+
     result[fieldName] = {
       fieldName, year, resolved, override, computedValue, agent,
       t12, om, broker, storedResolved, resolution, source, computedAs,
+      divergenceSignature,
     };
   }
 
   return result;
+}
+
+// ── Deal-level divergence summary (for T-C1 completeness signal) ─────────────
+
+const DIVERGENCE_TRACKED_FIELDS = [
+  'gpr', 'loss_to_lease', 'vacancy', 'concessions', 'bad_debt',
+  'real_estate_tax', 'insurance', 'management_fee', 'repairs_maintenance',
+  'utilities', 'noi', 'exit_cap', 'rent_growth_yr1',
+] as const;
+
+export interface DivergenceSummary {
+  total:  number;
+  warn:   number;
+  block:  number;
+  fields: Array<{ fieldName: string; alertLevel: DivergenceAlertLevel; maxAbsDelta: number }>;
+}
+
+/**
+ * getDivergenceSummary — aggregate divergence signal for T-C1 deal completeness.
+ *
+ * Resolves all tracked fields in a single DB query and returns counts of
+ * fields with material (warn) and extreme (block) divergence.
+ *
+ * Callers should treat this as a best-effort enrichment; DB errors are caught
+ * and return an empty summary rather than propagating.
+ */
+export async function getDivergenceSummary(
+  pool: Pool,
+  dealId: string,
+): Promise<DivergenceSummary> {
+  try {
+    const values = await getFieldValues(pool, dealId, [...DIVERGENCE_TRACKED_FIELDS]);
+    const fields: DivergenceSummary['fields'] = [];
+    let warn  = 0;
+    let block = 0;
+
+    for (const fieldName of DIVERGENCE_TRACKED_FIELDS) {
+      const lv = values[fieldName];
+      if (!lv?.divergenceSignature || lv.divergenceSignature.alertLevel === 'none') continue;
+      const { alertLevel, maxAbsDelta } = lv.divergenceSignature;
+      fields.push({ fieldName, alertLevel, maxAbsDelta });
+      if (alertLevel === 'warn')  warn++;
+      if (alertLevel === 'block') block++;
+    }
+
+    return { total: fields.length, warn, block, fields };
+  } catch {
+    return { total: 0, warn: 0, block: 0, fields: [] };
+  }
 }

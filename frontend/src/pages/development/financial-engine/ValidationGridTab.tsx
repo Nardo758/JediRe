@@ -25,6 +25,7 @@ import React, { useState, useEffect } from 'react';
 import { CheckCircle, AlertTriangle, AlertCircle, HelpCircle } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
+import { ContestedBadge } from './SourceBadge';
 import type { FinancialEngineTabProps, EvidenceFieldMeta } from './types';
 
 const MONO = BT.font.mono;
@@ -33,6 +34,25 @@ const MONO = BT.font.mono;
 
 type QualityBand    = 'STRONG' | 'WATCH' | 'WEAK' | 'UNVALIDATED';
 type ConfidenceLevel = 'high' | 'medium' | 'low' | null;
+
+// ── DivergenceSignature — mirrors backend type (field-access/get-field-value.service.ts) ──
+
+interface DivergencePoint {
+  layer: string;
+  label: string;
+  value: number;
+}
+
+interface DivergenceSignature {
+  points: DivergencePoint[];
+  maxAbsDelta: number;
+  alertLevel: 'none' | 'info' | 'warn' | 'block';
+  exceeds: boolean;
+  threshold: number;
+  fieldName: string;
+  unit: string;
+  isPct: boolean;
+}
 
 // ── Override impact signal ─────────────────────────────────────────────────────
 //
@@ -78,6 +98,13 @@ interface ValidationRow {
   isOverride?: boolean;
   /** Override impact signal — present only when isOverride and baseline known */
   overrideImpact?: OverrideImpact;
+  /**
+   * Divergence signature — present when ≥2 source layers disagree beyond threshold.
+   * Renders a CONTESTED badge in the assumption cell. Sourced either from the
+   * /field-divergences API (for LayeredValue fields) or computed inline from
+   * ltlSignals (for the LTL row).
+   */
+  divergenceSignature?: DivergenceSignature;
 }
 
 interface ValidationGroup {
@@ -346,23 +373,35 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
   const assum = props.assumptions;
   const em    = props.evidenceFieldMap;   // per-field evidence metadata
 
-  const [rawA,       setRawA]       = useState<RawAssumptions | null>(null);
-  const [impliedCap, setImpliedCap] = useState<ImpliedCapData | null>(null);
-  const [loading,    setLoading]    = useState(true);
+  const [rawA,            setRawA]            = useState<RawAssumptions | null>(null);
+  const [impliedCap,      setImpliedCap]      = useState<ImpliedCapData | null>(null);
+  const [loading,         setLoading]         = useState(true);
+  const [fieldDivergences, setFieldDivergences] = useState<Record<string, DivergenceSignature>>({});
 
   useEffect(() => {
     if (!props.dealId) return;
     setLoading(true);
     setRawA(null);
     setImpliedCap(null);
+    setFieldDivergences({});
     Promise.all([
       apiClient.get<any>(`/api/v1/deals/${props.dealId}/assumptions`).catch(() => null),
       apiClient.get<any>(`/api/v1/deals/${props.dealId}/implied-cap-rate`).catch(() => null),
-    ]).then(([ar, cr]) => {
+      apiClient.get<any>(`/api/v1/deals/${props.dealId}/field-divergences`).catch(() => null),
+    ]).then(([ar, cr, dr]) => {
       const ad = ar?.data?.data ?? ar?.data;
       if (ad && (ad.deal_id || ad.exists !== undefined)) setRawA(ad);
       const cd = cr?.data?.data;
       if (cd) setImpliedCap(cd);
+      const divData: Array<{ fieldName: string; divergence: DivergenceSignature }> =
+        dr?.data?.data ?? [];
+      if (divData.length > 0) {
+        const map: Record<string, DivergenceSignature> = {};
+        for (const entry of divData) {
+          if (entry.divergence?.exceeds) map[entry.fieldName] = entry.divergence;
+        }
+        setFieldDivergences(map);
+      }
     }).finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.dealId]);
@@ -483,6 +522,7 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
       overrideImpact:  exitIsOverride && exitCapVal != null && impliedCap?.implied_cap_rate != null
         ? computeOverrideImpact('exit_cap', exitCapVal, impliedCap.implied_cap_rate, impliedCap.delta_bps)
         : undefined,
+      divergenceSignature: fieldDivergences['exit_cap'],
     });
 
     // Hold Period
@@ -620,6 +660,7 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
       overrideImpact: rentGrPyo && rentGrowthY1 != null && Math.abs(rentGrowthY1 - PLATFORM_DEFAULTS.rentGrowthY1) > 0.001
         ? computeOverrideImpact('rent_growth_y1', rentGrowthY1, PLATFORM_DEFAULTS.rentGrowthY1)
         : undefined,
+      divergenceSignature: fieldDivergences['rent_growth_yr1'],
     });
 
     // Stabilized Occupancy
@@ -672,6 +713,65 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
         ? computeOverrideImpact('collection_loss', collLoss, PLATFORM_DEFAULTS.collectionLoss, null, false)
         : undefined,
     });
+
+    // Loss to Lease — T12 vs live-lease-analytics divergence (Piece B3)
+    // Source: fin.ltlSignals from Engine A (Task #1540 Piece B1).
+    // The 464 Bishop case: T12=0.35%, live=13.8% (1345 bps delta → WEAK + CONTESTED).
+    const ltlSignals = fin?.ltlSignals ?? null;
+    const ltlT12     = ltlSignals?.t12Pct  ?? null;
+    const ltlLive    = ltlSignals?.livePct ?? null;
+    const ltlResolved = ltlSignals
+      ? (ltlSignals.trajectorySource === 'live' ? ltlLive : ltlT12)
+      : null;
+    const ltlDelta = ltlT12 != null && ltlLive != null
+      ? Math.abs(ltlLive - ltlT12)
+      : null;
+    const LTL_THRESHOLD = 0.03;  // 300 bps — matches divergence-thresholds.ts
+    const ltlContested = ltlDelta != null && ltlDelta > LTL_THRESHOLD;
+    const ltlQ: QualityBand =
+      ltlLive != null && ltlContested ? 'WEAK'
+      : ltlLive != null               ? 'STRONG'
+      : ltlT12 != null                ? 'WATCH'
+      : 'UNVALIDATED';
+
+    const ltlDivSig: DivergenceSignature | undefined =
+      ltlContested && ltlT12 != null && ltlLive != null
+        ? {
+            points: [
+              { layer: 't12',            label: 'T-12 Document',    value: ltlT12 },
+              { layer: 'storedResolved', label: 'Live (Traffic)',   value: ltlLive },
+            ],
+            maxAbsDelta: ltlDelta!,
+            alertLevel:  ltlDelta! >= LTL_THRESHOLD * 3 ? 'block' : 'warn',
+            exceeds:     true,
+            threshold:   LTL_THRESHOLD,
+            fieldName:   'loss_to_lease',
+            unit:        'bps',
+            isPct:       true,
+          }
+        : undefined;
+
+    const ltlParts: string[] = [];
+    if (ltlT12  != null) ltlParts.push(`T-12: ${fmtPct(ltlT12)}`);
+    if (ltlLive != null) ltlParts.push(`Live: ${fmtPct(ltlLive)}`);
+
+    if (ltlSignals != null || fieldDivergences['loss_to_lease']) {
+      rows.push({
+        key:        'loss_to_lease',
+        assumption: 'Loss to Lease',
+        value:      fmtPct(ltlResolved),
+        confidence: deriveConfidence(ltlQ, null, em),
+        source:     ltlSignals?.trajectorySource === 'live'
+          ? 'Traffic Data (Live)'
+          : ltlT12 != null ? 'T-12 Document' : 'Not Set',
+        method:     ltlLive != null
+          ? `Live Lease Analytics · ${ltlSignals?.trajectorySource === 'live' ? 'LIVE' : 'T-12'} trajectory`
+          : 'Document (T-12)',
+        quality:    ltlQ,
+        detail:     ltlParts.length > 1 ? ltlParts.join(' · ') : undefined,
+        divergenceSignature: ltlDivSig ?? fieldDivergences['loss_to_lease'],
+      });
+    }
 
     groups.push({ label: 'REVENUE', icon: '⊕', rows });
   }
@@ -811,7 +911,8 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
     WEAK:        allRows.filter(r => r.quality === 'WEAK').length,
     UNVALIDATED: allRows.filter(r => r.quality === 'UNVALIDATED').length,
   };
-  const overrideCount = allRows.filter(r => r.isOverride).length;
+  const overrideCount   = allRows.filter(r => r.isOverride).length;
+  const contestedCount  = allRows.filter(r => r.divergenceSignature?.exceeds).length;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -841,6 +942,15 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
             border: `1px solid ${BT.text.amber}44`, borderRadius: 2,
           }}>
             {overrideCount} OVERRIDE{overrideCount > 1 ? 'S' : ''}
+          </span>
+        )}
+        {contestedCount > 0 && (
+          <span style={{
+            fontFamily: MONO, fontSize: 7, fontWeight: 700,
+            color: '#FF5252', padding: '1px 5px',
+            border: '1px solid #FF525244', borderRadius: 2,
+          }}>
+            ⚡ {contestedCount} CONTESTED
           </span>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -918,7 +1028,7 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
 
                 {/* ① ASSUMPTION */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                     <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, fontWeight: 600 }}>
                       {row.assumption}
                     </span>
@@ -930,6 +1040,20 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
                       }}>OVR</span>
                     )}
                   </div>
+                  {row.divergenceSignature?.exceeds && (
+                    <div style={{ marginTop: 1 }}>
+                      <ContestedBadge
+                        alertLevel={
+                          row.divergenceSignature.alertLevel === 'block' ? 'block' : 'warn'
+                        }
+                        deltaLabel={
+                          row.divergenceSignature.isPct
+                            ? `${Math.round(row.divergenceSignature.maxAbsDelta * 10000)} bps`
+                            : `$${Math.round(row.divergenceSignature.maxAbsDelta).toLocaleString()}`
+                        }
+                      />
+                    </div>
+                  )}
                   {row.platformBaseline && (
                     <span style={{ fontFamily: MONO, fontSize: 7, color: '#00D26A', opacity: 0.85 }}>
                       ↳ {row.platformBaseline}
@@ -1012,6 +1136,7 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
         <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>↳ = platform baseline for overrides</span>
         <span style={{ fontFamily: MONO, fontSize: 7, color: '#00C8FF', opacity: 0.8 }}>▲/▼ = est. IRR impact of override (info band)</span>
         <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.amber, opacity: 0.8 }}>▲/▼ = est. IRR impact, &gt;25% delta (caution band)</span>
+        <span style={{ fontFamily: MONO, fontSize: 7, color: '#FF5252', opacity: 0.9 }}>⚡ CONTESTED = source layers disagree beyond threshold (e.g. T-12 vs live)</span>
         <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
           Edit in: DEAL TERMS · INPUTS · DEBT
         </span>

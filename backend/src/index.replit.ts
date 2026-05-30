@@ -155,6 +155,7 @@ import m27CompsRouter from './api/rest/m27-comps.routes';
 import m28CycleIntelligenceRoutes from './api/rest/m28-cycle-intelligence.routes';
 import { createUnitMixRoutes } from './api/rest/unitMix.routes';
 import dealValidationRoutes from './api/rest/deal-validation.routes';
+import fieldDivergencesRoutes from './api/rest/field-divergences.routes';
 import unitMixPropagationRoutes from './api/rest/unit-mix-propagation.routes';
 import dealAssumptionsRoutes from './api/rest/deal-assumptions.routes';
 import financialDocumentsRoutes from './api/rest/financial-documents.routes';
@@ -537,6 +538,7 @@ app.use('/api/v1/orgs', requireAuth, orgRouter);
 
 // Phase 10: Cross-Module Validation
 app.use('/api/v1/deals', requireAuth, dealValidationRoutes);
+app.use('/api/v1/deals', requireAuth, fieldDivergencesRoutes);
 
 // Phase 11: Unit Mix Propagation
 app.use('/api/v1/deals', requireAuth, unitMixPropagationRoutes);
