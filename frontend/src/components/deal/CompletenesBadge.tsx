@@ -124,13 +124,33 @@ export function CompletenesBadge({ dealId }: Props) {
     }
   };
 
-  // ── render nothing until data loads or all signals complete ────────────────
+  // ── render nothing until data loads ───────────────────────────────────────
 
   if (!data) return null;
-  // Don't render the badge if everything is complete (no noise when clean)
-  if (data.overallStatus === 'complete') return null;
 
   const { overallStatus, signals, incompleteCount } = data;
+
+  // Green READY state — still render (gives operator positive confirmation)
+  if (overallStatus === 'complete') {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 4,
+        padding: '2px 8px',
+        border: `1px solid ${CLR.green}44`,
+        fontFamily: MONO,
+        fontSize: 9,
+        fontWeight: 800,
+        color: CLR.green,
+        letterSpacing: 0.8,
+        flexShrink: 0,
+      }}
+        title="All completeness signals pass — deal data is ready"
+      >
+        <span style={{ fontSize: 8 }}>◉</span>
+        READY
+      </div>
+    );
+  }
 
   const badgeColor =
     overallStatus === 'incomplete' ? CLR.red : CLR.amber;

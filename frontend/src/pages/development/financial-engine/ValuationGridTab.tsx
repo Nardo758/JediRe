@@ -1147,6 +1147,17 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
   const [error, setError] = useState<string | null>(null);
   const [showOverrideEditor, setShowOverrideEditor] = useState(false);
   const [showCompReview, setShowCompReview] = useState(false);
+  const [costarMissing, setCostarMissing] = useState(false);
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get<any>(`/api/v1/deals/${dealId}/completeness`).then(r => {
+      const signals: Array<{ id: string; status: string; acknowledged: boolean }> =
+        r?.data?.signals ?? [];
+      const costar = signals.find(s => s.id === 'costar_upload_missing');
+      setCostarMissing(!!costar && costar.status !== 'complete' && !costar.acknowledged);
+    }).catch(() => { /* non-critical */ });
+  }, [dealId]);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -1267,6 +1278,35 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
           </button>
         </div>
       </div>
+
+      {/* ── CoStar gating banner — shown when no CoStar export has been uploaded ── */}
+      {costarMissing && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+          padding: '5px 12px',
+          background: '#F5A62308',
+          borderBottom: `1px solid #F5A62333`,
+          fontFamily: MONO,
+        }}>
+          <span style={{ fontSize: 10, color: '#F5A623' }}>△</span>
+          <span style={{ fontSize: 8, color: '#F5A623', fontWeight: 700, letterSpacing: 0.5 }}>
+            NO COSTAR UPLOAD
+          </span>
+          <span style={{ fontSize: 8, color: '#94A3B8' }}>
+            · Market rent and cap-rate comps are platform estimates only. Upload a CoStar export to populate this view with vendor data.
+          </span>
+          <a
+            href={`?tab=documents`}
+            style={{
+              marginLeft: 'auto', fontSize: 7.5, fontWeight: 700, color: '#F5A623',
+              letterSpacing: 0.5, textDecoration: 'none',
+              padding: '1px 6px', border: '1px solid #F5A62344', flexShrink: 0,
+            }}
+          >
+            UPLOAD COSTAR →
+          </a>
+        </div>
+      )}
 
       {/* Subject summary */}
       <SubjectSummary subject={data.subject} purchasePrice={purchasePrice} />
