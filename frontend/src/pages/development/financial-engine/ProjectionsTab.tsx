@@ -2592,13 +2592,55 @@ export function ProjectionsTab({
                 <th style={{ padding: '5px 8px', textAlign: 'left', color: BT.text.muted, fontWeight: 500, minWidth: 220, position: 'sticky', left: 0, background: BT.bg.header, zIndex: 3 }}>
                   OPERATING STATEMENT
                   {financials && <span style={{ marginLeft: 8, fontWeight: 400, color: BT.text.muted, fontSize: 8 }}>· {financials.totalUnits} units · M07</span>}
+                  {financials && (financials.adoptionTimeline?.effectiveStabilizationYear ?? null) == null && (
+                    <span style={{ marginLeft: 8, fontWeight: 400, color: BT.text.amber, fontSize: 7, opacity: 0.65, letterSpacing: 0.4, fontFamily: MONO }}>· STAB WINDOW UNDEFINED</span>
+                  )}
                 </th>
                 {isAnnual
-                  ? annualYears.map(yr => (
-                      <th key={yr} style={{ padding: '5px 8px', textAlign: 'right', color: yr === holdYears ? BT.text.amber : BT.text.muted, fontWeight: yr === holdYears ? 700 : 500, minWidth: 90, borderLeft: yr === holdYears ? `2px solid ${BT.text.amber}40` : undefined }}>
-                        {yr === holdYears ? `YR ${yr} ★` : `YR ${yr}`}
-                      </th>
-                    ))
+                  ? (() => {
+                      const stabYr = financials?.adoptionTimeline?.effectiveStabilizationYear ?? null;
+                      return annualYears.map(yr => {
+                        const isExitYear = yr === holdYears;
+                        const phase: 'pre' | 'stab' | 'post' | null =
+                          stabYr == null ? null
+                          : yr < stabYr  ? 'pre'
+                          : yr === stabYr ? 'stab'
+                          : 'post';
+                        const phaseLabel =
+                          phase === 'pre'  ? 'PRE-STAB'   :
+                          phase === 'stab' ? 'STABILIZED' :
+                          phase === 'post' ? 'POST-STAB'  : null;
+                        const phaseColor =
+                          phase === 'pre'  ? BT.text.amber          :
+                          phase === 'stab' ? (BT.text.green ?? '#4ADE80') :
+                                            '#64748B';
+                        const isStabEmphasis = phase === 'stab';
+                        return (
+                          <th key={yr} style={{
+                            padding: '5px 8px', textAlign: 'right',
+                            color:      isExitYear ? BT.text.amber : BT.text.muted,
+                            fontWeight: isExitYear ? 700 : 500,
+                            minWidth: 90,
+                            borderLeft: isExitYear
+                              ? `2px solid ${BT.text.amber}40`
+                              : isStabEmphasis
+                              ? `2px solid ${BT.text.green ?? '#4ADE80'}35`
+                              : undefined,
+                            background: isStabEmphasis ? `${BT.text.green ?? '#4ADE80'}07` : undefined,
+                          }}>
+                            <div>{isExitYear ? `YR ${yr} ★` : `YR ${yr}`}</div>
+                            {phaseLabel && (
+                              <div style={{
+                                fontSize: 7, fontFamily: MONO, fontWeight: isStabEmphasis ? 700 : 600,
+                                letterSpacing: 0.4, color: phaseColor, marginTop: 2, lineHeight: 1,
+                              }}>
+                                {phaseLabel}
+                              </div>
+                            )}
+                          </th>
+                        );
+                      });
+                    })()
                   : subCols.map(c => (
                       <th key={c.periodKey} style={{ padding: '5px 6px', textAlign: 'right', color: BT.text.muted, fontWeight: 500, minWidth: 80, fontSize: 8 }}>
                         {c.label}
