@@ -20,7 +20,8 @@ const router = Router();
 router.use(requireAuth);
 
 const DIVERGENCE_FIELDS = [
-  'gpr', 'loss_to_lease', 'vacancy', 'concessions', 'bad_debt',
+  'gpr', 'egi', 'total_opex',
+  'loss_to_lease', 'vacancy', 'concessions', 'bad_debt',
   'other_income', 'real_estate_tax', 'insurance', 'management_fee',
   'repairs_maintenance', 'utilities', 'payroll', 'administrative',
   'marketing', 'contract_services', 'noi', 'exit_cap', 'rent_growth_yr1',

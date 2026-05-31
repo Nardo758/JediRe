@@ -30,6 +30,29 @@ type MethodId =
   | 'cap_rate_noi' | 'per_unit_benchmark' | 'sales_comp_ppu' | 'sales_comp_psf'
   | 'operator_override' | 'replacement_cost' | 'grm' | 'gim' | 'dcf';
 
+// ── Divergence types (mirrors field-divergences API response) ─────────────────
+
+interface FieldDivergence {
+  fieldName: string;
+  divergence: {
+    alertLevel: 'none' | 'info' | 'warn' | 'block';
+    exceeds: boolean;
+    maxAbsDelta: number;
+    threshold: number;
+    unit: string;
+    isPct: boolean;
+  };
+}
+
+/**
+ * Fields that drive each income-multiple method.
+ * When any mapped field has exceeds=true, the method is CONTESTED.
+ */
+const CONTESTED_FIELD_MAP: Partial<Record<MethodId, string[]>> = {
+  grm: ['gpr'],
+  gim: ['egi'],
+};
+
 type MethodStatus = 'active' | 'insufficient' | 'placeholder';
 type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW' | 'INSUFFICIENT';
 type ConvergenceSignal = 'CONVERGENT' | 'MODERATE' | 'DIVERGENT';
@@ -254,19 +277,43 @@ function EvidencePanel({ lines, open }: { lines: EvidenceLine[]; open: boolean }
   );
 }
 
+// ── CONTESTED Badge ────────────────────────────────────────────────────────────
+
+function ContestedBadge({ fieldName }: { fieldName: string }) {
+  const label = fieldName.toUpperCase();
+  return (
+    <span
+      title={`${label} has a material divergence between Pro Forma and stored values. Review inputs before relying on this method.`}
+      style={{
+        fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: 1,
+        color: BT.text.amber,
+        border: `1px solid ${BT.text.amber}`,
+        borderRadius: 2, padding: '1px 4px',
+        display: 'inline-flex', alignItems: 'center', gap: 3,
+        cursor: 'help',
+      }}
+    >
+      <AlertTriangle size={8} style={{ flexShrink: 0 }} />
+      CONTESTED
+    </span>
+  );
+}
+
 // ── Method Row ─────────────────────────────────────────────────────────────────
 
 function MethodRow({
-  method, subject, purchasePrice,
+  method, subject, purchasePrice, contestedFieldNames,
 }: {
   method: ValuationMethod;
   subject: SubjectProperty;
   purchasePrice: number | null;
+  contestedFieldNames?: string[];
 }) {
   const [showEvidence, setShowEvidence] = useState(false);
 
   const isPlaceholder = method.status === 'placeholder';
   const isInsufficient = method.status === 'insufficient';
+  const isContested = (contestedFieldNames?.length ?? 0) > 0;
 
   // Compute % vs purchase price
   let vsAskPct: number | null = null;
@@ -279,6 +326,8 @@ function MethodRow({
       padding: '10px 14px',
       borderBottom: `1px solid ${BT.border.dim}`,
       opacity: isPlaceholder ? 0.55 : 1,
+      backgroundColor: isContested ? `${BT.text.amber}08` : 'transparent',
+      borderLeft: isContested ? `3px solid ${BT.text.amber}` : '3px solid transparent',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {/* Expand evidence */}
@@ -309,6 +358,9 @@ function MethodRow({
                 borderRadius: 2, padding: '1px 4px',
               }}>COMING {method.placeholderVersion}</span>
             )}
+            {isContested && contestedFieldNames!.map(fn => (
+              <ContestedBadge key={fn} fieldName={fn} />
+            ))}
           </div>
           <div style={{ display: 'flex', gap: 4, marginTop: 3, flexWrap: 'wrap' }}>
             <DirectionBadge dir={method.direction} />
@@ -1148,6 +1200,7 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
   const [showOverrideEditor, setShowOverrideEditor] = useState(false);
   const [showCompReview, setShowCompReview] = useState(false);
   const [costarMissing, setCostarMissing] = useState(false);
+  const [divergences, setDivergences] = useState<FieldDivergence[]>([]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -1161,15 +1214,44 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
+    setDivergences([]);
     try {
-      const res = await apiClient.get(`/api/v1/deals/${dealId}/valuation-grid`);
-      setData(res.data.data ?? res.data);
+      const [gridRes, divRes] = await Promise.allSettled([
+        apiClient.get(`/api/v1/deals/${dealId}/valuation-grid`),
+        apiClient.get(`/api/v1/deals/${dealId}/field-divergences`),
+      ]);
+      if (gridRes.status === 'fulfilled') {
+        setData(gridRes.value.data.data ?? gridRes.value.data);
+      } else {
+        throw gridRes.reason;
+      }
+      if (divRes.status === 'fulfilled' && divRes.value.data?.success) {
+        setDivergences(divRes.value.data.data ?? []);
+      }
+      // On divergence fetch failure, divergences stays [] (cleared above) — no stale badges
     } catch (e: any) {
       setError(e?.response?.data?.error ?? e?.message ?? 'Failed to load valuation grid.');
     } finally {
       setLoading(false);
     }
   }, [dealId]);
+
+  /**
+   * Build a map of methodId → contested field names.
+   * A field is contested when its divergence.exceeds === true.
+   */
+  const contestedByMethod = React.useMemo<Partial<Record<MethodId, string[]>>>(() => {
+    if (!divergences.length) return {};
+    const exceededFields = new Set(
+      divergences.filter(d => d.divergence.exceeds).map(d => d.fieldName),
+    );
+    const result: Partial<Record<MethodId, string[]>> = {};
+    for (const [methodId, fields] of Object.entries(CONTESTED_FIELD_MAP) as [MethodId, string[]][]) {
+      const hit = fields.filter(f => exceededFields.has(f));
+      if (hit.length > 0) result[methodId] = hit;
+    }
+    return result;
+  }, [divergences]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1343,6 +1425,7 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
           method={method}
           subject={data.subject}
           purchasePrice={purchasePrice}
+          contestedFieldNames={contestedByMethod[method.id]}
         />
       ))}
 
