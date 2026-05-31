@@ -832,7 +832,7 @@ For every (asset_class, regime, market_tier) stratum, M38 can compute: out of N 
 |---|---|---|---|
 | **0 — Spec** | This document committed | None | 1 day |
 | **1 — Schema** | `historical_observations` table + indexes; CorpusQueryService skeleton with stub implementations; types module | None | 1 sprint |
-| **2 — Property performance → corpus** | Transformer from existing parser output → corpus rows; backfill historical uploads for the three subject properties (Jacksonville 2018+, Atlanta #1 2020+, Atlanta #2 2022+) | Phase 1 schema | 1 sprint |
+| **2 — Property performance → corpus** | Transformer from existing parser output → corpus rows; backfill historical uploads for the three owned portfolio properties (Frisco TX Jul 2024–Dec 2025, McKinney TX Jul 2024–Dec 2025, Duluth GA Dec 2021–Dec 2022) | Phase 1 schema | 1 sprint |
 | **3 — Reminder system** | All four notification triggers wired; Data Coverage Panel renders on deal page; weekly digest cron | Phase 2 (need at least one ingestion path to test against) | 1 sprint |
 | **4 — Existing-source ingestion** | M35 events, apartment_market_snapshots → corpus rows; FRED / Census / BLS macro joins; LODES bulk load 2018+; QCEW backfill 2018+ | Phase 1 schema | 1.5 sprints |
 | **5 — First empirical refit** | M35 playbook re-derivation against corpus; comparison report (synthetic vs empirical median for each playbook entry) | Phase 4 minimum corpus density | 1 sprint |
