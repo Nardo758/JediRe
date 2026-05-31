@@ -486,7 +486,95 @@ export class CompSetService {
     `, [deal_id]);
 
     if (compSetResult.rows.length === 0) {
-      return null;
+      // No stored comp set — check whether deal-specific CoStar uploads exist.
+      // If they do, surface them as a synthetic result so the property card shows
+      // something useful without requiring a generateCompSet call first.
+      const costarOnlyResult = await pool.query(`
+        SELECT
+          t.id,
+          t.sale_date                       AS recording_date,
+          t.address                         AS property_address,
+          t.units,
+          t.sqft                            AS building_sf,
+          t.year_built,
+          COALESCE(t.asset_class, 'B')      AS property_class,
+          t.sale_price                      AS derived_sale_price,
+          COALESCE(t.price_per_unit, 0)     AS price_per_unit,
+          COALESCE(t.price_per_sqft, 0)     AS price_per_sf,
+          COALESCE(CASE
+            WHEN t.noi IS NOT NULL AND t.sale_price > 0
+            THEN ROUND((t.noi / t.sale_price)::numeric, 6)
+            ELSE NULL
+          END, t.cap_rate)                  AS implied_cap_rate,
+          t.noi,
+          t.buyer                           AS grantee_name,
+          t.buyer_type,
+          t.source,
+          t.source_labels,
+          0                                 AS distance_miles,
+          NULL::float                       AS relevance_score,
+          NULL::jsonb                       AS relevance_factors
+        FROM market_sale_comps t
+        WHERE t.deal_id = $1::uuid
+          AND t.source = 'costar_upload'
+        ORDER BY t.sale_date DESC
+      `, [deal_id]);
+
+      if (costarOnlyResult.rows.length === 0) {
+        return null;
+      }
+
+      const mapRowEarly = (row: any): CompTransaction => {
+        const noi = row.noi != null ? parseFloat(row.noi) : null;
+        const units = row.units ? parseInt(String(row.units)) : 0;
+        const rawCapRate = row.implied_cap_rate ? parseFloat(row.implied_cap_rate) : null;
+        return {
+          id: row.id,
+          recording_date: row.recording_date,
+          property_address: row.property_address,
+          units,
+          building_sf: row.building_sf,
+          year_built: row.year_built,
+          property_class: row.property_class,
+          derived_sale_price: parseFloat(row.derived_sale_price),
+          price_per_unit: parseFloat(row.price_per_unit),
+          price_per_sf: parseFloat(row.price_per_sf),
+          implied_cap_rate: rawCapRate,
+          noi,
+          noi_per_unit: noi != null && units > 0 ? Math.round(noi / units) : null,
+          cap_rate_source: noi != null ? 'noi_derived' : rawCapRate != null ? 'broker_reported' : null,
+          grantee_name: row.grantee_name ?? '',
+          buyer_type: row.buyer_type ?? '',
+          holding_period_months: null,
+          distance_miles: 0,
+          source: row.source,
+          source_labels: row.source_labels ?? null,
+        };
+      };
+
+      const costarOnly = costarOnlyResult.rows.map(mapRowEarly);
+      const ppuOnly  = costarOnly.map(c => c.price_per_unit).filter(p => p > 0).sort((a, b) => a - b);
+      const capOnly  = costarOnly.map(c => c.implied_cap_rate).filter((v): v is number => v != null && v > 0).sort((a, b) => a - b);
+      const sfOnly   = costarOnly.map(c => c.price_per_sf).filter(p => p > 0).sort((a, b) => a - b);
+      const medFn    = (arr: number[]) => arr.length === 0 ? 0 : arr.length % 2 === 0 ? (arr[arr.length / 2 - 1] + arr[arr.length / 2]) / 2 : arr[Math.floor(arr.length / 2)];
+      const avgFn    = (arr: number[]) => arr.length === 0 ? 0 : arr.reduce((a, b) => a + b, 0) / arr.length;
+      const avgPpu   = avgFn(ppuOnly);
+
+      return {
+        id: `costar-only-${deal_id}`,
+        deal_id,
+        created_at: new Date().toISOString(),
+        comp_count: costarOnly.length,
+        median_price_per_unit:  medFn(ppuOnly),
+        avg_price_per_unit:     avgPpu,
+        min_price_per_unit:     ppuOnly[0] ?? 0,
+        max_price_per_unit:     ppuOnly[ppuOnly.length - 1] ?? 0,
+        std_dev_price_per_unit: ppuOnly.length === 0 ? 0 : Math.sqrt(ppuOnly.reduce((s, v) => s + Math.pow(v - avgPpu, 2), 0) / ppuOnly.length),
+        median_price_per_sf:    medFn(sfOnly),
+        median_implied_cap_rate: capOnly.length > 0 ? medFn(capOnly) : null,
+        avg_implied_cap_rate:    capOnly.length > 0 ? avgFn(capOnly) : null,
+        comps: costarOnly,
+      };
     }
 
     const compSet = compSetResult.rows[0];
@@ -526,7 +614,7 @@ export class CompSetService {
       ORDER BY scm.sort_order
     `, [compSet.id]);
 
-    const comps: CompTransaction[] = compsResult.rows.map((row: any) => {
+    const mapCompRow = (row: any): CompTransaction => {
       const noi = row.noi != null ? parseFloat(row.noi) : null;
       const units = row.units ? parseInt(String(row.units)) : 0;
       const rawCapRate = row.implied_cap_rate ? parseFloat(row.implied_cap_rate) : null;
@@ -550,13 +638,98 @@ export class CompSetService {
         grantee_name: row.grantee_name ?? '',
         buyer_type: row.buyer_type ?? '',
         holding_period_months: null,
-        distance_miles: parseFloat(row.distance_miles),
+        distance_miles: parseFloat(row.distance_miles ?? 0),
         source: row.source,
         source_labels: row.source_labels ?? null,
         relevance_score: row.relevance_score ? parseFloat(row.relevance_score) : undefined,
         relevance_factors: row.relevance_factors ?? undefined,
       };
-    });
+    };
+
+    const comps: CompTransaction[] = compsResult.rows.map(mapCompRow);
+
+    // Augment with deal-specific CoStar uploads not already in the stored comp set.
+    // CoStar uploads land in market_sale_comps with source='costar_upload' and deal_id set,
+    // but are only written to sale_comp_set_members when generateCompSet runs after the upload.
+    // This query ensures uploads made after the last generateCompSet are always visible.
+    const existingIds = new Set(comps.map(c => c.id));
+    const costarResult = await pool.query(`
+      SELECT
+        t.id,
+        t.sale_date                       AS recording_date,
+        t.address                         AS property_address,
+        t.units,
+        t.sqft                            AS building_sf,
+        t.year_built,
+        COALESCE(t.asset_class, 'B')      AS property_class,
+        t.sale_price                      AS derived_sale_price,
+        COALESCE(t.price_per_unit, 0)     AS price_per_unit,
+        COALESCE(t.price_per_sqft, 0)     AS price_per_sf,
+        COALESCE(CASE
+          WHEN t.noi IS NOT NULL AND t.sale_price > 0
+          THEN ROUND((t.noi / t.sale_price)::numeric, 6)
+          ELSE NULL
+        END, t.cap_rate)                  AS implied_cap_rate,
+        t.noi,
+        t.buyer                           AS grantee_name,
+        t.buyer_type,
+        t.source,
+        t.source_labels,
+        0                                 AS distance_miles,
+        NULL::float                       AS relevance_score,
+        NULL::jsonb                       AS relevance_factors
+      FROM market_sale_comps t
+      WHERE t.deal_id = $1::uuid
+        AND t.source = 'costar_upload'
+      ORDER BY t.sale_date DESC
+    `, [deal_id]);
+
+    const costarComps: CompTransaction[] = costarResult.rows
+      .filter((row: any) => !existingIds.has(row.id))
+      .map(mapCompRow);
+
+    const allComps = [...comps, ...costarComps];
+
+    // Recompute KPI stats to account for the augmented comp list.
+    const medianFn = (arr: number[]): number => {
+      if (arr.length === 0) return 0;
+      const mid = Math.floor(arr.length / 2);
+      return arr.length % 2 === 0 ? (arr[mid - 1] + arr[mid]) / 2 : arr[mid];
+    };
+    const avgFn = (arr: number[]): number =>
+      arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    const stdDevFn = (arr: number[], mean: number): number => {
+      if (arr.length === 0) return 0;
+      return Math.sqrt(arr.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / arr.length);
+    };
+
+    const pricesPerUnit = allComps.map(c => c.price_per_unit).filter(p => p > 0).sort((a, b) => a - b);
+    const pricesPerSf   = allComps.map(c => c.price_per_sf).filter(p => p > 0).sort((a, b) => a - b);
+    const capRates      = allComps.map(c => c.implied_cap_rate).filter((v): v is number => v != null && v > 0).sort((a, b) => a - b);
+
+    const avgPpu = avgFn(pricesPerUnit);
+
+    const recomputedStats = costarComps.length > 0 ? {
+      comp_count:             allComps.length,
+      median_price_per_unit:  medianFn(pricesPerUnit),
+      avg_price_per_unit:     avgPpu,
+      min_price_per_unit:     pricesPerUnit[0] ?? 0,
+      max_price_per_unit:     pricesPerUnit[pricesPerUnit.length - 1] ?? 0,
+      std_dev_price_per_unit: stdDevFn(pricesPerUnit, avgPpu),
+      median_price_per_sf:    medianFn(pricesPerSf),
+      median_implied_cap_rate: capRates.length > 0 ? medianFn(capRates) : null,
+      avg_implied_cap_rate:    capRates.length > 0 ? avgFn(capRates)    : null,
+    } : {
+      comp_count:             compSet.comp_count,
+      median_price_per_unit:  parseFloat(compSet.median_price_per_unit),
+      avg_price_per_unit:     parseFloat(compSet.avg_price_per_unit),
+      min_price_per_unit:     parseFloat(compSet.min_price_per_unit),
+      max_price_per_unit:     parseFloat(compSet.max_price_per_unit),
+      std_dev_price_per_unit: parseFloat(compSet.std_dev_price_per_unit),
+      median_price_per_sf:    parseFloat(compSet.median_price_per_sf),
+      median_implied_cap_rate: compSet.median_implied_cap_rate ? parseFloat(compSet.median_implied_cap_rate) : null,
+      avg_implied_cap_rate:    compSet.avg_implied_cap_rate ? parseFloat(compSet.avg_implied_cap_rate) : null,
+    };
 
     return {
       id: compSet.id,
@@ -564,16 +737,8 @@ export class CompSetService {
       created_at: compSet.created_at instanceof Date
         ? compSet.created_at.toISOString()
         : String(compSet.created_at),
-      comp_count: compSet.comp_count,
-      median_price_per_unit: parseFloat(compSet.median_price_per_unit),
-      avg_price_per_unit: parseFloat(compSet.avg_price_per_unit),
-      min_price_per_unit: parseFloat(compSet.min_price_per_unit),
-      max_price_per_unit: parseFloat(compSet.max_price_per_unit),
-      std_dev_price_per_unit: parseFloat(compSet.std_dev_price_per_unit),
-      median_price_per_sf: parseFloat(compSet.median_price_per_sf),
-      median_implied_cap_rate: compSet.median_implied_cap_rate ? parseFloat(compSet.median_implied_cap_rate) : null,
-      avg_implied_cap_rate: compSet.avg_implied_cap_rate ? parseFloat(compSet.avg_implied_cap_rate) : null,
-      comps
+      ...recomputedStats,
+      comps: allComps,
     };
   }
   async deleteCompFromSet(dealId: string, compId: string): Promise<{ deleted: boolean; updatedSet: CompSetResult | null }> {

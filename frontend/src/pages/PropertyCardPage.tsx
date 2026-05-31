@@ -2412,7 +2412,9 @@ export default function PropertyDetailsPage() {
           {/* Comp rows */}
           {filteredPcComps.map((c: any, i: number) => {
             const srcLabel = c.source
-              ? c.source.replace('georgia_county', 'GA-CTY').replace(/_/g, '-').toUpperCase().slice(0, 8)
+              ? c.source === 'costar_upload'
+                ? 'COSTAR'
+                : c.source.replace('georgia_county', 'GA-CTY').replace(/_/g, '-').toUpperCase().slice(0, 8)
               : c.buyer_type?.toUpperCase().slice(0, 8) || '—';
             const isOutlier = pcOutlierIds.has(String(c.id));
             const capRaw = c.implied_cap_rate != null ? Number(c.implied_cap_rate) : null;
@@ -2421,7 +2423,7 @@ export default function PropertyDetailsPage() {
             const capColor = isOutlier ? T.text.amber : (capRaw != null ? T.text.amber : T.text.muted);
             const distLabel = c.distance_miles != null ? `${Number(c.distance_miles).toFixed(2)} mi` : '—';
             return (
-              <div key={c.id ?? i} style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.9fr 0.9fr 0.9fr 1fr 0.7fr 0.6fr', padding: '4px 8px', borderBottom: `1px solid ${T.border.subtle}08`, background: isOutlier ? `${T.text.amber}06` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt), fontSize: 8, fontFamily: T.font.mono }}>
+              <div key={c.id ?? i} style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.9fr 0.9fr 0.9fr 1fr 0.7fr 0.6fr', padding: '4px 8px', borderBottom: `1px solid ${T.border.subtle}08`, background: isOutlier ? `${T.text.amber}06` : c.source === 'costar_upload' ? `${T.text.cyan}08` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt), fontSize: 8, fontFamily: T.font.mono }}>
                 <span style={{ color: T.text.secondary, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.property_address || '—'}</span>
                 <span style={{ color: T.text.muted }}>{c.recording_date ? String(c.recording_date).slice(0, 10) : '—'}</span>
                 <span style={{ color: T.text.green }}>{c.derived_sale_price ? pcFmtUsd(Number(c.derived_sale_price)) : '—'}</span>
