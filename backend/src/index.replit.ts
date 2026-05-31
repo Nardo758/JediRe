@@ -549,7 +549,6 @@ app.use('/api/v1/deals', requireAuth, unitMixPropagationRoutes);
 app.use('/api/v1/deals', requireAuth, competitionRouter);
 app.use('/api/v1/proforma', requireAuth, stabilizedPotentialRouter);
 app.use('/api/v1/proforma', requireAuth, proformaRouter);
-app.use('/api/v1/proforma', requireAuth, stabilizedPotentialRouter);
 app.use('/api/v1/deals', dealAssumptionsRoutes);
 app.use('/api/v1/deals', financialDocumentsRoutes);
 app.use('/api/v1/deals', requireAuth, sourceDocumentsRoutes);
@@ -701,9 +700,6 @@ app.use('/api/v1/property-discovery', propertyDiscoveryRouter);
 
 import apartmentLocatorRouter from './api/rest/apartment-locator.routes';
 app.use('/api/v1/apartment-locator', apartmentLocatorRouter);
-// Alias under property-discovery for spec compliance
-// (e.g. /api/v1/property-discovery/apartment-locator/sync-table)
-app.use('/api/v1/property-discovery/apartment-locator', apartmentLocatorRouter);
 
 // Georgia Metro data ingestion + market intelligence routes (auth enforced per-route internally)
 import georgiaIngestionRouter from './api/rest/georgia-ingestion.routes';
