@@ -105,6 +105,8 @@ This profile is essentially the canonical formula with mild lease-up adjustment.
 | `renovation_cost_per_unit` | CONSOLE > INPUTS |
 | `renovation_downtime_months_per_unit` | CONSOLE > INPUTS (typically 1-2 months) |
 
+> **Correction 1.4 (2026-05-31):** Renovation premium sourcing — when the operator has not supplied `renovation_premium_per_unit_monthly`, the agent uses an archive P50 fallback (= 0.80 capture rate, derived from the median of broker-OM-claimed capture rates across the 298-row archive). This is NOT grounded in owned-portfolio empirical track record. No owned portfolio property has a tracked value-add program with before/after renovation data. The archive P50 fallback carries low confidence and should be treated as a directional placeholder until operator input is provided.
+
 **Formula adjustments from canonical:**
 
 ```
@@ -255,6 +257,8 @@ For each post-stab year (N+1 through hold end):
 
 The agent computes `stabilization_year` from the projected vacancy trajectory across the hold period.
 
+> **Correction 1.5 (2026-05-31):** Provenance — the stabilization-year detection algorithm operates on existing agent infrastructure. The year-by-year vacancy projections come from the existing F9 agent reasoning; the stabilization threshold is the operator's input from CONSOLE > INPUTS; the hold period comes from `deal_assumptions.hold_period_years`. No new agent infrastructure is required for Phase 1A. The algorithm is **wiring on existing infrastructure, not a new analytical capability.** Phase 1A tasks #1640, #1644, #1645 have shipped per audit confirmation.
+
 ### Algorithm
 
 ```
@@ -345,6 +349,8 @@ To illustrate the math working end-to-end on a real deal.
 | rent_growth_pct | 3.5% | proforma_assumptions |
 | expense_growth_pct | 2.8% | proforma_assumptions |
 
+> **Correction 1.2 (2026-05-31):** Market rent source — `$1,950 estimated` is a placeholder. The platform's current ceiling for Atlanta rent granularity is **city-level only** (`apartment_market_snapshots` has 34 rows for Atlanta, GA at city level; Feb–May 2026). Midtown-specific granularity is not reliably available — only 1 row exists for "Midtown, GA" in `apartment_market_snapshots` (March 2026), which is too sparse to anchor underwriting. Midtown-specific market rent reasoning requires operator input or external comps. The worked example should be understood as using Atlanta city-level data as the rent source, not a Midtown-submarket comparable.
+
 ### Lifecycle classification
 
 Current occupancy 81% + renovation planned (>10K/unit, >25% units) → **VALUE-ADD profile**.
@@ -377,6 +383,13 @@ other_income_stab  = $777 × 232 = $180,264
 EGI_stab           = $5,048,784 + $180,264 = $5,229,048
 
 # OpEx (illustrative)
+# Correction 1.1: The $4,200/unit controllable OpEx benchmark is a directional
+# cross-check sourced from the Duluth GA owned property (2789 Satellite Blvd,
+# suburban Gwinnett County, Yardi data Dec 2021–Dec 2022, 95% occupancy,
+# ~$1,055/unit/month NOI at ~$1,740/unit eff rent). This is a suburban Atlanta
+# regional cross-check, NOT a same-submarket Midtown comparable.
+# Same-submarket Midtown OpEx benchmarking requires external comps or
+# operator-supplied data the platform does not currently have.
 controllable_opex_stab  = $4,200 × 232 = $974,400
 property_tax_stab       = $620,000  # from tax module
 insurance_stab          = $450 × 232 = $104,400
@@ -387,6 +400,8 @@ total_opex_stab    = $974,400 + $620,000 + $104,400 + $156,871 + $58,000 = $1,91
 
 NOI_stab           = $5,229,048 - $1,913,671 = $3,315,377
 ```
+
+> **Correction 1.1 (2026-05-31):** Owned-portfolio comparable reference — the OpEx benchmarking in this example uses the Duluth GA property (2789 Satellite Blvd, suburban Gwinnett County, ~25 miles north of Midtown) as a directional cross-check. The owned portfolio has no Atlanta Midtown asset. The Duluth GA property provides suburban Atlanta Class B OpEx data (Yardi, Dec 2021–Dec 2022) — it is NOT a same-submarket comparable for 464 Bishop. Honest framing: this example uses suburban Atlanta data as a regional cross-check; same-submarket Midtown OpEx benchmarking requires data the platform does not currently have.
 
 ### Comparison to OM
 
@@ -425,6 +440,14 @@ Variance: 10.5% above OM. This is meaningful and warrants investigation:
 - Empirical lease-up velocity from historical_observations (replaces Phase 1A's static velocity inputs)
 - Submarket-specific profile detection thresholds (refines the universal thresholds in Phase 1A)
 - Month-by-month stabilization detection (replaces annual-granularity algorithm)
+
+> **Correction 1.3 (2026-05-31):** Phase 1B is **data-blocked, not code-blocked**, and introduces a NEW analytical capability for the correlation engine — not a refinement of its existing scope. The current `CorrelationEngineService` (3,488 lines) computes 30 city-level market-intelligence signals (COR-01..30) answering "what is the market doing?" The Phase 1B stabilization queries answer "what will this deal do?" — a different problem. The three functions needed (`computeStabilizationCorrelation`, `computeConcessionVelocityCorrelation`, `computeRentPositioningVelocityCorrelation`) do not exist and must be built. Before they can return useful results, three preconditions must be met:
+>
+> 1. **Data infrastructure** (weeks to months): populate `historical_observations.property_concession_per_unit` (0/475 rows), `property_asking_rent` (1/475 rows), `property_signing_velocity` (38/475 rows), and `realized_*_t12` outcome columns from vendor feeds at scale
+> 2. **Stabilization outcome tracking schema**: new `stabilization_achieved_date` column or `deal_outcomes` table — currently no table tracks actual stabilization timing
+> 3. **Code build** (1–2 weeks once data exists): three new functions following `computePairCorrelation` patterns
+>
+> All three preconditions are independent; all three must complete before Phase 1B's value materializes.
 
 ### What stays target-state regardless of phase
 

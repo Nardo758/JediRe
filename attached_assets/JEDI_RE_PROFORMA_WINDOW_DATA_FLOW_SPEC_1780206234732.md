@@ -240,6 +240,8 @@ Per-field documentation of where the field lives, who writes it, who reads it.
 | `stabilization_year` | deal_assumptions.stabilization_year | Cashflow Agent (Layer 2), Operator (Layer 1) | CONSOLE > PRO FORMA, Valuation Grid, Deal Completeness | PATCH "Pro Forma Year" |
 | `lifecycle_profile` | deal_assumptions.lifecycle_profile | Profile detection (Layer 2), Operator (Layer 1) | Cashflow Agent (formula branching), Math engine | PATCH "Deal Lifecycle Profile" |
 
+> **Correction 3.2 (2026-05-31):** The three Phase 1A fields above (`stabilization_threshold_pct`, `stabilization_year`, `lifecycle_profile`) have been confirmed shipped in Phase 1A tasks #1640, #1644, #1645 (per audit verification). The field names and storage paths in `deal_assumptions` are consistent with what was built. These fields should be treated as **verified-against-implementation** rather than target-state.
+
 ### Derived (computed) fields
 
 | Field | Storage | Writers | Readers | Override path |
@@ -372,6 +374,8 @@ Cascade:
 3. Cashflow Agent's reference data refreshes
 4. If agent's reasoning produces different stabilization year given new submarket data, that updates
 
+> **Correction 3.1 (2026-05-31):** Correlation engine data sources — the `CorrelationEngineService` queries `apartment_market_snapshots`, `apartment_trends`, and `metric_time_series`. It does **NOT** query `historical_observations`. The path described in Phase 1B critical dependencies (correlation engine queries against `historical_observations` for empirical concession-velocity reasoning) is a NEW query pattern that does not exist in the current engine. Building it requires: (1) data infrastructure — populate the relevant `historical_observations` columns at scale; (2) stabilization outcome tracking schema — currently no table records actual stabilization dates; (3) new query functions in `CorrelationEngineService` (~3 new methods, 1–2 days each, following `computePairCorrelation` patterns). Each of these is an independent prerequisite; all three must complete before Phase 1B value materializes. Phase 1B's data flow through the correlation engine is therefore a NEW path, not a refinement of existing queries.
+
 ### Trigger: Operator overrides stabilization year directly
 
 Cascade:
@@ -432,6 +436,25 @@ Specific verifications needed before Phase 1A implementation:
 - The per_year_overrides mechanism's interaction with stabilization-year computation is consistent (an override on Year 3 NOI doesn't break the agent's stabilization-year detection)
 
 ---
+
+## §11b — OWNED-PORTFOLIO DATA FLOW: PHASE CLASSIFICATION CORRECTION
+
+> **Correction 3.3 (2026-05-31):** Owned-portfolio data feeding the CashFlow Agent was framed in earlier drafts as a Phase 1B enhancement. **This is incorrect.** The owned-portfolio → CashFlow Agent path already exists and is functional today (Phase 0):
+>
+> - `fetch_owned_asset_actuals` tool wired to agent — queries `deal_monthly_actuals` for TTM comparables
+> - `fetch_owned_asset_opex_ratios` tool wired to agent — returns per-line OpEx from owned properties
+> - Comparability scoring (submarket/asset class/vintage/units) operational
+> - `value_add_programs_only=true` mode wired with archive P50 fallback
+>
+> The correct phase classification is:
+>
+> | Phase | Description | Status |
+> |---|---|---|
+> | **Phase 0 (existing)** | TTM comparable lookup from owned portfolio via `fetch_owned_asset_actuals` | Already operational; gaps in submarket matching (see Fix A in corrections document) |
+> | **Phase 1A (shipped)** | Stabilization-year computation from existing agent reasoning; three new `deal_assumptions` fields | Shipped in tasks #1640, #1644, #1645 |
+> | **Phase 1B (future)** | Empirical correlation-engine reasoning against populated `historical_observations` — concession-velocity coefficients, rent-positioning-velocity correlations | Data-blocked; see Correction 3.1 above |
+>
+> Phase 1B is specifically about adding NEW correlation-engine queries for empirical stabilization reasoning — it is separate from the existing TTM comparable lookup the agent already performs.
 
 ## §12 — WHAT THIS DOCUMENT IS NOT
 

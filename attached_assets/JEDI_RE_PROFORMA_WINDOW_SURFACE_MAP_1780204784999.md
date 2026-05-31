@@ -51,6 +51,8 @@ Each field has LayeredValue treatment (override / agent / extracted).
 - Purpose: alerts operator when their target is significantly above or below submarket norms ("Atlanta Midtown typical equilibrium: 7%. Your 5% target is more aggressive than submarket average.")
 - Edge case: when no submarket data exists, display "Submarket equilibrium: insufficient data"
 
+> **Correction 4.1 (2026-05-31):** `costar_submarket_stats` existence is **INFERRED-NOT-VERIFIED**. The audit confirmed `apartment_market_snapshots` has city-level Atlanta data (34 rows, Feb–May 2026) but only 1 row each for "Midtown, GA" and "Buckhead, GA" — too sparse for equilibrium context. `costar_market_metrics` (a different table) exists but has 0 rows. `costar_submarket_stats` was not verified in the audit. Before implementing the submarket equilibrium context display, grep for `costar_submarket_stats` and verify: (a) does it exist, (b) what is the schema, (c) current row count. If it does not exist or has no data, the display must fall back to "Submarket equilibrium: insufficient data" — do not display city-level numbers labeled as submarket equilibrium. This verification should happen during Phase 1A implementation of this feature.
+
 **Modified existing inputs: assumption categorization**
 
 The existing assumptions don't change in mechanics, but Phase 1A makes their *temporal scope* explicit:
@@ -109,6 +111,8 @@ At the top of the Pro Forma surface, display:
 - Secondary tooltip or subtitle: "Monthly precision will be added in Phase 2. Currently the Pro Forma represents the projected operating statement for the first year in which vacancy reaches the stabilization threshold sustained through end of hold."
 - Edge case: when `stabilization_year` is null (deal never stabilizes within hold period), display: "Pro Forma window undefined — deal does not reach stabilization. Override required."
 - Edge case: when operator has overridden the stabilization year manually, display: "Stabilized: Year N (operator override)"
+
+> **Correction 4.2 (2026-05-31):** The header display for stabilization year (phrasing above) is the architectural intent. Per Phase 1A task #1640 shipping, this header treatment is presumably implemented. The audit did not verify the exact phrasing used in the implementation. Verification step: confirm the actual header phrasing in the shipped implementation matches the intent above, and surface any divergence. Minor wording differences are operator preference, not architectural concerns requiring document revision.
 
 **Operator override of stabilization year**
 

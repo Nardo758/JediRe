@@ -206,6 +206,23 @@ The formula is skipped entirely when an operator override is present. `resolveLa
 
 **Affects:** F1, F8, F10, multiple downstream surfaces
 
+### Item F — Stabilization outcome tracking schema commitment
+
+**Question:** How should the platform record actual stabilization dates per deal once they are known? Three options:
+1. Add `stabilization_achieved_date` column to existing `deals` or `deal_assumptions` table
+2. New `deal_outcomes` table tracking stabilization date, exit, realized returns, and other post-close intelligence
+3. Defer until Phase 1B is closer (currently data-blocked — Phase 1B is blocked on populated `historical_observations` and the query functions to use them)
+
+**Why this matters:** Phase 1B's empirical correlation queries require a stabilization outcome variable — some record of when actual deals actually stabilized and how that compares to underwritten assumptions. Without this, the correlation engine cannot learn from deal history. This is also the foundation for realized-vs-underwritten variance tracking, post-close intelligence, and exit timing analysis — uses that extend well beyond Phase 1B.
+
+**Recommendation:** Option 2 (new `deal_outcomes` table) — outcome tracking has implications beyond stabilization and deserves dedicated schema. A `deal_outcomes` table can grow incrementally (add `stabilization_achieved_date` first, then exit date, realized returns, etc. as the platform matures). But this is an operator decision on whether to commit to outcome tracking as a platform discipline.
+
+**Status:** Pending operator decision — not a blocker for Phase 1A or Phase 1B (Phase 1B is data-blocked on `historical_observations` density regardless of whether this schema exists)
+
+**Affects:** Phase 1B correlation engine queries; post-close intelligence; realized-vs-underwritten variance tracking
+
+**Surfaced by:** Owned/Portfolio + Correlation Engine Map audit (2026-05-31)
+
 ---
 
 ## §5 — ACTIVE TASK MAP
@@ -311,6 +328,20 @@ Tracking when documents have been corrected against audit findings or operator c
 - **§3 Piece B `getFieldValue()` status corrected** from Aspirational to Operational — service verified operational in corpus-sweep audit.
 - **§3 inferred claims tagged** — override field counts (~7/~3/~5), 38 EMPTY fields, 10+ surfaces silently degrade, backend→badge API path all tagged **[inferred from prior audit]**.
 - **#1607 (T-CONF-1) status updated** to Merged in §5.
+
+### 2026-05-31 (Pro Forma Window architecture corrections)
+
+- **Owned portfolio composition corrected in Pro Forma Window documents.** Prior session memory described three owned properties as "Jacksonville 2018+, Atlanta A 2020+, Atlanta B 2022+." Live SQL audit verified actual portfolio is: Frisco TX (4800 Spring Creek Pkwy, manual data, Jul 2024–Dec 2025, 94.7% occ), McKinney TX (1200 Eldorado Pkwy, manual data, Jul 2024–Dec 2025, 94.6% occ), Duluth GA (2789 Satellite Blvd, suburban Gwinnett, Yardi data, Dec 2021–Dec 2022, 95.0% occ). No Jacksonville. No Atlanta Midtown. All three observed at stabilized occupancy. No lease-up trajectory data for any owned property. Corrections 1.1, 1.4, and 2.1 applied to Math Spec and Lifecycle State Machine documents.
+- **Correlation engine actual scope corrected in Pro Forma Window documents.** `CorrelationEngineService` (3,488 lines) computes 30 market-intelligence signals (COR-01..30) from `apartment_market_snapshots`, `apartment_trends`, `metric_time_series`. Answers "what is the market doing?" — NOT "when will this deal stabilize?" Stabilization-underwriting correlation queries are a NEW analytical capability, not a refinement of existing engine scope. Phase 1B requires three new query functions AND two independent data infrastructure preconditions (vendor feed scaling, stabilization outcome tracking schema). Corrections 1.3 and 3.1 applied to Math Spec and Data Flow Spec.
+- **Phase 1B owned-portfolio framing corrected in Data Flow Spec.** The owned-portfolio → CashFlow Agent path is Phase 0 (already operational via `fetch_owned_asset_actuals` and `fetch_owned_asset_opex_ratios`), not Phase 1B. Phase 1B is specifically about NEW correlation-engine queries against populated `historical_observations`. Correction 3.3 applied.
+- **Phase 1A fields verified in Data Flow Spec.** `stabilization_threshold_pct`, `stabilization_year`, `lifecycle_profile` in `deal_assumptions` confirmed shipped in Phase 1A tasks #1640, #1644, #1645. Correction 3.2 applied.
+- **Profile detection thresholds labeled as professional judgment in Lifecycle State Machine.** §3.5 note added: thresholds (DISTRESSED < 80%, VALUE-ADD renovation triggers, STABILIZED ≥ 92%) are industry conventions and professional judgment, not platform-empirical. Cannot be validated from current portfolio — all three owned properties observed at stabilized occupancy only. Correction 2.1 applied.
+- **`deal_mode` relationship flagged for verification in Lifecycle State Machine.** The STABILIZED/LEASE_UP/REDEVELOPMENT values attributed to `deals.deal_mode` are INFERRED-NOT-VERIFIED. Grep verification of actual values, readers, and writers required before reconciling with the four-profile classifier. Correction 2.2 applied.
+- **Market rent and OpEx benchmarking provenance corrected in Math Spec.** Atlanta Midtown market rent is city-level only (34 rows, no Midtown-specific granularity). OpEx benchmarking in 464 Bishop worked example uses Duluth GA (suburban Atlanta) as a regional cross-check, NOT a same-submarket Midtown comparable. Corrections 1.1 and 1.2 applied.
+- **Renovation premium fallback corrected in Math Spec.** Archive P50 fallback = 0.80 (from 298 archive rows) — not empirical renovation track record from owned portfolio. No owned property has before/after value-add program data. Correction 1.4 applied.
+- **Stabilization-year detection algorithm provenance noted in Math Spec.** Algorithm is wiring on existing agent infrastructure, not a new analytical capability. Correction 1.5 applied.
+- **`costar_submarket_stats` flagged INFERRED-NOT-VERIFIED in Surface Map.** Existence, schema, and row count require grep verification before implementing submarket equilibrium context display. Fallback: "Submarket equilibrium: insufficient data." Correction 4.1 applied.
+- **Four Pro Forma Window documents updated inline.** Corrections applied as blockquote annotations (`> **Correction N.M (2026-05-31):**`) within the source documents in `attached_assets/`. No source documents were rewritten — corrections are append-style redlines.
 
 ### Pending corrections (not yet applied)
 

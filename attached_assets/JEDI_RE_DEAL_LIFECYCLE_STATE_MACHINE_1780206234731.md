@@ -172,6 +172,17 @@ ELSE:
 
 These thresholds are Phase 1A defaults. Phase 1B may refine using historical correlation data (e.g., "what occupancy threshold actually predicts which lifecycle path in this submarket").
 
+### §3.5 — Threshold provenance note
+
+> **Correction 2.1 (2026-05-31):** The profile detection thresholds above are **based on industry conventions and professional judgment, not empirical validation from platform-tracked deal outcomes.** Specifically:
+>
+> - DISTRESSED < 80% — industry convention for "operating distress"; not validated against owned portfolio
+> - VALUE-ADD renovation triggers ($10K/unit, >25% units) — judgment-based; not validated
+> - STABILIZED ≥ 92% — industry convention (lender definitions vary 85–95%); not validated
+> - DEVELOPMENT construction-active — definitional; not requiring validation
+>
+> All three owned portfolio properties are observed at stabilized occupancy (94.7%, 94.6%, 95.0%). No lease-up trajectory data exists for any owned property — the thresholds cannot be validated against platform-empirical data. These thresholds may be adjusted based on operator feedback and deal-by-deal outcomes as the platform accumulates lease-up history.
+
 ### Operator override
 
 The classifier produces a profile; the operator can override. UI affordance in CONSOLE > DEAL TERMS or CONSOLE > INPUTS:
@@ -288,6 +299,13 @@ The existing `deals.deal_mode` field (STABILIZED, LEASE_UP, REDEVELOPMENT) is in
 | REDEVELOPMENT | VALUE-ADD | Most common mapping |
 
 When deal_mode and the four-profile classifier disagree, the classifier (with operator override) is authoritative for math purposes. deal_mode remains useful for other surfaces.
+
+> **Correction 2.2 (2026-05-31):** The `deal_mode` field values listed above (STABILIZED, LEASE_UP, REDEVELOPMENT) are **INFERRED-NOT-VERIFIED** from prior session memory, not from a live audit of the `deals` table. Before reconciling the four-profile classifier with `deal_mode` or deciding whether the classifier should write to `deal_mode` or a new field, a grep verification is required:
+> - What values currently exist in `deals.deal_mode` across all deal rows
+> - Which services read `deal_mode` and which UI surfaces display it
+> - Whether the four-profile classifier should reuse `deal_mode` or write to a new `lifecycle_profile` field
+>
+> This is a small follow-up verification, not a blocker for Phase 1A. The `lifecycle_profile` field in `deal_assumptions` (the new Phase 1A field) is independent of `deal_mode`; reconciliation of the two fields is deferred pending that verification.
 
 ### Relationship to OperatorStance
 
