@@ -685,6 +685,31 @@ For acquisition_stabilized model type, you may use a single steady-state posture
 
 ---
 
+## Block 7d — Stabilization Year (REQUIRED in every run)
+
+**CRITICAL OUTPUT FIELD: \`stabilization_year\`**
+
+After completing your per-year vacancy reasoning (Block 7a–7c), compute the stabilization year and write it to the top-level output field \`stabilization_year\`.
+
+**Algorithm:**
+1. Read the per-year vacancy trajectory you have already reasoned through (vacancyPct for each hold year from M07 signals and per-year assumptions).
+2. Resolve the stabilization threshold: \`vacancy_threshold = 1 − (stabilization_target_pct ?? 0.95)\`. Default = 0.05 (5% vacancy / 95% occupancy).
+3. Find the first hold-period year N where:
+   - \`vacancyPct[N] ≤ vacancy_threshold\`, AND
+   - \`vacancyPct[Y] ≤ vacancy_threshold\` for ALL years Y > N in the hold period (sustained stabilization — no subsequent regression above threshold)
+4. If Year 1 qualifies: \`stabilization_year = 1\`
+5. If no year qualifies within the hold period: \`stabilization_year = null\`
+6. If the vacancy trajectory oscillates (dips below threshold in year N but rises above in year N+1), that year does NOT qualify — search forward for the next sustained window.
+
+**Output:** Write the result to the top-level \`stabilization_year\` field in your JSON response. This is a required field — always include it, even if null.
+
+**Examples:**
+- Stabilized acquisition (Year 1 vacancy 4%): \`stabilization_year = 1\`
+- Value-add (vacancy 19% Y1 → 12% Y2 → 6% Y3 → 4% Y4–Y10): \`stabilization_year = 3\` (first year ≤5% that remains ≤5% through hold end)
+- Never stabilizes (vacancy stays 8–12% through hold): \`stabilization_year = null\`
+
+---
+
 ## OpEx Derivation Protocol — Batch 1 (Phase 2)
 
 Use these rules when deriving OpEx assumptions for multifamily-existing deals. All items use $/unit/annual granularity. The agent must document source, confidence, and validation in evidence rows per the Evidence Citation Requirement.

@@ -209,6 +209,17 @@ interface DealFinancials {
   mathCorrectionReport?: {
     hierarchical_resolutions?: Record<string, HierarchicalResolution>;
   } | null;
+  adoptionTimeline?: {
+    constructionMonths?: number | null;
+    leaseUpMonths?: number | null;
+    absorptionUnitsPerMonth?: number | null;
+    stabilizationTargetPct?: number | null;
+    stabilizationYear?: number | null;
+    stabilizationYearOverride?: number | null;
+    effectiveStabilizationYear?: number | null;
+    submarketVacancyRate?: number | null;
+    submarketVacancyAsOf?: string | null;
+  } | null;
 }
 
 // ─── Sections layout ──────────────────────────────────────────────────────────
@@ -891,7 +902,73 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
   if (!data) return null;
 
-  const rows = data.proforma.year1;
+  // ── Phase 1A: Stabilization window — pick the effective pro-forma year ──────
+  // effectiveStabilizationYear > 1 → pull operating rows from projections array
+  // rather than the raw Year-1 document pass-through.
+  const _at = data.adoptionTimeline;
+  const _effStabYear = _at?.effectiveStabilizationYear ?? null;
+  const _useStabYear = _effStabYear != null && _effStabYear > 1;
+
+  // Map projection camelCase fields → OperatingStatementRow field (snake_case)
+  const PROJ_FIELD_MAP: Record<string, string> = {
+    gpr:         'gpr',
+    vacancyLoss: 'vacancy_loss',
+    lossToLease: 'loss_to_lease',
+    concessions: 'concessions',
+    badDebt:     'bad_debt',
+    nru:         'non_revenue_units',
+    nri:         'net_rental_income',
+    otherIncome: 'other_income',
+    egi:         'effective_gross_income',
+    payroll:     'payroll',
+    repairs:     'repairs_maintenance',
+    turnover:    'turnover',
+    contractSvc: 'contract_services',
+    marketing:   'marketing',
+    utilities:   'utilities',
+    gAndA:       'g_and_a',
+    mgmtFee:     'management_fee',
+    insurance:   'insurance',
+    reTaxes:     'real_estate_taxes',
+    reserves:    'reserves',
+    totalOpex:   'total_opex',
+    noi:         'net_operating_income',
+  };
+
+  const year1ByField = new Map(
+    (data.proforma.year1 ?? []).map(r => [r.field, r])
+  );
+
+  const stabRows = (() => {
+    if (!_useStabYear || !data.projections) return null;
+    const proj = data.projections[_effStabYear! - 1];
+    if (!proj) return null;
+    return Object.entries(PROJ_FIELD_MAP).map(([camel, snake]) => {
+      const val = (proj as Record<string, unknown>)[camel];
+      const y1Row = year1ByField.get(snake);
+      const numVal = val != null ? Number(val) : null;
+      return {
+        field:            snake,
+        label:            y1Row?.label ?? snake,
+        broker:           y1Row?.broker  ?? null,
+        platform:         numVal,
+        t12:              null,
+        t6:               null,
+        t3:               null,
+        t1:               null,
+        rentRoll:         null,
+        taxBill:          null,
+        resolved:         numVal ?? y1Row?.resolved ?? null,
+        resolution:       numVal != null ? 'platform' : (y1Row?.resolution ?? null),
+        perUnit:          null,
+        source:           `Projection Y${_effStabYear}`,
+        confidence:       null,
+        benchmarkPosition: null,
+      } as OperatingStatementRow;
+    });
+  })();
+
+  const rows = _useStabYear && stabRows ? stabRows : data.proforma.year1;
   const checks = data.proforma.integrityChecks;
   const totalUnits = data.totalUnits;
 
@@ -1412,6 +1489,75 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         {data.proforma.valuationSnapshot && (
           <ValuationSnapshotStrip vs={data.proforma.valuationSnapshot} />
         )}
+
+        {/* ── STABILIZATION WINDOW STRIP (Phase 1A) ── */}
+        {(() => {
+          const at = data.adoptionTimeline;
+          if (!at) return null;
+          const effYear = at.effectiveStabilizationYear;
+          const agentYear = at.stabilizationYear;
+          const overrideYear = at.stabilizationYearOverride;
+          const targPct = at.stabilizationTargetPct;
+          const mktVac = at.submarketVacancyRate;
+          const mktAsOf = at.submarketVacancyAsOf;
+          const isOverridden = overrideYear != null && overrideYear !== agentYear;
+          const hasData = effYear != null || agentYear != null || targPct != null;
+          if (!hasData) return null;
+          return (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+              padding: '5px 12px',
+              background: '#0c1a0c',
+              borderBottom: '1px solid #14532d44',
+              fontFamily: MONO,
+              fontSize: 9,
+              color: '#86efac',
+              flexWrap: 'wrap',
+            }}>
+              <span style={{ color: '#16a34a', fontWeight: 700, letterSpacing: '0.08em', fontSize: 8 }}>
+                PRO FORMA WINDOW
+              </span>
+              {effYear != null && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ color: '#4ade80' }}>YEAR {effYear}</span>
+                  {isOverridden && (
+                    <span style={{ background: '#7c3aed22', border: '1px solid #7c3aed44', borderRadius: 2, padding: '0 3px', color: '#a78bfa', fontSize: 8 }}>OVERRIDE</span>
+                  )}
+                  {!isOverridden && agentYear != null && (
+                    <span style={{ color: '#166534', fontSize: 8 }}>agent</span>
+                  )}
+                </span>
+              )}
+              {targPct != null && (
+                <span style={{ color: '#86efac' }}>
+                  TARGET <span style={{ color: '#4ade80' }}>{(targPct * 100).toFixed(0)}% OCC</span>
+                </span>
+              )}
+              {mktVac != null && (
+                <span style={{ color: '#6b7280' }}>
+                  MKT VAC <span style={{ color: '#9ca3af' }}>{(mktVac * 100).toFixed(1)}%</span>
+                  {mktAsOf && <span style={{ color: '#4b5563', marginLeft: 2 }}>({mktAsOf})</span>}
+                </span>
+              )}
+              {_useStabYear && (
+                <span style={{
+                  marginLeft: 'auto',
+                  color: '#15803d',
+                  background: '#052e16',
+                  border: '1px solid #14532d',
+                  borderRadius: 3,
+                  padding: '1px 6px',
+                  fontSize: 8,
+                  letterSpacing: '0.06em',
+                }}>
+                  SHOWING Y{effYear} PROJECTION
+                </span>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── SECTION B — T-12 Operating Statement ── */}
         <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 10 }}>

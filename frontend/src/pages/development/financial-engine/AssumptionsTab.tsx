@@ -3114,6 +3114,161 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
             </tbody>
           </table>
 
+          {/* ── PRO FORMA WINDOW (Phase 1A) — stabilization threshold + year override ── */}
+          {(() => {
+            const at = financials?.adoptionTimeline as {
+              stabilizationTargetPct?: number | null;
+              stabilizationYear?: number | null;
+              stabilizationYearOverride?: number | null;
+              effectiveStabilizationYear?: number | null;
+              submarketVacancyRate?: number | null;
+              submarketVacancyAsOf?: string | null;
+            } | null | undefined;
+            const agentYear   = at?.stabilizationYear ?? null;
+            const overrideYear = at?.stabilizationYearOverride ?? null;
+            const effYear     = at?.effectiveStabilizationYear ?? null;
+            const targPct     = at?.stabilizationTargetPct ?? 0.95;
+            const mktVac      = at?.submarketVacancyRate ?? null;
+            const mktAsOf     = at?.submarketVacancyAsOf ?? null;
+
+            const saveStab = async (body: Record<string, number | null>) => {
+              if (!dealId) return;
+              try {
+                await apiClient.patch(`/api/v1/deals/${dealId}/assumptions/stabilization`, body);
+              } catch (e: any) {
+                console.error('[stabilization save]', e.message);
+              }
+            };
+
+            return (
+              <div style={{
+                margin: '12px 12px 0',
+                padding: '10px 12px',
+                background: '#0c1a0c',
+                border: '1px solid #14532d44',
+                borderRadius: 4,
+                fontFamily: MONO,
+                fontSize: 10,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ color: '#16a34a', fontWeight: 700, fontSize: 9, letterSpacing: '0.08em' }}>
+                    PRO FORMA WINDOW
+                  </span>
+                  <div style={{ flex: 1, borderTop: '1px dashed #14532d55' }} />
+                  {effYear != null && (
+                    <span style={{ fontFamily: MONO, fontSize: 9, color: '#4ade80' }}>
+                      EFFECTIVE: Y{effYear}
+                      {overrideYear != null && <span style={{ color: '#a78bfa', marginLeft: 4, fontSize: 8 }}>OVERRIDE</span>}
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
+                  {/* Stabilization Target % */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ color: '#6b7280', fontSize: 8, letterSpacing: '0.06em' }}>STAB. TARGET OCC %</span>
+                    <input
+                      key={`stab-pct-${dealId}`}
+                      type="number"
+                      step="1"
+                      min="50"
+                      max="100"
+                      defaultValue={targPct != null ? Math.round(targPct * 100) : 95}
+                      onBlur={e => {
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v) && v >= 50 && v <= 100) {
+                          saveStab({ stabilizationTargetPct: +(v / 100).toFixed(4) });
+                        }
+                      }}
+                      style={{
+                        background: '#111',
+                        border: '1px solid #1e1e1e',
+                        borderRadius: 3,
+                        color: '#e2e8f0',
+                        padding: '3px 6px',
+                        fontFamily: MONO,
+                        fontSize: 10,
+                        width: 80,
+                        outline: 'none',
+                      }}
+                    />
+                    <span style={{ color: '#374151', fontSize: 8 }}>e.g. 95 for 95%</span>
+                  </div>
+
+                  {/* Pro Forma Year Override */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ color: '#6b7280', fontSize: 8, letterSpacing: '0.06em' }}>
+                      PRO FORMA YEAR OVERRIDE
+                      {agentYear != null && (
+                        <span style={{ color: '#374151', marginLeft: 4 }}>agent: Y{agentYear}</span>
+                      )}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <input
+                        key={`stab-yr-${dealId}`}
+                        type="number"
+                        step="1"
+                        min="1"
+                        max="10"
+                        placeholder={agentYear != null ? String(agentYear) : '—'}
+                        defaultValue={overrideYear ?? ''}
+                        onBlur={e => {
+                          const raw = e.target.value.trim();
+                          if (raw === '') {
+                            saveStab({ stabilizationYearOverride: null });
+                          } else {
+                            const v = parseInt(raw, 10);
+                            if (!isNaN(v) && v >= 1 && v <= 10) {
+                              saveStab({ stabilizationYearOverride: v });
+                            }
+                          }
+                        }}
+                        style={{
+                          background: '#111',
+                          border: overrideYear != null ? '1px solid #7c3aed55' : '1px solid #1e1e1e',
+                          borderRadius: 3,
+                          color: overrideYear != null ? '#a78bfa' : '#e2e8f0',
+                          padding: '3px 6px',
+                          fontFamily: MONO,
+                          fontSize: 10,
+                          width: 60,
+                          outline: 'none',
+                        }}
+                      />
+                      {overrideYear != null && (
+                        <button
+                          title="Clear override — revert to agent value"
+                          onClick={() => saveStab({ stabilizationYearOverride: null })}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: '#6b7280',
+                            fontFamily: MONO,
+                            fontSize: 9,
+                            padding: '2px 4px',
+                          }}
+                        >
+                          CLR
+                        </button>
+                      )}
+                    </div>
+                    <span style={{ color: '#374151', fontSize: 8 }}>blank = use agent value</span>
+                  </div>
+                </div>
+
+                {/* Submarket vacancy reference */}
+                {mktVac != null && (
+                  <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #1a2e1a', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ color: '#374151', fontSize: 8 }}>SUBMARKET VAC</span>
+                    <span style={{ color: '#9ca3af', fontSize: 9, fontFamily: MONO }}>{(mktVac * 100).toFixed(1)}%</span>
+                    {mktAsOf && <span style={{ color: '#374151', fontSize: 8 }}>as of {mktAsOf}</span>}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
       {/* end GENERAL sub-tab */}
       </>}
 

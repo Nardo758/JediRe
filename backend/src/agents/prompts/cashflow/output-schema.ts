@@ -119,11 +119,20 @@ export const CASHFLOW_OUTPUT_SCHEMA = {
       },
       required: ['tier1', 'tier2', 'tier3', 'tier4'],
     },
+    stabilization_year: {
+      oneOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
+      description:
+        'First hold-period year where projected vacancy ≤ the stabilization threshold (1 − stabilization_target_pct, default 5%) ' +
+        'AND every subsequent hold-period year also stays at or below the threshold (sustained stabilization). ' +
+        'Year 1 means the asset is already stabilized at acquisition. ' +
+        'Null when no hold-period year meets the sustained threshold — the deal never stabilizes within the hold.',
+    },
     summary: { type: 'string', description: '3-5 sentence synthesis of key findings' },
     completed_at: { type: 'string', format: 'date-time' },
   },
   required: [
     'proforma_fields',
+    'stabilization_year',
     'collision_summary',
     'confidence_distribution',
     'tier_distribution',

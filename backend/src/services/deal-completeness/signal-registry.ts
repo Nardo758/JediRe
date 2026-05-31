@@ -334,6 +334,38 @@ const SIGNAL_REGISTRY: SignalDefinition[] = [
     },
   },
 
+  {
+    id:       'proforma_window_undefined',
+    severity: 'warning',
+    title:    'Pro Forma window undefined',
+    description:
+      'The Cashflow Agent could not identify a hold-period year where projected vacancy ' +
+      'reaches the stabilization threshold and remains there for all subsequent years. ' +
+      'The Pro Forma surface is showing the Year-1 acquisition snapshot, which may significantly ' +
+      'understate stabilized operating performance for value-add or lease-up deals.',
+    recommendedAction:
+      'Run the Cashflow Agent to let it compute the stabilization year from the M07 vacancy ' +
+      'trajectory, or manually set the Pro Forma Year override in INPUTS → DISPOSITION & HOLD.',
+    ctaLabel: 'Open INPUTS',
+    ctaLink:  (dealId) => `/deals/${dealId}?tab=f9&subtab=inputs`,
+
+    async evaluate(dealId, _propertyId, pool): Promise<SignalStatus> {
+      try {
+        const res = await pool.query(
+          `SELECT stabilization_year, stabilization_year_override
+             FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+          [dealId],
+        );
+        if (res.rows.length === 0) return 'complete';
+        const row = res.rows[0];
+        const effective = row.stabilization_year_override ?? row.stabilization_year;
+        return effective == null ? 'incomplete' : 'complete';
+      } catch {
+        return 'complete';
+      }
+    },
+  },
+
 ];
 
 export function getSignalRegistry(): SignalDefinition[] {

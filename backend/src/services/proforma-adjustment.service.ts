@@ -2192,6 +2192,7 @@ export async function getDealFinancials(
               selling_costs_pct,
               construction_months, lease_up_months, absorption_units_per_month,
               stabilization_target_pct,
+              stabilization_year, stabilization_year_override,
               lease_roll_velocity_per_year, mark_to_market_capture_rate,
               ltl_baseline_source
          FROM deal_assumptions WHERE deal_id = $1`,
@@ -5019,13 +5020,41 @@ export async function getDealFinancials(
     }
   }
 
-  // Task #1271 — adoption timeline from deal_assumptions
+  // Phase 1A — submarket equilibrium vacancy (best-effort; non-fatal)
+  let _submarketVacancyRate: number | null = null;
+  let _submarketVacancyAsOf: string | null = null;
+  try {
+    const _dealCity  = (deal as any).city       ?? null;
+    const _dealState = (deal as any).state_code ?? null;
+    if (_dealCity && _dealState) {
+      const _snapRes = await pool.query(
+        `SELECT vacancy_rate, snapshot_date FROM apartment_market_snapshots
+          WHERE city = $1 AND state = $2 ORDER BY snapshot_date DESC LIMIT 1`,
+        [_dealCity, _dealState],
+      );
+      if (_snapRes.rows.length > 0) {
+        _submarketVacancyRate = _snapRes.rows[0].vacancy_rate != null
+          ? +parseFloat(String(_snapRes.rows[0].vacancy_rate)).toFixed(4) : null;
+        _submarketVacancyAsOf = _snapRes.rows[0].snapshot_date
+          ? new Date(_snapRes.rows[0].snapshot_date).toISOString().slice(0, 10) : null;
+      }
+    }
+  } catch { /* non-fatal — submarket data unavailable */ }
+
+  // Task #1271 — adoption timeline from deal_assumptions (Phase 1A adds stabilization_year)
   const _at = assumptionsRes.rows[0];
+  const _stabYear         = _at?.stabilization_year          != null ? parseInt(String(_at.stabilization_year), 10)          : null;
+  const _stabYearOverride = _at?.stabilization_year_override != null ? parseInt(String(_at.stabilization_year_override), 10) : null;
   const adoptionTimeline = _at ? {
     constructionMonths:        _at.construction_months        != null ? +parseFloat(_at.construction_months).toFixed(1)  : null,
     leaseUpMonths:             _at.lease_up_months            != null ? +parseFloat(_at.lease_up_months).toFixed(1)       : null,
     absorptionUnitsPerMonth:   _at.absorption_units_per_month != null ? +parseFloat(_at.absorption_units_per_month).toFixed(2) : null,
     stabilizationTargetPct:    _at.stabilization_target_pct   != null ? +parseFloat(_at.stabilization_target_pct).toFixed(4) : null,
+    stabilizationYear:         _stabYear,
+    stabilizationYearOverride: _stabYearOverride,
+    effectiveStabilizationYear: _stabYearOverride ?? _stabYear ?? null,
+    submarketVacancyRate:      _submarketVacancyRate,
+    submarketVacancyAsOf:      _submarketVacancyAsOf,
   } : null;
 
   return {

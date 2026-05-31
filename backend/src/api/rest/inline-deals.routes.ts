@@ -122,6 +122,25 @@ async function syncPipelineToDealData(
 
   logger.info(`[PipelineSync] deal_data updated for ${dealId}` + 
     (pipelineResults.jedi_score !== null ? ` (JEDI: ${pipelineResults.jedi_score})` : ''));
+
+  // Write agent-computed stabilization_year to deal_assumptions so it's
+  // available to the Pro Forma surface without re-reading deal_data.
+  // Only writes when cashflow output includes the field (non-null or explicit null).
+  if (cashflow && 'stabilization_year' in cashflow) {
+    const stabYear = typeof cashflow.stabilization_year === 'number' ? cashflow.stabilization_year : null;
+    try {
+      await db.query(
+        `INSERT INTO deal_assumptions (deal_id, stabilization_year, created_at, updated_at)
+         VALUES ($1, $2, NOW(), NOW())
+         ON CONFLICT (deal_id)
+         DO UPDATE SET stabilization_year = $2, updated_at = NOW()`,
+        [dealId, stabYear],
+      );
+      logger.info(`[PipelineSync] stabilization_year=${stabYear ?? 'null'} written to deal_assumptions for ${dealId}`);
+    } catch (stabErr: any) {
+      logger.warn(`[PipelineSync] stabilization_year write failed (non-fatal): ${stabErr.message}`, { dealId });
+    }
+  }
 }
 
 const router = Router();
@@ -2526,6 +2545,65 @@ router.patch('/data-quality-alerts/:id', requireAuth, async (req: AuthenticatedR
   } catch (err: any) {
     console.error('[data-quality-alerts PATCH]', err.message);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * PATCH /:dealId/assumptions/stabilization
+ *
+ * Writes stabilization_year_override and/or stabilization_target_pct directly
+ * to deal_assumptions. Called by AssumptionsTab when the operator sets the
+ * Pro Forma Year override or edits the stabilization threshold.
+ *
+ * Body: { stabilizationYearOverride?: number | null, stabilizationTargetPct?: number | null }
+ */
+router.patch('/:dealId/assumptions/stabilization', requireAuth, requireCapability('edit:operating_assumptions'), async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const { stabilizationYearOverride, stabilizationTargetPct } = req.body;
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    const updates: string[] = [];
+    const params: (string | number | null)[] = [];
+    let idx = 1;
+
+    if ('stabilizationYearOverride' in req.body) {
+      const val = stabilizationYearOverride != null ? Math.round(Number(stabilizationYearOverride)) : null;
+      updates.push(`stabilization_year_override = $${idx++}`);
+      params.push(val);
+    }
+    if ('stabilizationTargetPct' in req.body) {
+      const val = stabilizationTargetPct != null ? Number(stabilizationTargetPct) : null;
+      updates.push(`stabilization_target_pct = $${idx++}`);
+      params.push(val);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, error: 'No fields to update' });
+    }
+
+    params.push(dealId);
+    const dealIdParam = `$${idx}`;
+
+    await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, created_at, updated_at)
+       VALUES (${dealIdParam}, NOW(), NOW())
+       ON CONFLICT (deal_id) DO UPDATE SET ${updates.join(', ')}, updated_at = NOW()`,
+      params
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[stabilization PATCH]', error.message);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
