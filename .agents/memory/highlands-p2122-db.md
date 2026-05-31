@@ -35,10 +35,12 @@ description: Constraint gotchas discovered when populating investors, capital_ca
 - 2023: 12 rows (Jan–Dec 2023)
 - 2024: 12 rows (Jan–Dec 2024)
 - 2025: 12 rows (Jan–Dec 2025)
-- Total: 49 monthly rows (Dec 2021–Dec 2025)
+- 2026 YTD: 4 rows (Jan–Apr 2026)
+- Total: 65 monthly rows (Dec 2021–Apr 2026)
 
 ## deal_data annual capsule keys
 `annual_2022`, `annual_2023`, `annual_2024`, `annual_2025` — each has `income_statement`, `occupancy`, `balance_sheet_dec31`, `capital_activity_<year>`, `cash_flow_dec`, `rent_roll_dec31`, `notes`.
+`ytd_2026` — partial year; uses `income_statement_ytd`, `monthly_detail`, `balance_sheet_apr30`, `cash_flow_apr`, `rent_roll_apr30`, `alerts`, `positive_indicators`.
 
 ## Field name inconsistency (2022–2024 vs 2025)
 - 2022–2024 use `net_income` and `interest_expense` in income_statement
