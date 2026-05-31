@@ -47,11 +47,11 @@ const SUB_TABS: SubTabDef[] = [
   { id: 'stance',      label: 'STANCE',       icon: '◈' },
   { id: 'deal-terms',  label: 'DEAL TERMS',   icon: '◇' },
   { id: 'pro-forma',   label: 'PRO FORMA',    icon: '≡' },
+  { id: 'validation',  label: 'VALIDATION',   icon: '✓' },
   { id: 'inputs',      label: 'INPUTS',       icon: '⊕' },
   { id: 'unitmix',     label: 'UNIT MIX',     icon: '⊞' },
   { id: 'otherincome', label: 'OTHER INCOME', icon: '⊛' },
   { id: 'tax',         label: 'TAX',          icon: '$' },
-  { id: 'validation',  label: 'VALIDATION',   icon: '✓' },
 ];
 
 export function ConsoleHubTab(props: FinancialEngineTabProps) {

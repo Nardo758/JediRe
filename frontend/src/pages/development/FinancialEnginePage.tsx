@@ -491,7 +491,6 @@ class TabErrorBoundary extends Component<
 const BUILTIN_TAB_LABELS = [
   '⊞ OVERVIEW',
   '⊕ CONSOLE',
-  '≡ PRO FORMA',
   '⋮≡ PROJECTIONS',
   '◈ CAPITAL',
   '% RETURNS',
@@ -554,7 +553,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const roleTabInitialized = useRef(false);
   useEffect(() => {
     if (!roleTabInitialized.current && (platformRole === 'lp' || platformRole === 'lender')) {
-      setActiveTab(prev => prev === 0 ? 5 : prev);
+      setActiveTab(prev => prev === 0 ? 4 : prev);
       roleTabInitialized.current = true;
     }
   }, [platformRole]);
@@ -2118,18 +2117,17 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
               </TabErrorBoundary>
             </BtTabWrapper>
           )}
-          {activeTab === 2 && <BtTabWrapper><ProFormaSummaryTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 3 && (
+          {activeTab === 2 && (
             <BtTabWrapper>
               <ProjectionsHubTab {...tabProps} integrityWarning={integrityBlocked} />
             </BtTabWrapper>
           )}
-          {activeTab === 4 && <BtTabWrapper><CapitalHubTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 5 && <BtTabWrapper><ReturnsHubTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 6 && <BtTabWrapper style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}><ValuationGridTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 7 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 8 && <BtTabWrapper><CompareHubTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 9 && (
+          {activeTab === 3 && <BtTabWrapper><CapitalHubTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 4 && <BtTabWrapper><ReturnsHubTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 5 && <BtTabWrapper style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}><ValuationGridTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 6 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 7 && <BtTabWrapper><CompareHubTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 8 && (
             <BtTabWrapper style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <SensitivityTab
                 {...tabProps}
@@ -2140,7 +2138,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
               />
             </BtTabWrapper>
           )}
-          {activeTab === 10 && isRoadmapEligible && <BtTabWrapper style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}><RoadmapTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 9 && isRoadmapEligible && <BtTabWrapper style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}><RoadmapTab {...tabProps} /></BtTabWrapper>}
           {activeCustomTab && (
             <BtTabWrapper>
               <CustomTabRenderer
