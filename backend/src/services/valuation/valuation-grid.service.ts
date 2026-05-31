@@ -394,11 +394,15 @@ export class ValuationGridService {
     methods.push(m5);
 
     // GRM / GIM — activated (CF-08 / CF-07): subject GPR and EGI now flow via
-    // canonical getFieldValue chain.  Methods are 'insufficient' when we lack
-    // comp GRM/GIM data to derive a market multiplier; but the subject's implied
-    // multiplier is exposed in the evidence trail so the operator can self-verify.
-    methods.push(this.computeGRM(subject));
-    methods.push(this.computeGIM(subject));
+    // canonical getFieldValue chain.  When market_sale_comps carries
+    // gross_rent_annual / gross_income_annual, the comp-pool median multiplier
+    // is used to produce a market-anchored indicated value (Task #1568).
+    const [mGrm, mGim] = await Promise.all([
+      this.computeGRM(dealId, subject, compCriteria, asOf),
+      this.computeGIM(dealId, subject, compCriteria, asOf),
+    ]);
+    methods.push(mGrm);
+    methods.push(mGim);
     methods.push(this.placeholder('dcf', 'DCF — Discounted Cash Flow', 'income'));
 
     const reconciliation = this.reconcile(methods, subject);
@@ -1976,91 +1980,370 @@ export class ValuationGridService {
   // GPR and EGI are resolved via the canonical getFieldValue chain (CF-08/CF-07):
   //   override > Engine A formula > agent > seeder stored resolved
 
-  private computeGRM(subject: SubjectProperty): ValuationMethod {
+  // ── GRM / GIM comp-pool query ─────────────────────────────────────────────
+  //
+  // Queries market_sale_comps for recent transactions that carry gross income
+  // fields so we can compute market GRM / GIM distributions.
+  // Uses a lat/lng bounding-box pre-filter (fast) followed by a Haversine
+  // distance check.  Falls back to city+state when lat/lng is unavailable.
+
+  private async fetchGrossIncomeComps(
+    subject: SubjectProperty,
+    criteria: CompCriteria,
+    incomeField: 'gross_rent_annual' | 'gross_income_annual',
+    asOf?: Date,
+  ): Promise<Array<{ id: string; sale_price: number; income: number; units: number | null; sale_date: string }>> {
+    const { latitude, longitude, city, state } = subject;
+    const { radiusMiles, maxAgeMonths, excludedCompIds } = criteria;
+
+    // Bounding box: 1° lat ≈ 69 mi; 1° lon ≈ 69 × cos(lat) mi
+    const latDelta = radiusMiles / 69;
+    const lonDelta = latitude != null
+      ? radiusMiles / (69 * Math.cos((latitude * Math.PI) / 180))
+      : radiusMiles / 69;
+
+    // Anchor age window to asOf (backtest) or wall-clock now (live)
+    const ceiling = asOf ?? new Date();
+    const cutoffDate = new Date(ceiling);
+    cutoffDate.setMonth(cutoffDate.getMonth() - maxAgeMonths);
+
+    const ceilingStr  = ceiling.toISOString().slice(0, 10);
+    const cutoffStr   = cutoffDate.toISOString().slice(0, 10);
+
+    let rows: any[];
+
+    if (latitude != null && longitude != null) {
+      const result = await this.pool.query(
+        `SELECT
+           id,
+           sale_price::float8                     AS sale_price,
+           ${incomeField}::float8                 AS income,
+           units,
+           sale_date::text                        AS sale_date,
+           latitude::float8                       AS lat,
+           longitude::float8                      AS lon
+         FROM market_sale_comps
+         WHERE sale_price > 0
+           AND ${incomeField} > 0
+           AND sale_date >= $1
+           AND sale_date <= $2
+           AND latitude  BETWEEN $3 AND $4
+           AND longitude BETWEEN $5 AND $6
+           AND ($7::uuid[] IS NULL OR id != ALL($7::uuid[]))
+        `,
+        [
+          cutoffStr,
+          ceilingStr,
+          latitude - latDelta,
+          latitude + latDelta,
+          longitude - lonDelta,
+          longitude + lonDelta,
+          excludedCompIds.length ? excludedCompIds : null,
+        ],
+      );
+      // Haversine distance check to keep only comps within radiusMiles
+      rows = result.rows.filter(r => {
+        const dLat = ((r.lat - latitude) * Math.PI) / 180;
+        const dLon = ((r.lon - longitude) * Math.PI) / 180;
+        const a = Math.sin(dLat / 2) ** 2
+          + Math.cos((latitude * Math.PI) / 180)
+          * Math.cos((r.lat * Math.PI) / 180)
+          * Math.sin(dLon / 2) ** 2;
+        const distMi = 3958.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return distMi <= radiusMiles;
+      });
+    } else {
+      // Fallback: city + state match
+      const result = await this.pool.query(
+        `SELECT
+           id,
+           sale_price::float8   AS sale_price,
+           ${incomeField}::float8 AS income,
+           units,
+           sale_date::text      AS sale_date
+         FROM market_sale_comps
+         WHERE sale_price > 0
+           AND ${incomeField} > 0
+           AND sale_date >= $1
+           AND sale_date <= $2
+           AND lower(city)  = lower($3)
+           AND lower(state) = lower($4)
+           AND ($5::uuid[] IS NULL OR id != ALL($5::uuid[]))
+        `,
+        [
+          cutoffStr,
+          ceilingStr,
+          city,
+          state,
+          excludedCompIds.length ? excludedCompIds : null,
+        ],
+      );
+      rows = result.rows;
+    }
+
+    return rows.map(r => ({
+      id:        r.id,
+      sale_price: safeFloat(r.sale_price),
+      income:    safeFloat(r.income),
+      units:     r.units != null ? safeFloat(r.units) : null,
+      sale_date: r.sale_date ?? '',
+    }));
+  }
+
+  // ── Percentile helper (simple, unweighted) ────────────────────────────────
+
+  private pctile(sorted: number[], p: number): number {
+    if (sorted.length === 0) return 0;
+    const idx = p * (sorted.length - 1);
+    const lo = Math.floor(idx);
+    const hi = Math.ceil(idx);
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+  }
+
+  // ── GRM method ────────────────────────────────────────────────────────────
+
+  private async computeGRM(
+    dealId: string,
+    subject: SubjectProperty,
+    criteria: CompCriteria,
+    asOf?: Date,
+  ): Promise<ValuationMethod> {
     const { purchasePrice, gpr, gprSource } = subject;
 
-    if (!purchasePrice || !gpr || gpr <= 0) {
+    // Always compute the subject's implied GRM for the evidence trail
+    const impliedGrm = (purchasePrice && gpr && gpr > 0)
+      ? purchasePrice / gpr
+      : null;
+
+    if (!gpr || gpr <= 0) {
       return this.insufficientMethod(
         'grm',
         'GRM — Gross Rent Multiplier',
         'income',
-        'GRM requires GPR (Year 1) and purchase price.',
-        [
-          !purchasePrice ? 'Purchase price not set' : '',
-          !gpr ? 'GPR Year 1 not available — upload T-12 or rent roll' : '',
-        ].filter(Boolean),
+        'GRM requires GPR (Year 1) — upload T-12 or rent roll.',
+        ['GPR Year 1 not available — upload T-12 or rent roll'],
       );
     }
 
-    const impliedGrm = purchasePrice / gpr;
+    // Attempt to fetch comp pool
+    let comps: Awaited<ReturnType<typeof this.fetchGrossIncomeComps>> = [];
+    try {
+      comps = await this.fetchGrossIncomeComps(subject, criteria, 'gross_rent_annual', asOf);
+    } catch (err) {
+      logger.warn('GRM: comp fetch failed — falling back to insufficient', { err, dealId });
+    }
+
+    // Each comp's GRM = sale_price / gross_rent_annual
+    const compGrms = comps
+      .map(c => (c.income > 0 ? c.sale_price / c.income : null))
+      .filter((v): v is number => v != null && isFinite(v) && v > 0);
+
+    const MIN_COMPS = 3;
+
+    if (compGrms.length < MIN_COMPS) {
+      // Insufficient comp pool — return self-benchmarking view
+      const trail: EvidenceLine[] = [
+        { label: 'Gross Potential Rent (Y1)',  value: fmt$(gpr),           source: gprSource },
+      ];
+      if (purchasePrice) {
+        trail.push({ label: 'Purchase Price',             value: fmt$(purchasePrice), source: 'deal_terms' });
+      }
+      if (impliedGrm != null) {
+        trail.push({ label: 'Implied GRM (subject only)', value: `${impliedGrm.toFixed(2)}×` });
+      }
+      trail.push({ label: 'Market GRM source', value: `${compGrms.length} comp(s) found — need ≥${MIN_COMPS}` });
+
+      return {
+        id:              'grm',
+        label:           'GRM — Gross Rent Multiplier',
+        direction:       'income',
+        status:          'insufficient',
+        placeholderVersion: 'V1.0',
+        confidence:      'INSUFFICIENT',
+        indicatedValueP25: null,
+        indicatedValueP50: null,
+        indicatedValueP75: null,
+        indicatedPPU:    null,
+        indicatedPSF:    null,
+        compCount:       compGrms.length,
+        sourceProvenance: impliedGrm != null
+          ? `Subject implied GRM: ${impliedGrm.toFixed(2)}×. Market comp pool has ${compGrms.length} comp(s) — need ≥${MIN_COMPS} with gross_rent_annual to produce market-anchored value.`
+          : `Market comp pool has ${compGrms.length} comp(s) — need ≥${MIN_COMPS} with gross_rent_annual to produce market-anchored value.`,
+        evidenceTrail: trail,
+        warningFlags: [
+          `Comp pool too thin (${compGrms.length}/${MIN_COMPS} required) — market-anchored GRM not available.`,
+          ...(impliedGrm != null ? ['Implied GRM shown for self-benchmarking only.'] : []),
+        ],
+      };
+    }
+
+    // Compute GRM distribution
+    compGrms.sort((a, b) => a - b);
+    const grmP25 = this.pctile(compGrms, 0.25);
+    const grmP50 = this.pctile(compGrms, 0.50);
+    const grmP75 = this.pctile(compGrms, 0.75);
+
+    // Indicated value = comp GRM × subject GPR
+    // Higher GRM → higher value (no inversion needed, unlike cap rates)
+    const valP25 = grmP25 * gpr;
+    const valP50 = grmP50 * gpr;
+    const valP75 = grmP75 * gpr;
+
+    const ppu = subject.units && subject.units > 0 ? valP50 / subject.units : null;
+    const psf = subject.totalSF && subject.totalSF > 0 ? valP50 / subject.totalSF : null;
+
+    const confidence: ConfidenceLevel =
+      compGrms.length >= 10 ? 'HIGH' :
+      compGrms.length >= 5  ? 'MEDIUM' : 'LOW';
+
+    const trail: EvidenceLine[] = [
+      { label: 'Gross Potential Rent (Y1)',   value: fmt$(gpr),           source: gprSource },
+      { label: 'Comp GRM P25',                value: `${grmP25.toFixed(2)}×` },
+      { label: 'Comp GRM P50 (median)',        value: `${grmP50.toFixed(2)}×` },
+      { label: 'Comp GRM P75',                value: `${grmP75.toFixed(2)}×` },
+      { label: 'Indicated Value P50',          value: fmt$(valP50) },
+      { label: 'Comp pool size',               value: `${compGrms.length} comps` },
+    ];
+    if (impliedGrm != null && purchasePrice) {
+      trail.push({ label: 'Implied GRM (subject)',   value: `${impliedGrm.toFixed(2)}×` });
+      trail.push({ label: 'Purchase Price',          value: fmt$(purchasePrice), source: 'deal_terms' });
+    }
 
     return {
-      id:              'grm',
-      label:           'GRM — Gross Rent Multiplier',
-      direction:       'income',
-      status:          'insufficient',
-      placeholderVersion: 'V1.0',
-      confidence:      'INSUFFICIENT',
-      indicatedValueP25: null,
-      indicatedValueP50: null,
-      indicatedValueP75: null,
-      indicatedPPU:    null,
-      indicatedPSF:    null,
-      sourceProvenance: `Subject implied GRM shown (${impliedGrm.toFixed(2)}×). Market-comp GRM pool not yet available — indicated value pending V1.0 comp coverage.`,
-      evidenceTrail: [
-        { label: 'Gross Potential Rent (Y1)',  value: fmt$(gpr),          source: gprSource },
-        { label: 'Purchase Price',             value: fmt$(purchasePrice), source: 'deal_terms' },
-        { label: 'Implied GRM (subject only)', value: `${impliedGrm.toFixed(2)}×` },
-        { label: 'Market GRM source',          value: 'Pending — comp data required' },
-      ],
-      warningFlags: [
-        'No comp GRM pool available — cannot produce market-anchored indicated value.',
-        'Implied GRM shown for self-benchmarking only.',
-      ],
+      id:                'grm',
+      label:             'GRM — Gross Rent Multiplier',
+      direction:         'income',
+      status:            'active',
+      confidence,
+      indicatedValueP25: valP25,
+      indicatedValueP50: valP50,
+      indicatedValueP75: valP75,
+      indicatedPPU:      ppu,
+      indicatedPSF:      psf,
+      compCount:         compGrms.length,
+      sourceProvenance:  `Market GRM from ${compGrms.length} comp(s) in ${criteria.radiusMiles}mi radius (max ${criteria.maxAgeMonths}mo). Comp GRM P50: ${grmP50.toFixed(2)}× applied to subject GPR of ${fmt$(gpr)}.`,
+      evidenceTrail:     trail,
+      warningFlags:      [],
     };
   }
 
-  private computeGIM(subject: SubjectProperty): ValuationMethod {
+  // ── GIM method ────────────────────────────────────────────────────────────
+
+  private async computeGIM(
+    dealId: string,
+    subject: SubjectProperty,
+    criteria: CompCriteria,
+    asOf?: Date,
+  ): Promise<ValuationMethod> {
     const { purchasePrice, egi, egiSource } = subject;
 
-    if (!purchasePrice || !egi || egi <= 0) {
+    const impliedGim = (purchasePrice && egi && egi > 0)
+      ? purchasePrice / egi
+      : null;
+
+    if (!egi || egi <= 0) {
       return this.insufficientMethod(
         'gim',
         'GIM — Gross Income Multiplier',
         'income',
-        'GIM requires EGI (Year 1) and purchase price.',
-        [
-          !purchasePrice ? 'Purchase price not set' : '',
-          !egi ? 'EGI Year 1 not available — upload T-12 or rent roll' : '',
-        ].filter(Boolean),
+        'GIM requires EGI (Year 1) — upload T-12 or rent roll.',
+        ['EGI Year 1 not available — upload T-12 or rent roll'],
       );
     }
 
-    const impliedGim = purchasePrice / egi;
+    let comps: Awaited<ReturnType<typeof this.fetchGrossIncomeComps>> = [];
+    try {
+      comps = await this.fetchGrossIncomeComps(subject, criteria, 'gross_income_annual', asOf);
+    } catch (err) {
+      logger.warn('GIM: comp fetch failed — falling back to insufficient', { err, dealId });
+    }
+
+    const compGims = comps
+      .map(c => (c.income > 0 ? c.sale_price / c.income : null))
+      .filter((v): v is number => v != null && isFinite(v) && v > 0);
+
+    const MIN_COMPS = 3;
+
+    if (compGims.length < MIN_COMPS) {
+      const trail: EvidenceLine[] = [
+        { label: 'Effective Gross Income (Y1)', value: fmt$(egi), source: egiSource },
+      ];
+      if (purchasePrice) {
+        trail.push({ label: 'Purchase Price',            value: fmt$(purchasePrice), source: 'deal_terms' });
+      }
+      if (impliedGim != null) {
+        trail.push({ label: 'Implied GIM (subject only)', value: `${impliedGim.toFixed(2)}×` });
+      }
+      trail.push({ label: 'Market GIM source', value: `${compGims.length} comp(s) found — need ≥${MIN_COMPS}` });
+
+      return {
+        id:              'gim',
+        label:           'GIM — Gross Income Multiplier',
+        direction:       'income',
+        status:          'insufficient',
+        placeholderVersion: 'V1.0',
+        confidence:      'INSUFFICIENT',
+        indicatedValueP25: null,
+        indicatedValueP50: null,
+        indicatedValueP75: null,
+        indicatedPPU:    null,
+        indicatedPSF:    null,
+        compCount:       compGims.length,
+        sourceProvenance: impliedGim != null
+          ? `Subject implied GIM: ${impliedGim.toFixed(2)}×. Market comp pool has ${compGims.length} comp(s) — need ≥${MIN_COMPS} with gross_income_annual to produce market-anchored value.`
+          : `Market comp pool has ${compGims.length} comp(s) — need ≥${MIN_COMPS} with gross_income_annual to produce market-anchored value.`,
+        evidenceTrail: trail,
+        warningFlags: [
+          `Comp pool too thin (${compGims.length}/${MIN_COMPS} required) — market-anchored GIM not available.`,
+          ...(impliedGim != null ? ['Implied GIM shown for self-benchmarking only.'] : []),
+        ],
+      };
+    }
+
+    compGims.sort((a, b) => a - b);
+    const gimP25 = this.pctile(compGims, 0.25);
+    const gimP50 = this.pctile(compGims, 0.50);
+    const gimP75 = this.pctile(compGims, 0.75);
+
+    const valP25 = gimP25 * egi;
+    const valP50 = gimP50 * egi;
+    const valP75 = gimP75 * egi;
+
+    const ppu = subject.units && subject.units > 0 ? valP50 / subject.units : null;
+    const psf = subject.totalSF && subject.totalSF > 0 ? valP50 / subject.totalSF : null;
+
+    const confidence: ConfidenceLevel =
+      compGims.length >= 10 ? 'HIGH' :
+      compGims.length >= 5  ? 'MEDIUM' : 'LOW';
+
+    const trail: EvidenceLine[] = [
+      { label: 'Effective Gross Income (Y1)',  value: fmt$(egi),           source: egiSource },
+      { label: 'Comp GIM P25',                 value: `${gimP25.toFixed(2)}×` },
+      { label: 'Comp GIM P50 (median)',         value: `${gimP50.toFixed(2)}×` },
+      { label: 'Comp GIM P75',                 value: `${gimP75.toFixed(2)}×` },
+      { label: 'Indicated Value P50',           value: fmt$(valP50) },
+      { label: 'Comp pool size',                value: `${compGims.length} comps` },
+    ];
+    if (impliedGim != null && purchasePrice) {
+      trail.push({ label: 'Implied GIM (subject)',   value: `${impliedGim.toFixed(2)}×` });
+      trail.push({ label: 'Purchase Price',          value: fmt$(purchasePrice), source: 'deal_terms' });
+    }
 
     return {
-      id:              'gim',
-      label:           'GIM — Gross Income Multiplier',
-      direction:       'income',
-      status:          'insufficient',
-      placeholderVersion: 'V1.0',
-      confidence:      'INSUFFICIENT',
-      indicatedValueP25: null,
-      indicatedValueP50: null,
-      indicatedValueP75: null,
-      indicatedPPU:    null,
-      indicatedPSF:    null,
-      sourceProvenance: `Subject implied GIM shown (${impliedGim.toFixed(2)}×). Market-comp GIM pool not yet available — indicated value pending V1.0 comp coverage.`,
-      evidenceTrail: [
-        { label: 'Effective Gross Income (Y1)', value: fmt$(egi),           source: egiSource },
-        { label: 'Purchase Price',              value: fmt$(purchasePrice),  source: 'deal_terms' },
-        { label: 'Implied GIM (subject only)',  value: `${impliedGim.toFixed(2)}×` },
-        { label: 'Market GIM source',           value: 'Pending — comp data required' },
-      ],
-      warningFlags: [
-        'No comp GIM pool available — cannot produce market-anchored indicated value.',
-        'Implied GIM shown for self-benchmarking only.',
-      ],
+      id:                'gim',
+      label:             'GIM — Gross Income Multiplier',
+      direction:         'income',
+      status:            'active',
+      confidence,
+      indicatedValueP25: valP25,
+      indicatedValueP50: valP50,
+      indicatedValueP75: valP75,
+      indicatedPPU:      ppu,
+      indicatedPSF:      psf,
+      compCount:         compGims.length,
+      sourceProvenance:  `Market GIM from ${compGims.length} comp(s) in ${criteria.radiusMiles}mi radius (max ${criteria.maxAgeMonths}mo). Comp GIM P50: ${gimP50.toFixed(2)}× applied to subject EGI of ${fmt$(egi)}.`,
+      evidenceTrail:     trail,
+      warningFlags:      [],
     };
   }
 
