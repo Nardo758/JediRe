@@ -310,7 +310,7 @@ export function buildProjectionsForExport(
     const userLinesThisYrExport = _exportUserLines.reduce((s, l) => s + getULAExport(l, yr - 1), 0);
     runOtherInc = runOtherInc * (1 + rentStep);
     const otherIncome = Math.round(runOtherInc + userLinesThisYrExport);
-    const egiComputed = nri + otherIncome;
+    let egi           = nri + otherIncome;
 
     // Expenses — override-aware running-base compounding.
     // Dollar-amount operator overrides always take priority; when present, the
@@ -347,7 +347,7 @@ export function buildProjectionsForExport(
     const gAndA        = gAndAOvr != null ? Math.round(gAndAOvr) : Math.round(runGAndA * (1 + opexStep));
     runGAndA           = gAndA;
 
-    const mgmtFee      = Math.round(egiComputed * (mgmtFeePctY1 ?? 0.05));
+    const mgmtFee      = Math.round(egi * (mgmtFeePctY1 ?? 0.05));
 
     const insuranceOvr = pyOvr('insurance');
     const insurance    = insuranceOvr != null ? Math.round(insuranceOvr) : Math.round(runInsurance * (1 + insStep));
@@ -361,14 +361,32 @@ export function buildProjectionsForExport(
     const reserves     = reservesOvr != null ? Math.round(reservesOvr) : Math.round(runReserves * (1 + opexStep));
     runReserves        = reserves;
 
-    const totalOpexComputed = payroll + repairs + turnover + contractSvc + marketing +
-                              utilities + gAndA + mgmtFee + insurance + reTaxes + reserves;
-    // Year-1 anchor: use stored proforma subtotals (seeded from agent / document extraction)
-    // so Projections Y1 is exactly consistent with the Pro Forma surface.
-    // Years 2+ compound from the individual running bases above (unaffected).
-    const egi       = yr === 1 ? (y1('egi')        ?? egiComputed)       : egiComputed;
-    const totalOpex = yr === 1 ? (y1('total_opex') ?? totalOpexComputed)  : totalOpexComputed;
-    const noi       = yr === 1 ? (y1('noi')        ?? egi - totalOpex)    : egi - totalOpex;
+    let totalOpex  = payroll + repairs + turnover + contractSvc + marketing +
+                     utilities + gAndA + mgmtFee + insurance + reTaxes + reserves;
+    let noi        = egi - totalOpex;
+
+    // ── Year-1 anchor: pin NOI/EGI/total_opex to stored proforma values ──────
+    // The Pro Forma surface (INPUTS tab) shows y1('noi'), y1('egi'),
+    // y1('total_opex') — values seeded by the cashflow agent after document
+    // extraction. The recomputed subtotals above can diverge from those stored
+    // values (e.g. different GPR basis, management-fee rounding). To make
+    // Projections Year-1 consistent with the Pro Forma surface, we override
+    // the subtotals here. Individual line items (gpr, payroll, etc.) are kept
+    // as-is for display; running bases (runGpr, runPayroll, …) are untouched
+    // so years 2+ compound naturally from component-level Year-1 values.
+    // Fallback to recomputed values when all three stored values are null
+    // (pre-agent deals where the agent has never run).
+    if (yr === 1) {
+      const storedNoi     = y1('noi');
+      const storedEgi     = y1('egi');
+      const storedOpex    = y1('total_opex');
+      const hasStoredData = storedNoi != null || storedEgi != null || storedOpex != null;
+      if (hasStoredData) {
+        if (storedEgi  != null) egi      = storedEgi;
+        if (storedOpex != null) totalOpex = storedOpex;
+        if (storedNoi  != null) noi      = storedNoi;
+      }
+    }
 
     let interest = 0, principal = 0, annualDS = 0;
     if (loan > 0) {
