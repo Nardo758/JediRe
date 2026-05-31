@@ -1606,9 +1606,6 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
               ? <Bd c={BT.met.financial}>LIVE MODEL</Bd>
               : <Bd c={BT.text.secondary}>NO MODEL</Bd>
           }
-          <span style={{ fontSize: 9, color: BT.text.muted, fontFamily: MONO, textTransform: 'uppercase' }}>
-            {resolvedDealType}
-          </span>
           {(() => {
             const mixRows = f9Financials?.rentRollSummary?.unitMix ?? [];
             const mixTotal = f9Financials?.totalUnits ?? 0;
