@@ -396,6 +396,8 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     try {
       const res = await apiClient.get('/api/v1/portfolio/correlation-signals');
       setCorrCoeffs(res.data.coefficients || []);
+      // Signals are now durably stored — load from GET so breakdown panel survives refresh
+      if (res.data.signals) setCorrSignals(res.data.signals);
       setCorrLastRun(res.data.last_run || null);
       setCorrPropertiesCovered(res.data.properties_covered || []);
     } catch {

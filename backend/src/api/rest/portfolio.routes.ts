@@ -1028,6 +1028,7 @@ router.get('/correlation-signals', requireAuth, async (_req: AuthenticatedReques
   try {
     const { PortfolioCorrelationService } = await import('../../services/portfolio-correlation.service');
     const svc = new PortfolioCorrelationService();
+    // getSummary now returns both coefficients AND durably-stored enriched signals
     const summary = await svc.getSummary();
     res.json(summary);
   } catch (err: any) {
