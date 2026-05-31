@@ -528,7 +528,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     || 'existing';
 
   // Vendor freshness — Phase 2C: non-blocking stale-data prompt + provenance badges
-  const { staleVendors, freshness: vendorFreshness } = useVendorFreshness(resolvedDealId || null);
+  const { staleVendors, freshness: vendorFreshness, triggerRefresh, refreshStates } = useVendorFreshness(resolvedDealId || null);
 
   // Active-underwriting gate: only surface CoStar stale prompt during deal stages where
   // market data currency actually affects underwriting decisions
@@ -1874,6 +1874,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           <VendorFreshnessPrompt
             staleVendors={staleVendors.filter(v => v.vendorId === 'costar')}
             dealId={resolvedDealId}
+            onRefresh={triggerRefresh}
+            refreshStates={refreshStates}
           />
         </div>
       )}

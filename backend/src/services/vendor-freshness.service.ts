@@ -19,6 +19,7 @@
 import { Pool } from 'pg';
 import { vendorRegistry } from './document-extraction/vendor-registry';
 import type { VendorFreshnessProfile, VendorLicensePosture } from './document-extraction/vendor-registry';
+import { dataLibraryService } from './dataLibrary.service';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -203,6 +204,70 @@ export async function getVendorFreshnessForDeal(
     hasMissingData,
     computedAt: new Date().toISOString(),
   };
+}
+
+// ── Vendor refresh / re-import ────────────────────────────────────────────────
+
+export type VendorRefreshStatus = 'queued' | 'already_running' | 'no_files';
+
+export interface VendorRefreshResult {
+  vendorId: string;
+  status:   VendorRefreshStatus;
+  /** data_library_files.id that was claimed for re-parse, when status === 'queued'. */
+  fileId?:  number;
+}
+
+/**
+ * Find the most recently-uploaded data_library_files row for the given
+ * vendor + deal, then atomically claim it for a re-parse and fire the
+ * parse pipeline in the background.
+ *
+ * Returns:
+ *   - `queued`          — claim succeeded; pipeline is running
+ *   - `already_running` — a parse is already in-flight for that file
+ *   - `no_files`        — no successful vendor upload exists for this deal
+ *
+ * Ownership check is intentionally skipped here because the caller (the
+ * route handler) already verified the deal belongs to the user.
+ */
+export async function enqueueVendorRefresh(
+  dealId:   string,
+  vendorId: string,
+  pool:     Pool,
+): Promise<VendorRefreshResult> {
+  const vendor = vendorRegistry.getVendorById(vendorId);
+  if (!vendor) throw new Error(`Unknown vendorId: ${vendorId}`);
+
+  const docTypes = vendor.fileTypes.map(ft => ft.documentType);
+  if (docTypes.length === 0) {
+    return { vendorId, status: 'no_files' };
+  }
+
+  // Prefer the most recently created successful file for this vendor + deal
+  const fileRow = await pool.query<{ id: number; file_path: string; mime_type: string }>(
+    `SELECT id, file_path, mime_type
+       FROM data_library_files
+      WHERE deal_id        = $1::uuid
+        AND document_type  = ANY($2::text[])
+        AND parser_status IN ('success', 'failed', 'error')
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [dealId, docTypes],
+  ).then(r => r.rows[0] ?? null)
+   .catch(() => null);
+
+  if (!fileRow) {
+    return { vendorId, status: 'no_files' };
+  }
+
+  const claimed = await dataLibraryService.claimForRetry(fileRow.id);
+  if (!claimed) {
+    return { vendorId, status: 'already_running' };
+  }
+
+  dataLibraryService.parseFileAsync(claimed.id, claimed.file_path, claimed.mime_type).catch(() => {});
+
+  return { vendorId, status: 'queued', fileId: claimed.id };
 }
 
 // ── License posture helpers ────────────────────────────────────────────────────

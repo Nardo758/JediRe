@@ -9,22 +9,28 @@
  *   - Only rendered when at least one vendor's data is stale
  *   - Dismissible per-session (does not block workflow)
  *   - Shows the stalest vendor + days elapsed
- *   - Links to the Data Library tab for the operator to upload fresh data
+ *   - Refresh CTA calls POST /api/v1/deals/:dealId/vendor-refresh and shows
+ *     loading / success / no-files feedback inline
+ *   - Falls back to "Upload Data" nav when no prior file exists (no_files)
  */
 
 import React, { useState } from 'react';
-import { AlertTriangle, X, Upload } from 'lucide-react';
-import type { VendorFreshnessState } from '../../hooks/useVendorFreshness';
+import { AlertTriangle, X, Upload, RefreshCw, CheckCircle } from 'lucide-react';
+import type { VendorFreshnessState, RefreshState } from '../../hooks/useVendorFreshness';
 
 interface VendorFreshnessPromptProps {
   staleVendors: VendorFreshnessState[];
   dealId: string;
+  onRefresh?: (vendorId: string) => Promise<void>;
+  refreshStates?: Record<string, RefreshState>;
   onNavigateToDataLibrary?: () => void;
 }
 
 export function VendorFreshnessPrompt({
   staleVendors,
   dealId,
+  onRefresh,
+  refreshStates = {},
   onNavigateToDataLibrary,
 }: VendorFreshnessPromptProps): React.ReactElement | null {
   const [dismissed, setDismissed] = useState(false);
@@ -43,8 +49,18 @@ export function VendorFreshnessPrompt({
     : 'overdue for refresh';
 
   const label = othersCount > 0
-    ? `${worst.displayName} data is ${daysLabel} — consider uploading a fresh export (+${othersCount} other vendor${othersCount !== 1 ? 's' : ''})`
-    : `${worst.displayName} data is ${daysLabel} — consider uploading a fresh export`;
+    ? `${worst.displayName} data is ${daysLabel} (+${othersCount} other vendor${othersCount !== 1 ? 's' : ''})`
+    : `${worst.displayName} data is ${daysLabel}`;
+
+  const refreshState: RefreshState = refreshStates[worst.vendorId] ?? 'idle';
+  const isRefreshing = refreshState === 'loading' || refreshState === 'success';
+  const showNoFiles  = refreshState === 'no_files';
+
+  const handleRefresh = () => {
+    if (onRefresh && !isRefreshing) {
+      onRefresh(worst.vendorId);
+    }
+  };
 
   return (
     <div
@@ -63,8 +79,68 @@ export function VendorFreshnessPrompt({
       }}
     >
       <AlertTriangle size={12} style={{ flexShrink: 0, color: '#D4A017' }} />
-      <span style={{ flex: 1 }}>{label}</span>
-      {onNavigateToDataLibrary && (
+      <span style={{ flex: 1 }}>
+        {label}
+        {showNoFiles && (
+          <span style={{ color: '#8B7A40', marginLeft: 6 }}>
+            — no prior upload found; use Upload Data below
+          </span>
+        )}
+        {refreshState === 'success' && (
+          <span style={{ color: '#4A8A4A', marginLeft: 6 }}>
+            — re-import running…
+          </span>
+        )}
+        {refreshState === 'error' && (
+          <span style={{ color: '#8B4040', marginLeft: 6 }}>
+            — refresh failed; try again
+          </span>
+        )}
+      </span>
+
+      {/* Refresh CTA — calls the new endpoint */}
+      {onRefresh && !showNoFiles && (
+        <button
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          title={refreshState === 'success' ? 'Re-import running' : 'Re-import from last upload'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            background: 'transparent',
+            border: '1px solid #5A4A00',
+            borderRadius: 3,
+            color: refreshState === 'success' ? '#4A8A4A' : '#D4A017',
+            cursor: isRefreshing ? 'default' : 'pointer',
+            fontSize: 10,
+            padding: '2px 8px',
+            fontFamily: 'inherit',
+            whiteSpace: 'nowrap',
+            opacity: refreshState === 'loading' ? 0.6 : 1,
+          }}
+        >
+          {refreshState === 'success' ? (
+            <>
+              <CheckCircle size={9} />
+              Running…
+            </>
+          ) : (
+            <>
+              <RefreshCw
+                size={9}
+                style={{
+                  animation: refreshState === 'loading' ? 'spin 1s linear infinite' : undefined,
+                }}
+              />
+              {refreshState === 'loading' ? 'Queuing…' : 'Refresh'}
+            </>
+          )}
+        </button>
+      )}
+
+      {/* Upload fallback — shown when no prior file exists, or always as secondary CTA */}
+      {(showNoFiles || !onRefresh) && onNavigateToDataLibrary && (
         <button
           onClick={onNavigateToDataLibrary}
           style={{
@@ -86,6 +162,7 @@ export function VendorFreshnessPrompt({
           Upload Data
         </button>
       )}
+
       <button
         onClick={() => setDismissed(true)}
         title="Dismiss"
