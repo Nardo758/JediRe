@@ -173,11 +173,15 @@ The prior session described the three owned properties as:
 
 **Q1.1 — Ownership identification mechanism**
 
-There is no single "is_owned" flag on the `deals` table. The current de facto identification pattern is:
-- Rows in `deal_monthly_actuals` where `deal_id IS NULL` and the `property_id` is known to be a portfolio asset
-- The synthetic UUID prefix `a1000001-0000-0000-0000-` is an implicit convention for seeded owned portfolio properties
-- `property_operating_data.is_owned` is defined but 0 rows populated — NOT used by the agent tooling
-- `data_library_assets.source_type = 'owned_deal'` is defined but 0 rows — NOT used
+**RESOLVED (Fix B / Task 1669, 2026-05-31):** `deal_monthly_actuals.is_portfolio_asset BOOLEAN` is now the canonical flag.
+- Migration `20260531_deal_monthly_actuals_is_portfolio_asset.sql` added the column and backfilled `TRUE` for all 3 existing portfolio properties (49 rows).
+- `fetch_owned_asset_actuals` now filters `dma.is_portfolio_asset = TRUE` explicitly; the prior implicit `deal_id IS NULL` convention is superseded.
+- `property_operating_data.is_owned` is DEPRECATED — column retained (0 rows populated, never written) but marked with a deprecation notice in both the SQL migration and the Drizzle schema (`backend/src/db/schema/propertyEntity.ts`).
+- `data_library_assets.source_type = 'owned_deal'` remains defined but 0 rows — still NOT used.
+
+Adding a new owned portfolio property now requires:
+1. Insert rows into `deal_monthly_actuals` with `is_portfolio_asset = TRUE` (and `deal_id = NULL`)
+2. The agent tools pick it up automatically on the next invocation — no code change needed.
 
 **Q1.2 — Per-property historical data**
 

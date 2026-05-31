@@ -6,6 +6,12 @@
  * with a comparability score based on submarket, class, vintage, and unit count similarity.
  *
  * Tier 2 evidence source — used by CashFlow Agent.
+ *
+ * PORTFOLIO IDENTIFICATION CONVENTION (Task 1669, 2026-05-31):
+ * Owned portfolio rows are identified by deal_monthly_actuals.is_portfolio_asset = TRUE.
+ * This is the canonical flag; it supersedes the prior implicit convention of
+ * deal_id IS NULL which was never enforced in queries.
+ * property_operating_data.is_owned is DEPRECATED (0 rows populated) — do not use.
  */
 
 import { z } from 'zod';
@@ -195,7 +201,9 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
     ttm24End.setMonth(ttm24End.getMonth() - 24);
 
     const totalResult = await query(
-      `SELECT COUNT(DISTINCT property_id) AS cnt FROM deal_monthly_actuals`,
+      `SELECT COUNT(DISTINCT property_id) AS cnt
+       FROM deal_monthly_actuals
+       WHERE is_portfolio_asset = TRUE`,
       []
     );
     const totalCount = parseInt(String(totalResult.rows[0]?.cnt ?? '0'), 10);
@@ -211,7 +219,8 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
          )`
       : '';
 
-    // Get all properties with TTM data
+    // Get all owned portfolio properties with TTM actuals.
+    // is_portfolio_asset = TRUE is the canonical portfolio identifier (Task 1669).
     const propsResult = await query(
       `SELECT
          p.id              AS property_id,
@@ -224,6 +233,7 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
        WHERE EXISTS (
          SELECT 1 FROM deal_monthly_actuals dma
          WHERE dma.property_id = p.id
+           AND dma.is_portfolio_asset = TRUE
            AND dma.report_month >= $1
            AND dma.is_budget = false
        )

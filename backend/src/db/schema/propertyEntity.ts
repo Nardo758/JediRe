@@ -74,6 +74,9 @@ export const propertyOperatingData = pgTable('property_operating_data', {
   sourceDate:             date('source_date'),
   confidence:             numeric('confidence', { precision: 4, scale: 3 }),
 
+  // DEPRECATED (Task 1669, 2026-05-31): never populated (0 rows with is_owned=TRUE).
+  // Canonical owned-portfolio flag is now deal_monthly_actuals.is_portfolio_asset = TRUE.
+  // Column retained to avoid a destructive migration; do not write new rows here.
   isOwned:                boolean('is_owned').notNull().default(false),
   operatorId:             uuid('operator_id'),
 
