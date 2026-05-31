@@ -1,0 +1,75 @@
+Phase 1A is the right scope. Confirming all four decisions in the 
+annual-granularity context:
+
+Decision 1: Never reaches 5% in hold period → deal flagged 
+incomplete, operator override. Under annual granularity: no year 
+has vacancy at or below 5%.
+
+Decision 2: Sustained stabilization → identified stabilization year 
+must be followed by years that maintain at or below threshold. If 
+Year 3 stabilizes but Year 4 oscillates back above, Year 3 doesn't 
+qualify; agent searches forward to next sustained year.
+
+Decision 3: Universal 5% default with operator override; submarket 
+equilibrium displays as informational context (not threshold 
+override). Confirmed in Phase 1A scope.
+
+Decision 4: Already stabilized at acquisition → Year 1 IS the Pro 
+Forma year. Simple rule works as-is.
+
+One Phase 1A surface treatment requirement: the Pro Forma header 
+should make the annual-granularity nature explicit — something like 
+"Stabilized: Year N (annual approximation; monthly precision in 
+Phase 2)" or similar phrasing your design judgment thinks works. 
+Operators should know they're looking at a year-anchored Pro Forma 
+window, not a month-anchored one. This prevents confusion when 
+Phase 2 ships and the same deal's stabilization month shifts within 
+the year.
+
+Phase 1A also needs the submarket equilibrium context displayed 
+alongside the 5% threshold input. Something like "Atlanta Midtown 
+typical equilibrium: 7% vacancy. Your 5% target is more aggressive 
+than submarket average." This is the Option C commitment from my 
+earlier message — context informs without overriding the rule. 
+Where the equilibrium data comes from for Phase 1A: 
+costar_submarket_stats or apartment_market_snapshots, depending 
+on what's most current per submarket. Pick what fits the existing 
+data flow.
+
+Three task summary for what ships:
+
+  Issue A — Arithmetic fix in buildProjectionsForExport. Ships this 
+    week. Closes the INPUTS-vs-Projections divergence.
+
+  Phase 1A — Annual-granularity stabilization window:
+    - Cashflow Agent writes stabilization_year to deal
+    - Pro Forma surface derives from stabilization year's 12-month 
+      operating statement
+    - Pro Forma header displays "Stabilized: Year N (annual)"
+    - Submarket equilibrium context displays alongside threshold 
+      input
+    - Edge case 1 (never reaches): incomplete signal + operator 
+      override
+    - Edge case 2 (oscillation): forward search for sustained year
+    - Edge case 4 (already stabilized): Year 1 = Pro Forma
+
+  Phase 1B — Monthly curve + correlation-engine-backed reasoning. 
+    Deferred pending historical_observations data density. Becomes 
+    its own scoped workstream when:
+    - Correlation engine query function against historical_observations 
+      exists
+    - Cashflow Agent has new compute_stabilization_window tool
+    - Sufficient parcel-level data density for statistically 
+      meaningful submarket coefficients
+    - Decision point: when do we know data density is sufficient? 
+      Probably needs its own measurement (R² threshold? Sample 
+      count?). Worth flagging as a Phase 1B precondition.
+
+Two reconciliation document updates this triggers (for me to handle, 
+not blocking your work):
+
+  - Add Phase 1A / Phase 1B as separate commitments in §3
+  - Add Decision Item F to §4: "When does Phase 1B's data density 
+    threshold get reached?"
+
+Draft both Issue A and Phase 1A tasks. Move forward.

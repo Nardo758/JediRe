@@ -1,0 +1,90 @@
+For the platform Architecture, the proforma should be for the 12-month window starting with the month in which the asset's vacancy reaches 5%.  This way, we can let the model/agent calculate how long it takes to get there, given the market conditions.  It works well for most scenarios like development, redevelopment, and value-add12:49 AMClaude responded: That's a clean architectural decision and it has real implications worth working through carefully before drafting anything.That's a clean architectural decision and it has real implications worth working through carefully before drafting anything. The rule is operationally precise — but it has edge cases that deserve explicit handling, and it has architectural consequences for how the platform thinks about deals.
+
+What you've just defined
+The rule:
+
+Pro Forma = the 12-month window starting with the first month in which trailing vacancy reaches 5% or below.
+
+Three things this rule does well:
+First, it's a calculation, not a vibe. Every other definition of "stabilization" I found in the research uses thresholds like "85%-95% sustained for 3-12 months" without specifying exactly how to find the start point. Your rule fixes the start point precisely: the first month vacancy crosses below 5%. Operators don't argue about where the window is — the math determines it.
+Second, it unifies across deal types. Development, redevelopment, value-add, and stabilized acquisitions all use the same definition. The lease-up curve differs by deal type (ground-up takes 12-24 months of construction plus 12-18 months of lease-up; value-add might be 6-12 months of renovation plus 6-12 months of re-leasing; stabilized acquisition might be Month 1). But the rule for finding the Pro Forma window is the same. This is architecturally clean.
+Third, it lets the agent compute when stabilization happens given market conditions. Different submarkets absorb units at different rates. Atlanta Midtown lease-up speed differs from Tampa suburban differs from Jacksonville urban. The agent reasons about market-specific absorption (M07 traffic engine output, comp lease-up periods, submarket vacancy trajectories) and produces "stabilization reached in Month X." The Pro Forma window snaps to that month + 12.
+
+Edge cases worth explicit handling
+The rule works well in most cases but has four edge cases that need explicit treatment:
+Edge case 1 — The property never reaches 5% vacancy during the hold period.
+This can happen for distressed deals, deals in oversupplied submarkets, or deals where the operator's business plan doesn't achieve the underwritten lease-up velocity. The platform needs explicit handling: do you flag the deal as unable-to-stabilize? Do you allow a fallback like "best achieved vacancy + 12 months"? Do you require operator override to define the Pro Forma window?
+The cleanest treatment: if the projection trajectory never crosses 5% within hold period, the Pro Forma window is undefined and the platform surfaces this as a deal-completeness signal ("Pro Forma window cannot be established — vacancy never reaches stabilization threshold within hold period"). The operator can either override the trajectory inputs (higher rent growth, slower vacancy, etc.) until stabilization occurs, OR explicitly anchor the Pro Forma to a chosen month.
+Edge case 2 — Vacancy oscillates around 5% (crosses below, then back above, then below again).
+For some deals in transitional submarkets, vacancy might dip below 5% for a few months, spike above due to a renewal cluster expiring or a competitive delivery, then settle back. Your rule says "first month vacancy reaches 5%" — does that mean the first crossing or the sustained crossing?
+The research is informative here. Multiple lender definitions require sustained occupancy: "at least ninety-five percent (95%) occupancy for a minimum period of twelve (12) consecutive months" or "at least 85%... for the most immediately preceding three (3) consecutive months". Your rule could absorb this by saying: justialawinsider
+
+Pro Forma = the 12-month window starting with the first month in which vacancy reaches 5% or below AND remains at or below 5% for the subsequent 12 months.
+
+This adds a sustained-stabilization check. If vacancy dips below 5% briefly and then rises above, that's not stabilization; the window starts at the true sustained crossing.
+Alternative: keep the simple rule but allow operator override to anchor the window manually when oscillation makes the rule pick a misleading window.
+Edge case 3 — The vacancy threshold doesn't match the deal's strategic profile.
+5% works well as a generic stabilization threshold. But some submarkets structurally run higher (urban Class B with high turnover might never sustain below 7-8%; affordable housing with restrictive screening might run below 3%). Some deal strategies target different stabilized vacancies (luxury repositions might target 6-7% to maintain rent premiums via selectivity; student housing might target 2% during academic terms).
+Two options for handling this:
+
+Universal 5%: simple, consistent, easy to explain. Operators who disagree with the threshold for their specific deal can override.
+Submarket-aware or strategy-aware threshold: the rule becomes "vacancy reaches the submarket's stabilized equilibrium" with the equilibrium varying by submarket and strategy. More accurate but more complex.
+
+Worth being honest: simple universal 5% is probably the right choice for the platform's V1, with operator override available for cases where 5% misrepresents the deal. The submarket-aware version is a future refinement once you have enough data to know what submarket-specific equilibria actually look like.
+Edge case 4 — The deal achieves below-5% vacancy very early (e.g., Month 1-2 of a stabilized acquisition).
+For a stabilized acquisition of a 96% occupied property, the rule produces Pro Forma starting in Month 1. That's exactly what you want — the deal IS already stabilized; Pro Forma = Year 1 from acquisition.
+But there's a subtle issue: if Month 1's vacancy is at 4% but reflects a momentary snapshot before some lease expirations, and Months 2-4 dip to 5.5% before settling back to 4% by Month 5, the rule's strict reading picks Month 1. The sustained-stabilization variant I proposed in Edge Case 2 would pick Month 5. Both are defensible — depends on how strictly you want to define "the first month."
+
+What this means architecturally
+Your rule has implications beyond just defining a calculation. It changes how the platform's three concepts relate:
+Inputs becomes the surface where path assumptions are authored:
+
+Stabilized vacancy threshold (default 5%, overridable)
+Stabilized vacancy sustainment requirement (12 months recommended)
+Lease-up curve assumptions (absorption rate, concession burn-off)
+Renovation pace (for value-add)
+Construction timeline (for development)
+Market rent at stabilization
+All the variables that determine when stabilization is reached
+
+Projections becomes the surface where the agent computes month-by-month vacancy trajectory and surfaces the Pro Forma window as a derived state:
+
+"Stabilization reached: Month 17"
+"Pro Forma window: Months 17-28"
+Visually highlighted band on the trajectory chart
+Year-by-year breakdown with the Pro Forma year flagged
+
+Pro Forma becomes a derived view, not an authored page:
+
+Shows the 12-month operating statement for the Pro Forma window
+Shows stabilized NOI, EGI, GPR, total OpEx for that window
+Cap rate × stabilized NOI = stabilized valuation (which is what acquirers and lenders care about)
+Pro Forma NOI for valuation purposes uses this stabilized window, not Year 1 from acquisition
+
+This is a meaningful shift from the current platform behavior. The audit found NOI computed as Year-1 effective gross revenue minus Year-1 OpEx — that's an in-place computation, not a stabilized pro forma computation. The 39× LTL divergence finding takes on additional significance under this framing: the platform is currently underwriting against in-place metrics while operators are reasoning about stabilized metrics. Those are different deals.
+
+The architectural implication for 464 Bishop
+Worth thinking through what 464 Bishop's stabilization point would be under this rule. The property has 232 units, currently at 81% occupancy (19% vacancy per deal_traffic_snapshots). To reach 5% vacancy, the deal needs to lease up ~32 more units (5% of 232 = ~12 vacant units; currently 44 vacant; need to absorb 32 net).
+Given Atlanta Midtown's apparent absorption velocity (which the M07 traffic engine would compute), this might be 6-12 months. The Pro Forma window would then be Months 6-17 or Months 12-23 from acquisition. The NOI for that window would reflect:
+
+Higher EGI (lower vacancy, fewer concessions, mark-to-market rent capture)
+Stabilized OpEx (no lease-up marketing premium, normalized turnover)
+
+That stabilized NOI would likely be substantially higher than the current $840K and probably much closer to (or above) the OM-extracted $2.99M.
+This reframes the NOI bug entirely. It's not just a formula bypass. It's that the platform is computing the wrong concept of NOI — in-place Year-1 instead of stabilized. The OM's $2.99M might actually be the right number for the Pro Forma surface, computed correctly per the stabilized definition. The $840K is correct as an in-place Year-1 number but wrong as a Pro Forma number under your new definition.
+This is significant. It means Task #1520 (NOI Layer 1 override wiring) addresses a symptom; the deeper fix is restructuring how the Pro Forma surface computes its NOI. Worth flagging to Replit before #1520 ships under the old framing.
+
+What I'd recommend next
+Four moves, in order:
+Move 1 — Decide the edge case handling explicitly before any architectural document captures the rule. The four edge cases above each need a default behavior:
+
+Never reaches 5%: deal flagged incomplete, operator can override
+Oscillates around 5%: sustained-stabilization variant (5% sustained for 12 months) or simple-rule with operator override
+Threshold doesn't match strategic profile: universal 5% with operator override
+Reaches 5% very early: simple-rule behavior is fine if combined with sustained-stabilization
+
+I'd suggest the cleanest version: "Pro Forma window starts at the first month in which vacancy reaches 5% or below AND remains at or below 5% for the subsequent 12 months. If no such window exists within the hold period, Pro Forma is undefined and the deal is flagged incomplete; operator override available to anchor the window manually."
+This is simple, deterministic, handles oscillation, handles never-stabilized cases, and gives operators an escape hatch.
+Move 2 — Document the rule in the architectural corpus. This becomes a new commitment that probably belongs in the calc-vs-assumption doc (since it defines what "Year 1" means for the Pro Forma surface) and in Piece C (since the agent computes the stabilization timing). Worth one focused document rather than scattering across multiple — maybe "Pro Forma Window Definition and Architecture."
+Move 3 — Surface the NOI bug reframing to Replit. If Task #1520 ships under the old framing (Year-1-from-acquisition NOI with Layer 1 override), it won't actually fix the issue under your new architectural definition. The fix needs to incorporate the stabilization-window calculation. Worth pausing #1520 long enough to incorporate this.
+Move 4 — Verify against 464 Bishop. Have Replit compute what the stabilization point would be for 464 Bishop under your rule (using M07 absorption signals or fallback assumptions), then compute what stabilized NOI would be for that window. Compare to OM-extracted $2.99M. If the numbers align, the architectural definition is operationally validated; if they don't, there's something else going on worth understanding.
