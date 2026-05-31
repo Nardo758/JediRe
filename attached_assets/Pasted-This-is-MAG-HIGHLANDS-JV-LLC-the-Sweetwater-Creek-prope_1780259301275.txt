@@ -1,0 +1,55 @@
+This is MAG HIGHLANDS JV, LLC (the Sweetwater Creek property), dated June 28, 2021. Here's everything the waterfall needs, structured so you can build it directly into distribution tracking.
+Deal facts
+MemberInitial Capital (§2.1)Pct InterestSponsor (Managing)MAG VIII, LLC$4,050,000.0013.64%TL (Capital)DF VII HIGHLANDS, LLC$25,647,000.0086.36%
+Total initial equity: $29,697,000. Effective Date (IRR clock start): June 28, 2021. Distribution Date: 9th of each month.
+There are two separate waterfalls, and they cross-reference each other
+This is the part that's easy to get wrong. Operating cash (§4.1(c)) and capital-event cash (§4.1(d), i.e. sale/refi proceeds) run through different priority stacks, but each is reduced by amounts already paid in the other. Critically, the promote (the disproportionate splits) lives only in the capital-event waterfall. Operating cash never triggers promote — it only returns pref and capital.
+Operating waterfall — §4.1(c), Available Cash from Operations (monthly):
+
+Fund/replenish lender reserves + any TL Asset Manager additional reserves
+Servicing Fee to TL Asset Manager
+Priority Preferred Return (15%) on Priority Additional Capital (§2.3)
+Return of Priority Additional Capital
+Preferred Return (10%) on each Member's §2.1/§2.2 capital — pro rata at this level
+Return of §2.1/§2.2 capital — pro rata
+Thereafter: pari passu by Percentage Interest (86.36 / 13.64)
+
+Capital-event waterfall — §4.1(d), Net Capital Transaction Proceeds (sale/refi):
+
+Priority Preferred Return on §2.3 capital
+Return of §2.3 capital
+Tier 1 — 86.36% TL / 13.64% Sponsor until TL hits the greater of a 10.0% IRR or 1.40× MOIC on TL's §2.1+§2.2 capital
+Tier 2 — 65% TL / 35% Sponsor until TL hits 13.0% IRR
+Tier 3 — 55% TL / 45% Sponsor until TL hits 16.0% IRR
+Residual — 50% TL / 50% Sponsor
+
+The promote accrues to the Sponsor (it's getting >13.64% in tiers 4–6). There's no GP catch-up tier and no clawback provision — the promote is delivered purely through the disproportionate splits.
+The accrual math
+Preferred Return (10%) and Priority Preferred Return (15%) use identical mechanics, different rates:
+
+Cumulative annual rate, compounded monthly, 360-day year, accrued daily.
+Daily accrual = outstanding_base × (rate / 360), where for a 30-day month this yields the monthly rate of rate/12.
+Accrued-but-unpaid pref capitalizes monthly into the base (this is the compounding — unpaid pref starts earning pref).
+Base for the 10% pref = each dollar of §2.1 capital + accrued unpaid pref, from the day contributed until returned/paid. The 15% base is §2.3 capital only.
+
+Implementation per member:
+base = Σ(contributions, dated) + Σ(capitalized unpaid pref)
+daily:   accrued += base × rate/360
+month-end: base += accrued_this_period_unpaid   // compounding
+on distribution: pay pref first, then reduce base on return-of-capital tiers
+IRR is defined as Excel XIRR — actual contribution/distribution dates, clock from the Effective Date. So the tier boundaries in §4.1(d) are solved, not closed-form: at a sale you find the distribution amount that drives TL's XIRR to 10/13/16%. The cashflow vector for that XIRR includes every prior operating distribution to TL, so your tracker must be unified — operating and capital distributions can't live in separate silos.
+Servicing Fee: 10 bps/yr on TL's unreturned capital — recomputes as capital is returned.
+Removal Event override
+If the Sponsor is removed as Managing Member (§5.5(c)) and doesn't cure: tiers 4.1(d)(4), (5), (6) collapse to pro-rata Percentage Interests (86.36/13.64). Tier 1 survives. So the tracker needs a removal_event_active flag that swaps the tier-4/5/6 split tables. The Sponsor also forfeits unpaid Sponsor Asset Management Fee.
+What to track per member (the data model)
+This is exactly an M22 post-close capital-account ledger. Minimum state:
+
+Contribution ledger: date, amount, type ∈ {2.1 initial, 2.2 additional, 2.3 priority}. Date drives both pref accrual and XIRR.
+Distribution ledger: date, amount, tier satisfied, source (ops vs capital event).
+Two running pref accruals (10% and 15%), each with base + capitalized-unpaid balance, last-accrual date.
+Unreturned capital balance per type (for the return-of-capital tiers and the Servicing Fee).
+Cumulative XIRR cashflow vector for TL — the single object that decides which §4.1(d) tier you're in at any moment.
+Flags: removal_event_active, removal_date.
+
+Two reconciliation items that aren't distributions but sit above the line in Available Cash, in case your tracker ties out to NOI: Sponsor Acquisition Fee $768,500 (one-time at closing) and Property Management Fee (≤3.0%).
+The one ambiguity worth confirming with counsel before you hard-code it: the exact reconciliation of "compounded monthly" with "calculated on a daily basis" — the standard reading (daily accrual at rate/360, monthly capitalization) is what I've given, but the precise day-count on partial months is worth a one-line confirmation since it compounds over a multi-year hold.

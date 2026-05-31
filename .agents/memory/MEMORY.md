@@ -1,0 +1,1 @@
+- [Highlands p2122 DB write patterns](highlands-p2122-db.md) — constraint gotchas for investors/capital_calls/deal_waterfalls when populating deal financials from source docs
