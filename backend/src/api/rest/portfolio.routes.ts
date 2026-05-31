@@ -108,6 +108,7 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
          s.name                                            AS submarket_name,
          s.id                                              AS submarket_id,
          p.submarket_id                                    AS raw_submarket_id,
+         p.msa_name_override,
          p.acquisition_date,
          p.acquisition_price,
          COUNT(dma.id)                                     AS months_of_data,
@@ -129,7 +130,7 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
          )
        GROUP BY p.id, p.name, p.address_line1, p.city, p.state_code, p.units,
                 p.building_class, p.year_built, s.name, s.id,
-                p.acquisition_date, p.acquisition_price, p.submarket_id
+                p.acquisition_date, p.acquisition_price, p.submarket_id, p.msa_name_override
        ORDER BY p.name`,
       [userId]
     );
@@ -163,6 +164,7 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
         earliestPeriod: row.earliest_period,
         submarket: (row.submarket_name ?? row.raw_submarket_id ?? null) as string | null,
         submarketId: row.submarket_id ?? null,
+        msa: (row.msa_name_override ?? null) as string | null,
         status: occ < 88 ? 'watch' : 'performing',
       };
     });
@@ -186,7 +188,8 @@ router.post('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respo
     const userId = req.user!.userId;
     const body = req.body as Record<string, unknown>;
     const { name, address, city, state, units, assetClass, yearBuilt,
-            submarketId, manualSubmarket, acquisitionDate, acquisitionPrice, notes } = body;
+            submarketId, manualSubmarket, manualMsa,
+            acquisitionDate, acquisitionPrice, notes } = body;
     if (!name || !address || !city || !state) {
       return res.status(400).json({ error: 'name, address, city, state are required' });
     }
@@ -200,9 +203,9 @@ router.post('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respo
       `INSERT INTO properties
          (id, name, address_line1, city, state_code, units, building_class, year_built,
           submarket_id, ownership_status, acquisition_date, acquisition_price,
-          created_by, created_at, updated_at)
+          msa_name_override, notes, created_by, created_at, updated_at)
        VALUES
-         (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, 'portfolio', $9, $10, $11, NOW(), NOW())
+         (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, 'portfolio', $9, $10, $11, $12, $13, NOW(), NOW())
        RETURNING id`,
       [
         String(name),
@@ -215,6 +218,8 @@ router.post('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respo
         resolvedSubmarket,
         acquisitionDate != null && String(acquisitionDate).length >= 7 ? String(acquisitionDate) : null,
         acquisitionPrice != null && String(acquisitionPrice) !== '' ? Number(acquisitionPrice) : null,
+        manualMsa != null && String(manualMsa).trim() !== '' ? String(manualMsa).trim() : null,
+        notes != null && String(notes).trim() !== '' ? String(notes).trim() : null,
         userId,
       ]
     );

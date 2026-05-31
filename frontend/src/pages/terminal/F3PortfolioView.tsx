@@ -203,6 +203,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   const [addAssetForm, setAddAssetForm] = useState({
     name: '', address: '', city: '', state: '', units: '', assetClass: 'B',
     yearBuilt: '', submarketId: '', submarketSearch: '',
+    manualMsa: '',
     acquisitionDate: '', acquisitionPrice: '', notes: '',
   });
   const [addingAsset, setAddingAsset] = useState(false);
@@ -351,12 +352,13 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
         yearBuilt: addAssetForm.yearBuilt ? parseInt(addAssetForm.yearBuilt) : null,
         submarketId: addAssetForm.submarketId ? parseInt(addAssetForm.submarketId) : null,
         manualSubmarket: !addAssetForm.submarketId && addAssetForm.submarketSearch ? addAssetForm.submarketSearch : null,
+        manualMsa: addAssetForm.manualMsa || null,
         acquisitionDate: addAssetForm.acquisitionDate || null,
         acquisitionPrice: addAssetForm.acquisitionPrice ? parseFloat(addAssetForm.acquisitionPrice) : null,
         notes: addAssetForm.notes || null,
       });
       setShowAddAssetModal(false);
-      setAddAssetForm({ name: '', address: '', city: '', state: '', units: '', assetClass: 'B', yearBuilt: '', submarketId: '', submarketSearch: '', acquisitionDate: '', acquisitionPrice: '', notes: '' });
+      setAddAssetForm({ name: '', address: '', city: '', state: '', units: '', assetClass: 'B', yearBuilt: '', submarketId: '', submarketSearch: '', manualMsa: '', acquisitionDate: '', acquisitionPrice: '', notes: '' });
       loadPortfolioData();
     } catch (err: any) {
       setAddAssetError(err?.response?.data?.error || 'Failed to create property');
@@ -705,23 +707,26 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
                             <thead>
                               <tr>
-                                {['PERIOD', 'OCC %', 'EFF RENT', 'MKT RENT', 'NOI', 'NOI/UNIT', 'SOURCE'].map(h => (
-                                  <th key={h} style={{ textAlign: h === 'PERIOD' || h === 'SOURCE' ? 'left' : 'right', padding: '4px 12px', color: T.text.muted, fontWeight: 600, borderBottom: `1px solid ${T.border.subtle}` }}>{h}</th>
+                                {['PERIOD', 'OCC %', 'ASKING', 'EFF RENT', 'MKT RENT', 'NOI', 'NOI/UNIT', 'MO FREE', 'REBATE', 'SOURCE'].map(h => (
+                                  <th key={h} style={{ textAlign: h === 'PERIOD' || h === 'SOURCE' ? 'left' : 'right', padding: '4px 10px', color: T.text.muted, fontWeight: 600, borderBottom: `1px solid ${T.border.subtle}`, whiteSpace: 'nowrap' }}>{h}</th>
                                 ))}
                               </tr>
                             </thead>
                             <tbody>
                               {rowActuals.map((row, j) => (
                                 <tr key={j} style={{ borderBottom: `1px solid ${T.border.subtle}22` }}>
-                                  <td style={{ padding: '4px 12px', color: T.text.secondary }}>{row.period_label}</td>
-                                  <td style={{ textAlign: 'right', padding: '4px 12px', color: row.occupancy_rate != null && row.occupancy_rate * 100 > 93 ? T.text.green : T.text.amber }}>
+                                  <td style={{ padding: '4px 10px', color: T.text.secondary }}>{row.period_label}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 10px', color: row.occupancy_rate != null && row.occupancy_rate * 100 > 93 ? T.text.green : T.text.amber }}>
                                     {row.occupancy_rate != null ? `${(row.occupancy_rate * 100).toFixed(1)}%` : '—'}
                                   </td>
-                                  <td style={{ textAlign: 'right', padding: '4px 12px', color: T.text.primary }}>{row.avg_effective_rent != null ? `$${row.avg_effective_rent.toFixed(0)}` : '—'}</td>
-                                  <td style={{ textAlign: 'right', padding: '4px 12px', color: T.text.muted }}>{row.avg_market_rent != null ? `$${row.avg_market_rent.toFixed(0)}` : '—'}</td>
-                                  <td style={{ textAlign: 'right', padding: '4px 12px', color: T.text.green }}>{row.noi != null ? fmtCurrency(row.noi) : '—'}</td>
-                                  <td style={{ textAlign: 'right', padding: '4px 12px', color: T.text.muted }}>{row.noi_per_unit != null ? `$${row.noi_per_unit.toFixed(0)}` : '—'}</td>
-                                  <td style={{ padding: '4px 12px', color: T.text.muted }}>{row.data_source || 'manual'}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.primary }}>{row.asking_rent != null ? `$${Number(row.asking_rent).toFixed(0)}` : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.primary }}>{row.avg_effective_rent != null ? `$${row.avg_effective_rent.toFixed(0)}` : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.muted }}>{row.avg_market_rent != null ? `$${row.avg_market_rent.toFixed(0)}` : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.green }}>{row.noi != null ? fmtCurrency(row.noi) : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.muted }}>{row.noi_per_unit != null ? `$${row.noi_per_unit.toFixed(0)}` : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 10px', color: row.months_free_concession != null ? T.text.amber : T.text.muted }}>{row.months_free_concession != null ? `${Number(row.months_free_concession).toFixed(1)}` : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.muted }}>{row.concession_rebate_amount != null ? `$${Number(row.concession_rebate_amount).toFixed(0)}` : '—'}</td>
+                                  <td style={{ padding: '4px 10px', color: T.text.muted }}>{row.data_source || 'manual'}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -1651,30 +1656,43 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
                 </div>
                 {/* Submarket */}
                 <div>
-                  <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>SUBMARKET</label>
-                  {submarketOptions.length > 0 ? (
+                  <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>
+                    SUBMARKET {submarketOptions.length > 0 && <span style={{ color: '#6B7A8D', fontWeight: 400 }}>— select or type below</span>}
+                  </label>
+                  {submarketOptions.length > 0 && (
                     <select
                       value={addAssetForm.submarketId}
                       onChange={e => setAddAssetForm(p => ({ ...p, submarketId: e.target.value }))}
-                      style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: addAssetForm.submarketId ? '#E2E8F0' : '#6B7A8D', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none', colorScheme: 'dark' }}
+                      style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: addAssetForm.submarketId ? '#E2E8F0' : '#6B7A8D', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none', colorScheme: 'dark', marginBottom: 6 }}
                     >
-                      <option value="">— Select submarket (optional) —</option>
+                      <option value="">— Link to known submarket (optional) —</option>
                       {submarketOptions.map(s => (
                         <option key={s.id} value={String(s.id)}>
                           {s.msa_name ? `${s.msa_name} › ` : ''}{s.name}
                         </option>
                       ))}
                     </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={addAssetForm.submarketSearch}
-                      onChange={e => setAddAssetForm(p => ({ ...p, submarketSearch: e.target.value }))}
-                      placeholder="e.g. Midtown Atlanta (optional)"
-                      style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none' }}
-                    />
                   )}
+                  <input
+                    type="text"
+                    value={addAssetForm.submarketSearch}
+                    onChange={e => setAddAssetForm(p => ({ ...p, submarketSearch: e.target.value }))}
+                    placeholder="Custom submarket name (optional)"
+                    style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none' }}
+                  />
                 </div>
+              </div>
+
+              {/* Row 2b: Manual MSA */}
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>MSA / METRO AREA</label>
+                <input
+                  type="text"
+                  value={addAssetForm.manualMsa}
+                  onChange={e => setAddAssetForm(p => ({ ...p, manualMsa: e.target.value }))}
+                  placeholder="e.g. Atlanta-Sandy Springs-Alpharetta (optional)"
+                  style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none' }}
+                />
               </div>
 
               {/* Row 3: Acquisition info */}
