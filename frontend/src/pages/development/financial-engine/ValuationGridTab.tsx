@@ -283,11 +283,33 @@ function EvidencePanel({ lines, open }: { lines: EvidenceLine[]; open: boolean }
 
 // ── CONTESTED Badge ────────────────────────────────────────────────────────────
 
-function ContestedBadge({ fieldName }: { fieldName: string }) {
+function buildContestedTooltip(
+  fieldName: string,
+  div: FieldDivergence['divergence'],
+): string {
+  const label = fieldName.toUpperCase();
+  const fmt = (v: number) =>
+    div.isPct
+      ? `${(v * 100).toFixed(2)}%`
+      : v >= 1_000_000
+      ? `$${(v / 1_000_000).toFixed(2)}M`
+      : v >= 1_000
+      ? `$${(v / 1_000).toFixed(0)}K`
+      : `$${v.toFixed(0)}`;
+  return `${label}: divergence Δ${fmt(div.maxAbsDelta)} exceeds threshold ${fmt(div.threshold)} — review inputs before relying on this method.`;
+}
+
+function ContestedBadge({
+  fieldName,
+  divergence,
+}: {
+  fieldName: string;
+  divergence: FieldDivergence['divergence'];
+}) {
   const label = fieldName.toUpperCase();
   return (
     <span
-      title={`${label} has a material divergence between Pro Forma and stored values. Review inputs before relying on this method.`}
+      title={buildContestedTooltip(fieldName, divergence)}
       style={{
         fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: 1,
         color: BT.text.amber,
@@ -298,7 +320,7 @@ function ContestedBadge({ fieldName }: { fieldName: string }) {
       }}
     >
       <AlertTriangle size={8} style={{ flexShrink: 0 }} />
-      CONTESTED
+      CONTESTED · {label}
     </span>
   );
 }
@@ -306,18 +328,18 @@ function ContestedBadge({ fieldName }: { fieldName: string }) {
 // ── Method Row ─────────────────────────────────────────────────────────────────
 
 function MethodRow({
-  method, subject, purchasePrice, contestedFieldNames,
+  method, subject, purchasePrice, contestedDivergences,
 }: {
   method: ValuationMethod;
   subject: SubjectProperty;
   purchasePrice: number | null;
-  contestedFieldNames?: string[];
+  contestedDivergences?: FieldDivergence[];
 }) {
   const [showEvidence, setShowEvidence] = useState(false);
 
   const isPlaceholder = method.status === 'placeholder';
   const isInsufficient = method.status === 'insufficient';
-  const isContested = (contestedFieldNames?.length ?? 0) > 0;
+  const isContested = (contestedDivergences?.length ?? 0) > 0;
 
   // Compute % vs purchase price
   let vsAskPct: number | null = null;
@@ -362,8 +384,8 @@ function MethodRow({
                 borderRadius: 2, padding: '1px 4px',
               }}>COMING {method.placeholderVersion}</span>
             )}
-            {isContested && contestedFieldNames!.map(fn => (
-              <ContestedBadge key={fn} fieldName={fn} />
+            {isContested && contestedDivergences!.map(fd => (
+              <ContestedBadge key={fd.fieldName} fieldName={fd.fieldName} divergence={fd.divergence} />
             ))}
           </div>
           <div style={{ display: 'flex', gap: 4, marginTop: 3, flexWrap: 'wrap' }}>
@@ -1241,17 +1263,17 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
   }, [dealId]);
 
   /**
-   * Build a map of methodId → contested field names.
+   * Build a map of methodId → contested FieldDivergence objects.
    * A field is contested when its divergence.exceeds === true.
    */
-  const contestedByMethod = React.useMemo<Partial<Record<MethodId, string[]>>>(() => {
+  const contestedByMethod = React.useMemo<Partial<Record<MethodId, FieldDivergence[]>>>(() => {
     if (!divergences.length) return {};
-    const exceededFields = new Set(
-      divergences.filter(d => d.divergence.exceeds).map(d => d.fieldName),
+    const exceededMap = new Map<string, FieldDivergence>(
+      divergences.filter(d => d.divergence.exceeds).map(d => [d.fieldName, d]),
     );
-    const result: Partial<Record<MethodId, string[]>> = {};
+    const result: Partial<Record<MethodId, FieldDivergence[]>> = {};
     for (const [methodId, fields] of Object.entries(CONTESTED_FIELD_MAP) as [MethodId, string[]][]) {
-      const hit = fields.filter(f => exceededFields.has(f));
+      const hit = fields.map(f => exceededMap.get(f)).filter((d): d is FieldDivergence => d != null);
       if (hit.length > 0) result[methodId] = hit;
     }
     return result;
@@ -1429,7 +1451,7 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
           method={method}
           subject={data.subject}
           purchasePrice={purchasePrice}
-          contestedFieldNames={contestedByMethod[method.id]}
+          contestedDivergences={contestedByMethod[method.id]}
         />
       ))}
 
