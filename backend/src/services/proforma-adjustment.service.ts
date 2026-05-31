@@ -2203,7 +2203,11 @@ export async function getDealFinancials(
               stabilization_year, stabilization_year_override,
               lifecycle_profile, lifecycle_profile_override,
               lease_roll_velocity_per_year, mark_to_market_capture_rate,
-              ltl_baseline_source
+              ltl_baseline_source,
+              renovation_units_per_year, renovation_premium_per_unit_monthly,
+              renovation_downtime_months_per_unit,
+              operational_improvement_velocity, rent_recovery_path_months,
+              lease_up_velocity_units_per_month, concession_lease_up_initial_months
          FROM deal_assumptions WHERE deal_id = $1`,
       [dealId]
     ),
@@ -5078,6 +5082,13 @@ export async function getDealFinancials(
     lifecycleProfile:         (_at.lifecycle_profile          ?? null) as string | null,
     lifecycleProfileOverride: (_at.lifecycle_profile_override ?? null) as string | null,
     effectiveLifecycleProfile: ((_at.lifecycle_profile_override ?? _at.lifecycle_profile) ?? null) as string | null,
+    renovationUnitsPerYear:             _at.renovation_units_per_year             != null ? +parseFloat(_at.renovation_units_per_year).toFixed(2)             : null,
+    renovationPremiumPerUnitMonthly:    _at.renovation_premium_per_unit_monthly   != null ? +parseFloat(_at.renovation_premium_per_unit_monthly).toFixed(2)   : null,
+    renovationDowntimeMonthsPerUnit:    _at.renovation_downtime_months_per_unit   != null ? +parseFloat(_at.renovation_downtime_months_per_unit).toFixed(2)   : null,
+    operationalImprovementVelocity:     _at.operational_improvement_velocity      != null ? +parseFloat(_at.operational_improvement_velocity).toFixed(2)      : null,
+    rentRecoveryPathMonths:             _at.rent_recovery_path_months             != null ? +parseFloat(_at.rent_recovery_path_months).toFixed(1)             : null,
+    leaseUpVelocityUnitsPerMonth:       _at.lease_up_velocity_units_per_month     != null ? +parseFloat(_at.lease_up_velocity_units_per_month).toFixed(2)     : null,
+    concessionLeaseUpInitialMonths:     _at.concession_lease_up_initial_months    != null ? +parseFloat(_at.concession_lease_up_initial_months).toFixed(2)    : null,
   } : null;
 
   return {

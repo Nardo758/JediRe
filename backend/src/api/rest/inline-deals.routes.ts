@@ -2704,4 +2704,85 @@ router.patch('/:dealId/assumptions/stabilization', requireAuth, requireCapabilit
   }
 });
 
+/**
+ * PATCH /:dealId/assumptions/profile-inputs
+ *
+ * Writes any subset of the profile-specific pre-stabilization input columns to
+ * deal_assumptions. Called by AssumptionsTab LIFECYCLE INPUTS section when the
+ * operator fills in profile-specific inputs (renovation pace, lease-up velocity, etc.).
+ *
+ * Accepted body fields (all optional; send only what changed):
+ *   renovationUnitsPerYear            — VALUE_ADD: units renovated per year
+ *   renovationPremiumPerUnitMonthly   — VALUE_ADD: $/unit/mo incremental rent after renovation
+ *   renovationDowntimeMonthsPerUnit   — VALUE_ADD: months offline per unit during renovation
+ *   operationalImprovementVelocity    — DISTRESSED: units/month vacancy compression velocity
+ *   rentRecoveryPathMonths            — DISTRESSED: months until rents recover to market
+ *   leaseUpVelocityUnitsPerMonth      — DEVELOPMENT: absorption units/month post-construction
+ *   concessionLeaseUpInitialMonths    — DEVELOPMENT: initial concession in months of free rent
+ */
+router.patch('/:dealId/assumptions/profile-inputs', requireAuth, requireCapability('edit:operating_assumptions'), async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    const COLUMN_MAP: Record<string, string> = {
+      renovationUnitsPerYear:           'renovation_units_per_year',
+      renovationPremiumPerUnitMonthly:  'renovation_premium_per_unit_monthly',
+      renovationDowntimeMonthsPerUnit:  'renovation_downtime_months_per_unit',
+      operationalImprovementVelocity:   'operational_improvement_velocity',
+      rentRecoveryPathMonths:           'rent_recovery_path_months',
+      leaseUpVelocityUnitsPerMonth:     'lease_up_velocity_units_per_month',
+      concessionLeaseUpInitialMonths:   'concession_lease_up_initial_months',
+    };
+
+    const colNames: string[] = [];
+    const colPlaceholders: string[] = [];
+    const updates: string[] = [];
+    const params: (number | null)[] = [];
+    let idx = 1;
+
+    for (const [bodyKey, colName] of Object.entries(COLUMN_MAP)) {
+      if (bodyKey in req.body) {
+        const raw = req.body[bodyKey];
+        const val = raw === null || raw === '' ? null : Number(raw);
+        if (val !== null && isNaN(val)) {
+          return res.status(400).json({ success: false, error: `Invalid value for ${bodyKey}: must be a number or null` });
+        }
+        colNames.push(colName);
+        colPlaceholders.push(`$${idx}`);
+        updates.push(`${colName} = $${idx}`);
+        idx++;
+        params.push(val);
+      }
+    }
+
+    if (colNames.length === 0) {
+      return res.status(400).json({ success: false, error: 'No profile-input fields to update' });
+    }
+
+    params.push(dealId as any);
+    const dealIdParam = `$${idx}`;
+
+    await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, ${colNames.join(', ')}, created_at, updated_at)
+       VALUES (${dealIdParam}, ${colPlaceholders.join(', ')}, NOW(), NOW())
+       ON CONFLICT (deal_id) DO UPDATE SET ${updates.join(', ')}, updated_at = NOW()`,
+      params
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('[profile-inputs PATCH]', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

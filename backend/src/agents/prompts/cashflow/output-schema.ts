@@ -127,6 +127,17 @@ export const CASHFLOW_OUTPUT_SCHEMA = {
         'Year 1 means the asset is already stabilized at acquisition. ' +
         'Null when no hold-period year meets the sustained threshold — the deal never stabilizes within the hold.',
     },
+    lifecycle_profile_used: {
+      oneOf: [
+        { type: 'string', enum: ['STABILIZED', 'VALUE_ADD', 'DISTRESSED', 'DEVELOPMENT'] },
+        { type: 'null' },
+      ],
+      description:
+        'The lifecycle profile that governed pre-stabilization formula branching in this run. ' +
+        'Always set when Block 7 branching executes: STABILIZED | VALUE_ADD | DISTRESSED | DEVELOPMENT. ' +
+        'Echoes effective_lifecycle_profile from deal assumptions (override > detected). ' +
+        'Null only when effective_lifecycle_profile is completely absent from deal assumptions.',
+    },
     summary: { type: 'string', description: '3-5 sentence synthesis of key findings' },
     completed_at: { type: 'string', format: 'date-time' },
     cashflow: {
@@ -148,6 +159,7 @@ export const CASHFLOW_OUTPUT_SCHEMA = {
   required: [
     'proforma_fields',
     'stabilization_year',
+    'lifecycle_profile_used',
     'collision_summary',
     'confidence_distribution',
     'tier_distribution',

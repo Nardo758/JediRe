@@ -3462,6 +3462,171 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
             );
           })()}
 
+          {/* ── LIFECYCLE INPUTS — profile-specific pre-stab inputs ── */}
+          {(() => {
+            const at = (financials as any)?.adoptionTimeline as {
+              effectiveLifecycleProfile?: string | null;
+              renovationUnitsPerYear?: number | null;
+              renovationPremiumPerUnitMonthly?: number | null;
+              renovationDowntimeMonthsPerUnit?: number | null;
+              operationalImprovementVelocity?: number | null;
+              rentRecoveryPathMonths?: number | null;
+              leaseUpVelocityUnitsPerMonth?: number | null;
+              concessionLeaseUpInitialMonths?: number | null;
+            } | null | undefined;
+            const profile = at?.effectiveLifecycleProfile ?? null;
+            if (!profile || profile === 'STABILIZED') return null;
+
+            const patchProfileInputs = async (body: Record<string, number | null>) => {
+              if (!dealId) return;
+              try {
+                await apiClient.patch(`/api/v1/deals/${dealId}/assumptions/profile-inputs`, body);
+              } catch (e: any) {
+                console.error('[profile-inputs save]', e.message);
+              }
+            };
+
+            const PROFILE_COLOR: Record<string, string> = {
+              VALUE_ADD:   '#f59e0b',
+              DISTRESSED:  '#ef4444',
+              DEVELOPMENT: '#6366f1',
+            };
+            const accentColor = PROFILE_COLOR[profile] ?? '#64748b';
+            const accentBorder = `${accentColor}44`;
+
+            const InputRow = ({
+              label, hint, field, defaultVal, step = 1, min = 0,
+            }: {
+              label: string; hint: string; field: string;
+              defaultVal: number | null | undefined; step?: number; min?: number;
+            }) => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ color: '#6b7280', fontSize: 8, letterSpacing: '0.06em' }}>{label}</span>
+                <input
+                  key={`lc-${field}-${dealId}`}
+                  type="number"
+                  step={step}
+                  min={min}
+                  defaultValue={defaultVal ?? ''}
+                  placeholder="—"
+                  onBlur={e => {
+                    const raw = e.target.value.trim();
+                    if (raw === '') {
+                      patchProfileInputs({ [field]: null });
+                    } else {
+                      const v = parseFloat(raw);
+                      if (!isNaN(v) && v >= 0) {
+                        patchProfileInputs({ [field]: v });
+                      }
+                    }
+                  }}
+                  style={{
+                    background: '#111',
+                    border: `1px solid ${defaultVal != null ? accentBorder : '#1e1e1e'}`,
+                    borderRadius: 3,
+                    color: defaultVal != null ? accentColor : '#e2e8f0',
+                    padding: '3px 6px',
+                    fontFamily: MONO,
+                    fontSize: 10,
+                    width: 90,
+                    outline: 'none',
+                  }}
+                />
+                <span style={{ color: '#374151', fontSize: 7 }}>{hint}</span>
+              </div>
+            );
+
+            return (
+              <div style={{
+                margin: '8px 12px 0',
+                padding: '10px 12px',
+                background: '#0a0a0a',
+                border: `1px solid ${accentBorder}`,
+                borderRadius: 4,
+                fontFamily: MONO,
+                fontSize: 10,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ color: accentColor, fontWeight: 700, fontSize: 9, letterSpacing: '0.08em' }}>
+                    LIFECYCLE INPUTS
+                  </span>
+                  <span style={{
+                    fontSize: 7, color: accentColor, border: `1px solid ${accentBorder}`,
+                    borderRadius: 2, padding: '0 4px',
+                  }}>{profile}</span>
+                  <div style={{ flex: 1, borderTop: `1px dashed ${accentBorder}` }} />
+                  <span style={{ fontSize: 7, color: '#374151' }}>pre-stab formula inputs</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 14px' }}>
+                  {profile === 'VALUE_ADD' && (
+                    <>
+                      <InputRow
+                        label="RENO UNITS / YEAR"
+                        hint="units renovated per year"
+                        field="renovationUnitsPerYear"
+                        defaultVal={at?.renovationUnitsPerYear}
+                        step={1}
+                      />
+                      <InputRow
+                        label="RENO PREMIUM ($/UNIT/MO)"
+                        hint="incremental rent post-reno"
+                        field="renovationPremiumPerUnitMonthly"
+                        defaultVal={at?.renovationPremiumPerUnitMonthly}
+                        step={25}
+                      />
+                      <InputRow
+                        label="DOWNTIME (MONTHS/UNIT)"
+                        hint="unit offline during renovation"
+                        field="renovationDowntimeMonthsPerUnit"
+                        defaultVal={at?.renovationDowntimeMonthsPerUnit}
+                        step={0.25}
+                      />
+                    </>
+                  )}
+
+                  {profile === 'DISTRESSED' && (
+                    <>
+                      <InputRow
+                        label="OPS VELOCITY (UNITS/MO)"
+                        hint="vacancy compression rate"
+                        field="operationalImprovementVelocity"
+                        defaultVal={at?.operationalImprovementVelocity}
+                        step={1}
+                      />
+                      <InputRow
+                        label="RENT RECOVERY (MONTHS)"
+                        hint="months to recover to market rent"
+                        field="rentRecoveryPathMonths"
+                        defaultVal={at?.rentRecoveryPathMonths}
+                        step={3}
+                      />
+                    </>
+                  )}
+
+                  {profile === 'DEVELOPMENT' && (
+                    <>
+                      <InputRow
+                        label="LEASE-UP VELOCITY (U/MO)"
+                        hint="units absorbed/mo post-construction"
+                        field="leaseUpVelocityUnitsPerMonth"
+                        defaultVal={at?.leaseUpVelocityUnitsPerMonth}
+                        step={1}
+                      />
+                      <InputRow
+                        label="INITIAL CONCESSION (MO)"
+                        hint="months free rent at lease-up"
+                        field="concessionLeaseUpInitialMonths"
+                        defaultVal={at?.concessionLeaseUpInitialMonths}
+                        step={0.25}
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
       {/* end GENERAL sub-tab */}
       </>}
 

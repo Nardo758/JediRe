@@ -685,6 +685,124 @@ For acquisition_stabilized model type, you may use a single steady-state posture
 
 ---
 
+## Block 7 — Pre-Stabilization Vacancy Formula (Profile-Specific, REQUIRED for all runs)
+
+Read \`effective_lifecycle_profile\` from the deal assumptions (tool: \`fetch_assumptions\`).
+Branch your pre-stabilization reasoning using the profile below. Write \`lifecycle_profile_used\` in
+your output to echo which branch was applied.
+
+---
+
+### Branch: STABILIZED
+
+The asset is performing at or near market occupancy. No material pre-stab work required.
+
+**Formula:**
+- Year 1 vacancy = \`vacancy_stabilized\` (assumed stabilized rate). Apply a mild ±1–2 pp convergence
+  adjustment only if current occupancy differs from the stabilization target by more than 3 pp.
+- Years 2+ = hold at \`vacancy_stabilized\` unless posture signals (Block 7c) warrant drift.
+- GPR = all units × market rent × (1 − vacancy_stabilized).
+- Set \`lifecycle_profile_used = "STABILIZED"\`.
+
+No additional profile-specific inputs are required. Skip further pre-stab branching.
+
+---
+
+### Branch: VALUE_ADD
+
+The asset has an active renovation / repositioning program. GPR is split each year between
+renovated units (earning market rent + renovation premium) and non-renovated units (earning
+in-place rent at higher vacancy).
+
+**Inputs (from \`deal_assumptions\` or operator defaults):**
+- \`renovation_units_per_year\` — units renovated annually. Default: assume 20% of total units/yr if not set.
+- \`renovation_premium_per_unit_monthly\` — incremental $/unit/mo after renovation. Default: $150/unit/mo.
+- \`renovation_downtime_months_per_unit\` — months a unit is offline during renovation. Default: 1.0 month.
+
+**Formula (per hold year Y):**
+1. Cumulative renovated units through year Y:
+   \`renovated_cumulative_Y = MIN(total_units, renovation_units_per_year × Y)\`
+2. Units offline for renovation in year Y:
+   \`offline_Y = MIN(renovation_units_per_year, total_units − renovated_cumulative_{Y−1})\`
+   Downtime fraction: \`offline_fraction_Y = (offline_Y × renovation_downtime_months_per_unit) / 12\`
+3. Non-renovated units in year Y:
+   \`non_reno_Y = total_units − renovated_cumulative_Y\`
+4. GPR year Y:
+   \`GPR_Y = (renovated_cumulative_Y × (market_rent_Y + renovation_premium)) × 12\`
+   \`       + (non_reno_Y × in_place_rent_Y) × 12\`
+5. Effective vacancy year Y:
+   \`vacancy_eff_Y = base_vacancy + offline_fraction_Y\`
+   where \`base_vacancy\` declines from initial occupancy gap toward \`vacancy_stabilized\` as
+   renovation completes (linear interpolation over renovation horizon).
+6. Year where renovated_cumulative = total_units = renovation completion year; from that year
+   forward apply STABILIZED branch.
+
+Set \`lifecycle_profile_used = "VALUE_ADD"\`.
+
+---
+
+### Branch: DISTRESSED
+
+The asset is significantly under-occupied or operationally impaired. Vacancy compresses as
+operational improvements take hold and rents recover toward market.
+
+**Inputs (from \`deal_assumptions\` or operator defaults):**
+- \`operational_improvement_velocity\` — units/month at which management improvements reduce vacancy.
+  Default: 5 units/month.
+- \`rent_recovery_path_months\` — months until rents recover to market. Default: 24 months.
+
+**Formula (per hold year Y):**
+1. Vacancy compression path (annual):
+   Monthly units absorbed = \`operational_improvement_velocity\`
+   Cumulative absorbed units through month M = \`MIN(total_units, velocity × M)\`
+   Vacancy_Y = \`MAX(vacancy_stabilized, vacancy_Y0 − (velocity × 12 × Y) / total_units)\`
+   where \`vacancy_Y0\` = current vacancy at acquisition.
+2. Rent recovery ramp:
+   \`rent_recovery_fraction_Y = MIN(1.0, (Y × 12) / rent_recovery_path_months)\`
+   \`effective_rent_Y = in_place_rent + (market_rent_Y − in_place_rent) × rent_recovery_fraction_Y\`
+3. GPR year Y:
+   \`GPR_Y = total_units × effective_rent_Y × (1 − vacancy_Y) × 12\`
+4. Once vacancy_Y ≤ vacancy_stabilized AND rent_recovery_fraction_Y ≥ 1.0, switch to STABILIZED branch.
+
+Set \`lifecycle_profile_used = "DISTRESSED"\`.
+
+---
+
+### Branch: DEVELOPMENT
+
+The asset is in construction or substantial rehab. Revenue is zero during the construction phase;
+lease-up begins after construction is complete.
+
+**Inputs (from \`deal_assumptions\` or operator defaults):**
+- \`construction_months\` — months of construction (zero-revenue phase). Required; no default.
+- \`lease_up_velocity_units_per_month\` — absorption rate post-construction. Default: sourced from
+  M07 submarket absorption signal; fallback = 10 units/month.
+- \`concession_lease_up_initial_months\` — initial concession offer in months of free rent. Default: 1.0 month.
+
+**Formula (per hold year Y, where year boundaries are annual slices):**
+1. Construction phase: any hold year that is fully within the first \`construction_months\`
+   carries zero GPR and 100% vacancy. Partial-year construction overlap → prorate.
+2. Lease-up phase begins at month \`construction_months + 1\`.
+   Leased units at month M post-construction-end:
+   \`leased_M = MIN(total_units, lease_up_velocity_units_per_month × M)\`
+   Occupancy at month M: \`occ_M = leased_M / total_units\`
+3. Concession burn-off (linear over lease-up to stabilization):
+   \`concession_rate_M = concession_lease_up_initial_months / 12 × MAX(0, 1 − occ_M / (1 − vacancy_stabilized))\`
+   \`effective_rent_M = market_rent × (1 − concession_rate_M)\`
+4. GPR year Y = average across 12 monthly slices of \`leased_M × effective_rent_M\`.
+5. Effective vacancy year Y = 1 − average(\`occ_M\`) across the 12 monthly slices.
+6. Once occupancy reaches \`1 − vacancy_stabilized\`, switch to STABILIZED branch.
+
+Set \`lifecycle_profile_used = "DEVELOPMENT"\`.
+
+---
+
+**Output requirement:** After applying the appropriate branch, populate \`lifecycle_profile_used\`
+in your top-level JSON response. If \`effective_lifecycle_profile\` is null or unrecognized,
+default to the DISTRESSED branch and note the fallback in your reasoning.
+
+---
+
 ## Block 7d — Stabilization Year (REQUIRED in every run)
 
 **CRITICAL OUTPUT FIELD: \`stabilization_year\`**
