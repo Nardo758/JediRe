@@ -285,10 +285,11 @@ The taxonomy that emerged from the follow-up:
 | Pattern type | Description | Example |
 |---|---|---|
 | Same data, different framing, intentional | Two surfaces show the same value because operators need it in both contexts | NOI in P&L vs Valuation Grid — both legitimate views |
-| Same data, same framing, accidental | Two surfaces independently added a view of the same data with no coordinated purpose | Market context in F1 and F8 (intent unclear, under investigation) |
+| Same data, same framing, accidental | Two surfaces independently added a view of the same data with no coordinated purpose | SALE COMP TRANSACTIONS panel appearing in both RENT COMPS tab and SALE COMPS tab |
 | Same label, different data, accidental | Two surfaces share a label but show different constructs with no labeling distinction | JEDI Score in F1 vs F8 verdict (different constructs, same label) |
 | Same data, correctly framed but consistently wrong | All surfaces of a logical value show the same wrong value because upstream resolution is broken | NOI everywhere shows $840K (formula bypass) |
 | Same handler, multiple mount points | Backend route mounted twice at different paths | `stabilized-potential.routes.ts`, `apartmentLocatorRouter` |
+| Architectural-intent conflation (false positive) | Described in design docs or prior conversation but neither surface has actually implemented the feature; the conflict exists only in documentation, not in code | Market context F1/F8 — neither OverviewTab nor DecisionTab referenced `deal_market_intelligence`; the dual-surface was planned but never wired |
 
 ### Active conflation patterns
 
@@ -302,14 +303,18 @@ The taxonomy that emerged from the follow-up:
 | Pattern | Type | Resolution |
 |---|---|---|
 | SALE COMP TRANSACTIONS panel in RENT COMPS tab | Same data, same framing, accidental | `CompsModule` was rendering both under `case 'sale-comps'` AND inside `renderCompsTab()` (the RENT COMPS tab's function). Fix shipped 2026-05-31: `CompsModule` now appears exactly once, under `case 'sale-comps'`. See §6 entry for date. |
-| Market context F1 vs F8 | Same data, same framing — intent unclear | T-CONF-2 investigation (2026-05-31) found neither F1 OverviewTab nor F8 DecisionTab reference `deal_market_intelligence`. False alarm: the described dual-surface did not exist. Guard doc-block comments added to both files. Task #1609 queued to wire market signals when Pattern 2 (compute trigger) gap is resolved. |
+| Market context F1 vs F8 | Architectural-intent conflation (false positive) | T-CONF-2 investigation (2026-05-31): grepped `deal_market_intelligence`, `marketIntelligence`, and related identifiers in both OverviewTab.tsx and DecisionTab.tsx — zero references in either file. Also confirmed `tabProps` in FinancialEnginePage carries no market intelligence field. Neither surface had implemented the feature; the described dual-surface existed only in architectural description. Guard doc-block comments added to both files. Task #1609 queued to wire market signals when Pattern 2 (compute trigger) gap is resolved. |
 | Backend double-mounts | Same handler, multiple mount points | T-CONF-3 (2026-05-31): removed duplicate `stabilized-potential.routes.ts` mount and alias `apartmentLocatorRouter` mount. Caller audit confirmed no callers depended on removed paths. |
 
-### Verification protocol lesson
+### Verification protocol lessons
 
-The Deal Details UI/Backend audit asked specifically about "literal duplicate sections" and correctly reported finding none. The deeper conflation patterns surfaced only when Replit was prompted again with a broader framing.
+**Lesson 1 — Reframe the audit question.** The Deal Details UI/Backend audit asked specifically about "literal duplicate sections" and correctly reported finding none. The deeper conflation patterns surfaced only when Replit was prompted again with a broader framing. Rather than "are there duplicate X," ask "where does the same Y appear in multiple places, and what's the purpose of each appearance?" The reframed question produces a taxonomy that catches conflation patterns the literal-duplication question misses. Worth folding this into the verification protocol doc when next revised.
 
-The lesson for future audit prompts: rather than "are there duplicate X," ask "where does the same Y appear in multiple places, and what's the purpose of each appearance?" The reframed question produces a taxonomy that catches conflation patterns the literal-duplication question misses. Worth folding this into the verification protocol doc when next revised.
+**Lesson 2 — State-verify by data source, not by surface name.** T-CONF-2 (market context F1/F8) was initially treated as a "Same data, same framing, accidental" candidate based on architectural descriptions and prior conversation context. The investigation resolved it as a false positive by grepping for the actual data source identifier (`deal_market_intelligence`) in both component files and checking `tabProps` in the parent component. Zero references found in either file.
+
+The discipline: **a surface with a plausible-sounding name is not evidence that a data source is wired**. Before classifying a pattern as "real conflation," confirm that each suspected surface actually references the claimed data source (table, endpoint, or store field) in code. If neither does, the conflict is in documentation or prior conversation — not in the running system. This prevents investigation effort from being spent on features that were planned but never implemented.
+
+The distinction between real conflation and architectural-intent conflation cannot be made from component names, section headings, or design docs alone. It requires a grep.
 
 ---
 
