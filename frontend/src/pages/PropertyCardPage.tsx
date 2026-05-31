@@ -905,6 +905,11 @@ export default function PropertyDetailsPage() {
   const [marketCompsLoading, setMarketCompsLoading] = useState(false);
   const [saleCompSet, setSaleCompSet] = useState<any>(null);
   const [saleCompSetLoading, setSaleCompSetLoading] = useState(false);
+  const [saleCompDeletingId, setSaleCompDeletingId] = useState<string | null>(null);
+  const [saleCompAddingId, setSaleCompAddingId] = useState<string | null>(null);
+  const [addCompOpen, setAddCompOpen] = useState(false);
+  const [addCompPool, setAddCompPool] = useState<any[]>([]);
+  const [addCompPoolLoading, setAddCompPoolLoading] = useState(false);
   const [pcImpliedCapData, setPcImpliedCapData] = useState<any>(null);
   const [pcImpliedCapLoading, setPcImpliedCapLoading] = useState(false);
   const [compSortField, setCompSortField] = useState<'date' | 'ppu' | 'cap'>('date');
@@ -963,33 +968,82 @@ export default function PropertyDetailsPage() {
   }, [id]);
 
   const marketCompsDealId = marketComps?.dealId ?? null;
-  useEffect(() => {
-    if (!marketCompsDealId) { setSaleCompSet(null); setPcImpliedCapData(null); return; }
-    let cancelled = false;
+
+  const loadSaleCompSet = useCallback((dealId: string) => {
     setSaleCompSetLoading(true);
     apiClient
-      .get(`/api/v1/deals/${marketCompsDealId}/comps`)
+      .get(`/api/v1/deals/${dealId}/comps`)
       .then((res: any) => {
-        if (!cancelled) {
-          const payload = res?.data?.data ?? res?.data;
-          setSaleCompSet(payload ?? null);
-        }
+        const payload = res?.data?.data ?? res?.data;
+        setSaleCompSet(payload ?? null);
       })
-      .catch(() => { if (!cancelled) setSaleCompSet(null); })
-      .finally(() => { if (!cancelled) setSaleCompSetLoading(false); });
+      .catch(() => setSaleCompSet(null))
+      .finally(() => setSaleCompSetLoading(false));
+  }, []);
+
+  const handleDeleteSaleComp = useCallback(async (compId: string, address: string, dealId: string) => {
+    if (saleCompDeletingId) return;
+    if (!window.confirm(`Remove "${address}" from comp set?`)) return;
+    setSaleCompDeletingId(compId);
+    try {
+      const res = await apiClient.delete<{ data?: any }>(`/api/v1/deals/${dealId}/comps/${compId}`);
+      const payload = res?.data?.data ?? (res?.data as any);
+      if (payload) setSaleCompSet(payload);
+      else loadSaleCompSet(dealId);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error ?? err?.message ?? 'Failed to remove comp';
+      window.alert(`Could not remove comp: ${msg}`);
+      loadSaleCompSet(dealId);
+    }
+    finally { setSaleCompDeletingId(null); }
+  }, [saleCompDeletingId, loadSaleCompSet]);
+
+  const loadAddCompPool = useCallback(async (dealId: string, currentComps: any[]) => {
+    setAddCompPoolLoading(true);
+    try {
+      const res = await apiClient.get<{ data?: any }>(`/api/v1/deals/${dealId}/comps/ranked`);
+      const data = res?.data?.data ?? res?.data;
+      const ranked: any[] = data?.comps ?? data?.members ?? [];
+      const existingIds = new Set(currentComps.map((c: any) => String(c.id)));
+      setAddCompPool(ranked.filter((c: any) => !existingIds.has(String(c.id))));
+    } catch { setAddCompPool([]); }
+    finally { setAddCompPoolLoading(false); }
+  }, []);
+
+  const handleAddComp = useCallback(async (compId: string, dealId: string) => {
+    if (saleCompAddingId) return;
+    setSaleCompAddingId(compId);
+    try {
+      const res = await apiClient.post<{ data?: any }>(`/api/v1/deals/${dealId}/comps/${compId}`, {});
+      const payload = res?.data?.data ?? (res?.data as any);
+      if (payload) {
+        setSaleCompSet(payload);
+        const newComps: any[] = payload?.comps ?? payload?.members ?? [];
+        const existingIds = new Set(newComps.map((c: any) => String(c.id)));
+        setAddCompPool(prev => prev.filter((c: any) => !existingIds.has(String(c.id))));
+      } else {
+        loadSaleCompSet(dealId);
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.error ?? err?.message ?? 'Failed to add comp';
+      window.alert(`Could not add comp: ${msg}`);
+    }
+    finally { setSaleCompAddingId(null); }
+  }, [saleCompAddingId, loadSaleCompSet]);
+
+  useEffect(() => {
+    if (!marketCompsDealId) { setSaleCompSet(null); setPcImpliedCapData(null); setAddCompOpen(false); setAddCompPool([]); return; }
+    loadSaleCompSet(marketCompsDealId);
     setPcImpliedCapLoading(true);
     apiClient
       .get(`/api/v1/deals/${marketCompsDealId}/implied-cap-rate`)
       .then((res: any) => {
-        if (!cancelled) {
-          const d = res?.data?.data ?? res?.data;
-          setPcImpliedCapData(d ?? null);
-        }
+        const d = res?.data?.data ?? res?.data;
+        setPcImpliedCapData(d ?? null);
       })
-      .catch(() => { if (!cancelled) setPcImpliedCapData(null); })
-      .finally(() => { if (!cancelled) setPcImpliedCapLoading(false); });
-    return () => { cancelled = true; };
-  }, [marketCompsDealId]);
+      .catch(() => setPcImpliedCapData(null))
+      .finally(() => setPcImpliedCapLoading(false));
+  }, [marketCompsDealId, loadSaleCompSet]);
 
   const mappedReal = useMemo(
     () => mapRealProperty(realData, navState.propertyName),
@@ -2290,7 +2344,63 @@ export default function PropertyDetailsPage() {
           <div style={{ padding: 12, color: T.text.muted, fontFamily: T.font.mono, fontSize: 9 }}>LOADING SALE COMPS…</div>
         )}
         {!saleCompSetLoading && pcComps.length === 0 && (
-          <div style={{ padding: "16px 8px", textAlign: "center", color: T.text.muted, fontFamily: T.font.mono, fontSize: 8 }}>No sale comps available</div>
+          <div>
+            <div style={{ padding: "16px 8px", textAlign: "center", color: T.text.muted, fontFamily: T.font.mono, fontSize: 8 }}>No sale comps available</div>
+            {marketCompsDealId && (
+              <div style={{ borderTop: `1px solid ${T.border.subtle}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', padding: '6px 10px', background: T.bg.panel, borderBottom: `1px solid ${T.border.subtle}` }}>
+                  <button
+                    onClick={() => {
+                      const next = !addCompOpen;
+                      setAddCompOpen(next);
+                      if (next) loadAddCompPool(marketCompsDealId, []);
+                    }}
+                    style={{ fontFamily: T.font.mono, fontSize: 8, fontWeight: 600, color: addCompOpen ? T.text.green : T.text.muted, background: addCompOpen ? `${T.text.green}15` : 'transparent', border: `1px solid ${addCompOpen ? T.text.green : T.border.subtle}`, borderRadius: 2, padding: '2px 9px', cursor: 'pointer', letterSpacing: 0.5 }}
+                  >
+                    {addCompOpen ? '✕ CANCEL' : '+ ADD COMP'}
+                  </button>
+                </div>
+                {addCompOpen && (
+                  <div style={{ background: T.bg.header }}>
+                    <div style={{ padding: '5px 10px', fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, letterSpacing: 0.5, borderBottom: `1px solid ${T.border.subtle}` }}>
+                      AVAILABLE COMPS FROM CASCADE — click + to add to set
+                    </div>
+                    {addCompPoolLoading && (
+                      <div style={{ padding: '8px 10px', fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>LOADING AVAILABLE COMPS…</div>
+                    )}
+                    {!addCompPoolLoading && addCompPool.length === 0 && (
+                      <div style={{ padding: '8px 10px', fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>No comps found in cascade for this deal.</div>
+                    )}
+                    {!addCompPoolLoading && addCompPool.length > 0 && (
+                      <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                        {addCompPool.map((c: any, i: number) => {
+                          const isAdding = saleCompAddingId === String(c.id);
+                          const capRaw = c.implied_cap_rate != null ? Number(c.implied_cap_rate) : null;
+                          return (
+                            <div key={c.id ?? i} style={{ display: 'grid', gridTemplateColumns: '2fr 0.7fr 0.9fr 0.9fr 0.9fr 0.3fr', padding: '3px 8px', borderBottom: `1px solid ${T.border.subtle}08`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt, fontSize: 8, fontFamily: T.font.mono, alignItems: 'center' }}>
+                              <span style={{ color: T.text.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.property_address || '—'}</span>
+                              <span style={{ color: T.text.muted }}>{c.recording_date ? String(c.recording_date).slice(0, 10) : '—'}</span>
+                              <span style={{ color: T.text.cyan }}>{c.price_per_unit ? pcFmtUsd(Number(c.price_per_unit)) : '—'}</span>
+                              <span style={{ color: T.text.amber }}>{capRaw != null ? `${(capRaw * 100).toFixed(2)}%` : '—'}</span>
+                              <span style={{ color: T.text.muted }}>{c.distance_miles != null ? `${Number(c.distance_miles).toFixed(2)} mi` : '—'}</span>
+                              <button
+                                onClick={() => handleAddComp(String(c.id), marketCompsDealId)}
+                                disabled={isAdding}
+                                title="Add to comp set"
+                                style={{ background: 'transparent', border: `1px solid ${T.text.green}`, borderRadius: 2, color: isAdding ? T.text.muted : T.text.green, cursor: isAdding ? 'wait' : 'pointer', fontFamily: T.font.mono, fontSize: 9, fontWeight: 700, padding: '1px 5px', opacity: isAdding ? 0.5 : 1 }}
+                              >
+                                {isAdding ? '…' : '+'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
         {!saleCompSetLoading && pcComps.length > 0 && <>
           {/* KPI strip — 6 cells */}
@@ -2396,15 +2506,65 @@ export default function PropertyDetailsPage() {
               );
             })}
             {pcOutlierIds.size > 0 && (
-              <span style={{ marginLeft: 'auto', fontFamily: T.font.mono, fontSize: 7, color: T.text.amber }}>
+              <span style={{ fontFamily: T.font.mono, fontSize: 7, color: T.text.amber }}>
                 ⚠ {pcOutlierIds.size} OUTLIER{pcOutlierIds.size > 1 ? 'S' : ''} FLAGGED
               </span>
             )}
+            <button
+              onClick={() => {
+                const next = !addCompOpen;
+                setAddCompOpen(next);
+                if (next && marketCompsDealId) loadAddCompPool(marketCompsDealId, pcComps);
+              }}
+              style={{ marginLeft: 'auto', fontFamily: T.font.mono, fontSize: 8, fontWeight: 600, color: addCompOpen ? T.text.green : T.text.muted, background: addCompOpen ? `${T.text.green}15` : 'transparent', border: `1px solid ${addCompOpen ? T.text.green : T.border.subtle}`, borderRadius: 2, padding: '2px 9px', cursor: 'pointer', letterSpacing: 0.5 }}
+            >
+              {addCompOpen ? '✕ CANCEL' : '+ ADD COMP'}
+            </button>
           </div>
 
+          {/* ADD COMP panel */}
+          {addCompOpen && marketCompsDealId && (
+            <div style={{ borderBottom: `1px solid ${T.border.subtle}`, background: T.bg.header }}>
+              <div style={{ padding: '5px 10px', fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, letterSpacing: 0.5, borderBottom: `1px solid ${T.border.subtle}` }}>
+                AVAILABLE COMPS FROM CASCADE — click + to add to set
+              </div>
+              {addCompPoolLoading && (
+                <div style={{ padding: '8px 10px', fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>LOADING AVAILABLE COMPS…</div>
+              )}
+              {!addCompPoolLoading && addCompPool.length === 0 && (
+                <div style={{ padding: '8px 10px', fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>No additional comps available from cascade.</div>
+              )}
+              {!addCompPoolLoading && addCompPool.length > 0 && (
+                <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+                  {addCompPool.map((c: any, i: number) => {
+                    const isAdding = saleCompAddingId === String(c.id);
+                    const capRaw = c.implied_cap_rate != null ? Number(c.implied_cap_rate) : null;
+                    return (
+                      <div key={c.id ?? i} style={{ display: 'grid', gridTemplateColumns: '2fr 0.7fr 0.9fr 0.9fr 0.9fr 0.3fr', padding: '3px 8px', borderBottom: `1px solid ${T.border.subtle}08`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt, fontSize: 8, fontFamily: T.font.mono, alignItems: 'center' }}>
+                        <span style={{ color: T.text.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.property_address || '—'}</span>
+                        <span style={{ color: T.text.muted }}>{c.recording_date ? String(c.recording_date).slice(0, 10) : '—'}</span>
+                        <span style={{ color: T.text.cyan }}>{c.price_per_unit ? pcFmtUsd(Number(c.price_per_unit)) : '—'}</span>
+                        <span style={{ color: T.text.amber }}>{capRaw != null ? `${(capRaw * 100).toFixed(2)}%` : '—'}</span>
+                        <span style={{ color: T.text.muted }}>{c.distance_miles != null ? `${Number(c.distance_miles).toFixed(2)} mi` : '—'}</span>
+                        <button
+                          onClick={() => handleAddComp(String(c.id), marketCompsDealId)}
+                          disabled={isAdding}
+                          title="Add to comp set"
+                          style={{ background: 'transparent', border: `1px solid ${T.text.green}`, borderRadius: 2, color: isAdding ? T.text.muted : T.text.green, cursor: isAdding ? 'wait' : 'pointer', fontFamily: T.font.mono, fontSize: 9, fontWeight: 700, padding: '1px 5px', opacity: isAdding ? 0.5 : 1 }}
+                        >
+                          {isAdding ? '…' : '+'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Column headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.9fr 0.9fr 0.9fr 1fr 0.7fr 0.6fr', padding: '4px 8px', background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, fontSize: 7, fontFamily: T.font.mono }}>
-            {['PROPERTY', 'DATE', 'PRICE', '$/UNIT', 'NOI/UNIT', 'CAP RATE', 'SRC', 'DIST'].map(h => (
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.9fr 0.9fr 0.9fr 1fr 0.7fr 0.6fr 0.35fr', padding: '4px 8px', background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, fontSize: 7, fontFamily: T.font.mono }}>
+            {['PROPERTY', 'DATE', 'PRICE', '$/UNIT', 'NOI/UNIT', 'CAP RATE', 'SRC', 'DIST', ''].map(h => (
               <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: '0.05em' }}>{h}</span>
             ))}
           </div>
@@ -2417,13 +2577,14 @@ export default function PropertyDetailsPage() {
                 : c.source.replace('georgia_county', 'GA-CTY').replace(/_/g, '-').toUpperCase().slice(0, 8)
               : c.buyer_type?.toUpperCase().slice(0, 8) || '—';
             const isOutlier = pcOutlierIds.has(String(c.id));
+            const isDeleting = saleCompDeletingId === String(c.id);
             const capRaw = c.implied_cap_rate != null ? Number(c.implied_cap_rate) : null;
             const noiPerUnit = capRaw != null && Number(c.price_per_unit) > 0 ? capRaw * Number(c.price_per_unit) : null;
             const capLabel = capRaw != null ? `${(capRaw * 100).toFixed(2)}%${isOutlier ? ' ⚠' : ''}` : '—';
             const capColor = isOutlier ? T.text.amber : (capRaw != null ? T.text.amber : T.text.muted);
             const distLabel = c.distance_miles != null ? `${Number(c.distance_miles).toFixed(2)} mi` : '—';
             return (
-              <div key={c.id ?? i} style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.9fr 0.9fr 0.9fr 1fr 0.7fr 0.6fr', padding: '4px 8px', borderBottom: `1px solid ${T.border.subtle}08`, background: isOutlier ? `${T.text.amber}06` : c.source === 'costar_upload' ? `${T.text.cyan}08` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt), fontSize: 8, fontFamily: T.font.mono }}>
+              <div key={c.id ?? i} style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.9fr 0.9fr 0.9fr 1fr 0.7fr 0.6fr 0.35fr', padding: '4px 8px', borderBottom: `1px solid ${T.border.subtle}08`, background: isOutlier ? `${T.text.amber}06` : c.source === 'costar_upload' ? `${T.text.cyan}08` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt), fontSize: 8, fontFamily: T.font.mono, alignItems: 'center' }}>
                 <span style={{ color: T.text.secondary, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.property_address || '—'}</span>
                 <span style={{ color: T.text.muted }}>{c.recording_date ? String(c.recording_date).slice(0, 10) : '—'}</span>
                 <span style={{ color: T.text.green }}>{c.derived_sale_price ? pcFmtUsd(Number(c.derived_sale_price)) : '—'}</span>
@@ -2432,6 +2593,18 @@ export default function PropertyDetailsPage() {
                 <span style={{ color: capColor, fontWeight: isOutlier ? 700 : 400 }}>{capLabel}</span>
                 <span style={{ color: T.text.muted }}>{srcLabel}</span>
                 <span style={{ color: T.text.muted }}>{distLabel}</span>
+                {marketCompsDealId ? (
+                  <button
+                    onClick={() => handleDeleteSaleComp(String(c.id), c.property_address || 'this comp', marketCompsDealId)}
+                    disabled={isDeleting}
+                    title="Remove comp"
+                    style={{ background: 'transparent', border: 'none', color: isDeleting ? T.text.muted : T.text.red, cursor: isDeleting ? 'wait' : 'pointer', fontFamily: T.font.mono, fontSize: 10, padding: 0, opacity: isDeleting ? 0.4 : 0.55, lineHeight: 1, transition: 'opacity 0.15s', justifySelf: 'center' }}
+                    onMouseEnter={(e) => { if (!isDeleting) (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+                    onMouseLeave={(e) => { if (!isDeleting) (e.currentTarget as HTMLButtonElement).style.opacity = '0.55'; }}
+                  >
+                    {isDeleting ? '…' : '✕'}
+                  </button>
+                ) : <span />}
               </div>
             );
           })}

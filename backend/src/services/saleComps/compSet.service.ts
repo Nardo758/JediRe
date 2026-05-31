@@ -741,6 +741,144 @@ export class CompSetService {
       comps: allComps,
     };
   }
+  async addCompToSet(dealId: string, compId: string): Promise<{ added: boolean; updatedSet: CompSetResult | null }> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const compSetResult = await client.query(`
+        SELECT id FROM sale_comp_sets
+        WHERE deal_id = $1::uuid
+        ORDER BY created_at DESC
+        LIMIT 1
+      `, [dealId]);
+
+      if (compSetResult.rows.length === 0) {
+        throw new Error('Comp set not found for this deal');
+      }
+
+      const compSetId = compSetResult.rows[0].id;
+
+      // Check for duplicate
+      const dupCheck = await client.query(`
+        SELECT id FROM sale_comp_set_members
+        WHERE comp_set_id = $1::uuid
+          AND (transaction_id = $2::uuid OR market_comp_id = $2::uuid)
+        LIMIT 1
+      `, [compSetId, compId]);
+      if (dupCheck.rows.length > 0) {
+        throw new Error('Comp already in set');
+      }
+
+      // Determine source table
+      const mcCheck = await client.query(
+        `SELECT id FROM market_sale_comps WHERE id = $1::uuid LIMIT 1`, [compId]);
+      const isMarketComp = mcCheck.rows.length > 0;
+      const isRecordedTx = !isMarketComp && (await client.query(
+        `SELECT id FROM recorded_transactions WHERE id = $1::uuid LIMIT 1`, [compId])).rows.length > 0;
+
+      if (!isMarketComp && !isRecordedTx) {
+        throw new Error('Comp not found in market_sale_comps or recorded_transactions');
+      }
+
+      // Find next sort_order
+      const maxSort = await client.query(
+        `SELECT COALESCE(MAX(sort_order), 0) AS mx FROM sale_comp_set_members WHERE comp_set_id = $1::uuid`,
+        [compSetId]);
+      const nextSort = parseInt(String(maxSort.rows[0].mx)) + 1;
+
+      await client.query(`
+        INSERT INTO sale_comp_set_members (comp_set_id, ${isMarketComp ? 'market_comp_id' : 'transaction_id'}, sort_order)
+        VALUES ($1::uuid, $2::uuid, $3)
+      `, [compSetId, compId, nextSort]);
+
+      // Recompute stats from remaining members
+      const allComps = await client.query(`
+        SELECT
+          COALESCE(mc.price_per_unit, rt.price_per_unit, 0) AS price_per_unit,
+          COALESCE(mc.price_per_sqft, rt.price_per_sf, 0)   AS price_per_sf,
+          COALESCE(CASE
+            WHEN mc.noi IS NOT NULL AND COALESCE(mc.sale_price, rt.derived_sale_price) > 0
+            THEN ROUND((mc.noi / COALESCE(mc.sale_price, rt.derived_sale_price))::numeric, 6)
+            ELSE NULL
+          END, mc.cap_rate, rt.implied_cap_rate)            AS implied_cap_rate
+        FROM sale_comp_set_members scm
+        LEFT JOIN market_sale_comps    mc ON mc.id = scm.market_comp_id
+        LEFT JOIN recorded_transactions rt ON rt.id = scm.transaction_id
+        WHERE scm.comp_set_id = $1::uuid
+          AND (mc.id IS NOT NULL OR rt.id IS NOT NULL)
+      `, [compSetId]);
+
+      const pricesPerUnit = allComps.rows.map((r: any) => parseFloat(r.price_per_unit)).sort((a: number, b: number) => a - b);
+      const pricesPerSf   = allComps.rows.map((r: any) => parseFloat(r.price_per_sf)).filter((p: number) => p > 0).sort((a: number, b: number) => a - b);
+      const capRates      = allComps.rows.map((r: any) => r.implied_cap_rate ? parseFloat(r.implied_cap_rate) : null).filter((v: number | null): v is number => v != null);
+
+      const median = (arr: number[]) => {
+        if (arr.length === 0) return 0;
+        const mid = Math.floor(arr.length / 2);
+        return arr.length % 2 === 0 ? (arr[mid - 1] + arr[mid]) / 2 : arr[mid];
+      };
+      const avg    = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      const stdDev = (arr: number[], mean: number) => {
+        if (arr.length === 0) return 0;
+        return Math.sqrt(arr.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / arr.length);
+      };
+
+      const avgPpu = avg(pricesPerUnit);
+      const medPpu = median(pricesPerUnit);
+
+      const subjectRow = await client.query(`
+        SELECT p.units, d.derived_sale_price
+        FROM deals d LEFT JOIN properties p ON p.deal_id = d.id
+        WHERE d.id = $1::uuid LIMIT 1
+      `, [dealId]);
+      const subj = subjectRow.rows[0];
+      const subjectPpu = subj?.units && subj?.derived_sale_price ? subj.derived_sale_price / subj.units : null;
+      const subjectVsMedianPct = subjectPpu && medPpu > 0 ? (subjectPpu - medPpu) / medPpu : null;
+      const subjectPercentile  = subjectPpu && pricesPerUnit.length > 0
+        ? Math.round((pricesPerUnit.filter(p => p <= subjectPpu).length / pricesPerUnit.length) * 100)
+        : null;
+
+      await client.query(`
+        UPDATE sale_comp_sets SET
+          comp_count = $2,
+          median_price_per_unit = $3,
+          avg_price_per_unit = $4,
+          min_price_per_unit = $5,
+          max_price_per_unit = $6,
+          std_dev_price_per_unit = $7,
+          median_price_per_sf = $8,
+          median_implied_cap_rate = $9,
+          avg_implied_cap_rate = $10,
+          subject_vs_median_pct = $11,
+          subject_percentile = $12
+        WHERE id = $1::uuid
+      `, [
+        compSetId,
+        allComps.rows.length,
+        medPpu,
+        avgPpu,
+        pricesPerUnit[0] || 0,
+        pricesPerUnit[pricesPerUnit.length - 1] || 0,
+        stdDev(pricesPerUnit, avgPpu),
+        median(pricesPerSf),
+        capRates.length > 0 ? median(capRates) : null,
+        capRates.length > 0 ? avg(capRates) : null,
+        subjectVsMedianPct,
+        subjectPercentile,
+      ]);
+
+      await client.query('COMMIT');
+      const updatedSet = await this.getCompSetByDeal(dealId);
+      return { added: true, updatedSet };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   async deleteCompFromSet(dealId: string, compId: string): Promise<{ deleted: boolean; updatedSet: CompSetResult | null }> {
     const client = await pool.connect();
     try {

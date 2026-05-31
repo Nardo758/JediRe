@@ -181,9 +181,41 @@ router.get('/deals/:dealId/comps/summary', requireAuth, async (req: Authenticate
   }
 });
 
+router.post('/deals/:dealId/comps/:compId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId, compId } = req.params;
+    const userId = req.user!.userId;
+    const pool = getPool();
+    const ownerCheck = await pool.query(
+      `SELECT id FROM deals WHERE id = $1::uuid AND user_id = $2::uuid LIMIT 1`,
+      [dealId, userId],
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+    const result = await compSetService.addCompToSet(dealId, compId);
+    res.json({ success: true, data: result.updatedSet });
+  } catch (error: any) {
+    console.error('Add comp error:', error);
+    const status = error.message.includes('not found') ? 404
+      : error.message.includes('already in set') ? 409
+      : 500;
+    res.status(status).json({ success: false, error: error.message });
+  }
+});
+
 router.delete('/deals/:dealId/comps/:compId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId, compId } = req.params;
+    const userId = req.user!.userId;
+    const pool = getPool();
+    const ownerCheck = await pool.query(
+      `SELECT id FROM deals WHERE id = $1::uuid AND user_id = $2::uuid LIMIT 1`,
+      [dealId, userId],
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
     const result = await compSetService.deleteCompFromSet(dealId, compId);
     res.json({ success: true, data: result.updatedSet });
   } catch (error: any) {
