@@ -2123,19 +2123,23 @@ export default function PropertyDetailsPage() {
 
     const pcComps: any[] = saleCompSet?.comps ?? saleCompSet?.members ?? [];
     const pcCompCount: number = saleCompSet?.comp_count ?? pcComps.length;
-    const VINTAGE_BANDS_PC = ['pre-1990', '1990-2005', '2006-2015', '2016+'];
-    const pcVintageOf = (c: any): string | null => {
-      const y = Number(c.year_built);
-      if (!y) return null;
-      if (y < 1990) return 'pre-1990';
-      if (y < 2006) return '1990-2005';
-      if (y < 2016) return '2006-2015';
-      return '2016+';
+    const TIME_BANDS_PC = ['1Y', '2Y', '3Y', '5Y'];
+    const pcNow = Date.now();
+    const pcInWindow = (c: any, years: number) => {
+      if (!c.recording_date) return false;
+      return new Date(String(c.recording_date)).getTime() >= pcNow - years * 365.25 * 24 * 60 * 60 * 1000;
     };
     let filteredPcComps = [...pcComps];
-    if (compVintageBand) filteredPcComps = filteredPcComps.filter((c: any) => pcVintageOf(c) === compVintageBand);
+    if (compVintageBand) {
+      const windowYears = parseInt(compVintageBand);
+      filteredPcComps = filteredPcComps.filter((c: any) => pcInWindow(c, windowYears));
+    }
     if (compSortField === 'ppu') filteredPcComps.sort((a: any, b: any) => (Number(b.price_per_unit) || 0) - (Number(a.price_per_unit) || 0));
-    else if (compSortField === 'cap') filteredPcComps.sort((a: any, b: any) => ((Number(a.implied_cap_rate) ?? 999) - (Number(b.implied_cap_rate) ?? 999)));
+    else if (compSortField === 'cap') filteredPcComps.sort((a: any, b: any) => {
+      const aCap = a.implied_cap_rate != null ? Number(a.implied_cap_rate) : 999;
+      const bCap = b.implied_cap_rate != null ? Number(b.implied_cap_rate) : 999;
+      return aCap - bCap;
+    });
     else filteredPcComps.sort((a: any, b: any) => (String(b.recording_date) > String(a.recording_date) ? 1 : -1));
     const pcOutlierIds = pcComputeOutlierIds(filteredPcComps);
 
@@ -2289,7 +2293,7 @@ export default function PropertyDetailsPage() {
           <div style={{ padding: 12, color: T.text.muted, fontFamily: T.font.mono, fontSize: 9 }}>LOADING SALE COMPS…</div>
         )}
         {!saleCompSetLoading && pcComps.length === 0 && (
-          <div style={{ padding: 12, color: T.text.muted, fontFamily: T.font.mono, fontSize: 9 }}>NO SALE COMP DATA</div>
+          <div style={{ padding: "16px 8px", textAlign: "center", color: T.text.muted, fontFamily: T.font.mono, fontSize: 8 }}>No sale comps available</div>
         )}
         {!saleCompSetLoading && pcComps.length > 0 && <>
           {/* KPI strip — 6 cells */}
@@ -2386,7 +2390,7 @@ export default function PropertyDetailsPage() {
             <span style={{ width: 1, height: 12, background: T.border.subtle, margin: '0 4px' }} />
             <span style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono, letterSpacing: 0.5 }}>VINTAGE</span>
             <button onClick={() => setCompVintageBand(null)} style={{ fontFamily: T.font.mono, fontSize: 8, fontWeight: compVintageBand == null ? 700 : 400, color: compVintageBand == null ? T.text.cyan : T.text.muted, background: compVintageBand == null ? `${T.text.cyan}15` : 'transparent', border: `1px solid ${compVintageBand == null ? T.text.cyan : T.border.subtle}`, borderRadius: 2, padding: '2px 7px', cursor: 'pointer', letterSpacing: 0.5 }}>ALL</button>
-            {VINTAGE_BANDS_PC.map((vb) => {
+            {TIME_BANDS_PC.map((vb) => {
               const active = compVintageBand === vb;
               return (
                 <button key={vb} onClick={() => setCompVintageBand(active ? null : vb)} style={{ fontFamily: T.font.mono, fontSize: 8, fontWeight: active ? 700 : 400, color: active ? T.text.cyan : T.text.muted, background: active ? `${T.text.cyan}15` : 'transparent', border: `1px solid ${active ? T.text.cyan : T.border.subtle}`, borderRadius: 2, padding: '2px 7px', cursor: 'pointer', letterSpacing: 0.5 }}>
