@@ -233,6 +233,14 @@ export class PortfolioCorrelationService {
   computeCoefficients(
     propertyId: string, propertyName: string, actuals: PropertyActualRow[]
   ): EmpiricalCoefficients {
+    // ── Occupancy scale: deal_monthly_actuals.occupancy_rate is stored as FRACTIONAL 0–1
+    // (e.g. 0.944 = 94.4%). Verified from DB: min=0.907, max=0.976 across all seed rows.
+    // All occupancy comparisons below use 0–1 thresholds (e.g. STABLE_OCC=0.95).
+    // lease_velocity = slope × 100 converts the regression slope (fraction/month) to
+    // percentage-point/month for display (e.g. 0.002/month → 0.20 pp/month).
+    const OCC_SCALE_IS_FRACTIONAL = true; // 0–1 confirmed; do not change without DB migration
+    void OCC_SCALE_IS_FRACTIONAL;         // consumed — suppresses unused-var lint
+
     const base: EmpiricalCoefficients = {
       property_id: propertyId,
       property_name: propertyName,
@@ -252,7 +260,7 @@ export class PortfolioCorrelationService {
 
     if (actuals.length < 3) return base;
 
-    // 1. Lease velocity + occupancy trajectory
+    // 1. Lease velocity + occupancy trajectory (fractional occupancy input, pp/month output)
     const occRows = actuals
       .map((r, i) => ({ x: i, y: sf(r.occupancy_rate) }))
       .filter((r): r is { x: number; y: number } => r.y !== null);
@@ -294,6 +302,7 @@ export class PortfolioCorrelationService {
     }
 
     // 3. Concession depth during sub-95% phase (lease-up only)
+    // STABLE_OCC=0.95 in 0–1 fractional scale = 95% occupancy threshold
     const STABLE_OCC = 0.95;
     const leaseupConc: number[] = [];
     for (const r of actuals) {
@@ -378,11 +387,15 @@ export class PortfolioCorrelationService {
   ): Array<Omit<PortfolioCorrelationSignal, 'property_id' | 'property_name' | 'city' | 'state' | 'sample_size'>> {
 
     // Property-level computed stats (the "first-party time-series" inputs)
+    // occupancy_rate is FRACTIONAL 0–1 (e.g. 0.944 = 94.4%). Verified from DB.
+    // avgVacancy = 1 - avgOcc is therefore also 0–1 (e.g. 0.056 = 5.6%).
+    // vacPct = avgVacancy * 100 converts to percentage for display/thresholds.
     const rents = actuals.map(r => sf(r.avg_effective_rent)).filter((v): v is number => v !== null && v > 0);
     const avgEffRent = rents.length > 0 ? rents.reduce((a, b) => a + b, 0) / rents.length : null;
 
     const occs = actuals.map(r => sf(r.occupancy_rate)).filter((v): v is number => v !== null);
     const avgOcc = occs.length > 0 ? occs.reduce((a, b) => a + b, 0) / occs.length : null;
+    // avgVacancy: 0–1 fractional (e.g. 0.056 for 94.4% occ). 1 - fractional_occ.
     const avgVacancy = avgOcc != null ? 1 - avgOcc : null;
 
     const medianIncome = msa?.median_household_income ?? null;
