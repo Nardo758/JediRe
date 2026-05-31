@@ -1,41 +1,31 @@
 /**
  * Portfolio Correlation Service — Task #1657
  *
- * Runs the COR-01–30 correlation engine against owned-portfolio operating history
- * (deal_monthly_actuals where is_portfolio_asset=TRUE, the canonical owned-portfolio
- * source — property_operating_history does not exist) to produce:
+ * Runs COR-01–30 against owned-portfolio operating history (deal_monthly_actuals
+ * where is_portfolio_asset=TRUE). "Property ownership" follows the same convention
+ * as all other portfolio routes: properties.created_by = userId OR created_by IS NULL
+ * (seed properties). Every public method that returns property-specific data requires
+ * a userId and scopes its queries accordingly.
  *
- *   1. Seven empirical per-property coefficients (portfolio_correlation_coefficients):
- *        – lease_velocity                     : regression slope of occupancy (%/month)
- *        – occupancy_trajectory               : same slope, stored separately
- *        – occupancy_trajectory_shape         : +1 accelerating / 0 linear / -1 decelerating
- *        – concession_depth_ratio             : avg(concession$ / eff_rent per unit)
- *        – concession_depth_to_stabilization  : concession depth during sub-95% phase only
- *        – rent_positioning_ratio             : avg(eff_rent / market_rent)
- *        – rent_positioning_to_lease_velocity_r : Pearson(rent_pos, monthly_occ_change)
+ * NOTE: property_operating_history does not exist in this schema. The canonical
+ * owned-portfolio data source is deal_monthly_actuals where is_portfolio_asset=TRUE
+ * (per replit.md).
  *
- *   2. Per-property enriched COR signals (portfolio_correlation_signals), durably stored
- *      so GET /correlation-signals can serve them after page refresh.
- *      Enrichment covers all signals where first-party actuals improve accuracy:
- *        – COR-04/COR-13 : rent-to-income ratio recomputed from 1P rent + MSA income
- *        – COR-05        : property vacancy derived from 1P avg occupancy rate
- *        – COR-09        : concession rate filled from 1P concession_depth_ratio
- *        – COR-22        : explicitly marked insufficient_history (no job_growth_yoy
- *                          in city-level data); source = 'insufficient_history'
- *        – All other COR : "avg rent" / "effective rent" / "vacancy" in missingData
- *                          → filled with 1P rent/occupancy, source upgraded to 'mixed'
- *
- *   3. Portfolio actuals written to metric_time_series (geography_type='property') so
- *      computeTimeSeriesCorrelations generates metric_correlations rows — queryable by
- *      F4 once properties are linked to a submarket (task #1685).
- *
- *   4. Enriched signals (not the raw engine report) persisted to linked deals.
+ * Outputs:
+ *   1. Seven empirical per-property coefficients → portfolio_correlation_coefficients
+ *   2. Thirty per-property enriched COR signals  → portfolio_correlation_signals
+ *      (durable; GET /correlation-signals reads these after page refresh)
+ *   3. Portfolio actuals → metric_time_series (geography_type='property')
+ *   4. If property.submarket_id is set: cross-metric correlations are also written to
+ *      metric_correlations for that submarket — F4 useColumnCorrelations picks them up
+ *      once the submarket link exists (see task #1685 for mass-linking)
+ *   5. Enriched signals (not raw engine report) persisted to linked deals
  */
 
 import { Pool } from 'pg';
 import { logger } from '../utils/logger';
 import { getPool } from '../database/connection';
-import { CorrelationEngineService } from './correlationEngine.service';
+import { CorrelationEngineService, CorrelationResult } from './correlationEngine.service';
 import { mapSignalsToAdjustments, persistAdjustments } from './correlation-adjustments.service';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -155,9 +145,14 @@ export class PortfolioCorrelationService {
     this.engine = new CorrelationEngineService(this.pool);
   }
 
-  // ── Data fetchers ────────────────────────────────────────────────────────
+  // ── Scoped data fetchers ─────────────────────────────────────────────────
 
-  private async fetchOwnedProperties(): Promise<Array<{
+  /**
+   * Fetch owned-portfolio properties for a specific user.
+   * Scoping: (created_by = userId OR created_by IS NULL) — same pattern as all
+   * other portfolio routes (see GET /portfolio/assets).
+   */
+  private async fetchOwnedProperties(userId: string): Promise<Array<{
     id: string;
     name: string;
     city: string;
@@ -175,7 +170,9 @@ export class PortfolioCorrelationService {
        FROM properties p
        JOIN deal_monthly_actuals dma ON dma.property_id = p.id
        WHERE dma.is_portfolio_asset = TRUE
-       ORDER BY p.name`
+         AND (p.created_by = $1 OR p.created_by IS NULL)
+       ORDER BY p.name`,
+      [userId]
     );
 
     const properties = [];
@@ -213,13 +210,13 @@ export class PortfolioCorrelationService {
     );
     if (r.rows.length > 0) {
       return {
-        median_household_income: r.rows[0].median_household_income ? sf(r.rows[0].median_household_income) : null,
-        avg_rent: r.rows[0].avg_rent ? sf(r.rows[0].avg_rent) : null,
+        median_household_income: sf(r.rows[0].median_household_income),
+        avg_rent: sf(r.rows[0].avg_rent),
       };
     }
-    // Fallback: any MSA in same state
     const s = await this.pool.query<{ median_household_income: string | null; avg_rent: string | null }>(
-      `SELECT median_household_income, avg_rent FROM msas WHERE name ILIKE $1 AND median_household_income IS NOT NULL LIMIT 1`,
+      `SELECT median_household_income, avg_rent FROM msas
+       WHERE name ILIKE $1 AND median_household_income IS NOT NULL LIMIT 1`,
       [`%, ${state}%`]
     );
     if (s.rows.length > 0) {
@@ -233,7 +230,9 @@ export class PortfolioCorrelationService {
 
   // ── Empirical coefficient computation ────────────────────────────────────
 
-  computeCoefficients(propertyId: string, propertyName: string, actuals: PropertyActualRow[]): EmpiricalCoefficients {
+  computeCoefficients(
+    propertyId: string, propertyName: string, actuals: PropertyActualRow[]
+  ): EmpiricalCoefficients {
     const base: EmpiricalCoefficients = {
       property_id: propertyId,
       property_name: propertyName,
@@ -253,7 +252,7 @@ export class PortfolioCorrelationService {
 
     if (actuals.length < 3) return base;
 
-    // ── 1. Lease velocity + occupancy trajectory (regression on occupancy index)
+    // 1. Lease velocity + occupancy trajectory
     const occRows = actuals
       .map((r, i) => ({ x: i, y: sf(r.occupancy_rate) }))
       .filter((r): r is { x: number; y: number } => r.y !== null);
@@ -265,7 +264,6 @@ export class PortfolioCorrelationService {
         base.lease_velocity_r2 = parseFloat(fit.r2.toFixed(4));
         base.occupancy_trajectory = base.lease_velocity;
       }
-      // Trajectory shape: compare slope of first half vs second half
       if (occRows.length >= 6) {
         const mid = Math.floor(occRows.length / 2);
         const f1 = linearRegression(occRows.slice(0, mid).map(r => r.x), occRows.slice(0, mid).map(r => r.y));
@@ -278,7 +276,7 @@ export class PortfolioCorrelationService {
       }
     }
 
-    // ── 2. Concession depth ratio (all-period average)
+    // 2. Concession depth ratio (all-period average)
     const concessionRatios: number[] = [];
     for (const r of actuals) {
       const eff = sf(r.avg_effective_rent), units = sf(r.total_units), conc = sf(r.concessions);
@@ -295,7 +293,7 @@ export class PortfolioCorrelationService {
       );
     }
 
-    // ── 3. Concession depth during sub-95% phase (lease-up only)
+    // 3. Concession depth during sub-95% phase (lease-up only)
     const STABLE_OCC = 0.95;
     const leaseupConc: number[] = [];
     for (const r of actuals) {
@@ -316,7 +314,7 @@ export class PortfolioCorrelationService {
       base.concession_leaseup_months = leaseupConc.length;
     }
 
-    // ── 4. Rent positioning ratio
+    // 4. Rent positioning ratio
     const rentRatios: number[] = [];
     for (const r of actuals) {
       const eff = sf(r.avg_effective_rent), mkt = sf(r.avg_market_rent);
@@ -328,7 +326,7 @@ export class PortfolioCorrelationService {
       );
     }
 
-    // ── 5. Pearson(rent_positioning_per_month, monthly_occ_change)
+    // 5. Pearson(rent_positioning_per_month, monthly_occ_change)
     const posVelPairs: Array<{ pos: number; vel: number }> = [];
     for (let i = 1; i < actuals.length; i++) {
       const eff = sf(actuals[i].avg_effective_rent), mkt = sf(actuals[i].avg_market_rent);
@@ -347,35 +345,39 @@ export class PortfolioCorrelationService {
     return base;
   }
 
-  // ── Per-property signal enrichment ───────────────────────────────────────
+  // ── Per-property COR signal computation ─────────────────────────────────
 
   /**
-   * Build a property-specific enriched signal set from the city-level engine report.
+   * Compute per-property COR signals from the merged dataset:
+   *   - City-level engine report provides the baseline for COR signals that measure
+   *     market-wide conditions (supply pipeline, employment, transit, permit trends, etc.)
+   *     These are city-wide by design and correctly identical for all properties in a city.
+   *   - First-party property actuals provide PROPERTY-SPECIFIC inputs for COR signals
+   *     where the unit of analysis is the property itself (rent, occupancy, concessions).
    *
-   * For each of the 30 correlation signals, checks whether first-party portfolio
-   * actuals provide better (or more granular) inputs than the city-level market data:
+   * For the following signals, first-party actuals replace or augment the engine result
+   * with property-specific computation (not just enrichment):
    *
-   *   COR-04 / COR-13 : rent-to-income ratio recomputed from 1P rent + MSA income.
-   *   COR-05          : property vacancy = 1 - avg_occupancy_rate (1P actuals).
-   *   COR-09          : concession rate filled from 1P concession_depth_ratio.
-   *   COR-22          : explicitly marked insufficient_history (no job_growth_yoy
-   *                     in first-party actuals; city-level macro data absent).
-   *   All others      : "avg rent" / "effective rent" / "current rent" / "vacancy rate"
-   *                     / "occupancy" in missingData → fill from 1P actuals, upgrade
-   *                     source to 'mixed' and confidence to 'low' if was 'insufficient'.
+   *   COR-04 / COR-13 : rent-to-income ratio computed fresh from 1P avg_effective_rent
+   *                     + MSA median_household_income. If no MSA income data, result
+   *                     is 'none' / 'insufficient' (honest; TX props have no MSA link).
+   *   COR-05          : property vacancy = 1 - avg(occupancy_rate) from 1P actuals.
+   *                     search_activity_index has no 1P substitute so xValue stays null.
+   *   COR-09          : concession rate = 1P concession_depth_ratio × 100. Signal
+   *                     direction derived directly from this rate (bullish <1%, etc.).
+   *   COR-22          : No first-party substitute for job_growth_yoy — explicitly
+   *                     source='insufficient_history' with a clear explanation.
+   *   All other COR   : "avg rent" / "effective rent" / "vacancy" in missingData
+   *                     → filled from 1P actuals, source upgraded to 'mixed'.
    */
-  private enrichSignalsWithFirstPartyData(
-    engineCorrelations: Array<{
-      id: string; name?: string; signal: string | null; confidence: string;
-      actionable: string | null; missingData: string[];
-      xValue?: number | null; yValue?: number | null; [k: string]: unknown;
-    }>,
+  private computePerPropertySignals(
+    engineCorrelations: CorrelationResult[],
     actuals: PropertyActualRow[],
     coefficients: EmpiricalCoefficients,
     msa: { median_household_income: number | null; avg_rent: number | null } | null
   ): Array<Omit<PortfolioCorrelationSignal, 'property_id' | 'property_name' | 'city' | 'state' | 'sample_size'>> {
 
-    // First-party computed stats
+    // Property-level computed stats (the "first-party time-series" inputs)
     const rents = actuals.map(r => sf(r.avg_effective_rent)).filter((v): v is number => v !== null && v > 0);
     const avgEffRent = rents.length > 0 ? rents.reduce((a, b) => a + b, 0) / rents.length : null;
 
@@ -385,88 +387,104 @@ export class PortfolioCorrelationService {
 
     const medianIncome = msa?.median_household_income ?? null;
 
-    // Helper: compute rent-to-income signal
-    const rentToIncomeSignal = (corId: string, corName: string): {
+    // Rent-to-income computation (used by COR-04 and COR-13)
+    const computeRentToIncome = (): {
       signal: string | null; confidence: string; source: PortfolioCorrelationSignal['source'];
       actionable: string | null; xValue: number | null; missingData: string[];
     } => {
-      if (!medianIncome) return { signal: null, confidence: 'insufficient', source: 'none', actionable: null, xValue: null, missingData: ['MSA median household income (no MSA linked for this city)'] };
-      if (!avgEffRent)   return { signal: null, confidence: 'insufficient', source: 'none', actionable: null, xValue: null, missingData: ['portfolio avg effective rent (no actuals)'] };
+      if (!medianIncome) {
+        return {
+          signal: null, confidence: 'insufficient', source: 'none', actionable: null,
+          xValue: null,
+          missingData: ['MSA median household income (no MSA record linked for this city)'],
+        };
+      }
+      if (!avgEffRent) {
+        return {
+          signal: null, confidence: 'insufficient', source: 'none', actionable: null,
+          xValue: null,
+          missingData: ['portfolio avg effective rent (no actuals with rent data)'],
+        };
+      }
       const pct = (avgEffRent * 12) / medianIncome * 100;
       const xVal = parseFloat(pct.toFixed(1));
-      if (pct < 28) return { signal: 'bullish',  confidence: 'medium', source: 'first_party', xValue: xVal, missingData: [], actionable: `1P rent-to-income ${pct.toFixed(1)}% (below 30% ceiling). Room to push rents. 1P rent: $${avgEffRent.toFixed(0)}/mo.` };
-      if (pct <= 32) return { signal: 'neutral', confidence: 'medium', source: 'first_party', xValue: xVal, missingData: [], actionable: `1P rent-to-income ${pct.toFixed(1)}% — near 30% ceiling. Moderate runway. 1P rent: $${avgEffRent.toFixed(0)}/mo.` };
-      return { signal: 'bearish', confidence: 'medium', source: 'first_party', xValue: xVal, missingData: [], actionable: `1P rent-to-income ${pct.toFixed(1)}% exceeds ceiling. Reduce rent growth assumptions. 1P rent: $${avgEffRent.toFixed(0)}/mo.` };
+      if (pct < 28) {
+        return { signal: 'bullish', confidence: 'medium', source: 'first_party', xValue: xVal, missingData: [],
+          actionable: `1P rent-to-income ${pct.toFixed(1)}% (below 30% ceiling). Room to push rents. 1P rent: $${avgEffRent.toFixed(0)}/mo.` };
+      }
+      if (pct <= 32) {
+        return { signal: 'neutral', confidence: 'medium', source: 'first_party', xValue: xVal, missingData: [],
+          actionable: `1P rent-to-income ${pct.toFixed(1)}% — near 30% ceiling. Moderate runway. 1P rent: $${avgEffRent.toFixed(0)}/mo.` };
+      }
+      return { signal: 'bearish', confidence: 'medium', source: 'first_party', xValue: xVal, missingData: [],
+        actionable: `1P rent-to-income ${pct.toFixed(1)}% exceeds ceiling. Reduce rent growth assumptions. 1P rent: $${avgEffRent.toFixed(0)}/mo.` };
     };
+
+    const RENT_RE = /avg.?rent|effective.?rent|current.*rent|market.?rent/i;
+    const VAC_RE  = /vacancy.?rate|avg.?occupancy|occupancy.?rate/i;
 
     return engineCorrelations.map(cor => {
       // ── COR-04: Wage Growth vs Rent Growth
       if (cor.id === 'COR-04') {
-        const r = rentToIncomeSignal('COR-04', 'Wage Growth vs Rent Growth');
-        return { cor_id: 'COR-04', name: 'Wage Growth vs Rent Growth', ...r, yValue: (cor.yValue as number | null) ?? null };
+        const r = computeRentToIncome();
+        return { cor_id: 'COR-04', name: cor.name ?? 'Wage Growth vs Rent Growth', ...r,
+          yValue: (cor.yValue as number | null) ?? null };
       }
 
       // ── COR-13: Rent-to-Income Ratio vs Rent Growth
       if (cor.id === 'COR-13') {
-        const r = rentToIncomeSignal('COR-13', 'Rent-to-Income Ratio vs Rent Growth');
-        return { cor_id: 'COR-13', name: 'Rent-to-Income Ratio vs Rent Growth', ...r, yValue: (cor.yValue as number | null) ?? null };
+        const r = computeRentToIncome();
+        return { cor_id: 'COR-13', name: cor.name ?? 'Rent-to-Income Ratio vs Rent Growth', ...r,
+          yValue: (cor.yValue as number | null) ?? null };
       }
 
       // ── COR-05: Traffic Surge Index vs Vacancy Rate
-      // City-level needs search_activity_index (no 1P substitute).
-      // Enrich: if city result is insufficient, supply property vacancy from 1P actuals.
-      if (cor.id === 'COR-05' && cor.confidence === 'insufficient' && avgVacancy !== null) {
+      // search_activity_index has no 1P substitute; supply vacancy from 1P actuals
+      // when city-level result is insufficient.
+      if (cor.id === 'COR-05' && avgVacancy !== null) {
         const vacPct = avgVacancy * 100;
-        const missing = cor.missingData.filter(m => !/vacancy/i.test(m));
-        // Can annotate with 1P vacancy; signal still requires search_activity (keep null)
+        const missing = cor.missingData.filter(m => !VAC_RE.test(m));
         return {
           cor_id: 'COR-05', name: cor.name ?? 'Traffic Surge Index vs Vacancy Rate',
-          signal: null, confidence: 'low', source: 'mixed' as const,
+          signal: null, confidence: cor.confidence === 'insufficient' ? 'low' : cor.confidence,
+          source: 'mixed' as const,
           xValue: null, yValue: parseFloat(vacPct.toFixed(1)),
           missingData: missing.concat(['search activity index (no 1P substitute)']),
-          actionable: `1P property vacancy: ${vacPct.toFixed(1)}% (occ ${(avgOcc! * 100).toFixed(1)}%). Search activity unavailable.`,
+          actionable: `1P property vacancy: ${vacPct.toFixed(1)}% (occ ${(avgOcc! * 100).toFixed(1)}%). Search activity index unavailable for signal direction.`,
         };
       }
 
       // ── COR-09: Concession Trend vs Supply Delivery
-      // Engine uses concession_rate from market snapshots. Fill from 1P concession_depth_ratio.
+      // Concession rate computed directly from 1P concession_depth_ratio (property-specific).
       if (cor.id === 'COR-09' && coefficients.concession_depth_ratio !== null) {
         const concPct = coefficients.concession_depth_ratio * 100;
         const missing = cor.missingData.filter(m => !/concession/i.test(m));
-        const baseConf = cor.confidence === 'insufficient' ? 'low' : cor.confidence;
-        const baseSrc: PortfolioCorrelationSignal['source'] = cor.confidence === 'insufficient' ? 'first_party' : 'mixed';
-        let signal = cor.signal;
-        let actionable = cor.actionable;
-        if (!signal) {
-          if (concPct < 1) { signal = 'bullish'; actionable = `Low concessions: 1P depth ${concPct.toFixed(2)}% — low giveaway pressure.`; }
-          else if (concPct < 3) { signal = 'neutral'; actionable = `Moderate concessions: 1P depth ${concPct.toFixed(2)}%.`; }
-          else { signal = 'bearish'; actionable = `High concessions: 1P depth ${concPct.toFixed(2)}% — elevated giveaway pressure.`; }
-        }
+        let signal: string;
+        let actionable: string;
+        if (concPct < 1) { signal = 'bullish'; actionable = `Low concessions: 1P depth ${concPct.toFixed(2)}% — low giveaway pressure.`; }
+        else if (concPct < 3) { signal = 'neutral'; actionable = `Moderate concessions: 1P depth ${concPct.toFixed(2)}%.`; }
+        else { signal = 'bearish'; actionable = `High concessions: 1P depth ${concPct.toFixed(2)}% — elevated giveaway pressure.`; }
         return {
           cor_id: 'COR-09', name: cor.name ?? 'Concession Trend vs Supply Delivery',
-          signal, confidence: baseConf, source: baseSrc,
+          signal, confidence: 'medium', source: 'first_party' as const,
           xValue: parseFloat(concPct.toFixed(2)), yValue: (cor.yValue as number | null) ?? null,
           missingData: missing, actionable,
         };
       }
 
       // ── COR-22: Job Growth → Absorption (6-month lag)
-      // No first-party substitute for job_growth_yoy. Explicitly mark as insufficient_history.
+      // No first-party substitute for job_growth_yoy.
       if (cor.id === 'COR-22') {
         return {
-          cor_id: 'COR-22', name: 'Job Growth → Absorption (6mo lag)',
-          signal: null, confidence: 'insufficient',
-          source: 'insufficient_history' as const,
+          cor_id: 'COR-22', name: cor.name ?? 'Job Growth → Absorption (6mo lag)',
+          signal: null, confidence: 'insufficient', source: 'insufficient_history' as const,
           xValue: null, yValue: null,
-          missingData: ['job_growth_yoy macro data not in portfolio actuals — requires city-level employment data feed'],
+          missingData: ['job_growth_yoy macro data (city-level employment feed required — no 1P substitute)'],
           actionable: null,
         };
       }
 
-      // ── All other COR: check missingData for rent/vacancy that 1P actuals can fill
-      const RENT_RE = /avg.?rent|effective.?rent|current.*rent|market.?rent/i;
-      const VAC_RE  = /vacancy.?rate|avg.?occupancy|occupancy.?rate/i;
-
+      // ── All other COR: fill rent/vacancy from 1P actuals where missingData lists them
       const isMissingRent = cor.missingData.some(m => RENT_RE.test(m));
       const isMissingVac  = cor.missingData.some(m => VAC_RE.test(m));
 
@@ -483,12 +501,10 @@ export class PortfolioCorrelationService {
         const newConf = updatedMissing.length === 0
           ? (cor.confidence === 'insufficient' ? 'low' : cor.confidence)
           : cor.confidence;
-        const newSrc: PortfolioCorrelationSignal['source'] =
-          updatedMissing.length === 0 ? 'mixed' : 'mixed';
 
         return {
           cor_id: cor.id, name: cor.name ?? cor.id,
-          signal: cor.signal, confidence: newConf, source: newSrc,
+          signal: cor.signal, confidence: newConf, source: 'mixed' as const,
           xValue: (cor.xValue as number | null) ?? null,
           yValue: (cor.yValue as number | null) ?? null,
           missingData: updatedMissing,
@@ -498,7 +514,7 @@ export class PortfolioCorrelationService {
         };
       }
 
-      // ── Default: return engine result classified by data availability
+      // Default: return engine result with source classification
       const source: PortfolioCorrelationSignal['source'] =
         cor.confidence === 'insufficient' ? 'none' :
         cor.missingData.length === 0 ? 'third_party' : 'mixed';
@@ -520,13 +536,13 @@ export class PortfolioCorrelationService {
   ): Promise<PortfolioCorrelationSummary['coefficients']> {
     const computedAt = new Date().toISOString();
     const entries: Array<{ name: string; value: number | null; r2: number | null; n: number }> = [
-      { name: 'lease_velocity',                       value: coeff.lease_velocity,                        r2: coeff.lease_velocity_r2, n: coeff.sample_size },
-      { name: 'occupancy_trajectory',                 value: coeff.occupancy_trajectory,                  r2: coeff.lease_velocity_r2, n: coeff.sample_size },
-      { name: 'occupancy_trajectory_shape',           value: coeff.occupancy_trajectory_shape,            r2: null, n: coeff.sample_size },
-      { name: 'concession_depth_ratio',               value: coeff.concession_depth_ratio,                r2: null, n: coeff.sample_size },
-      { name: 'concession_depth_to_stabilization',    value: coeff.concession_depth_to_stabilization,     r2: null, n: coeff.concession_leaseup_months ?? coeff.sample_size },
-      { name: 'rent_positioning_ratio',               value: coeff.rent_positioning_ratio,                r2: null, n: coeff.sample_size },
-      { name: 'rent_positioning_to_lease_velocity_r', value: coeff.rent_positioning_to_lease_velocity_r,  r2: null, n: coeff.sample_size },
+      { name: 'lease_velocity',                       value: coeff.lease_velocity,                       r2: coeff.lease_velocity_r2, n: coeff.sample_size },
+      { name: 'occupancy_trajectory',                 value: coeff.occupancy_trajectory,                 r2: coeff.lease_velocity_r2, n: coeff.sample_size },
+      { name: 'occupancy_trajectory_shape',           value: coeff.occupancy_trajectory_shape,           r2: null, n: coeff.sample_size },
+      { name: 'concession_depth_ratio',               value: coeff.concession_depth_ratio,               r2: null, n: coeff.sample_size },
+      { name: 'concession_depth_to_stabilization',    value: coeff.concession_depth_to_stabilization,    r2: null, n: coeff.concession_leaseup_months ?? coeff.sample_size },
+      { name: 'rent_positioning_ratio',               value: coeff.rent_positioning_ratio,               r2: null, n: coeff.sample_size },
+      { name: 'rent_positioning_to_lease_velocity_r', value: coeff.rent_positioning_to_lease_velocity_r, r2: null, n: coeff.sample_size },
     ];
 
     const rows: PortfolioCorrelationSummary['coefficients'] = [];
@@ -557,8 +573,8 @@ export class PortfolioCorrelationService {
   }
 
   /**
-   * Durably persist enriched per-COR signals to portfolio_correlation_signals.
-   * Uses UPSERT so re-runs update in place.
+   * Upsert enriched per-COR signals to portfolio_correlation_signals.
+   * UNIQUE(property_id, cor_id) ensures re-runs update in place.
    */
   private async persistSignalsToTable(
     propertyId: string, signals: PortfolioCorrelationSignal[], dryRun: boolean
@@ -581,10 +597,8 @@ export class PortfolioCorrelationService {
            actionable   = EXCLUDED.actionable,
            missing_data = EXCLUDED.missing_data,
            computed_at  = NOW()`,
-        [
-          propertyId, s.cor_id, s.name, s.signal, s.confidence, s.source,
-          s.xValue, s.yValue, s.actionable, s.missingData,
-        ]
+        [propertyId, s.cor_id, s.name, s.signal, s.confidence, s.source,
+         s.xValue, s.yValue, s.actionable, s.missingData]
       );
     }
   }
@@ -604,10 +618,7 @@ export class PortfolioCorrelationService {
     } catch { return; }
 
     const adjustments = mapSignalsToAdjustments(
-      signals.map(s => ({
-        id: s.cor_id, name: s.name, signal: s.signal,
-        confidence: s.confidence, leadTime: undefined,
-      }))
+      signals.map(s => ({ id: s.cor_id, name: s.name, signal: s.signal, confidence: s.confidence, leadTime: undefined }))
     );
     if (adjustments.length === 0) return;
 
@@ -621,13 +632,16 @@ export class PortfolioCorrelationService {
   }
 
   /**
-   * Write portfolio actuals into metric_time_series (geography_type='property').
-   * Enables computeTimeSeriesCorrelations to generate metric_correlations pairs
-   * that F4's useColumnCorrelations can pick up once properties are linked to
-   * a submarket (#1685).
+   * Write portfolio actuals into metric_time_series for geography_type='property'.
+   * Uses WHERE NOT EXISTS guard (metric_time_series has no unique constraint).
+   *
+   * Additionally: if the property has a submarket_id, trigger
+   * computeTimeSeriesCorrelations for that submarket so F4 useColumnCorrelations
+   * can reflect the updated portfolio data. (Submarket linkage is set via task #1685.)
    */
   private async syncToMetricTimeSeries(
-    propertyId: string, propertyName: string, actuals: PropertyActualRow[]
+    propertyId: string, propertyName: string,
+    actuals: PropertyActualRow[], submarket_id: string | null
   ): Promise<void> {
     const METRIC_MAP: Array<{ metricId: string; field: keyof PropertyActualRow; scale?: number }> = [
       { metricId: 'PORT_OCCUPANCY',   field: 'occupancy_rate',     scale: 100 },
@@ -643,7 +657,9 @@ export class PortfolioCorrelationService {
       for (const mapping of METRIC_MAP) {
         const rawVal = actual[mapping.field] as number | null;
         if (rawVal == null) continue;
-        const value = mapping.scale ? parseFloat(String(rawVal)) * mapping.scale : parseFloat(String(rawVal));
+        const value = mapping.scale
+          ? parseFloat(String(rawVal)) * mapping.scale
+          : parseFloat(String(rawVal));
         if (isNaN(value)) continue;
 
         await this.pool.query(
@@ -660,17 +676,39 @@ export class PortfolioCorrelationService {
         );
       }
     }
+
+    // Compute cross-metric correlations for property geography
+    try {
+      await this.engine.computeTimeSeriesCorrelations('property', propertyId);
+    } catch (err) {
+      logger.debug(`[PortfolioCorrelation] computeTimeSeriesCorrelations(property/${propertyId}) skipped: ${String(err)}`);
+    }
+
+    // If property is linked to a submarket, also refresh submarket-level correlations
+    // so F4 useColumnCorrelations picks up updated signals.
+    if (submarket_id) {
+      try {
+        await this.engine.computeTimeSeriesCorrelations('submarket', submarket_id);
+      } catch (err) {
+        logger.debug(`[PortfolioCorrelation] computeTimeSeriesCorrelations(submarket/${submarket_id}) skipped: ${String(err)}`);
+      }
+    }
   }
 
   // ── Main pipeline ────────────────────────────────────────────────────────
 
-  async run(opts: { dryRun?: boolean } = {}): Promise<PortfolioCorrelationSummary> {
+  /**
+   * Run the correlation pipeline for a specific user's owned portfolio.
+   * @param userId - Required. Scopes property lookup to (created_by=userId OR created_by IS NULL).
+   * @param opts.dryRun - If true, skips all database writes (coefficients, signals, time-series).
+   */
+  async run(userId: string, opts: { dryRun?: boolean } = {}): Promise<PortfolioCorrelationSummary> {
     const dryRun = opts.dryRun === true;
     const computedAt = new Date().toISOString();
     const allSignals: PortfolioCorrelationSignal[] = [];
     const allCoefficients: PortfolioCorrelationSummary['coefficients'] = [];
 
-    const properties = await this.fetchOwnedProperties();
+    const properties = await this.fetchOwnedProperties(userId);
 
     for (const prop of properties) {
       try {
@@ -679,17 +717,19 @@ export class PortfolioCorrelationService {
         const coeffRows = await this.persistCoefficients(coeffs, dryRun);
         allCoefficients.push(...coeffRows);
 
-        // 2. City-level engine report (baseline signals for COR-01–30)
+        // 2. City-level engine report: baseline for market-wide COR signals
+        //    (COR-01–30 cover both market-wide conditions AND property-level metrics;
+        //     the engine handles market-wide signals; we override property-level ones below)
         const report = await this.engine.computeCorrelations(prop.city, prop.state);
 
-        // 3. MSA income data for COR-04/COR-13 recomputation
+        // 3. MSA income data for COR-04/COR-13 rent-to-income computation
         const msa = await this.fetchMsaForCity(prop.city, prop.state);
 
-        // 4. Per-property enrichment of all 30 COR signals with first-party data
-        const enrichedPartial = this.enrichSignalsWithFirstPartyData(
+        // 4. Per-property computation: override signals where first-party data is superior
+        const perPropertyPartial = this.computePerPropertySignals(
           report.correlations, prop.actuals, coeffs, msa
         );
-        const enrichedSignals: PortfolioCorrelationSignal[] = enrichedPartial.map(e => ({
+        const perPropertySignals: PortfolioCorrelationSignal[] = perPropertyPartial.map(e => ({
           ...e,
           property_id: prop.id,
           property_name: prop.name,
@@ -697,24 +737,17 @@ export class PortfolioCorrelationService {
           state: prop.state,
           sample_size: prop.actuals.length,
         }));
-        allSignals.push(...enrichedSignals);
+        allSignals.push(...perPropertySignals);
 
         if (!dryRun) {
-          // 5. Durably persist enriched signals to portfolio_correlation_signals
-          await this.persistSignalsToTable(prop.id, enrichedSignals, false);
+          // 5. Persist per-property signals to portfolio_correlation_signals (durable)
+          await this.persistSignalsToTable(prop.id, perPropertySignals, false);
 
-          // 6. Sync actuals to metric_time_series for F4 pickup
-          await this.syncToMetricTimeSeries(prop.id, prop.name, prop.actuals);
+          // 6. Sync actuals to metric_time_series; refresh submarket correlations if linked
+          await this.syncToMetricTimeSeries(prop.id, prop.name, prop.actuals, prop.submarket_id);
 
-          // 7. Run cross-metric correlations for this property
-          try {
-            await this.engine.computeTimeSeriesCorrelations('property', prop.id);
-          } catch (err) {
-            logger.debug(`[PortfolioCorrelation] computeTimeSeriesCorrelations skipped for ${prop.id}: ${String(err)}`);
-          }
-
-          // 8. Persist enriched signals (not raw engine report) to linked deals
-          await this.persistEnrichedSignalsToDeal(prop.id, enrichedSignals);
+          // 7. Persist per-property enriched signals to linked deals
+          await this.persistEnrichedSignalsToDeal(prop.id, perPropertySignals);
         }
 
       } catch (err) {
@@ -730,9 +763,13 @@ export class PortfolioCorrelationService {
     };
   }
 
-  // ── Read paths ───────────────────────────────────────────────────────────
+  // ── Read paths (scoped by userId) ────────────────────────────────────────
 
-  async getStoredCoefficients(): Promise<PortfolioCorrelationSummary['coefficients']> {
+  /**
+   * Read stored coefficients for the user's owned portfolio properties.
+   * Scoping: same (created_by = userId OR created_by IS NULL) join as write path.
+   */
+  async getStoredCoefficients(userId: string): Promise<PortfolioCorrelationSummary['coefficients']> {
     const r = await this.pool.query(
       `SELECT pcc.property_id, p.name AS property_name,
               pcc.coefficient_name, pcc.value, pcc.sample_size,
@@ -740,7 +777,9 @@ export class PortfolioCorrelationService {
               pcc.data_source, pcc.computed_at
        FROM portfolio_correlation_coefficients pcc
        JOIN properties p ON p.id = pcc.property_id
-       ORDER BY p.name, pcc.coefficient_name`
+       WHERE (p.created_by = $1 OR p.created_by IS NULL)
+       ORDER BY p.name, pcc.coefficient_name`,
+      [userId]
     );
     return r.rows.map(row => ({
       property_id: row.property_id,
@@ -750,13 +789,17 @@ export class PortfolioCorrelationService {
       sample_size: parseInt(row.sample_size ?? '0'),
       r_squared: row.r_squared != null ? parseFloat(row.r_squared) : null,
       first_period: row.first_period ? new Date(row.first_period).toISOString().slice(0, 10) : null,
-      last_period: row.last_period ? new Date(row.last_period).toISOString().slice(0, 10) : null,
+      last_period:  row.last_period  ? new Date(row.last_period).toISOString().slice(0, 10)  : null,
       data_source: row.data_source,
       computed_at: new Date(row.computed_at).toISOString(),
     }));
   }
 
-  async getStoredSignals(): Promise<PortfolioCorrelationSignal[]> {
+  /**
+   * Read stored COR signals for the user's owned portfolio properties.
+   * Scoping: same (created_by = userId OR created_by IS NULL) join as write path.
+   */
+  async getStoredSignals(userId: string): Promise<PortfolioCorrelationSignal[]> {
     const r = await this.pool.query(
       `SELECT pcs.property_id, p.name AS property_name, p.city, p.state_code,
               pcs.cor_id, pcs.cor_name, pcs.signal, pcs.confidence, pcs.source,
@@ -764,7 +807,9 @@ export class PortfolioCorrelationService {
               pcs.computed_at
        FROM portfolio_correlation_signals pcs
        JOIN properties p ON p.id = pcs.property_id
-       ORDER BY p.name, pcs.cor_id`
+       WHERE (p.created_by = $1 OR p.created_by IS NULL)
+       ORDER BY p.name, pcs.cor_id`,
+      [userId]
     );
     return r.rows.map(row => ({
       property_id: row.property_id,
@@ -784,18 +829,23 @@ export class PortfolioCorrelationService {
     }));
   }
 
-  async getSummary(): Promise<{
+  /**
+   * Returns both stored coefficients and durably-stored enriched signals.
+   * Used by GET /correlation-signals. All data is scoped to the requesting user.
+   */
+  async getSummary(userId: string): Promise<{
     coefficients: PortfolioCorrelationSummary['coefficients'];
     signals: PortfolioCorrelationSignal[];
     last_run: string | null;
     properties_covered: string[];
   }> {
     const [coefficients, signals] = await Promise.all([
-      this.getStoredCoefficients(),
-      this.getStoredSignals(),
+      this.getStoredCoefficients(userId),
+      this.getStoredSignals(userId),
     ]);
     const lastRun = coefficients.length > 0
-      ? coefficients.reduce((latest, c) => c.computed_at > latest ? c.computed_at : latest, coefficients[0].computed_at)
+      ? coefficients.reduce((latest, c) =>
+          c.computed_at > latest ? c.computed_at : latest, coefficients[0].computed_at)
       : null;
     const covered = [...new Set(coefficients.map(c => c.property_name))];
     return { coefficients, signals, last_run: lastRun, properties_covered: covered };

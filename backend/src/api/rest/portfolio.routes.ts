@@ -164,7 +164,7 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
         earliestPeriod: row.earliest_period,
         submarket: (row.submarket_name ?? row.raw_submarket_id ?? null) as string | null,
         submarketId: row.submarket_id ?? null,
-        msa: (row.msa_name_override ?? null) as string | null,
+        msaName: (row.msa_name_override ?? null) as string | null,
         status: occ < 88 ? 'watch' : 'performing',
       };
     });
@@ -998,10 +998,12 @@ router.post('/:dealId/agent-report', requireAuth, async (req: AuthenticatedReque
  */
 router.post('/run-correlations', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const userId = req.user!.userId;
     const { PortfolioCorrelationService } = await import('../../services/portfolio-correlation.service');
     const svc = new PortfolioCorrelationService();
     const dryRun = req.query.dryRun === 'true';
-    const summary = await svc.run({ dryRun });
+    // userId scopes property lookup to (created_by = userId OR created_by IS NULL)
+    const summary = await svc.run(userId, { dryRun });
     res.json({
       ok: true,
       dry_run: dryRun,
@@ -1009,7 +1011,6 @@ router.post('/run-correlations', requireAuth, async (req: AuthenticatedRequest, 
       signals_computed: summary.signals.length,
       coefficients_computed: summary.coefficients.length,
       computed_at: summary.computed_at,
-      // Include enriched signals so the F3 Learning tab can render the per-COR breakdown
       signals: summary.signals,
       coefficients: summary.coefficients,
     });
@@ -1024,12 +1025,14 @@ router.post('/run-correlations', requireAuth, async (req: AuthenticatedRequest, 
  * Returns stored empirical coefficients for the F3 Learning tab.
  * Does not re-compute — call POST /run-correlations first.
  */
-router.get('/correlation-signals', requireAuth, async (_req: AuthenticatedRequest, res: Response) => {
+router.get('/correlation-signals', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const userId = req.user!.userId;
     const { PortfolioCorrelationService } = await import('../../services/portfolio-correlation.service');
     const svc = new PortfolioCorrelationService();
-    // getSummary now returns both coefficients AND durably-stored enriched signals
-    const summary = await svc.getSummary();
+    // getSummary scopes to (created_by = userId OR created_by IS NULL) and returns
+    // both stored coefficients and durably-stored per-property enriched COR signals.
+    const summary = await svc.getSummary(userId);
     res.json(summary);
   } catch (err: any) {
     logger.error('[portfolio] correlation-signals failed', { error: err?.message });
