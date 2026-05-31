@@ -1611,6 +1611,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
             const mixTotal = f9Financials?.totalUnits ?? 0;
             const propTargetUnits = (propDeal as Record<string, unknown> | null | undefined)?.target_units as number | null | undefined;
             const targetUnits = localTargetUnits ?? propTargetUnits;
+            const isLocked = resolvedDealType === 'existing';
             const hasMixData = mixRows.length > 0;
             const hasTarget = targetUnits != null && (targetUnits as number) > 0;
             const isMatch = hasTarget && hasMixData && mixTotal === (targetUnits as number);
@@ -1651,21 +1652,21 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
             return (
               <div ref={unitPillRef} style={{ position: 'relative' }}>
                 <button
-                  onClick={handlePillClick}
-                  title="Click to set unit target"
+                  onClick={isLocked ? undefined : handlePillClick}
+                  title={isLocked ? 'Unit count derived from rent roll' : 'Click to set unit target'}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 3,
                     padding: '1px 6px', borderRadius: 2,
                     background: `${color}18`,
                     border: `1px solid ${color}44`,
-                    cursor: 'pointer',
+                    cursor: isLocked ? 'default' : 'pointer',
                     fontFamily: MONO, fontSize: 8, color,
                     letterSpacing: 0.5,
                   }}
                 >
                   {label}
                 </button>
-                {unitPillOpen && (
+                {!isLocked && unitPillOpen && (
                   <div
                     style={{
                       position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 200,
