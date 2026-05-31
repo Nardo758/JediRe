@@ -10,6 +10,7 @@ import {
   ChevronDown, ChevronUp, Info,
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
+import { VendorProvenanceBadge } from '../../vendor/VendorFreshnessPrompt';
 
 interface CompsModuleProps {
   deal?: any;
@@ -51,6 +52,10 @@ interface CompTransaction {
   source?: string;
   /** Both source origins when this comp was merged during CoStar dedup (D-COSTAR-3) */
   source_labels?: string[] | null;
+  /** Explicit vendor identifier from the vendor registry (e.g. 'costar', 'yardi_matrix') */
+  vendor_source?: string | null;
+  /** Vendor data as-of date, for use in VendorProvenanceBadge */
+  vendor_data_as_of?: string | null;
   relevance_score?: number;
   relevance_tier?: string;
   relevance_factors?: CompRelevanceFactors;
@@ -155,6 +160,33 @@ const SOURCE_LABELS: Record<string, string> = {
   costar_upload:   'CoStar',
   om_extraction:   'OM',
 };
+
+const COMP_VENDOR_MAP: Record<string, { displayName: string; licensePosture: 'restricted' | 'platform_only' | 'open' }> = {
+  costar_upload: { displayName: 'CoStar',       licensePosture: 'restricted'    },
+  costar:        { displayName: 'CoStar',       licensePosture: 'restricted'    },
+  yardi_matrix:  { displayName: 'Yardi Matrix', licensePosture: 'platform_only' },
+};
+
+/**
+ * Resolve vendor provenance info for a comp transaction.
+ * Prefers explicit vendor_source; falls back to source / source_labels for
+ * backwards-compat with merged dedup records (D-COSTAR-3).
+ */
+function resolveCompVendor(
+  comp: Pick<CompTransaction, 'vendor_source' | 'source' | 'source_labels' | 'vendor_data_as_of'>,
+): { displayName: string; licensePosture: 'restricted' | 'platform_only' | 'open'; asOfDate: string | null } | null {
+  const candidates: Array<string | null | undefined> = [
+    comp.vendor_source,
+    comp.source,
+    ...(comp.source_labels ?? []),
+  ];
+  for (const key of candidates) {
+    if (!key) continue;
+    const info = COMP_VENDOR_MAP[key];
+    if (info) return { ...info, asOfDate: comp.vendor_data_as_of ?? null };
+  }
+  return null;
+}
 
 function TierBadge({ tier }: { tier: string }) {
   const colors = TIER_COLORS[tier] ?? TIER_COLORS.M2;
@@ -658,8 +690,20 @@ export default function CompsModule({
                       }`}
                     >
                       <td className="py-2 px-3 text-gray-600 tabular-nums">{i + 1}</td>
-                      <td className="py-2 px-3 text-gray-300 max-w-[180px] truncate">
-                        {comp.property_address}
+                      <td className="py-2 px-3 max-w-[180px]">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-gray-300 truncate text-xs">{comp.property_address}</span>
+                          {(() => {
+                            const vendor = resolveCompVendor(comp);
+                            return vendor ? (
+                              <VendorProvenanceBadge
+                                vendorDisplayName={vendor.displayName}
+                                asOfDate={vendor.asOfDate}
+                                licensePosture={vendor.licensePosture}
+                              />
+                            ) : null;
+                          })()}
+                        </div>
                       </td>
                       <td className="py-2 px-3 text-center">
                         <div className="flex items-center justify-center gap-1">

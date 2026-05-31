@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams } from "react-router-dom";
+import { VendorProvenanceBadge } from "../../vendor/VendorFreshnessPrompt";
 import {
   ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, BarChart, Bar, Cell, LineChart, Line,
@@ -18,7 +19,15 @@ interface UnitData {
 interface CompData {
   id: string; name: string; cls: string; built: number; total: number;
   units: Record<UnitKey, UnitData>;
+  vendor_source?: string;
+  vendor_data_as_of?: string | null;
 }
+
+const RENT_COMP_VENDOR_MAP: Record<string, { displayName: string; licensePosture: 'restricted' | 'platform_only' | 'open' }> = {
+  costar_upload: { displayName: 'CoStar',       licensePosture: 'restricted'    },
+  costar:        { displayName: 'CoStar',       licensePosture: 'restricted'    },
+  yardi_matrix:  { displayName: 'Yardi Matrix', licensePosture: 'platform_only' },
+};
 
 interface ProgramUnit { mix: number; sf: number; rent: number; }
 interface Program { totalUnits: number; units: Record<UnitKey, ProgramUnit>; }
@@ -1404,14 +1413,24 @@ function CompTable({ program, utKey, setUtKey, comps }: { program: Program; utKe
       {comps.filter(c => (c.units[ut.key]?.mix ?? 0) > 0 || (c.units[ut.key]?.sf ?? 0) > 0).map((c, ri) => {
         const u = c.units[ut.key] ?? { mix: 0, sf: 0, rent: 0, vac: 0, dom: 0, conc: 0 };
         const psf = u.sf ? +(u.rent/u.sf).toFixed(2) : null;
+        const vendorInfo = c.vendor_source ? RENT_COMP_VENDOR_MAP[c.vendor_source] : undefined;
         return (
           <div key={c.id} style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 4,
             padding: "3px 8px", borderBottom: `1px solid ${C.border}40`,
             background: ri%2===0 ? "transparent" : "#1A1F2E10",
             borderLeft: "3px solid transparent", alignItems: "center" }}>
             <div>
-              <span style={{ color: C.text, fontSize: 9 }}>{c.name}</span>
-              <span style={{ color: C.faint, fontSize: 7, marginLeft: 3 }}>{c.built}·{c.cls}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+                <span style={{ color: C.text, fontSize: 9 }}>{c.name}</span>
+                {vendorInfo && (
+                  <VendorProvenanceBadge
+                    vendorDisplayName={vendorInfo.displayName}
+                    asOfDate={c.vendor_data_as_of ?? null}
+                    licensePosture={vendorInfo.licensePosture}
+                  />
+                )}
+              </div>
+              <span style={{ color: C.faint, fontSize: 7 }}>{c.built}·{c.cls}</span>
             </div>
             <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>
               {u.mix > 0 ? `${u.mix}%` : "—"}

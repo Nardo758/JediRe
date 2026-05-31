@@ -9,6 +9,7 @@ import {
   FileText, Shield, Target, BarChart3, Zap, Crosshair, ArrowRightLeft, Eye, Trash2, CheckCircle
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
+import { VendorProvenanceBadge } from '../../components/vendor/VendorFreshnessPrompt';
 import ProgrammingTab from '../../components/design/ProgrammingTab';
 import KGContextPanel from '../../components/knowledge-graph/KGContextPanel';
 import { useDealModule } from '../../contexts/DealModuleContext';
@@ -62,8 +63,44 @@ interface SaleComp {
   implied_cap_rate: number | null;
   buyer_type: string;
   distance_miles: number;
+  /** Canonical vendor identifier from the vendor registry (preferred over source for badge lookup) */
+  vendor_source?: string | null;
+  /** Raw ingestion source tag (fallback when vendor_source is absent) */
   source?: string;
+  vendor_data_as_of?: string | null;
   property_class?: string;
+}
+
+const SALE_COMP_VENDOR_MAP: Record<string, { displayName: string; licensePosture: 'restricted' | 'platform_only' | 'open' }> = {
+  costar_upload: { displayName: 'CoStar',       licensePosture: 'restricted'    },
+  costar:        { displayName: 'CoStar',       licensePosture: 'restricted'    },
+  yardi_matrix:  { displayName: 'Yardi Matrix', licensePosture: 'platform_only' },
+};
+
+/**
+ * Render the source cell for a sale comp row.
+ * Prefers vendor_source (canonical registry key) and falls back to source
+ * so the badge renders correctly whether or not the API has been updated
+ * to return the dedicated vendor_source field.
+ */
+function saleCompSourceCell(
+  vendorSource: string | null | undefined,
+  source: string | undefined,
+  asOfDate?: string | null,
+): React.ReactNode {
+  const key = vendorSource || source;
+  if (!key) return '—';
+  const vendor = SALE_COMP_VENDOR_MAP[key];
+  if (vendor) {
+    return (
+      <VendorProvenanceBadge
+        vendorDisplayName={vendor.displayName}
+        asOfDate={asOfDate ?? null}
+        licensePosture={vendor.licensePosture}
+      />
+    );
+  }
+  return key.replace('georgia_county', 'GA-CTY').replace(/_/g, '-').toUpperCase().slice(0, 8);
 }
 
 interface SaleCompSet {
@@ -761,9 +798,6 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
 
             <TableHeader cols={SALE_COMP_COLS} />
             {filteredComps.map((c, i) => {
-              const sourceLabel = c.source
-                ? c.source.replace('georgia_county', 'GA-CTY').replace('_', '-').toUpperCase().slice(0, 8)
-                : '—';
               const isOutlier = outlierIds.has(c.id);
               const estNoiPerUnit = c.implied_cap_rate != null && c.price_per_unit > 0
                 ? c.implied_cap_rate * c.price_per_unit
@@ -784,7 +818,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
                         { value: fmtUsd(c.price_per_unit),      flex: 0.9, color: BT2.text.cyan },
                         { value: estNoiPerUnit != null ? fmtUsd(estNoiPerUnit) : '—', flex: 0.9, color: BT2.met.economic ?? BT2.text.muted },
                         { value: capLabel,                      flex: 1.0, color: capColor, weight: isOutlier ? 700 : 400 },
-                        { value: sourceLabel,                   flex: 0.7, color: BT2.text.muted },
+                        { value: saleCompSourceCell(c.vendor_source, c.source, c.vendor_data_as_of), flex: 0.7 },
                         { value: fmtMi(c.distance_miles),       flex: 0.6, color: BT2.text.muted },
                         { value: '', flex: 0.35 },
                       ]}
