@@ -333,18 +333,45 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
             }
           }
         }
-        // Refresh module-applied source badges from updated per_year_overrides
-        setModuleBadges(buildModuleBadges(da?.per_year_overrides));
-        // acquisition.purchasePrice is stored in deals.deal_data — fetch the deal record
-        if (fields.includes('acquisition.purchasePrice')) {
+        // debt.interestRate is stored in deal_assumptions.interest_rate (decimal fraction)
+        if (fields.includes('debt.interestRate') && da?.interest_rate != null) {
+          const v = parseFloat(da.interest_rate);
+          if (Number.isFinite(v) && v > 0 && v < 1) setInterestRate(v);
+        }
+        // debt.ltcPct is stored in deal_assumptions.ltc (decimal fraction)
+        // ProFormaTab doesn't have a standalone LTC state; compute implied loan amount
+        // from LTC × purchase price so the financing section reflects the advisor's sizing.
+        const needsDealFetch = fields.includes('acquisition.purchasePrice')
+          || fields.includes('debt.loanAmount')
+          || fields.includes('debt.ltcPct');
+        if (needsDealFetch) {
           const dealRes: any = await apiClient.get(`/api/v1/deals/${id}`);
           const d = dealRes?.data?.data || dealRes?.data;
-          const raw = d?.budget ?? d?.purchase_price ?? d?.deal_data?.purchase_price ?? d?.deal_data?.asking_price;
-          if (raw != null) {
-            const v = parseFloat(raw);
-            if (Number.isFinite(v) && v > 0) setPurchasePrice(v);
+          if (fields.includes('acquisition.purchasePrice')) {
+            const raw = d?.budget ?? d?.purchase_price ?? d?.deal_data?.purchase_price ?? d?.deal_data?.asking_price;
+            if (raw != null) {
+              const v = parseFloat(raw);
+              if (Number.isFinite(v) && v > 0) setPurchasePrice(v);
+            }
+          }
+          if (fields.includes('debt.loanAmount')) {
+            const raw = d?.deal_data?.loan_amount;
+            if (raw != null) {
+              const v = parseFloat(raw);
+              if (Number.isFinite(v) && v > 0) setLoanAmount(v);
+            }
+          }
+          if (fields.includes('debt.ltcPct') && !fields.includes('debt.loanAmount') && da?.ltc != null) {
+            const ltc = parseFloat(da.ltc);
+            const ppRaw = d?.budget ?? d?.purchase_price ?? d?.deal_data?.purchase_price;
+            if (Number.isFinite(ltc) && ltc > 0 && ppRaw != null) {
+              const pp = parseFloat(ppRaw);
+              if (Number.isFinite(pp) && pp > 0) setLoanAmount(Math.round(ltc * pp));
+            }
           }
         }
+        // Refresh module-applied source badges from updated per_year_overrides
+        setModuleBadges(buildModuleBadges(da?.per_year_overrides));
       } catch (err) {
         console.warn('[assumptions.module-applied] assumption reload failed (non-fatal):', err);
       }
@@ -1378,6 +1405,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                         originationFee={originationFee} setOriginationFee={setOriginationFee}
                         rateCapCost={rateCapCost} setRateCapCost={setRateCapCost}
                         prepayPenalty={prepayPenalty} setPrepayPenalty={setPrepayPenalty}
+                        moduleBadges={moduleBadges}
                       />
                     </>
                   )}
@@ -1412,7 +1440,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
 // endpoint. Hover for full provenance detail.
 
 const MODULE_SOURCES = new Set([
-  'strategy:entry', 'strategy:exit', 'event_timeline', 'goal_seek',
+  'strategy:entry', 'strategy:exit', 'event_timeline', 'goal_seek', 'debt:advisor',
 ]);
 
 type BadgeData = { source: string; appliedAt: string };
@@ -1879,11 +1907,11 @@ const FinancingSection: React.FC<any> = ({
   loanAmount, setLoanAmount, loanType, setLoanType, interestRate, setInterestRate,
   spread, setSpread, loanTerm, setLoanTerm, amortization, setAmortization,
   ioPeriod, setIoPeriod, originationFee, setOriginationFee, rateCapCost, setRateCapCost,
-  prepayPenalty, setPrepayPenalty,
+  prepayPenalty, setPrepayPenalty, moduleBadges,
 }) => (
   <div className="mt-3 space-y-4">
     <div className="grid grid-cols-3 gap-4">
-      <InputField label="Loan Amount" value={loanAmount} onChange={setLoanAmount} type="currency" step={100000} />
+      <InputField label="Loan Amount" value={loanAmount} onChange={setLoanAmount} type="currency" step={100000} badge={moduleBadges?.['debt.loanAmount'] ?? moduleBadges?.['debt.ltcPct']} />
       <div>
         <label className="text-[11px] font-medium text-stone-600 mb-1 block">Loan Type</label>
         <select value={loanType} onChange={(e) => setLoanType(e.target.value)}
@@ -1892,7 +1920,7 @@ const FinancingSection: React.FC<any> = ({
           <option>Floating</option>
         </select>
       </div>
-      <InputField label="Interest Rate" value={interestRate} onChange={setInterestRate} type="percent" suffix="(decimal)" />
+      <InputField label="Interest Rate" value={interestRate} onChange={setInterestRate} type="percent" suffix="(decimal)" badge={moduleBadges?.['debt.interestRate']} />
     </div>
     <div className="grid grid-cols-3 gap-4">
       {loanType === 'Floating' && <InputField label="Spread" value={spread} onChange={setSpread} type="percent" suffix="(decimal)" />}

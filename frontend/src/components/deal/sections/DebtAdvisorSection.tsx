@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { AlertTriangle, CheckCircle, TrendingDown, TrendingUp, Zap, ChevronDown, ChevronRight, RefreshCw, BarChart2, Minus } from 'lucide-react';
 import { useDebtAdvisor, DebtPhase, MonitoringTrigger, DebtAlternative, RateEnvironmentResult } from '../../../hooks/useDebtAdvisor';
+import { apiClient } from '@/services/api.client';
+import { dispatchModuleApplied } from '../../../utils/moduleEvents';
 
 const C = {
   bg: '#0a0a0c',
@@ -863,14 +865,79 @@ interface DebtAdvisorSectionProps {
 export function DebtAdvisorSection({ dealId, configureContent, onAdvisorAccepted }: DebtAdvisorSectionProps) {
   const [activeTab, setActiveTab] = useState<SubTab>('advisor');
   const { data, loading, error, recompute, refresh } = useDebtAdvisor(dealId);
+  const [pushing, setPushing] = useState(false);
+  const [pushMsg, setPushMsg] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
+
+  const handlePushToF9 = async () => {
+    if (pushing || !data?.hasStrategy) return;
+    const summary = data.summary;
+    const firstPhase = data.recommendedStack?.[0];
+    const fields: Array<{ fieldPath: string; value: number }> = [];
+    if (summary?.blendedAllInRate > 0 && summary.blendedAllInRate < 1) {
+      fields.push({ fieldPath: 'debt.interestRate', value: summary.blendedAllInRate });
+    }
+    if (firstPhase?.ltv > 0 && firstPhase.ltv <= 1) {
+      fields.push({ fieldPath: 'debt.ltcPct', value: firstPhase.ltv });
+    }
+    if (summary?.initialLoanAmount > 0) {
+      fields.push({ fieldPath: 'debt.loanAmount', value: summary.initialLoanAmount });
+    }
+    if (fields.length === 0) {
+      setPushMsg({ type: 'warning', text: 'No valid debt values to push — run analysis first.' });
+      setTimeout(() => setPushMsg(null), 5000);
+      return;
+    }
+    setPushing(true);
+    try {
+      const res: any = await apiClient.post(
+        `/api/v1/deals/${dealId}/assumptions/apply-from-module`,
+        { source: 'debt:advisor', appliedAt: new Date().toISOString(), fields },
+      );
+      const { applied, conflicts } = res.data as { applied: Array<{ fieldPath: string }>; conflicts: Array<{ fieldPath: string; reason: string }> };
+      const userConflicts = conflicts.filter((c: any) => c.reason === 'user_locked');
+      if (applied.length > 0) {
+        dispatchModuleApplied('debt:advisor', applied.map((a: any) => a.fieldPath));
+        const msg = userConflicts.length > 0
+          ? `Applied ${applied.length} field(s) · ${userConflicts.length} conflict(s) skipped`
+          : `Applied to F9: ${applied.map((a: any) => a.fieldPath.split('.').pop()).join(', ')}`;
+        setPushMsg({ type: 'success', text: msg });
+      } else if (userConflicts.length > 0) {
+        setPushMsg({ type: 'warning', text: `${userConflicts.length} field(s) locked by user — clear overrides to accept.` });
+      }
+    } catch (err: any) {
+      setPushMsg({ type: 'error', text: err?.response?.data?.error || 'Push to F9 failed.' });
+    } finally {
+      setPushing(false);
+      setTimeout(() => setPushMsg(null), 6000);
+    }
+  };
 
   const visibleTabs = configureContent !== undefined
     ? SUB_TABS
     : SUB_TABS.filter(t => t !== 'configure');
 
+  const pushBorderColor = pushMsg?.type === 'success' ? C.cyan : pushMsg?.type === 'error' ? C.red : C.amber;
+
   return (
     <div style={{ backgroundColor: C.bg, height: '100%', display: 'flex', flexDirection: 'column', fontFamily: '"IBM Plex Sans", sans-serif' }}>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+
+      {pushMsg && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 9998,
+          minWidth: 260, maxWidth: 380,
+          background: C.panel, border: `1px solid ${pushBorderColor}`,
+          borderLeft: `3px solid ${pushBorderColor}`,
+          boxShadow: `0 4px 20px ${pushBorderColor}20`,
+          padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+        }}>
+          <span style={{ ...mono, fontSize: 9, color: pushBorderColor }}>
+            {pushMsg.type === 'success' ? '✓ PUSHED TO F9' : pushMsg.type === 'error' ? '✕ PUSH FAILED' : '⚠ PUSH WARNING'}{' '}
+            <span style={{ color: C.textMuted }}>{pushMsg.text}</span>
+          </span>
+          <button onClick={() => setPushMsg(null)} style={{ ...mono, fontSize: 8, color: C.textMuted, background: 'transparent', border: 'none', cursor: 'pointer' }}>✕</button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'center', borderBottom: `1px solid ${C.border}`, backgroundColor: C.panel, flexShrink: 0 }}>
         <div style={{ display: 'flex' }}>
@@ -897,6 +964,15 @@ export function DebtAdvisorSection({ dealId, configureContent, onAdvisorAccepted
           ))}
         </div>
         <div style={{ flex: 1 }} />
+        {data?.hasStrategy && activeTab === 'advisor' && (
+          <button
+            onClick={handlePushToF9}
+            disabled={pushing}
+            style={{ ...mono, fontSize: 9, fontWeight: 700, padding: '4px 12px', marginRight: 8, backgroundColor: pushing ? 'transparent' : `${C.amber}18`, color: pushing ? C.textMuted : C.amber, border: `1px solid ${pushing ? C.border : C.amber + '55'}`, borderRadius: 2, cursor: pushing ? 'not-allowed' : 'pointer', opacity: pushing ? 0.6 : 1 }}
+          >
+            {pushing ? '…' : 'PUSH TO F9 →'}
+          </button>
+        )}
         <button
           onClick={() => recompute()}
           style={{ ...mono, fontSize: 9, padding: '4px 12px', marginRight: 12, backgroundColor: 'transparent', color: C.textMuted, border: `1px solid ${C.border}`, borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}

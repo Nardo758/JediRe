@@ -679,6 +679,9 @@ const MODULE_FIELD_REGISTRY: Record<string, ModuleFieldTarget> = {
   'disposition.exitCapRate':   { storage: 'deal_assumptions', column: 'exit_cap' },
   'targets.targetIrr':         { storage: 'deal_assumptions', column: 'target_irr' },
   'revenue.rentGrowth[0]':     { storage: 'deal_assumptions_pyo' },
+  'debt.interestRate':         { storage: 'deal_assumptions', column: 'interest_rate' },
+  'debt.ltcPct':               { storage: 'deal_assumptions', column: 'ltc' },
+  'debt.loanAmount':           { storage: 'deals_data', dataKey: 'loan_amount' },
 };
 
 function validateModuleFieldValue(fieldPath: string, value: unknown): string | null {
@@ -701,6 +704,14 @@ function validateModuleFieldValue(fieldPath: string, value: unknown): string | n
     case 'revenue.rentGrowth[0]':
       return (value > 0 && value <= 0.30)
         ? null : 'rentGrowth[0] must be a decimal fraction between 0 and 0.30 (e.g. 0.032 for 3.2%)';
+    case 'debt.interestRate':
+      return (value > 0 && value < 1)
+        ? null : 'interestRate must be a decimal fraction (e.g. 0.065 for 6.5%)';
+    case 'debt.ltcPct':
+      return (value > 0 && value <= 1)
+        ? null : 'ltcPct must be a decimal fraction between 0 and 1 (e.g. 0.65 for 65%)';
+    case 'debt.loanAmount':
+      return value > 0 ? null : 'loanAmount must be a positive dollar amount';
     default:
       return null;
   }
