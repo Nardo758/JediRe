@@ -1579,6 +1579,14 @@ export interface DealFinancials {
     leaseUpMonths: number | null;
     absorptionUnitsPerMonth: number | null;
     stabilizationTargetPct: number | null;
+    /** Phase 1A — agent-computed first year where vacancy sustains at/below threshold. */
+    stabilizationYear: number | null;
+    /** Phase 1A — operator manual override for the Pro Forma window start year (Layer 1). */
+    stabilizationYearOverride: number | null;
+    /** Phase 1A — effective year = override ?? agent-computed ?? null. */
+    effectiveStabilizationYear: number | null;
+    /** Phase 1A — submarket equilibrium vacancy rate (%) for context display. */
+    submarketVacancyRate: number | null;
   } | null;
   proforma: {
     year1: OperatingStatementRow[];
@@ -5020,41 +5028,52 @@ export async function getDealFinancials(
     }
   }
 
-  // Phase 1A — submarket equilibrium vacancy (best-effort; non-fatal)
-  let _submarketVacancyRate: number | null = null;
-  let _submarketVacancyAsOf: string | null = null;
-  try {
-    const _dealCity  = (deal as any).city       ?? null;
-    const _dealState = (deal as any).state_code ?? null;
-    if (_dealCity && _dealState) {
-      const _snapRes = await pool.query(
-        `SELECT vacancy_rate, snapshot_date FROM apartment_market_snapshots
-          WHERE city = $1 AND state = $2 ORDER BY snapshot_date DESC LIMIT 1`,
-        [_dealCity, _dealState],
-      );
-      if (_snapRes.rows.length > 0) {
-        _submarketVacancyRate = _snapRes.rows[0].vacancy_rate != null
-          ? +parseFloat(String(_snapRes.rows[0].vacancy_rate)).toFixed(4) : null;
-        _submarketVacancyAsOf = _snapRes.rows[0].snapshot_date
-          ? new Date(_snapRes.rows[0].snapshot_date).toISOString().slice(0, 10) : null;
-      }
-    }
-  } catch { /* non-fatal — submarket data unavailable */ }
-
-  // Task #1271 — adoption timeline from deal_assumptions (Phase 1A adds stabilization_year)
+  // Task #1271 — adoption timeline from deal_assumptions
+  // Phase 1A — also resolve submarket equilibrium vacancy for Pro Forma window context.
   const _at = assumptionsRes.rows[0];
-  const _stabYear         = _at?.stabilization_year          != null ? parseInt(String(_at.stabilization_year), 10)          : null;
-  const _stabYearOverride = _at?.stabilization_year_override != null ? parseInt(String(_at.stabilization_year_override), 10) : null;
+
+  // Submarket vacancy context (non-fatal — null when no snapshot data available).
+  let _submarketVacancyRate: number | null = null;
+  if (deal) {
+    try {
+      const _city  = (deal.city  as string | null) ?? null;
+      const _state = (deal.state_code as string | null) ?? null;
+      if (_state) {
+        const _sqParams: unknown[] = [_state];
+        let   _cityClause = '';
+        if (_city) {
+          _sqParams.push(_city);
+          _cityClause = `AND city ILIKE $${_sqParams.length}`;
+        }
+        const _sqRes = await pool.query(
+          `SELECT (100.0 - COALESCE(avg_occupancy, 0)) AS vacancy_rate
+             FROM apartment_market_snapshots
+            WHERE state = $1 ${_cityClause}
+            ORDER BY snapshot_date DESC
+            LIMIT 1`,
+          _sqParams
+        );
+        if (_sqRes.rows.length > 0 && _sqRes.rows[0].vacancy_rate != null) {
+          _submarketVacancyRate = +parseFloat(String(_sqRes.rows[0].vacancy_rate)).toFixed(2);
+        }
+      }
+    } catch {
+      // Non-fatal: submarket vacancy context is optional.
+    }
+  }
+
   const adoptionTimeline = _at ? {
     constructionMonths:        _at.construction_months        != null ? +parseFloat(_at.construction_months).toFixed(1)  : null,
     leaseUpMonths:             _at.lease_up_months            != null ? +parseFloat(_at.lease_up_months).toFixed(1)       : null,
     absorptionUnitsPerMonth:   _at.absorption_units_per_month != null ? +parseFloat(_at.absorption_units_per_month).toFixed(2) : null,
     stabilizationTargetPct:    _at.stabilization_target_pct   != null ? +parseFloat(_at.stabilization_target_pct).toFixed(4) : null,
-    stabilizationYear:         _stabYear,
-    stabilizationYearOverride: _stabYearOverride,
-    effectiveStabilizationYear: _stabYearOverride ?? _stabYear ?? null,
-    submarketVacancyRate:      _submarketVacancyRate,
-    submarketVacancyAsOf:      _submarketVacancyAsOf,
+    stabilizationYear:         _at.stabilization_year         != null ? +parseInt(String(_at.stabilization_year), 10) : null,
+    stabilizationYearOverride: _at.stabilization_year_override != null ? +parseInt(String(_at.stabilization_year_override), 10) : null,
+    effectiveStabilizationYear:
+      _at.stabilization_year_override != null ? +parseInt(String(_at.stabilization_year_override), 10)
+      : _at.stabilization_year        != null ? +parseInt(String(_at.stabilization_year), 10)
+      : null,
+    submarketVacancyRate: _submarketVacancyRate,
   } : null;
 
   return {

@@ -121,6 +121,15 @@ interface DealFinancials {
     perYear: Array<{ year: number; vacancyPct: number | null; rentGrowthPct: number | null; exitCapIfLastYear: number | null }>;
   };
   meta: { seeded: boolean; updatedAt: string | null };
+  /** Phase 1A — Pro Forma stabilization window. */
+  adoptionTimeline?: {
+    constructionMonths: number|null; leaseUpMonths: number|null;
+    absorptionUnitsPerMonth: number|null; stabilizationTargetPct: number|null;
+    stabilizationYear: number|null;
+    stabilizationYearOverride: number|null;
+    effectiveStabilizationYear: number|null;
+    submarketVacancyRate: number|null;
+  } | null;
   /** Per-floor-plan GPR grid from cashflow agent (Task #797 / Pattern A). Null when agent has not run. */
   gprUnitMix?: GprUnitMixEntry[] | null;
   /** Renovation scope descriptor for the GPR grid header (from M22 capex_schedule). */
@@ -902,73 +911,39 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
   if (!data) return null;
 
-  // ── Phase 1A: Stabilization window — pick the effective pro-forma year ──────
-  // effectiveStabilizationYear > 1 → pull operating rows from projections array
-  // rather than the raw Year-1 document pass-through.
+  // ── Phase 1A: Stabilization Window row derivation ─────────────────────────
+  // When effectiveStabilizationYear > 1, overlay the operating statement with
+  // the projection-year values for that stabilization year instead of Year 1.
+  // Year 1 source values (broker/t12/platform) remain visible for reference;
+  // only `resolved` and `resolution` are replaced from the projection.
   const _at = data.adoptionTimeline;
   const _effStabYear = _at?.effectiveStabilizationYear ?? null;
-  const _useStabYear = _effStabYear != null && _effStabYear > 1;
+  const _stabYearIsOverride = _at?.stabilizationYearOverride != null;
+  const _projRow = (_effStabYear != null && _effStabYear > 1 && Array.isArray((data as any).projections))
+    ? (data as any).projections[_effStabYear - 1] as Record<string, number> | undefined
+    : undefined;
 
-  // Map projection camelCase fields → OperatingStatementRow field (snake_case)
   const PROJ_FIELD_MAP: Record<string, string> = {
-    gpr:         'gpr',
-    vacancyLoss: 'vacancy_loss',
-    lossToLease: 'loss_to_lease',
-    concessions: 'concessions',
-    badDebt:     'bad_debt',
-    nru:         'non_revenue_units',
-    nri:         'net_rental_income',
-    otherIncome: 'other_income',
-    egi:         'effective_gross_income',
-    payroll:     'payroll',
-    repairs:     'repairs_maintenance',
-    turnover:    'turnover',
-    contractSvc: 'contract_services',
-    marketing:   'marketing',
-    utilities:   'utilities',
-    gAndA:       'g_and_a',
-    mgmtFee:     'management_fee',
-    insurance:   'insurance',
-    reTaxes:     'real_estate_taxes',
-    reserves:    'reserves',
-    totalOpex:   'total_opex',
-    noi:         'net_operating_income',
+    gpr: 'gpr', vacancy_loss: 'vacancyLoss', loss_to_lease: 'lossToLease',
+    concessions: 'concessions', bad_debt: 'badDebt', non_revenue_units: 'nru',
+    net_rental_income: 'nri', nri: 'nri', other_income: 'otherIncome', egi: 'egi',
+    payroll: 'payroll', repairs_maintenance: 'repairs', turnover: 'turnover',
+    contract_services: 'contractSvc', marketing: 'marketing', utilities: 'utilities',
+    g_and_a: 'gAndA', management_fee: 'mgmtFee', insurance: 'insurance',
+    real_estate_tax: 'reTaxes', replacement_reserves: 'reserves',
+    total_opex: 'totalOpex', noi: 'noi', net_operating_income: 'noi',
   };
 
-  const year1ByField = new Map(
-    (data.proforma.year1 ?? []).map(r => [r.field, r])
-  );
+  const rows: OperatingStatementRow[] = _projRow
+    ? data.proforma.year1.map(row => {
+        const projKey = PROJ_FIELD_MAP[row.field];
+        const projVal = projKey != null ? _projRow[projKey] : undefined;
+        if (projVal === undefined || projVal === null) return row;
+        const pu = data.totalUnits > 0 ? Math.round(projVal / data.totalUnits) : null;
+        return { ...row, resolved: projVal, resolution: 'projected', perUnit: pu };
+      })
+    : data.proforma.year1;
 
-  const stabRows = (() => {
-    if (!_useStabYear || !data.projections) return null;
-    const proj = data.projections[_effStabYear! - 1];
-    if (!proj) return null;
-    return Object.entries(PROJ_FIELD_MAP).map(([camel, snake]) => {
-      const val = (proj as Record<string, unknown>)[camel];
-      const y1Row = year1ByField.get(snake);
-      const numVal = val != null ? Number(val) : null;
-      return {
-        field:            snake,
-        label:            y1Row?.label ?? snake,
-        broker:           y1Row?.broker  ?? null,
-        platform:         numVal,
-        t12:              null,
-        t6:               null,
-        t3:               null,
-        t1:               null,
-        rentRoll:         null,
-        taxBill:          null,
-        resolved:         numVal ?? y1Row?.resolved ?? null,
-        resolution:       numVal != null ? 'platform' : (y1Row?.resolution ?? null),
-        perUnit:          null,
-        source:           `Projection Y${_effStabYear}`,
-        confidence:       null,
-        benchmarkPosition: null,
-      } as OperatingStatementRow;
-    });
-  })();
-
-  const rows = _useStabYear && stabRows ? stabRows : data.proforma.year1;
   const checks = data.proforma.integrityChecks;
   const totalUnits = data.totalUnits;
 
@@ -1177,6 +1152,21 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
           {isLandHoldTemplate && (
             <span title="Land Hold template: no rental income — land carry + disposition only" style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#84cc16', background: '#0a1400', border: '1px solid #84cc1644', padding: '2px 6px', borderRadius: 2, letterSpacing: '0.06em' }}>
               LAND HOLD
+            </span>
+          )}
+          {/* ── Phase 1A: Stabilization Year badge ── */}
+          {_effStabYear != null && (
+            <span
+              title={`Pro Forma operating statement uses Year ${_effStabYear} (stabilization window)${_stabYearIsOverride ? ' · operator override' : ' · agent-computed'}`}
+              style={{
+                fontFamily: MONO, fontSize: 8, fontWeight: 700,
+                color: _stabYearIsOverride ? '#a78bfa' : '#34d399',
+                background: _stabYearIsOverride ? '#0f0a1c' : '#031309',
+                border: `1px solid ${_stabYearIsOverride ? '#4c1d9544' : '#065f4644'}`,
+                padding: '2px 6px', borderRadius: 2, letterSpacing: '0.06em', cursor: 'default',
+              }}
+            >
+              PRO FORMA · YR {_effStabYear}{_stabYearIsOverride ? ' · OVR' : ''}
             </span>
           )}
           {/* DQA aggregate badge — shows when agent has found issues */}

@@ -1640,6 +1640,10 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   // passed down to consumers that need it (ProjectionsTab, ProFormaSummaryTab).
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<string>>(new Set());
   const [renoSectionCollapsed, setRenoSectionCollapsed] = useState(true);
+  // ── Phase 1A: Stabilization Window editing state ─────────────────────────
+  const [stabThresholdDraft, setStabThresholdDraft] = useState<string | null>(null);
+  const [stabYearOvDraft, setStabYearOvDraft]       = useState<string | null>(null);
+  const [stabWindowSaving, setStabWindowSaving]     = useState(false);
   const [showAncillaryBreakdown, setShowAncillaryBreakdown] = useState(false);
   // Session-local per-category, per-year overrides for ancillary sub-rows.
   // Keyed: category → year → value. Not persisted to backend yet — parent
@@ -1722,6 +1726,20 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     } catch { /* silent degradation */ }
     finally { if (tok === fetchRef.current) setLoading(false); }
   }, [dealId, holdYears]);
+
+  // ── Phase 1A: Stabilization Window PATCH helper ──────────────────────────
+  const patchStabilizationWindow = useCallback(async (body: Record<string, number | null>) => {
+    if (!dealId) return;
+    setStabWindowSaving(true);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/assumptions/stabilization-window`, body);
+      await fetchFinancials();
+    } catch (err: any) {
+      console.error('[StabWindow] patch failed', err);
+    } finally {
+      setStabWindowSaving(false);
+    }
+  }, [dealId, fetchFinancials]);
 
   // ── Monthly overrides fetch — reloads when dealId changes ────────────────
   useEffect(() => {
@@ -3108,6 +3126,181 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                       );
                     })}
                     {!isCollapsed && sec === 5 && id !== '5-traf' && <GprDecompRow years={years} financials={financials} />}
+
+                    {/* ── Phase 1A: Stabilization Threshold (Pro Forma Window) — section 5-traf only ── */}
+                    {!isCollapsed && id === '5-traf' && (() => {
+                      const at = (financials as any)?.adoptionTimeline;
+                      const currentThreshPct = at?.stabilizationTargetPct != null
+                        ? +(at.stabilizationTargetPct * 100).toFixed(2)
+                        : 95;
+                      const stabYear = at?.stabilizationYear ?? null;
+                      const submarketVac = at?.submarketVacancyRate ?? null;
+                      const isDraftActive = stabThresholdDraft !== null;
+                      return (
+                        <tr style={{ background: '#060f18', borderTop: '1px solid #0e1f2a' }}>
+                          <td
+                            className="px-3 py-1 text-[10px] text-slate-500 sticky left-0 bg-[#060f18] border-r border-[#1e1e1e] z-10 min-w-[220px]"
+                            style={{ fontFamily: MONO }}
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <span style={{ fontFamily: MONO, fontSize: 7, color: '#059669', border: '1px solid #065f46', borderRadius: 2, padding: '0 3px', flexShrink: 0 }}>STAB</span>
+                              Stabilization Threshold (Pro Forma Window)
+                            </span>
+                            {submarketVac != null && (
+                              <div style={{ fontFamily: MONO, fontSize: 7, color: '#0e3347', marginTop: 2, paddingLeft: 14 }}>
+                                submarket equilibrium vacancy: {submarketVac.toFixed(1)}%
+                              </div>
+                            )}
+                          </td>
+                          <td colSpan={years.length} className="px-3 py-1">
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontFamily: MONO, fontSize: 9, color: '#64748b' }}>Occupancy ≥</span>
+                              {isDraftActive ? (
+                                <input
+                                  autoFocus
+                                  type="number"
+                                  min={50} max={100} step={0.5}
+                                  value={stabThresholdDraft!}
+                                  onChange={e => setStabThresholdDraft(e.target.value)}
+                                  onBlur={async () => {
+                                    const n = parseFloat(stabThresholdDraft!);
+                                    if (Number.isFinite(n) && n >= 50 && n <= 100) {
+                                      await patchStabilizationWindow({ stabilizationTargetPct: n / 100 });
+                                    }
+                                    setStabThresholdDraft(null);
+                                  }}
+                                  onKeyDown={async e => {
+                                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                    if (e.key === 'Escape') setStabThresholdDraft(null);
+                                  }}
+                                  style={{
+                                    width: 64, background: '#0f172a', border: '1px solid #059669',
+                                    color: '#6ee7b7', fontFamily: MONO, fontSize: 10,
+                                    padding: '2px 6px', textAlign: 'right', borderRadius: 3,
+                                  }}
+                                />
+                              ) : (
+                                <button
+                                  onClick={() => setStabThresholdDraft(String(currentThreshPct))}
+                                  disabled={stabWindowSaving}
+                                  title="Click to edit stabilization threshold"
+                                  style={{
+                                    fontFamily: MONO, fontSize: 11, fontWeight: 700,
+                                    color: '#34d399', background: 'none', border: '1px solid #065f4622',
+                                    borderRadius: 3, padding: '1px 8px', cursor: 'pointer',
+                                  }}
+                                >
+                                  {currentThreshPct.toFixed(1)}%
+                                </button>
+                              )}
+                              {stabYear != null && (
+                                <span style={{ fontFamily: MONO, fontSize: 8, color: '#22c55e', letterSpacing: '0.05em' }}>
+                                  → Pro Forma Year {stabYear}
+                                </span>
+                              )}
+                              {stabWindowSaving && (
+                                <span style={{ fontFamily: MONO, fontSize: 8, color: '#64748b' }}>saving…</span>
+                              )}
+                            </span>
+                          </td>
+                          <td />
+                        </tr>
+                      );
+                    })()}
+
+                    {/* ── Phase 1A: Pro Forma Year override — section 8 (DISPOSITION & HOLD) only ── */}
+                    {!isCollapsed && id === '8' && (() => {
+                      const at = (financials as any)?.adoptionTimeline;
+                      const agentYear = at?.stabilizationYear ?? null;
+                      const ovYear    = at?.stabilizationYearOverride ?? null;
+                      const isDraftActive = stabYearOvDraft !== null;
+                      return (
+                        <tr style={{ background: '#0f0a18', borderTop: '1px solid #1a1a2a' }}>
+                          <td
+                            className="px-3 py-1 text-[10px] text-slate-500 sticky left-0 bg-[#0f0a18] border-r border-[#1e1e1e] z-10 min-w-[220px]"
+                            style={{ fontFamily: MONO }}
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <span style={{ fontFamily: MONO, fontSize: 7, color: '#7c3aed', border: '1px solid #4c1d9544', borderRadius: 2, padding: '0 3px', flexShrink: 0 }}>STAB</span>
+                              Pro Forma Year (override)
+                            </span>
+                            <div style={{ fontFamily: MONO, fontSize: 7, color: '#3b2a5a', marginTop: 2, paddingLeft: 14 }}>
+                              {agentYear != null
+                                ? `Agent computed: Year ${agentYear}`
+                                : 'Agent has not computed stabilization year'}
+                              {ovYear != null && ` · overridden → Year ${ovYear}`}
+                            </div>
+                          </td>
+                          <td colSpan={years.length} className="px-3 py-1">
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              {isDraftActive ? (
+                                <input
+                                  autoFocus
+                                  type="number"
+                                  min={1} max={30} step={1}
+                                  value={stabYearOvDraft!}
+                                  onChange={e => setStabYearOvDraft(e.target.value)}
+                                  onBlur={async () => {
+                                    const trimmed = stabYearOvDraft!.trim();
+                                    if (trimmed === '') {
+                                      await patchStabilizationWindow({ stabilizationYearOverride: null });
+                                    } else {
+                                      const n = parseInt(trimmed, 10);
+                                      if (Number.isInteger(n) && n >= 1) {
+                                        await patchStabilizationWindow({ stabilizationYearOverride: n });
+                                      }
+                                    }
+                                    setStabYearOvDraft(null);
+                                  }}
+                                  onKeyDown={async e => {
+                                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                    if (e.key === 'Escape') setStabYearOvDraft(null);
+                                  }}
+                                  placeholder="year"
+                                  style={{
+                                    width: 64, background: '#0f0a1c', border: '1px solid #7c3aed',
+                                    color: '#c4b5fd', fontFamily: MONO, fontSize: 10,
+                                    padding: '2px 6px', textAlign: 'right', borderRadius: 3,
+                                  }}
+                                />
+                              ) : (
+                                <button
+                                  onClick={() => setStabYearOvDraft(ovYear != null ? String(ovYear) : '')}
+                                  disabled={stabWindowSaving}
+                                  title={ovYear != null ? `Override: Year ${ovYear} — click to change or clear` : 'Click to set a Pro Forma Year override'}
+                                  style={{
+                                    fontFamily: MONO, fontSize: 11, fontWeight: 700,
+                                    color: ovYear != null ? '#a78bfa' : '#475569',
+                                    background: 'none', border: `1px solid ${ovYear != null ? '#4c1d9544' : '#1e1e1e'}`,
+                                    borderRadius: 3, padding: '1px 8px', cursor: 'pointer',
+                                  }}
+                                >
+                                  {ovYear != null ? `Year ${ovYear}` : '— not set —'}
+                                </button>
+                              )}
+                              {ovYear != null && (
+                                <button
+                                  onClick={async () => {
+                                    await patchStabilizationWindow({ stabilizationYearOverride: null });
+                                  }}
+                                  title="Clear override — revert to agent-computed"
+                                  style={{
+                                    fontFamily: MONO, fontSize: 7, color: '#ef4444',
+                                    background: 'none', border: '1px solid #7f1d1d',
+                                    borderRadius: 2, padding: '0 4px', cursor: 'pointer',
+                                  }}
+                                >CLR</button>
+                              )}
+                              {stabWindowSaving && (
+                                <span style={{ fontFamily: MONO, fontSize: 8, color: '#64748b' }}>saving…</span>
+                              )}
+                            </span>
+                          </td>
+                          <td />
+                        </tr>
+                      );
+                    })()}
+
                   </React.Fragment>
                 );
               })}

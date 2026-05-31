@@ -129,6 +129,21 @@ export const CASHFLOW_OUTPUT_SCHEMA = {
     },
     summary: { type: 'string', description: '3-5 sentence synthesis of key findings' },
     completed_at: { type: 'string', format: 'date-time' },
+    cashflow: {
+      type: 'object',
+      description: 'Cashflow agent computed outputs beyond individual proforma fields.',
+      properties: {
+        stabilization_year: {
+          oneOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
+          description:
+            'First hold-period year where vacancy % reaches the stabilization threshold ' +
+            '(1 - stabilization_target_pct) AND all subsequent hold-period years also remain ' +
+            'at or below the threshold. 1 = already stabilized at acquisition. ' +
+            'null = deal never reaches sustained stabilization within the hold period.',
+        },
+      },
+      required: ['stabilization_year'],
+    },
   },
   required: [
     'proforma_fields',

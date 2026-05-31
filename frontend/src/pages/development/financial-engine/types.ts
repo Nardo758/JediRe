@@ -336,6 +336,19 @@ export interface F9DealFinancials {
   };
   userOverrides: Record<string, Record<number, number|null>>;
   meta: { seeded: boolean; updatedAt: string|null };
+  /** Phase 1A — Pro Forma stabilization window. */
+  adoptionTimeline?: {
+    constructionMonths: number|null; leaseUpMonths: number|null;
+    absorptionUnitsPerMonth: number|null; stabilizationTargetPct: number|null;
+    /** First hold-period year where vacancy reaches AND sustains the threshold. */
+    stabilizationYear: number|null;
+    /** Operator manual pin for the Pro Forma window start year. */
+    stabilizationYearOverride: number|null;
+    /** Effective year = override ?? agent-computed ?? null. */
+    effectiveStabilizationYear: number|null;
+    /** Submarket equilibrium vacancy % for context display. */
+    submarketVacancyRate: number|null;
+  } | null;
   /**
    * LTL forward trajectory signals — Task #1540 (Piece B1).
    * Exposes the T12 trailing average vs live lease-level LTL and the per-year

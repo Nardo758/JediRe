@@ -1293,6 +1293,72 @@ router.patch('/:dealId/assumptions/adoption-timeline', requireAuth, async (req: 
 });
 
 /**
+ * PATCH /:dealId/assumptions/stabilization-window
+ *
+ * Phase 1A — Pro Forma stabilization window controls.
+ * Accepts:
+ *   stabilizationTargetPct    — vacancy threshold as decimal occupancy (0.95 = 5% vacancy target)
+ *   stabilizationYearOverride — operator manual pin for Pro Forma window year (integer ≥ 1, null to clear)
+ *
+ * Writes to deal_assumptions.stabilization_target_pct and
+ * deal_assumptions.stabilization_year_override.
+ */
+router.patch('/:dealId/assumptions/stabilization-window', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+    const body = req.body as Record<string, number | null | undefined>;
+
+    const own = await pool.query(
+      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+    if (own.rows.length === 0) return res.status(403).json({ error: 'Not authorized for this deal' });
+
+    const setClauses: string[] = ['updated_at = NOW()'];
+    const sqlParams: (number | null | string)[] = [dealId];
+
+    const addCol = (col: string, val: number | null | undefined) => {
+      if (val === undefined) return;
+      if (val !== null) {
+        if (typeof val !== 'number' || !Number.isFinite(val)) {
+          throw Object.assign(new Error(`${col}: must be a finite number or null`), { _sent: false });
+        }
+      }
+      sqlParams.push(val);
+      setClauses.push(`${col} = $${sqlParams.length}`);
+    };
+
+    // stabilizationTargetPct: decimal occupancy threshold (0–1)
+    const stp = body.stabilizationTargetPct;
+    if (stp !== undefined && stp !== null && (typeof stp !== 'number' || stp < 0 || stp > 1)) {
+      return res.status(400).json({ error: 'stabilizationTargetPct must be between 0 and 1' });
+    }
+    addCol('stabilization_target_pct', stp);
+
+    // stabilizationYearOverride: positive integer year or null to clear
+    const syo = body.stabilizationYearOverride;
+    if (syo !== undefined && syo !== null && (typeof syo !== 'number' || !Number.isInteger(syo) || syo < 1)) {
+      return res.status(400).json({ error: 'stabilizationYearOverride must be a positive integer or null' });
+    }
+    addCol('stabilization_year_override', syo);
+
+    await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, updated_at)
+       VALUES ($1, NOW())
+       ON CONFLICT (deal_id) DO UPDATE SET ${setClauses.join(', ')}`,
+      sqlParams
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    if (error._sent) return;
+    logger.error('Error patching stabilization window:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * PATCH /:dealId/assumptions/adoption-timeline/clear
  *
  * Clears all adoption timeline fields for the deal (resets to platform defaults).

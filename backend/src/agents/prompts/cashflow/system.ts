@@ -2212,6 +2212,38 @@ underwriting snapshot is persisted.
 
 ---
 
+## Stabilization Year (Phase 1A)
+
+After completing Phase 7 writes, compute cashflow.stabilization_year and include it in
+your output JSON at the top level alongside proforma_fields.
+
+### Definition
+The **stabilization year** is the first hold-period year N where:
+1. The implied vacancy % in year N <= (1 - stabilization_target_pct), AND
+2. Every subsequent hold-period year also sustains vacancy <= that threshold.
+
+stabilization_target_pct defaults to 0.95 (i.e., vacancy threshold = 5%) when not set.
+
+### Derivation rules
+- Use the vacancy trajectory from your occupancy/vacancy projection: vacancy_pct in year N =
+  1 - occupancy_pct_N (or directly from your vacancy loss as a % of GPR if you used that model).
+- Year 1 = acquisition year. If the property is already stabilized at acquisition, set stabilization_year = 1.
+- If the deal never reaches sustained stabilization within the hold period, set stabilization_year = null.
+- Compute from the PLATFORM / TIER-1 trajectory (before any stance modulation) so the backend
+  operator-stance re-blend does not affect the window.
+
+### Output format
+Always include in your final JSON output:
+\`\`\`json
+{
+  "cashflow": {
+    "stabilization_year": <integer 1 through N, or null>
+  }
+}
+\`\`\`
+
+---
+
 ## OperatorStance
 
 Call fetch_operator_stance(deal_id) after fetch_data_matrix to understand the operator's

@@ -1243,6 +1243,39 @@ export async function cashflowPostProcess(
       }
     }
 
+    // ── Phase 1A: Write stabilization_year to deal_assumptions ──────────────
+    // The cashflow agent computes the first hold-period year where vacancy
+    // reaches AND sustains the stabilization threshold.  Write it once per run
+    // so getDealFinancials can expose it as adoptionTimeline.stabilizationYear.
+    // Fire-and-catch: never blocks the rest of postprocess.
+    if (ctx.dealId) {
+      try {
+        const _cashflowOut = (output as any).cashflow as { stabilization_year?: number | null } | null | undefined;
+        const _stabYear = _cashflowOut?.stabilization_year;
+        if (_stabYear !== undefined) {
+          await query(
+            `INSERT INTO deal_assumptions (deal_id, stabilization_year, updated_at)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (deal_id) DO UPDATE
+               SET stabilization_year = $2,
+                   updated_at         = NOW()`,
+            [ctx.dealId, _stabYear]
+          );
+          logger.info('[CashflowPostProcess] stabilization_year written to deal_assumptions', {
+            dealId: ctx.dealId,
+            runId,
+            stabilizationYear: _stabYear,
+          });
+        }
+      } catch (stabErr) {
+        logger.warn('[CashflowPostProcess] stabilization_year write failed (non-fatal)', {
+          dealId: ctx.dealId,
+          runId,
+          err: stabErr instanceof Error ? stabErr.message : String(stabErr),
+        });
+      }
+    }
+
     // ── Value-add GPR: fill + validate ───────────────────────────────────────
     // Two responsibilities (both non-fatal):
     //   A. FILL: deterministically compute missing math slots (post_reno_target_rent,
