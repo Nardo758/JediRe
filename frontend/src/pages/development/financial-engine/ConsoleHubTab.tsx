@@ -29,12 +29,13 @@ import { TaxesTab } from './TaxesTab';
 import { StanceTab } from './StanceTab';
 import { DealTermsTab } from './DealTermsTab';
 import { ValidationGridTab } from './ValidationGridTab';
+import { ProFormaSummaryTab } from './ProFormaSummaryTab';
 import type { FinancialEngineTabProps } from './types';
 
 const MONO = BT.font.mono;
 const AMBER = BT.text.amber;
 
-type SubTab = 'stance' | 'deal-terms' | 'inputs' | 'unitmix' | 'otherincome' | 'tax' | 'validation';
+type SubTab = 'stance' | 'deal-terms' | 'pro-forma' | 'inputs' | 'unitmix' | 'otherincome' | 'tax' | 'validation';
 
 interface SubTabDef {
   id: SubTab;
@@ -45,6 +46,7 @@ interface SubTabDef {
 const SUB_TABS: SubTabDef[] = [
   { id: 'stance',      label: 'STANCE',       icon: '◈' },
   { id: 'deal-terms',  label: 'DEAL TERMS',   icon: '◇' },
+  { id: 'pro-forma',   label: 'PRO FORMA',    icon: '≡' },
   { id: 'inputs',      label: 'INPUTS',       icon: '⊕' },
   { id: 'unitmix',     label: 'UNIT MIX',     icon: '⊞' },
   { id: 'otherincome', label: 'OTHER INCOME', icon: '⊛' },
@@ -129,6 +131,7 @@ export function ConsoleHubTab(props: FinancialEngineTabProps) {
           />
         )}
         {subTab === 'deal-terms'  && <DealTermsTab {...props} />}
+        {subTab === 'pro-forma'   && <ProFormaSummaryTab {...props} />}
         {subTab === 'inputs'      && <AssumptionsTab {...props} />}
         {subTab === 'unitmix'     && <UnitMixTab {...props} />}
         {subTab === 'otherincome' && <OtherIncomeTab {...props} />}
