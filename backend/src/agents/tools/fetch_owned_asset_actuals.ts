@@ -225,7 +225,7 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
       `SELECT
          p.id              AS property_id,
          p.address_line1   AS address,
-         NULL::text        AS submarket,
+         p.submarket       AS submarket,
          p.units           AS units,
          p.year_built      AS year_built,
          p.building_class  AS asset_class

@@ -75,6 +75,7 @@ export const properties = pgTable('properties', {
   lat: numeric('lat', { precision: 10, scale: 7 }),
   lng: numeric('lng', { precision: 10, scale: 7 }),
   submarketId: varchar('submarket_id', { length: 100 }),
+  submarket: varchar('submarket', { length: 100 }),
   msaId: integer('msa_id').references(() => msas.id),
   ownershipStatus: varchar('ownership_status', { length: 20 }).default('pipeline'),
   pipelineStage: varchar('pipeline_stage', { length: 30 }),
