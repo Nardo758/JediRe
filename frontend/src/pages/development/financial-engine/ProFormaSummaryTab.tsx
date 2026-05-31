@@ -15,6 +15,7 @@ import { ReconciliationChip } from '../../../components/f9/ReconciliationChip';
 import type { HierarchicalResolution } from '../../../components/f9/ReconciliationChip';
 import { SourceDocPill } from '../../../components/f9/SourceDocPill';
 import type { SourceDocument } from '../../../hooks/useSourceDocuments';
+import { OverrideInputCell } from '../../../components/f9/OverrideInputCell';
 import { isPatternB } from '../../../config/m09_line_item_patterns';
 import { UnitMixMismatchBannerConnected } from './UnitMixMismatchBanner';
 import {
@@ -1631,6 +1632,16 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     onToggleAncillary={showPreNriPatternB ? () => toggleRegimeExpand(r.field) : undefined}
                     ancillaryOpen={showPreNriPatternB ? preNriBOpen : undefined}
                     sourceDoc={byDocType[mapSourceToDocType(r.source) ?? ''] ?? null}
+                    contextOverrideWidget={r.field === 'loss_to_lease' ? (
+                      <OverrideInputCell
+                        dealId={dealId}
+                        fieldPath="loss_to_lease"
+                        fieldLabel="Loss to Lease"
+                        currentValue={r.resolved}
+                        onOverrideApplied={load}
+                        onOverrideCleared={load}
+                      />
+                    ) : undefined}
                   />
                   {showPreNriPatternB && preNriBOpen && (
                     <RegimeExpand
@@ -2052,21 +2063,35 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               bg={isSpecialTemplate ? '#0a1400' : '#0d0a14'}
               cols={viewMode === 'BROKER_VIEW' ? 7 : 9}
             />
-            {templateNctrlRows.map((r, i) => (
-              <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="purple"
-                corrections={corrections} setCorrections={setCorrections}
-                totalUnits={totalUnits} egiResolved={egiResolved}
-                activePeriod={activePeriod}
-                onSaveCorrection={handleSaveCorrection}
-                onResetCorrection={handleResetCorrection}
-                evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
-                sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
-                stanceModulated={!!(stanceByPath['expenseGrowth'])}
-                stanceTrace={stanceByPath['expenseGrowth']?.trace}
-                dqaAlerts={dqaByRow[r.field]}
-                onDqaClick={setDqaDrawer}
-                sourceDoc={byDocType[mapSourceToDocType(r.source) ?? ''] ?? null} />
-            ))}
+            {templateNctrlRows.map((r, i) => {
+              const NCTRL_OVERRIDE_FIELDS = new Set(['real_estate_tax', 'management_fee', 'insurance']);
+              return (
+                <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="purple"
+                  corrections={corrections} setCorrections={setCorrections}
+                  totalUnits={totalUnits} egiResolved={egiResolved}
+                  activePeriod={activePeriod}
+                  onSaveCorrection={handleSaveCorrection}
+                  onResetCorrection={handleResetCorrection}
+                  evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
+                  sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
+                  stanceModulated={!!(stanceByPath['expenseGrowth'])}
+                  stanceTrace={stanceByPath['expenseGrowth']?.trace}
+                  dqaAlerts={dqaByRow[r.field]}
+                  onDqaClick={setDqaDrawer}
+                  sourceDoc={byDocType[mapSourceToDocType(r.source) ?? ''] ?? null}
+                  contextOverrideWidget={NCTRL_OVERRIDE_FIELDS.has(r.field) ? (
+                    <OverrideInputCell
+                      dealId={dealId}
+                      fieldPath={r.field}
+                      fieldLabel={r.label ?? r.field}
+                      currentValue={r.resolved}
+                      onOverrideApplied={load}
+                      onOverrideCleared={load}
+                    />
+                  ) : undefined}
+                />
+              );
+            })}
             <tr style={{ background: '#0d0a14' }}>
               <td style={{ padding: '4px 8px', color: '#c084fc', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12, position: 'sticky', left: 0, background: '#0d0a14' }}>
                 {isSpecialTemplate ? '─── FIXED CARRY COSTS ───' : '─── NON-CONTROLLABLE OPEX ───'}
@@ -2215,7 +2240,16 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac', fontSize: 9 }}>
                   {noiRow.perUnit != null ? `$${noiRow.perUnit.toLocaleString()}/unit` : '—'}
                 </td>
-                <td />
+                <td style={{ padding: '4px 6px' }}>
+                  <OverrideInputCell
+                    dealId={dealId}
+                    fieldPath="noi"
+                    fieldLabel="Net Operating Income"
+                    currentValue={noiRow.resolved}
+                    onOverrideApplied={load}
+                    onOverrideCleared={load}
+                  />
+                </td>
               </tr>
             )}
 
@@ -2307,6 +2341,14 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                           <RotateCcw size={9} />
                         </button>
                       )}
+                      <OverrideInputCell
+                        dealId={dealId}
+                        fieldPath="replacement_reserves"
+                        fieldLabel="Replacement Reserves"
+                        currentValue={reservesRow.resolved}
+                        onOverrideApplied={load}
+                        onOverrideCleared={load}
+                      />
                     </span>
                   )}
                 </td>
@@ -3521,7 +3563,7 @@ interface DqaAlertShape {
   status: string;
 }
 
-function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, activePeriod, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceResolved, onRowClick, sigmaTier, stanceModulated, stanceTrace, dqaAlerts, onDqaClick, labelAdornment, overrideResolvedValue, sourceDoc }: {
+function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, activePeriod, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceResolved, onRowClick, sigmaTier, stanceModulated, stanceTrace, dqaAlerts, onDqaClick, labelAdornment, overrideResolvedValue, sourceDoc, contextOverrideWidget }: {
   row: OperatingStatementRow;
   isEven: boolean;
   shade?: 'blue' | 'warm' | 'purple';
@@ -3558,6 +3600,13 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   overrideResolvedValue?: number | null;
   /** Matched source document (from source_documents catalogue) for this row — null when none. */
   sourceDoc?: SourceDocument | null;
+  /**
+   * Optional OverrideInputCell widget for the underwriting assumption override layer.
+   * Rendered in the FLAG + ACTIONS cell alongside the existing pencil/reset controls.
+   * Calls POST /assumptions/:fieldPath/override (deal_context_fields), distinct from
+   * the proforma PATCH /financials/override (per_year_overrides) pipeline.
+   */
+  contextOverrideWidget?: React.ReactNode;
 }) {
   const viewMode          = useDealStore(s => s.viewMode);
   const platformColSource = useDealStore(s => s.platformColSource);
@@ -3965,6 +4014,7 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
               <RotateCcw size={9} />
             </button>
           )}
+          {contextOverrideWidget}
         </div>
       </td>
     </tr>

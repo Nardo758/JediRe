@@ -607,6 +607,32 @@ export async function getFieldValues(
 
   const row = res.rows[0];
 
+  // ── deal_context_fields override layer ────────────────────────────────────
+  // The POST /assumptions/:fieldPath/override endpoint writes user-pinned
+  // values to deal_context_fields with source_label='override'.  This is a
+  // separate table from deal_assumptions.year1[field].override.  Fetch all
+  // active context overrides for this deal in a single query so they can be
+  // injected into each field's LV blob before divergence analysis runs.
+  // Fields where LV already has an override (from the proforma seeder path)
+  // take precedence; context overrides only fill the null case.
+  let contextOverrides: Record<string, number> = {};
+  try {
+    const ctxRes = await pool.query(
+      `SELECT field_path, value
+       FROM deal_context_fields
+       WHERE deal_id = $1::uuid AND source_label = 'override'`,
+      [dealId],
+    );
+    for (const ctxRow of ctxRes.rows as Array<{ field_path: string; value: unknown }>) {
+      const n = extractNum(ctxRow.value);
+      if (n != null && ALLOWED_FIELDS.has(ctxRow.field_path)) {
+        contextOverrides[ctxRow.field_path] = n;
+      }
+    }
+  } catch {
+    // Non-blocking — divergence analysis still runs without context overrides
+  }
+
   const getLv = (f: string): Record<string, unknown> | null =>
     parseLv(row[`lv_${f.replace(/-/g, '_')}`]);
 
@@ -621,6 +647,15 @@ export async function getFieldValues(
       }
     }
     if (!lv) { result[fieldName] = null; continue; }
+
+    // Inject context override (from deal_context_fields) if the proforma LV
+    // has no override already set.  This makes POST /assumptions/:fieldPath/override
+    // visible to the divergence engine and ValidationGrid CONTESTED badge.
+    let overrideFromCtx = false;
+    if (lv.override == null && contextOverrides[fieldName] != null) {
+      lv = { ...lv, override: contextOverrides[fieldName] };
+      overrideFromCtx = true;
+    }
 
     const override      = extractNum(lv.override);
     const agent         = extractNum(lv.agent);
@@ -651,7 +686,14 @@ export async function getFieldValues(
       }
     }
 
-    const { resolved, resolution, source } = resolveLayeredValue(lv, computedValue, computedAs);
+    // resolveLayeredValue: when a context override was injected (overrideFromCtx),
+    // pass computedValue=null so the override always wins the resolution chain
+    // (consistent with how a proforma-seeded override would behave).
+    const { resolved, resolution, source } = resolveLayeredValue(
+      lv,
+      overrideFromCtx ? null : computedValue,
+      overrideFromCtx ? undefined : computedAs,
+    );
 
     const divergenceSignature = buildDivergenceSignature(fieldName, {
       override, computedValue, agent, t12, om, broker, storedResolved,
