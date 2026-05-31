@@ -839,6 +839,31 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     return () => window.removeEventListener('fe-tab-change', handler);
   }, []);
 
+  // ── Vendor freshness banner scroll — triggered from deal completeness CTA ──
+  // When the completeness panel CTA for vendor_data_stale navigates here with
+  // #vendor-freshness-banner, scroll to and briefly highlight the banner.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.location.hash !== '#vendor-freshness-banner') return;
+    const scrollAndHighlight = () => {
+      const el = document.getElementById('vendor-freshness-banner');
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.transition = 'box-shadow 0.2s ease, outline 0.2s ease';
+      el.style.outline = '2px solid #F5A623';
+      el.style.boxShadow = '0 0 0 4px rgba(245,166,35,0.18)';
+      setTimeout(() => {
+        el.style.outline = '';
+        el.style.boxShadow = '';
+      }, 2200);
+      // Clear hash so back-navigation works correctly
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    };
+    // Allow time for conditional render (staleVendors resolves async)
+    const t = setTimeout(scrollAndHighlight, 600);
+    return () => clearTimeout(t);
+  }, [staleVendors]);
+
   // ── Lease Velocity reactive update chain ─────────────────────────────────
   // Re-fetch f9Financials whenever the LV engine emits new output or the
   // cost treatment toggle changes — so S&U reserve, Returns IRR, and the
@@ -1845,7 +1870,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       )}
 
       {isActivelyUnderwriting && staleVendors.filter(v => v.vendorId === 'costar').length > 0 && (
-        <div style={{ padding: '4px 12px 0' }}>
+        <div id="vendor-freshness-banner" style={{ padding: '4px 12px 0' }}>
           <VendorFreshnessPrompt
             staleVendors={staleVendors.filter(v => v.vendorId === 'costar')}
             dealId={resolvedDealId}

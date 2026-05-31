@@ -256,8 +256,8 @@ const SIGNAL_REGISTRY: SignalDefinition[] = [
     recommendedAction:
       'Upload a fresh vendor export from the Data Library tab. ' +
       'CoStar data is considered stale after 90 days; Yardi Matrix after 120 days.',
-    ctaLabel: 'Upload Fresh Data',
-    ctaLink:  (dealId) => `/deals/${dealId}?tab=data-library`,
+    ctaLabel: 'View Freshness Banner',
+    ctaLink:  (dealId) => `/deals/${dealId}?tab=financial-engine#vendor-freshness-banner`,
 
     async evaluate(dealId, _propertyId, pool): Promise<SignalStatus> {
       try {
