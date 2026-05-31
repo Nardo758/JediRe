@@ -30,6 +30,10 @@ description: Constraint gotchas discovered when populating investors, capital_ca
 
 # BPI annual ingest — deal_monthly_actuals pattern (p2122)
 
+## Owned portfolio — single property
+As of 2026-05-31, the owned portfolio is exactly ONE property: Highlands at Sweetwater Creek.
+"Parkway 290 Apartments" and "Cedar Hills at McKinney" were placeholder seeds — deleted.
+
 ## Completed years
 - 2022: 13 rows (Dec 2021–Dec 2022), Yardi base + BPI enrichment
 - 2023: 12 rows (Jan–Dec 2023)
