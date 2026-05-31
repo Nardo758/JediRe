@@ -394,10 +394,11 @@ function GprDecompPanel({ decomp, totalUnits }: { decomp: GprDecomposition; tota
   );
 }
 
-// ─── LTL Trajectory Panel — Task #1540 (Piece B1) ─────────────────────────
-// Shows both LTL source signals (T12 trailing avg vs live lease-level) and an
-// inline sparkline of the per-year decay trajectory used by Engine A.
-// Operator controls: baseline source toggle (LIVE / T12 / AUTO) and capture rate.
+// ─── LTL Trajectory Panel — Task #1619 (upgraded from B1 sparkline to full chart) ──
+// Shows both LTL source signals (T12 trailing avg vs live lease-level) with a
+// full hold-year line chart. When both signals are available, both trajectory
+// curves are overlaid on the chart so the operator can see the impact of source choice.
+// Operator controls: baseline source toggle (LIVE / T12 / AUTO) and capture rate input.
 function LTLTrajectoryPanel({
   ltlSignals,
   dealId,
@@ -411,15 +412,32 @@ function LTLTrajectoryPanel({
   const { t12Pct, livePct, trajectorySource, operatorBaselineSource, byYear, captureRate } = ltlSignals;
 
   const hasLive = livePct != null;
-  const startPct = (trajectorySource === 't12' ? (t12Pct ?? 0) : (livePct ?? t12Pct ?? 0)) * 100;
-  const endPct   = (byYear[byYear.length - 1] ?? 0) * 100;
+  const hasT12  = t12Pct  != null;
+
+  // The active trajectory starts from whatever source the engine used
+  const activeStart: number =
+    trajectorySource === 't12' ? (t12Pct ?? 0) : (livePct ?? t12Pct ?? 0);
+
+  const endPct = (byYear[byYear.length - 1] ?? 0) * 100;
+
+  // Compute alternate trajectory curve for comparison display on the chart.
+  // Because LTL[yr] = LTL[yr-1] × Π(1 − vel×cr), the multipliers are the same for
+  // both curves — only the starting value differs. So altByYear[i] = byYear[i] × (altStart / activeStart).
+  const altStart: number | null =
+    hasLive && hasT12 && activeStart > 0
+      ? (trajectorySource === 'live' ? (t12Pct ?? null) : (livePct ?? null))
+      : null;
+
+  const altByYear: number[] | null =
+    altStart != null && activeStart > 0
+      ? byYear.map(v => v * (altStart / activeStart))
+      : null;
 
   // Local editable capture rate (fraction, 0–1)
   const [captureInput, setCaptureInput] = useState(() => (captureRate * 100).toFixed(0));
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
-  // Sync captureInput when the panel re-mounts with new financials
   React.useEffect(() => {
     setCaptureInput((captureRate * 100).toFixed(0));
   }, [captureRate]);
@@ -449,16 +467,37 @@ function LTLTrajectoryPanel({
     saveLTLControls({ markToMarketCaptureRate: n / 100 });
   };
 
-  // Inline SVG sparkline — no external deps
-  const W = 120; const H = 24; const PAD = 2;
-  const maxV = Math.max(...byYear) || 0.001;
-  const points = byYear.map((v, i) => {
-    const x = PAD + (i / Math.max(1, byYear.length - 1)) * (W - PAD * 2);
-    const y = H - PAD - ((v / maxV) * (H - PAD * 2));
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
+  const TEAL   = '#00B4D8';
+  const GREEN  = '#4ADE80';
+  const AMBER  = BT.text.amber;
 
-  const TEAL = '#00B4D8';
+  // ── Header sparkline (mini, always visible) ────────────────────────────────
+  const SW = 120; const SH = 24; const SP = 2;
+  const sparkMax = Math.max(...byYear, altByYear ? Math.max(...altByYear) : 0) || 0.001;
+  const sparkPts = (vals: number[]) =>
+    vals.map((v, i) => {
+      const x = SP + (i / Math.max(1, vals.length - 1)) * (SW - SP * 2);
+      const y = SH - SP - ((v / sparkMax) * (SH - SP * 2));
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+
+  // ── Full chart geometry ────────────────────────────────────────────────────
+  const CW = 520; const CH = 160;
+  const PAD = { top: 20, right: 20, bottom: 30, left: 50 };
+  const plotW = CW - PAD.left - PAD.right;
+  const plotH = CH - PAD.top  - PAD.bottom;
+  const n = byYear.length;
+
+  // Y domain: from 0 to ceiling (active start or alt start, whichever is larger)
+  const yMax = Math.max(activeStart, altStart ?? 0, ...byYear) * 1.08 || 0.01;
+  const xOf  = (i: number) => PAD.left + (n > 1 ? (i / (n - 1)) * plotW : plotW / 2);
+  const yOf  = (v: number) => PAD.top  + (1 - Math.min(v / yMax, 1)) * plotH;
+
+  const pathOf = (vals: number[]) =>
+    vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${xOf(i).toFixed(1)},${yOf(v).toFixed(1)}`).join(' ');
+
+  // Y tick values
+  const yTicks = [0, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax].map(v => parseFloat(v.toFixed(4)));
 
   // Baseline button styles
   const baselineBtn = (active: boolean, disabled?: boolean) => ({
@@ -470,8 +509,13 @@ function LTLTrajectoryPanel({
     opacity: disabled ? 0.4 : 1,
   } as React.CSSProperties);
 
+  const activeColor = trajectorySource === 'live' ? GREEN : AMBER;
+  const altColor    = trajectorySource === 'live' ? AMBER  : GREEN;
+  const altLabel    = trajectorySource === 'live' ? 'T12'  : 'LIVE';
+
   return (
     <div style={{ borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.panel, flexShrink: 0 }}>
+      {/* ── Collapsed header ── */}
       <div
         onClick={() => setExpanded(e => !e)}
         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', cursor: 'pointer' }}
@@ -481,13 +525,15 @@ function LTLTrajectoryPanel({
         </span>
         <Bd c={TEAL}>B1</Bd>
 
-        {/* Source pills */}
-        <span style={{ fontSize: 8, fontFamily: MONO, color: hasLive ? '#4ADE80' : BT.text.amber, fontWeight: 700 }}>
-          {hasLive ? `LIVE ${(livePct! * 100).toFixed(1)}%` : `T12 ${((t12Pct ?? 0) * 100).toFixed(2)}%`}
-        </span>
-        {hasLive && t12Pct != null && (
-          <span style={{ fontSize: 8, fontFamily: MONO, color: BT.text.muted }}>
-            T12 {(t12Pct * 100).toFixed(2)}%
+        {/* Signal pills — always show both when available */}
+        {hasLive && (
+          <span style={{ fontSize: 8, fontFamily: MONO, color: GREEN, fontWeight: 700 }}>
+            LIVE {(livePct! * 100).toFixed(1)}%
+          </span>
+        )}
+        {hasT12 && (
+          <span style={{ fontSize: 8, fontFamily: MONO, color: hasLive ? BT.text.muted : AMBER, fontWeight: hasLive ? 400 : 700 }}>
+            T12 {(t12Pct! * 100).toFixed(2)}%
           </span>
         )}
         <span style={{ fontSize: 8, fontFamily: MONO, color: BT.text.muted }}>→</span>
@@ -495,121 +541,254 @@ function LTLTrajectoryPanel({
           YR{byYear.length} {endPct.toFixed(2)}%
         </span>
 
-        {/* Miniature sparkline */}
-        <svg width={W} height={H} style={{ flexShrink: 0 }}>
-          <polyline points={points} fill="none" stroke={TEAL} strokeWidth={1.5} opacity={0.7} />
+        {/* Mini sparkline */}
+        <svg width={SW} height={SH} style={{ flexShrink: 0, overflow: 'visible' }}>
+          {altByYear && (
+            <polyline points={sparkPts(altByYear)} fill="none" stroke={altColor} strokeWidth={1} strokeDasharray="3 2" opacity={0.45} />
+          )}
+          <polyline points={sparkPts(byYear)} fill="none" stroke={TEAL} strokeWidth={1.5} opacity={0.85} />
         </svg>
 
         <span style={{ marginLeft: 'auto', fontSize: 9, color: BT.text.muted, fontFamily: MONO }}>{expanded ? '▾' : '▸'}</span>
       </div>
 
+      {/* ── Expanded view ── */}
       {expanded && (
-        <div style={{ padding: '6px 10px', display: 'flex', gap: 16, flexWrap: 'wrap', borderTop: `1px solid ${BT.border.subtle}` }}>
-          {/* Signal source cards */}
-          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 90 }}>
-            <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5, marginBottom: 2 }}>LIVE (M07)</span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: hasLive ? '#4ADE80' : BT.text.muted, fontFamily: MONO }}>
-              {livePct != null ? `${(livePct * 100).toFixed(1)}%` : '—'}
-            </span>
-            <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>lease-level gap</span>
-          </div>
+        <div style={{ borderTop: `1px solid ${BT.border.subtle}`, padding: '10px 12px' }}>
 
-          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 90 }}>
-            <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5, marginBottom: 2 }}>T12 TRAILING</span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: BT.text.amber, fontFamily: MONO }}>
-              {t12Pct != null ? `${(t12Pct * 100).toFixed(2)}%` : '—'}
-            </span>
-            <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>12-mo average</span>
-          </div>
+          {/* ── Top row: signal cards + controls ── */}
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12, alignItems: 'flex-start' }}>
 
-          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 90 }}>
-            <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5, marginBottom: 2 }}>ENGINE ANCHORED AT</span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: TEAL, fontFamily: MONO }}>
-              {startPct.toFixed(trajectorySource === 't12' ? 2 : 1)}%
-            </span>
-            <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>
-              source: {trajectorySource === 'live' ? 'live M07' : 'T12 avg'}
-            </span>
-          </div>
-
-          {/* ── Baseline source toggle — operator control ── */}
-          {dealId && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5 }}>BASELINE SOURCE</span>
-              <div style={{ display: 'flex', gap: 4 }}>
-                <button
-                  style={baselineBtn(operatorBaselineSource === 'live', !hasLive)}
-                  disabled={saving || !hasLive}
-                  onClick={e => { e.stopPropagation(); setBaseline('live'); }}
-                  title={!hasLive ? 'No live M07 signal for this deal' : undefined}
-                >
-                  LIVE
-                </button>
-                <button
-                  style={baselineBtn(operatorBaselineSource === 't12')}
-                  disabled={saving}
-                  onClick={e => { e.stopPropagation(); setBaseline('t12'); }}
-                >
-                  T12
-                </button>
-                <button
-                  style={baselineBtn(operatorBaselineSource === null)}
-                  disabled={saving}
-                  onClick={e => { e.stopPropagation(); setBaseline(null); }}
-                  title="Auto: live when present, T12 otherwise"
-                >
-                  AUTO
-                </button>
-              </div>
-              <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>
-                {operatorBaselineSource === null ? 'auto-selected' : 'operator override'}
+            {/* LIVE signal card */}
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 100, background: BT.bg.terminal, border: `1px solid ${hasLive ? GREEN + '55' : BT.border.subtle}`, borderRadius: 3, padding: '6px 10px' }}>
+              <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5, marginBottom: 3 }}>LIVE (M07)</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: hasLive ? GREEN : BT.text.muted, fontFamily: MONO }}>
+                {livePct != null ? `${(livePct * 100).toFixed(1)}%` : '—'}
               </span>
-            </div>
-          )}
-
-          {/* ── Mark-to-market capture rate — operator control ── */}
-          {dealId && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5 }}>CAPTURE RATE %</span>
-              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                <input
-                  type="number"
-                  min={0} max={100} step={1}
-                  value={captureInput}
-                  onChange={e => setCaptureInput(e.target.value)}
-                  onBlur={commitCaptureRate}
-                  onKeyDown={e => { if (e.key === 'Enter') commitCaptureRate(); }}
-                  style={{
-                    width: 52, fontFamily: MONO, fontSize: 10, background: BT.bg.terminal,
-                    border: `1px solid ${BT.border.subtle}`, color: BT.text.white,
-                    padding: '2px 4px', borderRadius: 2,
-                  }}
-                  onClick={e => e.stopPropagation()}
-                />
-                <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO }}>% per roll</span>
-              </div>
-              <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>
-                default 33% · gap closure per roll event
-              </span>
-              {saveMsg && (
-                <span style={{ fontSize: 7, fontFamily: MONO, color: saveMsg === 'Saved' ? '#4ADE80' : BT.text.red }}>
-                  {saveMsg}
-                </span>
+              <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO, marginTop: 2 }}>lease-level gap</span>
+              {trajectorySource === 'live' && (
+                <span style={{ fontSize: 7, color: GREEN, fontFamily: MONO, marginTop: 2, fontWeight: 700 }}>● ACTIVE</span>
               )}
             </div>
-          )}
 
-          {/* Full year-by-year table */}
-          <div style={{ width: '100%', display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
-            {byYear.map((v, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 40 }}>
-                <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>YR{i + 1}</span>
-                <span style={{ fontSize: 9, fontWeight: 600, color: v < 0.02 ? '#4ADE80' : v < 0.08 ? BT.text.amber : BT.text.red, fontFamily: MONO }}>
-                  {(v * 100).toFixed(2)}%
+            {/* T12 signal card */}
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 100, background: BT.bg.terminal, border: `1px solid ${hasT12 ? AMBER + '55' : BT.border.subtle}`, borderRadius: 3, padding: '6px 10px' }}>
+              <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5, marginBottom: 3 }}>T12 TRAILING AVG</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: hasT12 ? AMBER : BT.text.muted, fontFamily: MONO }}>
+                {t12Pct != null ? `${(t12Pct * 100).toFixed(2)}%` : '—'}
+              </span>
+              <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO, marginTop: 2 }}>12-mo average</span>
+              {trajectorySource === 't12' && (
+                <span style={{ fontSize: 7, color: AMBER, fontFamily: MONO, marginTop: 2, fontWeight: 700 }}>● ACTIVE</span>
+              )}
+            </div>
+
+            {/* Vertical divider */}
+            <div style={{ width: 1, background: BT.border.subtle, alignSelf: 'stretch', flexShrink: 0 }} />
+
+            {/* Baseline source toggle */}
+            {dealId && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5 }}>BASELINE SOURCE</span>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button
+                    style={baselineBtn(operatorBaselineSource === 'live', !hasLive)}
+                    disabled={saving || !hasLive}
+                    onClick={e => { e.stopPropagation(); setBaseline('live'); }}
+                    title={!hasLive ? 'No live M07 signal for this deal' : 'Use live lease-level LTL as trajectory baseline'}
+                  >
+                    LIVE
+                  </button>
+                  <button
+                    style={baselineBtn(operatorBaselineSource === 't12')}
+                    disabled={saving}
+                    onClick={e => { e.stopPropagation(); setBaseline('t12'); }}
+                    title="Use T12 trailing average as trajectory baseline"
+                  >
+                    T12
+                  </button>
+                  <button
+                    style={baselineBtn(operatorBaselineSource === null)}
+                    disabled={saving}
+                    onClick={e => { e.stopPropagation(); setBaseline(null); }}
+                    title="Auto: live when present, T12 otherwise"
+                  >
+                    AUTO
+                  </button>
+                </div>
+                <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>
+                  {operatorBaselineSource === null ? 'auto-selected' : 'operator override'}
                 </span>
               </div>
-            ))}
+            )}
+
+            {/* Capture rate input */}
+            {dealId && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5 }}>CAPTURE RATE</span>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    min={0} max={100} step={1}
+                    value={captureInput}
+                    onChange={e => setCaptureInput(e.target.value)}
+                    onBlur={commitCaptureRate}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commitCaptureRate(); } }}
+                    style={{
+                      width: 52, fontFamily: MONO, fontSize: 11, background: BT.bg.terminal,
+                      border: `1px solid ${BT.border.medium}`, color: BT.text.white,
+                      padding: '3px 5px', borderRadius: 2, outline: 'none',
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  />
+                  <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO }}>% / roll event</span>
+                </div>
+                <span style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>default 33% — gap closure per lease roll</span>
+                {saveMsg && (
+                  <span style={{ fontSize: 7, fontFamily: MONO, color: saveMsg === 'Saved' ? GREEN : BT.text.red }}>
+                    {saveMsg}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
+
+          {/* ── Hold-year line chart ── */}
+          {byYear.length > 0 && (
+            <div style={{ overflowX: 'auto' }}>
+              <svg
+                width={CW} height={CH}
+                style={{ display: 'block', background: BT.bg.terminal, borderRadius: 3, border: `1px solid ${BT.border.subtle}` }}
+              >
+                {/* Y grid lines and labels */}
+                {yTicks.map((tick, ti) => {
+                  const y = yOf(tick);
+                  return (
+                    <g key={ti}>
+                      <line
+                        x1={PAD.left} y1={y} x2={PAD.left + plotW} y2={y}
+                        stroke={BT.border.subtle} strokeWidth={0.5}
+                      />
+                      <text
+                        x={PAD.left - 4} y={y + 3.5}
+                        textAnchor="end" fontSize={7} fill={BT.text.muted} fontFamily={MONO}
+                      >
+                        {(tick * 100).toFixed(1)}%
+                      </text>
+                    </g>
+                  );
+                })}
+
+                {/* X grid lines */}
+                {byYear.map((_, i) => (
+                  <line
+                    key={i}
+                    x1={xOf(i)} y1={PAD.top} x2={xOf(i)} y2={PAD.top + plotH}
+                    stroke={BT.border.subtle} strokeWidth={0.4}
+                  />
+                ))}
+
+                {/* Axis border lines */}
+                <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top + plotH} stroke={BT.border.medium} strokeWidth={1} />
+                <line x1={PAD.left} y1={PAD.top + plotH} x2={PAD.left + plotW} y2={PAD.top + plotH} stroke={BT.border.medium} strokeWidth={1} />
+
+                {/* Alternate trajectory (dashed ghost curve) */}
+                {altByYear && altByYear.length > 0 && (
+                  <g>
+                    <path
+                      d={pathOf(altByYear)}
+                      fill="none"
+                      stroke={altColor}
+                      strokeWidth={1.5}
+                      strokeDasharray="6 3"
+                      opacity={0.5}
+                    />
+                    {/* Alternate start dot */}
+                    <circle
+                      cx={xOf(0)} cy={yOf(altByYear[0])}
+                      r={3} fill={altColor} fillOpacity={0.5}
+                    />
+                    {/* Alternate label at start */}
+                    <text
+                      x={xOf(0) + 5} y={yOf(altByYear[0]) - 5}
+                      fontSize={7} fill={altColor} fontFamily={MONO} opacity={0.75}
+                    >
+                      {altLabel} {(altByYear[0] * 100).toFixed(1)}%
+                    </text>
+                  </g>
+                )}
+
+                {/* Active trajectory area fill */}
+                <path
+                  d={`${pathOf(byYear)} L${xOf(n - 1).toFixed(1)},${(PAD.top + plotH).toFixed(1)} L${PAD.left.toFixed(1)},${(PAD.top + plotH).toFixed(1)} Z`}
+                  fill={activeColor} fillOpacity={0.07}
+                />
+
+                {/* Active trajectory line */}
+                <path
+                  d={pathOf(byYear)}
+                  fill="none"
+                  stroke={activeColor}
+                  strokeWidth={2}
+                />
+
+                {/* Active start dot + label */}
+                <circle cx={xOf(0)} cy={yOf(byYear[0])} r={3.5} fill={activeColor} />
+                <text
+                  x={xOf(0) + 5} y={yOf(byYear[0]) - 7}
+                  fontSize={7.5} fill={activeColor} fontFamily={MONO} fontWeight={700}
+                >
+                  {trajectorySource === 'live' ? 'LIVE' : 'T12'} {(byYear[0] * 100).toFixed(1)}%
+                </text>
+
+                {/* Data point dots + value labels */}
+                {byYear.map((v, i) => {
+                  const cx = xOf(i);
+                  const cy = yOf(v);
+                  const dotColor = v < 0.02 ? GREEN : v < 0.08 ? AMBER : BT.text.red;
+                  return (
+                    <g key={i}>
+                      <circle cx={cx} cy={cy} r={2.5} fill={dotColor} />
+                      {/* Show value label above every dot */}
+                      <text
+                        x={cx} y={cy - 5}
+                        textAnchor="middle" fontSize={7} fill={dotColor} fontFamily={MONO}
+                      >
+                        {(v * 100).toFixed(1)}%
+                      </text>
+                    </g>
+                  );
+                })}
+
+                {/* X axis labels */}
+                {byYear.map((_, i) => (
+                  <text
+                    key={i}
+                    x={xOf(i)} y={CH - 6}
+                    textAnchor="middle" fontSize={7.5} fill={BT.text.muted} fontFamily={MONO}
+                  >
+                    YR{i + 1}
+                  </text>
+                ))}
+
+                {/* Chart legend */}
+                <g transform={`translate(${PAD.left + 8},${PAD.top + 6})`}>
+                  <line x1={0} y1={5} x2={14} y2={5} stroke={activeColor} strokeWidth={2} />
+                  <text x={17} y={9} fontSize={7} fill={BT.text.secondary} fontFamily={MONO}>
+                    {trajectorySource === 'live' ? 'LIVE (active baseline)' : 'T12 (active baseline)'}
+                  </text>
+                  {altByYear && (
+                    <>
+                      <line x1={0} y1={18} x2={14} y2={18} stroke={altColor} strokeWidth={1.5} strokeDasharray="5 2" opacity={0.6} />
+                      <text x={17} y={22} fontSize={7} fill={BT.text.secondary} fontFamily={MONO} opacity={0.75}>
+                        {altLabel} (alternate)
+                      </text>
+                    </>
+                  )}
+                </g>
+              </svg>
+            </div>
+          )}
         </div>
       )}
     </div>
