@@ -160,6 +160,19 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   const [assets, setAssets] = useState<PortfolioAsset[]>([]);
   const [performance, setPerformance] = useState<PerformanceData[]>([]);
   const [agentAccuracy, setAgentAccuracy] = useState<AgentAccuracy[]>([]);
+
+  // Portfolio correlation signals (Learning tab)
+  interface CorrCoeff {
+    property_id: string; property_name: string; coefficient_name: string;
+    value: number | null; sample_size: number; r_squared: number | null;
+    first_period: string | null; last_period: string | null;
+    data_source: string; computed_at: string;
+  }
+  const [corrCoeffs, setCorrCoeffs] = useState<CorrCoeff[]>([]);
+  const [corrLastRun, setCorrLastRun] = useState<string | null>(null);
+  const [corrPropertiesCovered, setCorrPropertiesCovered] = useState<string[]>([]);
+  const [corrRunning, setCorrRunning] = useState(false);
+  const [corrError, setCorrError] = useState<string | null>(null);
   const [expandedAssets, setExpandedAssets] = useState<Set<string>>(new Set());
   const [selectedTimeframe, setSelectedTimeframe] = useState<'mtd' | 'qtd' | 'ytd' | 'ltm'>('ytd');
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
@@ -367,6 +380,38 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addAssetForm]);
+
+  // ─── Correlation Signals Loader ───────────────────────────────
+
+  const loadCorrSignals = useCallback(async () => {
+    try {
+      const res = await apiClient.get('/api/v1/portfolio/correlation-signals');
+      setCorrCoeffs(res.data.coefficients || []);
+      setCorrLastRun(res.data.last_run || null);
+      setCorrPropertiesCovered(res.data.properties_covered || []);
+    } catch {
+      setCorrCoeffs([]);
+    }
+  }, []);
+
+  const runCorrelations = useCallback(async () => {
+    setCorrRunning(true);
+    setCorrError(null);
+    try {
+      await apiClient.post('/api/v1/portfolio/run-correlations');
+      await loadCorrSignals();
+    } catch (err: any) {
+      setCorrError(err?.response?.data?.error || 'Correlation run failed');
+    } finally {
+      setCorrRunning(false);
+    }
+  }, [loadCorrSignals]);
+
+  // Load correlation signals whenever the Learning tab is activated
+  useEffect(() => {
+    if (activeTab === 'learning') loadCorrSignals();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   // ─── Submarket Loader ─────────────────────────────────────────
 
@@ -1471,6 +1516,93 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
         </table>
       </div>
       
+      {/* Correlation Signals — empirical per-property coefficients */}
+      <div style={{ gridColumn: '1 / -1', background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, fontFamily: MONO }}>
+              CORRELATION SIGNALS — FIRST-PARTY COEFFICIENTS
+            </div>
+            {corrLastRun && (
+              <div style={{ fontSize: 9, color: T.text.muted, fontFamily: MONO, marginTop: 2 }}>
+                Last run: {new Date(corrLastRun).toLocaleString()} · {corrPropertiesCovered.length} propert{corrPropertiesCovered.length === 1 ? 'y' : 'ies'} covered
+              </div>
+            )}
+          </div>
+          <button
+            onClick={runCorrelations}
+            disabled={corrRunning}
+            style={{ padding: '4px 14px', background: corrRunning ? T.bg.panelAlt : T.text.cyan, color: T.bg.terminal, border: 'none', fontSize: 10, fontWeight: 700, fontFamily: MONO, cursor: corrRunning ? 'default' : 'pointer', opacity: corrRunning ? 0.6 : 1 }}
+          >
+            {corrRunning ? 'RUNNING…' : 'RUN NOW'}
+          </button>
+        </div>
+        {corrError && (
+          <div style={{ fontSize: 10, color: T.text.red, fontFamily: MONO, marginBottom: 10 }}>{corrError}</div>
+        )}
+        {corrCoeffs.length === 0 ? (
+          <div style={{ fontSize: 10, color: T.text.muted, fontFamily: MONO, textAlign: 'center', padding: '20px 0' }}>
+            No coefficients stored yet — click RUN NOW to compute from portfolio actuals.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
+              <thead>
+                <tr>
+                  {['PROPERTY', 'COEFFICIENT', 'VALUE', 'N (MO)', 'R²', 'SOURCE', 'PERIOD', 'COMPUTED'].map(h => (
+                    <th key={h} style={{ textAlign: h === 'VALUE' || h === 'N (MO)' || h === 'R²' ? 'right' : 'left', padding: '4px 10px', color: T.text.muted, fontWeight: 600, borderBottom: `1px solid ${T.border.subtle}`, whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {corrCoeffs.map((c, i) => {
+                  const isSlope = c.coefficient_name === 'lease_velocity' || c.coefficient_name === 'occupancy_trajectory';
+                  const isRatio = c.coefficient_name === 'rent_positioning_ratio' || c.coefficient_name === 'concession_depth_ratio';
+                  const fmtVal = () => {
+                    if (c.value == null) return '—';
+                    if (isSlope) return `${c.value >= 0 ? '+' : ''}${c.value.toFixed(3)}%/mo`;
+                    if (c.coefficient_name === 'rent_positioning_ratio') return `${(c.value * 100).toFixed(1)}%`;
+                    if (c.coefficient_name === 'concession_depth_ratio') return `${(c.value * 100).toFixed(3)}%`;
+                    return c.value.toFixed(4);
+                  };
+                  const valColor = isSlope
+                    ? (c.value != null && c.value >= 0 ? T.text.green : T.text.red)
+                    : T.text.primary;
+                  return (
+                    <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}22` }}>
+                      <td style={{ padding: '4px 10px', color: T.text.secondary, whiteSpace: 'nowrap' }}>{c.property_name}</td>
+                      <td style={{ padding: '4px 10px', color: T.text.muted, whiteSpace: 'nowrap' }}>{c.coefficient_name.replace(/_/g, ' ')}</td>
+                      <td style={{ textAlign: 'right', padding: '4px 10px', color: valColor, fontWeight: 600 }}>{fmtVal()}</td>
+                      <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.muted }}>{c.sample_size}</td>
+                      <td style={{ textAlign: 'right', padding: '4px 10px', color: c.r_squared != null && c.r_squared > 0.7 ? T.text.green : T.text.muted }}>
+                        {c.r_squared != null ? c.r_squared.toFixed(3) : '—'}
+                      </td>
+                      <td style={{ padding: '4px 10px' }}>
+                        <span style={{ padding: '1px 6px', background: c.data_source === 'owned_portfolio' ? '#1a3a2a' : '#1a2a3a', color: c.data_source === 'owned_portfolio' ? T.text.green : T.text.cyan, fontSize: 8, fontWeight: 700 }}>
+                          {c.data_source === 'owned_portfolio' ? '1P' : '3P'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '4px 10px', color: T.text.muted, whiteSpace: 'nowrap' }}>
+                        {c.first_period ? `${c.first_period} → ${c.last_period ?? '…'}` : '—'}
+                      </td>
+                      <td style={{ padding: '4px 10px', color: T.text.muted, whiteSpace: 'nowrap' }}>
+                        {c.computed_at ? new Date(c.computed_at).toLocaleDateString() : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {corrCoeffs.length > 0 && (
+          <div style={{ marginTop: 10, fontSize: 9, color: T.text.muted, fontFamily: MONO }}>
+            <span style={{ padding: '1px 6px', background: '#1a3a2a', color: T.text.green, fontWeight: 700, marginRight: 8 }}>1P</span>First-party (owned portfolio actuals)
+            <span style={{ padding: '1px 6px', background: '#1a2a3a', color: T.text.cyan, fontWeight: 700, marginLeft: 16, marginRight: 8 }}>3P</span>Third-party (CoStar / market data)
+          </div>
+        )}
+      </div>
+
       {/* Learning Loop Status */}
       <div style={{ gridColumn: '1 / -1', background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>

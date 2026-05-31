@@ -986,5 +986,53 @@ router.post('/:dealId/agent-report', requireAuth, async (req: AuthenticatedReque
   }
 });
 
+// ─── Portfolio Correlation Endpoints (Task #1657) ─────────────────────────
+
+/**
+ * POST /api/v1/portfolio/run-correlations
+ * Runs the portfolio correlation engine against all owned-property actuals:
+ *   1. Computes 4 empirical per-property coefficients and persists them.
+ *   2. Runs COR-01–30 with first-party rent fill for COR-04/COR-13.
+ *   3. Persists adjustment signals to any linked deals.
+ * Query param: ?dryRun=true to skip writes.
+ */
+router.post('/run-correlations', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { PortfolioCorrelationService } = await import('../../services/portfolio-correlation.service');
+    const svc = new PortfolioCorrelationService();
+    const dryRun = req.query.dryRun === 'true';
+    const summary = await svc.run({ dryRun });
+    res.json({
+      ok: true,
+      dry_run: dryRun,
+      properties_processed: summary.properties_processed,
+      signals_computed: summary.signals.length,
+      coefficients_computed: summary.coefficients.length,
+      computed_at: summary.computed_at,
+    });
+  } catch (err: any) {
+    logger.error('[portfolio] run-correlations failed', { error: err?.message });
+    res.status(500).json({ error: err?.message ?? 'Correlation run failed' });
+  }
+});
+
+/**
+ * GET /api/v1/portfolio/correlation-signals
+ * Returns stored empirical coefficients for the F3 Learning tab.
+ * Does not re-compute — call POST /run-correlations first.
+ */
+router.get('/correlation-signals', requireAuth, async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { PortfolioCorrelationService } = await import('../../services/portfolio-correlation.service');
+    const svc = new PortfolioCorrelationService();
+    const summary = await svc.getSummary();
+    res.json(summary);
+  } catch (err: any) {
+    logger.error('[portfolio] correlation-signals failed', { error: err?.message });
+    res.status(500).json({ error: err?.message ?? 'Failed to load correlation signals' });
+  }
+});
+
 export default router;
+
 
