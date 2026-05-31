@@ -1009,6 +1009,9 @@ router.post('/run-correlations', requireAuth, async (req: AuthenticatedRequest, 
       signals_computed: summary.signals.length,
       coefficients_computed: summary.coefficients.length,
       computed_at: summary.computed_at,
+      // Include enriched signals so the F3 Learning tab can render the per-COR breakdown
+      signals: summary.signals,
+      coefficients: summary.coefficients,
     });
   } catch (err: any) {
     logger.error('[portfolio] run-correlations failed', { error: err?.message });

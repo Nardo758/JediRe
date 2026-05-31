@@ -168,7 +168,16 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     first_period: string | null; last_period: string | null;
     data_source: string; computed_at: string;
   }
+  interface CorrSignal {
+    property_id: string; property_name: string;
+    cor_id: string; name: string;
+    signal: string | null; confidence: string;
+    source: 'first_party' | 'third_party' | 'mixed' | 'none';
+    sample_size: number; actionable: string | null;
+    missingData: string[]; xValue: number | null; yValue: number | null;
+  }
   const [corrCoeffs, setCorrCoeffs] = useState<CorrCoeff[]>([]);
+  const [corrSignals, setCorrSignals] = useState<CorrSignal[]>([]);
   const [corrLastRun, setCorrLastRun] = useState<string | null>(null);
   const [corrPropertiesCovered, setCorrPropertiesCovered] = useState<string[]>([]);
   const [corrRunning, setCorrRunning] = useState(false);
@@ -398,8 +407,17 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     setCorrRunning(true);
     setCorrError(null);
     try {
-      await apiClient.post('/api/v1/portfolio/run-correlations');
-      await loadCorrSignals();
+      const res = await apiClient.post('/api/v1/portfolio/run-correlations');
+      // Capture enriched signals returned by the run for per-COR breakdown panel
+      if (res.data?.signals) setCorrSignals(res.data.signals);
+      if (res.data?.coefficients) {
+        setCorrCoeffs(res.data.coefficients);
+        if (res.data.computed_at) setCorrLastRun(res.data.computed_at);
+        const covered = [...new Set<string>((res.data.coefficients as CorrCoeff[]).map(c => c.property_name))];
+        setCorrPropertiesCovered(covered);
+      } else {
+        await loadCorrSignals();
+      }
     } catch (err: any) {
       setCorrError(err?.response?.data?.error || 'Correlation run failed');
     } finally {
@@ -1557,7 +1575,6 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
               <tbody>
                 {corrCoeffs.map((c, i) => {
                   const isSlope = c.coefficient_name === 'lease_velocity' || c.coefficient_name === 'occupancy_trajectory';
-                  const isRatio = c.coefficient_name === 'rent_positioning_ratio' || c.coefficient_name === 'concession_depth_ratio';
                   const fmtVal = () => {
                     if (c.value == null) return '—';
                     if (isSlope) return `${c.value >= 0 ? '+' : ''}${c.value.toFixed(3)}%/mo`;
@@ -1602,6 +1619,73 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
           </div>
         )}
       </div>
+
+      {/* COR-XX Signal Breakdown — per-correlation source + confidence */}
+      {corrSignals.length > 0 && (() => {
+        const sigColors: Record<string, string> = { bullish: T.text.green, neutral: T.text.amber, bearish: T.text.red };
+        const confColors: Record<string, string> = { high: T.text.green, medium: T.text.amber, low: T.text.muted, insufficient: '#555' };
+        const srcBadge = (src: CorrSignal['source']) => {
+          const cfg: Record<string, { bg: string; color: string; label: string }> = {
+            first_party: { bg: '#1a3a2a', color: T.text.green,  label: '1P' },
+            third_party: { bg: '#1a2a3a', color: T.text.cyan,   label: '3P' },
+            mixed:       { bg: '#2a2a1a', color: T.text.amber,  label: 'MX' },
+            none:        { bg: '#2a1a1a', color: '#555',         label: '—' },
+          };
+          const s = cfg[src] ?? cfg.none;
+          return <span style={{ padding: '1px 6px', background: s.bg, color: s.color, fontSize: 8, fontWeight: 700 }}>{s.label}</span>;
+        };
+        // Group by property for readability
+        const byProp = corrSignals.reduce<Record<string, CorrSignal[]>>((acc, s) => {
+          (acc[s.property_name] ??= []).push(s); return acc;
+        }, {});
+        return (
+          <div style={{ gridColumn: '1 / -1', background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 4, fontFamily: MONO }}>
+              CORRELATION ENGINE BREAKDOWN — COR-01–30 PER PROPERTY
+            </div>
+            <div style={{ fontSize: 9, color: T.text.muted, fontFamily: MONO, marginBottom: 12 }}>
+              Last run: {corrLastRun ? new Date(corrLastRun).toLocaleString() : '—'} · 1P = first-party (portfolio actuals used in computation) · 3P = third-party market data · MX = mixed
+            </div>
+            {Object.entries(byProp).map(([propName, sigs]) => (
+              <div key={propName} style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: T.text.secondary, fontFamily: MONO, marginBottom: 6 }}>{propName}</div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
+                    <thead>
+                      <tr>
+                        {['ID', 'NAME', 'SIGNAL', 'CONF', 'SRC', 'X-VALUE', 'ACTIONABLE'].map(h => (
+                          <th key={h} style={{ textAlign: 'left', padding: '3px 8px', color: T.text.muted, fontWeight: 600, borderBottom: `1px solid ${T.border.subtle}`, whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sigs.map((s, i) => (
+                        <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}18`, opacity: s.confidence === 'insufficient' ? 0.45 : 1 }}>
+                          <td style={{ padding: '3px 8px', color: T.text.muted, whiteSpace: 'nowrap' }}>{s.cor_id}</td>
+                          <td style={{ padding: '3px 8px', color: T.text.primary, whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</td>
+                          <td style={{ padding: '3px 8px', color: sigColors[s.signal ?? ''] ?? T.text.muted, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            {s.signal ? s.signal.toUpperCase() : '—'}
+                          </td>
+                          <td style={{ padding: '3px 8px', color: confColors[s.confidence] ?? T.text.muted, whiteSpace: 'nowrap' }}>
+                            {s.confidence.toUpperCase()}
+                          </td>
+                          <td style={{ padding: '3px 8px' }}>{srcBadge(s.source)}</td>
+                          <td style={{ padding: '3px 8px', color: T.text.muted, whiteSpace: 'nowrap' }}>
+                            {s.xValue != null ? s.xValue.toFixed(1) : '—'}
+                          </td>
+                          <td style={{ padding: '3px 8px', color: T.text.muted, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {s.actionable ?? (s.missingData.length > 0 ? `Missing: ${s.missingData.slice(0,2).join(', ')}` : '—')}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Learning Loop Status */}
       <div style={{ gridColumn: '1 / -1', background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
