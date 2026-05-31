@@ -520,7 +520,7 @@ router.get('/:dealId/summary', requireAuth, async (req: AuthenticatedRequest, re
 
     const dealResult = await query(
       `SELECT id, name, address, state, project_type, budget, target_units,
-              status, deal_category, deal_data, created_at
+              status, deal_category, deal_data, created_at, property_id
        FROM deals
        WHERE id = $1 AND user_id = $2 AND archived_at IS NULL
        LIMIT 1`,
@@ -535,6 +535,7 @@ router.get('/:dealId/summary', requireAuth, async (req: AuthenticatedRequest, re
     const dealData = (typeof row.deal_data === 'string'
       ? JSON.parse(row.deal_data as string)
       : (row.deal_data as Record<string, unknown>)) || {};
+    const propertyId = row.property_id as string | null;
 
     const deal = {
       id:          row.id as string,
@@ -553,28 +554,52 @@ router.get('/:dealId/summary', requireAuth, async (req: AuthenticatedRequest, re
       createdAt:   row.created_at as string,
     };
 
-    // Latest actuals row
-    const latestRes = await query(
-      `SELECT *
-       FROM deal_monthly_actuals
-       WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
-       ORDER BY report_month DESC LIMIT 1`,
-      [dealId]
+    // Latest actuals row — query by property_id (covers rows with null deal_id from legacy import)
+    const latestRes = await (propertyId
+      ? query(
+          `SELECT *
+           FROM deal_monthly_actuals
+           WHERE property_id = $1 AND is_portfolio_asset = TRUE
+             AND is_budget = false AND is_proforma = false
+           ORDER BY report_month DESC LIMIT 1`,
+          [propertyId]
+        )
+      : query(
+          `SELECT *
+           FROM deal_monthly_actuals
+           WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
+           ORDER BY report_month DESC LIMIT 1`,
+          [dealId]
+        )
     ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
 
     const latestFinancials = latestRes.rows[0] || null;
 
-    // Lease stats (avg loss-to-lease, avg rent)
-    const leaseRes = await query(
-      `SELECT
-         AVG(CASE WHEN avg_market_rent > 0
-           THEN (avg_market_rent - avg_effective_rent) / avg_market_rent * 100
-           ELSE NULL END) AS avg_loss_to_lease_pct,
-         AVG(avg_effective_rent) AS avg_rent
-       FROM deal_monthly_actuals
-       WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
-         AND avg_effective_rent IS NOT NULL`,
-      [dealId]
+    // Lease stats (avg loss-to-lease, avg rent) — query by property_id
+    const leaseRes = await (propertyId
+      ? query(
+          `SELECT
+             AVG(CASE WHEN avg_market_rent > 0
+               THEN (avg_market_rent - avg_effective_rent) / avg_market_rent * 100
+               ELSE NULL END) AS avg_loss_to_lease_pct,
+             AVG(avg_effective_rent) AS avg_rent
+           FROM deal_monthly_actuals
+           WHERE property_id = $1 AND is_portfolio_asset = TRUE
+             AND is_budget = false AND is_proforma = false
+             AND avg_effective_rent IS NOT NULL`,
+          [propertyId]
+        )
+      : query(
+          `SELECT
+             AVG(CASE WHEN avg_market_rent > 0
+               THEN (avg_market_rent - avg_effective_rent) / avg_market_rent * 100
+               ELSE NULL END) AS avg_loss_to_lease_pct,
+             AVG(avg_effective_rent) AS avg_rent
+           FROM deal_monthly_actuals
+           WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
+             AND avg_effective_rent IS NOT NULL`,
+          [dealId]
+        )
     ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
 
     const leaseStats = leaseRes.rows[0]?.avg_rent != null ? leaseRes.rows[0] : null;
@@ -620,37 +645,79 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
       return res.status(404).json({ error: 'Deal not found' });
     }
 
-    const result = await query(
-      `SELECT
-         report_month,
-         to_char(report_month, 'Mon YYYY') AS period_label,
-         occupancy_rate,
-         avg_effective_rent,
-         avg_market_rent,
-         gross_potential_rent,
-         net_rental_income,
-         effective_gross_income,
-         total_opex,
-         noi,
-         noi_per_unit,
-         capex,
-         cash_flow_before_tax,
-         debt_service,
-         new_leases,
-         renewals,
-         payroll,
-         repairs_maintenance,
-         turnover_costs,
-         marketing,
-         admin_general,
-         management_fee,
-         utilities,
-         property_tax,
-         insurance
-       FROM deal_monthly_actuals
-       WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
-       ORDER BY report_month ASC`,
-      [dealId]
+    // Resolve property_id to include legacy rows with null deal_id
+    const propLookup = await query(
+      `SELECT property_id FROM deals WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [dealId, userId]
+    );
+    const propId = propLookup.rows[0]?.property_id as string | null;
+
+    const result = await (propId
+      ? query(
+          `SELECT
+             report_month,
+             to_char(report_month, 'Mon YYYY') AS period_label,
+             occupancy_rate,
+             avg_effective_rent,
+             avg_market_rent,
+             gross_potential_rent,
+             net_rental_income,
+             effective_gross_income,
+             total_opex,
+             noi,
+             noi_per_unit,
+             capex,
+             cash_flow_before_tax,
+             debt_service,
+             new_leases,
+             renewals,
+             payroll,
+             repairs_maintenance,
+             turnover_costs,
+             marketing,
+             admin_general,
+             management_fee,
+             utilities,
+             property_tax,
+             insurance
+           FROM deal_monthly_actuals
+           WHERE property_id = $1 AND is_portfolio_asset = TRUE
+             AND is_budget = false AND is_proforma = false
+           ORDER BY report_month ASC`,
+          [propId]
+        )
+      : query(
+          `SELECT
+             report_month,
+             to_char(report_month, 'Mon YYYY') AS period_label,
+             occupancy_rate,
+             avg_effective_rent,
+             avg_market_rent,
+             gross_potential_rent,
+             net_rental_income,
+             effective_gross_income,
+             total_opex,
+             noi,
+             noi_per_unit,
+             capex,
+             cash_flow_before_tax,
+             debt_service,
+             new_leases,
+             renewals,
+             payroll,
+             repairs_maintenance,
+             turnover_costs,
+             marketing,
+             admin_general,
+             management_fee,
+             utilities,
+             property_tax,
+             insurance
+           FROM deal_monthly_actuals
+           WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
+           ORDER BY report_month ASC`,
+          [dealId]
+        )
     );
 
     res.json({ data: result.rows });

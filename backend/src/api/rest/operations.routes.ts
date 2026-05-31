@@ -40,21 +40,42 @@ router.get('/:dealId/summary', requireAuth, async (req: AuthenticatedRequest, re
 
     const summary = await getOperationsSummary(dealId);
 
-    // Augment with latest occupancy, rent, and collections from deal_monthly_actuals
-    const latestActualsRes = await query(
-      `SELECT
-         occupancy_rate,
-         avg_effective_rent,
-         noi,
-         effective_gross_income,
-         management_fee_pct
-       FROM deal_monthly_actuals
-       WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
-         AND occupancy_rate IS NOT NULL
-       ORDER BY report_month DESC
-       LIMIT 1`,
-      [dealId]
-    );
+    // Augment with latest occupancy, rent, and collections — include legacy null-deal_id rows
+    const summPropRes = await query(
+      `SELECT property_id FROM deals WHERE id = $1 LIMIT 1`, [dealId]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+    const summPropertyId = summPropRes.rows[0]?.property_id as string | null;
+
+    const latestActualsRes = summPropertyId
+      ? await query(
+          `SELECT
+             occupancy_rate,
+             avg_effective_rent,
+             noi,
+             effective_gross_income,
+             management_fee_pct
+           FROM deal_monthly_actuals
+           WHERE property_id = $1 AND is_portfolio_asset = TRUE
+             AND is_budget = false AND is_proforma = false
+             AND occupancy_rate IS NOT NULL
+           ORDER BY report_month DESC
+           LIMIT 1`,
+          [summPropertyId]
+        )
+      : await query(
+          `SELECT
+             occupancy_rate,
+             avg_effective_rent,
+             noi,
+             effective_gross_income,
+             management_fee_pct
+           FROM deal_monthly_actuals
+           WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
+             AND occupancy_rate IS NOT NULL
+           ORDER BY report_month DESC
+           LIMIT 1`,
+          [dealId]
+        );
     const latest = latestActualsRes.rows[0] as Record<string, unknown> | undefined;
     const latestOccupancy: number | null = latest?.occupancy_rate != null ? Number(latest.occupancy_rate) * 100 : null;
     const latestNOI: number | null = latest?.noi != null ? Number(latest.noi) : null;
@@ -635,18 +656,36 @@ router.get('/:dealId/projected-vs-actual', requireAuth, async (req: Authenticate
       [dealId]
     );
 
-    // Fetch actual rows
-    const actualRes = await query(
-      `SELECT
-         TO_CHAR(report_month, 'YYYY-MM') AS period,
-         noi              AS act_noi,
-         occupancy_rate   AS act_occ,
-         avg_effective_rent AS act_rent
-       FROM deal_monthly_actuals
-       WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
-       ORDER BY report_month ASC`,
-      [dealId]
-    );
+    // Fetch actual rows — resolve property_id to include legacy null-deal_id rows
+    const pvaPropRes = await query(
+      `SELECT property_id FROM deals WHERE id = $1 LIMIT 1`, [dealId]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+    const pvaPropertyId = pvaPropRes.rows[0]?.property_id as string | null;
+
+    const actualRes = pvaPropertyId
+      ? await query(
+          `SELECT
+             TO_CHAR(report_month, 'YYYY-MM') AS period,
+             noi              AS act_noi,
+             occupancy_rate   AS act_occ,
+             avg_effective_rent AS act_rent
+           FROM deal_monthly_actuals
+           WHERE property_id = $1 AND is_portfolio_asset = TRUE
+             AND is_budget = false AND is_proforma = false
+           ORDER BY report_month ASC`,
+          [pvaPropertyId]
+        )
+      : await query(
+          `SELECT
+             TO_CHAR(report_month, 'YYYY-MM') AS period,
+             noi              AS act_noi,
+             occupancy_rate   AS act_occ,
+             avg_effective_rent AS act_rent
+           FROM deal_monthly_actuals
+           WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
+           ORDER BY report_month ASC`,
+          [dealId]
+        );
 
     // Index actuals by period for fast lookup
     const actualsMap: Record<string, typeof actualRes.rows[0]> = {};
@@ -717,22 +756,46 @@ router.get('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedReq
 
     const limitNum = Math.min(Math.max(parseInt(limitRaw, 10) || 36, 1), 120);
 
-    const result = await query(
-      `SELECT
-         id, deal_id, property_id, report_month, is_budget,
-         occupied_units, total_units, occupancy_rate,
-         gross_potential_rent, avg_effective_rent, effective_gross_income,
-         noi, expenses,
-         payroll, repairs_maintenance, utilities, marketing,
-         admin_general, management_fee, management_fee_pct, turnover_costs,
-         real_estate_taxes, insurance, capex,
-         data_source AS source, notes, created_at, updated_at
-       FROM deal_monthly_actuals
-       WHERE deal_id = $1 AND is_budget = $2
-       ORDER BY report_month DESC
-       LIMIT $3`,
-      [dealId, is_budget === 'true', limitNum]
-    );
+    // Resolve property_id so we include legacy rows with null deal_id
+    const propRes = await query(
+      `SELECT property_id FROM deals WHERE id = $1 LIMIT 1`,
+      [dealId]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+    const propId = propRes.rows[0]?.property_id as string | null;
+
+    const result = propId
+      ? await query(
+          `SELECT
+             id, deal_id, property_id, report_month, is_budget,
+             occupied_units, total_units, occupancy_rate,
+             gross_potential_rent, avg_effective_rent, effective_gross_income,
+             noi, expenses,
+             payroll, repairs_maintenance, utilities, marketing,
+             admin_general, management_fee, management_fee_pct, turnover_costs,
+             real_estate_taxes, insurance, capex,
+             data_source AS source, notes, created_at, updated_at
+           FROM deal_monthly_actuals
+           WHERE property_id = $1 AND is_portfolio_asset = TRUE AND is_budget = $2
+           ORDER BY report_month DESC
+           LIMIT $3`,
+          [propId, is_budget === 'true', limitNum]
+        )
+      : await query(
+          `SELECT
+             id, deal_id, property_id, report_month, is_budget,
+             occupied_units, total_units, occupancy_rate,
+             gross_potential_rent, avg_effective_rent, effective_gross_income,
+             noi, expenses,
+             payroll, repairs_maintenance, utilities, marketing,
+             admin_general, management_fee, management_fee_pct, turnover_costs,
+             real_estate_taxes, insurance, capex,
+             data_source AS source, notes, created_at, updated_at
+           FROM deal_monthly_actuals
+           WHERE deal_id = $1 AND is_budget = $2
+           ORDER BY report_month DESC
+           LIMIT $3`,
+          [dealId, is_budget === 'true', limitNum]
+        );
 
     res.json({ data: result.rows, total: result.rows.length });
   } catch (err) {
@@ -1027,15 +1090,30 @@ router.get('/:dealId/balance-sheet', requireAuth, async (req: AuthenticatedReque
       return res.json({ success: true, balanceSheet: result.rows[0] });
     }
 
-    // Build approximation from deal_monthly_actuals if no dedicated balance sheet
-    const actualsRes = await query(
-      `SELECT report_month, noi, debt_service, capex, cash_flow_before_tax
-       FROM deal_monthly_actuals
-       WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
-       ORDER BY report_month DESC
-       LIMIT 12`,
-      [dealId]
-    );
+    // Build approximation from deal_monthly_actuals — include legacy null-deal_id rows via property_id
+    const bsPropRes = await query(
+      `SELECT property_id FROM deals WHERE id = $1 LIMIT 1`, [dealId]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+    const bsPropertyId = bsPropRes.rows[0]?.property_id as string | null;
+
+    const actualsRes = bsPropertyId
+      ? await query(
+          `SELECT report_month, noi, debt_service, capex, cash_flow_before_tax
+           FROM deal_monthly_actuals
+           WHERE property_id = $1 AND is_portfolio_asset = TRUE
+             AND is_budget = false AND is_proforma = false
+           ORDER BY report_month DESC
+           LIMIT 12`,
+          [bsPropertyId]
+        )
+      : await query(
+          `SELECT report_month, noi, debt_service, capex, cash_flow_before_tax
+           FROM deal_monthly_actuals
+           WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
+           ORDER BY report_month DESC
+           LIMIT 12`,
+          [dealId]
+        );
 
     if (actualsRes.rows.length === 0) {
       return res.json({ success: true, balanceSheet: null });
