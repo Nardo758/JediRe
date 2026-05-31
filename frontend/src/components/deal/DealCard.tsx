@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BT } from '@/components/deal/bloomberg-ui';
 import type { Deal, DealState, TriageStatus } from '../../types/deal';
+import { CompletenesBadge } from './CompletenesBadge';
 
 interface DealCardProps {
   deal: Deal;
@@ -72,10 +73,16 @@ export const DealCard: React.FC<DealCardProps> = ({ deal }) => {
           )}
         </div>
 
-        {/* State Badge */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1" style={{ background: `${stateInfo.color}22`, color: stateInfo.color, fontSize: 9, fontWeight: 500, borderRadius: 2 }}>
-          <span>{stateInfo.icon}</span>
-          <span>{stateInfo.label}</span>
+        {/* State Badge + Completeness Badge */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-2.5 py-1" style={{ background: `${stateInfo.color}22`, color: stateInfo.color, fontSize: 9, fontWeight: 500, borderRadius: 2 }}>
+            <span>{stateInfo.icon}</span>
+            <span>{stateInfo.label}</span>
+          </div>
+          {/* Stop propagation so clicking the badge panel doesn't navigate to the deal */}
+          <div onClick={e => e.stopPropagation()}>
+            <CompletenesBadge dealId={deal.id} />
+          </div>
         </div>
       </div>
 

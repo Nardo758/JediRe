@@ -1168,6 +1168,81 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
           <div style={{ width: 28, height: 28, border: `2px solid ${BT2.text.amber}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
           <p style={{ fontSize: 12, color: BT2.text.muted, fontFamily: bSans }}>Loading traffic predictions...</p>
         </div>
+      ) : !projection ? (
+        /* ── M07-missing gate — no traffic_projections row for this property ── */
+        <div style={{
+          background: BT2.bg.panel,
+          border: `1px solid ${BT2.border.subtle}`,
+          borderTop: `2px solid ${BT2.text.amber}`,
+          padding: '32px 24px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 16,
+          textAlign: 'center',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <AlertCircle size={16} color={BT2.text.amber} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: BT2.text.amber, fontFamily: 'var(--bt-mono)', letterSpacing: 1 }}>
+              M07 TRAFFIC ENGINE — NOT RUN
+            </span>
+          </div>
+          <p style={{ fontSize: 11, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', lineHeight: 1.6, maxWidth: 480, margin: 0 }}>
+            The M07 Traffic Engine hasn't generated a projection for this property.
+            Vacancy trajectory in the Financial Engine is currently flat-constant — which
+            silently degrades accuracy for vacancy-sensitive underwriting.
+          </p>
+          <div style={{
+            padding: '10px 16px',
+            background: `${BT2.text.amber}08`,
+            border: `1px solid ${BT2.text.amber}33`,
+            fontSize: 10,
+            color: BT2.text.primary,
+            fontFamily: 'var(--bt-mono)',
+            lineHeight: 1.6,
+            maxWidth: 480,
+            textAlign: 'left',
+          }}>
+            <span style={{ color: BT2.text.amber, fontWeight: 700 }}>→ </span>
+            Run the prediction engine: click{' '}
+            <strong style={{ color: BT2.text.amber }}>RUN PREDICTION ENGINE</strong>{' '}
+            below, or upload a weekly traffic report to generate a property-calibrated vacancy trajectory.
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <button
+              onClick={loadData}
+              style={{
+                background: `${BT2.text.amber}15`,
+                border: `1px solid ${BT2.text.amber}55`,
+                color: BT2.text.amber,
+                padding: '6px 16px',
+                fontFamily: 'var(--bt-mono)',
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: 0.8,
+                cursor: 'pointer',
+              }}
+            >
+              RUN PREDICTION ENGINE
+            </button>
+            <label style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              background: 'transparent',
+              border: `1px solid ${BT2.border.subtle}`,
+              color: BT2.text.secondary,
+              padding: '6px 16px',
+              fontFamily: 'var(--bt-mono)',
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: 0.8,
+              cursor: 'pointer',
+            }}>
+              <Upload size={10} />
+              UPLOAD TRAFFIC DATA
+              <input type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} style={{ display: 'none' }} />
+            </label>
+          </div>
+        </div>
       ) : (
         <>
           {/* KpiTile strip — Physical / Digital / Quadrant / Trajectory */}
