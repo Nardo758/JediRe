@@ -1100,7 +1100,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               LAND HOLD
             </span>
           )}
-          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, color: '#f8fafc' }}>{data.dealName}</span>
           {/* DQA aggregate badge — shows when agent has found issues */}
           {(dqaCriticalCount > 0 || dqaWarningCount > 0) && (
             <button
