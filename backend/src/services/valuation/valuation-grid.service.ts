@@ -103,6 +103,12 @@ export interface SubjectProperty {
   /** CF-09: Total OpEx Year-1 resolved via canonical getFieldValue chain. */
   totalOpex: number | null;
   totalOpexSource: string;
+  /** CF-10: Exit cap rate resolved via canonical getFieldValue chain (B3 migration). */
+  exitCap: number | null;
+  exitCapSource: string;
+  /** CF-11: Hold period years resolved via canonical getFieldValue chain (B3 migration). */
+  holdPeriodYears: number | null;
+  holdPeriodYearsSource: string;
   assetClass: string | null;
   city: string;
   state: string;
@@ -433,15 +439,18 @@ export class ValuationGridService {
 
   private async getSubjectProperty(dealId: string): Promise<SubjectProperty> {
     // Fetch property + deal fields.
-    // NOI, EGI, GPR, total_opex are resolved via getFieldValues (canonical path).
-    // CF-01: NOI  — override > Engine A formula (EGI − total_opex) > agent > seeder resolved
-    // CF-07: EGI  — override > Engine A formula (NRI + other_income) > agent > seeder resolved
-    // CF-08: GPR  — override > agent > seeder resolved (leaf field, no Engine A formula)
-    // CF-09: totalOpex — override > agent > seeder resolved (leaf field)
+    // NOI, EGI, GPR, total_opex, exit_cap, hold_period_years are resolved via
+    // getFieldValues (canonical path).
+    // CF-01: NOI              — override > Engine A formula (EGI − total_opex) > agent > seeder resolved
+    // CF-07: EGI              — override > Engine A formula (NRI + other_income) > agent > seeder resolved
+    // CF-08: GPR              — override > agent > seeder resolved (leaf field, no Engine A formula)
+    // CF-09: totalOpex        — override > agent > seeder resolved (leaf field)
+    // CF-10: exitCap          — override > agent > seeder resolved (leaf field, B3 migration)
+    // CF-11: holdPeriodYears  — override > agent > seeder resolved (leaf field, B3 migration)
     //
     // Shadow comparison (canary pattern): the SQL query also fetches raw
-    // da.year1->'egi'->>'resolved' and da.year1->'gpr'->>'resolved' so we can
-    // log when the canonical getFieldValue path disagrees with the stored value.
+    // da.year1->'<field>'->>'resolved' so we can log when the canonical
+    // getFieldValue path disagrees with the stored value.
     // This validates the migration before any old-read code is cut over.
     const [result, fvs] = await Promise.all([
       this.pool.query(
@@ -457,12 +466,14 @@ export class ValuationGridService {
            p.submarket_id                            AS submarket,
            p.acquisition_price                      AS purchase_price,
            da.valuation_override_lv                 AS valuation_override_lv,
-           -- Shadow-comparison: stored seeder-resolved values for EGI, GPR, total_opex.
+           -- Shadow-comparison: stored seeder-resolved values for all migrated fields.
            -- Used to detect divergence between the canonical getFieldValue chain and
            -- the stale seed. Logged but not used as the canonical source.
-           (da.year1->'egi'->>'resolved')::numeric  AS shadow_egi_stored,
-           (da.year1->'gpr'->>'resolved')::numeric  AS shadow_gpr_stored,
-           (da.year1->'total_opex'->>'resolved')::numeric AS shadow_topex_stored
+           (da.year1->'egi'->>'resolved')::numeric           AS shadow_egi_stored,
+           (da.year1->'gpr'->>'resolved')::numeric           AS shadow_gpr_stored,
+           (da.year1->'total_opex'->>'resolved')::numeric    AS shadow_topex_stored,
+           (da.year1->'exit_cap'->>'resolved')::numeric      AS shadow_exit_cap_stored,
+           (da.year1->'hold_period_years'->>'resolved')::numeric AS shadow_hold_period_stored
          FROM deals d
          LEFT JOIN properties p ON p.deal_id = d.id
          LEFT JOIN deal_assumptions da ON da.deal_id = d.id
@@ -470,8 +481,8 @@ export class ValuationGridService {
          LIMIT 1`,
         [dealId]
       ),
-      // Batch-resolve all four income/opex fields in one SQL round-trip.
-      getFieldValues(this.pool, dealId, ['noi', 'egi', 'gpr', 'total_opex'], 1),
+      // Batch-resolve all six fields in one SQL round-trip.
+      getFieldValues(this.pool, dealId, ['noi', 'egi', 'gpr', 'total_opex', 'exit_cap', 'hold_period_years'], 1),
     ]);
 
     const row = result.rows[0];
@@ -513,12 +524,36 @@ export class ValuationGridService {
       totalOpexSource = topexFv.source ?? 'proforma_year1';
     }
 
+    // ── Exit Cap Rate (CF-10) ────────────────────────────────────────────────
+    // B3 migration: was ⚠️ Deferred (da.year1->'exit_cap'->>'resolved' raw SQL).
+    // Now resolved via canonical getFieldValue chain (override > agent > seeder stored).
+    const exitCapFv = fvs['exit_cap'];
+    let exitCap: number | null = null;
+    let exitCapSource = 'none';
+    if (exitCapFv?.resolved != null && exitCapFv.resolved > 0) {
+      exitCap       = exitCapFv.resolved;
+      exitCapSource = exitCapFv.source ?? 'proforma_year1';
+    }
+
+    // ── Hold Period Years (CF-11) ────────────────────────────────────────────
+    // B3 migration: was ⚠️ Deferred (da.year1->'hold_period_years'->>'resolved' raw SQL).
+    // Now resolved via canonical getFieldValue chain (override > agent > seeder stored).
+    const holdFv = fvs['hold_period_years'];
+    let holdPeriodYears: number | null = null;
+    let holdPeriodYearsSource = 'none';
+    if (holdFv?.resolved != null && holdFv.resolved > 0) {
+      holdPeriodYears       = holdFv.resolved;
+      holdPeriodYearsSource = holdFv.source ?? 'proforma_year1';
+    }
+
     // ── Shadow comparison: log when canonical diverges from stored seed ──────
     // This runs during the canary period so we can confirm getFieldValue
     // agrees with stored values before fully cutting over.
     this._logShadowDivergence(dealId, 'egi', egi, safeFloat(row.shadow_egi_stored, 0) || null);
     this._logShadowDivergence(dealId, 'gpr', gpr, safeFloat(row.shadow_gpr_stored, 0) || null);
     this._logShadowDivergence(dealId, 'total_opex', totalOpex, safeFloat(row.shadow_topex_stored, 0) || null);
+    this._logShadowDivergence(dealId, 'exit_cap', exitCap, safeFloat(row.shadow_exit_cap_stored, 0) || null);
+    this._logShadowDivergence(dealId, 'hold_period_years', holdPeriodYears, safeFloat(row.shadow_hold_period_stored, 0) || null);
 
     return {
       units: row.units ? safeFloat(row.units) : null,
@@ -532,6 +567,10 @@ export class ValuationGridService {
       gprSource,
       totalOpex,
       totalOpexSource,
+      exitCap,
+      exitCapSource,
+      holdPeriodYears,
+      holdPeriodYearsSource,
       assetClass: row.asset_class || null,
       city: row.city || '',
       state: row.state || '',
