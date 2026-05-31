@@ -47,8 +47,12 @@ interface FieldDivergence {
 /**
  * Fields that drive each income-multiple method.
  * When any mapped field has exceeds=true, the method is CONTESTED.
+ *
+ * Active methods included here so operators see warnings on the methods they
+ * actually use, not just the placeholder GRM/GIM methods.
  */
 const CONTESTED_FIELD_MAP: Partial<Record<MethodId, string[]>> = {
+  cap_rate_noi: ['noi', 'total_opex'],
   grm: ['gpr'],
   gim: ['egi'],
 };
