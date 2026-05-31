@@ -3,8 +3,9 @@
  *
  * PURPOSE: Risk verdict and recommended actions derived from underwriting
  * assumptions vs M07 platform calibration. Surfaces integrity-check failures,
- * benchmark divergences (rent growth, exit cap, vacancy, LTV), and an
- * AI-generated deal verdict based on IRR / DSCR / equity multiple.
+ * benchmark divergences (rent growth, exit cap, vacancy, LTV), and a
+ * financial risk signal (DEAL SIGNAL) based on JEDI Score (primary) or
+ * IRR / DSCR / equity multiple integrity checks (fallback). See ADR-004.
  *
  * MARKET CONTEXT ARCHITECTURE NOTE (T-CONF-2 investigation):
  * This tab intentionally does NOT render a market context or market signal
@@ -19,15 +20,22 @@
  * here, they should be pre-composed into f9Financials by the backend engine
  * rather than fetched separately, avoiding duplicate API calls and parse logic.
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { SectionPanel, DataRow, Bd } from '../../../components/deal/bloomberg-ui';
 import type { FinancialEngineTabProps } from './types';
 import { fmt$, fmtPct, fmtX } from './types';
 import { ConcessionDrilldownModal, aggregateConcessionDetail } from './ConcessionDrilldownModal';
 import type { AggregatedConcessionDetail } from './ConcessionDrilldownModal';
+import { apiClient } from '../../../services/api.client';
 
 const MONO = BT.font.mono;
+
+// ─── ADR-004: Authoritative-Signal Fallback constants ────────────────────────
+// Score band thresholds — adjust here only; do not hardcode values in logic.
+const JEDI_SCORE_FAVORABLE_THRESHOLD = 80;
+const JEDI_SCORE_NEUTRAL_THRESHOLD = 60;
+const JEDI_SCORE_STALE_DAYS = 30;
 
 interface RiskFlag {
   severity: 'high' | 'medium' | 'low';
@@ -58,8 +66,47 @@ const SEVERITY_COLORS = {
   low: BT.met.financial,
 };
 
+// ─── Verdict derivation from JEDI score band ─────────────────────────────────
+function scoreToVerdict(score: number): 'FAVORABLE' | 'PROCEED WITH REVIEW' | 'CAUTION' {
+  if (score > JEDI_SCORE_FAVORABLE_THRESHOLD) return 'FAVORABLE';
+  if (score >= JEDI_SCORE_NEUTRAL_THRESHOLD) return 'PROCEED WITH REVIEW';
+  return 'CAUTION';
+}
+
+// ─── Provenance path types ────────────────────────────────────────────────────
+type VerdictPath =
+  | { type: 'jedi'; scoreDate: string }
+  | { type: 'integrity' }
+  | { type: 'conflict'; scoreDate: string };
+
+function provenanceLabel(path: VerdictPath): string {
+  if (path.type === 'jedi') return `DERIVED FROM JEDI SCORE · ${path.scoreDate}`;
+  if (path.type === 'conflict') return `JEDI SCORE + INTEGRITY FLAGS · CONFLICT · ${path.scoreDate}`;
+  return 'DERIVED FROM INTEGRITY CHECKS · LIVE';
+}
+
 export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }: FinancialEngineTabProps) {
   const summary = modelResults?.summary;
+
+  // ─── JEDI Score fetch (ADR-004 primary path) ─────────────────────────────
+  const [jediScore, setJediScore] = useState<{ totalScore: number; createdAt: string } | null>(null);
+  const [jediLoading, setJediLoading] = useState(true);
+
+  useEffect(() => {
+    if (!dealId) { setJediLoading(false); return; }
+    setJediLoading(true);
+    apiClient.get(`/api/v1/jedi/score/${dealId}`)
+      .then((res: any) => {
+        const score = res?.data?.score ?? res?.score ?? null;
+        if (score?.totalScore != null) {
+          setJediScore({ totalScore: score.totalScore, createdAt: score.createdAt ?? score.created_at ?? '' });
+        } else {
+          setJediScore(null);
+        }
+      })
+      .catch(() => setJediScore(null))
+      .finally(() => setJediLoading(false));
+  }, [dealId]);
 
   const [conDrill, setConDrill] = useState<{
     open: boolean;
@@ -157,8 +204,6 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
     }
 
     // Benchmark position flags: scan proforma.year1 rows for above/below submarket benchmarks.
-    // Key rows (GPR, NOI, vacancy, EGI) with 'above' or 'below' benchmarkPosition indicate
-    // assumptions diverge from the platform submarket model.
     const BENCH_KEY_ROWS: Record<string, string> = {
       gpr: 'GROSS POTENTIAL RENT',
       noi: 'NET OPERATING INCOME',
@@ -192,24 +237,75 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
   const highFlags = flags.filter(f => f.severity === 'high');
   const medFlags = flags.filter(f => f.severity === 'medium');
 
-  const verdict = highFlags.length > 0 ? 'CAUTION' : medFlags.length > 0 ? 'PROCEED WITH REVIEW' : 'FAVORABLE';
-  const verdictColor = highFlags.length > 0 ? BT.text.red : medFlags.length > 0 ? BT.text.amber : BT.met.financial;
+  // ─── ADR-004: Authoritative-Signal Fallback verdict computation ───────────
+  // Primary path: JEDI Score when present and ≤ JEDI_SCORE_STALE_DAYS old.
+  // Fallback path: integrity flag derivation (existing deriveRiskFlags + f9Flags).
+  // Conflict path: score says FAVORABLE but high-severity integrity flags present.
+  let verdict: string;
+  let verdictColor: string;
+  let verdictPath: VerdictPath;
+
+  const isJediPresent = !jediLoading && jediScore != null;
+  const isJediFresh = isJediPresent && (() => {
+    if (!jediScore!.createdAt) return false;
+    const scoreAge = (Date.now() - new Date(jediScore!.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+    return scoreAge <= JEDI_SCORE_STALE_DAYS;
+  })();
+
+  if (isJediFresh) {
+    const scoreVerdict = scoreToVerdict(jediScore!.totalScore);
+    const scoreDate = new Date(jediScore!.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
+
+    const hasConflict = scoreVerdict === 'FAVORABLE' && highFlags.length > 0;
+
+    if (hasConflict) {
+      verdict = 'CONFLICT';
+      verdictColor = BT.text.amber;
+      verdictPath = { type: 'conflict', scoreDate };
+    } else {
+      verdict = scoreVerdict;
+      verdictColor = scoreVerdict === 'FAVORABLE' ? BT.met.financial
+        : scoreVerdict === 'PROCEED WITH REVIEW' ? BT.text.amber
+        : BT.text.red;
+      verdictPath = { type: 'jedi', scoreDate };
+    }
+  } else {
+    verdict = highFlags.length > 0 ? 'CAUTION' : medFlags.length > 0 ? 'PROCEED WITH REVIEW' : 'FAVORABLE';
+    verdictColor = highFlags.length > 0 ? BT.text.red : medFlags.length > 0 ? BT.text.amber : BT.met.financial;
+    verdictPath = { type: 'integrity' };
+  }
+
+  const provenance = provenanceLabel(verdictPath);
 
   return (
     <>
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
       <div style={{ padding: '4px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>AI RATIONALE · RISK FLAGS · RECOMMENDED ACTIONS</span>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>RISK FLAGS · INTEGRITY CHECKS · RECOMMENDED ACTIONS</span>
         <Bd c={verdictColor}>{verdict}</Bd>
-        <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>SOURCE: AI</span>
+        <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.3 }}>{provenance}</span>
       </div>
 
-      <SectionPanel title="DEAL VERDICT" subtitle="AI-generated recommendation" borderColor={verdictColor}>
+      <SectionPanel title="DEAL SIGNAL" subtitle="Financial risk and operational feasibility signal" borderColor={verdictColor}>
         <div style={{ padding: '8px 10px', fontFamily: MONO, fontSize: 10, color: BT.text.primary, lineHeight: 1.6 }}>
+          {verdictPath.type === 'conflict' && (
+            <div style={{ marginBottom: 8, padding: '6px 8px', borderLeft: `3px solid ${BT.text.amber}`, background: `${BT.text.amber}11` }}>
+              <span style={{ color: BT.text.amber, fontWeight: 700 }}>SIGNAL CONFLICT:</span>
+              {' '}JEDI Score ({jediScore!.totalScore.toFixed(0)}/100) indicates favorable conditions, but high-severity integrity flags are present. Both inputs shown below — review flags before proceeding.
+            </div>
+          )}
+          {verdictPath.type === 'jedi' && jediScore && (
+            <div style={{ marginBottom: 8 }}>
+              JEDI Score of{' '}
+              <span style={{ color: verdictColor, fontWeight: 700 }}>{jediScore.totalScore.toFixed(0)}/100</span>
+              {' '}places this deal in the{' '}
+              <span style={{ color: verdictColor, fontWeight: 700 }}>{verdict}</span>{' '}band.
+            </div>
+          )}
           {summary ? (
             <>
               <div style={{ marginBottom: 8 }}>
-                Based on the current model assumptions, this deal shows a{' '}
+                Financial model shows a{' '}
                 <span style={{ color: BT.met.financial, fontWeight: 700 }}>{summary.irr != null ? fmtPct(summary.irr) : '—'} IRR</span>{' '}
                 with a{' '}
                 <span style={{ color: BT.text.amber, fontWeight: 700 }}>{summary.equityMultiple != null ? fmtX(summary.equityMultiple) : '—'} equity multiple</span>{' '}
@@ -224,7 +320,7 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
               </div>
             </>
           ) : (
-            <span style={{ color: BT.text.muted }}>Build the financial model to generate AI-powered deal analysis and recommendations.</span>
+            <span style={{ color: BT.text.muted }}>Build the financial model to generate deal analysis. JEDI Score provides market-level signal; integrity checks require a built model.</span>
           )}
         </div>
       </SectionPanel>
@@ -245,7 +341,7 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
         ))}
       </SectionPanel>
 
-      <SectionPanel title="RECOMMENDED ACTIONS" subtitle="AI-suggested next steps" borderColor={BT.met.financial}>
+      <SectionPanel title="RECOMMENDED ACTIONS" subtitle="Suggested next steps" borderColor={BT.met.financial}>
         {[
           { action: 'Run sensitivity analysis on exit cap rate', priority: 'HIGH', color: BT.text.red },
           { action: 'Validate rent growth assumptions against market comps', priority: 'HIGH', color: BT.text.red },
