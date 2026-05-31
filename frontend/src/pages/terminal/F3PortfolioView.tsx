@@ -58,6 +58,7 @@ interface PortfolioAsset {
   avgRent?: number;
   latestPeriod?: string;
   earliestPeriod?: string;
+  dealId?: string | null;
 }
 
 interface PropertyActualRow {
@@ -747,12 +748,22 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
                   <td style={{ textAlign: 'right', padding: '12px 8px', color: T.text.primary }}>{asset.avgRent ? `$${asset.avgRent.toFixed(0)}/unit` : '—'}</td>
                   <td style={{ textAlign: 'right', padding: '12px 8px', color: T.text.secondary }}>{asset.monthsOfData ?? '—'}</td>
                   <td style={{ textAlign: 'right', padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
-                    <button
-                      onClick={() => { setActualsAssetId(asset.id); setActualsSuccess(false); setActualsError(null); setShowActualsModal(true); }}
-                      style={{ fontFamily: MONO, fontSize: 9, color: T.text.cyan, background: 'transparent', border: `1px solid ${T.text.cyan}44`, padding: '3px 8px', cursor: 'pointer' }}
-                    >
-                      + ACTUALS
-                    </button>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      {asset.dealId && (
+                        <button
+                          onClick={() => navigate(`/assets-owned/${asset.dealId}/property`)}
+                          style={{ fontFamily: MONO, fontSize: 9, color: T.text.amber, background: 'transparent', border: `1px solid ${T.text.amber}44`, padding: '3px 8px', cursor: 'pointer' }}
+                        >
+                          OPEN →
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { setActualsAssetId(asset.id); setActualsSuccess(false); setActualsError(null); setShowActualsModal(true); }}
+                        style={{ fontFamily: MONO, fontSize: 9, color: T.text.cyan, background: 'transparent', border: `1px solid ${T.text.cyan}44`, padding: '3px 8px', cursor: 'pointer' }}
+                      >
+                        + ACTUALS
+                      </button>
+                    </div>
                   </td>
                 </tr>
 

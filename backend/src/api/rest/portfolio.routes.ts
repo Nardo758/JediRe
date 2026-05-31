@@ -116,7 +116,8 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
          COALESCE(AVG(dma.noi) * 12, 0)                   AS annualised_noi,
          COALESCE(AVG(dma.avg_effective_rent), 0)          AS avg_rent,
          MAX(dma.report_month)                             AS latest_period,
-         MIN(dma.report_month)                             AS earliest_period
+         MIN(dma.report_month)                             AS earliest_period,
+         MAX(dma.deal_id::text)                            AS deal_id
        FROM properties p
        LEFT JOIN deal_monthly_actuals dma ON dma.property_id = p.id AND dma.is_portfolio_asset = TRUE
        LEFT JOIN submarkets s ON s.id::text = p.submarket_id
@@ -165,6 +166,7 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
         submarket: (row.submarket_name ?? row.raw_submarket_id ?? null) as string | null,
         submarketId: row.submarket_id ?? null,
         msaName: (row.msa_name_override ?? null) as string | null,
+        dealId: (row.deal_id ?? null) as string | null,
         status: occ < 88 ? 'watch' : 'performing',
       };
     });
