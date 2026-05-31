@@ -59,18 +59,18 @@ This document addresses all three. It's the answer to "where are we on the plan?
 | `AI Compute Derivation Audit` | Framing partially superseded | Re-evaluate "smoking gun" claims against revised calc-vs-assumption framing |
 | Various F-Key triage waves | Implementation state shifts as features ship | Reconcile periodically |
 
-### ⚠ Phantom documents — listed above but do not exist as repo files
+### ✅ Previously phantom — written to repo 2026-05-31
 
-Corpus-sweep audit (2026-05-31) confirmed these six documents exist only in conversation history. All current-state claims they contain are INFERRED, not file-verifiable. Action: write to repo at stated paths (separate task).
+Corpus-sweep audit (2026-05-31) confirmed these six documents existed only in conversation history. All six were written to the repo on 2026-05-31. Current-state claims they contain reflect the state at the time of writing; claims tagged **[inferred]** were not re-verified by the corpus-sweep audit.
 
-| Document | Actual status |
+| Document | Status |
 |---|---|
-| `docs/architecture/vendor-market-data/overview.md` | Directory does not exist |
-| `docs/architecture/vendor-market-data/piece-a-vendor-abstraction.md` | Directory does not exist |
-| `docs/architecture/vendor-market-data/piece-b-field-reconciliation.md` | Directory does not exist |
-| `docs/architecture/vendor-market-data/piece-c-agent-synthesis.md` | Directory does not exist |
-| `docs/architecture/vendor-market-data/piece-d-divergence-as-quality-signal.md` | Directory does not exist |
-| `docs/architecture/calculations-vs-assumptions.md` | File does not exist |
+| `docs/architecture/vendor-market-data/overview.md` | Written 2026-05-31 |
+| `docs/architecture/vendor-market-data/piece-a-vendor-abstraction.md` | Written 2026-05-31 |
+| `docs/architecture/vendor-market-data/piece-b-field-reconciliation.md` | Written 2026-05-31 (audit findings incorporated) |
+| `docs/architecture/vendor-market-data/piece-c-agent-synthesis.md` | Written 2026-05-31 |
+| `docs/architecture/vendor-market-data/piece-d-divergence-as-quality-signal.md` | Written 2026-05-31 |
+| `docs/architecture/calculations-vs-assumptions.md` | Written 2026-05-31 (NOI bug diagnosis corrected; agent layer framing updated) |
 
 Additionally, seven entries in "Active canonical documents" have "(verify path)" status. Corpus-sweep confirmed most do not exist at stated paths. Actual confirmed paths for surviving docs: `docs/architecture/deal-capsule-blueprint.md` (Deal Capsule), `docs/architecture/property-plumbing-*.md` (Property Plumbing, multiple files — not the single refactor.md/phases.md structure shown above).
 
@@ -104,31 +104,32 @@ Tracking each commitment's state: **Operational** (working in production), **In-
 
 | Commitment | Status | Evidence |
 |---|---|---|
-| Vendor registry generalizes CoStar pattern | In-flight | T-A active (Task #1560) |
+| Vendor registry generalizes CoStar pattern | Operational | T-A (task-1539) merged; Yardi Matrix abstraction proof (task-1544) merged; zero changes to classifier or CoStar route |
 | `historical_observations` as vendor-agnostic substrate | Operational | Confirmed via Replit's correction; no parallel `vendor_market_observations` table |
 | License posture enforced at display/export time | Aspirational | Phase 2C of Piece A; not yet implemented |
 | Freshness profiles drive UI behavior | Partially operational | Freshness indicators present on some surfaces; not registry-driven |
-| Yardi onboarding tests abstraction | Pending (Task #1561 queued) | Question: is Yardi data actually available for testing? |
+| Yardi onboarding tests abstraction | Operational | task-1544 merged; `yardi-matrix.vendor.ts` + `yardi-matrix-parser.ts` added; Item C (Yardi data availability) deferred as framing question |
 | Deal completeness signals from Piece A integrated | Aspirational | Not yet wired |
 
 ### Commitments from Piece B
 
 | Commitment | Status | Evidence |
 |---|---|---|
-| B.1 — One logical value, one canonical read path | In-flight | T-B1 in plan; NOI formula bypass identified as deeper bug than initially framed |
-| B.2 — Trajectory math for GPR, LTL, other income, vacancy, OpEx | Partially operational | GPR/vacancy/OpEx/Other Income per-year overrides (Task #1521); LTL trajectory pending |
-| B.3 — Cross-source divergence surfaces as alert | Partially operational | Validation Grid CONTESTED badge shipped (Task #1567); fuller divergence framework aspirational |
-| Material divergence thresholds per field | Aspirational | Framework described; defaults not yet configurable per field |
-| `getFieldValue()` canonical access point | Aspirational | T-B1 plan references; not yet implemented |
-| Formula-bypass cases identified beyond NOI | Pending audit | EGI likely; other computed fields uninventoried |
+| B.1 — One logical value, one canonical read path | In-flight | T-B1 queued; `getFieldValue` service operational (see below); override-check-first guard already implemented (Item B resolved 2026-05-31) |
+| B.2 — Trajectory math for GPR, LTL, other income, vacancy, OpEx | Partially operational | GPR/vacancy/OpEx/Other Income per-year overrides (Task #1521); LTL trajectory pending (#1536) |
+| B.3 — Cross-source divergence surfaces as alert | Partially operational | Validation Grid CONTESTED badge shipped (Task #1567); `DivergenceSignature` computed per field by `getFieldValue`; per-field threshold registry operational |
+| Material divergence thresholds per field | Partially operational | Per-field threshold defaults in `divergence-thresholds.ts`; operator-configurable thresholds aspirational |
+| `getFieldValue()` canonical access point | Operational | Service verified at `backend/src/services/field-access/get-field-value.service.ts`; `COMPUTED_AGGREGATES` (noi, egi, noi_after_reserves) implemented; divergence signature computed at resolution time |
+| Layer 1 override universally wired | In-flight | **[inferred from prior audit]** ~7 fields fully wired, ~3 partially wired, ~5 unwired; T-B1 quality gate will re-verify per-field |
 
 ### Commitments from Piece C
 
 | Commitment | Status | Evidence |
 |---|---|---|
 | Agents author findings with citations | Partially operational | Cashflow agent reasons; Opus authors F12 tabs; full FieldSubstrate interface aspirational |
-| Deal completeness framework operational | Partially operational | Framework + CompletenesBadge shipped (Task #1574); 10+ surfaces still silently degrade |
-| Operator overrides at all four granularities | Partially operational | Field-level wired for 7 fields; citation-level, finding-level, confidence aspirational |
+| Deal completeness framework operational | Partially operational | `signal-registry.ts` confirmed operational (2026-05-31 grep); frontend `CompletenesBadge` component exists (Task #1574); full backend→badge API path not directly re-verified in corpus-sweep — treat as **[inferred]**; **[inferred]** 10+ surfaces still silently degrade |
+| Operator overrides at all four granularities | Partially operational | Field-level wired for **[inferred]** ~7 fields; citation-level, finding-level, confidence granularities aspirational |
+| Module-apply pattern operationalizes field-level overrides | Queued | Tasks #1256–#1261 — pushing module outputs to F9 via `apply-from-module` endpoint writes to Layer 1 override slot; does not depend on T-B1 or vendor infrastructure; can proceed independently |
 | License posture flows through to exports | Aspirational | Tied to Piece A Phase 2C |
 | Completeness caveats appear in findings | Aspirational | Framework supports; agent authorship not yet using |
 
@@ -147,25 +148,31 @@ Tracking each commitment's state: **Operational** (working in production), **In-
 
 Decisions required before downstream implementation proceeds.
 
-### Item A — `FIELD_PRIORITIES` agent layer resolution
+### ~~Item A — `FIELD_PRIORITIES` agent layer resolution~~ — RESOLVED 2026-05-31
 
-**Question:** Should the `agent` resolution layer be (a) formally added to `FIELD_PRIORITIES` with explicit priority position, or (b) refactored so the agent writes to a documented layer?
+**Decision:** Option (a) — formally document the agent layer in the resolution chain.
 
-**Why this matters:** Currently undocumented in the spec but selected by production resolution. The audit calls this "undocumented and fragile." Every Piece B and Piece C claim about Layer 1/2/3 priority is built on an unstable spec until this resolves.
+**Finding:** The `agent` layer is already correctly documented and implemented in `get-field-value.service.ts` (lines 13–18). The read-time resolution chain there lists all four layers: override → formula → agent → storedResolved. `FIELD_PRIORITIES` in `proforma-seeder.service.ts` governs a separate concern — seed-time source selection (which of t12, rent_roll, om, broker to prefer per field). These are intentionally different: the seeder doesn't know about agent-written values; the read service doesn't consult the seeder's priority map.
 
-**Status:** Pending decision
+**Resolution:** No code change needed. A naming conflation in the architectural documentation made this look like an implementation gap. The code is correct.
 
-**Affects:** Pieces B and C, calc-vs-assumption doc's §"Reconciliation Action"
+**Moves to:** §6 Corrections Landed (2026-05-31)
 
-### Item B — NOI formula-vs-chain governance
+---
 
-**Question:** Should `getFieldValues` (a) teach the formula to respect higher-confidence layers, or (b) consult stored layers first and use the formula only as fallback?
+### ~~Item B — NOI formula-vs-chain governance~~ — RESOLVED 2026-05-31
 
-**Why this matters:** Determines whether Task #1520 fixes the override path only or also fixes the formula bypass. If only the override is wired, the formula still wins and the override has no visible effect.
+**Decision:** Option (a) — override-check-first guard in `getFieldValue` before formula execution.
 
-**Status:** Pending decision
+**Finding:** The guard already exists. Line 512 of `get-field-value.service.ts`:
+```typescript
+if (aggDef && !usingAlias && override == null) {
+```
+The formula is skipped entirely when an operator override is present. `resolveLayeredValue` then returns the override as the canonical value. The resolution chain already satisfies Commitment B.1.
 
-**Affects:** Task #1520, all surfaces downstream of NOI (10+ surfaces per audit §11)
+**What #1520 actually covers:** The write path — the UI and API endpoint that let an operator SET a NOI override value. The read path works correctly; the override can never be set because there is no UI/API to write to `year1.noi.override`. Task #1520 is about wiring that write path.
+
+**Moves to:** §6 Corrections Landed (2026-05-31)
 
 ### Item C — Yardi data availability for T-A1 abstraction test
 
@@ -214,10 +221,13 @@ Tasks currently in flight or queued, mapped to source documents.
 | #1536 | LTL per-year override | Piece B §"LTL trajectory math" + audit §10 | Pending acceptance |
 | #1537 | Other income display vs projection seed discrepancy | Piece B §"Cross-surface read consistency" | Pending acceptance |
 | #1538 | Feed live LTL signal into Engine A Year 1 | Piece B §"LTL trajectory math" | Pending acceptance |
-| #1560 (T-A) | Vendor registry (Piece A foundation) | Piece A §"Vendor registry pattern" + §"Phase 2A" | Active |
-| #1561 (T-A1) | Yardi Matrix onboarding | Piece A §"Phase 2B" | Queued, dependent on #1560 |
-| #1562 (T-A2) | License posture + freshness | Piece A §"License posture enforcement" + §"Phase 2C" | Queued, dependent on #1560 |
-| #1563 (T-B1) | Cross-surface read consistency + LTL trajectory | Piece B Commitments B.1, B.2 + calc-vs-assumption §"Required wiring" | Queued, dependent on #1536/#1537/#1538 |
+| task-1539 (T-A) | Vendor registry (Piece A foundation) | Piece A §"Vendor registry pattern" + §"Phase 2A" | Merged |
+| task-1544 (T-A2) | Yardi Matrix abstraction proof | Piece A §"Phase 2B" | Merged |
+| task-1554 | Market Data tab — vendor-aware upload UI | Piece A §"Phase 2D" | Queued, dependent on T-A |
+| task-1555 | Surface vendor market data in submarket view | Piece A §"Phase 2E" | Queued, dependent on T-A |
+| task-1556 | Market Data pipeline end-to-end integration test | Piece A §"Phase 2F" | Queued, dependent on T-A |
+| task-1541 (T-B1) | Cross-surface read consistency + LTL trajectory | Piece B Commitments B.1, B.2 + calc-vs-assumption §"Required wiring" | Queued — blocked on #1536 + #1537 + #1538 |
+| task-1542 (T-B2) | Divergence surfacing in Validation Grid | Piece B §"Cross-source divergence surfacing" | Queued, dependent on T-B1 |
 | #1567 | Validation Grid CONTESTED badge | Piece B §"Cross-source divergence surfacing" | Merged |
 | #1568 | GRM/GIM Valuation methods | Audit §"F7 Valuation Grid" | Merged |
 | #1569 | Exit cap + hold period canonical chain in Valuation Grid | Audit cross-surface inventory | Merged |
@@ -228,7 +238,23 @@ Tasks currently in flight or queued, mapped to source documents.
 | #1595 | County comp ingestion | Adjacent — not architectural | Merged |
 | #1605 (T-CONF-3) | Backend double-mount cleanup | §7b UI Conflation Patterns | Merged |
 | #1606 (T-CONF-2) | Market context dual-surface investigation | §7b UI Conflation Patterns | Merged — finding: false alarm, no dual-surface exists; guard comments added |
-| #1607 (T-CONF-1) | F8 verdict relabel + JEDI Score integration | §7b UI Conflation Patterns | In progress |
+| #1607 (T-CONF-1) | F8 verdict relabel + JEDI Score integration | §7b UI Conflation Patterns | Merged |
+| #1609 | Market signals into F9 OverviewTab | §7b — queued pending Pattern 2 (compute trigger) gap resolution | Merged |
+| #1615 | Corpus-sweep audit | §2 phantom docs + §3 claim verification | Merged |
+
+### Valuation Grid Waves B and C — vendor architecture dependencies
+
+Waves B and C have direct architectural overlap with the vendor market data workstream and are documented here. Waves D–F and F9 module gaps are tracked in task records only (no architectural commitment documentation needed — they don't introduce new patterns).
+
+| Task | Description | Architecture dependency |
+|---|---|---|
+| #1406 | Wave B — Subject record population pipeline | Piece A substrate (`historical_observations`) |
+| #1407 | Wave B — CoStar comp upload + parser | Piece A vendor registry (upload uses registry-driven dispatch) |
+| #1408 | Wave B — Comp relevance scoring engine | Piece A + `historical_observations` vendor rows |
+| #1409 | Wave C — Strategy-aware comp story + geographic cascade | Piece B divergence framework (comp-vs-platform disagreement) |
+| #1410 | Wave C — CoStar ↔ platform comp dedup + reconciliation | Piece B cross-source reconciliation; CONTESTED badge (T-B2) |
+
+**Sequencing note:** Waves B tasks (#1406–#1408) can start after T-A is fully operational (done). Wave C tasks (#1409–#1410) require T-B1 or T-B2 to be complete — comp dedup is field-level reconciliation across two source registries.
 
 ### Tasks expected but not yet created
 
@@ -273,6 +299,18 @@ Tracking when documents have been corrected against audit findings or operator c
 - **OperatorStance re-blend claim verified.** `operatorStance.service.ts` confirms background reblend applies modulation to baseline snapshot without LLM call. §3 status updated from "Pending verification" to "Operational."
 - **Phantom documents table added to §2** listing all six primary corpus docs with "does not exist" status and action item to write them to repo.
 - **Claims independently verified by this audit:** `getFieldValue`/`getFieldValues` service, `COMPUTED_AGGREGATES` in service, `correctSnapshotMath` in `cashflow.postprocess.ts`, `LINE_ITEM_CONFIG` in `proFormaMathEngine.ts`, `FIELD_PRIORITIES` in `proforma-seeder.service.ts`, `vendor_source`/`vendor_data_as_of`/`vendor_license_posture` fields in vendor registry files, `yardi-matrix.vendor.ts` and `yardi-matrix-parser.ts` existence, `historical_observations` vendor column migration.
+
+### 2026-05-31 (Items A and B resolved; six corpus documents written)
+
+- **Item A resolved — agent layer already documented.** The read-time resolution chain in `get-field-value.service.ts` correctly documents all four layers (override → formula → agent → storedResolved). `FIELD_PRIORITIES` in `proforma-seeder.service.ts` is a seeder-time concern (source priority: t12, rent_roll, om, broker) and is intentionally separate from the read chain. No code change needed. `FIELD_PRIORITIES` does not need an `agent` entry. §4 Item A closed.
+- **Item B resolved — override-check-first guard already implemented.** Line 512 of `get-field-value.service.ts` gates formula computation on `override == null`. When an operator override is present, the formula is skipped and the override wins. The read path is correct. Task #1520 is about the write path (no UI/API exists to SET a NOI override) — not the read resolution. §4 Item B closed.
+- **Six corpus documents written to repo.** All six documents previously listed as phantom (Pieces A–D, overview.md, calculations-vs-assumptions.md) written to `docs/architecture/vendor-market-data/` and `docs/architecture/`. §2 phantom table updated. Inferred claims tagged **[inferred]** throughout the documents.
+- **T-A and T-A2 status updated to Merged** in §5. task-1539 (vendor registry) and task-1544 (Yardi Matrix abstraction proof) both merged. §5 task refs corrected from #1560/#1561/#1562/#1563 (planned refs) to actual task file numbers.
+- **Wave B and Wave C Valuation Grid tasks added to §5** with explicit vendor architecture dependencies. Wave B depends on T-A (done). Wave C depends on T-B1/T-B2.
+- **Module-apply pattern (#1256–#1261) added to §3 Piece C commitments** — operationalizes field-level overrides without depending on T-B1 or vendor infrastructure.
+- **§3 Piece B `getFieldValue()` status corrected** from Aspirational to Operational — service verified operational in corpus-sweep audit.
+- **§3 inferred claims tagged** — override field counts (~7/~3/~5), 38 EMPTY fields, 10+ surfaces silently degrade, backend→badge API path all tagged **[inferred from prior audit]**.
+- **#1607 (T-CONF-1) status updated** to Merged in §5.
 
 ### Pending corrections (not yet applied)
 

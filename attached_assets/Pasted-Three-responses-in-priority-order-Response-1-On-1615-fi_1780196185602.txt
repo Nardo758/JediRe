@@ -1,0 +1,95 @@
+Three responses, in priority order:
+
+Response 1 — On #1615 findings:
+
+The corpus-existence finding is the most important thing you 
+surfaced. I owe you a direct acknowledgment: I drafted the 
+reconciliation document §2 with the six canonical documents 
+listed at repo paths as if they had been committed. They hadn't 
+been. The reconciliation doc was making an unverified claim 
+about current state — exactly the pattern the corpus-sweep audit 
+was designed to catch.
+
+Move 3 (write the six documents to the repo) is the most 
+important thing on your proposed list. Higher priority than 
+resolving Items A and B because:
+
+  - The architectural commitments are already operational in 
+    code (per your verification)
+  - The decision items resolve to spec edits or single-condition 
+    code changes (also per your verification)
+  - But future task agents have no authoritative documents to 
+    read
+
+Without the docs in the repo, the reconciliation document is 
+the only artifact tracking the architecture. That's brittle. 
+Worth understanding: why was #1616 cancelled? If it can be 
+re-opened or replaced, the doc-commit work should ship before 
+T-B1 starts so task agents have authoritative source material.
+
+Response 2 — On Items A and B:
+
+I agree with your recommendations on both.
+
+Item B — Option (a), override-check-first guard in getFieldValue 
+before formula execution. Your reasoning is sharper than my 
+original framing: the override-check-first pattern preserves 
+the formula's math authority while restoring operator authority 
+for override. It satisfies Commitment B.1 (one canonical read 
+path) without requiring formula-vs-stored-layers competition. 
+One condition, no formula refactor.
+
+Item A — Option (a), add agent to FIELD_PRIORITIES at position 
+3 between formula-computed and seeder-resolved. The architecture 
+already works; the spec just needs to catch up. Two-line spec 
+edit, no code change. This unblocks every Piece B and C 
+commitment from the "undocumented and fragile" label.
+
+Both decisions: confirmed. Proceed.
+
+Response 3 — On Move 2 (Valuation Grid Waves and F9 Module gaps):
+
+Your recommendation to capture Waves B and C under the vendor 
+architecture workstream (with dependencies on T-A and T-B1) is 
+right. Waves D-F and the F9 module-apply pattern can be tracked 
+in task records without architectural commitment documentation.
+
+The reconciliation document §5 expansion should:
+
+  - Add Wave B and Wave C task entries with their vendor 
+    architecture dependencies
+  - Add a note in §3 Piece C commitments that the module-apply 
+    pattern (#1256-#1261) operationalizes "operator overrides at 
+    four granularities" without being blocked by it
+  - Leave Waves D-F, Strategy work, and Unit Mix tasks out of 
+    the architectural documentation (they're operationally 
+    distinct)
+
+One additional update for §3 based on your verification: the 
+"Deal completeness framework operational" status needs reframing. 
+Backend signal-registry.ts exists but CompletenesBadge appears 
+to be frontend-only. The Piece C commitment is partially 
+operational (frontend badge + signal registry shipped) but the 
+full framework as described in Piece C is still in-flight.
+
+The three claims you flagged as inferred-not-verified ("7/3/5" 
+override counts, "38 EMPTY fields", Deal completeness backend) 
+should be tagged in the reconciliation doc as inferred from 
+prior audits, not re-verified. This is good hygiene — preserves 
+the claim while being honest about its provenance.
+
+Sequence:
+
+1. Re-open or replace #1616 to write the six documents to the 
+   repo (highest priority)
+2. Resolve Item B in code (override-check-first guard in 
+   getFieldValue) — completes #1520
+3. Resolve Item A in spec (add agent to FIELD_PRIORITIES)
+4. Expand reconciliation doc §5 with Wave B/C entries and 
+   inferred-claim tagging
+5. T-B1 unblocked once #1520 + #1536/#1537/#1538 merge
+
+Items 1, 2, 3 can run in parallel. Items 4 and 5 follow.
+
+You asked if you should start. Answer: yes — start on items 1, 
+2, 3 in parallel as your bandwidth allows.
