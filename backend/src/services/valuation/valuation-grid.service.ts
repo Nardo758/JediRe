@@ -29,6 +29,13 @@ import { shouldUseNewPath, shouldRunShadow, VALUATION_COMPS_FLAG } from '../prop
 import { phase3ShadowService } from '../property-entity/phase3-shadow.service';
 import { getFieldValue, getFieldValues } from '../field-access/get-field-value.service';
 import { logger } from '../../utils/logger';
+import {
+  rankComps,
+  resolveStrategy,
+  type InvestmentStrategy,
+  type CompCandidate,
+  type SubjectProperty as CompScoringSubject,
+} from './comp-relevance-scoring.service';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -73,6 +80,8 @@ export interface ValuationMethod {
   staleCompCount?: number;
   /** Task #1417 (6.2) — Cap rate spread P75-P25 in basis points (comp-anchored method only) */
   capRateSpreadBps?: number;
+  /** Wave B — number of comps removed by relevance scoring (score < RELEVANCE_MIN_SCORE). */
+  relevanceFilteredCount?: number;
   sourceProvenance: string;
   evidenceTrail: EvidenceLine[];
   warningFlags: string[];
@@ -110,6 +119,8 @@ export interface SubjectProperty {
   holdPeriodYears: number | null;
   holdPeriodYearsSource: string;
   assetClass: string | null;
+  /** Year built from properties row — used as a factor in comp relevance scoring. */
+  yearBuilt: number | null;
   city: string;
   state: string;
   submarket: string | null;
@@ -222,6 +233,10 @@ export interface CompReviewResult {
 // is used when no operator preference is set.
 
 const MAX_COMP_AGE_MONTHS_DEFAULT = 36;
+// Minimum relevance score to include a comp in active scoring (M1 tier threshold).
+// Comps below this threshold are available as additional candidates in the Comp
+// Review panel but are excluded from cap rate and PPU synthesis.
+const RELEVANCE_MIN_SCORE = 0.25;
 // Wide retrieval horizon for comp-set generation — deliberately broader than the operator's
 // maxAgeMonths staleness threshold so that aged comps are RETAINED in the set and
 // downweighted by stalenessWeight() rather than hard-excluded at the SQL level.
@@ -314,10 +329,12 @@ export class ValuationGridService {
     // The gate result is attached to the response so the UI can surface
     // actionable missing-field prompts instead of a generic error.
     // Task #1417 (6.1): Also fetch comp_criteria so operator overrides propagate into scoring.
-    const [subject, subjectCompleteness, compCriteria] = await Promise.all([
+    // Wave B: Also fetch deal investment strategy for strategy-aware relevance scoring.
+    const [subject, subjectCompleteness, compCriteria, investmentStrategy] = await Promise.all([
       this.getSubjectProperty(dealId),
       populationSvc.checkSubjectCompleteness(dealId, 'valuation_grid'),
       this.getCompCriteria(dealId),
+      this.getDealInvestmentStrategy(dealId),
     ]);
 
     const methods: ValuationMethod[] = [];
@@ -368,7 +385,7 @@ export class ValuationGridService {
       m5,
     ] = await Promise.all([
       this.computeCapRateNOI(subject, asOf),
-      this.computeCompAnchoredCapRate(dealId, subject, compCriteria, asOf, sharedCompSet),
+      this.computeCompAnchoredCapRate(dealId, subject, compCriteria, asOf, sharedCompSet, investmentStrategy),
       noUnits
         ? Promise.resolve(this.insufficientMethod(
             'per_unit_benchmark', 'Per-Unit Benchmark', 'top_down',
@@ -380,7 +397,7 @@ export class ValuationGridService {
             'sales_comp_ppu', 'Sales Comp PPU', 'top_down',
             unitGateMsg,
             ['Missing subject field: unit count']))
-        : this.computeSalesCompPPU(dealId, subject, compCriteria, asOf, sharedCompSet),
+        : this.computeSalesCompPPU(dealId, subject, compCriteria, asOf, sharedCompSet, investmentStrategy),
       this.computeReplacementCost(subject),
     ]);
 
@@ -463,6 +480,7 @@ export class ValuationGridService {
            p.latitude,
            p.longitude,
            p.building_class                          AS asset_class,
+           p.year_built,
            p.submarket_id                            AS submarket,
            p.acquisition_price                      AS purchase_price,
            da.valuation_override_lv                 AS valuation_override_lv,
@@ -572,11 +590,93 @@ export class ValuationGridService {
       holdPeriodYears,
       holdPeriodYearsSource,
       assetClass: row.asset_class || null,
+      yearBuilt: row.year_built ? parseInt(String(row.year_built), 10) : null,
       city: row.city || '',
       state: row.state || '',
       submarket: row.submarket || null,
       latitude: row.latitude ? safeFloat(row.latitude) : null,
       longitude: row.longitude ? safeFloat(row.longitude) : null,
+    };
+  }
+
+  /**
+   * Fetch the deal's investment strategy from deal_assumptions for strategy-aware
+   * comp relevance scoring. Returns 'stabilized' when no strategy is set.
+   */
+  private async getDealInvestmentStrategy(dealId: string): Promise<InvestmentStrategy> {
+    try {
+      const res = await this.pool.query(
+        `SELECT da.investment_strategy_lv->>'resolved' AS strategy
+         FROM deal_assumptions da
+         WHERE da.deal_id = $1::uuid
+         LIMIT 1`,
+        [dealId]
+      );
+      if (res.rows.length > 0 && res.rows[0].strategy) {
+        return resolveStrategy(res.rows[0].strategy);
+      }
+    } catch {
+      // non-fatal — default to stabilized
+    }
+    return 'stabilized';
+  }
+
+  /**
+   * Apply relevance scoring to a comp pool using the six-factor engine.
+   *
+   * Maps raw comp set items (CompSetService format) to CompCandidate,
+   * calls rankComps, merges scores back onto the original comp objects,
+   * then splits into:
+   *   - scoredComps   — all comps with relevance_score + relevance_tier attached
+   *   - filteredComps — comps with relevance_score >= RELEVANCE_MIN_SCORE (M1+)
+   *   - relevanceFilteredCount — number removed by threshold
+   *
+   * Custom-added comp IDs (operator explicit adds) bypass the threshold so
+   * they are always included in filteredComps regardless of score.
+   */
+  private _applyRelevanceScoring(
+    comps: any[],
+    subject: SubjectProperty,
+    strategy: InvestmentStrategy,
+    customIncludedIds?: Set<string>,
+  ): { scoredComps: any[]; filteredComps: any[]; relevanceFilteredCount: number } {
+    if (comps.length === 0) {
+      return { scoredComps: [], filteredComps: [], relevanceFilteredCount: 0 };
+    }
+
+    const scoringSubject: CompScoringSubject = {
+      units: subject.units,
+      year_built: subject.yearBuilt,
+      asset_class: subject.assetClass,
+    };
+
+    const candidates: Array<CompCandidate & { _original: any }> = comps.map(c => ({
+      id: String(c.id),
+      units: c.units != null ? parseInt(String(c.units)) : null,
+      year_built: c.year_built != null ? parseInt(String(c.year_built)) : null,
+      asset_class: (c.property_class ?? c.asset_class ?? null) as string | null,
+      sale_date: c.recording_date ?? c.sale_date ?? null,
+      distance_miles: c.distance_miles != null ? parseFloat(String(c.distance_miles)) : null,
+      source: (c.source ?? null) as string | null,
+      _original: c,
+    }));
+
+    const { ranked } = rankComps(scoringSubject, candidates, strategy);
+
+    const scoredComps = ranked.map(({ comp, relevance_score, relevance_tier }) => ({
+      ...(comp as any)._original,
+      relevance_score,
+      relevance_tier,
+    }));
+
+    const filteredComps = scoredComps.filter(c =>
+      (customIncludedIds?.has(String(c.id))) || c.relevance_score >= RELEVANCE_MIN_SCORE
+    );
+
+    return {
+      scoredComps,
+      filteredComps,
+      relevanceFilteredCount: scoredComps.length - filteredComps.length,
     };
   }
 
@@ -777,7 +877,8 @@ export class ValuationGridService {
     subject: SubjectProperty,
     criteria: CompCriteria,
     asOf?: Date,
-    sharedCompSet?: any
+    sharedCompSet?: any,
+    strategy: InvestmentStrategy = 'stabilized'
   ): Promise<ValuationMethod> {
     const METHOD_ID: MethodId = 'comp_anchored_cap_rate';
     const warnings: string[] = [];
@@ -1028,7 +1129,6 @@ export class ValuationGridService {
       }
       return true;
     });
-    compSet = { ...compSet, comps: criteriaComps };
 
     if (criteriaComps.length === 0) {
       return this.insufficientMethod(
@@ -1041,6 +1141,28 @@ export class ValuationGridService {
         warnings
       );
     }
+
+    // Wave B: Apply relevance scoring. Score every criteria-passing comp against
+    // the subject, assign relevance_tier + relevance_score, then filter to M1+
+    // (score >= RELEVANCE_MIN_SCORE = 0.25) for active cap-rate synthesis.
+    // Custom-added comps bypass the threshold (operator explicitly requested them).
+    const { filteredComps: relevanceComps, relevanceFilteredCount: capRateRelevanceRemovedCount } =
+      this._applyRelevanceScoring(criteriaComps, subject, strategy, customSet);
+
+    const activeCapRateComps = relevanceComps.length > 0 ? relevanceComps : criteriaComps;
+    if (relevanceComps.length === 0 && criteriaComps.length > 0) {
+      warnings.push(
+        `All ${criteriaComps.length} criteria-passing comps scored below the relevance threshold ` +
+        `(M2 tier). Using full criteria set for synthesis.`
+      );
+    } else if (capRateRelevanceRemovedCount > 0) {
+      warnings.push(
+        `${capRateRelevanceRemovedCount} comp${capRateRelevanceRemovedCount !== 1 ? 's' : ''} below ` +
+        `relevance threshold (M2 tier) excluded from cap-rate synthesis.`
+      );
+    }
+
+    compSet = { ...compSet, comps: activeCapRateComps };
 
     // Market snapshot for synthesis of comps without cap_rate
     const snap = await this.getMarketSnapshotForSynthesis(subject.city, subject.state, asOf);
@@ -1215,6 +1337,7 @@ export class ValuationGridService {
       compCount: n,
       staleCompCount: staleCount,
       capRateSpreadBps,
+      relevanceFilteredCount: capRateRelevanceRemovedCount,
       sourceProvenance: `${n} sale comp implied cap rates (${directCount} direct, ${synthesizedCount} synthesized)`,
       evidenceTrail: evidence,
       warningFlags: warnings,
@@ -1358,7 +1481,8 @@ export class ValuationGridService {
     subject: SubjectProperty,
     criteria: CompCriteria,
     asOf?: Date,
-    sharedCompSet?: any
+    sharedCompSet?: any,
+    strategy: InvestmentStrategy = 'stabilized'
   ): Promise<ValuationMethod & { _compSetRaw?: any }> {
     const METHOD_ID: MethodId = 'sales_comp_ppu';
     const warnings: string[] = [];
@@ -1502,28 +1626,56 @@ export class ValuationGridService {
       const removedCount = compSet.comps.length - filteredComps.length;
       if (removedCount > 0) {
         warnings.push(`${removedCount} comp${removedCount !== 1 ? 's' : ''} removed by operator criteria (exclusions, units, or class filter).`);
-        // Recompute PPU stats from the filtered comp set
-        const ppuValues = filteredComps
-          .map((c: any) => safeFloat(c.price_per_unit, 0))
-          .filter((v: number) => v > 0)
-          .sort((a: number, b: number) => a - b);
-        if (ppuValues.length > 0) {
-          const medianIdx = Math.floor(ppuValues.length / 2);
-          const medianVal = ppuValues[medianIdx];
-          const meanVal = ppuValues.reduce((s: number, v: number) => s + v, 0) / ppuValues.length;
-          const stdDevVal = Math.sqrt(
-            ppuValues.reduce((s: number, v: number) => s + (v - meanVal) ** 2, 0) / ppuValues.length
-          );
-          compSet = {
-            ...compSet,
-            comps: filteredComps,
-            comp_count: filteredComps.length,
-            median_price_per_unit: medianVal,
-            std_dev_price_per_unit: stdDevVal,
-            min_price_per_unit: ppuValues[0],
-            max_price_per_unit: ppuValues[ppuValues.length - 1],
-          };
-        }
+      }
+      if (removedCount > 0 || filteredComps.length < compSet.comps.length) {
+        compSet = { ...compSet, comps: filteredComps };
+      }
+    }
+
+    // Wave B: Apply relevance scoring to the criteria-filtered comp pool.
+    // Scores each comp against the subject using six factors (distance, recency,
+    // class, size, vintage, data quality), then filters to M1+ comps for PPU synthesis.
+    let ppuRelevanceRemovedCount = 0;
+    if (compSet.comps && compSet.comps.length > 0) {
+      const ppuCustomSet = new Set<string>(criteria.customIncludedCompIds ?? []);
+      const { filteredComps: relevancePPUComps, relevanceFilteredCount } =
+        this._applyRelevanceScoring(compSet.comps, subject, strategy, ppuCustomSet);
+
+      ppuRelevanceRemovedCount = relevanceFilteredCount;
+      const activePPUComps = relevancePPUComps.length > 0 ? relevancePPUComps : compSet.comps;
+
+      if (relevancePPUComps.length === 0 && compSet.comps.length > 0) {
+        warnings.push(
+          `All ${compSet.comps.length} criteria-passing comps scored below the relevance threshold. Using full set.`
+        );
+      } else if (ppuRelevanceRemovedCount > 0) {
+        warnings.push(
+          `${ppuRelevanceRemovedCount} comp${ppuRelevanceRemovedCount !== 1 ? 's' : ''} below relevance threshold (M2) excluded from PPU synthesis.`
+        );
+      }
+
+      // Recompute PPU stats from the relevance-filtered comp set
+      const ppuValues = activePPUComps
+        .map((c: any) => safeFloat(c.price_per_unit, 0))
+        .filter((v: number) => v > 0)
+        .sort((a: number, b: number) => a - b);
+
+      if (ppuValues.length > 0) {
+        const medianIdx = Math.floor(ppuValues.length / 2);
+        const medianVal = ppuValues[medianIdx];
+        const meanVal = ppuValues.reduce((s: number, v: number) => s + v, 0) / ppuValues.length;
+        const stdDevVal = Math.sqrt(
+          ppuValues.reduce((s: number, v: number) => s + (v - meanVal) ** 2, 0) / ppuValues.length
+        );
+        compSet = {
+          ...compSet,
+          comps: activePPUComps,
+          comp_count: activePPUComps.length,
+          median_price_per_unit: medianVal,
+          std_dev_price_per_unit: stdDevVal,
+          min_price_per_unit: ppuValues[0],
+          max_price_per_unit: ppuValues[ppuValues.length - 1],
+        };
       }
     }
 
@@ -1570,6 +1722,7 @@ export class ValuationGridService {
       indicatedPPU: medianPPU,
       indicatedPSF: psf50,
       compCount,
+      relevanceFilteredCount: ppuRelevanceRemovedCount,
       sourceProvenance: `${compCount} market sale comps`,
       evidenceTrail: evidence,
       warningFlags: warnings,

@@ -80,6 +80,7 @@ interface ValuationMethod {
   sampleSize?: number;
   staleCompCount?: number;
   capRateSpreadBps?: number;
+  relevanceFilteredCount?: number;
   sourceProvenance: string;
   evidenceTrail: EvidenceLine[];
   warningFlags: string[];
@@ -431,7 +432,9 @@ function MethodRow({
         <div style={{ flex: 1, textAlign: 'right' }}>
           {method.compCount != null && (
             <span style={{ fontFamily: MONO, fontSize: 10, color: BT.text.muted }}>
-              {method.compCount} comps
+              {method.relevanceFilteredCount != null && method.relevanceFilteredCount > 0
+                ? `${(method.compCount ?? 0) + method.relevanceFilteredCount} comps (${method.compCount} after relevance filter)`
+                : `${method.compCount} comps`}
             </span>
           )}
           {method.sampleSize != null && method.compCount == null && (
