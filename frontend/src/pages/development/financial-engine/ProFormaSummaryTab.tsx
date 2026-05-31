@@ -1084,9 +1084,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
         background: '#111111', borderBottom: '1px solid #1e1e1e',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: '#f8fafc', background: '#27272a', padding: '2px 6px', borderRadius: 2, letterSpacing: 1 }}>
-            AS-IS · BROKER LAYER
-          </span>
           {/* Template badge — only shown for non-standard templates */}
           {isFlipTemplate && (
             <span title="Flip template: acquisition basis + renovation + carrying costs + resale exit" style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#f97316', background: '#1c0a00', border: '1px solid #f9731644', padding: '2px 6px', borderRadius: 2, letterSpacing: '0.06em' }}>
@@ -1104,10 +1101,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             </span>
           )}
           <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, color: '#f8fafc' }}>{data.dealName}</span>
-          {totalUnits > 0 && (
-            <span style={{ fontFamily: LABEL, fontSize: 9, color: '#64748b' }}>{totalUnits} Units</span>
-          )}
-          <span style={{ fontFamily: LABEL, fontSize: 9, color: '#475569' }}>At-Acquisition Snapshot</span>
           {/* DQA aggregate badge — shows when agent has found issues */}
           {(dqaCriticalCount > 0 || dqaWarningCount > 0) && (
             <button
@@ -1143,12 +1136,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
             >
               {showAbsences ? `HIDE ABSENCES` : `${dqaAbsenceCount} ABSENCE${dqaAbsenceCount !== 1 ? 'S' : ''}`}
             </button>
-          )}
-          {/* Footnote: count of hidden NOT_IN_DOC findings when toggle is off */}
-          {dqaAbsenceCount > 0 && !showAbsences && (
-            <span style={{ fontFamily: LABEL, fontSize: 7, color: '#334155', fontStyle: 'italic' }}>
-              {dqaAbsenceCount} absence{dqaAbsenceCount !== 1 ? 's' : ''} verified — hidden
-            </span>
           )}
           {dqaAlerts.length === 0 && !dqaLoading && (
             <span
@@ -1274,7 +1261,6 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
           {[
             { l: 'GPR', v: fmt$(byField['gpr']?.resolved ?? null) },
             { l: 'EGI', v: fmt$(egiResolved) },
-            { l: 'NOI', v: fmt$(noiRow?.resolved ?? null) },
             { l: 'NOI/Unit', v: noiRow?.resolved && totalUnits ? `$${Math.round(noiRow.resolved / totalUnits).toLocaleString()}` : '—' },
           ].map(k => (
             <div key={k.l} style={{ display: 'flex', alignItems: 'baseline', gap: 4, padding: '2px 8px', borderRadius: 2, border: '1px solid #27272a', background: '#111827' }}>
