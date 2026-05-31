@@ -99,7 +99,9 @@ export const fetchAssumptionsTool: ToolDefinition<
            da.rent_growth_yr1,
            da.exit_cap,
            da.hold_period_years,
-           da.total_units AS da_units
+           da.total_units AS da_units,
+           da.lifecycle_profile,
+           da.lifecycle_profile_override
          FROM deals d
          LEFT JOIN deal_assumptions da ON da.deal_id = d.id
          WHERE d.id = $1
@@ -150,6 +152,10 @@ export const fetchAssumptionsTool: ToolDefinition<
         total_units: n(row.da_units) || n(row.d_units) || y1Val(year1, '_unit_count'),
         property_type: row.property_type ? String(row.property_type) : null,
         source: 'platform_db',
+        lifecycle_profile: row.lifecycle_profile ? String(row.lifecycle_profile) : null,
+        lifecycle_profile_override: row.lifecycle_profile_override ? String(row.lifecycle_profile_override) : null,
+        effective_lifecycle_profile: (row.lifecycle_profile_override ?? row.lifecycle_profile)
+          ? String(row.lifecycle_profile_override ?? row.lifecycle_profile) : null,
       };
     } catch (err) {
       logger.warn('fetch_assumptions: DB query failed', {

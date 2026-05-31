@@ -1285,6 +1285,44 @@ router.patch('/:dealId/assumptions/adoption-timeline', requireAuth, async (req: 
     );
 
     res.json({ success: true, data: { constructionMonths: cm, leaseUpMonths: lum, absorptionUnitsPerMonth: apm, stabilizationTargetPct: stp } });
+
+    // Re-detect lifecycle_profile when construction_months changes — non-fatal, fire-and-forget.
+    if (cm !== undefined) {
+      setImmediate(async () => {
+        try {
+          const { detectLifecycleProfile } = await import('../../services/lifecycle-profile.service');
+          const assumRow = await pool.query(
+            `SELECT construction_months, total_units FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+            [dealId]
+          );
+          const ar = assumRow.rows[0];
+          const dealDataRes = await pool.query(
+            `SELECT deal_data->'extraction_rent_roll'->>'weighted_occupancy_pct' AS occ,
+                    deal_data->'capex_schedule'->>'total_budget' AS total_budget
+             FROM deals WHERE id = $1`,
+            [dealId]
+          );
+          const rawOcc = dealDataRes.rows[0]?.occ;
+          const occupancyPct = rawOcc != null ? parseFloat(rawOcc) || null : null;
+          const totalBudget = parseFloat(dealDataRes.rows[0]?.total_budget ?? '') || null;
+          const units = ar?.total_units != null ? +ar.total_units : null;
+          const renovationBudgetPerUnit = totalBudget != null && units != null && units > 0
+            ? totalBudget / units : null;
+          const detected = detectLifecycleProfile({
+            constructionMonths: ar?.construction_months != null ? +parseFloat(ar.construction_months) : null,
+            currentOccupancyPct: occupancyPct,
+            renovationBudgetPerUnit,
+          });
+          await pool.query(
+            `UPDATE deal_assumptions SET lifecycle_profile = $2, updated_at = NOW() WHERE deal_id = $1`,
+            [dealId, detected]
+          );
+          logger.info(`[adoption-timeline PATCH] lifecycle_profile re-detected as ${detected} for deal ${dealId}`);
+        } catch (redetectErr: any) {
+          logger.warn(`[adoption-timeline PATCH] lifecycle re-detection failed (non-fatal): ${redetectErr.message}`);
+        }
+      });
+    }
   } catch (error: any) {
     if (error._sent) return;
     logger.error('Error patching adoption timeline:', error);

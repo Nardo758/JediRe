@@ -129,6 +129,9 @@ interface DealFinancials {
     stabilizationYearOverride: number|null;
     effectiveStabilizationYear: number|null;
     submarketVacancyRate: number|null;
+    lifecycleProfile?: string | null;
+    lifecycleProfileOverride?: string | null;
+    effectiveLifecycleProfile?: string | null;
   } | null;
   /** Per-floor-plan GPR grid from cashflow agent (Task #797 / Pattern A). Null when agent has not run. */
   gprUnitMix?: GprUnitMixEntry[] | null;
@@ -228,6 +231,9 @@ interface DealFinancials {
     effectiveStabilizationYear?: number | null;
     submarketVacancyRate?: number | null;
     submarketVacancyAsOf?: string | null;
+    lifecycleProfile?: string | null;
+    lifecycleProfileOverride?: string | null;
+    effectiveLifecycleProfile?: string | null;
   } | null;
 }
 
@@ -1509,6 +1515,25 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               <span style={{ color: '#16a34a', fontWeight: 700, letterSpacing: '0.08em', fontSize: 8 }}>
                 PRO FORMA WINDOW
               </span>
+              {(() => {
+                const profile = at.effectiveLifecycleProfile ?? at.lifecycleProfile ?? null;
+                if (!profile) return null;
+                const isProfileOverride = at.lifecycleProfileOverride != null;
+                return (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{
+                      background: '#1e1b4b', border: '1px solid #4c1d9544',
+                      borderRadius: 2, padding: '0 4px',
+                      color: '#a78bfa', fontSize: 8, fontWeight: 700, letterSpacing: 0.6,
+                    }}>
+                      {profile.replace('_', '-')}
+                    </span>
+                    {isProfileOverride && (
+                      <span style={{ background: '#7c3aed22', border: '1px solid #7c3aed44', borderRadius: 2, padding: '0 3px', color: '#a78bfa', fontSize: 7 }}>OVERRIDE</span>
+                    )}
+                  </span>
+                );
+              })()}
               {effYear != null && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span style={{ color: '#4ade80' }}>YEAR {effYear}</span>

@@ -776,6 +776,9 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   const [lpSharePct, setLpSharePct] = useState('90');
   const [gpSharePct, setGpSharePct] = useState('10');
 
+  // ── LIFECYCLE PROFILE ───────────────────────────────────────────────────────
+  const [lifecycleProfileOverride, setLifecycleProfileOverride] = useState('');
+
   // ── EXIT / DISPOSITION ─────────────────────────────────────────────────────
   const [exitStrategy,   setExitStrategy]       = useState('');
   const [exitCap,        setExitCap]            = useState('');
@@ -829,6 +832,9 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
     const investStrategyLvH  = (fin.assumptions as any)?.investmentStrategy ?? null;
     if (exitStrategyLvH?.resolved != null)   setExitStrategy(exitStrategyLvH.resolved);
     if (investStrategyLvH?.resolved != null) setInvestmentStrategy(investStrategyLvH.resolved);
+    // Lifecycle profile override — hydrate from adoptionTimeline; always reset to avoid stale state across deals
+    const lcpOvr = (fin.adoptionTimeline as any)?.lifecycleProfileOverride ?? null;
+    setLifecycleProfileOverride(lcpOvr ?? '');
     if ((fin.assumptions as any)?.sellingCostsPct != null) setSellingCosts(((fin.assumptions as any).sellingCostsPct * 100).toFixed(2));
     // LP / GP equity split
     if (fin.waterfall?.lpShare != null) setLpSharePct((fin.waterfall.lpShare * 100).toFixed(0));
@@ -923,6 +929,11 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
   const investmentStrategyLv   = (fin?.assumptions as any)?.investmentStrategy   ?? null;
   const exitStrategyResolved   = exitStrategyLv?.resolved        ?? null;
   const investStrategyResolved = investmentStrategyLv?.resolved  ?? null;
+
+  // Lifecycle profile — detected value + override from adoptionTimeline
+  const lifecycleProfileDetected  = (fin?.adoptionTimeline as any)?.lifecycleProfile         ?? null;
+  const lifecycleProfileOverrideResolved = (fin?.adoptionTimeline as any)?.lifecycleProfileOverride ?? null;
+  const lifecycleProfileEffective = (fin?.adoptionTimeline as any)?.effectiveLifecycleProfile ?? lifecycleProfileDetected;
   const sellingCostsPctResolved = (fin?.assumptions as any)?.sellingCostsPct ?? null;
 
   // Closing costs — sub-line overrides (5 keys)
@@ -1194,6 +1205,15 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
 
   function handleStrategyModalCancel() {
     setStrategyModal(null);
+  }
+
+  async function saveLifecycleProfile(value: string | null) {
+    await withSave(async () => {
+      await apiClient.patch(`/api/v1/deals/${props.dealId}/assumptions/lifecycle-profile`, {
+        lifecycleProfile: value || null,
+      });
+      props.onF9Refresh?.();
+    });
   }
 
   async function saveExitStrategy() {
@@ -1589,6 +1609,29 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
                   : UNSUPPORTED_INVESTMENT_STRATEGIES.has(investStrategyResolved ?? '')
                     ? <NotSetBadge label="LIMITED" title="Full F9 UI for this strategy is not yet built — see STRATEGY_SCOPE_NOTICE.md" />
                     : undefined
+              }
+            />
+            <LvRow label="Deal Lifecycle Profile"
+              hint="Auto-detected from construction timeline, occupancy & renovation scope"
+              platform={lifecycleProfileDetected ?? undefined}
+              override={lifecycleProfileOverride}
+              setOverride={(v) => {
+                setLifecycleProfileOverride(v);
+                void saveLifecycleProfile(v || null);
+              }}
+              overrideOptions={['STABILIZED', 'VALUE_ADD', 'DISTRESSED', 'DEVELOPMENT']}
+              resolved={lifecycleProfileEffective ?? '--'}
+              source={
+                lifecycleProfileOverrideResolved != null ? 'Override'
+                : lifecycleProfileDetected != null ? 'Platform'
+                : 'Not Provided'
+              }
+              flag={
+                lifecycleProfileOverrideResolved != null
+                  ? <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 700, color: '#a78bfa', background: '#4c1d9520', border: '1px solid #4c1d9540', borderRadius: 2, padding: '0 4px', letterSpacing: 0.5 }}>OVERRIDE</span>
+                  : lifecycleProfileDetected != null
+                    ? <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, letterSpacing: 0.4 }}>detected</span>
+                    : <NotSetBadge label="PENDING" title="Run analysis to auto-detect profile" />
               }
             />
 

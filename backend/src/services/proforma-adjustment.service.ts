@@ -2201,6 +2201,7 @@ export async function getDealFinancials(
               construction_months, lease_up_months, absorption_units_per_month,
               stabilization_target_pct,
               stabilization_year, stabilization_year_override,
+              lifecycle_profile, lifecycle_profile_override,
               lease_roll_velocity_per_year, mark_to_market_capture_rate,
               ltl_baseline_source
          FROM deal_assumptions WHERE deal_id = $1`,
@@ -5074,6 +5075,9 @@ export async function getDealFinancials(
       : _at.stabilization_year        != null ? +parseInt(String(_at.stabilization_year), 10)
       : null,
     submarketVacancyRate: _submarketVacancyRate,
+    lifecycleProfile:         (_at.lifecycle_profile          ?? null) as string | null,
+    lifecycleProfileOverride: (_at.lifecycle_profile_override ?? null) as string | null,
+    effectiveLifecycleProfile: ((_at.lifecycle_profile_override ?? _at.lifecycle_profile) ?? null) as string | null,
   } : null;
 
   return {

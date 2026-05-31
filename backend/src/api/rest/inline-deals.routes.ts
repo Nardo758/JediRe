@@ -141,6 +141,56 @@ async function syncPipelineToDealData(
       logger.warn(`[PipelineSync] stabilization_year write failed (non-fatal): ${stabErr.message}`, { dealId });
     }
   }
+
+  // Detect and persist lifecycle_profile alongside stabilization_year.
+  // Detection is best-effort and non-fatal — never blocks the pipeline sync.
+  try {
+    const { detectLifecycleProfile } = await import('../../services/lifecycle-profile.service');
+    const assumRow = await db.query(
+      `SELECT construction_months, total_units, lifecycle_profile_override
+         FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+      [dealId]
+    );
+    const ar = assumRow.rows[0];
+    // Occupancy: prefer cashflow output weighted_occupancy_pct, fallback to rent roll capsule in deal_data.
+    const cashflowOcc = (cashflow as Record<string, unknown>)?.weighted_occupancy_pct;
+    let occupancyPct: number | null = typeof cashflowOcc === 'number' ? cashflowOcc : null;
+    if (occupancyPct == null) {
+      const dealDataRes = await db.query(
+        `SELECT deal_data->'extraction_rent_roll'->>'weighted_occupancy_pct' AS occ FROM deals WHERE id = $1`,
+        [dealId]
+      );
+      const rawOcc = dealDataRes.rows[0]?.occ;
+      if (rawOcc != null) occupancyPct = parseFloat(rawOcc) || null;
+    }
+    // Renovation budget per unit: read from deal_data capex schedule
+    const capexRes = await db.query(
+      `SELECT deal_data->'capex_schedule'->>'total_budget' AS total_budget FROM deals WHERE id = $1`,
+      [dealId]
+    );
+    const totalBudget = parseFloat(capexRes.rows[0]?.total_budget ?? '') || null;
+    const units = ar?.total_units != null ? +ar.total_units : null;
+    const renovationBudgetPerUnit = totalBudget != null && units != null && units > 0
+      ? totalBudget / units : null;
+
+    const detected = detectLifecycleProfile({
+      constructionMonths: ar?.construction_months != null ? +parseFloat(ar.construction_months) : null,
+      currentOccupancyPct: occupancyPct,
+      renovationBudgetPerUnit,
+    });
+
+    // Only update lifecycle_profile (detected); never clobber lifecycle_profile_override.
+    await db.query(
+      `INSERT INTO deal_assumptions (deal_id, lifecycle_profile, created_at, updated_at)
+       VALUES ($1, $2, NOW(), NOW())
+       ON CONFLICT (deal_id)
+       DO UPDATE SET lifecycle_profile = $2, updated_at = NOW()`,
+      [dealId, detected]
+    );
+    logger.info(`[PipelineSync] lifecycle_profile=${detected} written to deal_assumptions for ${dealId}`);
+  } catch (lcpErr: any) {
+    logger.warn(`[PipelineSync] lifecycle_profile detection failed (non-fatal): ${lcpErr.message}`, { dealId });
+  }
 }
 
 const router = Router();
@@ -2545,6 +2595,53 @@ router.patch('/data-quality-alerts/:id', requireAuth, async (req: AuthenticatedR
   } catch (err: any) {
     console.error('[data-quality-alerts PATCH]', err.message);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * PATCH /:dealId/assumptions/lifecycle-profile
+ *
+ * Writes lifecycle_profile_override to deal_assumptions.
+ * Called by CONSOLE > DEAL TERMS when the operator overrides or confirms
+ * the auto-detected lifecycle profile.
+ *
+ * Body: { lifecycleProfile: 'STABILIZED' | 'VALUE_ADD' | 'DISTRESSED' | 'DEVELOPMENT' | null }
+ *   Pass null to clear the override (revert to detected).
+ */
+router.patch('/:dealId/assumptions/lifecycle-profile', requireAuth, requireCapability('edit:operating_assumptions'), async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const { lifecycleProfile } = req.body;
+
+    const VALID_PROFILES = new Set(['STABILIZED', 'VALUE_ADD', 'DISTRESSED', 'DEVELOPMENT', null]);
+    if (!VALID_PROFILES.has(lifecycleProfile)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid lifecycleProfile: must be one of STABILIZED, VALUE_ADD, DISTRESSED, DEVELOPMENT or null`,
+      });
+    }
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    await pool.query(
+      `INSERT INTO deal_assumptions (deal_id, lifecycle_profile_override, created_at, updated_at)
+       VALUES ($1, $2, NOW(), NOW())
+       ON CONFLICT (deal_id)
+       DO UPDATE SET lifecycle_profile_override = $2, updated_at = NOW()`,
+      [dealId, lifecycleProfile ?? null]
+    );
+
+    res.json({ success: true, lifecycleProfile: lifecycleProfile ?? null });
+  } catch (error: any) {
+    logger.error('[lifecycle-profile PATCH]', error.message);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
