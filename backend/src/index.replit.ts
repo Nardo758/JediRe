@@ -720,6 +720,10 @@ app.use('/api/v1/operations', operationsRouter);
 import lifecycleRouter from './api/rest/lifecycle.routes';
 app.use('/api/v1/lifecycle', lifecycleRouter);
 
+// Investor & capital tracking routes (F8 — LP/GP, capital calls, distributions, waterfall)
+import investorCapitalRoutes from './api/rest/investor-capital.routes';
+app.use('/api/v1/capital', requireAuth, investorCapitalRoutes);
+
 // organization.routes.ts: deal team assignments, phase handoffs, context tracker, DocuSign/Notarize/Plaid credentials (/api/v1/organization/...)
 import organizationRouter from './api/rest/organization.routes';
 import sigmaRouter from './api/rest/sigma.routes';
