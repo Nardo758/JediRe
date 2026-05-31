@@ -1,0 +1,119 @@
+Two-part response on Issue B Phase 1 scope — important refinement 
+before you draft the task.
+
+PART 1 — Why stabilization isn't a passive calculation
+
+The stabilization-window math I described isn't pure observation of 
+a vacancy trajectory. It's an underwriting decision the agent 
+reasons about.
+
+In a dynamic market, operators don't watch vacancy rise to 8% and 
+accept it as their stabilized state. They adjust concessions and 
+rental rates until lease velocity drives vacancy back toward target. 
+The platform's underwriting needs to reflect this operator behavior 
+— which means the Cashflow Agent has to reason about:
+
+  - What concession depth (months free, $/month rebates) gets to 5% 
+    vacancy given submarket absorption
+  - What rent reduction (below asking, below market) is required if 
+    concessions alone don't get there
+  - The tradeoff: deeper concessions preserve face rent but burn 
+    cash; rent reductions are cleaner economically but harder to 
+    reverse
+  - Operator stance preferences (rent-preservation vs. velocity vs. 
+    cash) that determine which strategy fits
+
+This means inputs aren't scalar; concessions and rent become 
+temporal profiles keyed to the lease-up curve:
+
+  Months 1-6: 2 months free, asking rent = market - 5%
+  Months 7-12: 1 month free, asking rent = market
+  Months 13+: no concessions, asking rent = market + 2%
+
+The agent computes the profile that gets to 5% sustained for 12 
+months with the operator's preferred tradeoffs.
+
+PART 2 — The correlation engine is the architectural answer
+
+How does the agent reason about the concession-velocity-rent 
+relationship? The correlation engine.
+
+The platform has historical observation data — Jacksonville back 
+to 2018, two Atlanta properties from 2020 and 2022, plus 
+submarket-level historical data from CoStar and Apartment 
+Locator. The correlation engine (correlation-metrics-engine.jsx 
+and M36-M38) is designed to surface empirical relationships 
+between platform-tracked metrics.
+
+The Cashflow Agent queries the correlation engine for historical 
+relationships between underwriting levers (concession depth, rent 
+positioning) and outcomes (lease velocity, time-to-stabilization), 
+gets back coefficients with confidence, and uses that to reason 
+about the subject property's required strategy. The agent cites 
+"based on Atlanta Midtown's 2020-2025 lease-up data" rather than 
+"based on platform default."
+
+This is the platform's analytical thesis made concrete: empirical 
+underwriting from accumulated historical observation data, not 
+generic AI priors.
+
+QUESTIONS BEFORE PHASE 1 SCOPING FINAL
+
+Q1: Does the correlation engine currently track the specific 
+metrics needed for stabilization underwriting?
+
+Specifically: per-property concession depth over time, per-property 
+asking rent vs. submarket market rent over time, per-property 
+monthly lease velocity, per-property month-by-month occupancy 
+trajectory. If yes: Phase 1 wires the agent to existing queries. 
+If no: Phase 1 includes data infrastructure work to capture what's 
+needed.
+
+Q2: Does the Cashflow Agent's existing F9 batch reasoning extend 
+naturally to producing concession-and-rent trajectories from 
+correlation engine outputs, or does this require meaningful agent 
+infrastructure expansion?
+
+The agent today reasons about specific point values (market rent = 
+$1,950, vacancy = 7%). Trajectory reasoning is more complex — 
+given correlation engine coefficients, produce a concession-and-
+rent profile over lease-up months. Worth knowing whether this is 
+a small extension or a meaningful expansion of agent capabilities.
+
+Q3: Which agent owns this reasoning?
+
+My read is Cashflow Agent — its scope expands from year-1 point 
+assumptions to lease-up trajectory + stabilized-state assumptions. 
+Confirm or push back.
+
+Q4: Does this scope expansion change Phase 1's timeline meaningfully?
+
+Assuming correlation engine has the data shape needed and agent 
+expansion is modest, can Phase 1 ship in a comparable window to 
+your original scope, or does it become a longer workstream?
+
+Your implementation context answers all four. Once you weigh in, 
+I'll confirm:
+
+  - Four edge-case decisions (never-reaches-5%, oscillation, 
+    universal-5%, already-stabilized)
+  - Submarket-context-in-Phase-1 commitment
+  - Phase 1 scope (backend + Pro Forma header + Pro Forma surface 
+    deriving from window)
+  - Phase 2 deferral (Projections trajectory visualization)
+
+ON ISSUE A
+
+The arithmetic fix in buildProjectionsForExport ships now, separately 
+from Issue B. Operators get immediate correction of the INPUTS-vs-
+Projections divergence while Issue B Phase 1 scope is finalized.
+
+Sequence:
+
+  1. Issue A — arithmetic fix. Ships this week.
+  2. Issue B Phase 1 — stabilization underwriting via correlation 
+     engine + Pro Forma derives from stabilization window + 
+     submarket context + stabilization-month header.
+  3. Issue B Phase 2 — Projections trajectory visualization.
+
+Move forward.

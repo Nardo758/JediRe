@@ -201,6 +201,29 @@ export function ProjectionsHubTab({ integrityWarning, ...props }: ProjectionsHub
             {tab.label}
           </button>
         ))}
+        {/* Phase 1A: window-undefined signal — show when deal never reaches stabilization */}
+        {(() => {
+          const at = (f9Financials as Record<string, unknown> | null | undefined)?.adoptionTimeline as
+            { effectiveStabilizationYear?: number | null; stabilizationYearOverride?: number | null } | null | undefined;
+          if (!at) return null;
+          if (at.effectiveStabilizationYear != null) return null;
+          if ((at.stabilizationYearOverride ?? null) != null) return null;
+          return (
+            <span
+              title="Pro Forma window undefined — deal does not reach stabilization threshold within hold period. Set an override in INPUTS."
+              style={{
+                marginLeft: 8,
+                fontFamily: MONO, fontSize: 8, fontWeight: 700, letterSpacing: '0.08em',
+                color: '#d97706', background: '#1a0f00',
+                border: '1px solid #f59e0b44',
+                borderRadius: 2, padding: '2px 8px',
+                cursor: 'default',
+              }}
+            >
+              WINDOW UNDEFINED
+            </span>
+          );
+        })()}
       </div>
 
       {/* ── Content ─────────────────────────────────────────────────────── */}

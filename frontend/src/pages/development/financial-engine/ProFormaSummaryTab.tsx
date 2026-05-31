@@ -925,6 +925,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const _at = data.adoptionTimeline;
   const _effStabYear = _at?.effectiveStabilizationYear ?? null;
   const _stabYearIsOverride = _at?.stabilizationYearOverride != null;
+  // True when adoptionTimeline is present, effectiveStabilizationYear is null, AND
+  // no operator override has been set — deal never reaches threshold within hold period.
+  const _proformaWindowUndefined = _at != null && _effStabYear == null && (_at.stabilizationYearOverride ?? null) == null;
   const _projRow = (_effStabYear != null && _effStabYear > 1 && Array.isArray((data as any).projections))
     ? (data as any).projections[_effStabYear - 1] as Record<string, number> | undefined
     : undefined;
@@ -1173,6 +1176,20 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               }}
             >
               PRO FORMA · YR {_effStabYear}{_stabYearIsOverride ? ' · OVR' : ''}
+            </span>
+          )}
+          {/* ── Phase 1A: Window undefined badge ── */}
+          {_proformaWindowUndefined && (
+            <span
+              title="Pro Forma window undefined — deal does not reach the stabilization threshold within the hold period. Set a Pro Forma Year override in the INPUTS tab."
+              style={{
+                fontFamily: MONO, fontSize: 8, fontWeight: 700,
+                color: '#fbbf24', background: '#1c1200',
+                border: '1px solid #f59e0b55',
+                padding: '2px 6px', borderRadius: 2, letterSpacing: '0.06em', cursor: 'default',
+              }}
+            >
+              WINDOW UNDEFINED
             </span>
           )}
           {/* DQA aggregate badge — shows when agent has found issues */}
@@ -1497,6 +1514,36 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
           const mktVac = at.submarketVacancyRate;
           const mktAsOf = at.submarketVacancyAsOf;
           const isOverridden = overrideYear != null && overrideYear !== agentYear;
+
+          // Undefined state — agent has run (or timeline exists) but no qualifying year found
+          // and no operator override pinned. Show amber warning strip.
+          if (_proformaWindowUndefined) {
+            return (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 16,
+                padding: '5px 12px',
+                background: '#1a0f00', borderBottom: '1px solid #92400e55',
+                fontFamily: MONO, fontSize: 9, color: '#fbbf24', flexWrap: 'wrap',
+              }}>
+                <span style={{ color: '#d97706', fontWeight: 700, letterSpacing: '0.08em', fontSize: 8 }}>
+                  PRO FORMA WINDOW UNDEFINED
+                </span>
+                {targPct != null && (
+                  <span style={{ color: '#92400e' }}>
+                    TARGET <span style={{ color: '#b45309' }}>{(targPct * 100).toFixed(0)}% OCC</span>
+                    <span style={{ color: '#78350f', marginLeft: 4 }}>— no year meets threshold within hold period</span>
+                  </span>
+                )}
+                {mktVac != null && (
+                  <span style={{ color: '#44280a' }}>
+                    MKT VAC <span style={{ color: '#78350f' }}>{(mktVac * 100).toFixed(1)}%</span>
+                    {mktAsOf && <span style={{ color: '#2d1a00', marginLeft: 2 }}>({mktAsOf})</span>}
+                  </span>
+                )}
+              </div>
+            );
+          }
+
           const hasData = effYear != null || agentYear != null || targPct != null;
           if (!hasData) return null;
           return (
@@ -1556,7 +1603,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   {mktAsOf && <span style={{ color: '#4b5563', marginLeft: 2 }}>({mktAsOf})</span>}
                 </span>
               )}
-              {_useStabYear && (
+              {effYear != null && effYear > 1 && (
                 <span style={{
                   marginLeft: 'auto',
                   color: '#15803d',
@@ -1574,9 +1621,59 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
           );
         })()}
 
+        {/* ── PRO FORMA UNDEFINED banner (Phase 1A undefined-window state) ── */}
+        {_proformaWindowUndefined && (
+          <div style={{
+            padding: '10px 16px',
+            background: '#150e00',
+            borderBottom: '2px solid #f59e0b44',
+            borderLeft: '3px solid #f59e0b',
+            flexShrink: 0,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: '#fbbf24', letterSpacing: '0.06em' }}>
+                ⚠ PRO FORMA WINDOW UNDEFINED
+              </span>
+            </div>
+            <div style={{ fontFamily: LABEL, fontSize: 11, color: '#b45309', lineHeight: 1.6, marginBottom: 4 }}>
+              This deal does not reach the stabilization threshold within the hold period.
+              The operating statement below uses Year-1 values as an unanchored reference only.
+            </div>
+            <div style={{ fontFamily: LABEL, fontSize: 10, color: '#78350f', lineHeight: 1.5, marginBottom: 6 }}>
+              Set a <strong style={{ color: '#d97706' }}>Pro Forma Year override</strong> in the INPUTS panel,
+              or re-run the Cashflow Agent after adjusting vacancy trajectory inputs.
+            </div>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('fe-console-subtab', { detail: { subTab: 'inputs' } }))}
+              style={{
+                fontFamily: MONO, fontSize: 8,
+                color: '#fbbf24', background: '#2d1a00',
+                border: '1px solid #f59e0b55', borderRadius: 2,
+                padding: '3px 10px', cursor: 'pointer', letterSpacing: '0.04em',
+              }}
+            >
+              GO TO INPUTS → PRO FORMA YEAR OVERRIDE
+            </button>
+          </div>
+        )}
+
         {/* ── SECTION B — T-12 Operating Statement ── */}
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 10 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 10, opacity: _proformaWindowUndefined ? 0.5 : undefined }}>
           <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+            {_proformaWindowUndefined && (
+              <tr style={{ background: '#1a0f00' }}>
+                <td
+                  colSpan={9}
+                  style={{
+                    padding: '2px 12px', fontFamily: MONO, fontSize: 8,
+                    color: '#92400e', letterSpacing: '0.10em', textAlign: 'center',
+                    borderBottom: '1px solid #92400e33',
+                  }}
+                >
+                  UNANCHORED BASIS — YEAR-1 REFERENCE ONLY
+                </td>
+              </tr>
+            )}
             <tr style={{ background: '#111111', borderBottom: '1px solid #2d2d2d' }}>
               <Th label="Line Item" left min={180} sticky />
               <Th label="Broker" color={viewMode === 'BUILD_OWN' || y1IsBroker ? '#f59e0b' : undefined} brokerActive={viewMode === 'BROKER_VIEW'} />
