@@ -2216,9 +2216,8 @@ export default function PropertyDetailsPage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        {/* Unit Mix Comparison — Grouped by Type */}
-        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+      {/* Unit Mix Comparison */}
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
           <SectionHeader title="UNIT MIX COMPARISON" subtitle="Subject vs Comps · By Unit Type" icon="▦" borderColor={T.text.purple} />
           <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
             {unitTypes.map((type, ti) => {
@@ -2278,8 +2277,6 @@ export default function PropertyDetailsPage() {
             })}
           </div>
         </div>
-
-      </div>
 
       {/* Sale Comp Transactions — M27 (full width) */}
       <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
