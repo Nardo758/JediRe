@@ -132,6 +132,14 @@ interface DealFinancials {
     lifecycleProfile?: string | null;
     lifecycleProfileOverride?: string | null;
     effectiveLifecycleProfile?: string | null;
+    /** Block 7e — formula consistency invariant check. Null until Cashflow Agent has run. */
+    invariantCheck?: {
+      status: 'PASSED' | 'FAILED' | 'SKIPPED';
+      pre_stab_noi: number | null;
+      stab_noi: number | null;
+      delta_pct: number | null;
+      reason: string;
+    } | null;
   } | null;
   /** Per-floor-plan GPR grid from cashflow agent (Task #797 / Pattern A). Null when agent has not run. */
   gprUnitMix?: GprUnitMixEntry[] | null;
@@ -233,6 +241,14 @@ interface DealFinancials {
     submarketVacancyAsOf?: string | null;
     lifecycleProfile?: string | null;
     lifecycleProfileOverride?: string | null;
+    /** Block 7e — formula consistency invariant check. Null until Cashflow Agent has run. */
+    invariantCheck?: {
+      status: 'PASSED' | 'FAILED' | 'SKIPPED';
+      pre_stab_noi: number | null;
+      stab_noi: number | null;
+      delta_pct: number | null;
+      reason: string;
+    } | null;
     effectiveLifecycleProfile?: string | null;
   } | null;
 }
@@ -1630,6 +1646,40 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   {mktAsOf && <span style={{ color: '#4b5563', marginLeft: 2 }}>({mktAsOf})</span>}
                 </span>
               )}
+              {/* ── Block 7e invariant check chip ── */}
+              {(() => {
+                const ic = at.invariantCheck;
+                if (!ic || ic.status === 'SKIPPED') return null;
+                const passed = ic.status === 'PASSED';
+                const deltaPct = ic.delta_pct != null ? (ic.delta_pct * 100).toFixed(1) : null;
+                const tooltipLines = [
+                  ic.reason,
+                  ic.pre_stab_noi != null ? `Pre-stab NOI: $${Math.round(ic.pre_stab_noi).toLocaleString()}` : null,
+                  ic.stab_noi     != null ? `At-stab NOI: $${Math.round(ic.stab_noi).toLocaleString()}`     : null,
+                  ic.delta_pct    != null ? `Gap: ${(ic.delta_pct * 100).toFixed(1)}%`                       : null,
+                ].filter(Boolean).join(' · ');
+                return (
+                  <span
+                    title={tooltipLines}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 3,
+                      background: passed ? '#052e16' : '#1a0a00',
+                      border: `1px solid ${passed ? '#16a34a55' : '#d9770655'}`,
+                      borderRadius: 3,
+                      padding: '1px 6px',
+                      color: passed ? '#4ade80' : '#fb923c',
+                      fontSize: 8,
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      cursor: 'help',
+                    }}
+                  >
+                    {passed
+                      ? '✓ CONSISTENT'
+                      : `⚠ BOUNDARY GAP ${deltaPct != null ? `${deltaPct}%` : ''}`}
+                  </span>
+                );
+              })()}
               {effYear != null && effYear > 1 && (
                 <span style={{
                   marginLeft: 'auto',

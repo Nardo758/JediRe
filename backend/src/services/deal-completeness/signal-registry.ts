@@ -366,6 +366,41 @@ const SIGNAL_REGISTRY: SignalDefinition[] = [
     },
   },
 
+  {
+    id:       'proforma_invariant_failed',
+    severity: 'advisory',
+    title:    'Pro Forma formula boundary gap detected',
+    description:
+      'The Cashflow Agent detected a material discontinuity at the stabilization boundary year: ' +
+      'the pre-stabilization NOI formula and the at-stabilization NOI formula produce materially ' +
+      'different values (≥ 5% gap) at the transition year. This indicates inconsistent assumption ' +
+      'stacks between the lease-up/value-add phase and the stabilized phase — the projection ' +
+      'may show an unrealistic step-change in performance at the transition year.',
+    recommendedAction:
+      'Review the stabilization strip in the PRO FORMA tab — it shows the exact boundary gap %. ' +
+      'Check that your pre-stabilization vacancy ramp, rent growth, and OpEx assumptions connect ' +
+      'smoothly to your stabilized assumptions. Re-run the Cashflow Agent after correcting ' +
+      'any assumption inconsistencies.',
+    ctaLabel: 'Open Pro Forma',
+    ctaLink:  (dealId) => `/deals/${dealId}?tab=f9&subtab=proforma`,
+
+    async evaluate(dealId, _propertyId, pool): Promise<SignalStatus> {
+      try {
+        const res = await pool.query(
+          `SELECT invariant_check_result FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+          [dealId],
+        );
+        if (res.rows.length === 0) return 'complete';
+        const raw = res.rows[0].invariant_check_result;
+        if (!raw || typeof raw !== 'object') return 'complete';
+        const r = raw as Record<string, unknown>;
+        return r.status === 'FAILED' ? 'incomplete' : 'complete';
+      } catch {
+        return 'complete';
+      }
+    },
+  },
+
 ];
 
 export function getSignalRegistry(): SignalDefinition[] {

@@ -1587,6 +1587,14 @@ export interface DealFinancials {
     effectiveStabilizationYear: number | null;
     /** Phase 1A — submarket equilibrium vacancy rate (%) for context display. */
     submarketVacancyRate: number | null;
+    /** Block 7e — formula consistency invariant check result. Null until Cashflow Agent has run. */
+    invariantCheck: {
+      status: 'PASSED' | 'FAILED' | 'SKIPPED';
+      pre_stab_noi: number | null;
+      stab_noi: number | null;
+      delta_pct: number | null;
+      reason: string;
+    } | null;
   } | null;
   proforma: {
     year1: OperatingStatementRow[];
@@ -5089,6 +5097,19 @@ export async function getDealFinancials(
     rentRecoveryPathMonths:             _at.rent_recovery_path_months             != null ? +parseFloat(_at.rent_recovery_path_months).toFixed(1)             : null,
     leaseUpVelocityUnitsPerMonth:       _at.lease_up_velocity_units_per_month     != null ? +parseFloat(_at.lease_up_velocity_units_per_month).toFixed(2)     : null,
     concessionLeaseUpInitialMonths:     _at.concession_lease_up_initial_months    != null ? +parseFloat(_at.concession_lease_up_initial_months).toFixed(2)    : null,
+    invariantCheck: (() => {
+      const raw = _at.invariant_check_result;
+      if (!raw || typeof raw !== 'object') return null;
+      const r = raw as Record<string, unknown>;
+      if (typeof r.status !== 'string') return null;
+      return {
+        status: r.status as 'PASSED' | 'FAILED' | 'SKIPPED',
+        pre_stab_noi: typeof r.pre_stab_noi === 'number' ? r.pre_stab_noi : null,
+        stab_noi:     typeof r.stab_noi     === 'number' ? r.stab_noi     : null,
+        delta_pct:    typeof r.delta_pct    === 'number' ? r.delta_pct    : null,
+        reason:       typeof r.reason       === 'string' ? r.reason       : '',
+      };
+    })(),
   } : null;
 
   return {

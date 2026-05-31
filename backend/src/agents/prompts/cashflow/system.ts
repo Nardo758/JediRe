@@ -828,6 +828,49 @@ After completing your per-year vacancy reasoning (Block 7a–7c), compute the st
 
 ---
 
+## Block 7e — Formula Consistency Invariant Check (REQUIRED after Block 7d)
+
+**CRITICAL:** After computing \`stabilization_year\` (Block 7d), you must run the formula consistency invariant check and record the result in the top-level \`invariant_check\` output field.
+
+**Purpose:** Verify that the pre-stabilization formula and the at-stabilization formula agree at the boundary year. A material discontinuity at the transition (e.g. lease-up NOI of $1.2M stepping discontinuously to stabilized NOI of $2.9M at Year 3 with no smoothing) indicates an internally inconsistent projection that needs operator review.
+
+**Algorithm:**
+
+1. **Skip condition:** If \`stabilization_year\` is null OR \`stabilization_year = 1\` (asset already stabilized — no pre-stab phase), set:
+   \`\`\`
+   invariant_check = { status: "SKIPPED", pre_stab_noi: null, stab_noi: null, delta_pct: null,
+     reason: "stabilization_year=1 — no pre-stabilization phase" }
+   \`\`\`
+   (or "stabilization_year=null — deal never stabilizes" as appropriate) and stop.
+
+2. **Compute NOI at Year N using the pre-stab formula path:**
+   Let N = \`stabilization_year\`. Using the pre-stabilization assumptions you derived (Block 7 lifecycle branching — VALUE_ADD lease-up ramp, DEVELOPMENT absorption curve, DISTRESSED recovery trajectory), compute the NOI for Year N as if the pre-stab formula were continuing. Call this \`pre_stab_noi\`.
+
+3. **Compute NOI at Year N using the at-stab (canonical) formula:**
+   Using the stabilized-run assumptions (stabilized vacancy, stabilized rent growth, stabilized opex), compute NOI for Year N. Call this \`stab_noi\`.
+
+4. **Compute delta:**
+   \`delta_pct = |pre_stab_noi - stab_noi| / stab_noi\` (if \`stab_noi > 0\`; otherwise set to null and reason "stab_noi zero or negative — delta undefined").
+
+5. **Evaluate:**
+   - If \`delta_pct < 0.05\`: \`status = "PASSED"\`, reason = "Pre-stab and at-stab NOI agree within 5% at boundary year N."
+   - If \`delta_pct >= 0.05\`: \`status = "FAILED"\`, reason = "Boundary gap \${(delta_pct*100).toFixed(1)}% at Year N — discontinuity may indicate inconsistent assumption stacks between pre-stab and stabilized regimes."
+
+**Output field shape (always present, even when SKIPPED):**
+\`\`\`
+invariant_check: {
+  status:        "PASSED" | "FAILED" | "SKIPPED",
+  pre_stab_noi:  <number | null>,   // annual NOI at Year N via pre-stab formula
+  stab_noi:      <number | null>,   // annual NOI at Year N via at-stab formula
+  delta_pct:     <number | null>,   // |pre - stab| / stab, as decimal (e.g. 0.031 = 3.1%)
+  reason:        <string>           // plain-English explanation
+}
+\`\`\`
+
+**Important:** This check DOES NOT block the Pro Forma from rendering. It is a diagnostic that helps operators identify assumption-stack inconsistencies. Report it faithfully — do not manipulate the NOI inputs to force a PASSED status.
+
+---
+
 ## OpEx Derivation Protocol — Batch 1 (Phase 2)
 
 Use these rules when deriving OpEx assumptions for multifamily-existing deals. All items use $/unit/annual granularity. The agent must document source, confidence, and validation in evidence rows per the Evidence Citation Requirement.

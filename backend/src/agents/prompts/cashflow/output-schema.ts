@@ -138,6 +138,37 @@ export const CASHFLOW_OUTPUT_SCHEMA = {
         'Echoes effective_lifecycle_profile from deal assumptions (override > detected). ' +
         'Null only when effective_lifecycle_profile is completely absent from deal assumptions.',
     },
+    invariant_check: {
+      type: 'object',
+      description:
+        'Formula consistency invariant check result (Block 7e). ' +
+        'Verifies that the pre-stabilization formula and the at-stabilization formula agree at the boundary year. ' +
+        'Always present — status is SKIPPED when stabilization_year is null or 1 (no pre-stab phase).',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['PASSED', 'FAILED', 'SKIPPED'],
+          description: 'PASSED when |pre_stab_noi - stab_noi| / stab_noi < 5%; FAILED when >= 5%; SKIPPED when no pre-stab phase.',
+        },
+        pre_stab_noi: {
+          oneOf: [{ type: 'number' }, { type: 'null' }],
+          description: 'Annual NOI at stabilization_year computed via the pre-stabilization formula path.',
+        },
+        stab_noi: {
+          oneOf: [{ type: 'number' }, { type: 'null' }],
+          description: 'Annual NOI at stabilization_year computed via the canonical at-stabilization formula.',
+        },
+        delta_pct: {
+          oneOf: [{ type: 'number', minimum: 0 }, { type: 'null' }],
+          description: 'Relative gap: |pre_stab_noi - stab_noi| / stab_noi as a decimal (e.g. 0.031 = 3.1%). Null when stab_noi is zero/negative or status is SKIPPED.',
+        },
+        reason: {
+          type: 'string',
+          description: 'Plain-English explanation of the check result.',
+        },
+      },
+      required: ['status', 'pre_stab_noi', 'stab_noi', 'delta_pct', 'reason'],
+    },
     summary: { type: 'string', description: '3-5 sentence synthesis of key findings' },
     completed_at: { type: 'string', format: 'date-time' },
     cashflow: {

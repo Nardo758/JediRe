@@ -129,17 +129,23 @@ async function syncPipelineToDealData(
   // Only writes when cashflow output includes the field (non-null or explicit null).
   if (cashflow && 'stabilization_year' in cashflow) {
     const stabYear = typeof cashflow.stabilization_year === 'number' ? cashflow.stabilization_year : null;
+    const invariantCheckRaw = (cashflow as Record<string, unknown>).invariant_check;
+    const invariantCheck = invariantCheckRaw != null && typeof invariantCheckRaw === 'object'
+      ? invariantCheckRaw as { status: string; pre_stab_noi: number | null; stab_noi: number | null; delta_pct: number | null; reason: string }
+      : null;
     try {
       await db.query(
-        `INSERT INTO deal_assumptions (deal_id, stabilization_year, created_at, updated_at)
-         VALUES ($1, $2, NOW(), NOW())
+        `INSERT INTO deal_assumptions (deal_id, stabilization_year, invariant_check_result, created_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
          ON CONFLICT (deal_id)
-         DO UPDATE SET stabilization_year = $2, updated_at = NOW()`,
-        [dealId, stabYear],
+         DO UPDATE SET stabilization_year = $2, invariant_check_result = $3, updated_at = NOW()`,
+        [dealId, stabYear, invariantCheck != null ? JSON.stringify(invariantCheck) : null],
       );
-      logger.info(`[PipelineSync] stabilization_year=${stabYear ?? 'null'} written to deal_assumptions for ${dealId}`);
+      logger.info(
+        `[PipelineSync] stabilization_year=${stabYear ?? 'null'} invariant_check=${invariantCheck?.status ?? 'absent'} written to deal_assumptions for ${dealId}`
+      );
     } catch (stabErr: any) {
-      logger.warn(`[PipelineSync] stabilization_year write failed (non-fatal): ${stabErr.message}`, { dealId });
+      logger.warn(`[PipelineSync] stabilization_year/invariant_check write failed (non-fatal): ${stabErr.message}`, { dealId });
     }
   }
 
