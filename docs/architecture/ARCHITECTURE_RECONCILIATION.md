@@ -59,6 +59,21 @@ This document addresses all three. It's the answer to "where are we on the plan?
 | `AI Compute Derivation Audit` | Framing partially superseded | Re-evaluate "smoking gun" claims against revised calc-vs-assumption framing |
 | Various F-Key triage waves | Implementation state shifts as features ship | Reconcile periodically |
 
+### ⚠ Phantom documents — listed above but do not exist as repo files
+
+Corpus-sweep audit (2026-05-31) confirmed these six documents exist only in conversation history. All current-state claims they contain are INFERRED, not file-verifiable. Action: write to repo at stated paths (separate task).
+
+| Document | Actual status |
+|---|---|
+| `docs/architecture/vendor-market-data/overview.md` | Directory does not exist |
+| `docs/architecture/vendor-market-data/piece-a-vendor-abstraction.md` | Directory does not exist |
+| `docs/architecture/vendor-market-data/piece-b-field-reconciliation.md` | Directory does not exist |
+| `docs/architecture/vendor-market-data/piece-c-agent-synthesis.md` | Directory does not exist |
+| `docs/architecture/vendor-market-data/piece-d-divergence-as-quality-signal.md` | Directory does not exist |
+| `docs/architecture/calculations-vs-assumptions.md` | File does not exist |
+
+Additionally, seven entries in "Active canonical documents" have "(verify path)" status. Corpus-sweep confirmed most do not exist at stated paths. Actual confirmed paths for surviving docs: `docs/architecture/deal-capsule-blueprint.md` (Deal Capsule), `docs/architecture/property-plumbing-*.md` (Property Plumbing, multiple files — not the single refactor.md/phases.md structure shown above).
+
 ---
 
 ## §3 — ARCHITECTURAL COMMITMENT STATUS
@@ -83,7 +98,7 @@ Tracking each commitment's state: **Operational** (working in production), **In-
 | LayeredValue mechanism for assumptions AND calculations | Operational | Both classes flow through the chain |
 | Required wiring for every agent-authored field (6-point checklist) | In-flight | 7 fields fully wired per audit; checklist used as T-B1 per-field quality gate |
 | Conceptual assumption vs calculation distinction preserved as reasoning guidance | Operational | Doc preserves catalog of 22 and 14 (count pending verification) |
-| OperatorStance re-blends Layer 2 without new LLM call | Pending verification | Behavior described but not state-verified against code |
+| OperatorStance re-blends Layer 2 without new LLM call | Operational | Verified 2026-05-31: `operatorStance.service.ts` background reblend applies modulation to baseline snapshot with no LLM call in the path |
 
 ### Commitments from Piece A
 
@@ -251,6 +266,13 @@ Tracking when documents have been corrected against audit findings or operator c
 - **HMR false-positive gotcha captured** in `replit.md` Gotchas section: "Vite HMR collisions during active editing can produce runtime errors that disappear on hard refresh. Before treating any error as production-relevant, let edits settle, hard-refresh the preview, and confirm the error persists."
 - **T-CONF-2 false-alarm finding documented:** Neither F1 OverviewTab nor F8 DecisionTab reference `deal_market_intelligence`. The described dual-surface did not exist. Guard doc-block comments added to both files to prevent accidental future duplication. Follow-up task #1609 queued to wire market signals into F9 OverviewTab once the Pattern 2 (compute trigger) gap is resolved.
 - **T-CONF-3 double-mounts removed:** `stabilized-potential.routes.ts` duplicate mount at `/api/v1/proforma` removed. `apartmentLocatorRouter` alias mount at `/api/v1/property-discovery/apartment-locator` removed after caller audit confirmed no frontend or backend code uses that path.
+
+### 2026-05-31 (corpus-sweep audit)
+
+- **Corpus current-state audit completed.** Full report at `docs/operations/CORPUS_CURRENT_STATE_AUDIT.md`. Central finding: six primary corpus documents (Pieces A–D, overview.md, calculations-vs-assumptions.md) listed in §2 as "Active canonical documents" do not exist as repo files — they exist only in conversation history. All current-state claims in those documents are INFERRED. Additionally, most of the seven "(verify path)" entries in §2 also do not exist at stated paths.
+- **OperatorStance re-blend claim verified.** `operatorStance.service.ts` confirms background reblend applies modulation to baseline snapshot without LLM call. §3 status updated from "Pending verification" to "Operational."
+- **Phantom documents table added to §2** listing all six primary corpus docs with "does not exist" status and action item to write them to repo.
+- **Claims independently verified by this audit:** `getFieldValue`/`getFieldValues` service, `COMPUTED_AGGREGATES` in service, `correctSnapshotMath` in `cashflow.postprocess.ts`, `LINE_ITEM_CONFIG` in `proFormaMathEngine.ts`, `FIELD_PRIORITIES` in `proforma-seeder.service.ts`, `vendor_source`/`vendor_data_as_of`/`vendor_license_posture` fields in vendor registry files, `yardi-matrix.vendor.ts` and `yardi-matrix-parser.ts` existence, `historical_observations` vendor column migration.
 
 ### Pending corrections (not yet applied)
 
