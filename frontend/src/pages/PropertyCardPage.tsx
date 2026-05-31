@@ -15,6 +15,33 @@ function classFromCode(code?: string | null): string {
   return c;
 }
 
+function pcFmtUsd(v: number): string {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
+  return `$${v.toFixed(0)}`;
+}
+function pcFmtCapRate(v: number | null): string {
+  return v != null ? `${(Number(v) * 100).toFixed(2)}%` : '—';
+}
+function pcComputeOutlierIds(comps: any[]): Set<string> {
+  const rates = comps
+    .map(c => (c.implied_cap_rate != null ? Number(c.implied_cap_rate) : null))
+    .filter((r): r is number => r != null && !isNaN(r));
+  if (rates.length < 4) return new Set();
+  const sorted = [...rates].sort((a, b) => a - b);
+  const q1 = sorted[Math.floor(sorted.length * 0.25)];
+  const q3 = sorted[Math.floor(sorted.length * 0.75)];
+  const iqr = q3 - q1;
+  if (iqr === 0) return new Set();
+  const lo = q1 - 1.5 * iqr;
+  const hi = q3 + 1.5 * iqr;
+  return new Set(
+    comps
+      .filter(c => c.implied_cap_rate != null && (Number(c.implied_cap_rate) < lo || Number(c.implied_cap_rate) > hi))
+      .map(c => String(c.id))
+  );
+}
+
 function mapRealProperty(real: any, navName?: string) {
   if (!real) return null;
   const className = real.building_class || classFromCode(real.class_code);
@@ -876,6 +903,12 @@ export default function PropertyDetailsPage() {
   const [realError, setRealError] = useState<string | null>(null);
   const [marketComps, setMarketComps] = useState<any>(null);
   const [marketCompsLoading, setMarketCompsLoading] = useState(false);
+  const [saleCompSet, setSaleCompSet] = useState<any>(null);
+  const [saleCompSetLoading, setSaleCompSetLoading] = useState(false);
+  const [pcImpliedCapData, setPcImpliedCapData] = useState<any>(null);
+  const [pcImpliedCapLoading, setPcImpliedCapLoading] = useState(false);
+  const [compSortField, setCompSortField] = useState<'date' | 'ppu' | 'cap'>('date');
+  const [compVintageBand, setCompVintageBand] = useState<string | null>(null);
 
   const navState = (location.state || {}) as {
     propertyName?: string;
@@ -928,6 +961,35 @@ export default function PropertyDetailsPage() {
       });
     return () => { cancelled = true; };
   }, [id]);
+
+  const marketCompsDealId = marketComps?.dealId ?? null;
+  useEffect(() => {
+    if (!marketCompsDealId) { setSaleCompSet(null); setPcImpliedCapData(null); return; }
+    let cancelled = false;
+    setSaleCompSetLoading(true);
+    apiClient
+      .get(`/api/v1/deals/${marketCompsDealId}/comps`)
+      .then((res: any) => {
+        if (!cancelled) {
+          const payload = res?.data?.data ?? res?.data;
+          setSaleCompSet(payload ?? null);
+        }
+      })
+      .catch(() => { if (!cancelled) setSaleCompSet(null); })
+      .finally(() => { if (!cancelled) setSaleCompSetLoading(false); });
+    setPcImpliedCapLoading(true);
+    apiClient
+      .get(`/api/v1/deals/${marketCompsDealId}/implied-cap-rate`)
+      .then((res: any) => {
+        if (!cancelled) {
+          const d = res?.data?.data ?? res?.data;
+          setPcImpliedCapData(d ?? null);
+        }
+      })
+      .catch(() => { if (!cancelled) setPcImpliedCapData(null); })
+      .finally(() => { if (!cancelled) setPcImpliedCapLoading(false); });
+    return () => { cancelled = true; };
+  }, [marketCompsDealId]);
 
   const mappedReal = useMemo(
     () => mapRealProperty(realData, navState.propertyName),
@@ -2057,26 +2119,25 @@ export default function PropertyDetailsPage() {
       return merged.length > 0 ? merged : p.rentComps.map((c: any) => ({ ...c, _source: 'mock' }));
     };
 
-    const buildSaleComps = (): Array<any> => {
-      if (!marketComps) return p.saleComps.map((c: any) => ({ ...c, _source: 'mock' }));
-      const dealRows = (marketComps.saleComps?.deal || []).map((r: any) => {
-        const units = r.units || 1;
-        const sp = safeFloat(r.sale_price);
-        const ppu = r.price_per_unit ? Math.round(safeFloat(r.price_per_unit)) : (units > 0 ? Math.round(sp / units) : 0);
-        return { name: r.property_name || r.address || '—', units: r.units || 0, ppu, capRate: normCap(r.cap_rate), date: r.sale_date ? String(r.sale_date).slice(0, 7) : '—', dist: '—', _source: 'costar' };
-      });
-      const platformRows = (marketComps.saleComps?.platform || []).map((r: any) => {
-        const units = r.units || 1;
-        const sp = safeFloat(r.sale_price);
-        const ppu = r.price_per_unit ? Math.round(safeFloat(r.price_per_unit)) : (units > 0 ? Math.round(sp / units) : 0);
-        return { name: r.property_name || r.address || '—', units: r.units || 0, ppu, capRate: normCap(r.cap_rate), date: r.sale_date ? String(r.sale_date).slice(0, 7) : '—', dist: '—', _source: 'platform' };
-      });
-      const merged = [...dealRows, ...platformRows];
-      return merged.length > 0 ? merged : p.saleComps.map((c: any) => ({ ...c, _source: 'mock' }));
-    };
-
     const realRentComps = buildRentComps();
-    const realSaleComps = buildSaleComps();
+
+    const pcComps: any[] = saleCompSet?.comps ?? saleCompSet?.members ?? [];
+    const pcCompCount: number = saleCompSet?.comp_count ?? pcComps.length;
+    const VINTAGE_BANDS_PC = ['pre-1990', '1990-2005', '2006-2015', '2016+'];
+    const pcVintageOf = (c: any): string | null => {
+      const y = Number(c.year_built);
+      if (!y) return null;
+      if (y < 1990) return 'pre-1990';
+      if (y < 2006) return '1990-2005';
+      if (y < 2016) return '2006-2015';
+      return '2016+';
+    };
+    let filteredPcComps = [...pcComps];
+    if (compVintageBand) filteredPcComps = filteredPcComps.filter((c: any) => pcVintageOf(c) === compVintageBand);
+    if (compSortField === 'ppu') filteredPcComps.sort((a: any, b: any) => (Number(b.price_per_unit) || 0) - (Number(a.price_per_unit) || 0));
+    else if (compSortField === 'cap') filteredPcComps.sort((a: any, b: any) => ((Number(a.implied_cap_rate) ?? 999) - (Number(b.implied_cap_rate) ?? 999)));
+    else filteredPcComps.sort((a: any, b: any) => (String(b.recording_date) > String(a.recording_date) ? 1 : -1));
+    const pcOutlierIds = pcComputeOutlierIds(filteredPcComps);
 
     const SrcBadge = ({ src }: { src: string }) => {
       if (src === 'costar') return <span style={{ fontSize: 6, background: '#f97316', color: '#fff', borderRadius: 2, padding: '1px 3px', fontWeight: 700, letterSpacing: '0.04em' }}>CoStar</span>;
@@ -2214,42 +2275,164 @@ export default function PropertyDetailsPage() {
           </div>
         </div>
 
-        {/* Sale Comps */}
-        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-          <SectionHeader title="SALE COMPS" subtitle="M27 · Recent Transactions" icon="◈" borderColor={T.text.green} />
-          <div style={{ fontSize: 8, fontFamily: T.font.mono }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 60px 48px 48px 44px 46px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
-              {["PROPERTY","UNITS","$/UNIT","CAP","DATE","DIST","SRC"].map(h => (
-                <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
-              ))}
+      </div>
+
+      {/* Sale Comp Transactions — M27 (full width) */}
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+        <SectionHeader
+          title="SALE COMP TRANSACTIONS"
+          subtitle={`${filteredPcComps.length}${compVintageBand ? ` of ${pcCompCount}` : ' RECORDS'} · PROPERTY / DATE / PRICE / $/UNIT / NOI/UNIT / CAP RATE / SRC / DIST`}
+          icon="◈"
+          borderColor={T.text.amber}
+        />
+        {saleCompSetLoading && (
+          <div style={{ padding: 12, color: T.text.muted, fontFamily: T.font.mono, fontSize: 9 }}>LOADING SALE COMPS…</div>
+        )}
+        {!saleCompSetLoading && pcComps.length === 0 && (
+          <div style={{ padding: 12, color: T.text.muted, fontFamily: T.font.mono, fontSize: 9 }}>NO SALE COMP DATA</div>
+        )}
+        {!saleCompSetLoading && pcComps.length > 0 && <>
+          {/* KPI strip — 6 cells */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 1, background: T.border.subtle, marginBottom: 1 }}>
+            <div style={{ background: T.bg.panel, padding: '4px 8px' }}>
+              <div style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono, letterSpacing: 0.5 }}>COMP COUNT</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text.amber, fontFamily: T.font.mono }}>{pcCompCount}</div>
             </div>
-            {realSaleComps.length === 0 ? (
-              <div style={{ padding: "16px 8px", textAlign: "center", color: T.text.muted, fontSize: 8 }}>No sale comps available</div>
-            ) : realSaleComps.map((c: any, i: number) => (
-              <div key={i} style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 60px 48px 48px 44px 46px", padding: "5px 8px", borderBottom: `1px solid ${T.border.subtle}08`, background: c._source === 'costar' ? `${T.text.orange}06` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt) }}>
-                <span style={{ color: T.text.primary, fontWeight: 500 }}>{c.name}</span>
-                <span style={{ color: T.text.secondary }}>{c.units || '—'}</span>
-                <span style={{ color: T.text.green, fontWeight: 600 }}>{c.ppu ? `$${c.ppu.toLocaleString()}` : '—'}</span>
-                <span style={{ color: T.text.cyan }}>{c.capRate ? pct(c.capRate) : '—'}</span>
-                <span style={{ color: T.text.secondary }}>{c.date}</span>
-                <span style={{ color: T.text.muted }}>{c.dist}</span>
-                <span><SrcBadge src={c._source} /></span>
+            <div style={{ background: T.bg.panel, padding: '4px 8px' }}>
+              <div style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono, letterSpacing: 0.5 }}>AVG $/UNIT</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text.green, fontFamily: T.font.mono }}>{saleCompSet?.avg_price_per_unit ? pcFmtUsd(Number(saleCompSet.avg_price_per_unit)) : '—'}</div>
+            </div>
+            <div style={{ background: T.bg.panel, padding: '4px 8px' }}>
+              <div style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono, letterSpacing: 0.5 }}>MEDIAN $/UNIT</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text.cyan, fontFamily: T.font.mono }}>{saleCompSet?.median_price_per_unit ? pcFmtUsd(Number(saleCompSet.median_price_per_unit)) : '—'}</div>
+            </div>
+            <div style={{ background: T.bg.panel, padding: '4px 8px' }}>
+              <div style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono, letterSpacing: 0.5 }}>COMP MEDIAN CAP</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text.amber, fontFamily: T.font.mono }}>{pcFmtCapRate(saleCompSet?.median_implied_cap_rate ?? null)}</div>
+              <div style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono }}>transaction-reported</div>
+            </div>
+            <div style={{ background: pcImpliedCapData?.implied_cap_rate != null ? '#00D26A08' : T.bg.panel, padding: '4px 8px', borderLeft: `2px solid ${pcImpliedCapData?.implied_cap_rate != null ? '#00D26A55' : T.border.subtle}` }}>
+              <div style={{ fontSize: 7, color: pcImpliedCapData?.implied_cap_rate != null ? '#00D26A' : T.text.muted, fontFamily: T.font.mono, letterSpacing: 0.5 }}>PLATFORM IMPLIED CAP</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: pcImpliedCapData?.implied_cap_rate != null ? '#00D26A' : T.text.muted, fontFamily: T.font.mono }}>
+                {pcImpliedCapLoading ? '…' : pcFmtCapRate(pcImpliedCapData?.implied_cap_rate ?? null)}
               </div>
-            ))}
-            {realSaleComps.length > 0 && (() => {
-              const withPpu = realSaleComps.filter((c: any) => c.ppu > 0);
-              const withCap = realSaleComps.filter((c: any) => c.capRate > 0);
-              const medPpu = withPpu.length > 0 ? [...withPpu].sort((a: any, b: any) => a.ppu - b.ppu)[Math.floor(withPpu.length / 2)].ppu : null;
-              const medCap = withCap.length > 0 ? [...withCap].sort((a: any, b: any) => a.capRate - b.capRate)[Math.floor(withCap.length / 2)].capRate : null;
+              <div style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono }}>
+                {pcImpliedCapData?.rent_source === 'market_vitals' ? 'market rent / price' : pcImpliedCapData?.rent_source === 'line_item_benchmarks' ? 'benchmark / price' : pcImpliedCapLoading ? '' : 'unavailable'}
+              </div>
+            </div>
+            <div style={{ background: pcImpliedCapData?.operator_going_in_cap != null ? '#00BCD408' : T.bg.panel, padding: '4px 8px', borderLeft: `2px solid ${pcImpliedCapData?.operator_going_in_cap != null ? '#00BCD455' : T.border.subtle}` }}>
+              <div style={{ fontSize: 7, color: pcImpliedCapData?.operator_going_in_cap != null ? T.text.cyan : T.text.muted, fontFamily: T.font.mono, letterSpacing: 0.5 }}>OPERATOR EXIT CAP</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: pcImpliedCapData?.operator_going_in_cap != null ? T.text.cyan : T.text.muted, fontFamily: T.font.mono }}>
+                {pcFmtCapRate(pcImpliedCapData?.operator_going_in_cap ?? null)}
+              </div>
+              {pcImpliedCapData?.delta_bps != null && pcImpliedCapData?.positioning_label != null && (
+                <div style={{ fontSize: 7, fontFamily: T.font.mono, color: pcImpliedCapData.positioning_label === 'ALIGNED' ? '#00D26A' : pcImpliedCapData.positioning_label === 'OPERATOR_ABOVE' ? T.text.amber : T.text.red }}>
+                  {pcImpliedCapData.delta_bps > 0 ? '+' : ''}{pcImpliedCapData.delta_bps} bps · {pcImpliedCapData.positioning_label}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Cap benchmark banner */}
+          {!pcImpliedCapLoading && (() => {
+            if (pcImpliedCapData?.implied_cap_rate == null) {
               return (
-                <div style={{ padding: "6px 8px", background: T.bg.panelAlt }}>
-                  {medPpu != null && <><span style={{ color: T.text.muted, fontSize: 7 }}>MEDIAN $/UNIT:</span><span style={{ color: T.text.green, marginLeft: 4, fontWeight: 600 }}>${medPpu.toLocaleString()}</span></>}
-                  {medCap != null && <><span style={{ color: T.text.muted, marginLeft: 8, fontSize: 7 }}>MEDIAN CAP:</span><span style={{ color: T.text.cyan, marginLeft: 4, fontWeight: 600 }}>{pct(medCap)}</span></>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, borderLeft: `3px solid ${T.text.muted}` }}>
+                  <span style={{ fontSize: 10, color: T.text.muted }}>⚠</span>
+                  <span style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted }}>PLATFORM IMPLIED CAP UNAVAILABLE — insufficient benchmark data for this market. Comp-reported cap rates above are transaction-sourced only.</span>
                 </div>
               );
-            })()}
+            }
+            const icd = pcImpliedCapData;
+            const posColor = icd.positioning_label === 'ALIGNED' ? '#00D26A' : icd.positioning_label === 'OPERATOR_ABOVE' ? T.text.amber : T.text.red;
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '5px 10px', background: '#00D26A06', borderBottom: `1px solid #00D26A22`, borderLeft: `3px solid #00D26A55` }}>
+                <span style={{ fontFamily: T.font.mono, fontSize: 7, color: '#00D26A', fontWeight: 700, letterSpacing: 0.5 }}>CAP BENCHMARK</span>
+                <span style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted }}>
+                  COMP REPORTED: <span style={{ color: T.text.amber, fontWeight: 700 }}>{pcFmtCapRate(icd.comp_reported_cap_rate ?? saleCompSet?.median_implied_cap_rate ?? null)}</span>
+                </span>
+                <span style={{ color: T.border.subtle }}>·</span>
+                <span style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted }}>
+                  PLATFORM IMPLIED: <span style={{ color: '#00D26A', fontWeight: 700 }}>{pcFmtCapRate(icd.implied_cap_rate)}</span>
+                </span>
+                {icd.operator_going_in_cap != null && <>
+                  <span style={{ color: T.border.subtle }}>·</span>
+                  <span style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted }}>
+                    OPERATOR EXIT: <span style={{ color: T.text.cyan, fontWeight: 700 }}>{pcFmtCapRate(icd.operator_going_in_cap)}</span>
+                  </span>
+                  {icd.delta_bps != null && <>
+                    <span style={{ color: T.border.subtle }}>·</span>
+                    <span style={{ fontFamily: T.font.mono, fontSize: 8, color: posColor, fontWeight: 700 }}>
+                      {icd.delta_bps > 0 ? '+' : ''}{icd.delta_bps} BPS vs PLATFORM · {icd.positioning_label}
+                    </span>
+                  </>}
+                </>}
+              </div>
+            );
+          })()}
+
+          {/* Sort + vintage controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: T.bg.panel, borderBottom: `1px solid ${T.border.subtle}`, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono, letterSpacing: 0.5, marginRight: 2 }}>SORT</span>
+            {(['date', 'ppu', 'cap'] as const).map((f) => {
+              const labels = { date: 'DATE ↓', ppu: '$/UNIT ↓', cap: 'CAP RATE ↑' };
+              const active = compSortField === f;
+              return (
+                <button key={f} onClick={() => setCompSortField(f)} style={{ fontFamily: T.font.mono, fontSize: 8, fontWeight: active ? 700 : 400, color: active ? T.text.amber : T.text.muted, background: active ? `${T.text.amber}15` : 'transparent', border: `1px solid ${active ? T.text.amber : T.border.subtle}`, borderRadius: 2, padding: '2px 7px', cursor: 'pointer', letterSpacing: 0.5 }}>
+                  {labels[f]}
+                </button>
+              );
+            })}
+            <span style={{ width: 1, height: 12, background: T.border.subtle, margin: '0 4px' }} />
+            <span style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono, letterSpacing: 0.5 }}>VINTAGE</span>
+            <button onClick={() => setCompVintageBand(null)} style={{ fontFamily: T.font.mono, fontSize: 8, fontWeight: compVintageBand == null ? 700 : 400, color: compVintageBand == null ? T.text.cyan : T.text.muted, background: compVintageBand == null ? `${T.text.cyan}15` : 'transparent', border: `1px solid ${compVintageBand == null ? T.text.cyan : T.border.subtle}`, borderRadius: 2, padding: '2px 7px', cursor: 'pointer', letterSpacing: 0.5 }}>ALL</button>
+            {VINTAGE_BANDS_PC.map((vb) => {
+              const active = compVintageBand === vb;
+              return (
+                <button key={vb} onClick={() => setCompVintageBand(active ? null : vb)} style={{ fontFamily: T.font.mono, fontSize: 8, fontWeight: active ? 700 : 400, color: active ? T.text.cyan : T.text.muted, background: active ? `${T.text.cyan}15` : 'transparent', border: `1px solid ${active ? T.text.cyan : T.border.subtle}`, borderRadius: 2, padding: '2px 7px', cursor: 'pointer', letterSpacing: 0.5 }}>
+                  {vb}
+                </button>
+              );
+            })}
+            {pcOutlierIds.size > 0 && (
+              <span style={{ marginLeft: 'auto', fontFamily: T.font.mono, fontSize: 7, color: T.text.amber }}>
+                ⚠ {pcOutlierIds.size} OUTLIER{pcOutlierIds.size > 1 ? 'S' : ''} FLAGGED
+              </span>
+            )}
           </div>
-        </div>
+
+          {/* Column headers */}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.9fr 0.9fr 0.9fr 1fr 0.7fr 0.6fr', padding: '4px 8px', background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, fontSize: 7, fontFamily: T.font.mono }}>
+            {['PROPERTY', 'DATE', 'PRICE', '$/UNIT', 'NOI/UNIT', 'CAP RATE', 'SRC', 'DIST'].map(h => (
+              <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: '0.05em' }}>{h}</span>
+            ))}
+          </div>
+
+          {/* Comp rows */}
+          {filteredPcComps.map((c: any, i: number) => {
+            const srcLabel = c.source
+              ? c.source.replace('georgia_county', 'GA-CTY').replace(/_/g, '-').toUpperCase().slice(0, 8)
+              : c.buyer_type?.toUpperCase().slice(0, 8) || '—';
+            const isOutlier = pcOutlierIds.has(String(c.id));
+            const capRaw = c.implied_cap_rate != null ? Number(c.implied_cap_rate) : null;
+            const noiPerUnit = capRaw != null && Number(c.price_per_unit) > 0 ? capRaw * Number(c.price_per_unit) : null;
+            const capLabel = capRaw != null ? `${(capRaw * 100).toFixed(2)}%${isOutlier ? ' ⚠' : ''}` : '—';
+            const capColor = isOutlier ? T.text.amber : (capRaw != null ? T.text.amber : T.text.muted);
+            const distLabel = c.distance_miles != null ? `${Number(c.distance_miles).toFixed(2)} mi` : '—';
+            return (
+              <div key={c.id ?? i} style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.9fr 0.9fr 0.9fr 1fr 0.7fr 0.6fr', padding: '4px 8px', borderBottom: `1px solid ${T.border.subtle}08`, background: isOutlier ? `${T.text.amber}06` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt), fontSize: 8, fontFamily: T.font.mono }}>
+                <span style={{ color: T.text.secondary, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.property_address || '—'}</span>
+                <span style={{ color: T.text.muted }}>{c.recording_date ? String(c.recording_date).slice(0, 10) : '—'}</span>
+                <span style={{ color: T.text.green }}>{c.derived_sale_price ? pcFmtUsd(Number(c.derived_sale_price)) : '—'}</span>
+                <span style={{ color: T.text.cyan, fontWeight: 600 }}>{c.price_per_unit ? pcFmtUsd(Number(c.price_per_unit)) : '—'}</span>
+                <span style={{ color: T.text.muted }}>{noiPerUnit != null ? pcFmtUsd(noiPerUnit) : '—'}</span>
+                <span style={{ color: capColor, fontWeight: isOutlier ? 700 : 400 }}>{capLabel}</span>
+                <span style={{ color: T.text.muted }}>{srcLabel}</span>
+                <span style={{ color: T.text.muted }}>{distLabel}</span>
+              </div>
+            );
+          })}
+        </>}
       </div>
     </div>
     );
