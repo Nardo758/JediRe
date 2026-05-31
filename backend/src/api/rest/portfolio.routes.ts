@@ -15,13 +15,21 @@ const router = Router();
 /**
  * GET /api/v1/portfolio/metrics
  * Aggregate portfolio metrics sourced from deal_monthly_actuals (is_portfolio_asset=TRUE).
+ * Units are summed via a subquery (one row per property) to avoid double-counting when
+ * multiple actuals rows share the same unit count.
  */
 router.get('/metrics', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const result = await query(`
       SELECT
         COUNT(DISTINCT p.id)::int                          AS total_assets,
-        COALESCE(SUM(DISTINCT p.units), 0)::int            AS total_units,
+        COALESCE((
+          SELECT SUM(pu.units)
+          FROM properties pu
+          WHERE pu.id IN (
+            SELECT DISTINCT property_id FROM deal_monthly_actuals WHERE is_portfolio_asset = TRUE
+          )
+        ), 0)::int                                         AS total_units,
         COALESCE(AVG(dma.occupancy_rate) * 100, 0)         AS avg_occupancy,
         COALESCE(SUM(dma.noi), 0)                          AS portfolio_noi_all_time,
         COALESCE(AVG(dma.noi), 0)                          AS avg_monthly_noi
@@ -99,6 +107,7 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
          p.year_built                                      AS vintage,
          s.name                                            AS submarket_name,
          s.id                                              AS submarket_id,
+         p.submarket_id                                    AS raw_submarket_id,
          p.acquisition_date,
          p.acquisition_price,
          COUNT(dma.id)                                     AS months_of_data,
@@ -110,16 +119,19 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
        FROM properties p
        LEFT JOIN deal_monthly_actuals dma ON dma.property_id = p.id AND dma.is_portfolio_asset = TRUE
        LEFT JOIN submarkets s ON s.id::text = p.submarket_id
-       WHERE p.ownership_status = 'portfolio'
-          OR EXISTS (
-            SELECT 1 FROM deal_monthly_actuals x
-            WHERE x.property_id = p.id AND x.is_portfolio_asset = TRUE
-          )
+       WHERE (p.created_by = $1 OR p.created_by IS NULL)
+         AND (
+           p.ownership_status = 'portfolio'
+           OR EXISTS (
+             SELECT 1 FROM deal_monthly_actuals x
+             WHERE x.property_id = p.id AND x.is_portfolio_asset = TRUE
+           )
+         )
        GROUP BY p.id, p.name, p.address_line1, p.city, p.state_code, p.units,
                 p.building_class, p.year_built, s.name, s.id,
-                p.acquisition_date, p.acquisition_price
+                p.acquisition_date, p.acquisition_price, p.submarket_id
        ORDER BY p.name`,
-      []
+      [userId]
     );
 
     const assets = result.rows.map((row: Record<string, unknown>) => {
@@ -149,7 +161,7 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
         avgRent: Number(row.avg_rent ?? 0),
         latestPeriod: row.latest_period,
         earliestPeriod: row.earliest_period,
-        submarket: row.submarket_name ?? null,
+        submarket: (row.submarket_name ?? row.raw_submarket_id ?? null) as string | null,
         submarketId: row.submarket_id ?? null,
         status: occ < 88 ? 'watch' : 'performing',
       };
@@ -174,10 +186,15 @@ router.post('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respo
     const userId = req.user!.userId;
     const body = req.body as Record<string, unknown>;
     const { name, address, city, state, units, assetClass, yearBuilt,
-            submarketId, acquisitionDate, acquisitionPrice, notes } = body;
+            submarketId, manualSubmarket, acquisitionDate, acquisitionPrice, notes } = body;
     if (!name || !address || !city || !state) {
       return res.status(400).json({ error: 'name, address, city, state are required' });
     }
+
+    // Submarket: prefer a linked ID; fall back to free-text manual entry stored in the same varchar column.
+    const resolvedSubmarket = submarketId != null && String(submarketId) !== ''
+      ? String(submarketId)
+      : (manualSubmarket != null && String(manualSubmarket).trim() !== '' ? String(manualSubmarket).trim() : null);
 
     const result = await query(
       `INSERT INTO properties
@@ -195,7 +212,7 @@ router.post('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respo
         units != null ? Number(units) : null,
         assetClass != null ? String(assetClass) : null,
         yearBuilt != null ? Number(yearBuilt) : null,
-        submarketId != null ? String(submarketId) : null,
+        resolvedSubmarket,
         acquisitionDate != null && String(acquisitionDate).length >= 7 ? String(acquisitionDate) : null,
         acquisitionPrice != null && String(acquisitionPrice) !== '' ? Number(acquisitionPrice) : null,
         userId,
@@ -232,8 +249,9 @@ router.get('/assets/:propertyId/actuals', requireAuth, async (req: Authenticated
     const result = await query(
       `SELECT
          report_month,
-         TO_CHAR(report_month, 'Mon YYYY')    AS period_label,
+         TO_CHAR(report_month, 'Mon YYYY')       AS period_label,
          occupancy_rate,
+         asking_rent,
          avg_effective_rent,
          avg_market_rent,
          noi,
@@ -241,6 +259,8 @@ router.get('/assets/:propertyId/actuals', requireAuth, async (req: Authenticated
          effective_gross_income,
          total_opex,
          concessions,
+         months_free_concession,
+         concession_rebate_amount,
          vacancy_loss,
          notes,
          data_source
@@ -289,18 +309,21 @@ router.post('/assets/:propertyId/actuals', requireAuth, async (req: Authenticate
     await query(
       `INSERT INTO deal_monthly_actuals
          (id, property_id, deal_id, report_month, is_portfolio_asset,
-          occupancy_rate, avg_effective_rent, avg_market_rent, noi,
-          effective_gross_income, total_opex, concessions, vacancy_loss,
-          data_source, notes, created_at, updated_at)
+          occupancy_rate, asking_rent, avg_effective_rent, avg_market_rent, noi,
+          effective_gross_income, total_opex, concessions,
+          months_free_concession, concession_rebate_amount,
+          vacancy_loss, data_source, notes, created_at, updated_at)
        VALUES
          (gen_random_uuid(), $1, NULL, $2::date, TRUE,
-          $3, $4, $5, $6, $7, $8, $9, $10,
-          'manual', $11, NOW(), NOW())
+          $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+          $13, 'manual', $14, NOW(), NOW())
        ON CONFLICT DO NOTHING`,
       [
         propertyId, reportMonth,
-        n('occupancy_rate'), n('avg_effective_rent'), n('avg_market_rent'), n('noi'),
-        n('effective_gross_income'), n('total_opex'), n('concessions'), n('vacancy_loss'),
+        n('occupancy_rate'), n('asking_rent'), n('avg_effective_rent'), n('avg_market_rent'), n('noi'),
+        n('effective_gross_income'), n('total_opex'), n('concessions'),
+        n('months_free_concession'), n('concession_rebate_amount'),
+        n('vacancy_loss'),
         body.notes != null ? String(body.notes) : null,
       ]
     );

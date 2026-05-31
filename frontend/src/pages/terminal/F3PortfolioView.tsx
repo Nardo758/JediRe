@@ -64,11 +64,14 @@ interface PropertyActualRow {
   report_month: string;
   period_label: string;
   occupancy_rate: number | null;
+  asking_rent: number | null;
   avg_effective_rent: number | null;
   avg_market_rent: number | null;
   noi: number | null;
   noi_per_unit: number | null;
   concessions: number | null;
+  months_free_concession: number | null;
+  concession_rebate_amount: number | null;
   data_source: string | null;
 }
 
@@ -180,11 +183,14 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   const [actualsForm, setActualsForm] = useState({
     occupancy_rate: '',
     noi: '',
+    asking_rent: '',
     avg_effective_rent: '',
     avg_market_rent: '',
     effective_gross_income: '',
     total_opex: '',
     concessions: '',
+    months_free_concession: '',
+    concession_rebate_amount: '',
     notes: '',
   });
   const [actualsFile, setActualsFile] = useState<File | null>(null);
@@ -285,14 +291,17 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     try {
       if (actualsMode === 'manual') {
         const payload: Record<string, any> = { period: actualsPeriod };
-        if (actualsForm.occupancy_rate)       payload.occupancy_rate       = parseFloat(actualsForm.occupancy_rate) / 100;
-        if (actualsForm.noi)                  payload.noi                  = parseFloat(actualsForm.noi);
-        if (actualsForm.avg_effective_rent)   payload.avg_effective_rent   = parseFloat(actualsForm.avg_effective_rent);
-        if (actualsForm.avg_market_rent)      payload.avg_market_rent      = parseFloat(actualsForm.avg_market_rent);
-        if (actualsForm.effective_gross_income) payload.effective_gross_income = parseFloat(actualsForm.effective_gross_income);
-        if (actualsForm.total_opex)           payload.total_opex           = parseFloat(actualsForm.total_opex);
-        if (actualsForm.concessions)          payload.concessions          = parseFloat(actualsForm.concessions);
-        if (actualsForm.notes)                payload.notes                = actualsForm.notes;
+        if (actualsForm.occupancy_rate)          payload.occupancy_rate          = parseFloat(actualsForm.occupancy_rate) / 100;
+        if (actualsForm.noi)                     payload.noi                     = parseFloat(actualsForm.noi);
+        if (actualsForm.asking_rent)             payload.asking_rent             = parseFloat(actualsForm.asking_rent);
+        if (actualsForm.avg_effective_rent)      payload.avg_effective_rent      = parseFloat(actualsForm.avg_effective_rent);
+        if (actualsForm.avg_market_rent)         payload.avg_market_rent         = parseFloat(actualsForm.avg_market_rent);
+        if (actualsForm.effective_gross_income)  payload.effective_gross_income  = parseFloat(actualsForm.effective_gross_income);
+        if (actualsForm.total_opex)              payload.total_opex              = parseFloat(actualsForm.total_opex);
+        if (actualsForm.concessions)             payload.concessions             = parseFloat(actualsForm.concessions);
+        if (actualsForm.months_free_concession)  payload.months_free_concession  = parseFloat(actualsForm.months_free_concession);
+        if (actualsForm.concession_rebate_amount) payload.concession_rebate_amount = parseFloat(actualsForm.concession_rebate_amount);
+        if (actualsForm.notes)                   payload.notes                   = actualsForm.notes;
         await apiClient.post(`/api/v1/portfolio/assets/${actualsAssetId}/actuals`, payload);
       } else {
         if (!actualsFile) return;
@@ -306,7 +315,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
       setTimeout(() => {
         setShowActualsModal(false);
         setActualsSuccess(false);
-        setActualsForm({ occupancy_rate: '', noi: '', avg_effective_rent: '', avg_market_rent: '', effective_gross_income: '', total_opex: '', concessions: '', notes: '' });
+        setActualsForm({ occupancy_rate: '', noi: '', asking_rent: '', avg_effective_rent: '', avg_market_rent: '', effective_gross_income: '', total_opex: '', concessions: '', months_free_concession: '', concession_rebate_amount: '', notes: '' });
         setActualsFile(null);
         loadPortfolioData();
         if (expandedActualsFor.has(actualsAssetId)) {
@@ -341,6 +350,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
         assetClass: addAssetForm.assetClass || null,
         yearBuilt: addAssetForm.yearBuilt ? parseInt(addAssetForm.yearBuilt) : null,
         submarketId: addAssetForm.submarketId ? parseInt(addAssetForm.submarketId) : null,
+        manualSubmarket: !addAssetForm.submarketId && addAssetForm.submarketSearch ? addAssetForm.submarketSearch : null,
         acquisitionDate: addAssetForm.acquisitionDate || null,
         acquisitionPrice: addAssetForm.acquisitionPrice ? parseFloat(addAssetForm.acquisitionPrice) : null,
         notes: addAssetForm.notes || null,
@@ -1840,13 +1850,16 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
                   <div style={{ marginBottom: 16 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                       {([
-                        { key: 'occupancy_rate',        label: 'OCCUPANCY (%)',         placeholder: 'e.g. 94.5' },
-                        { key: 'noi',                   label: 'NOI / MONTH ($)',        placeholder: 'e.g. 215000' },
-                        { key: 'avg_effective_rent',    label: 'EFF. RENT / UNIT ($)',   placeholder: 'e.g. 1850' },
-                        { key: 'avg_market_rent',       label: 'MKT RENT / UNIT ($)',    placeholder: 'e.g. 1920' },
-                        { key: 'effective_gross_income',label: 'EFF. GROSS INCOME ($)',  placeholder: 'e.g. 390000' },
-                        { key: 'total_opex',            label: 'TOTAL OPEX / MONTH ($)', placeholder: 'e.g. 175000' },
-                        { key: 'concessions',           label: 'CONCESSIONS ($)',         placeholder: 'e.g. 4200' },
+                        { key: 'occupancy_rate',           label: 'OCCUPANCY (%)',              placeholder: 'e.g. 94.5' },
+                        { key: 'noi',                      label: 'NOI / MONTH ($)',             placeholder: 'e.g. 215000' },
+                        { key: 'asking_rent',              label: 'ASKING RENT / UNIT ($)',      placeholder: 'e.g. 1950' },
+                        { key: 'avg_effective_rent',       label: 'EFF. RENT / UNIT ($)',        placeholder: 'e.g. 1850' },
+                        { key: 'avg_market_rent',          label: 'SUBMARKET MKT RENT ($)',      placeholder: 'e.g. 1920' },
+                        { key: 'effective_gross_income',   label: 'EFF. GROSS INCOME ($)',       placeholder: 'e.g. 390000' },
+                        { key: 'total_opex',               label: 'TOTAL OPEX / MONTH ($)',      placeholder: 'e.g. 175000' },
+                        { key: 'concessions',              label: 'CONCESSIONS TOTAL ($)',       placeholder: 'e.g. 4200' },
+                        { key: 'months_free_concession',   label: 'MONTHS FREE (CONCESSION)',    placeholder: 'e.g. 1.5' },
+                        { key: 'concession_rebate_amount', label: 'REBATE CONCESSION ($)',       placeholder: 'e.g. 1000' },
                       ] as const).map(f => (
                         <div key={f.key}>
                           <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#6B7A8D', letterSpacing: 0.8, marginBottom: 4 }}>
