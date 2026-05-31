@@ -16,7 +16,7 @@ import {
   FileText, Download, ChevronRight, ChevronDown,
   BarChart3, PieChart, Activity, Target, Brain,
   Calendar, AlertTriangle, CheckCircle, Clock,
-  Upload, X, Loader2,
+  Upload, X, Loader2, Plus,
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 import { ContextIndicator } from '../../components/intelligence/ContextIndicator';
@@ -44,7 +44,7 @@ interface PortfolioAsset {
   units: number;
   assetClass: string;
   vintage: number;
-  acquisitionDate: string;
+  acquisitionDate: string | null;
   purchasePrice: number;
   currentValue: number;
   noi: number;
@@ -54,6 +54,22 @@ interface PortfolioAsset {
   equity: number;
   debt: number;
   status: 'performing' | 'watch' | 'distressed';
+  monthsOfData?: number;
+  avgRent?: number;
+  latestPeriod?: string;
+  earliestPeriod?: string;
+}
+
+interface PropertyActualRow {
+  report_month: string;
+  period_label: string;
+  occupancy_rate: number | null;
+  avg_effective_rent: number | null;
+  avg_market_rent: number | null;
+  noi: number | null;
+  noi_per_unit: number | null;
+  concessions: number | null;
+  data_source: string | null;
 }
 
 interface PortfolioMetrics {
@@ -162,18 +178,30 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
   const [actualsForm, setActualsForm] = useState({
-    net_operating_income: '',
-    physical_occupancy_pct: '',
+    occupancy_rate: '',
+    noi: '',
+    avg_effective_rent: '',
+    avg_market_rent: '',
     effective_gross_income: '',
-    total_operating_expenses: '',
-    units_occupied: '',
-    avg_rent_achieved: '',
-    collections_rate: '',
+    total_opex: '',
+    concessions: '',
+    notes: '',
   });
   const [actualsFile, setActualsFile] = useState<File | null>(null);
   const [submittingActuals, setSubmittingActuals] = useState(false);
   const [actualsSuccess, setActualsSuccess] = useState(false);
   const [actualsError, setActualsError] = useState<string | null>(null);
+
+  // Add Asset modal
+  const [showAddAssetModal, setShowAddAssetModal] = useState(false);
+  const [addAssetForm, setAddAssetForm] = useState({ name: '', address: '', city: '', state: '', units: '', assetClass: 'B', yearBuilt: '', submarket: '' });
+  const [addingAsset, setAddingAsset] = useState(false);
+  const [addAssetError, setAddAssetError] = useState<string | null>(null);
+
+  // Per-property actuals expansion
+  const [propertyActuals, setPropertyActuals] = useState<Record<string, PropertyActualRow[]>>({});
+  const [actualsLoadingFor, setActualsLoadingFor] = useState<Set<string>>(new Set());
+  const [expandedActualsFor, setExpandedActualsFor] = useState<Set<string>>(new Set());
 
   // Load data
   useEffect(() => {
@@ -250,20 +278,17 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     setActualsError(null);
     setSubmittingActuals(true);
     try {
-      const periodStart = `${actualsPeriod}-01`;
       if (actualsMode === 'manual') {
-        const row: Record<string, any> = {
-          period_start: periodStart,
-          source: 'manual',
-        };
-        if (actualsForm.net_operating_income)    row.net_operating_income    = parseFloat(actualsForm.net_operating_income);
-        if (actualsForm.physical_occupancy_pct)  row.physical_occupancy_pct  = parseFloat(actualsForm.physical_occupancy_pct);
-        if (actualsForm.effective_gross_income)  row.effective_gross_income  = parseFloat(actualsForm.effective_gross_income);
-        if (actualsForm.total_operating_expenses)row.total_operating_expenses= parseFloat(actualsForm.total_operating_expenses);
-        if (actualsForm.units_occupied)          row.units_occupied          = parseInt(actualsForm.units_occupied);
-        if (actualsForm.avg_rent_achieved)       row.avg_rent_achieved       = parseFloat(actualsForm.avg_rent_achieved);
-        if (actualsForm.collections_rate)        row.collections_rate        = parseFloat(actualsForm.collections_rate);
-        await apiClient.post(`/api/v1/operations/${actualsAssetId}/actuals`, { actuals: [row] });
+        const payload: Record<string, any> = { period: actualsPeriod };
+        if (actualsForm.occupancy_rate)       payload.occupancy_rate       = parseFloat(actualsForm.occupancy_rate) / 100;
+        if (actualsForm.noi)                  payload.noi                  = parseFloat(actualsForm.noi);
+        if (actualsForm.avg_effective_rent)   payload.avg_effective_rent   = parseFloat(actualsForm.avg_effective_rent);
+        if (actualsForm.avg_market_rent)      payload.avg_market_rent      = parseFloat(actualsForm.avg_market_rent);
+        if (actualsForm.effective_gross_income) payload.effective_gross_income = parseFloat(actualsForm.effective_gross_income);
+        if (actualsForm.total_opex)           payload.total_opex           = parseFloat(actualsForm.total_opex);
+        if (actualsForm.concessions)          payload.concessions          = parseFloat(actualsForm.concessions);
+        if (actualsForm.notes)                payload.notes                = actualsForm.notes;
+        await apiClient.post(`/api/v1/portfolio/assets/${actualsAssetId}/actuals`, payload);
       } else {
         if (!actualsFile) return;
         const fd = new FormData();
@@ -276,18 +301,80 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
       setTimeout(() => {
         setShowActualsModal(false);
         setActualsSuccess(false);
-        setActualsForm({ net_operating_income: '', physical_occupancy_pct: '', effective_gross_income: '', total_operating_expenses: '', units_occupied: '', avg_rent_achieved: '', collections_rate: '' });
+        setActualsForm({ occupancy_rate: '', noi: '', avg_effective_rent: '', avg_market_rent: '', effective_gross_income: '', total_opex: '', concessions: '', notes: '' });
         setActualsFile(null);
         loadPortfolioData();
+        if (expandedActualsFor.has(actualsAssetId)) {
+          loadPropertyActuals(actualsAssetId);
+        }
       }, 1800);
     } catch (err: any) {
       setActualsError(err?.response?.data?.error || 'Upload failed — check your inputs and try again');
     } finally {
       setSubmittingActuals(false);
     }
-  // hook intentionally omits loadPortfolioData — it's an inline function recreated each render; including it would cause an infinite re-fetch loop. The function close over the listed primitive deps.
+  // hook intentionally omits loadPortfolioData — it's an inline function recreated each render; including it would cause an infinite re-fetch loop.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actualsAssetId, actualsPeriod, actualsMode, actualsForm, actualsFile]);
+  }, [actualsAssetId, actualsPeriod, actualsMode, actualsForm, actualsFile, expandedActualsFor]);
+
+  // ─── Add Asset Handler ────────────────────────────────────────
+
+  const handleAddAsset = useCallback(async () => {
+    if (!addAssetForm.name || !addAssetForm.address || !addAssetForm.city || !addAssetForm.state) {
+      setAddAssetError('Name, address, city, and state are required');
+      return;
+    }
+    setAddAssetError(null);
+    setAddingAsset(true);
+    try {
+      await apiClient.post('/api/v1/portfolio/assets', {
+        name: addAssetForm.name,
+        address: addAssetForm.address,
+        city: addAssetForm.city,
+        state: addAssetForm.state,
+        units: addAssetForm.units ? parseInt(addAssetForm.units) : null,
+        assetClass: addAssetForm.assetClass || null,
+        yearBuilt: addAssetForm.yearBuilt ? parseInt(addAssetForm.yearBuilt) : null,
+        submarket: addAssetForm.submarket || null,
+      });
+      setShowAddAssetModal(false);
+      setAddAssetForm({ name: '', address: '', city: '', state: '', units: '', assetClass: 'B', yearBuilt: '', submarket: '' });
+      loadPortfolioData();
+    } catch (err: any) {
+      setAddAssetError(err?.response?.data?.error || 'Failed to create property');
+    } finally {
+      setAddingAsset(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addAssetForm]);
+
+  // ─── Per-Property Actuals Loader ──────────────────────────────
+
+  const loadPropertyActuals = useCallback(async (propertyId: string) => {
+    setActualsLoadingFor(prev => new Set(prev).add(propertyId));
+    try {
+      const res = await apiClient.get(`/api/v1/portfolio/assets/${propertyId}/actuals`);
+      setPropertyActuals(prev => ({ ...prev, [propertyId]: res.data.data || [] }));
+    } catch {
+      setPropertyActuals(prev => ({ ...prev, [propertyId]: [] }));
+    } finally {
+      setActualsLoadingFor(prev => { const s = new Set(prev); s.delete(propertyId); return s; });
+    }
+  }, []);
+
+  const togglePropertyActuals = useCallback((propertyId: string) => {
+    setExpandedActualsFor(prev => {
+      const next = new Set(prev);
+      if (next.has(propertyId)) {
+        next.delete(propertyId);
+      } else {
+        next.add(propertyId);
+        if (!propertyActuals[propertyId]) loadPropertyActuals(propertyId);
+      }
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propertyActuals, loadPropertyActuals]);
 
   // ─── Neural network context awareness (top-level hook) ───────
   const { analysis: portfolioContext, loading: contextLoading } = useAutoContextAnalysis(
@@ -490,14 +577,27 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
         <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, fontFamily: MONO }}>
           PORTFOLIO ASSETS ({assets.length})
         </div>
-        <button 
-          onClick={() => navigate('/deals/create', { state: { dealCategory: 'portfolio' } })}
-          style={{ padding: '4px 12px', background: T.text.amber, color: T.bg.terminal, border: 'none', fontSize: 10, fontWeight: 700, fontFamily: MONO, cursor: 'pointer' }}
-        >
-          + ADD ASSET
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => { setActualsAssetId(assets[0]?.id || ''); setActualsSuccess(false); setActualsError(null); setShowActualsModal(true); }}
+            style={{ padding: '4px 12px', background: 'transparent', border: `1px solid ${T.text.cyan}55`, color: T.text.cyan, fontSize: 10, fontWeight: 700, fontFamily: MONO, cursor: 'pointer' }}
+          >
+            + ACTUALS
+          </button>
+          <button
+            onClick={() => { setAddAssetError(null); setShowAddAssetModal(true); }}
+            style={{ padding: '4px 12px', background: T.text.amber, color: T.bg.terminal, border: 'none', fontSize: 10, fontWeight: 700, fontFamily: MONO, cursor: 'pointer' }}
+          >
+            + ADD ASSET
+          </button>
+        </div>
       </div>
-      
+
+      {assets.length === 0 ? (
+        <div style={{ padding: 40, textAlign: 'center', color: T.text.muted, fontFamily: MONO, fontSize: 11 }}>
+          No portfolio assets yet — click + ADD ASSET to register your first owned property.
+        </div>
+      ) : (
       <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 10 }}>
         <thead>
           <tr style={{ background: T.bg.panelAlt }}>
@@ -505,46 +605,107 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
             <th style={{ textAlign: 'left', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>MARKET</th>
             <th style={{ textAlign: 'center', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>CLASS</th>
             <th style={{ textAlign: 'right', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>UNITS</th>
-            <th style={{ textAlign: 'right', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>VALUE</th>
-            <th style={{ textAlign: 'right', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>NOI</th>
-            <th style={{ textAlign: 'right', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>OCC</th>
-            <th style={{ textAlign: 'right', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>CAP</th>
-            <th style={{ textAlign: 'right', padding: '10px 16px', color: T.text.muted, fontWeight: 600 }}>IRR</th>
+            <th style={{ textAlign: 'right', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>AVG OCC</th>
+            <th style={{ textAlign: 'right', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>NOI (ANN)</th>
+            <th style={{ textAlign: 'right', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>AVG RENT</th>
+            <th style={{ textAlign: 'right', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>MOS DATA</th>
+            <th style={{ textAlign: 'right', padding: '10px 16px', color: T.text.muted, fontWeight: 600 }}>ACTIONS</th>
           </tr>
         </thead>
         <tbody>
-          {assets.map((asset, i) => (
-            <tr 
-              key={asset.id} 
-              style={{ borderBottom: `1px solid ${T.border.subtle}`, cursor: 'pointer' }}
-              onClick={() => navigate(`/assets-owned/${asset.id}/property`)}
-            >
-              <td style={{ padding: '12px 16px' }}>
-                <div style={{ color: T.text.primary, fontWeight: 500 }}>{asset.name}</div>
-                <div style={{ color: T.text.muted, fontSize: 9 }}>{asset.address}</div>
-              </td>
-              <td style={{ padding: '12px 8px', color: T.text.secondary }}>{asset.city}, {asset.state}</td>
-              <td style={{ textAlign: 'center', padding: '12px 8px' }}>
-                <span style={{ 
-                  padding: '2px 8px', 
-                  background: asset.assetClass === 'A' ? '#00D26A22' : asset.assetClass === 'B' ? '#00BCD422' : '#F5A62322',
-                  color: asset.assetClass === 'A' ? '#00D26A' : asset.assetClass === 'B' ? '#00BCD4' : '#F5A623',
-                  borderRadius: 4,
-                  fontWeight: 600,
-                }}>
-                  {asset.assetClass}
-                </span>
-              </td>
-              <td style={{ textAlign: 'right', padding: '12px 8px', color: T.text.primary }}>{asset.units}</td>
-              <td style={{ textAlign: 'right', padding: '12px 8px', color: T.text.amber }}>{fmtCurrency(asset.currentValue)}</td>
-              <td style={{ textAlign: 'right', padding: '12px 8px', color: T.text.green }}>{fmtCurrency(asset.noi)}</td>
-              <td style={{ textAlign: 'right', padding: '12px 8px', color: asset.occupancy > 93 ? T.text.green : T.text.amber }}>{fmtPct(asset.occupancy)}</td>
-              <td style={{ textAlign: 'right', padding: '12px 8px', color: T.text.cyan }}>{fmtPct(asset.capRate)}</td>
-              <td style={{ textAlign: 'right', padding: '12px 16px', color: asset.irr > 15 ? T.text.green : T.text.primary }}>{fmtPct(asset.irr)}</td>
-            </tr>
-          ))}
+          {assets.map((asset, i) => {
+            const expanded = expandedActualsFor.has(asset.id);
+            const rowActuals = propertyActuals[asset.id] || [];
+            const isLoadingActuals = actualsLoadingFor.has(asset.id);
+            return (
+              <React.Fragment key={asset.id}>
+                <tr
+                  style={{ borderBottom: `1px solid ${T.border.subtle}`, cursor: 'pointer', background: expanded ? T.bg.active : 'transparent' }}
+                  onClick={() => togglePropertyActuals(asset.id)}
+                >
+                  <td style={{ padding: '12px 16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ color: T.text.muted, fontSize: 9 }}>{expanded ? '▼' : '▶'}</span>
+                      <div>
+                        <div style={{ color: T.text.primary, fontWeight: 500 }}>{asset.name}</div>
+                        <div style={{ color: T.text.muted, fontSize: 9 }}>{asset.address}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ padding: '12px 8px', color: T.text.secondary }}>{asset.city}, {asset.state}</td>
+                  <td style={{ textAlign: 'center', padding: '12px 8px' }}>
+                    <span style={{
+                      padding: '2px 8px',
+                      background: asset.assetClass === 'A' ? '#00D26A22' : asset.assetClass === 'B' ? '#00BCD422' : '#F5A62322',
+                      color: asset.assetClass === 'A' ? '#00D26A' : asset.assetClass === 'B' ? '#00BCD4' : '#F5A623',
+                      borderRadius: 4, fontWeight: 600,
+                    }}>
+                      {asset.assetClass || '—'}
+                    </span>
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '12px 8px', color: T.text.primary }}>{asset.units || '—'}</td>
+                  <td style={{ textAlign: 'right', padding: '12px 8px', color: asset.occupancy > 93 ? T.text.green : T.text.amber }}>{fmtPct(asset.occupancy)}</td>
+                  <td style={{ textAlign: 'right', padding: '12px 8px', color: T.text.green }}>{fmtCurrency(asset.noi)}</td>
+                  <td style={{ textAlign: 'right', padding: '12px 8px', color: T.text.primary }}>{asset.avgRent ? `$${asset.avgRent.toFixed(0)}/unit` : '—'}</td>
+                  <td style={{ textAlign: 'right', padding: '12px 8px', color: T.text.secondary }}>{asset.monthsOfData ?? '—'}</td>
+                  <td style={{ textAlign: 'right', padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={() => { setActualsAssetId(asset.id); setActualsSuccess(false); setActualsError(null); setShowActualsModal(true); }}
+                      style={{ fontFamily: MONO, fontSize: 9, color: T.text.cyan, background: 'transparent', border: `1px solid ${T.text.cyan}44`, padding: '3px 8px', cursor: 'pointer' }}
+                    >
+                      + ACTUALS
+                    </button>
+                  </td>
+                </tr>
+
+                {/* Expanded: monthly actuals mini-table */}
+                {expanded && (
+                  <tr style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                    <td colSpan={9} style={{ background: T.bg.hover, padding: '0 0 12px 0' }}>
+                      <div style={{ padding: '8px 16px 0', fontSize: 9, color: T.text.muted, fontFamily: MONO, letterSpacing: 1 }}>
+                        MONTHLY ACTUALS — {asset.earliestPeriod ? new Date(asset.earliestPeriod as string).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—'} to {asset.latestPeriod ? new Date(asset.latestPeriod as string).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—'}
+                      </div>
+                      {isLoadingActuals ? (
+                        <div style={{ padding: '12px 24px', fontSize: 10, color: T.text.muted, fontFamily: MONO }}>Loading actuals…</div>
+                      ) : rowActuals.length === 0 ? (
+                        <div style={{ padding: '12px 24px', fontSize: 10, color: T.text.muted, fontFamily: MONO }}>No actuals — click + ACTUALS to add monthly data.</div>
+                      ) : (
+                        <div style={{ overflowX: 'auto', paddingTop: 8 }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
+                            <thead>
+                              <tr>
+                                {['PERIOD', 'OCC %', 'EFF RENT', 'MKT RENT', 'NOI', 'NOI/UNIT', 'SOURCE'].map(h => (
+                                  <th key={h} style={{ textAlign: h === 'PERIOD' || h === 'SOURCE' ? 'left' : 'right', padding: '4px 12px', color: T.text.muted, fontWeight: 600, borderBottom: `1px solid ${T.border.subtle}` }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rowActuals.map((row, j) => (
+                                <tr key={j} style={{ borderBottom: `1px solid ${T.border.subtle}22` }}>
+                                  <td style={{ padding: '4px 12px', color: T.text.secondary }}>{row.period_label}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 12px', color: row.occupancy_rate != null && row.occupancy_rate * 100 > 93 ? T.text.green : T.text.amber }}>
+                                    {row.occupancy_rate != null ? `${(row.occupancy_rate * 100).toFixed(1)}%` : '—'}
+                                  </td>
+                                  <td style={{ textAlign: 'right', padding: '4px 12px', color: T.text.primary }}>{row.avg_effective_rent != null ? `$${row.avg_effective_rent.toFixed(0)}` : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 12px', color: T.text.muted }}>{row.avg_market_rent != null ? `$${row.avg_market_rent.toFixed(0)}` : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 12px', color: T.text.green }}>{row.noi != null ? fmtCurrency(row.noi) : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 12px', color: T.text.muted }}>{row.noi_per_unit != null ? `$${row.noi_per_unit.toFixed(0)}` : '—'}</td>
+                                  <td style={{ padding: '4px 12px', color: T.text.muted }}>{row.data_source || 'manual'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            );
+          })}
         </tbody>
       </table>
+      )}
     </div>
   );
   
@@ -1398,7 +1559,99 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
         </>
       )}
 
-      {/* ── Upload Actuals Modal ── */}
+      {/* ── Add Portfolio Property Modal ────────────────────────── */}
+      {showAddAssetModal && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { if (e.target === e.currentTarget && !addingAsset) setShowAddAssetModal(false); }}
+        >
+          <div style={{ background: '#0F1319', border: '1px solid #1e2a3d', borderTop: `2px solid ${T.text.amber}`, width: 480, maxWidth: '96vw', fontFamily: MONO, boxShadow: '0 20px 60px rgba(0,0,0,0.8)' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '1px solid #1e2a3d' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Building2 size={12} color={T.text.amber} />
+                <span style={{ fontSize: 11, fontWeight: 800, color: T.text.amber, letterSpacing: 1.2 }}>ADD PORTFOLIO PROPERTY</span>
+              </div>
+              {!addingAsset && (
+                <button onClick={() => setShowAddAssetModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7A8D', padding: 4 }}><X size={14} /></button>
+              )}
+            </div>
+
+            <div style={{ padding: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                {/* Name — full width */}
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>PROPERTY NAME <span style={{ color: T.text.amber }}>*</span></label>
+                  <input type="text" value={addAssetForm.name} onChange={e => setAddAssetForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Oakwood Commons" style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none' }} />
+                </div>
+                {/* Address — full width */}
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>STREET ADDRESS <span style={{ color: T.text.amber }}>*</span></label>
+                  <input type="text" value={addAssetForm.address} onChange={e => setAddAssetForm(p => ({ ...p, address: e.target.value }))} placeholder="e.g. 1234 Main St" style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none' }} />
+                </div>
+                {/* City */}
+                <div>
+                  <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>CITY <span style={{ color: T.text.amber }}>*</span></label>
+                  <input type="text" value={addAssetForm.city} onChange={e => setAddAssetForm(p => ({ ...p, city: e.target.value }))} placeholder="e.g. Atlanta" style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none' }} />
+                </div>
+                {/* State */}
+                <div>
+                  <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>STATE (2-LETTER) <span style={{ color: T.text.amber }}>*</span></label>
+                  <input type="text" maxLength={2} value={addAssetForm.state} onChange={e => setAddAssetForm(p => ({ ...p, state: e.target.value.toUpperCase() }))} placeholder="GA" style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none' }} />
+                </div>
+                {/* Units */}
+                <div>
+                  <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>UNIT COUNT</label>
+                  <input type="number" min="1" value={addAssetForm.units} onChange={e => setAddAssetForm(p => ({ ...p, units: e.target.value }))} placeholder="e.g. 240" style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none' }} />
+                </div>
+                {/* Asset Class */}
+                <div>
+                  <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>ASSET CLASS</label>
+                  <select value={addAssetForm.assetClass} onChange={e => setAddAssetForm(p => ({ ...p, assetClass: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none', colorScheme: 'dark' }}>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="C">C</option>
+                  </select>
+                </div>
+                {/* Year Built */}
+                <div>
+                  <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>YEAR BUILT</label>
+                  <input type="number" min="1900" max="2030" value={addAssetForm.yearBuilt} onChange={e => setAddAssetForm(p => ({ ...p, yearBuilt: e.target.value }))} placeholder="e.g. 2018" style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none' }} />
+                </div>
+                {/* Submarket */}
+                <div>
+                  <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>SUBMARKET</label>
+                  <input type="text" value={addAssetForm.submarket} onChange={e => setAddAssetForm(p => ({ ...p, submarket: e.target.value }))} placeholder="e.g. Midtown Atlanta" style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none' }} />
+                </div>
+              </div>
+
+              <div style={{ fontSize: 9, color: '#6B7A8D', fontFamily: MONO, marginBottom: 16, lineHeight: 1.6 }}>
+                After adding the property, use the + ACTUALS button per row to start uploading monthly operating data.
+              </div>
+
+              {addAssetError && (
+                <div style={{ padding: '8px 12px', background: '#1a0a0a', border: '1px solid #EF444433', marginBottom: 12 }}>
+                  <span style={{ fontSize: 10, color: '#EF4444', fontFamily: MONO }}>{addAssetError}</span>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button onClick={() => setShowAddAssetModal(false)} disabled={addingAsset} style={{ padding: '7px 18px', background: 'transparent', border: '1px solid #1e2a3d', color: '#6B7A8D', fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 0.6, cursor: 'pointer' }}>
+                  CANCEL
+                </button>
+                <button
+                  onClick={handleAddAsset}
+                  disabled={addingAsset || !addAssetForm.name || !addAssetForm.address || !addAssetForm.city || !addAssetForm.state}
+                  style={{ padding: '7px 22px', background: T.text.amber, border: 'none', color: '#0A0E17', fontFamily: MONO, fontSize: 10, fontWeight: 800, letterSpacing: 0.6, cursor: addingAsset ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: (!addAssetForm.name || !addAssetForm.address || !addAssetForm.city || !addAssetForm.state) ? 0.5 : 1 }}
+                >
+                  {addingAsset ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> SAVING…</> : <><Plus size={11} /> ADD PROPERTY</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showActualsModal && (
         <div
           style={{
@@ -1506,34 +1759,46 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
 
                 {/* Manual entry fields */}
                 {actualsMode === 'manual' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                    {([
-                      { key: 'net_operating_income',     label: 'NOI ($)',              placeholder: 'e.g. 280000' },
-                      { key: 'physical_occupancy_pct',   label: 'OCCUPANCY (%)',        placeholder: 'e.g. 94.5' },
-                      { key: 'effective_gross_income',   label: 'EFF. GROSS INCOME ($)',placeholder: 'e.g. 410000' },
-                      { key: 'total_operating_expenses', label: 'TOTAL EXPENSES ($)',   placeholder: 'e.g. 130000' },
-                      { key: 'units_occupied',           label: 'UNITS OCCUPIED',       placeholder: 'e.g. 188' },
-                      { key: 'avg_rent_achieved',        label: 'AVG RENT ($)',         placeholder: 'e.g. 1850' },
-                      { key: 'collections_rate',         label: 'COLLECTIONS RATE (%)', placeholder: 'e.g. 97.2' },
-                    ] as const).map(f => (
-                      <div key={f.key}>
-                        <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#6B7A8D', letterSpacing: 0.8, marginBottom: 4 }}>
-                          {f.label}
-                        </label>
-                        <input
-                          type="text"
-                          value={actualsForm[f.key as keyof typeof actualsForm]}
-                          onChange={e => setActualsForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                          placeholder={f.placeholder}
-                          style={{
-                            width: '100%', boxSizing: 'border-box',
-                            background: '#060A12', border: '1px solid #1e2a3d',
-                            color: '#E2E8F0', fontFamily: MONO, fontSize: 11,
-                            padding: '6px 10px', outline: 'none',
-                          }}
-                        />
-                      </div>
-                    ))}
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                      {([
+                        { key: 'occupancy_rate',        label: 'OCCUPANCY (%)',         placeholder: 'e.g. 94.5' },
+                        { key: 'noi',                   label: 'NOI / MONTH ($)',        placeholder: 'e.g. 215000' },
+                        { key: 'avg_effective_rent',    label: 'EFF. RENT / UNIT ($)',   placeholder: 'e.g. 1850' },
+                        { key: 'avg_market_rent',       label: 'MKT RENT / UNIT ($)',    placeholder: 'e.g. 1920' },
+                        { key: 'effective_gross_income',label: 'EFF. GROSS INCOME ($)',  placeholder: 'e.g. 390000' },
+                        { key: 'total_opex',            label: 'TOTAL OPEX / MONTH ($)', placeholder: 'e.g. 175000' },
+                        { key: 'concessions',           label: 'CONCESSIONS ($)',         placeholder: 'e.g. 4200' },
+                      ] as const).map(f => (
+                        <div key={f.key}>
+                          <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#6B7A8D', letterSpacing: 0.8, marginBottom: 4 }}>
+                            {f.label}
+                          </label>
+                          <input
+                            type="text"
+                            value={actualsForm[f.key]}
+                            onChange={e => setActualsForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                            placeholder={f.placeholder}
+                            style={{
+                              width: '100%', boxSizing: 'border-box',
+                              background: '#060A12', border: '1px solid #1e2a3d',
+                              color: '#E2E8F0', fontFamily: MONO, fontSize: 11,
+                              padding: '6px 10px', outline: 'none',
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#6B7A8D', letterSpacing: 0.8, marginBottom: 4 }}>NOTES</label>
+                      <input
+                        type="text"
+                        value={actualsForm.notes}
+                        onChange={e => setActualsForm(prev => ({ ...prev, notes: e.target.value }))}
+                        placeholder="Optional notes for this period"
+                        style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none' }}
+                      />
+                    </div>
                   </div>
                 )}
 

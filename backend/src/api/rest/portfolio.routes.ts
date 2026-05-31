@@ -14,36 +14,36 @@ const router = Router();
 
 /**
  * GET /api/v1/portfolio/metrics
- * Get aggregate portfolio metrics
+ * Aggregate portfolio metrics sourced from deal_monthly_actuals (is_portfolio_asset=TRUE).
  */
 router.get('/metrics', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const result = await query(`
-      SELECT 
-        COUNT(*) as total_assets,
-        COALESCE(SUM((d.deal_data->>'unit_count')::int), 0) as total_units,
-        COALESCE(SUM((d.deal_data->>'purchase_price')::numeric), 0) as total_value,
-        COALESCE(AVG((d.deal_data->>'occupancy_rate')::numeric), 0) as avg_occupancy,
-        COALESCE(AVG((d.deal_data->>'cap_rate')::numeric), 0) as avg_cap_rate,
-        COALESCE(SUM((d.deal_data->>'noi')::numeric), 0) as portfolio_noi
-      FROM deals d
-      WHERE d.status IN ('owned', 'closed', 'portfolio')
-        OR d.deal_category = 'portfolio'
+      SELECT
+        COUNT(DISTINCT p.id)::int                          AS total_assets,
+        COALESCE(SUM(DISTINCT p.units), 0)::int            AS total_units,
+        COALESCE(AVG(dma.occupancy_rate) * 100, 0)         AS avg_occupancy,
+        COALESCE(SUM(dma.noi), 0)                          AS portfolio_noi_all_time,
+        COALESCE(AVG(dma.noi), 0)                          AS avg_monthly_noi
+      FROM deal_monthly_actuals dma
+      JOIN properties p ON p.id = dma.property_id
+      WHERE dma.is_portfolio_asset = TRUE
     `);
 
     const row = result.rows[0] as Record<string, unknown>;
+    const avgMonthlyNoi = Number(row.avg_monthly_noi ?? 0);
 
     res.json({
       totalAssets: Number(row.total_assets ?? 0),
       totalUnits: Number(row.total_units ?? 0),
-      totalValue: Number(row.total_value ?? 0),
-      totalEquity: Number(row.total_value ?? 0) * 0.35, // Estimated
-      totalDebt: Number(row.total_value ?? 0) * 0.65,   // Estimated
+      totalValue: 0,
+      totalEquity: 0,
+      totalDebt: 0,
       avgOccupancy: Number(row.avg_occupancy ?? 0),
-      avgCapRate: Number(row.avg_cap_rate ?? 0),
-      portfolioNoi: Number(row.portfolio_noi ?? 0),
-      ytdReturn: 12.4, // Placeholder - would come from performance calculation
-      ltmCashOnCash: 8.2, // Placeholder
+      avgCapRate: 0,
+      portfolioNoi: avgMonthlyNoi * 12,
+      ytdReturn: null,
+      ltmCashOnCash: null,
     });
   } catch (err) {
     logger.error('Portfolio metrics error:', err);
@@ -55,56 +55,63 @@ router.get('/metrics', requireAuth, async (req: AuthenticatedRequest, res: Respo
 
 /**
  * GET /api/v1/portfolio/assets
- * Get all portfolio assets
+ * All portfolio assets sourced from deal_monthly_actuals (is_portfolio_asset=TRUE).
+ * Aggregates per property: avg occupancy, annualised NOI, avg rent over all tracked months.
  */
 router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const result = await query(`
-      SELECT 
-        d.id,
-        d.name,
-        d.address,
-        d.deal_data->>'city' as city,
-        d.deal_data->>'state' as state,
-        d.deal_data->>'msa' as msa,
-        COALESCE((d.deal_data->>'unit_count')::int, 0) as units,
-        d.deal_data->>'asset_class' as asset_class,
-        COALESCE((d.deal_data->>'year_built')::int, 0) as vintage,
-        d.deal_data->>'acquisition_date' as acquisition_date,
-        COALESCE((d.deal_data->>'purchase_price')::numeric, 0) as purchase_price,
-        COALESCE((d.deal_data->>'current_value')::numeric, (d.deal_data->>'purchase_price')::numeric, 0) as current_value,
-        COALESCE((d.deal_data->>'noi')::numeric, 0) as noi,
-        COALESCE((d.deal_data->>'occupancy_rate')::numeric, 0) as occupancy,
-        COALESCE((d.deal_data->>'cap_rate')::numeric, 0) as cap_rate,
-        COALESCE((d.deal_data->>'irr')::numeric, 0) as irr,
-        d.status
-      FROM deals d
-      WHERE d.status IN ('owned', 'closed', 'portfolio')
-        OR d.deal_category = 'portfolio'
-      ORDER BY d.created_at DESC
+      SELECT
+        p.id                                          AS property_id,
+        p.name,
+        p.address_line1                               AS address,
+        p.city,
+        p.state_code                                  AS state,
+        COALESCE(p.units, 0)                          AS units,
+        p.building_class                              AS asset_class,
+        p.year_built                                  AS vintage,
+        p.submarket_id                                AS submarket,
+        COUNT(dma.id)                                 AS months_of_data,
+        COALESCE(AVG(dma.occupancy_rate) * 100, 0)   AS avg_occupancy,
+        COALESCE(AVG(dma.noi) * 12, 0)               AS annualised_noi,
+        COALESCE(AVG(dma.avg_effective_rent), 0)      AS avg_rent,
+        MAX(dma.report_month)                         AS latest_period,
+        MIN(dma.report_month)                         AS earliest_period
+      FROM properties p
+      JOIN deal_monthly_actuals dma ON dma.property_id = p.id AND dma.is_portfolio_asset = TRUE
+      GROUP BY p.id, p.name, p.address_line1, p.city, p.state_code, p.units,
+               p.building_class, p.year_built, p.submarket_id
+      ORDER BY p.name
     `);
 
-    const assets = result.rows.map((row: Record<string, unknown>) => ({
-      id: row.id,
-      name: row.name,
-      address: row.address,
-      city: row.city,
-      state: row.state,
-      msa: row.msa,
-      units: Number(row.units ?? 0),
-      assetClass: row.asset_class ?? 'B',
-      vintage: Number(row.vintage ?? 2000),
-      acquisitionDate: row.acquisition_date,
-      purchasePrice: Number(row.purchase_price ?? 0),
-      currentValue: Number(row.current_value ?? 0),
-      noi: Number(row.noi ?? 0),
-      occupancy: Number(row.occupancy ?? 0),
-      capRate: Number(row.cap_rate ?? 0),
-      irr: Number(row.irr ?? 0),
-      equity: Number(row.current_value ?? 0) * 0.35,
-      debt: Number(row.current_value ?? 0) * 0.65,
-      status: Number(row.occupancy ?? 0) < 88 ? 'watch' : 'performing',
-    }));
+    const assets = result.rows.map((row: Record<string, unknown>) => {
+      const occ = Number(row.avg_occupancy ?? 0);
+      return {
+        id: row.property_id,
+        name: row.name ?? '—',
+        address: row.address ?? '—',
+        city: row.city ?? '—',
+        state: row.state ?? '—',
+        msa: (row.submarket ?? row.city ?? '—') as string,
+        units: Number(row.units ?? 0),
+        assetClass: (row.asset_class ?? 'B') as string,
+        vintage: Number(row.vintage ?? 0),
+        acquisitionDate: null,
+        purchasePrice: 0,
+        currentValue: 0,
+        noi: Number(row.annualised_noi ?? 0),
+        occupancy: occ,
+        capRate: 0,
+        irr: 0,
+        equity: 0,
+        debt: 0,
+        monthsOfData: Number(row.months_of_data ?? 0),
+        avgRent: Number(row.avg_rent ?? 0),
+        latestPeriod: row.latest_period,
+        earliestPeriod: row.earliest_period,
+        status: occ < 88 ? 'watch' : 'performing',
+      };
+    });
 
     res.json({ assets });
   } catch (err) {
@@ -112,6 +119,131 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
     res.status(500).json({ 
       error: err instanceof Error ? err.message : 'Failed to get portfolio assets' 
     });
+  }
+});
+
+/**
+ * POST /api/v1/portfolio/assets
+ * Create a new owned portfolio property. Inserts into `properties` table.
+ * No initial actuals required — add via POST /assets/:propertyId/actuals.
+ */
+router.post('/assets', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { name, address, city, state, units, assetClass, yearBuilt, submarket } = req.body as Record<string, unknown>;
+    if (!name || !address || !city || !state) {
+      return res.status(400).json({ error: 'name, address, city, state are required' });
+    }
+
+    const result = await query(
+      `INSERT INTO properties (id, name, address_line1, city, state_code, units, building_class, year_built, submarket_id, created_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW())
+       RETURNING id`,
+      [
+        String(name),
+        String(address),
+        String(city),
+        String(state).toUpperCase().slice(0, 2),
+        units != null ? Number(units) : null,
+        assetClass != null ? String(assetClass) : null,
+        yearBuilt != null ? Number(yearBuilt) : null,
+        submarket != null ? String(submarket) : null,
+      ]
+    );
+
+    const newId = (result.rows[0] as Record<string, unknown>).id as string;
+    res.status(201).json({ propertyId: newId, message: 'Portfolio property created' });
+  } catch (err) {
+    logger.error('Portfolio create asset error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to create portfolio property' });
+  }
+});
+
+/**
+ * GET /api/v1/portfolio/assets/:propertyId/actuals
+ * Monthly actuals time-series for a single portfolio property.
+ */
+router.get('/assets/:propertyId/actuals', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { propertyId } = req.params;
+
+    const check = await query(
+      `SELECT id FROM properties WHERE id = $1 LIMIT 1`,
+      [propertyId]
+    );
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Property not found' });
+
+    const result = await query(
+      `SELECT
+         report_month,
+         TO_CHAR(report_month, 'Mon YYYY')    AS period_label,
+         occupancy_rate,
+         avg_effective_rent,
+         avg_market_rent,
+         noi,
+         noi_per_unit,
+         effective_gross_income,
+         total_opex,
+         concessions,
+         vacancy_loss,
+         data_source
+       FROM deal_monthly_actuals
+       WHERE property_id = $1 AND is_portfolio_asset = TRUE
+       ORDER BY report_month ASC`,
+      [propertyId]
+    );
+
+    res.json({ data: result.rows });
+  } catch (err) {
+    logger.error('Portfolio asset actuals error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to get property actuals' });
+  }
+});
+
+/**
+ * POST /api/v1/portfolio/assets/:propertyId/actuals
+ * Add a monthly actual row for a portfolio property.
+ * Body: { period: 'YYYY-MM', occupancy_rate, noi, avg_effective_rent, avg_market_rent,
+ *         effective_gross_income, total_opex, concessions, vacancy_loss, notes }
+ */
+router.post('/assets/:propertyId/actuals', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { propertyId } = req.params;
+    const body = req.body as Record<string, unknown>;
+
+    const check = await query(`SELECT id FROM properties WHERE id = $1 LIMIT 1`, [propertyId]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Property not found' });
+
+    const { period } = body;
+    if (!period || typeof period !== 'string') {
+      return res.status(400).json({ error: 'period (YYYY-MM) is required' });
+    }
+    const reportMonth = `${period}-01`;
+
+    const n = (k: string) => body[k] != null && body[k] !== '' ? Number(body[k]) : null;
+
+    await query(
+      `INSERT INTO deal_monthly_actuals
+         (id, property_id, deal_id, report_month, is_portfolio_asset,
+          occupancy_rate, avg_effective_rent, avg_market_rent, noi,
+          effective_gross_income, total_opex, concessions, vacancy_loss,
+          data_source, notes, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, NULL, $2::date, TRUE,
+          $3, $4, $5, $6, $7, $8, $9, $10,
+          'manual', $11, NOW(), NOW())
+       ON CONFLICT DO NOTHING`,
+      [
+        propertyId, reportMonth,
+        n('occupancy_rate'), n('avg_effective_rent'), n('avg_market_rent'), n('noi'),
+        n('effective_gross_income'), n('total_opex'), n('concessions'), n('vacancy_loss'),
+        body.notes != null ? String(body.notes) : null,
+      ]
+    );
+
+    res.status(201).json({ message: 'Actual recorded' });
+  } catch (err) {
+    logger.error('Portfolio asset add actual error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to record actual' });
   }
 });
 
