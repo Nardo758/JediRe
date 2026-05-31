@@ -498,6 +498,33 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const y1IsBroker   = y1Source === 'BROKER';
   const y1IsTperiod  = (T_PERIODS as readonly string[]).includes(y1Source);
 
+  const [stabRecalculating, setStabRecalculating] = useState(false);
+
+  useEffect(() => {
+    if (!dealId) return;
+    const getSocket = () => (window as any).__jediSocket as { on?: (e: string, cb: (...a: any[]) => void) => void; off?: (e: string, cb: (...a: any[]) => void) => void } | null;
+    const onRecalculating = (data: { dealId: string }) => {
+      if (data?.dealId === dealId) setStabRecalculating(true);
+    };
+    const onUpdated = (data: { dealId: string }) => {
+      if (data?.dealId !== dealId) return;
+      setStabRecalculating(false);
+      onF9Refresh?.();
+    };
+    const attach = () => {
+      const s = getSocket();
+      s?.on?.('stabilization_year_recalculating', onRecalculating);
+      s?.on?.('stabilization_year_updated', onUpdated);
+    };
+    const detach = () => {
+      const s = getSocket();
+      s?.off?.('stabilization_year_recalculating', onRecalculating);
+      s?.off?.('stabilization_year_updated', onUpdated);
+    };
+    attach();
+    return detach;
+  }, [dealId, onF9Refresh]);
+
   // Data Quality Alerts (Task #691)
   interface DqaAlert {
     id: string;
@@ -1615,6 +1642,25 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   letterSpacing: '0.06em',
                 }}>
                   SHOWING Y{effYear} PROJECTION
+                </span>
+              )}
+              {stabRecalculating && (
+                <span
+                  className="animate-pulse"
+                  style={{
+                    marginLeft: effYear == null || effYear <= 1 ? 'auto' : undefined,
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    color: '#22d3ee',
+                    background: '#083344',
+                    border: '1px solid #0891b244',
+                    borderRadius: 3,
+                    padding: '1px 7px',
+                    fontSize: 8,
+                    letterSpacing: '0.08em',
+                    fontWeight: 700,
+                  }}
+                >
+                  AUTO-UPDATING…
                 </span>
               )}
             </div>

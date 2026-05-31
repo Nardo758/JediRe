@@ -33,6 +33,7 @@ import {
 } from '../../services/operatorStance.service';
 import type { OperatorStancePatch } from '../../types/operator-stance';
 import { propagateUnitMix } from '../../services/unit-mix-propagation.service';
+import { triggerStabilizationRecheck } from '../../services/stabilization-recheck.service';
 
 // ─── AI Coordinator config ────────────────────────────────────────────────────
 const ANTHROPIC_API_KEY  = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
@@ -603,6 +604,8 @@ router.patch('/:dealId/assumptions/hold-period', requireAuth, async (req: Authen
     );
 
     res.json({ success: true });
+
+    triggerStabilizationRecheck(dealId);
   } catch (error: any) {
     logger.error('Error patching hold period:', error);
     res.status(500).json({ error: error.message });
@@ -1603,6 +1606,11 @@ router.patch('/:dealId/financials/override', requireAuth, requireCapability('edi
       rationale ?? null,
     );
     res.json({ success: true, data: { dealId, ...result } });
+
+    const RECHECK_FIELDS = new Set(['vacancyPct', 'marketRentPerUnit']);
+    if (RECHECK_FIELDS.has(field)) {
+      triggerStabilizationRecheck(dealId);
+    }
   } catch (error: any) {
     logger.error('Error applying financials override:', error);
     const status = error.message?.includes('No year1 seed') ? 422

@@ -204,6 +204,9 @@ const io = new Server(httpServer, {
   }
 });
 
+import { setSocketIo } from './services/socket-registry';
+setSocketIo(io);
+
 const PORT = process.env.PORT || 3000;
 
 const pool = getPool();

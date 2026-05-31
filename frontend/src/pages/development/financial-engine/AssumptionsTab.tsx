@@ -1618,6 +1618,19 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
   // Seed from the parent's already-fetched f9Financials so the INPUTS form renders
   // immediately on first mount (no 1-2 s blank while the own fetch completes).
   // Own fetchFinancials() still runs and will overwrite with fresh data once done.
+  useEffect(() => {
+    if (!dealId) return;
+    const getSocket = () => (window as any).__jediSocket as { on?: (e: string, cb: (...a: any[]) => void) => void; off?: (e: string, cb: (...a: any[]) => void) => void } | null;
+    const onUpdated = (data: { dealId: string }) => {
+      if (data?.dealId !== dealId) return;
+      onF9Refresh?.();
+    };
+    const attach = () => { getSocket()?.on?.('stabilization_year_updated', onUpdated); };
+    const detach = () => { getSocket()?.off?.('stabilization_year_updated', onUpdated); };
+    attach();
+    return detach;
+  }, [dealId, onF9Refresh]);
+
   const [financials, setFinancials]     = useState<DealFinancials|null>(
     f9Financials ? (f9Financials as unknown as DealFinancials) : null
   );

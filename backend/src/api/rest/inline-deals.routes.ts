@@ -29,6 +29,7 @@ import { researchRuntime } from '../../agents/research.config';
 import { supplyRuntime } from '../../agents/supply.config';
 import { commentaryRuntime } from '../../agents/commentary.config';
 import { logger } from '../../utils/logger';
+import { triggerStabilizationRecheck } from '../../services/stabilization-recheck.service';
 
 
 // ── Pipeline-to-deal-data sync ────────────────────────────────────────
@@ -2698,6 +2699,10 @@ router.patch('/:dealId/assumptions/stabilization', requireAuth, requireCapabilit
     );
 
     res.json({ success: true });
+
+    if ('stabilizationTargetPct' in req.body) {
+      triggerStabilizationRecheck(dealId);
+    }
   } catch (error: any) {
     console.error('[stabilization PATCH]', error.message);
     res.status(500).json({ success: false, error: error.message });
