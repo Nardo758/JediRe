@@ -17,6 +17,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Copy, Check, X, ExternalLink, Loader2, AlertTriangle, RefreshCw, Users, FileText, TrendingUp, Clock, Mail, Download, FileSpreadsheet, ChevronDown } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { useAuthStore } from '../stores/authStore';
+import { DivergenceDisagreementsSection } from '../components/capsule/DivergenceDisagreementsSection';
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
 const T = {
@@ -399,6 +400,17 @@ function OverviewTab({ capsule }: { capsule: CapsuleMeta }) {
         <MetaCard label="STATUS" value={capsule.status || '—'} accent={T.text.amber} />
         <MetaCard label="CREATED" value={fmtDate(capsule.created_at)} accent={T.text.secondary} />
       </div>
+
+      {/* Source Disagreements — uses the deal_id stored in deal_data JSONB.
+           Capsules are standalone (no separate deal_id column), so we extract
+           the deal_id from deal_data. If not present, the section is hidden. */}
+      {typeof dd.deal_id === 'string' && dd.deal_id ? (
+        <DivergenceDisagreementsSection
+          dealId={dd.deal_id}
+          isInternal={true}
+          showIncludeToggle={false}
+        />
+      ) : null}
 
       {/* Raw deal data section */}
       {Object.keys(dd).length > 0 && (

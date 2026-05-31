@@ -30,6 +30,33 @@ const TEXT_DIM = '#5A6A7E';
 const MONO     = '"JetBrains Mono","Fira Mono",monospace';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface ExternalDivergencePoint {
+  layer: string;
+  label: string;
+  value: number;
+  deltaAbsolute: number;
+  deltaRelative: number | null;
+  directionVsResolved: 'above' | 'below' | 'equal';
+}
+
+interface ExternalDivergenceSignature {
+  points: ExternalDivergencePoint[];
+  maxAbsDelta: number;
+  alertLevel: 'none' | 'warn' | 'block';
+  exceeds: boolean;
+  threshold: number;
+  fieldName: string;
+  unit: string;
+  isPct: boolean;
+  interpretationHint?: string | null;
+}
+
+interface ExternalDivergenceRow {
+  fieldName: string;
+  divergence: ExternalDivergenceSignature;
+}
+
 interface DealBookShare {
   share_type: string;
   agent_enabled: boolean;
@@ -497,6 +524,11 @@ export default function CapsuleLinkPage() {
   const [exportingFmt, setExportingFmt] = useState<'excel' | 'pdf' | null>(null);
   const exportRef = useRef<HTMLDivElement>(null);
 
+  // Source disagreements (only when sender enabled include_divergences)
+  const [externalDivergences, setExternalDivergences] = useState<ExternalDivergenceRow[] | null>(null);
+  const [externalDivergencesLoading, setExternalDivergencesLoading] = useState(false);
+  const [externalDivergencesError, setExternalDivergencesError] = useState<string | null>(null);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
@@ -539,6 +571,22 @@ export default function CapsuleLinkPage() {
       .then(d => { setData(d); setLoading(false); })
       .catch(e => { setError(e.message ?? 'Failed to load deal.'); setLoading(false); });
   }, [accessToken]);
+
+  // Fetch source disagreements once deal-book is loaded, if sender opted in
+  useEffect(() => {
+    if (!data || !accessToken) return;
+    if (data.share.preview_metadata?.include_divergences !== true) return;
+    setExternalDivergencesLoading(true);
+    fetch(`/api/v1/capsule-links/${accessToken}/field-divergences`)
+      .then(async r => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error ?? 'Failed to load source disagreements.');
+        return body as { success: boolean; data: ExternalDivergenceRow[] };
+      })
+      .then(body => { setExternalDivergences(body.data ?? []); })
+      .catch(e => { setExternalDivergencesError(e.message ?? 'Could not load source disagreements.'); })
+      .finally(() => setExternalDivergencesLoading(false));
+  }, [data, accessToken]);
 
   // ── Loading ──────────────────────────────────────────────────────────────
   if (loading) {
@@ -805,6 +853,114 @@ export default function CapsuleLinkPage() {
             </div>
             <div style={{ padding: '12px 16px' }}>
               <DataLayerTable data={mo} label="Outputs" />
+            </div>
+          </div>
+        )}
+
+        {/* ── Source Disagreements (only when sender opted in) ──────────────── */}
+        {data.share.preview_metadata?.include_divergences === true && (
+          <div style={{ background: BG_CARD, border: `1px solid ${BORDER}` }}>
+            <div style={{
+              padding: '10px 16px', borderBottom: `1px solid ${BORDER}`, background: BG_NAV,
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: '#F0B429', letterSpacing: 1 }}>
+                SOURCE DISAGREEMENTS
+              </span>
+              <span style={{
+                fontSize: 8, padding: '1px 6px', fontWeight: 700, letterSpacing: 0.8,
+                background: '#2A1218', color: '#F85149', border: '1px solid #F8514940',
+              }}>
+                ANALYSIS
+              </span>
+            </div>
+
+            <div style={{ padding: '12px 16px' }}>
+              {externalDivergencesLoading && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', fontSize: 10, fontFamily: MONO, color: TEXT_DIM }}>
+                  <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                  Loading source disagreements…
+                </div>
+              )}
+
+              {externalDivergencesError && (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 12px',
+                  background: '#2A1218', border: '1px solid #F8514940',
+                  fontSize: 10, fontFamily: MONO, color: '#F85149',
+                }}>
+                  <AlertCircle size={12} style={{ flexShrink: 0, marginTop: 1 }} />
+                  {externalDivergencesError}
+                </div>
+              )}
+
+              {!externalDivergencesLoading && !externalDivergencesError && externalDivergences !== null && externalDivergences.length === 0 && (
+                <div style={{ fontSize: 10, fontFamily: MONO, color: TEXT_DIM, padding: '8px 0' }}>
+                  All tracked fields agree across data sources — no material divergences detected.
+                </div>
+              )}
+
+              {!externalDivergencesLoading && !externalDivergencesError && externalDivergences && externalDivergences.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {externalDivergences.map(({ fieldName, divergence }) => {
+                    const alertColor = divergence.alertLevel === 'block' ? '#F85149' : divergence.alertLevel === 'warn' ? '#F0B429' : TEXT_DIM;
+                    const fmtVal = (v: number) => divergence.isPct
+                      ? `${(v * 100).toFixed(2)}%`
+                      : divergence.unit === '$'
+                        ? `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                        : `${v.toFixed(2)} ${divergence.unit}`;
+                    const fmtDelta = (pt: ExternalDivergencePoint) => {
+                      const sign = pt.directionVsResolved === 'above' ? '+' : pt.directionVsResolved === 'below' ? '-' : '±';
+                      if (divergence.isPct) return `${sign}${(Math.abs(pt.deltaAbsolute) * 100).toFixed(2)}pp`;
+                      return `${sign}${Math.abs(pt.deltaAbsolute).toLocaleString(undefined, { maximumFractionDigits: 0 })} ${divergence.unit}`;
+                    };
+                    return (
+                      <div key={fieldName} style={{ borderLeft: `2px solid ${alertColor}40`, paddingLeft: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <span style={{ fontSize: 10, fontFamily: MONO, fontWeight: 700, color: TEXT, letterSpacing: 0.5 }}>
+                            {fieldName.replace(/_/g, ' ').toUpperCase()}
+                          </span>
+                          <span style={{
+                            fontSize: 8, padding: '1px 5px', fontWeight: 700,
+                            background: `${alertColor}18`, color: alertColor, border: `1px solid ${alertColor}40`,
+                            letterSpacing: 0.8,
+                          }}>
+                            {divergence.alertLevel.toUpperCase()}
+                          </span>
+                        </div>
+                        {divergence.interpretationHint && (
+                          <div style={{ fontSize: 9, fontFamily: MONO, color: TEXT_DIM, marginBottom: 6, fontStyle: 'italic', lineHeight: 1.5 }}>
+                            {divergence.interpretationHint}
+                          </div>
+                        )}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 1 }}>
+                          {['SOURCE', 'VALUE', 'Δ VS RESOLVED', 'DIRECTION'].map(h => (
+                            <div key={h} style={{ fontSize: 8, fontFamily: MONO, color: TEXT_DIM, padding: '3px 6px', background: BG_NAV, letterSpacing: 0.8 }}>{h}</div>
+                          ))}
+                          {divergence.points.map((pt, i) => (
+                            <React.Fragment key={i}>
+                              <div style={{ fontSize: 9, fontFamily: MONO, color: TEXT, padding: '4px 6px', background: i % 2 === 0 ? `${BG_NAV}80` : 'transparent' }}>
+                                {pt.label}
+                              </div>
+                              <div style={{ fontSize: 9, fontFamily: MONO, color: TEXT, padding: '4px 6px', background: i % 2 === 0 ? `${BG_NAV}80` : 'transparent' }}>
+                                {fmtVal(pt.value)}
+                              </div>
+                              <div style={{ fontSize: 9, fontFamily: MONO, color: pt.deltaAbsolute === 0 ? GREEN : alertColor, padding: '4px 6px', background: i % 2 === 0 ? `${BG_NAV}80` : 'transparent' }}>
+                                {fmtDelta(pt)}
+                              </div>
+                              <div style={{ fontSize: 9, fontFamily: MONO, padding: '4px 6px', background: i % 2 === 0 ? `${BG_NAV}80` : 'transparent',
+                                color: pt.directionVsResolved === 'above' ? GREEN : pt.directionVsResolved === 'below' ? '#F85149' : TEXT_DIM,
+                              }}>
+                                {pt.directionVsResolved === 'equal' ? 'RESOLVED' : pt.directionVsResolved.toUpperCase()}
+                              </div>
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}

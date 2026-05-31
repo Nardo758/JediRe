@@ -45,6 +45,7 @@ import {
   deriveDivergenceAlertLevel,
   type DivergenceAlertLevel,
 } from './divergence-thresholds';
+import { recordDivergenceObservation } from './divergence-ledger.stub';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -56,6 +57,21 @@ export interface DivergencePoint {
   layer: 'override' | 'computedValue' | 'agent' | 't12' | 'om' | 'broker' | 'storedResolved';
   label: string;
   value: number;
+  /**
+   * Absolute delta between this source's value and the resolved (winning) value.
+   * Zero for the winning source layer itself.
+   */
+  deltaAbsolute: number;
+  /**
+   * Relative delta as a signed fraction of the resolved value.
+   * e.g. 0.138 means this source is 13.8% above the resolved value.
+   * null when resolved value is 0 (division undefined).
+   */
+  deltaRelative: number | null;
+  /**
+   * Whether this source is above, below, or equal to the resolved value.
+   */
+  directionVsResolved: 'above' | 'below' | 'equal';
 }
 
 /**
@@ -84,6 +100,12 @@ export interface DivergenceSignature {
   unit: string;
   /** True when field is stored in 0–1 decimal scale (% fields). */
   isPct: boolean;
+  /**
+   * Human-readable explanation of why sources may diverge for this field.
+   * Set for fields where methodology differences are well-understood
+   * (e.g. LTL trailing-average vs. current snapshot).
+   */
+  interpretationHint?: string;
 }
 
 /**
@@ -228,11 +250,53 @@ const LAYER_LABELS: Record<string, string> = {
   storedResolved: 'Seeded (Best)',
 };
 
+// ── Per-field interpretation hints ───────────────────────────────────────────
+//
+// Human-readable explanations for why specific fields tend to diverge across
+// source layers. Shown in the Validation Grid and Deal Capsule disagreements
+// section to give operators context beyond the raw delta numbers.
+
+const FIELD_INTERPRETATION_HINTS: Record<string, string> = {
+  loss_to_lease:
+    'T-12 average reflects trailing carrying rate; live lease-level reflects ' +
+    'current mark-to-market snapshot. A large delta indicates potential rent ' +
+    'upside not yet captured in trailing income — a mark-to-market opportunity.',
+  vacancy:
+    'T-12 vacancy reflects trailing 12-month average occupancy; live signals ' +
+    'reflect current lease-up velocity. Delta may indicate improving or ' +
+    'deteriorating market conditions not yet captured in the trailing average.',
+  exit_cap:
+    'Multiple sources price the exit cap differently. OM-stated cap rates are ' +
+    'often optimistic vs. comp-implied. Review the comp set before accepting a ' +
+    'broker-sourced cap rate — even small differences have material IRR impact.',
+  rent_growth_yr1:
+    'T-12 trailing rent growth reflects historical momentum; platform benchmarks ' +
+    'reflect forward-looking submarket consensus. Divergence may indicate a ' +
+    'turning market or a property-specific lease-up dynamic.',
+  gpr:
+    'T-12 GPR reflects trailing in-place collections; OM/broker GPR typically ' +
+    'reflects stabilized or mark-to-market assumptions. Divergence signals ' +
+    'a gap between current performance and projected stabilized income.',
+  noi:
+    'NOI divergence typically traces to GPR and/or expense layer disagreements. ' +
+    'Drill into revenue and expense sub-fields to identify the root source.',
+  real_estate_tax:
+    'Tax bill-sourced values reflect actual assessed amounts; OM estimates may ' +
+    'use simplified millage × assessed value calculations. Reassessment risk ' +
+    'after sale is not captured in either figure.',
+};
+
 /**
  * Build a DivergenceSignature from the resolved layer snapshot.
  *
  * Collects all non-null source layers, computes the maximum pairwise absolute
- * delta, and maps it to an alertLevel via the per-field threshold registry.
+ * delta, maps it to an alertLevel via the per-field threshold registry, and
+ * annotates each point with its delta vs. the resolved (winning) value.
+ *
+ * @param resolvedValue  The canonical resolved value for this field (after
+ *   applying the resolution chain). Used to compute per-point deltaAbsolute
+ *   and deltaRelative so the UI can show "this source is X above/below what
+ *   we're using." Pass null when the resolved value is not yet known.
  *
  * Returns undefined when < 2 layers are non-null (nothing to compare).
  */
@@ -247,8 +311,9 @@ function buildDivergenceSignature(
     broker: number | null;
     storedResolved: number | null;
   },
+  resolvedValue: number | null,
 ): DivergenceSignature | undefined {
-  const candidates: DivergencePoint[] = [];
+  const candidates: Omit<DivergencePoint, 'deltaAbsolute' | 'deltaRelative' | 'directionVsResolved'>[] = [];
 
   const push = (layer: DivergencePoint['layer'], val: number | null) => {
     if (val != null) candidates.push({ layer, label: LAYER_LABELS[layer] ?? layer, value: val });
@@ -275,8 +340,23 @@ function buildDivergenceSignature(
   const thr = getFieldThreshold(fieldName);
   const alertLevel = deriveDivergenceAlertLevel(maxAbsDelta, thr.absolute);
 
+  // Annotate each candidate with delta vs. the resolved (canonical) value.
+  // This lets the UI show "T-12 is 1345 bps above what we're using" clearly.
+  const points: DivergencePoint[] = candidates.map(c => {
+    const deltaAbsolute = resolvedValue != null ? Math.abs(c.value - resolvedValue) : 0;
+    const deltaRelative = resolvedValue != null && resolvedValue !== 0
+      ? (c.value - resolvedValue) / Math.abs(resolvedValue)
+      : null;
+    const directionVsResolved: DivergencePoint['directionVsResolved'] =
+      resolvedValue == null || c.value === resolvedValue ? 'equal'
+      : c.value > resolvedValue ? 'above'
+      : 'below';
+
+    return { ...c, deltaAbsolute, deltaRelative, directionVsResolved };
+  });
+
   return {
-    points:       candidates,
+    points,
     maxAbsDelta,
     alertLevel,
     exceeds:      alertLevel !== 'none',
@@ -284,6 +364,7 @@ function buildDivergenceSignature(
     fieldName,
     unit:         thr.unit,
     isPct:        thr.isPct,
+    interpretationHint: FIELD_INTERPRETATION_HINTS[fieldName],
   };
 }
 
@@ -451,7 +532,7 @@ export async function getFieldValue(
 
   const divergenceSignature = buildDivergenceSignature(fieldName, {
     override, computedValue, agent, t12, om, broker, storedResolved,
-  });
+  }, resolved);
 
   return {
     fieldName,
@@ -574,7 +655,22 @@ export async function getFieldValues(
 
     const divergenceSignature = buildDivergenceSignature(fieldName, {
       override, computedValue, agent, t12, om, broker, storedResolved,
-    });
+    }, resolved);
+
+    // Piece D: emit ledger observation at divergence-detection time so any
+    // consumer (completeness signal, route, capsule) records it consistently.
+    if (divergenceSignature?.exceeds &&
+        (divergenceSignature.alertLevel === 'warn' || divergenceSignature.alertLevel === 'block')) {
+      recordDivergenceObservation({
+        dealId,
+        fieldName,
+        alertLevel:   divergenceSignature.alertLevel,
+        resolvedValue: resolved,
+        maxAbsDelta:  divergenceSignature.maxAbsDelta,
+        pointCount:   divergenceSignature.points.length,
+        observedAt:   new Date().toISOString(),
+      });
+    }
 
     result[fieldName] = {
       fieldName, year, resolved, override, computedValue, agent,

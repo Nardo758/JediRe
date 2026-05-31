@@ -146,14 +146,55 @@ const SIGNAL_REGISTRY: SignalDefinition[] = [
     async evaluate(dealId, _propertyId, pool): Promise<SignalStatus> {
       try {
         const summary = await getDivergenceSummary(pool, dealId);
-        if (summary.blockCount >= 1) return 'incomplete';
-        if (summary.warnCount >= 3)  return 'degraded';
+        if (summary.block >= 1) return 'incomplete';
+        if (summary.warn >= 3)  return 'degraded';
         return 'complete';
       } catch {
         return 'complete';
       }
     },
   },
+
+  // ── Per-field unresolved divergence signals (one per tracked field) ─────────
+  // Each emits its own completeness signal so T-C1 consumers can surface
+  // field-specific guidance (e.g. "loss_to_lease is contested — review T-12 vs live").
+  // Severity: 'blocker' for required fields (exit_cap, noi, gpr); 'advisory' for recommended.
+
+  ...([
+    { fieldName: 'loss_to_lease',   required: false },
+    { fieldName: 'vacancy',         required: false },
+    { fieldName: 'exit_cap',        required: true  },
+    { fieldName: 'rent_growth_yr1', required: false },
+    { fieldName: 'gpr',             required: true  },
+    { fieldName: 'noi',             required: true  },
+    { fieldName: 'real_estate_tax', required: false },
+  ] as { fieldName: string; required: boolean }[]).map(({ fieldName, required }) => ({
+    id:       `unresolved_divergence:${fieldName}`,
+    severity: (required ? 'blocker' : 'advisory') as SignalSeverity,
+    title:    `Source disagreement on ${fieldName.replace(/_/g, ' ')} — resolution needed`,
+    description:
+      `Multiple data sources are reporting materially different values for ` +
+      `${fieldName.replace(/_/g, ' ')}. The resolved value may be anchored to the wrong ` +
+      `layer. This is a per-field signal; check the Validation Grid for delta details.`,
+    recommendedAction:
+      `Open the Assumption Validation Grid (F9 → VALIDATION tab), locate the ` +
+      `${fieldName.replace(/_/g, ' ')} row, and review the ⚡ CONTESTED badge to decide ` +
+      `which data source to trust.`,
+    ctaLabel: 'Open Validation Grid',
+    ctaLink:  (dealId: string) => `/deals/${dealId}?tab=financial-engine&subtab=validation`,
+
+    async evaluate(dealId: string, _propertyId: string | null, pool: Pool): Promise<SignalStatus> {
+      try {
+        const { getFieldValues } = await import('../field-access/get-field-value.service');
+        const values = await getFieldValues(pool, dealId, [fieldName]);
+        const lv = values[fieldName];
+        if (!lv?.divergenceSignature?.exceeds) return 'complete';
+        return lv.divergenceSignature.alertLevel === 'block' ? 'incomplete' : 'degraded';
+      } catch {
+        return 'complete';
+      }
+    },
+  })),
 
   // ── Phase 2C: Vendor data completeness signals ────────────────────────────
 

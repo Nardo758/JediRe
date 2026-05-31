@@ -12,7 +12,7 @@
 
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../../middleware/auth';
-import { pool } from '../../database/connection';
+import { getPool } from '../../database/connection';
 import { getFieldValues, getDivergenceSummary } from '../../services/field-access/get-field-value.service';
 import { logger } from '../../utils/logger';
 
@@ -29,6 +29,7 @@ const DIVERGENCE_FIELDS = [
 router.get('/:dealId/field-divergences', async (req: Request, res: Response) => {
   const userId = (req as any).user?.userId;
   const { dealId } = req.params;
+  const pool = getPool();
 
   try {
     const accessCheck = await pool.query(
@@ -50,6 +51,7 @@ router.get('/:dealId/field-divergences', async (req: Request, res: Response) => 
       const lv = values[fieldName];
       if (!lv?.divergenceSignature) continue;
       result.push({ fieldName, divergence: lv.divergenceSignature });
+      // Ledger observation is now emitted at detection time inside getFieldValues().
     }
 
     return res.json({ success: true, data: result, dealId });
@@ -62,6 +64,7 @@ router.get('/:dealId/field-divergences', async (req: Request, res: Response) => 
 router.get('/:dealId/field-divergences/summary', async (req: Request, res: Response) => {
   const userId = (req as any).user?.userId;
   const { dealId } = req.params;
+  const pool = getPool();
 
   try {
     const accessCheck = await pool.query(

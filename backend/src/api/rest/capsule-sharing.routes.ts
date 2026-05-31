@@ -38,6 +38,15 @@ import * as XLSX from 'xlsx';
 import PDFDocument from 'pdfkit';
 import { computeUserLineAnnual } from '../../services/proforma-seeder.service';
 import { redactRestrictedVendorPlatformIntel } from '../../services/vendor-freshness.service';
+import { getFieldValues } from '../../services/field-access/get-field-value.service';
+
+// Fields tracked for divergence analysis (same set as field-divergences.routes.ts)
+const SHARE_DIVERGENCE_FIELDS = [
+  'gpr', 'loss_to_lease', 'vacancy', 'concessions', 'bad_debt',
+  'other_income', 'real_estate_tax', 'insurance', 'management_fee',
+  'repairs_maintenance', 'utilities', 'payroll', 'administrative',
+  'marketing', 'contract_services', 'noi', 'exit_cap', 'rent_growth_yr1',
+];
 
 const router = Router();
 
@@ -1059,6 +1068,71 @@ router.get('/capsule-links/:accessToken/deal-book', async (req: Request, res: Re
   } catch (err: any) {
     logger.error('Failed to serve deal book', { error: err?.message });
     return res.status(500).json({ error: 'Failed to load deal book.' });
+  }
+});
+
+// ─── GET /capsule-links/:accessToken/field-divergences ───────────────────────
+// Returns source disagreements for fields where ≥2 source layers exist.
+// Only served when preview_metadata.include_divergences === true on the share.
+// No platform auth required; share token is the credential.
+// Rate limit: inherited from deal-book (30/hr/IP) — tracked on same key.
+
+router.get('/capsule-links/:accessToken/field-divergences', async (req: Request, res: Response) => {
+  const { accessToken } = req.params;
+  try {
+    const pool = getPool();
+    const tokenHash = crypto.createHash('sha256').update(accessToken).digest('hex');
+
+    // Validate share token and check include_divergences flag
+    const shareResult = await pool.query(
+      `SELECT ces.capsule_id, ces.preview_metadata
+       FROM capsule_external_shares ces
+       WHERE ces.access_token = $1
+         AND ces.revoked_at IS NULL
+         AND (ces.expires_at IS NULL OR ces.expires_at > NOW())
+       LIMIT 1`,
+      [tokenHash]
+    );
+    if (shareResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Capsule link is invalid, expired, or has been revoked.' });
+    }
+
+    const share = shareResult.rows[0];
+    const meta: Record<string, unknown> = share.preview_metadata ?? {};
+    if (meta.include_divergences !== true) {
+      return res.status(403).json({ error: 'Source disagreements were not included in this share.' });
+    }
+
+    // Resolve deal_id from capsule's deal_data JSONB
+    const capsuleResult = await pool.query(
+      `SELECT deal_data->>'deal_id' AS deal_id FROM deal_capsules WHERE id = $1 LIMIT 1`,
+      [share.capsule_id]
+    );
+    if (capsuleResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Capsule not found.' });
+    }
+    const dealId: string | null = capsuleResult.rows[0].deal_id ?? null;
+    if (!dealId) {
+      return res.status(404).json({ error: 'No deal linked to this capsule — divergence data unavailable.' });
+    }
+
+    const values = await getFieldValues(pool, dealId, SHARE_DIVERGENCE_FIELDS);
+
+    const result: Array<{
+      fieldName: string;
+      divergence: NonNullable<(typeof values)[string]>['divergenceSignature'];
+    }> = [];
+
+    for (const fieldName of SHARE_DIVERGENCE_FIELDS) {
+      const lv = values[fieldName];
+      if (!lv?.divergenceSignature) continue;
+      result.push({ fieldName, divergence: lv.divergenceSignature });
+    }
+
+    return res.json({ success: true, data: result });
+  } catch (err: any) {
+    logger.error('capsule-link field-divergences error', { error: err.message });
+    return res.status(500).json({ error: 'Failed to compute source disagreements.' });
   }
 });
 

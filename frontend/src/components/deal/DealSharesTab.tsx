@@ -361,6 +361,7 @@ export function DealSharesTab({ dealId }: Props) {
       {showModal && capsuleId && (
         <ShareCapsuleModal
           capsuleId={capsuleId}
+          dealId={dealId}
           propertyAddress=""
           onClose={() => setShowModal(false)}
           onShareCreated={loadShares}

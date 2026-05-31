@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { X, Share2, CheckCircle, Copy, AlertTriangle, Loader2, ExternalLink, Link, User } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
+import { DivergenceDisagreementsSection } from './DivergenceDisagreementsSection';
 
 interface ShareCapsuleModalProps {
   capsuleId: string;
   propertyAddress: string;
   onClose: () => void;
   onShareCreated?: () => void;
+  /** The deal UUID for divergence analysis. Defaults to capsuleId when not provided
+   *  (DealDetailPage passes dealId as capsuleId; other contexts should pass explicitly). */
+  dealId?: string;
 }
 
 interface ShareResult {
@@ -70,7 +74,12 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
   propertyAddress,
   onClose,
   onShareCreated,
+  dealId: dealIdProp,
 }) => {
+  // dealIdProp is the real deal UUID for divergence analysis.
+  // DealDetailPage passes dealId as capsuleId (they are the same).
+  // Other contexts (TerminalPage, DealSharesTab) pass dealId explicitly.
+  const divergenceDealId = dealIdProp ?? capsuleId;
   const [shareMode, setShareMode] = useState<ShareMode>('specific_recipient');
   const [shareForm, setShareForm] = useState({
     recipient_email: '',
@@ -86,6 +95,7 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareResult, setShareResult] = useState<ShareResult | null>(null);
   const [copied, setCopied] = useState(false);
+  const [includeDisagreements, setIncludeDisagreements] = useState(false);
 
   useEffect(() => {
     apiClient.get('/api/v1/settings/branding')
@@ -119,6 +129,9 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
       if (brandingSettings?.can_remove_attribution) {
         payload.show_attribution_override = showAttributionOverride;
       }
+      // Freeze the operator's divergence-inclusion decision into the share snapshot.
+      // External render path checks preview_metadata.include_divergences at display time.
+      payload.preview_metadata = { include_divergences: includeDisagreements };
       const res = await apiClient.post(`/api/v1/deals/${capsuleId}/share/external`, payload);
       setShareResult(res.data);
       onShareCreated?.();
@@ -446,6 +459,25 @@ const ShareCapsuleModal: React.FC<ShareCapsuleModalProps> = ({
                 style={{ ...inputStyle, colorScheme: 'dark' }}
                 onFocus={e => { e.currentTarget.style.borderColor = AMBER; }}
                 onBlur={e => { e.currentTarget.style.borderColor = BORDER_MID; }}
+              />
+            </div>
+
+            {/* Source Disagreements — internal divergence preview with redact toggle */}
+            <div>
+              <div style={labelStyle}>Source Disagreements</div>
+              <div style={{
+                fontFamily: MONO, fontSize: 8, color: TEXT_DIM, marginBottom: 8, lineHeight: 1.5,
+              }}>
+                Fields where data sources disagree beyond materiality thresholds.
+                Toggle inclusion to decide whether recipients see this analysis.
+                Restricted vendor names are automatically redacted in external shares.
+              </div>
+              <DivergenceDisagreementsSection
+                dealId={divergenceDealId}
+                isInternal={false}
+                showIncludeToggle={true}
+                included={includeDisagreements}
+                onIncludeChange={setIncludeDisagreements}
               />
             </div>
 

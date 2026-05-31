@@ -41,6 +41,9 @@ interface DivergencePoint {
   layer: string;
   label: string;
   value: number;
+  deltaAbsolute?: number;
+  deltaRelative?: number | null;
+  directionVsResolved?: 'above' | 'below' | 'equal';
 }
 
 interface DivergenceSignature {
@@ -52,6 +55,7 @@ interface DivergenceSignature {
   fieldName: string;
   unit: string;
   isPct: boolean;
+  interpretationHint?: string;
 }
 
 // ── Override impact signal ─────────────────────────────────────────────────────
@@ -752,8 +756,22 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
       ltlContested && ltlT12 != null && ltlLive != null
         ? {
             points: [
-              { layer: 't12',            label: 'T-12 Document',    value: ltlT12 },
-              { layer: 'storedResolved', label: 'Live (Traffic)',   value: ltlLive },
+              {
+                layer: 't12', label: 'T-12 Document', value: ltlT12,
+                deltaAbsolute: ltlResolved != null ? Math.abs(ltlT12 - ltlResolved) : undefined,
+                deltaRelative: ltlResolved != null && ltlResolved !== 0
+                  ? (ltlT12 - ltlResolved) / Math.abs(ltlResolved) : null,
+                directionVsResolved: ltlResolved == null ? 'equal'
+                  : ltlT12 > ltlResolved ? 'above' : ltlT12 < ltlResolved ? 'below' : 'equal',
+              },
+              {
+                layer: 'storedResolved', label: 'Live (Traffic)', value: ltlLive,
+                deltaAbsolute: ltlResolved != null ? Math.abs(ltlLive - ltlResolved) : undefined,
+                deltaRelative: ltlResolved != null && ltlResolved !== 0
+                  ? (ltlLive - ltlResolved) / Math.abs(ltlResolved) : null,
+                directionVsResolved: ltlResolved == null ? 'equal'
+                  : ltlLive > ltlResolved ? 'above' : ltlLive < ltlResolved ? 'below' : 'equal',
+              },
             ],
             maxAbsDelta: ltlDelta!,
             alertLevel:  ltlDelta! >= LTL_THRESHOLD * 3 ? 'block' : 'warn',
@@ -762,6 +780,10 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
             fieldName:   'loss_to_lease',
             unit:        'bps',
             isPct:       true,
+            interpretationHint:
+              'T-12 average reflects trailing carrying rate; live lease-level reflects ' +
+              'current mark-to-market snapshot. A large delta indicates potential rent ' +
+              'upside not yet captured in trailing income — a mark-to-market opportunity.',
           }
         : undefined;
 
@@ -1056,11 +1078,12 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
 
             {/* Data rows */}
             {group.rows.map((row, ri) => (
-              <div key={row.key} style={{
+              <React.Fragment key={row.key}>
+              <div style={{
                 display: 'grid', gridTemplateColumns: COL, gap: 0,
                 padding: '5px 12px',
                 background: ri % 2 === 0 ? BT.bg.panel : BT.bg.terminal,
-                borderBottom: `1px solid ${BT.border.subtle}`,
+                borderBottom: row.divergenceSignature?.exceeds ? 'none' : `1px solid ${BT.border.subtle}`,
                 alignItems: 'start',
                 borderLeft: row.quality === 'WEAK'
                   ? `3px solid ${QUALITY_COLOR.WEAK}`
@@ -1097,8 +1120,12 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
                         points={row.divergenceSignature.points.map(p => ({
                           label: p.label,
                           value: p.value,
+                          deltaAbsolute: p.deltaAbsolute,
+                          deltaRelative: p.deltaRelative,
+                          directionVsResolved: p.directionVsResolved,
                         }))}
                         isPct={row.divergenceSignature.isPct}
+                        interpretationHint={row.divergenceSignature.interpretationHint}
                       />
                     </div>
                   )}
@@ -1165,6 +1192,75 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
                 </div>
 
               </div>
+
+              {/* ── Divergence sub-rows: one per source, rendered inline below the main row ── */}
+              {row.divergenceSignature?.exceeds && (
+                <div style={{
+                  background: ri % 2 === 0 ? BT.bg.panel : BT.bg.terminal,
+                  borderBottom: `1px solid ${BT.border.subtle}`,
+                  borderLeft: `3px solid ${row.divergenceSignature.alertLevel === 'block' ? '#FF5252' : BT.text.amber}`,
+                  paddingLeft: 12, paddingRight: 12, paddingBottom: 6,
+                }}>
+                  {/* sub-header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingBottom: 4, borderBottom: `1px solid ${BT.border.subtle}`, marginBottom: 3 }}>
+                    <span style={{ fontFamily: MONO, fontSize: 6, fontWeight: 700, color: BT.text.muted, letterSpacing: 0.8 }}>SOURCE</span>
+                    <span style={{ flex: 1 }} />
+                    <span style={{ fontFamily: MONO, fontSize: 6, color: BT.text.muted, width: 70, textAlign: 'right' }}>VALUE</span>
+                    <span style={{ fontFamily: MONO, fontSize: 6, color: BT.text.muted, width: 70, textAlign: 'right' }}>Δ VS RESOLVED</span>
+                    <span style={{ fontFamily: MONO, fontSize: 6, color: BT.text.muted, width: 60, textAlign: 'center' }}>CONFIDENCE</span>
+                  </div>
+                  {row.divergenceSignature.points.map((pt, pi) => {
+                    const actuallyUsed = pt.deltaAbsolute === 0 || (pt.deltaAbsolute != null && pt.deltaAbsolute < 0.0001);
+                    const confidence = actuallyUsed ? 'RESOLVED' : pt.directionVsResolved === 'above' ? 'ABOVE' : pt.directionVsResolved === 'below' ? 'BELOW' : 'SECONDARY';
+                    const confColor  = actuallyUsed ? '#00D26A' : row.divergenceSignature!.alertLevel === 'block' ? '#FF5252' : BT.text.amber;
+                    const deltaStr   = pt.deltaAbsolute != null
+                      ? (row.divergenceSignature!.isPct
+                          ? `${(pt.deltaAbsolute * 10000).toFixed(0)} bps`
+                          : `$${Math.round(pt.deltaAbsolute).toLocaleString()}`)
+                      : '—';
+                    const dirIcon = pt.directionVsResolved === 'above' ? '▲' : pt.directionVsResolved === 'below' ? '▼' : '=';
+                    return (
+                      <div key={pi} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0' }}>
+                        <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary }}>
+                          {dirIcon} {pt.label}
+                        </span>
+                        <span style={{ flex: 1 }} />
+                        <span style={{ fontFamily: MONO, fontSize: 7, color: BT.met.financial, width: 70, textAlign: 'right' }}>
+                          {row.divergenceSignature!.isPct
+                            ? `${((pt.value ?? 0) * 100).toFixed(2)}%`
+                            : `$${Math.round(pt.value ?? 0).toLocaleString()}`}
+                        </span>
+                        <span style={{ fontFamily: MONO, fontSize: 7, color: actuallyUsed ? BT.text.muted : confColor, width: 70, textAlign: 'right' }}>
+                          {actuallyUsed ? '— (anchor)' : deltaStr}
+                        </span>
+                        <span style={{ width: 60, textAlign: 'center' }}>
+                          <span style={{
+                            fontFamily: MONO, fontSize: 6, fontWeight: 700,
+                            color: confColor,
+                            padding: '1px 4px',
+                            border: `1px solid ${confColor}44`,
+                            borderRadius: 2,
+                            letterSpacing: 0.5,
+                          }}>
+                            {confidence}
+                          </span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {row.divergenceSignature.interpretationHint && (
+                    <div style={{
+                      marginTop: 4, padding: '4px 6px',
+                      background: '#0A0E1780', border: `1px solid ${BT.border.subtle}`,
+                      fontFamily: MONO, fontSize: 6, color: BT.text.muted, lineHeight: 1.6,
+                    }}>
+                      ℹ {row.divergenceSignature.interpretationHint}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              </React.Fragment>
             ))}
           </div>
         ))}

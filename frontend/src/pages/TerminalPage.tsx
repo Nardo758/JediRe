@@ -649,6 +649,7 @@ export default function TerminalPage() {
 
   // Pipeline share modal state
   const [pipelineShareCapsuleId, setPipelineShareCapsuleId] = useState<string|null>(null);
+  const [pipelineShareDealId, setPipelineShareDealId] = useState<string|null>(null);
   const [pipelineShareDealName, setPipelineShareDealName] = useState('');
   const [pipelineShareFetching, setPipelineShareFetching] = useState(false);
   const [pipelineShareError, setPipelineShareError] = useState<string|null>(null);
@@ -1148,6 +1149,7 @@ export default function TerminalPage() {
       const capsuleId: string | undefined = res.data?.id ?? res.data?.capsule?.id;
       if (!capsuleId) throw new Error('No capsule found for this deal. Open it to generate one first.');
       setPipelineShareDealName(d.name);
+      setPipelineShareDealId(d.id);
       setPipelineShareCapsuleId(capsuleId);
     } catch (err: any) {
       setPipelineShareError(err.response?.data?.error ?? err.message ?? 'Could not find capsule for this deal');
@@ -3041,8 +3043,9 @@ export default function TerminalPage() {
       {pipelineShareCapsuleId && (
         <ShareCapsuleModal
           capsuleId={pipelineShareCapsuleId}
+          dealId={pipelineShareDealId ?? undefined}
           propertyAddress={pipelineShareDealName}
-          onClose={() => { setPipelineShareCapsuleId(null); setPipelineShareDealName(''); }}
+          onClose={() => { setPipelineShareCapsuleId(null); setPipelineShareDealId(null); setPipelineShareDealName(''); }}
         />
       )}
       {pipelineShareError && (
