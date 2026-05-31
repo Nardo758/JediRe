@@ -194,9 +194,14 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
 
   // Add Asset modal
   const [showAddAssetModal, setShowAddAssetModal] = useState(false);
-  const [addAssetForm, setAddAssetForm] = useState({ name: '', address: '', city: '', state: '', units: '', assetClass: 'B', yearBuilt: '', submarket: '' });
+  const [addAssetForm, setAddAssetForm] = useState({
+    name: '', address: '', city: '', state: '', units: '', assetClass: 'B',
+    yearBuilt: '', submarketId: '', submarketSearch: '',
+    acquisitionDate: '', acquisitionPrice: '', notes: '',
+  });
   const [addingAsset, setAddingAsset] = useState(false);
   const [addAssetError, setAddAssetError] = useState<string | null>(null);
+  const [submarketOptions, setSubmarketOptions] = useState<Array<{ id: number; name: string; msa_name: string | null }>>([]);
 
   // Per-property actuals expansion
   const [propertyActuals, setPropertyActuals] = useState<Record<string, PropertyActualRow[]>>({});
@@ -335,10 +340,13 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
         units: addAssetForm.units ? parseInt(addAssetForm.units) : null,
         assetClass: addAssetForm.assetClass || null,
         yearBuilt: addAssetForm.yearBuilt ? parseInt(addAssetForm.yearBuilt) : null,
-        submarket: addAssetForm.submarket || null,
+        submarketId: addAssetForm.submarketId ? parseInt(addAssetForm.submarketId) : null,
+        acquisitionDate: addAssetForm.acquisitionDate || null,
+        acquisitionPrice: addAssetForm.acquisitionPrice ? parseFloat(addAssetForm.acquisitionPrice) : null,
+        notes: addAssetForm.notes || null,
       });
       setShowAddAssetModal(false);
-      setAddAssetForm({ name: '', address: '', city: '', state: '', units: '', assetClass: 'B', yearBuilt: '', submarket: '' });
+      setAddAssetForm({ name: '', address: '', city: '', state: '', units: '', assetClass: 'B', yearBuilt: '', submarketId: '', submarketSearch: '', acquisitionDate: '', acquisitionPrice: '', notes: '' });
       loadPortfolioData();
     } catch (err: any) {
       setAddAssetError(err?.response?.data?.error || 'Failed to create property');
@@ -347,6 +355,19 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addAssetForm]);
+
+  // ─── Submarket Loader ─────────────────────────────────────────
+
+  const loadSubmarkets = useCallback(async () => {
+    if (submarketOptions.length > 0) return;
+    try {
+      const res = await apiClient.get('/api/v1/portfolio/submarkets');
+      setSubmarketOptions(res.data.submarkets || []);
+    } catch {
+      setSubmarketOptions([]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submarketOptions.length]);
 
   // ─── Per-Property Actuals Loader ──────────────────────────────
 
@@ -585,7 +606,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
             + ACTUALS
           </button>
           <button
-            onClick={() => { setAddAssetError(null); setShowAddAssetModal(true); }}
+            onClick={() => { setAddAssetError(null); setShowAddAssetModal(true); loadSubmarkets(); }}
             style={{ padding: '4px 12px', background: T.text.amber, color: T.bg.terminal, border: 'none', fontSize: 10, fontWeight: 700, fontFamily: MONO, cursor: 'pointer' }}
           >
             + ADD ASSET
@@ -1621,8 +1642,65 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
                 {/* Submarket */}
                 <div>
                   <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>SUBMARKET</label>
-                  <input type="text" value={addAssetForm.submarket} onChange={e => setAddAssetForm(p => ({ ...p, submarket: e.target.value }))} placeholder="e.g. Midtown Atlanta" style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none' }} />
+                  {submarketOptions.length > 0 ? (
+                    <select
+                      value={addAssetForm.submarketId}
+                      onChange={e => setAddAssetForm(p => ({ ...p, submarketId: e.target.value }))}
+                      style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: addAssetForm.submarketId ? '#E2E8F0' : '#6B7A8D', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none', colorScheme: 'dark' }}
+                    >
+                      <option value="">— Select submarket (optional) —</option>
+                      {submarketOptions.map(s => (
+                        <option key={s.id} value={String(s.id)}>
+                          {s.msa_name ? `${s.msa_name} › ` : ''}{s.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={addAssetForm.submarketSearch}
+                      onChange={e => setAddAssetForm(p => ({ ...p, submarketSearch: e.target.value }))}
+                      placeholder="e.g. Midtown Atlanta (optional)"
+                      style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none' }}
+                    />
+                  )}
                 </div>
+              </div>
+
+              {/* Row 3: Acquisition info */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>ACQUISITION DATE</label>
+                  <input
+                    type="month"
+                    value={addAssetForm.acquisitionDate}
+                    onChange={e => setAddAssetForm(p => ({ ...p, acquisitionDate: e.target.value }))}
+                    style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none', colorScheme: 'dark' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>ACQUISITION PRICE ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={addAssetForm.acquisitionPrice}
+                    onChange={e => setAddAssetForm(p => ({ ...p, acquisitionPrice: e.target.value }))}
+                    placeholder="e.g. 12500000"
+                    style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none' }}
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>NOTES (OPTIONAL)</label>
+                <textarea
+                  value={addAssetForm.notes}
+                  onChange={e => setAddAssetForm(p => ({ ...p, notes: e.target.value }))}
+                  rows={2}
+                  placeholder="Strategy, partners, deal context…"
+                  style={{ width: '100%', boxSizing: 'border-box', background: '#060A12', border: '1px solid #1e2a3d', color: '#E2E8F0', fontFamily: MONO, fontSize: 11, padding: '6px 10px', outline: 'none', resize: 'vertical' }}
+                />
               </div>
 
               <div style={{ fontSize: 9, color: '#6B7A8D', fontFamily: MONO, marginBottom: 16, lineHeight: 1.6 }}>

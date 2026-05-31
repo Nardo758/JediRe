@@ -54,54 +54,94 @@ router.get('/metrics', requireAuth, async (req: AuthenticatedRequest, res: Respo
 });
 
 /**
+ * GET /api/v1/portfolio/submarkets
+ * Returns available submarkets for the Add Asset submarket selector.
+ * Scoped to the authenticated user's region pool; returns empty list on error
+ * so the frontend can fall back to manual text entry.
+ */
+router.get('/submarkets', requireAuth, async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT s.id, s.name, m.name AS msa_name
+       FROM submarkets s
+       LEFT JOIN (
+         SELECT id, name FROM geographies WHERE type = 'msa'
+       ) m ON m.id = s.msa_id::text
+       ORDER BY m.name NULLS LAST, s.name
+       LIMIT 300`
+    );
+    res.json({ submarkets: result.rows });
+  } catch (err) {
+    logger.error('Portfolio submarkets error:', err);
+    res.json({ submarkets: [] });
+  }
+});
+
+/**
  * GET /api/v1/portfolio/assets
- * All portfolio assets sourced from deal_monthly_actuals (is_portfolio_asset=TRUE).
- * Aggregates per property: avg occupancy, annualised NOI, avg rent over all tracked months.
+ * All portfolio assets: properties with is_portfolio_asset actuals OR
+ * recently created portfolio properties not yet loaded with actuals.
+ * Uses LEFT JOIN so newly created properties (ownership_status='portfolio',
+ * no actuals yet) are visible immediately after creation.
  */
 router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const result = await query(`
-      SELECT
-        p.id                                          AS property_id,
-        p.name,
-        p.address_line1                               AS address,
-        p.city,
-        p.state_code                                  AS state,
-        COALESCE(p.units, 0)                          AS units,
-        p.building_class                              AS asset_class,
-        p.year_built                                  AS vintage,
-        p.submarket_id                                AS submarket,
-        COUNT(dma.id)                                 AS months_of_data,
-        COALESCE(AVG(dma.occupancy_rate) * 100, 0)   AS avg_occupancy,
-        COALESCE(AVG(dma.noi) * 12, 0)               AS annualised_noi,
-        COALESCE(AVG(dma.avg_effective_rent), 0)      AS avg_rent,
-        MAX(dma.report_month)                         AS latest_period,
-        MIN(dma.report_month)                         AS earliest_period
-      FROM properties p
-      JOIN deal_monthly_actuals dma ON dma.property_id = p.id AND dma.is_portfolio_asset = TRUE
-      GROUP BY p.id, p.name, p.address_line1, p.city, p.state_code, p.units,
-               p.building_class, p.year_built, p.submarket_id
-      ORDER BY p.name
-    `);
+    const userId = req.user!.userId;
+    const result = await query(
+      `SELECT
+         p.id                                              AS property_id,
+         p.name,
+         p.address_line1                                   AS address,
+         p.city,
+         p.state_code                                      AS state,
+         COALESCE(p.units, 0)                              AS units,
+         p.building_class                                  AS asset_class,
+         p.year_built                                      AS vintage,
+         s.name                                            AS submarket_name,
+         s.id                                              AS submarket_id,
+         p.acquisition_date,
+         p.acquisition_price,
+         COUNT(dma.id)                                     AS months_of_data,
+         COALESCE(AVG(dma.occupancy_rate) * 100, 0)       AS avg_occupancy,
+         COALESCE(AVG(dma.noi) * 12, 0)                   AS annualised_noi,
+         COALESCE(AVG(dma.avg_effective_rent), 0)          AS avg_rent,
+         MAX(dma.report_month)                             AS latest_period,
+         MIN(dma.report_month)                             AS earliest_period
+       FROM properties p
+       LEFT JOIN deal_monthly_actuals dma ON dma.property_id = p.id AND dma.is_portfolio_asset = TRUE
+       LEFT JOIN submarkets s ON s.id::text = p.submarket_id
+       WHERE p.ownership_status = 'portfolio'
+          OR EXISTS (
+            SELECT 1 FROM deal_monthly_actuals x
+            WHERE x.property_id = p.id AND x.is_portfolio_asset = TRUE
+          )
+       GROUP BY p.id, p.name, p.address_line1, p.city, p.state_code, p.units,
+                p.building_class, p.year_built, s.name, s.id,
+                p.acquisition_date, p.acquisition_price
+       ORDER BY p.name`,
+      []
+    );
 
     const assets = result.rows.map((row: Record<string, unknown>) => {
       const occ = Number(row.avg_occupancy ?? 0);
+      const purchasePrice = row.acquisition_price != null ? Number(row.acquisition_price) : 0;
+      const noi = Number(row.annualised_noi ?? 0);
       return {
         id: row.property_id,
         name: row.name ?? '—',
         address: row.address ?? '—',
         city: row.city ?? '—',
         state: row.state ?? '—',
-        msa: (row.submarket ?? row.city ?? '—') as string,
+        msa: (row.submarket_name ?? row.city ?? '—') as string,
         units: Number(row.units ?? 0),
         assetClass: (row.asset_class ?? 'B') as string,
         vintage: Number(row.vintage ?? 0),
-        acquisitionDate: null,
-        purchasePrice: 0,
+        acquisitionDate: row.acquisition_date ?? null,
+        purchasePrice,
         currentValue: 0,
-        noi: Number(row.annualised_noi ?? 0),
+        noi,
         occupancy: occ,
-        capRate: 0,
+        capRate: purchasePrice > 0 ? Math.round((noi / purchasePrice) * 10000) / 100 : 0,
         irr: 0,
         equity: 0,
         debt: 0,
@@ -109,6 +149,8 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
         avgRent: Number(row.avg_rent ?? 0),
         latestPeriod: row.latest_period,
         earliestPeriod: row.earliest_period,
+        submarket: row.submarket_name ?? null,
+        submarketId: row.submarket_id ?? null,
         status: occ < 88 ? 'watch' : 'performing',
       };
     });
@@ -124,19 +166,26 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
 
 /**
  * POST /api/v1/portfolio/assets
- * Create a new owned portfolio property. Inserts into `properties` table.
- * No initial actuals required — add via POST /assets/:propertyId/actuals.
+ * Create a new owned portfolio property. Sets ownership_status='portfolio' so
+ * the property is immediately visible in GET /assets even before actuals are loaded.
  */
 router.post('/assets', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { name, address, city, state, units, assetClass, yearBuilt, submarket } = req.body as Record<string, unknown>;
+    const userId = req.user!.userId;
+    const body = req.body as Record<string, unknown>;
+    const { name, address, city, state, units, assetClass, yearBuilt,
+            submarketId, acquisitionDate, acquisitionPrice, notes } = body;
     if (!name || !address || !city || !state) {
       return res.status(400).json({ error: 'name, address, city, state are required' });
     }
 
     const result = await query(
-      `INSERT INTO properties (id, name, address_line1, city, state_code, units, building_class, year_built, submarket_id, created_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      `INSERT INTO properties
+         (id, name, address_line1, city, state_code, units, building_class, year_built,
+          submarket_id, ownership_status, acquisition_date, acquisition_price,
+          created_by, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, 'portfolio', $9, $10, $11, NOW(), NOW())
        RETURNING id`,
       [
         String(name),
@@ -146,7 +195,10 @@ router.post('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respo
         units != null ? Number(units) : null,
         assetClass != null ? String(assetClass) : null,
         yearBuilt != null ? Number(yearBuilt) : null,
-        submarket != null ? String(submarket) : null,
+        submarketId != null ? String(submarketId) : null,
+        acquisitionDate != null && String(acquisitionDate).length >= 7 ? String(acquisitionDate) : null,
+        acquisitionPrice != null && String(acquisitionPrice) !== '' ? Number(acquisitionPrice) : null,
+        userId,
       ]
     );
 
@@ -160,15 +212,20 @@ router.post('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respo
 
 /**
  * GET /api/v1/portfolio/assets/:propertyId/actuals
- * Monthly actuals time-series for a single portfolio property.
+ * Monthly actuals time-series for a portfolio property owned by the current user
+ * (or a seed property with no explicit owner: created_by IS NULL).
  */
 router.get('/assets/:propertyId/actuals', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { propertyId } = req.params;
+    const userId = req.user!.userId;
 
     const check = await query(
-      `SELECT id FROM properties WHERE id = $1 LIMIT 1`,
-      [propertyId]
+      `SELECT id FROM properties
+       WHERE id = $1
+         AND (created_by = $2 OR created_by IS NULL)
+       LIMIT 1`,
+      [propertyId, userId]
     );
     if (check.rows.length === 0) return res.status(404).json({ error: 'Property not found' });
 
@@ -185,6 +242,7 @@ router.get('/assets/:propertyId/actuals', requireAuth, async (req: Authenticated
          total_opex,
          concessions,
          vacancy_loss,
+         notes,
          data_source
        FROM deal_monthly_actuals
        WHERE property_id = $1 AND is_portfolio_asset = TRUE
@@ -204,13 +262,20 @@ router.get('/assets/:propertyId/actuals', requireAuth, async (req: Authenticated
  * Add a monthly actual row for a portfolio property.
  * Body: { period: 'YYYY-MM', occupancy_rate, noi, avg_effective_rent, avg_market_rent,
  *         effective_gross_income, total_opex, concessions, vacancy_loss, notes }
+ * Scoped: only the creating user (or seed properties with created_by IS NULL) can add actuals.
  */
 router.post('/assets/:propertyId/actuals', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { propertyId } = req.params;
+    const userId = req.user!.userId;
     const body = req.body as Record<string, unknown>;
 
-    const check = await query(`SELECT id FROM properties WHERE id = $1 LIMIT 1`, [propertyId]);
+    const check = await query(
+      `SELECT id FROM properties
+       WHERE id = $1 AND (created_by = $2 OR created_by IS NULL)
+       LIMIT 1`,
+      [propertyId, userId]
+    );
     if (check.rows.length === 0) return res.status(404).json({ error: 'Property not found' });
 
     const { period } = body;
