@@ -66,9 +66,12 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
     f9Financials?.capitalStack?.purchasePrice ??
     (typeof deal?.purchase_price === 'number' ? deal.purchase_price as number
       : typeof deal?.asking_price === 'number' ? deal.asking_price as number : null);
-  // F9 wiring: platform exit cap and NOI from F9 engine
+  // F9 wiring: platform exit cap and NOI from F9 engine.
+  // CF-14: was f9Financials?.proforma?.year1?.find(r => r.field === 'noi')?.resolved —
+  // the .find() pattern is explicitly flagged as wrong in cross-surface-read-consistency.md
+  // (Rule 3). modelResults.summary.noi is the Engine A computed NOI and is the same value.
   const f9ExitCap = f9Financials?.trafficProjection?.calibrated?.exitCap ?? null;
-  const f9Yr1Noi  = f9Financials?.proforma?.year1?.find(r => r.field === 'noi')?.resolved ?? null;
+  const f9Yr1Noi  = modelResults?.summary?.noi ?? null;
 
   const [platformData, setPlatformData] = useState<PlatformData>({});
   const [marketSignals, setMarketSignals] = useState<MarketSignals | null>(null);

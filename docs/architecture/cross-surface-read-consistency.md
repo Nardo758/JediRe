@@ -80,6 +80,30 @@ the formula or worry about rounding parity.
 > table makes `getFieldValue('egi')` dynamically re-derive EGI from its leaf inputs,
 > matching Engine A's behavior for the Valuation Grid GIM method (CF-07).
 
+## Field Inventory
+
+Year-1 field reads across all financial surfaces, as of Task #1620 audit.
+
+| Field | Pro Forma | Valuation Grid | Policy Mutations | Overview Tab | Returns / Decision |
+|---|---|---|---|---|---|
+| `noi` | financials-composer → year1 blob (Engine A seeder path) | ✅ `getFieldValues` (CF-01) | — | ✅ `modelResults.summary.noi` (CF-14) | `proforma.year1` row array (tabular display) |
+| `egi` | financials-composer → year1 blob | ✅ `getFieldValues` (CF-07) | — | — | `proforma.year1` row array |
+| `gpr` | financials-composer → year1 blob | ✅ `getFieldValues` (CF-08) | — | — | — |
+| `total_opex` | financials-composer → year1 blob | ✅ `getFieldValues` (CF-09) | — | — | — |
+| `exit_cap` | financials-composer → year1 blob | ✅ `getFieldValues` (CF-10) | — | — | — |
+| `hold_period_years` | financials-composer → year1 blob | ✅ `getFieldValues` (CF-11) | — | — | — |
+| `real_estate_tax` | financials-composer → year1 blob | — | ✅ `getFieldValue` (CF-12) | — | — |
+| `bad_debt_pct` | financials-composer → year1 blob | — | ✅ `getFieldValue` (CF-13) | — | — |
+| `concessions` | financials-composer → year1 blob | — | — | — | ✅ `data.year1Concessions` direct property (CF-15/CF-16) |
+| `vacancy` | financials-composer → year1 blob | — | — | `f9Financials.trafficProjection.calibrated.vacancyPct` | `proforma.year1` row array |
+| `purchase_price` | financials-composer → year1 blob | — | — | `f9Financials.capitalStack.purchasePrice` | — |
+| `loan_amount` | financials-composer → year1 blob | — | — | `f9Financials.capitalStack.loanAmount` | — |
+
+**Legend:**
+- ✅ `getFieldValue` — canonical path (override → Engine A formula → agent → stored resolved)
+- `financials-composer → year1 blob` — Engine A seeder path; correct for Pro Forma tabular rows but not for point-in-time reads
+- `proforma.year1` row array — `.find(r => r.field === '...')?.resolved` pattern; acceptable for tabular projection columns, but see Rule 3
+
 ## Discrepancies Fixed
 
 ### Task #1541
@@ -100,6 +124,16 @@ the formula or worry about rounding parity.
 | CF-07 | Valuation Grid | EGI read from stale `year1.egi.resolved`; GIM method was a placeholder | `getSubjectProperty()` calls `getFieldValues('egi')` — EGI added to `COMPUTED_AGGREGATES` as `net_rental_income + other_income`; GIM method activated with implied multiplier in evidence trail |
 | CF-08 | Valuation Grid | GPR read from stale `year1.gpr.resolved`; GRM method was a placeholder | `getSubjectProperty()` calls `getFieldValues('gpr')` — GRM method activated with implied multiplier in evidence trail; canary shadow-comparison active |
 | CF-09 | Valuation Grid | total_opex not in `SubjectProperty`; available for expense-based methods | `getSubjectProperty()` calls `getFieldValues('total_opex')` — batch-fetched with NOI/EGI/GPR in one SQL round-trip; canary shadow-comparison active |
+
+### Task #1620
+
+| Code | Surface | Description | Fix |
+|---|---|---|---|
+| CF-12 | Policy Mutations | `applyTaxAbatementLevelReset` read `da.year1->'real_estate_tax'->>'resolved'` directly in SQL; operator overrides were invisible to the abatement calculation | Refactored to call `getFieldValue(pool, dealId, 'real_estate_tax', 1)` in parallel with the hold-period query; `taxFv.resolved` replaces the raw SQL column |
+| CF-13 | Policy Mutations | `applyEvictionMoratoriumConstraint` read `da.year1->'bad_debt_pct'->>'resolved'` directly; operator overrides were invisible to the moratorium constraint floor | Refactored to call `getFieldValue(pool, dealId, 'bad_debt_pct', 1)` in parallel; `bad_debt_pct` added to `ALLOWED_FIELDS`; `badDebtFv.resolved` replaces raw SQL column; falls back to `0.005` when field is absent |
+| CF-14 | Overview Tab (frontend) | `f9Yr1Noi` was computed via `f9Financials?.proforma?.year1?.find(r => r.field === 'noi')?.resolved` — the `.find()` pattern documented as wrong in Rule 3 | Replaced with `modelResults?.summary?.noi ?? null`; both values originate from Engine A so the output is identical, but the read no longer iterates the tabular row array for a point-in-time value |
+| CF-15 | Decision Tab (frontend) | `openConDrill` callback called `proforma.year1.find(r => r.field === 'concessions')?.resolved` for the earned amount in the concession drill modal — Rule 3 anti-pattern | Added `year1Concessions: number \| null` to `ComposedFinancials`; populated in `financials-composer.service.ts` from the treatment-adjusted row (after CAPITALIZED/HYBRID adjustment); DecisionTab reads `f9Financials?.year1Concessions` |
+| CF-16 | ProFormaSummaryTab (frontend) | Same `.find()` pattern as CF-15 in the ProFormaSummaryTab concession drill modal callback | Same fix: uses `data.year1Concessions` direct property |
 
 ## `getFieldValue` API Reference
 

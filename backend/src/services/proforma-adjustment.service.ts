@@ -11,7 +11,8 @@
  * @date 2026-02-11
  */
 
-import { query } from '../database/connection';
+import { query, getPool } from '../database/connection';
+import { getFieldValue } from './field-access/get-field-value.service';
 import { logger } from '../utils/logger';
 import { Pool } from 'pg';
 import { taxService } from './tax/taxService';
@@ -1167,20 +1168,23 @@ export class ProFormaAdjustmentService {
     const abatementStart = new Date(ev.materialization_date);
     const abatementEnd = ev.completion_date ? new Date(ev.completion_date) : null;
 
-    // Get hold_period_years, acquisition date (timeline_start), and Y1 RE tax
-    const ctxRow = await query(
-      `SELECT da.hold_period_years,
-              d.timeline_start,
-              da.year1->'real_estate_tax'->>'resolved' AS y1_tax
-       FROM deal_assumptions da
-       JOIN deals d ON d.id = da.deal_id
-       WHERE da.deal_id = $1`,
-      [dealId]
-    );
+    // Get hold_period_years + acquisition date; also canonically resolve Y1 RE tax
+    // via getFieldValue so operator overrides take precedence over the seeder seed.
+    // CF-12: was da.year1->'real_estate_tax'->>'resolved' (stale, bypassed override layer).
+    const [taxFv, ctxRow] = await Promise.all([
+      getFieldValue(getPool(), dealId, 'real_estate_tax', 1),
+      query(
+        `SELECT da.hold_period_years, d.timeline_start
+         FROM deal_assumptions da
+         JOIN deals d ON d.id = da.deal_id
+         WHERE da.deal_id = $1`,
+        [dealId]
+      ),
+    ]);
     if (ctxRow.rows.length === 0) return;
     const holdYears = parseInt(ctxRow.rows[0].hold_period_years ?? '0');
     const rawAcqDate = ctxRow.rows[0].timeline_start;
-    const y1Tax = parseFloat(ctxRow.rows[0].y1_tax ?? '0');
+    const y1Tax = taxFv?.resolved ?? 0;
     if (!holdYears || !rawAcqDate || !isFinite(y1Tax) || y1Tax <= 0) return;
     const acqDate = new Date(rawAcqDate);
     const abatementMagnitude = isFinite(magnitude) ? Math.min(1, Math.max(0, magnitude)) : 0;
@@ -1247,21 +1251,25 @@ export class ProFormaAdjustmentService {
     const moratoriumStart = new Date(ev.materialization_date);
     const moratoriumEnd = ev.completion_date ? new Date(ev.completion_date) : null;
 
-    // Get hold_period_years, acquisition date, and Y1 bad_debt_pct seed
-    const ctxRow = await query(
-      `SELECT da.hold_period_years,
-              d.timeline_start,
-              da.year1->'bad_debt_pct'->>'resolved' AS base_bad_debt
-       FROM deal_assumptions da
-       JOIN deals d ON d.id = da.deal_id
-       WHERE da.deal_id = $1`,
-      [dealId]
-    );
+    // Get hold_period_years + acquisition date; also canonically resolve Y1 bad_debt_pct
+    // via getFieldValue so operator overrides take precedence over the seeder seed.
+    // CF-13: was da.year1->'bad_debt_pct'->>'resolved' (stale, bypassed override layer).
+    // bad_debt_pct is in ALLOWED_FIELDS so getFieldValue correctly interpolates the key.
+    const [badDebtFv, ctxRow] = await Promise.all([
+      getFieldValue(getPool(), dealId, 'bad_debt_pct', 1),
+      query(
+        `SELECT da.hold_period_years, d.timeline_start
+         FROM deal_assumptions da
+         JOIN deals d ON d.id = da.deal_id
+         WHERE da.deal_id = $1`,
+        [dealId]
+      ),
+    ]);
     if (ctxRow.rows.length === 0) return;
     const holdYears = parseInt(ctxRow.rows[0].hold_period_years ?? '0');
     const rawAcqDate = ctxRow.rows[0].timeline_start;
     if (!holdYears || !rawAcqDate) return;
-    const baseBadDebt = parseFloat(ctxRow.rows[0].base_bad_debt ?? '0') || 0.005;
+    const baseBadDebt = badDebtFv?.resolved ?? 0.005;
     const constrainedBadDebt = Math.min(0.20, baseBadDebt + magnitude);
     const acqDate = new Date(rawAcqDate);
 

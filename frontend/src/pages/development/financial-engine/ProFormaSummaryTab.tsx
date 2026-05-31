@@ -657,8 +657,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
       yyyymms.push(`${y}${String(m).padStart(2, '0')}`);
     }
     const sum = yyyymms.reduce((s, k) => s + (rec.monthly[k] ?? 0), 0);
-    const earnedRow = data.proforma.year1.find(r => r.field === 'concessions');
-    const earned = earnedRow?.resolved != null ? Math.abs(earnedRow.resolved) : null;
+    // CF-16: was proforma.year1.find(r => r.field === 'concessions')?.resolved — Rule 3 anti-pattern.
+    // year1Concessions is the treatment-adjusted earned amount exposed as a direct property.
+    const earned = data.year1Concessions ?? null;
     const calYr = rec.by_calendar_year?.[String(startYear)] ?? null;
     const fisYr = rec.by_fiscal_year?.[String(startYear)] ?? null;
     setConDrill({

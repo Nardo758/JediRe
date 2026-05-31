@@ -125,8 +125,9 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
     const currentYear = new Date().getFullYear();
     const yyyymms = Array.from({ length: 12 }, (_, i) => `${currentYear}${String(i + 1).padStart(2, '0')}`);
     const recognized = rec.by_calendar_year?.[String(currentYear)] ?? null;
-    const earnedRow = f9Financials?.proforma.year1.find(r => r.field === 'concessions');
-    const earned = earnedRow?.resolved != null ? Math.abs(earnedRow.resolved) : null;
+    // CF-15: was proforma.year1.find(r => r.field === 'concessions')?.resolved — Rule 3 anti-pattern.
+    // year1Concessions is the treatment-adjusted earned amount exposed as a direct property.
+    const earned = f9Financials?.year1Concessions ?? null;
     const calYr = rec.by_calendar_year?.[String(currentYear)] ?? null;
     const fisYr = rec.by_fiscal_year?.[String(currentYear)] ?? null;
     setConDrill({

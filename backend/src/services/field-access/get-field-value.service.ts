@@ -10,6 +10,38 @@
  *
  * See: docs/architecture/cross-surface-read-consistency.md
  *
+ * ─── Convention for new consumers ────────────────────────────────────────────
+ * New backend code that needs a year1 field value MUST call getFieldValue (or
+ * getFieldValues for batches) rather than reading year1[field].resolved inline
+ * in SQL. If you cannot use getFieldValue for a specific reason, you MUST add
+ * an inline comment explaining why (e.g. "seed-phase write-path, not display").
+ * This convention was established in Task #1620.
+ *
+ * ─── Migrated surfaces ───────────────────────────────────────────────────────
+ * The following surfaces have been migrated to the canonical getFieldValue path:
+ *   • Valuation Grid (CF-01: NOI)                         — Task #1541
+ *   • Validation Grid (CF-02–CF-06: exitCap, holdYears,   — Task #1541
+ *     rentGrowthYr1, purchasePrice, loanAmount / rate)
+ *   • Valuation Grid (CF-07: EGI, CF-08: GPR,             — Task #1563
+ *     CF-09: total_opex, CF-10: exitCap, CF-11: holdPeriodYears)
+ *   • Policy mutations (CF-12: real_estate_tax,            — Task #1620
+ *     CF-13: bad_debt_pct in proforma-adjustment.service)
+ *   • Overview Tab (CF-14: NOI display — .find() pattern  — Task #1620
+ *     replaced by modelResults.summary.noi direct access)
+ *   • Decision Tab (CF-15: concessions drill — .find()    — Task #1620
+ *     replaced by f9Financials.year1Concessions property on ComposedFinancials)
+ *   • ProFormaSummaryTab (CF-16: concessions drill —      — Task #1620
+ *     .find() replaced by data.year1Concessions property)
+ *
+ * Surfaces still using non-canonical reads (require future migration):
+ *   • Pro Forma (financials-composer.service.ts) — reads year1 blob via
+ *     seedProFormaYear1; this IS Engine A's own seeder path, not a display bypass,
+ *     but computed aggregates (noi, egi) should eventually be back-propagated.
+ *   • ReturnsTab proforma.year1 row iteration — acceptable for tabular
+ *     projection columns; no point-in-time .find() reads remain after Task #1620.
+ *   • AssumptionsTab proforma.year1 iteration — in-tab display scaffolding,
+ *     not a cross-surface read; documented exception (line 208, 1948, 1956, 2881).
+ *
  * ─── Resolution chain (in priority order) ────────────────────────────────────
  *   1. Operator override   (year1[field].override  — user-pinned value)
  *   2. Engine A computed   (for aggregate fields: EGI−total_opex etc.)
@@ -159,7 +191,7 @@ export interface LayeredFieldValue {
 
 const ALLOWED_FIELDS = new Set([
   // Revenue leaf fields
-  'gpr', 'vacancy', 'concessions', 'bad_debt', 'non_revenue_units',
+  'gpr', 'vacancy', 'concessions', 'bad_debt', 'bad_debt_pct', 'non_revenue_units',
   'loss_to_lease', 'other_income',
   // Revenue aggregates
   'net_rental_income', 'egi',

@@ -135,6 +135,15 @@ export interface ComposedFinancials {
    *   subject_history update, fiscal_year_start_month change (24h cache per DealContext rules).
    */
   concessionRecognition: DealConcessionRecognition | null;
+  /**
+   * CF-15/CF-16: Treatment-adjusted Year-1 concession earned amount (absolute value).
+   * This is the concessions row from proforma.year1 after the CAPITALIZED/HYBRID
+   * treatment adjustment has been applied. Exposed as a direct property so frontend
+   * consumers (DecisionTab, ProFormaSummaryTab) can read it without iterating the
+   * proforma.year1 array (avoids the Rule 3 .find() anti-pattern).
+   * Null when the deal has no year1 data.
+   */
+  year1Concessions: number | null;
 }
 
 export interface OtherIncomeBreakdownRow {
@@ -537,6 +546,11 @@ export async function composeDealFinancials(
     }
   }
 
+  // CF-15/CF-16: expose treatment-adjusted concessions as a direct property so
+  // DecisionTab/ProFormaSummaryTab don't need to iterate proforma.year1 via .find().
+  const concRowResolved = year1Rows.find(r => r.field === 'concessions')?.resolved ?? null;
+  const year1Concessions = concRowResolved != null ? Math.abs(concRowResolved) : null;
+
   // M38: record non-blocking calibration predictions for Year-1 NOI, occupancy,
   // and rent growth after every successful compose. Fire-and-forget — never
   // throws or blocks the response.
@@ -661,6 +675,7 @@ export async function composeDealFinancials(
         ? year1Data.other_income_user_lines
         : [],
       concessionRecognition,
+      year1Concessions,
     },
   };
 }
