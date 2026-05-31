@@ -439,18 +439,44 @@ export class PortfolioCorrelationService {
       }
 
       // ── COR-05: Traffic Surge Index vs Vacancy Rate
-      // search_activity_index has no 1P substitute; supply vacancy from 1P actuals
-      // when city-level result is insufficient.
+      // search_activity_index has no 1P substitute. When engine computed a signal, preserve
+      // it and annotate yValue with 1P property vacancy. When engine is insufficient but
+      // 1P vacancy is available, derive a signal from vacancy rate alone.
       if (cor.id === 'COR-05' && avgVacancy !== null) {
         const vacPct = avgVacancy * 100;
         const missing = cor.missingData.filter(m => !VAC_RE.test(m));
+        if (cor.confidence !== 'insufficient' && cor.signal) {
+          // Engine has a valid signal: preserve it, enrich with 1P vacancy context
+          return {
+            cor_id: 'COR-05', name: cor.name ?? 'Traffic Surge Index vs Vacancy Rate',
+            signal: cor.signal, confidence: cor.confidence, source: 'mixed' as const,
+            xValue: cor.xValue ?? null, yValue: parseFloat(vacPct.toFixed(1)),
+            missingData: missing,
+            actionable: cor.actionable
+              ? `${cor.actionable} [1P vacancy ${vacPct.toFixed(1)}%]`
+              : `1P property vacancy: ${vacPct.toFixed(1)}%.`,
+          };
+        }
+        // Engine is insufficient: derive signal from 1P vacancy rate
+        // Low vacancy (<7%) → bullish; moderate (7-12%) → neutral; high (>12%) → bearish
+        let derivedSignal: string;
+        let derivedActionable: string;
+        if (vacPct < 7) {
+          derivedSignal = 'bullish';
+          derivedActionable = `1P vacancy ${vacPct.toFixed(1)}% (below 7% threshold) — tight occupancy supports rent growth.`;
+        } else if (vacPct <= 12) {
+          derivedSignal = 'neutral';
+          derivedActionable = `1P vacancy ${vacPct.toFixed(1)}% (7–12% range) — moderate occupancy pressure.`;
+        } else {
+          derivedSignal = 'bearish';
+          derivedActionable = `1P vacancy ${vacPct.toFixed(1)}% (above 12%) — elevated vacancy suppresses rent growth.`;
+        }
         return {
           cor_id: 'COR-05', name: cor.name ?? 'Traffic Surge Index vs Vacancy Rate',
-          signal: null, confidence: cor.confidence === 'insufficient' ? 'low' : cor.confidence,
-          source: 'mixed' as const,
+          signal: derivedSignal, confidence: 'low', source: 'mixed' as const,
           xValue: null, yValue: parseFloat(vacPct.toFixed(1)),
           missingData: missing.concat(['search activity index (no 1P substitute)']),
-          actionable: `1P property vacancy: ${vacPct.toFixed(1)}% (occ ${(avgOcc! * 100).toFixed(1)}%). Search activity index unavailable for signal direction.`,
+          actionable: derivedActionable,
         };
       }
 
@@ -473,8 +499,21 @@ export class PortfolioCorrelationService {
       }
 
       // ── COR-22: Job Growth → Absorption (6-month lag)
-      // No first-party substitute for job_growth_yoy.
+      // No first-party substitute for job_growth_yoy. Only downgrade to insufficient_history
+      // when the engine itself was already insufficient — preserve a valid engine computation.
       if (cor.id === 'COR-22') {
+        if (cor.confidence !== 'insufficient') {
+          // Engine has real macro data — preserve it
+          const source: PortfolioCorrelationSignal['source'] =
+            cor.missingData.length === 0 ? 'third_party' : 'mixed';
+          return {
+            cor_id: 'COR-22', name: cor.name ?? 'Job Growth → Absorption (6mo lag)',
+            signal: cor.signal, confidence: cor.confidence, source,
+            xValue: cor.xValue ?? null, yValue: cor.yValue ?? null,
+            missingData: cor.missingData, actionable: cor.actionable,
+          };
+        }
+        // Engine was insufficient: mark as insufficient_history with explanation
         return {
           cor_id: 'COR-22', name: cor.name ?? 'Job Growth → Absorption (6mo lag)',
           signal: null, confidence: 'insufficient', source: 'insufficient_history' as const,
@@ -604,15 +643,18 @@ export class PortfolioCorrelationService {
   }
 
   /**
-   * Persist enriched signals (not raw engine report) to linked deals.
+   * Persist enriched signals to deals that are (a) linked to this property AND (b) owned
+   * by this user. Scoping on user_id prevents cross-tenant writes when multiple users
+   * reference the same seed property.
    */
   private async persistEnrichedSignalsToDeal(
-    propertyId: string, signals: PortfolioCorrelationSignal[]
+    propertyId: string, userId: string, signals: PortfolioCorrelationSignal[]
   ): Promise<void> {
     let dealRows: Array<{ id: string }> = [];
     try {
       const r = await this.pool.query<{ id: string }>(
-        `SELECT id FROM deals WHERE property_id = $1`, [propertyId]
+        `SELECT id FROM deals WHERE property_id = $1 AND user_id = $2 AND archived_at IS NULL`,
+        [propertyId, userId]
       );
       dealRows = r.rows;
     } catch { return; }
@@ -746,8 +788,8 @@ export class PortfolioCorrelationService {
           // 6. Sync actuals to metric_time_series; refresh submarket correlations if linked
           await this.syncToMetricTimeSeries(prop.id, prop.name, prop.actuals, prop.submarket_id);
 
-          // 7. Persist per-property enriched signals to linked deals
-          await this.persistEnrichedSignalsToDeal(prop.id, perPropertySignals);
+          // 7. Persist per-property enriched signals to linked deals (userId-scoped)
+          await this.persistEnrichedSignalsToDeal(prop.id, userId, perPropertySignals);
         }
 
       } catch (err) {
