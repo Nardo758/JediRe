@@ -14,6 +14,11 @@ export type DocumentType =
   | 'COSTAR_RENT_COMPS'
   | 'YARDI_MATRIX_RENT_SURVEY'
   | 'YARDI_MATRIX_SUPPLY_PIPELINE'
+  | 'BPI_FINANCIAL'
+  | 'TRIAL_BALANCE'
+  | 'AMORTIZATION_SCHEDULE'
+  | 'MORTGAGE_STATEMENT'
+  | 'WEEKLY_REPORT'
   | 'UNKNOWN';
 
 export interface ClassificationResult {
@@ -28,7 +33,7 @@ export interface ClassificationResult {
   vendorId?: string;
 }
 
-export type ExtractionData = T12Data | RentRollData | AgedReceivablesData | BoxScoreData | ConcessionBurnoffData | LTOData | TaxBillData | OtherIncomeData | LeasingStatsData | CoStarSubmarketData | CoStarSaleCompsData | CoStarRentCompsData;
+export type ExtractionData = T12Data | RentRollData | AgedReceivablesData | BoxScoreData | ConcessionBurnoffData | LTOData | TaxBillData | OtherIncomeData | LeasingStatsData | CoStarSubmarketData | CoStarSaleCompsData | CoStarRentCompsData | BPIFinancialData | TrialBalanceData | AmortizationScheduleData | MortgageStatementData | WeeklyReportData;
 
 export interface ExtractionResult {
   documentType: DocumentType;
@@ -378,6 +383,145 @@ export interface CoStarSaleCompsData {
 
 export interface CoStarRentCompsData {
   rowCount: number;
+}
+
+export interface BPIFinancialData {
+  propertyCode: string;
+  reportMonth: string;
+  grossPotentialRent: number | null;
+  lossToLease: number | null;
+  vacancyLoss: number | null;
+  concessions: number | null;
+  badDebt: number | null;
+  otherIncome: number | null;
+  effectiveGrossIncome: number | null;
+  payroll: number | null;
+  repairsMaintenance: number | null;
+  turnoverCosts: number | null;
+  contractServices: number | null;
+  utilities: number | null;
+  marketing: number | null;
+  adminGeneral: number | null;
+  managementFee: number | null;
+  propertyTax: number | null;
+  insurance: number | null;
+  totalOpex: number | null;
+  noi: number | null;
+  debtService: number | null;
+  capex: number | null;
+  cashFlowBeforeTax: number | null;
+  cash: number | null;
+  accountsReceivable: number | null;
+  prepaidExpenses: number | null;
+  totalAssets: number | null;
+  accountsPayable: number | null;
+  securityDeposits: number | null;
+  totalLiabilities: number | null;
+  equity: number | null;
+  totalUnits: number | null;
+  occupiedUnits: number | null;
+  occupancyRate: number | null;
+  avgEffectiveRent: number | null;
+  avgMarketRent: number | null;
+}
+
+export interface TrialBalanceRow {
+  accountCode: string;
+  accountName: string;
+  debit: number | null;
+  credit: number | null;
+  netBalance: number | null;
+  category: string | null;
+}
+
+export interface TrialBalanceData {
+  propertyCode: string;
+  reportPeriod: string;
+  rows: TrialBalanceRow[];
+  summary: {
+    totalDebits: number;
+    totalCredits: number;
+    netEquity: number;
+    totalAssets: number | null;
+    totalLiabilities: number | null;
+    rowCount: number;
+  };
+}
+
+export interface AmortizationRow {
+  period: number;
+  paymentDate: string | null;
+  beginningBalance: number | null;
+  scheduledPayment: number | null;
+  principal: number | null;
+  interest: number | null;
+  endingBalance: number | null;
+  escrow: number | null;
+}
+
+export interface AmortizationScheduleData {
+  propertyCode: string;
+  loanAmount: number | null;
+  interestRate: number | null;
+  termMonths: number | null;
+  startDate: string | null;
+  monthlyPayment: number | null;
+  rows: AmortizationRow[];
+  summary: {
+    totalPayments: number;
+    totalInterest: number;
+    totalPrincipal: number;
+    remainingBalance: number | null;
+    periodsFound: number;
+  };
+}
+
+export interface MortgageStatementData {
+  loanNumber: string | null;
+  dealName: string | null;
+  currentPrincipalBalance: number | null;
+  payRate: number | null;
+  contractRate: number | null;
+  currentIndex: number | null;
+  daysInBillingCycle: number | null;
+  currentInterestDue: number | null;
+  taxEscrowDue: number | null;
+  insuranceEscrowDue: number | null;
+  miscAmountDue: number | null;
+  currentTotalDue: number | null;
+  pastDueAmount: number | null;
+  totalPaymentDue: number | null;
+  dateDue: string | null;
+  dateIssued: string | null;
+  taxEscrowBalance: number | null;
+  insuranceEscrowBalance: number | null;
+  reserveEscrowBalance: number | null;
+  interestPaidYTD: number | null;
+  taxesDisbursedYTD: number | null;
+  servicer: string | null;
+}
+
+export interface WeeklyReportKPI {
+  week: string | null;
+  newLeases: number | null;
+  renewals: number | null;
+  moveIns: number | null;
+  moveOuts: number | null;
+  netTraffic: number | null;
+  occupancy: number | null;
+  avgEffectiveRent: number | null;
+  leasedPct: number | null;
+  concessions: number | null;
+  notices: number | null;
+}
+
+export interface WeeklyReportData {
+  propertyCode: string;
+  reportDate: string | null;
+  currentWeek: WeeklyReportKPI;
+  weeklyHistory: WeeklyReportKPI[];
+  tabsSeen: string[];
+  warnings: string[];
 }
 
 export type ChartFormat =

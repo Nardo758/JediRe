@@ -12,6 +12,11 @@ import { parseOtherIncome } from './parsers/other-income-parser';
 import { parseLeasingStats } from './parsers/leasing-stats-parser';
 import { parseOM } from './parsers/om-parser';
 import { parseCoStarSubmarket } from './parsers/costar-submarket-parser';
+import { parseBPIFinancial } from './parsers/bpi-financial-parser';
+import { parseTrialBalance } from './parsers/trial-balance-parser';
+import { parseAmortizationSchedule } from './parsers/amortization-schedule-parser';
+import { parseMortgageStatementAsync } from './parsers/mortgage-statement-parser';
+import { parseWeeklyReport } from './parsers/weekly-report-parser';
 import { routeExtractionResult } from './data-router';
 import { DocumentType, ExtractionResult, PipelineResult } from './types';
 import { getPool } from '../../database/connection';
@@ -82,6 +87,10 @@ function getParser(docType: DocumentType): ((buffer: Buffer, filename: string) =
     case 'COSTAR_SUBMARKET_EXPORT': return wrapCoStarSubmarket;
     case 'COSTAR_SALE_COMPS': return wrapCoStarCompCounter('COSTAR_SALE_COMPS');
     case 'COSTAR_RENT_COMPS': return wrapCoStarCompCounter('COSTAR_RENT_COMPS');
+    case 'BPI_FINANCIAL': return parseBPIFinancial;
+    case 'TRIAL_BALANCE': return parseTrialBalance;
+    case 'AMORTIZATION_SCHEDULE': return parseAmortizationSchedule;
+    case 'WEEKLY_REPORT': return parseWeeklyReport;
     default: return null;
   }
 }
@@ -151,6 +160,8 @@ export async function processDocument(
 
     if (classification.documentType === 'TAX_BILL' && /\.pdf$/i.test(filename)) {
       extractionResult = await parseTaxBillAsync(buffer, filename);
+    } else if (classification.documentType === 'MORTGAGE_STATEMENT' && /\.pdf$/i.test(filename)) {
+      extractionResult = await parseMortgageStatementAsync(buffer, filename);
     } else if (classification.documentType === 'OM') {
       // OM parser is async (LLM + optional OCR). Bridge handles the call.
       extractionResult = await parseOMForPipeline(buffer, filename, uploadedBy, dealId);

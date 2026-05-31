@@ -528,15 +528,20 @@ export async function routeExtractionResult(
 }
 
 const SOURCE_DOC_KEY_FIELDS: Record<string, string[]> = {
-  T12:               ['gpr', 'noi', 'vacancy_loss', 'opex', 'monthly_actuals_12mo'],
-  RENT_ROLL:         ['unit_mix', 'in_place_rents', 'occupancy', 'other_income_monthly'],
-  OM:                ['asking_price', 'units', 'year_built', 'noi', 'broker_proforma'],
-  TAX_BILL:          ['assessed_value', 'annual_tax', 'tax_year'],
-  AGED_RECEIVABLES:  ['total_outstanding', 'bucket_30d', 'bucket_60d', 'bucket_90d_plus'],
-  BOX_SCORE:         ['occupancy_pct', 'move_ins', 'move_outs', 'renewals'],
-  CONCESSION_BURNOFF:['concession_months', 'effective_rent', 'burnoff_schedule'],
-  T30_LTO:           ['lease_transactions_30d', 'traffic_count', 'conversion_rate'],
-  OTHER_INCOME:      ['other_income_sources', 'total_other_income_monthly'],
+  T12:                  ['gpr', 'noi', 'vacancy_loss', 'opex', 'monthly_actuals_12mo'],
+  RENT_ROLL:            ['unit_mix', 'in_place_rents', 'occupancy', 'other_income_monthly'],
+  OM:                   ['asking_price', 'units', 'year_built', 'noi', 'broker_proforma'],
+  TAX_BILL:             ['assessed_value', 'annual_tax', 'tax_year'],
+  AGED_RECEIVABLES:     ['total_outstanding', 'bucket_30d', 'bucket_60d', 'bucket_90d_plus'],
+  BOX_SCORE:            ['occupancy_pct', 'move_ins', 'move_outs', 'renewals'],
+  CONCESSION_BURNOFF:   ['concession_months', 'effective_rent', 'burnoff_schedule'],
+  T30_LTO:              ['lease_transactions_30d', 'traffic_count', 'conversion_rate'],
+  OTHER_INCOME:         ['other_income_sources', 'total_other_income_monthly'],
+  BPI_FINANCIAL:        ['noi', 'effective_gross_income', 'total_opex', 'occupancy_rate', 'report_month'],
+  TRIAL_BALANCE:        ['total_debits', 'total_credits', 'net_equity', 'total_assets', 'report_period'],
+  AMORTIZATION_SCHEDULE:['loan_amount', 'interest_rate', 'periods_found', 'remaining_balance'],
+  MORTGAGE_STATEMENT:   ['loan_number', 'principal_balance', 'total_payment_due', 'date_due', 'pay_rate'],
+  WEEKLY_REPORT:        ['current_occupancy', 'new_leases', 'renewals', 'move_ins', 'move_outs'],
 };
 
 async function writeSourceDocument(

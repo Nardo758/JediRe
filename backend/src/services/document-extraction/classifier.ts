@@ -21,6 +21,17 @@ const FILENAME_PATTERNS: Array<{ pattern: RegExp; type: DocumentType }> = [
   { pattern: /rent[\s_+\-]*roll|rr[\s_-]*w[\s_-]*lc|rrwlc/i, type: 'RENT_ROLL' },
   { pattern: /t[\s_-]*12|trailing[\s_-]*12|income[\s_-]*statement|ysi[\s_-]*is/i, type: 'T12' },
   { pattern: /leasing/i, type: 'LEASING_STATS' },
+  // BPI Financial Package (Bell Partners Inc)
+  { pattern: /bpi[\s_-]*(financial[\s_-]*package|balance[\s_-]*sheet|variance|p&l)/i, type: 'BPI_FINANCIAL' },
+  { pattern: /financial[\s_-]*package.*p\d{4}|bpi.*accrual/i, type: 'BPI_FINANCIAL' },
+  // Trial Balance / General Ledger
+  { pattern: /trial[\s_-]*balance|general[\s_-]*ledger|gl[\s_-]*detail|cr[\s_-]*dr/i, type: 'TRIAL_BALANCE' },
+  // Amortization Schedule
+  { pattern: /amortiz|amort[\s_-]*sched/i, type: 'AMORTIZATION_SCHEDULE' },
+  // Mortgage / Loan Statement
+  { pattern: /mortgage[\s_-]*statement|loan[\s_-]*statement|loan[\s_-]*servic/i, type: 'MORTGAGE_STATEMENT' },
+  // Weekly Reports
+  { pattern: /weekly[\s_-]*report|weekly[\s_-]*leasing|weekly[\s_-]*ops/i, type: 'WEEKLY_REPORT' },
 ];
 
 function isPdf(filename: string): boolean {
