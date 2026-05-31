@@ -206,6 +206,168 @@ export class CorrelationEngineService {
   }
 
   /**
+   * Run the full COR-01–30 suite with first-party property data merged into the
+   * city-level base data. This gives each owned-portfolio property its own
+   * per-property execution path through the correlation engine rather than a
+   * shared city-level result with selective post-hoc overrides.
+   *
+   * Merge strategy (1P values replace city-level where present):
+   *   snapshot.avg_occupancy   ← property avg occupancy (0–1 fractional, DB-verified)
+   *   snapshot.concession_rate ← property concession_depth_ratio × 100 (→ percentage)
+   *   msa.avg_rent             ← property avg effective rent ($/month)
+   *   msa.avg_occupancy        ← property avg occupancy (0–1 fractional)
+   *   trends[]                 ← property actuals rows (avg_rent, vacancy_rate,
+   *                              concessions_prevalence); all other TrendObservation
+   *                              fields filled from the most recent city-level row.
+   *                              When fewer than 3 actuals are available, city-level
+   *                              trends are used as-is (avoids noise from a single month).
+   */
+  async computeCorrelationsWithPropertyData(
+    city: string,
+    state: string,
+    propertyOverrides: {
+      avgOccupancy?: number | null;
+      avgEffRent?: number | null;
+      concessionDepthRatio?: number | null;
+      propertyActualTrends?: Array<{
+        date: string;
+        avg_rent: number;
+        vacancy_rate: number;           // 0–1 fractional (1 − occupancy_rate)
+        concessions_prevalence: number; // 0 or 1 (concession present in month)
+      }>;
+    }
+  ): Promise<CorrelationReport> {
+    const baseSnapshot = await this.getLatestSnapshot(city, state);
+    const baseTrends   = await this.getTrendObservations(city);
+    const submarkets   = await this.getSubmarketData(city);
+    const baseMsa      = await this.getMSAData(city);
+
+    // Merge 1P occupancy + concession depth into snapshot
+    const snapshot: MarketSnapshot | null = baseSnapshot
+      ? {
+          ...baseSnapshot,
+          ...(propertyOverrides.avgOccupancy != null
+            ? { avg_occupancy: propertyOverrides.avgOccupancy }
+            : {}),
+          ...(propertyOverrides.concessionDepthRatio != null
+            ? { concession_rate: propertyOverrides.concessionDepthRatio * 100 }
+            : {}),
+        }
+      : baseSnapshot;
+
+    // Merge 1P rent + occupancy into MSA data; synthesise stub when no MSA row exists
+    const msa: MSAData | null = baseMsa
+      ? {
+          ...baseMsa,
+          ...(propertyOverrides.avgEffRent != null
+            ? { avg_rent: propertyOverrides.avgEffRent }
+            : {}),
+          ...(propertyOverrides.avgOccupancy != null
+            ? { avg_occupancy: propertyOverrides.avgOccupancy }
+            : {}),
+        }
+      : (propertyOverrides.avgEffRent != null || propertyOverrides.avgOccupancy != null)
+      ? {
+          population: null,
+          median_household_income: null,
+          avg_rent: propertyOverrides.avgEffRent ?? null,
+          avg_occupancy: propertyOverrides.avgOccupancy ?? null,
+        }
+      : null;
+
+    // Build per-property trend time-series from actuals, falling back to city trends
+    // when insufficient actuals are provided.
+    let trends = baseTrends;
+    if (
+      propertyOverrides.propertyActualTrends &&
+      propertyOverrides.propertyActualTrends.length >= 3
+    ) {
+      const cityTemplate = baseTrends[0] ?? {} as Partial<TrendObservation>;
+      trends = propertyOverrides.propertyActualTrends.map(pt => ({
+        date: pt.date,
+        avg_rent: pt.avg_rent,
+        total_supply: cityTemplate.total_supply ?? 0,
+        vacancy_rate: pt.vacancy_rate,
+        available_units: cityTemplate.available_units ?? 0,
+        listings_active: cityTemplate.listings_active ?? 0,
+        seasonal_factor: cityTemplate.seasonal_factor ?? 1,
+        application_volume: cityTemplate.application_volume ?? 0,
+        avg_days_on_market: cityTemplate.avg_days_on_market ?? 0,
+        avg_opportunity_score: cityTemplate.avg_opportunity_score ?? 0,
+        search_activity_index: cityTemplate.search_activity_index ?? 0,
+        concessions_prevalence: pt.concessions_prevalence,
+        negotiation_success_rate: cityTemplate.negotiation_success_rate ?? 0,
+      }));
+    }
+
+    // Run full COR-01–30 suite with merged snapshot / MSA / trend data
+    const correlations: CorrelationResult[] = [];
+    correlations.push(this.computeCOR01(snapshot, trends));
+    correlations.push(this.computeCOR02(trends));
+    correlations.push(this.computeCOR03(trends));
+    correlations.push(this.computeCOR04(msa, snapshot));
+    correlations.push(this.computeCOR05(snapshot, trends));
+    correlations.push(this.computeCOR06(snapshot));
+    correlations.push(this.computeCOR07(snapshot));
+    correlations.push(this.computeCOR08());
+    correlations.push(this.computeCOR09(snapshot, trends));
+    correlations.push(this.computeCOR10());
+    correlations.push(this.computeCOR11());
+    correlations.push(this.computeCOR12());
+    correlations.push(this.computeCOR13(msa, snapshot, trends));
+    correlations.push(this.computeCOR14(submarkets));
+    correlations.push(this.computeCOR15(trends));
+    correlations.push(this.computeCOR16(trends));
+    correlations.push(this.computeCOR17());
+    correlations.push(this.computeCOR18());
+    correlations.push(this.computeCOR19());
+    correlations.push(this.computeCOR20());
+
+    const [cor21, cor22, cor23, cor24, cor25, cor26, cor27, cor28, cor29, cor30] = await Promise.all([
+      this.computeCOR21(city),
+      this.computeCOR22(city),
+      this.computeCOR23(city),
+      this.computeCOR24(city),
+      this.computeCOR25(city),
+      this.computeCOR26(city),
+      this.computeCOR27(city),
+      this.computeCOR28(city),
+      this.computeCOR29(city),
+      this.computeCOR30(city),
+    ]);
+    correlations.push(cor21, cor22, cor23, cor24, cor25, cor26, cor27, cor28, cor29, cor30);
+
+    const computed = correlations.filter(c => c.confidence !== 'insufficient');
+    const skipped  = correlations.filter(c => c.confidence === 'insufficient');
+    const bullish  = computed.filter(c => c.signal === 'bullish').length;
+    const bearish  = computed.filter(c => c.signal === 'bearish').length;
+    const neutral  = computed.filter(c => c.signal === 'neutral').length;
+    const cor04    = correlations.find(c => c.id === 'COR-04');
+    const cor13    = correlations.find(c => c.id === 'COR-13');
+    const cor06    = correlations.find(c => c.id === 'COR-06');
+
+    return {
+      market: city,
+      state,
+      computedAt: new Date().toISOString(),
+      snapshotDate: snapshot?.snapshot_date || null,
+      metricsComputed: computed.length,
+      metricsSkipped: skipped.length,
+      correlations,
+      summary: {
+        bullishSignals: bullish,
+        bearishSignals: bearish,
+        neutralSignals: neutral,
+        insufficientData: skipped.length,
+        rentRunway: cor04?.actionable || null,
+        affordabilityCeiling: cor13?.actionable || null,
+        supplyPressure: cor06?.actionable || null,
+        topOpportunity: this.identifyTopOpportunity(correlations),
+      },
+    };
+  }
+
+  /**
    * Tier-2 (Spec §3): Compute correlations for a deal AND persist the resulting
    * signals as adjustment rows on `deals.correlation_adjustments`. Once persisted,
    * M22 attribution and downstream consumers see the same signal stream that

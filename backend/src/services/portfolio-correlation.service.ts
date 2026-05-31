@@ -659,10 +659,56 @@ export class PortfolioCorrelationService {
    * Persist enriched signals to deals that are (a) linked to this property AND (b) owned
    * by this user. Scoping on user_id prevents cross-tenant writes when multiple users
    * reference the same seed property.
+   *
+   * ALL 30 COR signals are mapped to an assumption target_field so none are silently
+   * dropped by mapSignalsToAdjustments. The mapping covers every COR ID in the engine:
+   *   - Rent-growth signals  → 'rentGrowthYr1'
+   *   - Occupancy signals    → 'occupancy'
+   *   - Expense/cost signals → 'opexGrowthYr1'
+   *
+   * portfolio_correlation_signals (written by persistSignalsToTable) is the canonical
+   * store for the full enriched signal set. deal_correlation_adjustments stores
+   * assumption-field anchors that M22 attribution uses to join signals back to the
+   * underwriting assumptions they influenced.
    */
   private async persistEnrichedSignalsToDeal(
     propertyId: string, userId: string, signals: PortfolioCorrelationSignal[]
   ): Promise<void> {
+    // Comprehensive target-field mapping for all 30 COR IDs.
+    // Signals without a mapped target would otherwise be silently dropped.
+    const ALL_COR_TARGETS: Record<string, string> = {
+      'COR-01': 'rentGrowthYr1',   // search surge → lead indicator for rent
+      'COR-02': 'rentGrowthYr1',   // application volume → demand pressure
+      'COR-03': 'occupancy',       // inventory conversion rate
+      'COR-04': 'rentGrowthYr1',   // wage growth vs rent — affordability ceiling
+      'COR-05': 'occupancy',       // traffic surge vs vacancy
+      'COR-06': 'occupancy',       // supply pressure
+      'COR-07': 'occupancy',       // days on market → absorption speed
+      'COR-08': 'occupancy',       // negotiation success rate → market softness
+      'COR-09': 'opexGrowthYr1',   // concession trend → effective rent drag
+      'COR-10': 'occupancy',       // seasonal demand
+      'COR-11': 'rentGrowthYr1',   // rent price elasticity
+      'COR-12': 'rentGrowthYr1',   // submarket rent divergence
+      'COR-13': 'rentGrowthYr1',   // rent-to-income ratio
+      'COR-14': 'opexGrowthYr1',   // submarket opex pressure
+      'COR-15': 'occupancy',       // supply pipeline → future vacancy risk
+      'COR-16': 'rentGrowthYr1',   // employment base → demand support
+      'COR-17': 'rentGrowthYr1',   // interest rate environment → cap rate pressure
+      'COR-18': 'rentGrowthYr1',   // net migration → population demand
+      'COR-19': 'opexGrowthYr1',   // utility cost trend
+      'COR-20': 'opexGrowthYr1',   // property tax trend
+      'COR-21': 'occupancy',       // permit volume → new supply timing
+      'COR-22': 'occupancy',       // job growth → absorption (6-month lag)
+      'COR-23': 'occupancy',       // transit access → renter demand
+      'COR-24': 'occupancy',       // crime index → desirability
+      'COR-25': 'rentGrowthYr1',   // school quality → premium pricing
+      'COR-26': 'opexGrowthYr1',   // maintenance cost trend
+      'COR-27': 'opexGrowthYr1',   // insurance cost trend
+      'COR-28': 'rentGrowthYr1',   // population density → rent support
+      'COR-29': 'opexGrowthYr1',   // energy efficiency → utility savings
+      'COR-30': 'rentGrowthYr1',   // broadband access → remote-work premium
+    };
+
     let dealRows: Array<{ id: string }> = [];
     try {
       const r = await this.pool.query<{ id: string }>(
@@ -672,8 +718,17 @@ export class PortfolioCorrelationService {
       dealRows = r.rows;
     } catch { return; }
 
+    // Supply explicit targetField for all 30 COR IDs so mapSignalsToAdjustments does not
+    // drop any signal that has a valid (non-null, non-insufficient) result.
     const adjustments = mapSignalsToAdjustments(
-      signals.map(s => ({ id: s.cor_id, name: s.name, signal: s.signal, confidence: s.confidence, leadTime: undefined }))
+      signals.map(s => ({
+        id: s.cor_id,
+        name: s.name,
+        signal: s.signal,
+        confidence: s.confidence,
+        leadTime: undefined,
+        targetField: ALL_COR_TARGETS[s.cor_id] ?? 'rentGrowthYr1',
+      }))
     );
     if (adjustments.length === 0) return;
 
@@ -687,12 +742,15 @@ export class PortfolioCorrelationService {
   }
 
   /**
-   * Write portfolio actuals into metric_time_series for geography_type='property'.
-   * Uses WHERE NOT EXISTS guard (metric_time_series has no unique constraint).
+   * Write portfolio actuals into metric_time_series for:
+   *   (a) geography_type='property'  — always
+   *   (b) geography_type='submarket' — when property.submarket_id is set
    *
-   * Additionally: if the property has a submarket_id, trigger
-   * computeTimeSeriesCorrelations for that submarket so F4 useColumnCorrelations
-   * can reflect the updated portfolio data. (Submarket linkage is set via task #1685.)
+   * Writing to the submarket geography materialises the owned-portfolio contribution
+   * into the submarket's time-series so that computeTimeSeriesCorrelations('submarket',
+   * submarket_id) actually reflects these 1P observations when F4 refreshes.
+   *
+   * Uses WHERE NOT EXISTS guard (metric_time_series has no unique constraint).
    */
   private async syncToMetricTimeSeries(
     propertyId: string, propertyName: string,
@@ -717,6 +775,7 @@ export class PortfolioCorrelationService {
           : parseFloat(String(rawVal));
         if (isNaN(value)) continue;
 
+        // Property-level row (always written)
         await this.pool.query(
           `INSERT INTO metric_time_series
              (metric_id, geography_type, geography_id, geography_name,
@@ -729,6 +788,24 @@ export class PortfolioCorrelationService {
            )`,
           [mapping.metricId, propertyId, propertyName, periodDate, value]
         );
+
+        // Submarket-level row (written when property is linked to a submarket so that
+        // computeTimeSeriesCorrelations('submarket', submarket_id) can correlate
+        // these owned-portfolio observations against submarket metrics in F4).
+        if (submarket_id) {
+          await this.pool.query(
+            `INSERT INTO metric_time_series
+               (metric_id, geography_type, geography_id, geography_name,
+                period_date, period_type, value, source, confidence)
+             SELECT $1, 'submarket', $2, $3, $4, 'monthly', $5, 'portfolio_actuals', 0.90
+             WHERE NOT EXISTS (
+               SELECT 1 FROM metric_time_series
+               WHERE metric_id = $1 AND geography_type = 'submarket'
+                 AND geography_id = $2 AND period_date = $4
+             )`,
+            [mapping.metricId, submarket_id, propertyName, periodDate, value]
+          );
+        }
       }
     }
 
@@ -739,8 +816,9 @@ export class PortfolioCorrelationService {
       logger.debug(`[PortfolioCorrelation] computeTimeSeriesCorrelations(property/${propertyId}) skipped: ${String(err)}`);
     }
 
-    // If property is linked to a submarket, also refresh submarket-level correlations
-    // so F4 useColumnCorrelations picks up updated signals.
+    // If property is linked to a submarket, refresh submarket-level correlations now
+    // that owned-portfolio rows have been materialised into the submarket geography.
+    // F4 useColumnCorrelations will pick these up on the next poll.
     if (submarket_id) {
       try {
         await this.engine.computeTimeSeriesCorrelations('submarket', submarket_id);
@@ -772,15 +850,51 @@ export class PortfolioCorrelationService {
         const coeffRows = await this.persistCoefficients(coeffs, dryRun);
         allCoefficients.push(...coeffRows);
 
-        // 2. City-level engine report: baseline for market-wide COR signals
-        //    (COR-01–30 cover both market-wide conditions AND property-level metrics;
-        //     the engine handles market-wide signals; we override property-level ones below)
-        const report = await this.engine.computeCorrelations(prop.city, prop.state);
+        // 2. Derive property-level summary stats (needed for engine data merge)
+        const rents = prop.actuals
+          .map(r => sf(r.avg_effective_rent))
+          .filter((v): v is number => v !== null && v > 0);
+        const avgEffRent = rents.length > 0 ? rents.reduce((a, b) => a + b, 0) / rents.length : null;
+        const occs = prop.actuals
+          .map(r => sf(r.occupancy_rate))
+          .filter((v): v is number => v !== null);
+        const avgOcc = occs.length > 0 ? occs.reduce((a, b) => a + b, 0) / occs.length : null;
 
-        // 3. MSA income data for COR-04/COR-13 rent-to-income computation
+        // Build property time-series for engine integration.
+        // occupancy_rate is FRACTIONAL 0–1 (DB-verified). vacancy_rate = 1 - occ.
+        const propertyActualTrends = prop.actuals
+          .filter(r => r.avg_effective_rent != null && r.occupancy_rate != null)
+          .map(r => ({
+            date: new Date(r.report_month).toISOString().slice(0, 10),
+            avg_rent: parseFloat(String(r.avg_effective_rent!)),
+            vacancy_rate: 1 - parseFloat(String(r.occupancy_rate!)),
+            concessions_prevalence:
+              r.concessions != null && parseFloat(String(r.concessions)) > 0 ? 1 : 0,
+          }));
+
+        // 3. Run full COR-01–30 via computeCorrelationsWithPropertyData:
+        //    1P actuals are merged into MarketSnapshot (avg_occupancy, concession_rate),
+        //    MSAData (avg_rent, avg_occupancy), and TrendObservation[] (avg_rent,
+        //    vacancy_rate, concessions_prevalence per month) before the engine executes.
+        //    This gives each property its own per-property execution path — not a
+        //    shared city-level result with selective post-hoc overrides.
+        const report = await this.engine.computeCorrelationsWithPropertyData(
+          prop.city, prop.state, {
+            avgOccupancy: avgOcc,
+            avgEffRent,
+            concessionDepthRatio: coeffs.concession_depth_ratio,
+            propertyActualTrends: propertyActualTrends.length >= 3
+              ? propertyActualTrends
+              : undefined,
+          }
+        );
+
+        // 4. MSA income data for COR-04/COR-13 rent-to-income computation
         const msa = await this.fetchMsaForCity(prop.city, prop.state);
 
-        // 4. Per-property computation: override signals where first-party data is superior
+        // 5. Per-property enrichment: override signals where first-party derivation is
+        //    more accurate than the engine result (COR-04/13 rent-to-income, COR-05
+        //    vacancy, COR-09 concession depth, COR-22 insufficient-history guard).
         const perPropertyPartial = this.computePerPropertySignals(
           report.correlations, prop.actuals, coeffs, msa
         );
@@ -795,13 +909,13 @@ export class PortfolioCorrelationService {
         allSignals.push(...perPropertySignals);
 
         if (!dryRun) {
-          // 5. Persist per-property signals to portfolio_correlation_signals (durable)
+          // 6. Persist per-property signals to portfolio_correlation_signals (durable)
           await this.persistSignalsToTable(prop.id, perPropertySignals, false);
 
-          // 6. Sync actuals to metric_time_series; refresh submarket correlations if linked
+          // 7. Sync actuals to metric_time_series; refresh submarket correlations if linked
           await this.syncToMetricTimeSeries(prop.id, prop.name, prop.actuals, prop.submarket_id);
 
-          // 7. Persist per-property enriched signals to linked deals (userId-scoped)
+          // 8. Persist all computed enriched signals to linked deals (userId-scoped)
           await this.persistEnrichedSignalsToDeal(prop.id, userId, perPropertySignals);
         }
 
