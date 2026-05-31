@@ -310,7 +310,7 @@ export function buildProjectionsForExport(
     const userLinesThisYrExport = _exportUserLines.reduce((s, l) => s + getULAExport(l, yr - 1), 0);
     runOtherInc = runOtherInc * (1 + rentStep);
     const otherIncome = Math.round(runOtherInc + userLinesThisYrExport);
-    const egi         = nri + otherIncome;
+    const egiComputed = nri + otherIncome;
 
     // Expenses — override-aware running-base compounding.
     // Dollar-amount operator overrides always take priority; when present, the
@@ -347,7 +347,7 @@ export function buildProjectionsForExport(
     const gAndA        = gAndAOvr != null ? Math.round(gAndAOvr) : Math.round(runGAndA * (1 + opexStep));
     runGAndA           = gAndA;
 
-    const mgmtFee      = Math.round(egi * (mgmtFeePctY1 ?? 0.05));
+    const mgmtFee      = Math.round(egiComputed * (mgmtFeePctY1 ?? 0.05));
 
     const insuranceOvr = pyOvr('insurance');
     const insurance    = insuranceOvr != null ? Math.round(insuranceOvr) : Math.round(runInsurance * (1 + insStep));
@@ -361,9 +361,14 @@ export function buildProjectionsForExport(
     const reserves     = reservesOvr != null ? Math.round(reservesOvr) : Math.round(runReserves * (1 + opexStep));
     runReserves        = reserves;
 
-    const totalOpex  = payroll + repairs + turnover + contractSvc + marketing +
-                       utilities + gAndA + mgmtFee + insurance + reTaxes + reserves;
-    const noi        = egi - totalOpex;
+    const totalOpexComputed = payroll + repairs + turnover + contractSvc + marketing +
+                              utilities + gAndA + mgmtFee + insurance + reTaxes + reserves;
+    // Year-1 anchor: use stored proforma subtotals (seeded from agent / document extraction)
+    // so Projections Y1 is exactly consistent with the Pro Forma surface.
+    // Years 2+ compound from the individual running bases above (unaffected).
+    const egi       = yr === 1 ? (y1('egi')        ?? egiComputed)       : egiComputed;
+    const totalOpex = yr === 1 ? (y1('total_opex') ?? totalOpexComputed)  : totalOpexComputed;
+    const noi       = yr === 1 ? (y1('noi')        ?? egi - totalOpex)    : egi - totalOpex;
 
     let interest = 0, principal = 0, annualDS = 0;
     if (loan > 0) {
