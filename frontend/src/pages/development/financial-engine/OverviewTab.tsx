@@ -5,19 +5,15 @@
  * cash flow table, disposition summary, F9 unit economics, valuation gateway
  * metrics, and JEDI Position Sub-score (Lease Velocity engine).
  *
- * MARKET CONTEXT ARCHITECTURE NOTE (T-CONF-2 investigation):
- * This tab intentionally does NOT render a market context section sourced from
- * `deal_market_intelligence`. Investigation confirmed that no such section exists
- * here or in DecisionTab (F8). The `deal_market_intelligence` table data surfaces
- * only in BloombergOverviewSection (the Deal Detail top-level F1 tab) as incidental
- * data points (avg rent, occupancy) in the 3-layer assumptions table — not as a
- * dedicated section in any F9 Financial Engine sub-tab.
+ * MARKET CONTEXT ARCHITECTURE NOTE (T-CONF-2 investigation / Task 1609):
+ * This tab renders a MARKET SIGNALS panel (in the AI INSIGHTS sub-tab) sourced
+ * from `deal_market_intelligence` via GET /api/market-research/intelligence/:dealId.
+ * Fields surfaced: submarket_name, avg_rent, avg_occupancy, rent_growth_yoy, median_hhi.
+ * Panel shows a placeholder when no intelligence rows exist for the deal.
  *
- * IF market signals from `deal_market_intelligence` are ever added to the F9
- * engine, this tab (OverviewTab, broad context) is the canonical location.
- * They must NOT also be added to DecisionTab — that tab's purpose is risk verdict
- * from underwriting assumptions, not raw market signals. A shared hook should be
- * used if both tabs ever need to reference the same market data.
+ * DecisionTab (F8) intentionally does NOT duplicate this — that tab's purpose is
+ * risk verdict from underwriting assumptions, not raw market signals. If both tabs
+ * ever need to reference the same market data, extract a shared hook.
  */
 import React, { useState, useEffect } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
@@ -31,6 +27,14 @@ const MONO = BT.font.mono;
 interface PlatformData {
   exitCap?: number;
   capRate?: number;
+}
+
+interface MarketSignals {
+  submarket_name: string | null;
+  avg_rent: number | null;
+  avg_occupancy: number | null;
+  rent_growth_yoy: number | null;
+  median_hhi: number | null;
 }
 
 function collisionDot(broker: number | null, platform: number | null): React.ReactNode {
@@ -67,6 +71,24 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
   const f9Yr1Noi  = f9Financials?.proforma?.year1?.find(r => r.field === 'noi')?.resolved ?? null;
 
   const [platformData, setPlatformData] = useState<PlatformData>({});
+  const [marketSignals, setMarketSignals] = useState<MarketSignals | null>(null);
+  const [marketSignalsFetched, setMarketSignalsFetched] = useState(false);
+
+  useEffect(() => {
+    if (!dealId) return;
+    setMarketSignals(null);
+    setMarketSignalsFetched(false);
+    apiClient.get(`/api/market-research/intelligence/${dealId}`).then((res: any) => {
+      const intel = res?.data?.intelligence ?? res?.intelligence;
+      setMarketSignals(intel ? {
+        submarket_name: intel.submarket_name ?? null,
+        avg_rent: intel.avg_rent != null ? parseFloat(intel.avg_rent) : null,
+        avg_occupancy: intel.avg_occupancy != null ? parseFloat(intel.avg_occupancy) : null,
+        rent_growth_yoy: intel.rent_growth_yoy != null ? parseFloat(intel.rent_growth_yoy) : null,
+        median_hhi: intel.median_hhi != null ? parseFloat(intel.median_hhi) : null,
+      } : null);
+    }).catch(() => { setMarketSignals(null); }).finally(() => setMarketSignalsFetched(true));
+  }, [dealId]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -340,6 +362,53 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
 
       {subTab === 'insights' && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 0 }}>
+
+          {/* ── Market Signals ─────────────────────────────────────────── */}
+          {marketSignalsFetched && (
+            <SectionPanel
+              title="MARKET SIGNALS"
+              subtitle={marketSignals?.submarket_name ? `Submarket · ${marketSignals.submarket_name}` : 'deal_market_intelligence · live data'}
+              borderColor={BT.text.purple}
+            >
+              {marketSignals ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 1, background: BT.border.subtle, padding: 1 }}>
+                  <div style={{ background: BT.bg.base, padding: '8px 10px' }}>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 3, letterSpacing: 0.5 }}>AVG SUBMARKET RENT</div>
+                    <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.cyan }}>
+                      {marketSignals.avg_rent != null ? fmt$(marketSignals.avg_rent) : '—'}
+                    </div>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>per unit / mo</div>
+                  </div>
+                  <div style={{ background: BT.bg.base, padding: '8px 10px' }}>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 3, letterSpacing: 0.5 }}>AVG OCCUPANCY</div>
+                    <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.met.occupancy }}>
+                      {marketSignals.avg_occupancy != null ? fmtPct(marketSignals.avg_occupancy * 100) : '—'}
+                    </div>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>submarket avg</div>
+                  </div>
+                  <div style={{ background: BT.bg.base, padding: '8px 10px' }}>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 3, letterSpacing: 0.5 }}>RENT GROWTH YoY</div>
+                    <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: marketSignals.rent_growth_yoy != null && marketSignals.rent_growth_yoy >= 0 ? BT.met.financial : BT.text.red }}>
+                      {marketSignals.rent_growth_yoy != null ? fmtPct(marketSignals.rent_growth_yoy * 100) : '—'}
+                    </div>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>year over year</div>
+                  </div>
+                  <div style={{ background: BT.bg.base, padding: '8px 10px' }}>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 3, letterSpacing: 0.5 }}>MEDIAN HHI</div>
+                    <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.amber }}>
+                      {marketSignals.median_hhi != null && marketSignals.median_hhi > 0 ? fmt$(marketSignals.median_hhi) : '—'}
+                    </div>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>household income</div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: '10px 12px', fontFamily: MONO, fontSize: 9, color: BT.text.muted, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ color: BT.text.amber }}>◌</span>
+                  No market intelligence data yet — run the Research Agent to populate submarket signals for this deal.
+                </div>
+              )}
+            </SectionPanel>
+          )}
 
           {/* ── JEDI Score: Position Sub-score ──────────────────────────── */}
           {(() => {
