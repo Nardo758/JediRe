@@ -1,0 +1,50 @@
+The (d) finding is significant beyond just T-CONF-2. Worth recognizing 
+two implications:
+
+Implication 1: The class of false positive matters for the rest of the 
+corpus.
+
+If T-CONF-2's market context dual-surfacing was described in 
+architectural documentation but never implemented, similar 
+architectural-intent conflation may exist in other places where the 
+corpus describes current behavior. The Pieces A-D documents, the 
+revised calc-vs-assumption doc, and various audit findings all 
+contain claims about what the platform "currently does." Grep-
+discipline applied to those claims would probably surface other 
+instances.
+
+Worth a focused audit: a sweep through the architectural corpus 
+asking, for each current-state claim, "is this verified in code or 
+inferred from documentation?" Unverified claims should be either 
+verified, reframed as target state, or removed.
+
+I shouldn't drive this audit myself because I'm the one most likely 
+to confidently restate documentation. Worth asking you to do it 
+when bandwidth allows.
+
+Implication 2: The grep-discipline is worth elevating to a standing 
+principle.
+
+Your investigation captured the discipline as a §7b verification 
+protocol lesson. That's good but I'd suggest elevating it further — 
+to the standing principles list in CLAUDE.md or the verification 
+protocol doc:
+
+  P11 — Grep-before-claim. Before stating that a code path, service 
+  reference, or data flow exists in current implementation, verify 
+  by direct search in the codebase. Names, section headings, design 
+  specs, and prior conversation are not evidence of implementation.
+
+This applies beyond UI conflation; it's a discipline that affects 
+how architectural documents should be authored going forward.
+
+Two questions:
+
+Q1: Worth scheduling the corpus-sweep audit, or hold until current 
+work (T-CONF-1, T-A, etc.) clears?
+
+Q2: Worth adding P11 to the standing principles, or letting the 
+§7b lesson serve the same purpose?
+
+Your call on both. The findings are captured in §7b regardless; 
+these are about how prominently to surface them.
