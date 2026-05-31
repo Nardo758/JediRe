@@ -679,6 +679,7 @@ function DocumentsFilesTab({ dealId, deal }: { dealId: string; deal?: any }) {
   const [uploading, setUploading] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<Array<{ file: File; category: string }>>([]);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [focusedCategory, setFocusedCategory] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<Set<string>>(new Set());
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [docToast, setDocToast] = useState<{ msg: string; type: 'error' | 'success' } | null>(null);
@@ -776,6 +777,7 @@ function DocumentsFilesTab({ dealId, deal }: { dealId: string; deal?: any }) {
       if (next.has(catId)) next.delete(catId); else next.add(catId);
       return next;
     });
+    setFocusedCategory(catId);
   };
 
   // Handle drag-and-drop or file picker
@@ -1002,6 +1004,19 @@ function DocumentsFilesTab({ dealId, deal }: { dealId: string; deal?: any }) {
         flex: 2,
         display: 'flex', flexDirection: 'column', gap: 12,
       }}>
+        {focusedCategory === 'market' ? (
+          /* ── Market Data: show vendor-aware upload panel as primary content ── */
+          <>
+            <MarketDataUploadPanel
+              dealId={dealId}
+              submarketId={submarketId}
+              onUploaded={fetchAll}
+            />
+            <VendorMarketSurveyPanel dealId={dealId} />
+            <CoStarDataPanel dealId={dealId} />
+          </>
+        ) : (
+          <>
         {/* Drop zone */}
         <div
           onDrop={(e) => { e.preventDefault(); addFilesToQueue(e.dataTransfer.files); }}
@@ -1093,19 +1108,6 @@ function DocumentsFilesTab({ dealId, deal }: { dealId: string; deal?: any }) {
             </button>
           </div>
         )}
-
-        {/* ─── MARKET DATA FEEDS (vendor-registry-driven) ─── */}
-        <MarketDataUploadPanel
-          dealId={dealId}
-          submarketId={submarketId}
-          onUploaded={fetchAll}
-        />
-
-        {/* ─── VENDOR SURVEY DATA (historical_observations, vendor_source IS NOT NULL) ─── */}
-        <VendorMarketSurveyPanel dealId={dealId} />
-
-        {/* ─── COSTAR EXPORTS ─── */}
-        <CoStarDataPanel dealId={dealId} />
 
         {/* ─── AUDIT TRAIL ─── */}
         {recentActivity.length > 0 && (
@@ -1209,6 +1211,8 @@ function DocumentsFilesTab({ dealId, deal }: { dealId: string; deal?: any }) {
               );
             })}
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

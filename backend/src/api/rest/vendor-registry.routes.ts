@@ -12,25 +12,14 @@
  */
 
 import { Router } from 'express';
-import { vendorRegistry } from '../../services/document-extraction/vendor-registry';
+import { listVendorFileTypes, vendorRegistry } from '../../services/document-extraction/vendor-registry';
 
 const router = Router();
 
 // ── GET /api/v1/vendor-registry/file-types ───────────────────────────────────
 
 router.get('/file-types', (_req, res) => {
-  const vendors = vendorRegistry.getAllVendors().map(v => ({
-    vendorId:       v.vendorId,
-    displayName:    v.displayName,
-    licensePosture: v.licensePosture,
-    cadence:        v.freshnessProfile.cadence,
-    fileTypes: v.fileTypes.map(ft => ({
-      documentType: ft.documentType,
-      label:        ft.label,
-    })),
-  }));
-
-  res.json({ vendors });
+  res.json({ vendors: listVendorFileTypes() });
 });
 
 // ── GET /api/v1/vendor-registry/classify ─────────────────────────────────────

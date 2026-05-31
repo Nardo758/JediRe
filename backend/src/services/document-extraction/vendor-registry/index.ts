@@ -30,3 +30,35 @@ import { YARDI_MATRIX_VENDOR } from './yardi-matrix.vendor';
 
 vendorRegistry.register(COSTAR_VENDOR);
 vendorRegistry.register(YARDI_MATRIX_VENDOR);
+
+// ── Convenience helpers ───────────────────────────────────────────────────────
+
+/**
+ * Returns the flat list of accepted file-type descriptors across all registered
+ * vendors. Each entry includes enough information for the frontend upload panel
+ * to render an "Accepted Formats" list without hardcoding any vendor names.
+ *
+ * This is the canonical helper used by GET /api/v1/vendor-registry/file-types.
+ * Adding a new vendor to this file (via `vendorRegistry.register(...)`) will
+ * automatically include its file types in the output — no other changes needed.
+ */
+export interface VendorFileTypeSummary {
+  vendorId: string;
+  displayName: string;
+  licensePosture: string;
+  cadence: string;
+  fileTypes: Array<{ documentType: string; label: string }>;
+}
+
+export function listVendorFileTypes(): VendorFileTypeSummary[] {
+  return vendorRegistry.getAllVendors().map(v => ({
+    vendorId:       v.vendorId,
+    displayName:    v.displayName,
+    licensePosture: v.licensePosture,
+    cadence:        v.freshnessProfile.cadence,
+    fileTypes: v.fileTypes.map(ft => ({
+      documentType: ft.documentType,
+      label:        ft.label,
+    })),
+  }));
+}
