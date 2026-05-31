@@ -785,10 +785,10 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
                                     {row.occupancy_rate != null ? `${(row.occupancy_rate * 100).toFixed(1)}%` : '—'}
                                   </td>
                                   <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.primary }}>{row.asking_rent != null ? `$${Number(row.asking_rent).toFixed(0)}` : '—'}</td>
-                                  <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.primary }}>{row.avg_effective_rent != null ? `$${row.avg_effective_rent.toFixed(0)}` : '—'}</td>
-                                  <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.muted }}>{row.avg_market_rent != null ? `$${row.avg_market_rent.toFixed(0)}` : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.primary }}>{row.avg_effective_rent != null ? `$${Number(row.avg_effective_rent).toFixed(0)}` : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.muted }}>{row.avg_market_rent != null ? `$${Number(row.avg_market_rent).toFixed(0)}` : '—'}</td>
                                   <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.green }}>{row.noi != null ? fmtCurrency(row.noi) : '—'}</td>
-                                  <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.muted }}>{row.noi_per_unit != null ? `$${row.noi_per_unit.toFixed(0)}` : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.muted }}>{row.noi_per_unit != null ? `$${Number(row.noi_per_unit).toFixed(0)}` : '—'}</td>
                                   <td style={{ textAlign: 'right', padding: '4px 10px', color: row.months_free_concession != null ? T.text.amber : T.text.muted }}>{row.months_free_concession != null ? `${Number(row.months_free_concession).toFixed(1)}` : '—'}</td>
                                   <td style={{ textAlign: 'right', padding: '4px 10px', color: T.text.muted }}>{row.concession_rebate_amount != null ? `$${Number(row.concession_rebate_amount).toFixed(0)}` : '—'}</td>
                                   <td style={{ padding: '4px 10px', color: T.text.muted }}>{row.data_source || 'manual'}</td>
