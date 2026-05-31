@@ -1,3 +1,24 @@
+/**
+ * F9 Financial Engine — F1 OVERVIEW TAB
+ *
+ * PURPOSE: Broad deal summary — KPIs, sources/uses, returns breakdown, annual
+ * cash flow table, disposition summary, F9 unit economics, valuation gateway
+ * metrics, and JEDI Position Sub-score (Lease Velocity engine).
+ *
+ * MARKET CONTEXT ARCHITECTURE NOTE (T-CONF-2 investigation):
+ * This tab intentionally does NOT render a market context section sourced from
+ * `deal_market_intelligence`. Investigation confirmed that no such section exists
+ * here or in DecisionTab (F8). The `deal_market_intelligence` table data surfaces
+ * only in BloombergOverviewSection (the Deal Detail top-level F1 tab) as incidental
+ * data points (avg rent, occupancy) in the 3-layer assumptions table — not as a
+ * dedicated section in any F9 Financial Engine sub-tab.
+ *
+ * IF market signals from `deal_market_intelligence` are ever added to the F9
+ * engine, this tab (OverviewTab, broad context) is the canonical location.
+ * They must NOT also be added to DecisionTab — that tab's purpose is risk verdict
+ * from underwriting assumptions, not raw market signals. A shared hook should be
+ * used if both tabs ever need to reference the same market data.
+ */
 import React, { useState, useEffect } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { SectionPanel, DataRow, Bd, KpiTile, AlertBanner, TableHeader } from '../../../components/deal/bloomberg-ui';

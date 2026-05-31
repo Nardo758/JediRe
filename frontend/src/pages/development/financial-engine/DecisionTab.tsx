@@ -1,3 +1,24 @@
+/**
+ * F9 Financial Engine — F8 DECISION TAB
+ *
+ * PURPOSE: Risk verdict and recommended actions derived from underwriting
+ * assumptions vs M07 platform calibration. Surfaces integrity-check failures,
+ * benchmark divergences (rent growth, exit cap, vacancy, LTV), and an
+ * AI-generated deal verdict based on IRR / DSCR / equity multiple.
+ *
+ * MARKET CONTEXT ARCHITECTURE NOTE (T-CONF-2 investigation):
+ * This tab intentionally does NOT render a market context or market signal
+ * section sourced from `deal_market_intelligence`. Investigation confirmed no
+ * such section exists here or in OverviewTab (F1) — the described dual-surface
+ * was a false alarm; neither tab fetches, receives via props, or conditionally
+ * renders `deal_market_intelligence` data.
+ *
+ * Risk flags in this tab are derived from f9Financials (M07 calibrated
+ * assumptions + proforma integrity checks), NOT from raw deal_market_intelligence
+ * rows. This distinction must be preserved: if market signals are ever needed
+ * here, they should be pre-composed into f9Financials by the backend engine
+ * rather than fetched separately, avoiding duplicate API calls and parse logic.
+ */
 import React, { useState, useCallback } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { SectionPanel, DataRow, Bd } from '../../../components/deal/bloomberg-ui';
