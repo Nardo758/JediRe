@@ -808,9 +808,10 @@ router.get('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedReq
 
 /**
  * GET /api/v1/operations/:dealId/live-tracking
- * M09 4-col comparison: current month vs TTM actuals vs pro-forma vs delta.
- * Derives from deal_monthly_actuals (is_budget=FALSE rows for actuals,
- * is_budget=TRUE rows for pro-forma; if no budget rows exist, pro_forma is null).
+ * M09 4-col comparison: current month vs TTM actuals vs annualized pro-forma vs delta.
+ * Derives summary rows from deal_monthly_actuals and GL line-item breakdown from
+ * deal_monthly_actuals_lines (joined on matching period_month values).
+ * delta_pct = (actuals_ttm − pro_forma_annualized) / |pro_forma_annualized| × 100
  */
 router.get('/:dealId/live-tracking', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -825,7 +826,7 @@ router.get('/:dealId/live-tracking', requireAuth, async (req: AuthenticatedReque
     if (!ownerCheck.rows.length) return res.status(404).json({ success: false, error: 'Deal not found' });
     const propId = ownerCheck.rows[0].property_id as string | null;
 
-    // Fetch last 12 actuals (is_budget=FALSE)
+    // ── Fetch last 12 actual months ───────────────────────────────────────────
     const actualsRes = propId
       ? await query(
           `SELECT report_month, gross_potential_rent, effective_gross_income, noi, expenses,
@@ -844,7 +845,7 @@ router.get('/:dealId/live-tracking', requireAuth, async (req: AuthenticatedReque
           [dealId],
         );
 
-    // Fetch pro-forma budget row (most recent is_budget=TRUE)
+    // ── Fetch most recent pro-forma (budget) month if one exists ─────────────
     const budgetRes = propId
       ? await query(
           `SELECT gross_potential_rent, effective_gross_income, noi, expenses, occupancy_rate
@@ -862,76 +863,139 @@ router.get('/:dealId/live-tracking', requireAuth, async (req: AuthenticatedReque
         );
 
     const actuals = actualsRes.rows;
-    const budget = budgetRes.rows[0] ?? null;
-    const current = actuals[0] ?? null; // most recent month
+    const budget  = budgetRes.rows[0] ?? null;
+    const current = actuals[0] ?? null; // most recent actual month
 
-    // TTM sums (up to 12 months)
+    // ── GL line-item breakdown from deal_monthly_actuals_lines ───────────────
+    // Joined on period_month ∈ actual report months so we pull only this property's lines.
+    // Covers: current month (most recent) and TTM (all fetched months).
+    const GL_LABELS = [
+      'Payroll', 'Maintenance & Repairs', 'Utilities', 'Management Fees',
+      'Insurance', 'Property Taxes', 'Marketing', 'Admin/Office',
+    ] as const;
+
+    let glCurrent: Record<string, number> = {};
+    let glTtm: Record<string, number> = {};
+
+    if (actuals.length > 0) {
+      const actualMonths = actuals.map(r => r.report_month);
+      const placeholders = actualMonths.map((_: unknown, i: number) => `$${i + 1}`).join(',');
+      const glRes = await query(
+        `SELECT account_label, period_month, SUM(amount::numeric) AS total
+         FROM deal_monthly_actuals_lines
+         WHERE period_month IN (${placeholders})
+           AND account_label = ANY($${actualMonths.length + 1}::text[])
+         GROUP BY account_label, period_month`,
+        [...actualMonths, GL_LABELS],
+      );
+
+      // Partition into current-month vs all-TTM-months
+      const mostRecentMonth = actualMonths[0];
+      for (const row of glRes.rows) {
+        const label = row.account_label as string;
+        const amount = parseFloat(row.total as string) || 0;
+        glTtm[label] = (glTtm[label] ?? 0) + amount;
+        if (
+          row.period_month instanceof Date
+            ? row.period_month.getTime() === new Date(mostRecentMonth).getTime()
+            : String(row.period_month).slice(0, 7) === String(mostRecentMonth).slice(0, 7)
+        ) {
+          glCurrent[label] = (glCurrent[label] ?? 0) + amount;
+        }
+      }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function sf(r: Record<string, unknown>, field: string): number {
+      return parseFloat(r[field] as string) || 0;
+    }
     function ttmSum(field: string): number {
-      return actuals.reduce((s, r) => s + (parseFloat(r[field] as string) || 0), 0);
+      return actuals.reduce((s: number, r: Record<string, unknown>) => s + sf(r, field), 0);
     }
-    function ttmAvg(field: string): number {
+    function ttmAvgOcc(): number {
       if (!actuals.length) return 0;
-      return ttmSum(field) / actuals.length;
+      return actuals.reduce((s: number, r: Record<string, unknown>) => s + sf(r, 'occupancy_rate'), 0) / actuals.length;
+    }
+    function fmtMoney(v: number | null): string {
+      if (v == null) return '—';
+      return v >= 1_000_000
+        ? '$' + (v / 1_000_000).toFixed(2) + 'M'
+        : '$' + Math.round(v).toLocaleString('en-US');
+    }
+    function fmtPct(v: number | null): string {
+      if (v == null) return '—';
+      return (v * 100).toFixed(1) + '%';
     }
 
-    function deltaRow(
-      label: string,
-      cur: number | null,
-      ttm: number,
-      pf: number | null,
-      isMoney: boolean,
-    ) {
-      const delta = pf && pf !== 0 ? ((ttm - pf) / Math.abs(pf)) * 100 : null;
-      const fmt = (v: number | null, annual?: boolean) => {
-        if (v == null) return '—';
-        if (!isMoney) return (v * 100).toFixed(1) + '%';
-        const val = annual ? v : v;
-        return val >= 1_000_000
-          ? '$' + (val / 1_000_000).toFixed(2) + 'M'
-          : '$' + Math.round(val).toLocaleString('en-US');
-      };
+    // Build a money comparison row.
+    // pf is a SINGLE monthly budget value; we annualize it (×12) to compare with TTM sum.
+    function moneyRow(label: string, cur: number | null, ttm: number, pfMonthly: number | null) {
+      const pfAnnual = pfMonthly != null ? pfMonthly * 12 : null;
+      const delta = pfAnnual && pfAnnual !== 0
+        ? parseFloat(((ttm - pfAnnual) / Math.abs(pfAnnual) * 100).toFixed(1))
+        : null;
       return {
         line_item: label,
-        current_month: cur != null ? (isMoney ? cur : cur * 100) : null,
-        current_month_fmt: fmt(cur),
-        actuals_ttm: isMoney ? ttm : ttmAvg('occupancy_rate') * 100,
-        actuals_ttm_fmt: isMoney ? fmt(ttm) : (ttmAvg('occupancy_rate') * 100).toFixed(1) + '%',
-        pro_forma: pf != null ? (isMoney ? pf * 12 : pf) : null,
-        pro_forma_fmt: fmt(pf != null ? (isMoney ? pf * 12 : pf) : null),
-        delta_pct: delta != null ? parseFloat(delta.toFixed(1)) : null,
+        current_month: cur,
+        current_month_fmt: fmtMoney(cur),
+        actuals_ttm: ttm,
+        actuals_ttm_fmt: fmtMoney(ttm),
+        pro_forma: pfAnnual,
+        pro_forma_fmt: fmtMoney(pfAnnual),
+        delta_pct: delta,
       };
     }
 
-    const gprCur = current ? parseFloat(current.gross_potential_rent as string) || null : null;
-    const egiCur = current ? parseFloat(current.effective_gross_income as string) || null : null;
-    const noiCur = current ? parseFloat(current.noi as string) || null : null;
-    const expCur = current ? parseFloat(current.expenses as string) || null : null;
-    const occCur = current ? parseFloat(current.occupancy_rate as string) || null : null;
+    // ── Build response rows ───────────────────────────────────────────────────
+    const gprCur = current ? sf(current, 'gross_potential_rent') || null : null;
+    const egiCur = current ? sf(current, 'effective_gross_income') || null : null;
+    const noiCur = current ? sf(current, 'noi') || null : null;
+    const expCur = current ? sf(current, 'expenses') || null : null;
+    const occCur = current ? sf(current, 'occupancy_rate') || null : null;
 
-    const rows = [
-      deltaRow('Gross Potential Rent', gprCur, ttmSum('gross_potential_rent'), budget ? parseFloat(budget.gross_potential_rent as string) || null : null, true),
-      deltaRow('Effective Gross Income', egiCur, ttmSum('effective_gross_income'), budget ? parseFloat(budget.effective_gross_income as string) || null : null, true),
-      deltaRow('NOI', noiCur, ttmSum('noi'), budget ? parseFloat(budget.noi as string) || null : null, true),
-      deltaRow('Total Expenses', expCur, ttmSum('expenses'), budget ? parseFloat(budget.expenses as string) || null : null, true),
+    const summaryRows = [
+      moneyRow('Gross Potential Rent', gprCur, ttmSum('gross_potential_rent'),
+        budget ? sf(budget, 'gross_potential_rent') || null : null),
+      moneyRow('Effective Gross Income', egiCur, ttmSum('effective_gross_income'),
+        budget ? sf(budget, 'effective_gross_income') || null : null),
+      moneyRow('NOI', noiCur, ttmSum('noi'),
+        budget ? sf(budget, 'noi') || null : null),
+      moneyRow('Total Expenses', expCur, ttmSum('expenses'),
+        budget ? sf(budget, 'expenses') || null : null),
       {
         line_item: 'Occupancy',
         current_month: occCur != null ? occCur * 100 : null,
         current_month_fmt: occCur != null ? (occCur * 100).toFixed(1) + '%' : '—',
-        actuals_ttm: ttmAvg('occupancy_rate') * 100,
-        actuals_ttm_fmt: (ttmAvg('occupancy_rate') * 100).toFixed(1) + '%',
-        pro_forma: budget ? (parseFloat(budget.occupancy_rate as string) || null) : null,
-        pro_forma_fmt: budget && budget.occupancy_rate ? (parseFloat(budget.occupancy_rate as string) * 100).toFixed(1) + '%' : '—',
-        delta_pct: null,
+        actuals_ttm: ttmAvgOcc() * 100,
+        actuals_ttm_fmt: (ttmAvgOcc() * 100).toFixed(1) + '%',
+        pro_forma: budget ? (sf(budget, 'occupancy_rate') * 100 || null) : null,
+        pro_forma_fmt: budget ? fmtPct(sf(budget, 'occupancy_rate') || null) : '—',
+        delta_pct: null as number | null,
       },
     ];
 
+    // GL line-item expense breakdown from deal_monthly_actuals_lines
+    const lineRows = GL_LABELS
+      .filter(label => glTtm[label] != null)
+      .map(label => ({
+        line_item: `  ${label}`,
+        current_month: glCurrent[label] ?? null,
+        current_month_fmt: fmtMoney(glCurrent[label] ?? null),
+        actuals_ttm: glTtm[label],
+        actuals_ttm_fmt: fmtMoney(glTtm[label]),
+        pro_forma: null as number | null,
+        pro_forma_fmt: '—',
+        delta_pct: null as number | null,
+      }));
+
     res.json({
       success: true,
-      rows,
+      rows: [...summaryRows, ...lineRows],
       meta: {
         months_of_data: actuals.length,
         current_period: current?.report_month ?? null,
         has_pro_forma: !!budget,
+        gl_labels_found: Object.keys(glTtm),
       },
     });
   } catch (err) {

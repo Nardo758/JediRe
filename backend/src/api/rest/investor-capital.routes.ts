@@ -554,52 +554,68 @@ async function handleGetWaterfall(dealId: string, userId: string, res: Response)
 
 // ── Short-path alias: /api/v1/capital/:dealId/capital-accounts ────────────────
 // Returns per-member capital account balances: commitment, called capital
-// (contributions), and distributions received — aggregated from capital_account_entries
-// with a fallback to deal_investments when no entries exist yet.
+// (from capital_call_items.paid_amount), and distributions received
+// (from distribution_items.net_amount, falling back to gross_amount).
+// Sources the authoritative transaction tables, not the ledger view.
 router.get('/:dealId/capital-accounts', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
     const userId = req.user!.userId;
     if (!(await ownsDeal(dealId, userId))) return res.status(404).json({ success: false, error: 'Deal not found' });
 
-    // Per-member commitment from deal_investments + aggregated entries
     const membersRes = await query(
       `SELECT
-         i.id AS investor_id,
+         i.id        AS investor_id,
          i.name,
          i.type,
          di.class,
          di.ownership_pct,
-         di.commitment_amount::numeric AS commitment_amount,
-         COALESCE(SUM(CASE WHEN cae.entry_type = 'contribution' THEN cae.amount::numeric ELSE 0 END), 0) AS called,
-         COALESCE(SUM(CASE WHEN cae.entry_type = 'distribution'  THEN cae.amount::numeric ELSE 0 END), 0) AS distributed
+         di.commitment_amount::numeric                               AS commitment_amount,
+         COALESCE(cci_agg.called,      0::numeric)                  AS called,
+         COALESCE(di_agg.distributed,  0::numeric)                  AS distributed
        FROM deal_investments di
        JOIN investors i ON i.id = di.investor_id
-       LEFT JOIN capital_account_entries cae
-         ON cae.investor_id = di.investor_id AND cae.deal_id = di.deal_id
+       -- called capital: sum of paid amounts across all capital calls for this deal
+       LEFT JOIN (
+         SELECT cci.investor_id,
+                SUM(COALESCE(cci.paid_amount, cci.amount_paid, 0)::numeric) AS called
+           FROM capital_call_items cci
+           JOIN capital_calls cc ON cc.id = cci.capital_call_id
+          WHERE cc.deal_id = $1
+          GROUP BY cci.investor_id
+       ) cci_agg ON cci_agg.investor_id = di.investor_id
+       -- distributions: sum of net (after withholding) or gross amounts per investor
+       LEFT JOIN (
+         SELECT diitem.investor_id,
+                SUM(COALESCE(diitem.net_amount, diitem.gross_amount, 0)::numeric) AS distributed
+           FROM distribution_items diitem
+           JOIN distributions d ON d.id = diitem.distribution_id
+          WHERE d.deal_id = $1
+            AND d.status IN ('approved', 'completed')
+          GROUP BY diitem.investor_id
+       ) di_agg ON di_agg.investor_id = di.investor_id
        WHERE di.deal_id = $1
-       GROUP BY i.id, i.name, i.type, di.class, di.ownership_pct, di.commitment_amount
        ORDER BY di.commitment_amount DESC`,
       [dealId],
     );
 
     const members = membersRes.rows.map(r => ({
-      investor_id: r.investor_id,
-      name: r.name,
-      type: r.type,
-      class: r.class,
-      ownership_pct: r.ownership_pct ? parseFloat(r.ownership_pct) : null,
+      investor_id:       r.investor_id,
+      name:              r.name,
+      type:              r.type,
+      class:             r.class,
+      ownership_pct:     r.ownership_pct != null ? parseFloat(r.ownership_pct) : null,
       commitment_amount: parseFloat(r.commitment_amount),
-      called: parseFloat(r.called),
-      distributed: parseFloat(r.distributed),
-      net_capital: parseFloat(r.called) - parseFloat(r.distributed),
+      called:            parseFloat(r.called),
+      distributed:       parseFloat(r.distributed),
+      net_capital:       parseFloat(r.called) - parseFloat(r.distributed),
     }));
 
     const summary = {
-      total_committed: members.reduce((s, m) => s + m.commitment_amount, 0),
-      total_called:    members.reduce((s, m) => s + m.called, 0),
+      total_committed:   members.reduce((s, m) => s + m.commitment_amount, 0),
+      total_called:      members.reduce((s, m) => s + m.called, 0),
       total_distributed: members.reduce((s, m) => s + m.distributed, 0),
-      member_count: members.length,
+      member_count:      members.length,
     };
 
     res.json({ success: true, members, summary });
