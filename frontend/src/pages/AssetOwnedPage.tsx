@@ -3023,8 +3023,8 @@ export default function PortfolioPropertyPage() {
                         <td style={{ padding: '5px 10px', textAlign: 'right', color: parseFloat(t.rent_change_dollar) > 0 ? T.text.green : parseFloat(t.rent_change_dollar) < 0 ? T.text.red : T.text.muted }}>
                           {t.rent_change_dollar ? `${parseFloat(t.rent_change_dollar) > 0 ? '+' : ''}${fmt(parseFloat(t.rent_change_dollar), 'currency')}` : '—'}
                         </td>
-                        <td style={{ padding: '5px 10px', textAlign: 'right', color: parseFloat(t.loss_to_lease_pct) < -5 ? T.text.red : T.text.secondary }}>
-                          {t.loss_to_lease_pct ? `${parseFloat(t.loss_to_lease_pct).toFixed(1)}%` : '—'}
+                        <td style={{ padding: '5px 10px', textAlign: 'right', color: parseFloat(t.loss_to_lease_pct) * 100 > 5 ? T.text.amber : T.text.secondary }}>
+                          {t.loss_to_lease_pct ? `${(parseFloat(t.loss_to_lease_pct) * 100).toFixed(1)}%` : '—'}
                         </td>
                       </tr>
                     ))}

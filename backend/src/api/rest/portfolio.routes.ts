@@ -614,10 +614,34 @@ router.get('/:dealId/summary', requireAuth, async (req: AuthenticatedRequest, re
 
     const trafficStats = trafficRes.rows[0] || null;
 
+    // Unit mix from deal_lease_transactions — grouped by unit_type, infer bedroom_count
+    const unitMixRes = await query(
+      `SELECT
+         unit_type                                      AS type,
+         COUNT(DISTINCT unit_number)::int              AS count,
+         ROUND(AVG(sqft))::int                         AS sqft,
+         ROUND(AVG(new_rent) FILTER (WHERE LOWER(lease_type) = 'new'), 2) AS avg_rent,
+         CASE
+           WHEN LEFT(unit_type, 1) = 'A' THEN 1
+           WHEN LEFT(unit_type, 1) = 'B' THEN 2
+           WHEN LEFT(unit_type, 1) = 'C' THEN 3
+           ELSE 0
+         END                                           AS bedroom_count
+       FROM deal_lease_transactions
+       WHERE deal_id = $1 AND unit_type IS NOT NULL AND sqft IS NOT NULL
+       GROUP BY unit_type
+       ORDER BY COUNT(DISTINCT unit_number) DESC`,
+      [dealId]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+
+    const unitProgram = unitMixRes.rows.length > 0
+      ? { unit_config: unitMixRes.rows }
+      : null;
+
     res.json({
       deal,
       latestFinancials,
-      unitProgram: null,
+      unitProgram,
       leaseStats,
       trafficStats,
     });
@@ -1127,20 +1151,25 @@ router.get('/:dealId/traffic', requireAuth, async (req: AuthenticatedRequest, re
 
     const result = await query(
       `SELECT
-         period_end                                     AS week_ending,
-         total_leads                                    AS traffic,
-         CASE WHEN total_leads > 0
-              THEN ROUND(leases_signed::numeric / total_leads * 100, 1)
-              ELSE NULL END                             AS closing_ratio,
-         NULL::numeric                                  AS occ_pct,
-         tours_completed,
-         applications,
-         denied,
-         leases_signed,
-         move_ins
-       FROM traffic_funnel
-       WHERE deal_id = $1
-       ORDER BY period_end ASC`,
+         tf.period_end                                      AS week_ending,
+         tf.total_leads                                     AS traffic,
+         CASE WHEN tf.total_leads > 0
+              THEN ROUND(tf.leases_signed::numeric / tf.total_leads * 100, 1)
+              ELSE NULL END                                 AS closing_ratio,
+         ROUND(dma.occupancy_rate::numeric * 100, 1)       AS occ_pct,
+         tf.tours_completed,
+         tf.applications,
+         tf.denied,
+         tf.leases_signed,
+         tf.move_ins
+       FROM traffic_funnel tf
+       LEFT JOIN deal_monthly_actuals dma
+         ON dma.deal_id = tf.deal_id
+        AND date_trunc('month', tf.period_end) = dma.report_month
+        AND dma.is_budget = false
+        AND dma.is_proforma = false
+       WHERE tf.deal_id = $1
+       ORDER BY tf.period_end ASC`,
       [dealId]
     );
 
