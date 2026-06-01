@@ -1,0 +1,80 @@
+TASK: Read-only WIRING GAP AUDIT. Determine every connection that is missing or broken
+for the Asset Hub console (per ASSET_HUB_REBUILD_SPEC.md) to be fully functioning on live
+data for Highlands (property_id 7ea31caf-f070-43eb-9fd1-fe08f7123701, deal_id
+eaabeb9f-830e-44f9-a923-56679ad0329d).
+
+CONSTRAINTS — NON-NEGOTIABLE:
+- DO NOT modify, create, or delete any file except the single output doc below.
+- DO NOT run migrations, install packages, start services, or generate predictions.
+- Every finding is file:line + psql-grounded. Verify; never infer. If absent, write "NOT FOUND".
+- Trust nothing from the spec's status tags — VERIFY each against the actual codebase/DB.
+
+OUTPUT: ONE file at repo root: CONSOLE_WIRING_AUDIT.md. Nothing else.
+
+═══════════════════════════════════════════════════════════════
+METHOD — for EACH panel below, trace the FULL connection chain and report the FIRST broken link:
+
+  [1] FRONTEND CALL  — does the (rebuilt or current) component fetch a route? path:line. Is the
+                       fetch in a useEffect (not in render)? Does it key on deal_id?
+  [2] ROUTE MOUNTED  — is the route defined AND mounted in index.replit.ts? router file:line + mount:line.
+  [3] HANDLER        — does the handler query real tables (not stub/mock)? file:line.
+  [4] JOIN KEY       — does it resolve deal_id↔property_id correctly for Highlands?
+  [5] TABLE ROWS     — psql: does the table have rows for Highlands? table → row count.
+
+  VERDICT per panel: CONNECTED | BROKEN@[step] | NO-BACKEND. State the exact missing link.
+
+═══════════════════════════════════════════════════════════════
+PANELS TO TRACE (grouped by screen):
+
+REVENUE
+  - Hero metric series (occ/rent/NOI/RevPAU)  → /operations/:dealId/monthly-actuals  (operations.routes.ts:752)
+  - Hero loss-to-lease + concessions series   → rent_roll_units generated cols + rent-roll-derivations.service.ts derived_metrics
+  - Property COMPARE overlay (same metric, other properties) → is there ANY per-property metric time-series source?
+  - Asset Overview rail incl. Market Rent      → market rent source for loss-to-lease (per-unit-type)?
+  - JEDI SIGNAL chip                            → repricing synthesizer route?
+  - REPRICING COURSE                            → /revenue/:dealId/course (does it exist?)
+  - LEASE ROLL expirations                      → /operations/:dealId/lease-expirations (operations.routes.ts:302)
+  - LEASE ROLL trade-out spread                 → /operations/:dealId/tradeout-events (exists? lease_tradeout_events rows?)
+  - MARKET SIGNALS                              → /correlations/property/:propertyId (correlation.routes.ts:59); traffic velocity needs traffic_predictions rows
+  - COMP SET & RANK leaderboard                 → /lifecycle/:dealId/comp-set + rankings service (rankings.routes.ts?) for rank/PCS
+
+PERFORMANCE
+  - Actual vs pro-forma NOI                     → /operations/:dealId/projected-vs-actual (operations.routes.ts:631)
+  - Underwriting scorecard / variance           → /operations/:dealId/variances (:113), variances/compute (:135), deal_monthly_actuals_lines rows
+  - LIVE TRACKING 4-col (CURRENT|TTM|PF|Δ)       → /operations/:dealId/live-tracking (exists? M09 component exists?)
+  - Cap-ex vs budget                            → capex source on deal_monthly_actuals?
+  - Thesis checkpoints                          → commentary.agent.ts (asset-mode aware?)
+  - LIFECYCLE / EXIT sub-tabs                    → existing LifecycleSection / ExitTimingTab reachable?
+
+CAPITAL
+  - DEBT & RATE: loan terms + SOFR series       → debt record source? FRED SOFR series wired? rate cap/hedge fields exist?
+  - DISTRIBUTIONS per-member capital accounts    → /capital/:dealId/capital-accounts (exists? capital_calls / distributions rows?)
+  - WATERFALL dual (operating + capital-event)   → /capital/:dealId/waterfall?type= (exists? deal_waterfalls rows? dual modeled?)
+
+DRAWERS
+  - Files / Team / Events / Activity            → DocumentsHub / TeamSection / EventTimelineSection / ActivityTab reachable & live?
+  - RANK & COMPS persistence                    → POST /rankings/:propertyId/target (exists?)
+
+═══════════════════════════════════════════════════════════════
+CROSS-CUTTING CONNECTIONS (verify each):
+  - dealStore: does the console read selected-asset from Zustand, or local useState? Is there an owned-asset selector?
+  - assetMode on DealContext (dealContext.ts:604 / ResearchAgentContext) — present yet?
+  - deal_id↔property_id resolution on operations routes for Highlands — correct?
+  - properties.submarket_id for Highlands — NULL? (Task #1685) — degrades which signals?
+  - traffic_predictions / traffic_calibration_factors / validation_properties — row counts (predictions ever run?)
+  - render-function fetch bug in current RevenueMgmtTab (AssetOwnedPage.tsx ~626-629) — still present?
+
+═══════════════════════════════════════════════════════════════
+END WITH:
+
+(A) CONNECTION MATRIX:
+    Panel | FE call | Route mounted | Handler live | Join OK | Rows | VERDICT | Missing link
+
+(B) MISSING-CONNECTIONS PUNCH LIST, split into:
+    TIER 1 — WIRE NOW (route exists, just not connected / quick fix): each w/ exact fix + file:line
+    TIER 2 — NEEDS ROUTE (table/data exists, no HTTP route): each w/ the route to add
+    TIER 3 — NEEDS BACKEND (no data/service at required grain): each w/ what must be built
+    TIER 4 — DATA POPULATION (route+table exist, table empty): each w/ how to populate
+
+(C) "FULLY FUNCTIONING" GAP COUNT: # panels CONNECTED vs total, and the critical path
+    (ordered) to close every Tier-1 and Tier-2 gap.
