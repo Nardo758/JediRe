@@ -3159,9 +3159,13 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                               <span style={{ fontFamily: MONO, fontSize: 7, color: '#059669', border: '1px solid #065f46', borderRadius: 2, padding: '0 3px', flexShrink: 0 }}>STAB</span>
                               Stabilization Threshold (Pro Forma Window)
                             </span>
-                            {submarketVac != null && (
+                            {submarketVac != null ? (
                               <div style={{ fontFamily: MONO, fontSize: 7, color: '#0e3347', marginTop: 2, paddingLeft: 14 }}>
                                 submarket equilibrium vacancy: {submarketVac.toFixed(1)}%
+                              </div>
+                            ) : (
+                              <div style={{ fontFamily: MONO, fontSize: 7, color: '#1e3a3a', marginTop: 2, paddingLeft: 14 }}>
+                                Submarket equilibrium: insufficient data
                               </div>
                             )}
                           </td>
@@ -3464,13 +3468,17 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                 </div>
 
                 {/* Submarket vacancy reference */}
-                {mktVac != null && (
-                  <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #1a2e1a', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ color: '#374151', fontSize: 8 }}>SUBMARKET VAC</span>
-                    <span style={{ color: '#9ca3af', fontSize: 9, fontFamily: MONO }}>{(mktVac * 100).toFixed(1)}%</span>
-                    {mktAsOf && <span style={{ color: '#374151', fontSize: 8 }}>as of {mktAsOf}</span>}
-                  </div>
-                )}
+                <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #1a2e1a', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {mktVac != null ? (
+                    <>
+                      <span style={{ color: '#374151', fontSize: 8 }}>SUBMARKET VAC</span>
+                      <span style={{ color: '#9ca3af', fontSize: 9, fontFamily: MONO }}>{(mktVac * 100).toFixed(1)}%</span>
+                      {mktAsOf && <span style={{ color: '#374151', fontSize: 8 }}>as of {mktAsOf}</span>}
+                    </>
+                  ) : (
+                    <span style={{ color: '#1e3a3a', fontSize: 8, fontFamily: MONO }}>Submarket equilibrium: insufficient data</span>
+                  )}
+                </div>
               </div>
             );
           })()}

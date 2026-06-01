@@ -341,6 +341,13 @@ Tracking when documents have been corrected against audit findings or operator c
 - **Renovation premium fallback corrected in Math Spec.** Archive P50 fallback = 0.80 (from 298 archive rows) — not empirical renovation track record from owned portfolio. No owned property has before/after value-add program data. Correction 1.4 applied.
 - **Stabilization-year detection algorithm provenance noted in Math Spec.** Algorithm is wiring on existing agent infrastructure, not a new analytical capability. Correction 1.5 applied.
 - **`costar_submarket_stats` flagged INFERRED-NOT-VERIFIED in Surface Map.** Existence, schema, and row count require grep verification before implementing submarket equilibrium context display. Fallback: "Submarket equilibrium: insufficient data." Correction 4.1 applied.
+
+### 2026-05-31 (costar_submarket_stats verification — Correction 4.1 resolved)
+
+- **`costar_submarket_stats` VERIFIED: table exists, 125 rows, deal-scoped.** Migration `20260629_costar_comp_provenance.sql` created the table. Schema: `id`, `deal_id`, `submarket`, `city`, `state`, `msa`, `period_date`, `vacancy_rate`, `asking_rent_per_unit`, `effective_rent_per_unit`, `yoy_rent_growth`, `absorption_units`, `net_deliveries_units`, `total_inventory_units`, `under_construction_units`, `occupancy_pct`, `concession_pct`, `source`, `file_id`, `data_as_of`, `ingested_at`.
+- **`equilibrium_vacancy_pct` column does not exist.** The Surface Map referenced `costar_submarket_stats.equilibrium_vacancy_pct` as the display source — this column is not in the schema. The closest columns are `vacancy_rate` and `occupancy_pct`.
+- **Display source is `apartment_market_snapshots`, not `costar_submarket_stats`.** `proforma-adjustment.service.ts` derives `submarketVacancyRate` by querying `apartment_market_snapshots` for `avg_occupancy` filtered by `state`/`city`. `costar_submarket_stats` is not currently read for the stabilization threshold context display. The Surface Map's claimed data source is incorrect.
+- **"Submarket equilibrium: insufficient data" fallback added to stabilization threshold UI.** Two locations in `AssumptionsTab.tsx` previously showed nothing when `submarketVacancyRate` was null: (1) the STAB table row label annotation, and (2) the PRO FORMA WINDOW card's submarket vacancy row. Both now render the fallback text when the value is null. Correct 4.1 fully resolved.
 - **Four Pro Forma Window documents updated inline.** Corrections applied as blockquote annotations (`> **Correction N.M (2026-05-31):**`) within the source documents in `attached_assets/`. No source documents were rewritten — corrections are append-style redlines.
 
 ### Pending corrections (not yet applied)
