@@ -529,11 +529,11 @@ router.post('/deals/:dealId/distributions/:distId/process', requireAuth, async (
 // WATERFALL
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.get('/deals/:dealId/waterfall', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+async function handleGetWaterfall(dealId: string, userId: string, res: Response) {
   try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
+    if (!(await ownsDeal(dealId, userId)))
       return res.status(404).json({ success: false, error: 'Deal not found' });
-    const wf = await query('SELECT * FROM deal_waterfalls WHERE deal_id=$1', [req.params.dealId]);
+    const wf = await query('SELECT * FROM deal_waterfalls WHERE deal_id=$1', [dealId]);
     if (!wf.rows.length) {
       return res.json({
         success: true, waterfall: null,
@@ -550,6 +550,15 @@ router.get('/deals/:dealId/waterfall', requireAuth, async (req: AuthenticatedReq
     logger.error('GET waterfall', err);
     res.status(500).json({ success: false, error: 'Failed to fetch waterfall' });
   }
+}
+
+// Short-path alias used by the Asset Hub frontend: /api/v1/capital/:dealId/waterfall
+router.get('/:dealId/waterfall', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  return handleGetWaterfall(req.params.dealId, req.user!.userId, res);
+});
+
+router.get('/deals/:dealId/waterfall', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  return handleGetWaterfall(req.params.dealId, req.user!.userId, res);
 });
 
 router.put('/deals/:dealId/waterfall', requireAuth, async (req: AuthenticatedRequest, res: Response) => {

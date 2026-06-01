@@ -1415,6 +1415,7 @@ function CapitalScreen({ dealId }: { dealId: string }) {
   const [sub, setSub] = useState('debt');
   const [tf, setTf] = useState(12);
   const data = DEBT_SERIES.slice(-tf);
+  const [debtPos, setDebtPos] = useState<any>(null);
 
   // TODO(backend: GET /api/v1/capital/:dealId/capital-accounts) — per-member accounts
   const [capitalAccounts, setCapitalAccounts] = useState<any>(null);
@@ -1438,6 +1439,59 @@ function CapitalScreen({ dealId }: { dealId: string }) {
       .then(res => { setWaterfallCap(res.data ?? null); })
       .catch(() => { setWaterfallCap(null); });
   }, [dealId]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/lifecycle/${dealId}/debt`)
+      .then(res => {
+        const positions = res.data?.positions ?? [];
+        if (positions.length > 0) setDebtPos(positions[0]);
+      })
+      .catch(() => {});
+  }, [dealId]);
+
+  // ── Compute display values from live debt position (fall back to hardcoded) ──
+  const fmtPct = (v: number | undefined, fallback: string) => {
+    if (v == null) return fallback;
+    const pct = v <= 1 ? v * 100 : v;
+    return pct.toFixed(2) + '%';
+  };
+  const fmtMoney = (v: number | undefined, fallback: string) => {
+    if (v == null) return fallback;
+    return '$' + (v / 1_000_000).toFixed(1) + 'M';
+  };
+  const fmtMonthYear = (d: string | Date | undefined, fallback: string) => {
+    if (!d) return fallback;
+    const dt = new Date(d);
+    const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()];
+    return `${mon} '${String(dt.getFullYear()).slice(2)}`;
+  };
+  const dpRate = debtPos?.currentRate;
+  const dpSpread = debtPos?.spreadBps;
+  const dpSofr = (dpRate != null && dpSpread != null)
+    ? ((dpRate <= 1 ? dpRate : dpRate / 100) - dpSpread / 10000)
+    : null;
+  const debtChipVals = {
+    allIn:     fmtPct(dpRate, '6.85%'),
+    sofr:      dpSofr != null ? (dpSofr * 100).toFixed(2) + '%' : '4.30%',
+    spread:    dpSpread != null ? `+${dpSpread}bps` : '+285bps',
+    dscr:      debtPos?.dscrCovenant ? debtPos.dscrCovenant.toFixed(2) + 'x' : '1.48x',
+    capExpiry: "Sep '26",
+  };
+  const liveDebtOverview = debtPos ? [
+    { label: 'Loan Balance',     value: fmtMoney(debtPos.currentBalance, '$34.8M') },
+    { label: 'Lender',           value: debtPos.lenderName ?? 'Bridge' },
+    { label: 'Index',            value: debtPos.baseRate ?? '1M SOFR' },
+    { label: 'Current SOFR',     value: debtChipVals.sofr },
+    { label: 'Spread',           value: debtChipVals.spread },
+    { label: 'All-In Rate',      value: debtChipVals.allIn, tone: T.text.amber },
+    { label: 'Rate Cap Strike',  value: debtPos.rateCap != null ? fmtPct(debtPos.rateCap, '4.00%') : '4.00%', tone: T.text.cyan },
+    { label: 'Cap Expiry',       value: debtChipVals.capExpiry, sub: '15mo', tone: T.text.red },
+    { label: 'Maturity',         value: fmtMonthYear(debtPos.maturityDate, "Mar '28") },
+    { label: 'DSCR',             value: debtChipVals.dscr, tone: T.text.green },
+    { label: 'Debt Yield',       value: debtPos.debtYieldCovenant != null ? fmtPct(debtPos.debtYieldCovenant, '9.2%') : '9.2%' },
+    { label: 'Breakeven Occ.',   value: '78.4%' },
+  ] : DEBT_OVERVIEW;
 
   return (
     <>
@@ -1464,9 +1518,9 @@ function CapitalScreen({ dealId }: { dealId: string }) {
               controls={
                 <div style={{ display: 'flex', borderBottom: `1px solid ${T.border.subtle}` }}>
                   {[
-                    ['ALL-IN', '6.85%', T.text.amber], ['SOFR', '4.30%', T.text.orange],
-                    ['SPREAD', '+285bps', T.text.primary], ['DSCR', '1.48x', T.text.green],
-                    ['CAP EXPIRY', 'Sep \'26', T.text.red],
+                    ['ALL-IN', debtChipVals.allIn, T.text.amber], ['SOFR', debtChipVals.sofr, T.text.orange],
+                    ['SPREAD', debtChipVals.spread, T.text.primary], ['DSCR', debtChipVals.dscr, T.text.green],
+                    ['CAP EXPIRY', debtChipVals.capExpiry, T.text.red],
                   ].map(([l, v, c], i) => (
                     <div key={l as string} style={{ flex: 1, padding: '9px 12px', borderRight: i < 4 ? `1px solid ${T.border.subtle}` : 'none' }}>
                       <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, letterSpacing: 0.5 }}>{l}</div>
@@ -1478,7 +1532,7 @@ function CapitalScreen({ dealId }: { dealId: string }) {
             />
             <Panel style={{ width: 268, flexShrink: 0 }}>
               <PanelHeader title="DEBT OVERVIEW" sub="capital stack" />
-              <StatRail rows={DEBT_OVERVIEW} signal={{ label: 'RATE EXPOSURE', note: 'Capped to Sep \'26, then floating → refi before maturity', value: 'EXPOSED', tone: T.text.amber }} />
+              <StatRail rows={liveDebtOverview} signal={{ label: 'RATE EXPOSURE', note: 'Capped to Sep \'26, then floating → refi before maturity', value: 'EXPOSED', tone: T.text.amber }} />
             </Panel>
           </div>
 
@@ -1611,6 +1665,17 @@ export default function AssetHubPage() {
 
   // Prefer the store value (set by useEffect above); fall back to URL param
   const dealId = selectedAssetDealId ?? urlDealId ?? '';
+
+  // Fallback: when the deals list hasn't loaded yet, resolve propertyId from the API
+  useEffect(() => {
+    if (!dealId || propertyId) return;
+    apiClient.get(`/api/v1/deals/${dealId}`)
+      .then(res => {
+        const pid = res.data?.deal?.property_id ?? null;
+        if (pid) setSelectedAsset(dealId, pid);
+      })
+      .catch(() => {});
+  }, [dealId, propertyId, setSelectedAsset]);
 
   // ── Fetch comps from the API (populates drawer + rank leaderboard) ──
   const [screen, setScreen] = useState<'revenue' | 'performance' | 'capital'>('revenue');
