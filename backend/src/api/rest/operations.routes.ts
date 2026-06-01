@@ -1054,24 +1054,31 @@ interface MonthlyActualInput {
 
 /**
  * GET /api/v1/operations/:dealId/derived-metrics
- * Monthly LTL% and concession-rate% series derived from rent_roll_units snapshots.
- * LTL%  = AVG((market_rent − current_rent) / market_rent × 100) for occupied units
- * Conc% = AVG(concession_amount / market_rent × 100) across all units in each snapshot
+ * Monthly LTL% and concessions-per-unit $ series derived from rent_roll_units snapshots.
+ * Returns [{ month, ltl_pct, concessions_per_unit, unit_count }] sorted ASC.
  * Returns an empty array (not an error) when no rent roll snapshots exist.
+ *
+ * Uses the standard deal→property bridge: property_id is resolved from the deal record
+ * and passed to the service for future use (rent_roll_units is currently deal-scoped only).
  */
 router.get('/:dealId/derived-metrics', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
 
+    // Ownership check — also resolves property_id for the bridge pattern
     const ownerCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      'SELECT id, property_id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
       [dealId, req.user!.userId],
     );
     if (!ownerCheck.rows.length) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
+    // Bridge: property_id is resolved here and forwarded to the service.
+    // rent_roll_units currently stores rows by deal_id only; property_id is reserved
+    // for when the table gains a property_id column (parallel to deal_monthly_actuals).
+    const propertyId = (ownerCheck.rows[0].property_id as string | null) ?? null;
 
-    const metrics = await getRentRollDerivations(dealId);
+    const metrics = await getRentRollDerivations(dealId, propertyId);
     return res.json({ success: true, data: metrics });
   } catch (err) {
     logger.error('derived-metrics error:', err);

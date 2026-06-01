@@ -874,14 +874,22 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
       const protoOffset = SERIES.length - actualsData.length + idx;
       const proto = protoOffset >= 0 && protoOffset < SERIES.length ? SERIES[protoOffset] : null;
 
+      // Convert concessions_per_unit ($/unit) → concession rate % of in-place rent
+      // for the hero chart (which formats conc as a percentage).
+      // e.g. $25 concession on $1,700 rent → 1.5% concession rate
+      let conc: number | null = proto?.conc ?? null;
+      if (derived?.concessions_per_unit != null && rent > 0) {
+        conc = Math.round((derived.concessions_per_unit / rent) * 1000) / 10; // 1 d.p. %
+      }
+
       return {
         m: `${mon.slice(0,3)}'${yr}`,
         occ: Math.round(occ * 10) / 10,
         rent: Math.round(rent),
         noi: Math.round(noi),
         revpau: Math.round(rent * (occ / 100) * 0.985),
-        ltl:  derived?.ltl_pct          ?? proto?.ltl  ?? null,
-        conc: derived?.concessions_pct  ?? proto?.conc ?? null,
+        ltl:  derived?.ltl_pct ?? proto?.ltl ?? null,
+        conc,
         tro:  proto?.tro ?? null,
       };
     });
