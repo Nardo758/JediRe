@@ -1435,4 +1435,79 @@ router.post('/:dealId/unit-mix', requireAuth, async (req: AuthenticatedRequest, 
   }
 });
 
+// ── GET /:dealId/tradeout-events ─────────────────────────────────────────────
+// Returns lease trade-out events for the deal's property (1,492 rows for Highlands).
+// Bridge: deal_monthly_actuals_lines.period_month ↔ deal_monthly_actuals.report_month
+router.get('/:dealId/tradeout-events', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const { dealId } = req.params;
+  try {
+    const result = await query(
+      `WITH prop_code AS (
+         SELECT DISTINCT dmal.property_code
+         FROM deal_monthly_actuals_lines dmal
+         WHERE dmal.period_month IN (
+           SELECT dma.report_month::date
+           FROM deal_monthly_actuals dma
+           WHERE dma.deal_id = $1
+         )
+         LIMIT 1
+       )
+       SELECT
+         lte.unit_type,
+         lte.event_type,
+         lte.prior_rent,
+         lte.new_rent,
+         lte.tradeout_pct   AS spread_pct,
+         lte.lease_start_date AS effective_date
+       FROM lease_tradeout_events lte
+       JOIN prop_code pc ON pc.property_code = lte.property_code
+       ORDER BY lte.lease_start_date DESC
+       LIMIT 200`,
+      [dealId],
+    );
+    res.json({ events: result.rows });
+  } catch (err) {
+    logger.error('tradeout-events error:', err);
+    res.status(500).json({ error: 'Failed to fetch tradeout events' });
+  }
+});
+
+// ── GET /:dealId/leasing-observations ────────────────────────────────────────
+// Returns weekly leasing funnel data (276 rows for Highlands, Jul 2021–Oct 2026).
+// Bridge: same deal_monthly_actuals_lines period_month lookup.
+router.get('/:dealId/leasing-observations', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const { dealId } = req.params;
+  const weeks = Math.min(parseInt((req.query.weeks as string) || '52', 10), 276);
+  try {
+    const result = await query(
+      `WITH prop_code AS (
+         SELECT DISTINCT dmal.property_code
+         FROM deal_monthly_actuals_lines dmal
+         WHERE dmal.period_month IN (
+           SELECT dma.report_month::date
+           FROM deal_monthly_actuals dma
+           WHERE dma.deal_id = $1
+         )
+         LIMIT 1
+       )
+       SELECT
+         lwo.week_ending        AS week,
+         lwo.traffic,
+         lwo.tours_inperson     AS tours,
+         lwo.apps               AS applications,
+         lwo.net_leases         AS leases,
+         (lwo.move_ins - lwo.move_outs) AS net_absorption
+       FROM leasing_weekly_observations lwo
+       JOIN prop_code pc ON pc.property_code = lwo.property_code
+       ORDER BY lwo.week_ending DESC
+       LIMIT $2`,
+      [dealId, weeks],
+    );
+    res.json({ observations: result.rows });
+  } catch (err) {
+    logger.error('leasing-observations error:', err);
+    res.status(500).json({ error: 'Failed to fetch leasing observations' });
+  }
+});
+
 export default router;

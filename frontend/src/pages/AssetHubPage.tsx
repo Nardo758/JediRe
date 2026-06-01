@@ -5,7 +5,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  LineChart, Line, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from 'recharts';
 import { useDealStore } from '../stores/dealStore';
@@ -566,11 +567,34 @@ function ListDrawer<T>({ rows, render }: { rows: T[]; render: (r: T) => React.Re
 }
 
 // ── RANK & COMPS DRAWER ───────────────────────────────────────────────────────
-function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps }: {
+function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps, propertyId }: {
   rankCfg: RankCfg; setRankCfg: (c: RankCfg) => void;
   comps: Comp[]; setComps: (c: Comp[]) => void;
+  propertyId: string | null;
 }) {
   const ranks = [1, 2, 3, 4];
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+
+  const handleSaveTarget = () => {
+    if (!propertyId) {
+      setSaveNote('SAVING LOCALLY — BACKEND PENDING');
+      return;
+    }
+    // TODO(backend: POST /api/v1/rankings/:propertyId/target)
+    apiClient.post(`/api/v1/rankings/${propertyId}/target`, {
+      overall: rankCfg.overall,
+      byType: rankCfg.byType,
+      perType: rankCfg.perType,
+    })
+      .then(() => { setSaveNote('SAVED ✓'); })
+      .catch((err: any) => {
+        if (err?.response?.status === 404) {
+          setSaveNote('SAVING LOCALLY — BACKEND PENDING (/api/v1/rankings/:propertyId/target)');
+        } else {
+          setSaveNote('SAVE FAILED');
+        }
+      });
+  };
   return (
     <div style={{ padding: 12 }}>
       <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, letterSpacing: 0.6, marginBottom: 6 }}>
@@ -655,6 +679,17 @@ function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps }: {
       <div style={{ marginTop: 14, fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, lineHeight: 1.6 }}>
         Platform proposes the like-kind set from class · vintage · size · submarket. Edit it here, set your target rank once, and the Repricing Course pursues it all year.
       </div>
+
+      <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button onClick={handleSaveTarget} style={{
+          fontFamily: T.font.mono, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+          padding: '7px 18px', borderRadius: 2,
+          border: `1px solid ${T.text.amber}`, background: T.text.amber + '18', color: T.text.amberBright,
+        }}>SAVE TARGET</button>
+        {saveNote && (
+          <span style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted }}>{saveNote}</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -673,6 +708,10 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
   const [expirations, setExpirations] = useState<any[]>([]);
   const [correlSignals, setCorrelSignals] = useState<any[]>([]);
   const [rentRollUnits, setRentRollUnits] = useState<any[]>([]);
+  // NEW-BACKEND stubs and new routes
+  const [tradeoutEvents, setTradeoutEvents] = useState<any[]>([]);
+  const [leasingObs, setLeasingObs] = useState<any[]>([]);
+  const [courseData, setCourseData] = useState<any>(null); // TODO(backend: repricing synthesizer)
 
   useEffect(() => {
     if (!dealId) return;
@@ -709,6 +748,32 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
     apiClient.get(`/api/v1/operations/${dealId}/rent-roll`)
       .then(res => { setRentRollUnits(res.data?.units ?? []); })
       .catch(() => {});
+  }, [dealId, activeScreen]);
+
+  // ── New routes wired in Phase C ──────────────────────────────
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/operations/${dealId}/tradeout-events`)
+      .then(res => { setTradeoutEvents(res.data?.events ?? []); })
+      .catch(() => {});
+  }, [dealId, activeScreen]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/operations/${dealId}/leasing-observations?weeks=52`)
+      .then(res => {
+        const obs = (res.data?.observations ?? []).slice().reverse(); // oldest→newest
+        setLeasingObs(obs);
+      })
+      .catch(() => {});
+  }, [dealId, activeScreen]);
+
+  // TODO(backend: repricing synthesizer) — GET /api/v1/revenue/:dealId/course
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/revenue/${dealId}/course`)
+      .then(res => { setCourseData(res.data ?? null); })
+      .catch(() => { setCourseData(null); }); // 404 until synthesizer is built
   }, [dealId, activeScreen]);
 
   // ── LTL tile value from latest rent roll snapshot ─────────────
@@ -783,6 +848,19 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
     ];
   }, [liveMetrics]);
 
+  // ── Trade-out spread lookup by month (YYYY-MM) ───────────────
+  const tradeoutByMonth = useMemo(() => {
+    const map: Record<string, number[]> = {};
+    tradeoutEvents.forEach((e: any) => {
+      if (!e.effective_date) return;
+      const key = String(e.effective_date).slice(0, 7);
+      if (!map[key]) map[key] = [];
+      const pct = parseFloat(e.spread_pct ?? '0');
+      map[key].push(pct);
+    });
+    return map;
+  }, [tradeoutEvents]);
+
   // ── Lease roll rows from live expirations ────────────────────
   const leaseRollRows = useMemo(() => {
     if (!expirations.length) return LEASE_ROLL;
@@ -790,9 +868,18 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
       const d = new Date(e.month + '-01');
       const monthLabel = d.toLocaleString('en-US', { month: 'short', year: '2-digit' })
         .replace(' ', "'");
-      // Trade-out spread: — placeholder (TODO(backend: tradeout-events))
-      const spread = '—';
-      const spreadTone = T.text.muted;
+      // Trade-out spread: wired from /api/v1/operations/:dealId/tradeout-events (Phase C)
+      const monthKey = e.month; // YYYY-MM
+      const troSpreads = tradeoutByMonth[monthKey];
+      let spread = '—';
+      let spreadTone = T.text.muted;
+      if (troSpreads && troSpreads.length) {
+        const avg = troSpreads.reduce((a: number, b: number) => a + b, 0) / troSpreads.length;
+        // tradeout_pct may be decimal (0.035) or pct (3.5) — normalise to pct
+        const pctVal = Math.abs(avg) <= 1 ? avg * 100 : avg;
+        spread = `${pctVal >= 0 ? '+' : ''}${pctVal.toFixed(1)}%`;
+        spreadTone = pctVal >= 0 ? T.text.green : T.text.red;
+      }
       let action = 'HOLD';
       if (e.recommendedAction?.toUpperCase().includes('AGGRESSIVE')) action = 'PUSH';
       else if (e.recommendedAction?.toUpperCase().includes('MODERATE')) action = 'PUSH';
@@ -918,19 +1005,29 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
         />
         <Panel style={{ width: 268, flexShrink: 0 }}>
           <PanelHeader title="ASSET OVERVIEW" sub="fundamentals" />
-          {/* JEDI SIGNAL: TODO(backend: repricing synthesizer) */}
-          <StatRail rows={liveOverview} signal={{ label: 'JEDI SIGNAL', note: '// TODO(backend: repricing synthesizer)', value: '—', tone: T.text.muted }} />
+          {/* JEDI SIGNAL: wired from courseData.signal when synthesizer is live */}
+          {/* TODO(backend: repricing synthesizer — GET /api/v1/revenue/:dealId/course) */}
+          <StatRail rows={liveOverview} signal={{
+            label: 'JEDI SIGNAL',
+            note: courseData?.signal ? '' : '// PENDING',
+            value: courseData?.signal ?? '—',
+            tone: courseData?.signal === 'PUSH' ? T.text.green : courseData?.signal === 'HOLD' ? T.text.amber : T.text.muted,
+          }} />
         </Panel>
       </div>
 
-      {/* REPRICING COURSE — TODO(backend: GET /api/v1/revenue/:dealId/course) */}
-      <Panel style={{ marginBottom: 10, borderColor: T.border.bright }}>
+      {/* REPRICING COURSE — stub; codes against GET /api/v1/revenue/:dealId/course */}
+      {/* TODO(backend: repricing synthesizer) */}
+      <Panel style={{ marginBottom: 10, borderColor: courseData ? T.border.bright : T.text.amber + '44' }}>
         <PanelHeader
           title="REPRICING COURSE"
           sub={`path to #${rankCfg.overall}${rankCfg.byType ? ' · by unit type' : ''} · fuel × schedule × throttle`}
           right={
-            <span style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.secondary }}>
-              capturing <b style={{ color: T.text.green }}>{tm.captured}</b>/mo · net <b style={{ color: T.text.green }}>{tm.lift}</b> eff. rent ·{' '}
+            <span style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.secondary, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {courseData === null && (
+                <Badge c={T.text.amber}>ILLUSTRATIVE — BACKEND PENDING</Badge>
+              )}
+              capturing <b style={{ color: T.text.green }}>{courseData?.captured_per_mo ? `$${Math.round(courseData.captured_per_mo).toLocaleString()}` : tm.captured}</b>/mo · net <b style={{ color: T.text.green }}>{courseData?.net_lift_pct ? `+${(courseData.net_lift_pct * 100).toFixed(1)}%` : tm.lift}</b> eff. rent ·{' '}
               <span style={{ color: T.text.cyan, cursor: 'pointer' }} onClick={() => openDrawer('rankcomps')}>edit target</span>
             </span>
           }
@@ -1042,6 +1139,43 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
           </div>
         </Panel>
       </div>
+
+      {/* LEASING FUNNEL · WEEKLY — wired via GET /api/v1/operations/:dealId/leasing-observations */}
+      <Panel style={{ marginTop: 0 }}>
+        <PanelHeader
+          title="LEASING FUNNEL · WEEKLY"
+          sub="traffic · tours · net leases · last 52w"
+          right={
+            leasingObs.length > 0
+              ? <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted }}>{leasingObs.length}w of data</span>
+              : <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted }}>loading…</span>
+          }
+        />
+        {leasingObs.length > 0 ? (
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={leasingObs} barGap={1} barCategoryGap="18%"
+              margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid vertical={false} stroke={T.border.subtle} />
+              <XAxis dataKey="week"
+                tick={{ fontFamily: T.font.mono, fontSize: 8, fill: T.text.muted }}
+                tickFormatter={(v: string) => v ? String(v).slice(5, 10) : ''}
+                interval={Math.floor(leasingObs.length / 8)} />
+              <YAxis tick={{ fontFamily: T.font.mono, fontSize: 8, fill: T.text.muted }} width={26} />
+              <Tooltip
+                contentStyle={{ background: T.bg.panel, border: `1px solid ${T.border.medium}`, fontFamily: T.font.mono, fontSize: 10 }}
+                formatter={(v: number, name: string) => [v, name]}
+              />
+              <Bar dataKey="traffic" fill={T.text.orange} name="Traffic" />
+              <Bar dataKey="tours" fill={T.text.cyan} name="Tours" />
+              <Bar dataKey="leases" fill={T.text.green} name="Net Leases" />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: T.font.mono, fontSize: 10, color: T.text.muted }}>
+            fetching weekly observations…
+          </div>
+        )}
+      </Panel>
     </>
   );
 }
@@ -1054,6 +1188,8 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
   // ── Live data state ──────────────────────────────────────────
   const [pvaData, setPvaData] = useState<any[]>([]);
   const [varData, setVarData] = useState<any[]>([]);
+  // TODO(backend: M09 4-col endpoint) — GET /api/v1/operations/:dealId/live-tracking
+  const [liveTracking, setLiveTracking] = useState<any[] | null>(null);
 
   useEffect(() => {
     if (!dealId) return;
@@ -1074,6 +1210,14 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
     apiClient.get(`/api/v1/operations/${dealId}/variances`)
       .then(res => { setVarData(res.data?.variances ?? []); })
       .catch(() => {});
+  }, [dealId, activeScreen]);
+
+  // TODO(backend: M09 4-col endpoint) — always 404 until live-tracking route is built
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/operations/${dealId}/live-tracking`)
+      .then(res => { setLiveTracking(res.data?.rows ?? []); })
+      .catch(() => { setLiveTracking(null); });
   }, [dealId, activeScreen]);
 
   // ── Map PVA to chart data ─────────────────────────────────────
@@ -1108,7 +1252,8 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
     const lastPva = pvaData.length ? pvaData[pvaData.length - 1] : null;
     let occVsUw = '—';
     if (lastPva?.actOcc != null && lastPva?.projOcc != null) {
-      const diff = (lastPva.actOcc - lastPva.projOcc) * 100;
+      // actOcc/projOcc are already in % form (0-100) — do not multiply by 100
+      const diff = lastPva.actOcc - lastPva.projOcc;
       occVsUw = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}pp`;
     }
     return [
@@ -1185,12 +1330,15 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
             </Panel>
           </div>
 
-          {/* LIVE TRACKING — stub; real data requires new backend route */}
-          <Panel style={{ marginBottom: 10, borderColor: T.border.bright }}>
+          {/* LIVE TRACKING — stub; codes against GET /api/v1/operations/:dealId/live-tracking */}
+          {/* TODO(backend: M09 4-col composition endpoint) */}
+          <Panel style={{ marginBottom: 10, borderColor: liveTracking === null ? T.text.amber + '44' : T.border.bright }}>
             <PanelHeader
               title="LIVE TRACKING"
               sub="current → stabilized bridge (M09)"
-              right={<span style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted }}>// TODO(backend: /api/v1/operations/:dealId/live-tracking)</span>}
+              right={liveTracking === null
+                ? <Badge c={T.text.amber}>PENDING M09 ENDPOINT</Badge>
+                : null}
             />
             <Table
               head={['LINE ITEM', 'CURRENT', 'ACTUALS TTM', 'PRO FORMA', 'Δ TO PF']}
@@ -1263,10 +1411,33 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
 }
 
 // ── CAPITAL SCREEN ────────────────────────────────────────────────────────────
-function CapitalScreen() {
+function CapitalScreen({ dealId }: { dealId: string }) {
   const [sub, setSub] = useState('debt');
   const [tf, setTf] = useState(12);
   const data = DEBT_SERIES.slice(-tf);
+
+  // TODO(backend: GET /api/v1/capital/:dealId/capital-accounts) — per-member accounts
+  const [capitalAccounts, setCapitalAccounts] = useState<any>(null);
+  // TODO(backend: GET /api/v1/capital/:dealId/waterfall?type=operating|capital) — dual waterfall
+  const [waterfallOp, setWaterfallOp] = useState<any>(null);
+  const [waterfallCap, setWaterfallCap] = useState<any>(null);
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/capital/${dealId}/capital-accounts`)
+      .then(res => { setCapitalAccounts(res.data ?? null); })
+      .catch(() => { setCapitalAccounts(null); });
+  }, [dealId]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/capital/${dealId}/waterfall?type=operating`)
+      .then(res => { setWaterfallOp(res.data ?? null); })
+      .catch(() => { setWaterfallOp(null); });
+    apiClient.get(`/api/v1/capital/${dealId}/waterfall?type=capital`)
+      .then(res => { setWaterfallCap(res.data ?? null); })
+      .catch(() => { setWaterfallCap(null); });
+  }, [dealId]);
 
   return (
     <>
@@ -1346,10 +1517,14 @@ function CapitalScreen() {
       )}
 
       {sub === 'distributions' && (
-        // TODO(backend: GET /api/v1/capital/:dealId/capital-accounts)
+        // TODO(backend: GET /api/v1/capital/:dealId/capital-accounts) — per-member capital accounts
         <div style={{ display: 'flex', gap: 10 }}>
-          <Panel style={{ flex: 1, minWidth: 0 }}>
-            <PanelHeader title="CAPITAL ACCOUNTS" sub="per-member · MAG Highlands JV" />
+          <Panel style={{ flex: 1, minWidth: 0, borderColor: capitalAccounts === null ? T.text.amber + '44' : undefined }}>
+            <PanelHeader
+              title="CAPITAL ACCOUNTS"
+              sub="per-member · MAG Highlands JV"
+              right={capitalAccounts === null ? <Badge c={T.text.amber}>ILLUSTRATIVE — PENDING CAPITAL ACCOUNTS</Badge> : null}
+            />
             <Table
               head={['MEMBER', 'COMMITTED', 'CALLED', 'DISTRIBUTED', 'PREF ACCR.', 'TIER']}
               align={['l', 'r', 'r', 'r', 'r', 'c']}
@@ -1368,10 +1543,14 @@ function CapitalScreen() {
       )}
 
       {sub === 'waterfall' && (
-        // TODO(backend: GET /api/v1/capital/:dealId/waterfall?type=operating|capital)
+        // TODO(backend: GET /api/v1/capital/:dealId/waterfall?type=operating|capital) — dual waterfall
         <div style={{ display: 'flex', gap: 10 }}>
-          <Panel style={{ flex: 1, minWidth: 0 }}>
-            <PanelHeader title="OPERATING CASH WATERFALL" sub="recurring" />
+          <Panel style={{ flex: 1, minWidth: 0, borderColor: waterfallOp === null ? T.text.amber + '44' : undefined }}>
+            <PanelHeader
+              title="OPERATING CASH WATERFALL"
+              sub="recurring"
+              right={waterfallOp === null ? <Badge c={T.text.amber}>PENDING DUAL WATERFALL MODEL</Badge> : null}
+            />
             <Table
               head={['TIER', 'DETAIL', 'LP/GP']}
               align={['l', 'l', 'r']}
@@ -1382,8 +1561,12 @@ function CapitalScreen() {
               ])}
             />
           </Panel>
-          <Panel style={{ flex: 1, minWidth: 0 }}>
-            <PanelHeader title="CAPITAL EVENT WATERFALL" sub="sale / refi · 1.40x MOIC floor" />
+          <Panel style={{ flex: 1, minWidth: 0, borderColor: waterfallCap === null ? T.text.amber + '44' : undefined }}>
+            <PanelHeader
+              title="CAPITAL EVENT WATERFALL"
+              sub="sale / refi · 1.40x MOIC floor"
+              right={waterfallCap === null ? <Badge c={T.text.amber}>PENDING DUAL WATERFALL MODEL</Badge> : null}
+            />
             <Table
               head={['TIER', 'DETAIL', 'LP/GP']}
               align={['l', 'l', 'r']}
@@ -1484,7 +1667,7 @@ export default function AssetHubPage() {
         <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, letterSpacing: 0.6 }}>PORTFOLIO · OWNED ASSETS</span>
         <span style={{ marginLeft: 'auto', fontFamily: T.font.mono, fontSize: 9, color: T.text.green }}>● LIVE</span>
         <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.green, border: `1px solid ${T.text.green}44`, padding: '1px 6px', borderRadius: 2 }}>
-          PHASE B · live data
+          PHASE C · stubs wired
         </span>
       </div>
 
@@ -1594,7 +1777,7 @@ export default function AssetHubPage() {
               />
             )}
             {screen === 'performance' && <PerformanceScreen dealId={dealId} activeScreen={screen} />}
-            {screen === 'capital' && <CapitalScreen />}
+            {screen === 'capital' && <CapitalScreen dealId={dealId} />}
           </div>
         </div>
       </div>
@@ -1602,7 +1785,7 @@ export default function AssetHubPage() {
       {/* ── DRAWERS ── */}
       {drawer === 'rankcomps' && (
         <DrawerShell title="RANK & COMPS" sub="set-it-and-forget · annual" onClose={closeDrawer}>
-          <RankCompsConfig rankCfg={rankCfg} setRankCfg={setRankCfg} comps={comps} setComps={setComps} />
+          <RankCompsConfig rankCfg={rankCfg} setRankCfg={setRankCfg} comps={comps} setComps={setComps} propertyId={propertyId} />
         </DrawerShell>
       )}
 
