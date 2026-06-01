@@ -119,6 +119,23 @@ function computePCS(row: any): { score: number; components: RankedProperty['comp
   };
 }
 
+// ── Authorization helper ──────────────────────────────────────────────────────
+// Returns true when the given user has access to the given propertyId via either
+// a direct deal.property_id link or a deal_properties many-to-many row.
+async function userCanAccessProperty(propertyId: string, userId: string): Promise<boolean> {
+  const result = await query(
+    `SELECT 1 FROM deals
+     WHERE property_id = $1 AND user_id = $2 AND archived_at IS NULL
+     UNION ALL
+     SELECT 1 FROM deals d
+       JOIN deal_properties dp ON dp.deal_id = d.id
+     WHERE dp.property_id = $1 AND d.user_id = $2 AND d.archived_at IS NULL
+     LIMIT 1`,
+    [propertyId, userId],
+  );
+  return result.rows.length > 0;
+}
+
 // ── Per-property ranking (GET /property/:propertyId) ─────────────────────────
 // Returns the subject property's current PCS rank within its comparison set.
 // Looks the property up in `properties` (canonical), cross-references
@@ -128,6 +145,13 @@ function computePCS(row: any): { score: number; components: RankedProperty['comp
 router.get('/property/:propertyId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { propertyId } = req.params;
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+    // Authorization: verify the user owns or has deal access to this property
+    const hasAccess = await userCanAccessProperty(propertyId, userId);
+    if (!hasAccess) return res.status(403).json({ success: false, error: 'Access denied' });
+
     const pool = getPool();
 
     // 1. Resolve subject from the canonical `properties` table
@@ -245,6 +269,10 @@ router.get('/property/:propertyId/target', requireAuth, async (req: Authenticate
     const userId = req.user?.userId;
     if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
+    // Authorization: verify user has deal access to this property
+    const hasAccess = await userCanAccessProperty(propertyId, userId);
+    if (!hasAccess) return res.status(403).json({ success: false, error: 'Access denied' });
+
     const result = await query(
       `SELECT target_rank, target_pcs, notes, target_config, updated_at
        FROM asset_rank_targets
@@ -280,6 +308,10 @@ router.post('/:propertyId/target', requireAuth, async (req: AuthenticatedRequest
     const { propertyId } = req.params;
     const userId = req.user?.userId;
     if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+    // Authorization: verify user has deal access to this property
+    const hasAccess = await userCanAccessProperty(propertyId, userId);
+    if (!hasAccess) return res.status(403).json({ success: false, error: 'Access denied' });
 
     const { overall, byType, perType, notes } = req.body as {
       overall?: number; byType?: boolean; perType?: Record<string, number>; notes?: string;
