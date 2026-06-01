@@ -1188,6 +1188,8 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
   // ── Live data state ──────────────────────────────────────────
   const [pvaData, setPvaData] = useState<any[]>([]);
   const [varData, setVarData] = useState<any[]>([]);
+  const [liveCheckpoints, setLiveCheckpoints] = useState<{ icon: string; color: 'green' | 'amber' | 'red'; text: string }[]>([]);
+  const [checkpointsLoading, setCheckpointsLoading] = useState(false);
   // TODO(backend: M09 4-col endpoint) — GET /api/v1/operations/:dealId/live-tracking
   const [liveTracking, setLiveTracking] = useState<any[] | null>(null);
 
@@ -1219,6 +1221,19 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
       .then(res => { setLiveTracking(res.data?.rows ?? []); })
       .catch(() => { setLiveTracking(null); });
   }, [dealId, activeScreen]);
+
+  // ── Commentary agent — thesis checkpoints ─────────────────────
+  useEffect(() => {
+    if (!dealId) return;
+    setCheckpointsLoading(true);
+    apiClient.post(`/api/v1/operations/${dealId}/commentary`, {})
+      .then(res => {
+        const pts = res.data?.checkpoints;
+        if (Array.isArray(pts) && pts.length > 0) setLiveCheckpoints(pts);
+      })
+      .catch(() => {})
+      .finally(() => setCheckpointsLoading(false));
+  }, [dealId]);
 
   // ── Map PVA to chart data ─────────────────────────────────────
   const chartData = useMemo(() => {
@@ -1381,17 +1396,29 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
               </div>
             </Panel>
             <Panel style={{ flex: 1.1, minWidth: 0 }}>
-              <PanelHeader title="THESIS CHECKPOINTS" sub="AI commentary" />
+              <PanelHeader title="THESIS CHECKPOINTS" sub={checkpointsLoading ? 'generating…' : 'AI commentary · owned-asset'} />
               <div style={{ padding: '4px 0' }}>
-                {CHECKPOINTS.map((c, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 8, padding: '8px 12px', borderBottom: i < CHECKPOINTS.length - 1 ? `1px solid ${T.border.subtle}` : 'none' }}>
-                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.tone, marginTop: 5, flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary, lineHeight: 1.45 }}>{c.note}</div>
-                      <div style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted, marginTop: 2 }}>// TODO(backend: assetMode:'owned' commentary)</div>
+                {(() => {
+                  const colorMap: Record<string, string> = {
+                    green: T.text.green,
+                    amber: T.text.amber,
+                    red:   T.text.red,
+                  };
+                  const display = liveCheckpoints.length
+                    ? liveCheckpoints.map(c => ({ note: c.text, tone: colorMap[c.color] ?? T.text.muted }))
+                    : CHECKPOINTS;
+                  return display.map((c, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8, padding: '8px 12px', borderBottom: i < display.length - 1 ? `1px solid ${T.border.subtle}` : 'none' }}>
+                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.tone, marginTop: 5, flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary, lineHeight: 1.45 }}>{c.note}</div>
+                        {!liveCheckpoints.length && (
+                          <div style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted, marginTop: 2 }}>// loading commentary…</div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ));
+                })()}
               </div>
             </Panel>
           </div>

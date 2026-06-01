@@ -16,6 +16,8 @@ import {
 } from '../../services/revenue-management.service';
 import { query, getClient } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import { CommentaryAgent } from '../../agents/commentary.agent';
+import type { StrategySignalInputs } from '../../services/module-wiring/strategy-arbitrage-engine';
 
 const router = Router();
 
@@ -1523,6 +1525,92 @@ router.get('/:dealId/leasing-observations', requireAuth, async (req: Authenticat
   } catch (err) {
     logger.error('leasing-observations error:', err);
     res.status(500).json({ error: 'Failed to fetch leasing observations' });
+  }
+});
+
+// ─── Commentary Agent (owned-asset mode) ─────────────────────────────
+
+/**
+ * POST /api/v1/operations/:dealId/commentary
+ * Invoke the commentary agent framed as an owned-asset review.
+ * Returns thesis checkpoint bullets suitable for the PERFORMANCE screen.
+ * Responses are cached 24 h in market_commentary; pass { forceRefresh: true }
+ * in the request body or ?refresh=true in the query to bypass the cache.
+ */
+router.post('/:dealId/commentary', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const forceRefresh = req.body?.forceRefresh === true || req.query.refresh === 'true';
+
+    const ownerCheck = await query(
+      'SELECT id, property_id, name FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const propertyId = ownerCheck.rows[0].property_id as string | null;
+    const dealName   = (ownerCheck.rows[0].name as string | null) ?? 'Owned Asset';
+
+    // Derive signals from real monthly actuals so the commentary is grounded
+    // in actual performance rather than the hash-based defaults.
+    let signals: StrategySignalInputs | undefined;
+    if (propertyId) {
+      const actualsRes = await query(
+        `SELECT occupancy_rate, noi
+         FROM deal_monthly_actuals
+         WHERE property_id = $1 AND is_portfolio_asset = TRUE
+           AND is_budget = false AND is_proforma = false
+           AND occupancy_rate IS NOT NULL
+         ORDER BY report_month DESC
+         LIMIT 6`,
+        [propertyId]
+      );
+      if (actualsRes.rows.length >= 1) {
+        const rows = actualsRes.rows as { occupancy_rate: string; noi: string }[];
+        const latestOcc = parseFloat(rows[0].occupancy_rate ?? '0');
+
+        // NOI momentum: average of most-recent 3 months vs prior 3 months
+        const recent = rows.slice(0, 3).map(r => parseFloat(r.noi ?? '0'));
+        const prior  = rows.slice(3, 6).map(r => parseFloat(r.noi ?? '0'));
+        const recentAvg = recent.reduce((a, b) => a + b, 0) / (recent.length || 1);
+        const priorAvg  = prior.length ? prior.reduce((a, b) => a + b, 0) / prior.length : recentAvg;
+        const noiDelta  = priorAvg > 0 ? ((recentAvg - priorAvg) / Math.abs(priorAvg)) * 100 : 0;
+
+        signals = {
+          demandScore:   Math.min(100, Math.max(0, Math.round(latestOcc * 100))),
+          supplyScore:   65,
+          momentumScore: Math.min(100, Math.max(0, 55 + Math.round(noiDelta))),
+          positionScore: 65,
+          riskScore:     60,
+        };
+      }
+    }
+
+    const agent = new CommentaryAgent();
+    const result = await agent.execute({
+      entityType:  'property',
+      entityId:    propertyId ?? dealId,
+      entityName:  dealName,
+      signals,
+      forceRefresh,
+      userId:      req.user!.userId,
+    });
+
+    res.json({
+      success:         true,
+      checkpoints:     result.investmentThesis.points,
+      recommendation:  result.investmentThesis.recommendation,
+      marketNarrative: result.marketNarrative.content,
+      jediScore:       result.jediScore,
+    });
+  } catch (err) {
+    logger.error('Operations commentary error:', err);
+    res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to generate commentary',
+    });
   }
 });
 

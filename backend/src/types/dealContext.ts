@@ -210,6 +210,12 @@ export interface ResearchAgentContext {
   // Null = operator hasn't set a stance; backend resolves MARKET defaults when consuming.
   // Populated by ResearchAgent.execute() from deals.operator_stance after context assembly.
   operatorStance: OperatorStance | null;
+
+  // ── Asset Mode ──
+  // 'owned'    = Asset Hub — analysis framed around operational health, NOI trend, capex posture.
+  // 'pipeline' = Pipeline deal — analysis framed around acquisition thesis, market entry.
+  // Undefined  = legacy callers; agents treat as 'pipeline'.
+  assetMode?: 'owned' | 'pipeline';
 }
 
 // ── Sub-interfaces ──────────────────────────────────────────────
