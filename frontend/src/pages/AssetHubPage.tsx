@@ -889,7 +889,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
       const market  = e.avgMarketRent  != null ? `$${Math.round(e.avgMarketRent).toLocaleString()}`  : '—';
       return { month: monthLabel, type: 'Mix', units: expiringUnits, inPlace, market, spread, spreadTone, action };
     });
-  }, [expirations]);
+  }, [expirations, tradeoutByMonth]);
 
   // ── Correlation signals ───────────────────────────────────────
   const signalRows = useMemo(() => {
@@ -1500,7 +1500,12 @@ function CapitalScreen({ dealId }: { dealId: string }) {
               <StatRail rows={REFI_DATA} />
             </Panel>
             <Panel style={{ flex: 1, minWidth: 0 }}>
-              <PanelHeader title="HEDGE STATUS" />
+              {/* TODO(data: rate cap / hedge — wire from loan record once
+                  GET /api/v1/capital/:dealId/capital-accounts returns hedge fields) */}
+              <PanelHeader
+                title="HEDGE STATUS"
+                right={<Badge c={T.text.amber}>TODO(data: rate cap / hedge)</Badge>}
+              />
               <div style={{ padding: 12 }}>
                 <div style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.secondary, lineHeight: 1.7 }}>
                   Rate cap @ <b style={{ color: T.text.cyan }}>4.00%</b>, notional <b style={{ color: T.text.primary }}>$34.8M</b>.<br />
@@ -1508,7 +1513,9 @@ function CapitalScreen({ dealId }: { dealId: string }) {
                   Expires <b style={{ color: T.text.red }}>Sep '26</b> — 15mo before maturity.
                 </div>
                 <div style={{ marginTop: 10, padding: '8px 10px', border: `1px solid ${T.text.amber}44`, background: T.text.amber + '12', borderRadius: 2 }}>
-                  <span style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.amberBright }}>⚑ Action: price cap extension or term-out before Q2 '26.</span>
+                  <span style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.amber }}>
+                    ⚑ ILLUSTRATIVE — source from loan record when capital-accounts endpoint is live.
+                  </span>
                 </div>
               </div>
             </Panel>

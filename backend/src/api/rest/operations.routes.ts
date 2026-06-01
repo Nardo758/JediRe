@@ -1441,6 +1441,14 @@ router.post('/:dealId/unit-mix', requireAuth, async (req: AuthenticatedRequest, 
 router.get('/:dealId/tradeout-events', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const { dealId } = req.params;
   try {
+    // Verify deal ownership — return 404 for unknown/unauthorized deals
+    const ownerCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
     const result = await query(
       `WITH prop_code AS (
          SELECT DISTINCT dmal.property_code
@@ -1479,6 +1487,14 @@ router.get('/:dealId/leasing-observations', requireAuth, async (req: Authenticat
   const { dealId } = req.params;
   const weeks = Math.min(parseInt((req.query.weeks as string) || '52', 10), 276);
   try {
+    // Verify deal ownership — return 404 for unknown/unauthorized deals
+    const ownerCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
     const result = await query(
       `WITH prop_code AS (
          SELECT DISTINCT dmal.property_code
