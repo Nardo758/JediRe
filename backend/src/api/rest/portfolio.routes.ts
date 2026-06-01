@@ -1109,6 +1109,119 @@ router.get('/correlation-signals', requireAuth, async (req: AuthenticatedRequest
   }
 });
 
+/**
+ * GET /api/v1/portfolio/:dealId/traffic
+ * Weekly traffic actuals from traffic_funnel for the Leasing tab charts.
+ * Returns TrafficWeek[] sorted ascending.
+ */
+router.get('/:dealId/traffic', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+
+    const ownerCheck = await query(
+      `SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL LIMIT 1`,
+      [dealId, userId]
+    );
+    if (ownerCheck.rows.length === 0) return res.status(404).json({ error: 'Deal not found' });
+
+    const result = await query(
+      `SELECT
+         period_end                                     AS week_ending,
+         total_leads                                    AS traffic,
+         CASE WHEN total_leads > 0
+              THEN ROUND(leases_signed::numeric / total_leads * 100, 1)
+              ELSE NULL END                             AS closing_ratio,
+         NULL::numeric                                  AS occ_pct,
+         tours_completed,
+         applications,
+         denied,
+         leases_signed,
+         move_ins
+       FROM traffic_funnel
+       WHERE deal_id = $1
+       ORDER BY period_end ASC`,
+      [dealId]
+    );
+
+    res.json({ success: true, data: result.rows });
+  } catch (err: any) {
+    logger.error('[portfolio] traffic failed', { error: err?.message });
+    res.status(500).json({ error: err?.message ?? 'Failed to load traffic data' });
+  }
+});
+
+/**
+ * GET /api/v1/portfolio/:dealId/leasing
+ * Leasing analytics: monthly stats, quarterly retention, recent transactions.
+ */
+router.get('/:dealId/leasing', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const limit = Math.min(parseInt((req.query.limit as string) || '100', 10), 500);
+
+    const ownerCheck = await query(
+      `SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL LIMIT 1`,
+      [dealId, userId]
+    );
+    if (ownerCheck.rows.length === 0) return res.status(404).json({ error: 'Deal not found' });
+
+    const [monthly, quarterly, recent] = await Promise.all([
+      // Monthly stats: avg new rent, avg renewal rent, avg loss-to-lease %
+      query(
+        `SELECT
+           date_trunc('month', lease_start)             AS month,
+           ROUND(AVG(new_rent) FILTER (WHERE LOWER(TRIM(lease_type)) = 'new'), 2)       AS avg_new_rent,
+           ROUND(AVG(new_rent) FILTER (WHERE LOWER(TRIM(lease_type)) = 'renewal'), 2)   AS avg_renewal_rent,
+           ROUND(AVG(loss_to_lease_pct) * 100, 2)                                       AS avg_loss_to_lease_pct,
+           COUNT(*) FILTER (WHERE LOWER(TRIM(lease_type)) = 'new')                      AS new_leases,
+           COUNT(*) FILTER (WHERE LOWER(TRIM(lease_type)) = 'renewal')                  AS renewals
+         FROM deal_lease_transactions
+         WHERE deal_id = $1 AND lease_start IS NOT NULL
+         GROUP BY 1
+         ORDER BY 1 ASC`,
+        [dealId]
+      ),
+      // Quarterly retention rate: renewals / (renewals + new leases)
+      query(
+        `SELECT
+           to_char(date_trunc('quarter', lease_start), 'YYYY "Q"Q') AS quarter,
+           ROUND(
+             COUNT(*) FILTER (WHERE LOWER(TRIM(lease_type)) = 'renewal')::numeric
+             / NULLIF(COUNT(*), 0) * 100, 1
+           )                                                          AS retention_rate
+         FROM deal_lease_transactions
+         WHERE deal_id = $1 AND lease_start IS NOT NULL
+         GROUP BY date_trunc('quarter', lease_start)
+         ORDER BY date_trunc('quarter', lease_start) ASC`,
+        [dealId]
+      ),
+      // Recent transactions (most recent first)
+      query(
+        `SELECT
+           unit_number, unit_type, sqft, lease_type, lease_start,
+           new_rent, prior_rent, market_rent,
+           rent_change_dollar, loss_to_lease_pct, rent_psf
+         FROM deal_lease_transactions
+         WHERE deal_id = $1
+         ORDER BY lease_start DESC NULLS LAST
+         LIMIT $2`,
+        [dealId, limit]
+      ),
+    ]);
+
+    res.json({
+      monthlyStats: monthly.rows,
+      retentionByQuarter: quarterly.rows,
+      recentTransactions: recent.rows,
+    });
+  } catch (err: any) {
+    logger.error('[portfolio] leasing failed', { error: err?.message });
+    res.status(500).json({ error: err?.message ?? 'Failed to load leasing data' });
+  }
+});
+
 export default router;
 
 
