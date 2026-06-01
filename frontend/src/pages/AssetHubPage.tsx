@@ -9,6 +9,11 @@ import {
   ResponsiveContainer, ReferenceLine,
 } from 'recharts';
 import { useDealStore } from '../stores/dealStore';
+import { DocumentsSection } from '../components/deal/sections/DocumentsSection';
+import { TeamSection } from '../components/deal/sections/TeamSection';
+import { EventTimelineSection } from '../components/deal/sections/EventTimelineSection';
+import ActivityTab from './admin/sections/intel/ActivityTab';
+import type { Deal } from '../types/deal';
 
 // ── DESIGN TOKENS (verbatim from v5 prototype) ──────────────────────────────
 const T = {
@@ -869,7 +874,7 @@ function PerformanceScreen() {
   return (
     <>
       <div style={{ display: 'flex', gap: 2, marginBottom: 10 }}>
-        {[['tracking', 'TRACKING'], ['lifecycle', 'LIFECYCLE'], ['exit', 'EXIT TIMING']].map(([k, l]) => (
+        {[['tracking', 'TRACKING'], ['lifecycle', 'LIFECYCLE'], ['exit', 'EXIT']].map(([k, l]) => (
           <button key={k} onClick={() => setSub(k)} style={{
             fontFamily: T.font.mono, fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
             cursor: 'pointer', padding: '6px 13px', borderRadius: 2,
@@ -1152,19 +1157,22 @@ function CapitalScreen() {
 
 // ── SHELL ─────────────────────────────────────────────────────────────────────
 export default function AssetHubPage() {
-  const { dealId } = useParams<{ dealId: string }>();
+  const { dealId: urlDealId } = useParams<{ dealId: string }>();
+  const selectedAssetDealId = useDealStore(s => s.selectedAssetDealId);
   const setSelectedAsset = useDealStore(s => s.setSelectedAsset);
 
   // Sync URL param → dealStore (Phase B: also resolves propertyId via deal record)
   useEffect(() => {
-    if (dealId) {
-      setSelectedAsset(dealId, null);
+    if (urlDealId) {
+      setSelectedAsset(urlDealId, null);
     }
     return () => {
-      // Clear on unmount
       setSelectedAsset(null, null);
     };
-  }, [dealId, setSelectedAsset]);
+  }, [urlDealId, setSelectedAsset]);
+
+  // Prefer the store value (set by useEffect above); fall back to URL param
+  const dealId = selectedAssetDealId ?? urlDealId ?? '';
 
   const [screen, setScreen] = useState<'revenue' | 'performance' | 'capital'>('revenue');
   const [drawer, setDrawer] = useState<string | null>(null);
@@ -1321,67 +1329,25 @@ export default function AssetHubPage() {
 
       {drawer === 'files' && (
         <DrawerShell title="FILES" sub="documents hub" onClose={closeDrawer}>
-          <ListDrawer
-            rows={DOCS_DATA}
-            render={d => (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ flex: 1 }}>
-                  <div style={{ fontFamily: T.font.label, fontSize: 11, color: T.text.primary }}>{d.name}</div>
-                  <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, marginTop: 2 }}>{d.date}</div>
-                </span>
-                <Badge c={T.text.cyan}>{d.type}</Badge>
-              </div>
-            )}
-          />
+          <DocumentsSection dealId={dealId} />
         </DrawerShell>
       )}
 
       {drawer === 'team' && (
         <DrawerShell title="TEAM" sub="deal team & stakeholders" onClose={closeDrawer}>
-          <ListDrawer
-            rows={TEAM_DATA}
-            render={m => (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ flex: 1 }}>
-                  <div style={{ fontFamily: T.font.label, fontSize: 11, color: T.text.primary }}>{m.name}</div>
-                  <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, marginTop: 2 }}>{m.role}</div>
-                </span>
-                <Badge c={T.text.purple}>{m.tag}</Badge>
-              </div>
-            )}
-          />
+          <TeamSection deal={{ id: dealId, status: 'owned' } as unknown as Deal} />
         </DrawerShell>
       )}
 
       {drawer === 'events' && (
         <DrawerShell title="EVENTS" sub="event impact timeline (M35)" onClose={closeDrawer}>
-          <ListDrawer
-            rows={EVENTS_DATA}
-            render={e => (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.amber, width: 48 }}>{e.date}</span>
-                <span style={{ flex: 1, fontFamily: T.font.label, fontSize: 11, color: T.text.secondary }}>{e.ev}</span>
-                <Badge c={e.tone}>{e.impact}</Badge>
-              </div>
-            )}
-          />
+          <EventTimelineSection dealId={dealId} dealType="owned" />
         </DrawerShell>
       )}
 
       {drawer === 'activity' && (
         <DrawerShell title="ACTIVITY" sub="audit log" onClose={closeDrawer}>
-          <ListDrawer
-            rows={ACTIVITY_DATA}
-            render={a => (
-              <div style={{ display: 'flex', gap: 10 }}>
-                <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, width: 30 }}>{a.time}</span>
-                <span style={{ flex: 1 }}>
-                  <div style={{ fontFamily: T.font.label, fontSize: 11, color: T.text.secondary }}>{a.act}</div>
-                  <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, marginTop: 2 }}>{a.who}</div>
-                </span>
-              </div>
-            )}
-          />
+          <ActivityTab />
         </DrawerShell>
       )}
     </div>
