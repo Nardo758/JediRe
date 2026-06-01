@@ -1761,7 +1761,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   ] as const;
   
   return (
-    <div style={{ padding: 16, background: T.bg.terminal, minHeight: '100%' }}>
+    <div style={{ padding: 16, background: T.bg.terminal, flex: 1, overflow: 'auto', minHeight: 0 }}>
       {/* Header */}
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
