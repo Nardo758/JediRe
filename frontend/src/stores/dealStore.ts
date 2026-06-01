@@ -87,6 +87,11 @@ export type Y1Source = 'BROKER' | 'T12' | 'T6' | 'T3' | 'T1' | 'PLATFORM';
 export type PlatformColSource = 'PLATFORM' | 'T12' | 'T6' | 'T3' | 'T1';
 
 interface DealStoreActions {
+  // ─── ASSET HUB — selected-asset context ──────────────────
+  selectedAssetDealId: string | null;
+  selectedAssetPropertyId: string | null;
+  setSelectedAsset: (dealId: string | null, propertyId: string | null) => void;
+
   // ─── DEAL LIST (Dashboard) ────────────────────────────────
   deals: any[];
   isLoading: boolean;
@@ -565,6 +570,11 @@ export const useDealStore = create<DealStore>()(
   subscribeWithSelector((set, get) => ({
     // Spread initial state
     ...INITIAL_CONTEXT,
+
+    // ─── ASSET HUB — selected-asset context ──────────────────
+    selectedAssetDealId: null,
+    selectedAssetPropertyId: null,
+    setSelectedAsset: (dealId, propertyId) => set({ selectedAssetDealId: dealId, selectedAssetPropertyId: propertyId }),
 
     // ─── DEAL LIST (Dashboard) ────────────────────────────────
     deals: [],

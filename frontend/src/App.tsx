@@ -37,6 +37,7 @@ import { LeasingForecastPage } from './pages/LeasingForecastPage';
 import DealFlywheelDashboard from './pages/deal/DealFlywheelDashboard';
 import PortfolioPropertyPage from './pages/PortfolioPropertyPage';
 import AssetOwnedPage from './pages/AssetOwnedPage';
+import AssetHubPage from './pages/AssetHubPage';
 import { M28WidgetsDemo } from './pages/demo/M28WidgetsDemo';
 import PropertyDetailsPage from './pages/PropertyDetailsPage';
 import { BloombergMarketDetail } from './pages/MarketIntelligence';
@@ -331,10 +332,13 @@ function AppContent() {
         <Route path="/admin/m35-connectors" element={<M35ConnectorAdminPage />} />
         <Route path="/admin/*" element={<AdminToolsPage />} />
 
-        {/* ═══ Asset property pages — inside MainLayout for header/nav chrome ═══ */}
+        {/* ═══ Asset Hub console — full-bleed Bloomberg dark, no MainLayout chrome ═══ */}
+        <Route path="/assets-owned/:dealId/property" element={<AssetHubPage />} />
+
+        {/* ═══ Legacy asset pages — kept for rollback ═══ */}
         <Route element={<MainLayout />}>
-          <Route path="/assets-owned/:dealId/property" element={<AssetOwnedPage />} />
           <Route path="/assets-owned/:dealId/property-legacy" element={<PortfolioPropertyPage />} />
+          <Route path="/assets-owned/:dealId/property-old" element={<AssetOwnedPage />} />
         </Route>
 
         {/* ═══ Dev/demo pages — keep in MainLayout ═══ */}
