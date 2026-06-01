@@ -867,8 +867,10 @@ router.get('/:dealId/live-tracking', requireAuth, async (req: AuthenticatedReque
     const current = actuals[0] ?? null; // most recent actual month
 
     // ── GL line-item breakdown from deal_monthly_actuals_lines ───────────────
-    // Joined on period_month ∈ actual report months so we pull only this property's lines.
-    // Covers: current month (most recent) and TTM (all fetched months).
+    // Uses the canonical prop_code CTE (same as /tradeout-events, /leasing-observations)
+    // to derive the property_code from deal_monthly_actuals, then scopes lines by that
+    // property_code — preventing cross-deal contamination when multiple properties share
+    // the same period months.
     const GL_LABELS = [
       'Payroll', 'Maintenance & Repairs', 'Utilities', 'Management Fees',
       'Insurance', 'Property Taxes', 'Marketing', 'Admin/Office',
@@ -878,15 +880,30 @@ router.get('/:dealId/live-tracking', requireAuth, async (req: AuthenticatedReque
     let glTtm: Record<string, number> = {};
 
     if (actuals.length > 0) {
-      const actualMonths = actuals.map(r => r.report_month);
-      const placeholders = actualMonths.map((_: unknown, i: number) => `$${i + 1}`).join(',');
+      const actualMonths = actuals.map((r: Record<string, unknown>) => r.report_month);
+      const dmaFilter = propId
+        ? `dma.property_id = $2 AND dma.is_portfolio_asset = TRUE`
+        : `dma.deal_id = $2`;
+      const dmaParam = propId ?? dealId;
+
       const glRes = await query(
-        `SELECT account_label, period_month, SUM(amount::numeric) AS total
-         FROM deal_monthly_actuals_lines
-         WHERE period_month IN (${placeholders})
-           AND account_label = ANY($${actualMonths.length + 1}::text[])
-         GROUP BY account_label, period_month`,
-        [...actualMonths, GL_LABELS],
+        `WITH prop_code AS (
+           SELECT DISTINCT dmal.property_code
+           FROM deal_monthly_actuals_lines dmal
+           WHERE dmal.period_month IN (
+             SELECT dma.report_month::date
+             FROM deal_monthly_actuals dma
+             WHERE ${dmaFilter}
+           )
+           LIMIT 1
+         )
+         SELECT dmal.account_label, dmal.period_month, SUM(dmal.amount::numeric) AS total
+         FROM deal_monthly_actuals_lines dmal
+         JOIN prop_code pc ON dmal.property_code = pc.property_code
+         WHERE dmal.period_month = ANY($3::date[])
+           AND dmal.account_label = ANY($1::text[])
+         GROUP BY dmal.account_label, dmal.period_month`,
+        [GL_LABELS, dmaParam, actualMonths],
       );
 
       // Partition into current-month vs all-TTM-months
@@ -897,7 +914,7 @@ router.get('/:dealId/live-tracking', requireAuth, async (req: AuthenticatedReque
         glTtm[label] = (glTtm[label] ?? 0) + amount;
         if (
           row.period_month instanceof Date
-            ? row.period_month.getTime() === new Date(mostRecentMonth).getTime()
+            ? row.period_month.getTime() === new Date(mostRecentMonth as string | Date).getTime()
             : String(row.period_month).slice(0, 7) === String(mostRecentMonth).slice(0, 7)
         ) {
           glCurrent[label] = (glCurrent[label] ?? 0) + amount;
