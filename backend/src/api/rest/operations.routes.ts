@@ -888,13 +888,18 @@ router.get('/:dealId/live-tracking', requireAuth, async (req: AuthenticatedReque
 
       const glRes = await query(
         `WITH prop_code AS (
-           SELECT DISTINCT dmal.property_code
+           -- Pick the property_code with the most rows matching this deal's actual months.
+           -- Ordering by match-count DESC + property_code ASC makes the result deterministic
+           -- even if multiple properties share some of the same period_months.
+           SELECT dmal.property_code
            FROM deal_monthly_actuals_lines dmal
            WHERE dmal.period_month IN (
              SELECT dma.report_month::date
              FROM deal_monthly_actuals dma
              WHERE ${dmaFilter}
            )
+           GROUP BY dmal.property_code
+           ORDER BY COUNT(*) DESC, dmal.property_code ASC
            LIMIT 1
          )
          SELECT dmal.account_label, dmal.period_month, SUM(dmal.amount::numeric) AS total

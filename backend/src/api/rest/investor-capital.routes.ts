@@ -578,7 +578,7 @@ router.get('/:dealId/capital-accounts', requireAuth, async (req: AuthenticatedRe
        -- called capital: sum of paid amounts across all capital calls for this deal
        LEFT JOIN (
          SELECT cci.investor_id,
-                SUM(COALESCE(cci.paid_amount, cci.amount_paid, 0)::numeric) AS called
+                SUM(COALESCE(cci.paid_amount, 0)::numeric) AS called
            FROM capital_call_items cci
            JOIN capital_calls cc ON cc.id = cci.capital_call_id
           WHERE cc.deal_id = $1
