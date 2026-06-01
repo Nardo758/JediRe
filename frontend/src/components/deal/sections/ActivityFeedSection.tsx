@@ -135,6 +135,10 @@ const ACTIVITY_TYPES = [
 
 const AGENT_LABELS: Record<string, string> = {
   research: 'Research Agent',
+  cashflow: 'CashFlow Agent',
+  supply: 'Supply Agent',
+  zoning: 'Zoning Agent',
+  commentary: 'Commentary Agent',
   underwriting: 'Underwriting Agent',
   risk: 'Risk Agent',
 };
@@ -199,6 +203,14 @@ function RunDetailView({ runId }: { runId: string }) {
   if (error) return <div className="py-2 text-xs text-red-500">{error}</div>;
   if (!detail) return null;
 
+  const ic = detail.output?.invariant_check as {
+    status: 'PASSED' | 'FAILED' | 'SKIPPED';
+    pre_stab_noi: number | null;
+    stab_noi: number | null;
+    delta_pct: number | null;
+    reason: string;
+  } | undefined | null;
+
   return (
     <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-200 text-xs space-y-1">
       <div className="flex gap-2 text-gray-600">
@@ -215,6 +227,45 @@ function RunDetailView({ runId }: { runId: string }) {
               {f}
             </span>
           ))}
+        </div>
+      )}
+      {ic && ic.status !== 'SKIPPED' && (
+        <div className="mt-1 pt-1 border-t border-gray-200">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-gray-600">Invariant check:</span>
+            <span className={
+              ic.status === 'PASSED'
+                ? 'px-1.5 py-0.5 rounded font-mono font-semibold bg-green-100 text-green-700'
+                : 'px-1.5 py-0.5 rounded font-mono font-semibold bg-orange-100 text-orange-700'
+            }>
+              {ic.status === 'PASSED' ? '✓ PASSED' : '⚠ FAILED'}
+            </span>
+            {ic.delta_pct != null && (
+              <span className="text-gray-500">
+                gap <span className={ic.status === 'FAILED' ? 'font-semibold text-orange-600' : 'text-gray-700'}>
+                  {(ic.delta_pct * 100).toFixed(1)}%
+                </span>
+              </span>
+            )}
+          </div>
+          <div className="flex gap-4 mt-1 text-gray-500 flex-wrap">
+            {ic.pre_stab_noi != null && (
+              <span>Pre-stab NOI: <span className="text-gray-700 font-mono">${Math.round(ic.pre_stab_noi).toLocaleString()}</span></span>
+            )}
+            {ic.stab_noi != null && (
+              <span>At-stab NOI: <span className="text-gray-700 font-mono">${Math.round(ic.stab_noi).toLocaleString()}</span></span>
+            )}
+          </div>
+          {ic.reason && (
+            <div className="mt-1 text-gray-500 italic leading-snug">{ic.reason}</div>
+          )}
+        </div>
+      )}
+      {ic && ic.status === 'SKIPPED' && (
+        <div className="mt-1 pt-1 border-t border-gray-200 flex items-center gap-2">
+          <span className="font-medium text-gray-600">Invariant check:</span>
+          <span className="px-1.5 py-0.5 rounded font-mono font-semibold bg-gray-100 text-gray-500">SKIPPED</span>
+          {ic.reason && <span className="text-gray-400 italic">{ic.reason}</span>}
         </div>
       )}
     </div>
