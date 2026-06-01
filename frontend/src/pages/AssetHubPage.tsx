@@ -574,29 +574,76 @@ function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps, propertyId }: {
 }) {
   const ranks = [1, 2, 3, 4];
   const [saveNote, setSaveNote] = useState<string | null>(null);
+  const [liveRank, setLiveRank] = useState<{
+    current_rank: number | null; current_pcs: number | null; set_size: number | null;
+  } | null>(null);
+  const [rankLoading, setRankLoading] = useState(false);
+
+  // Fetch live rank + restore saved target when propertyId is available
+  useEffect(() => {
+    if (!propertyId) return;
+    setRankLoading(true);
+    // Parallel: live rank computation + saved target restore
+    Promise.all([
+      apiClient.get(`/api/v1/rankings/property/${propertyId}`)
+        .then(res => {
+          const d = res.data?.data;
+          if (d) setLiveRank({ current_rank: d.current_rank, current_pcs: d.current_pcs, set_size: d.set_size });
+        })
+        .catch(() => {}),
+      apiClient.get(`/api/v1/rankings/property/${propertyId}/target`)
+        .then(res => {
+          const t = res.data?.target;
+          if (t?.targetConfig && typeof t.targetConfig.overall === 'number') {
+            setRankCfg({
+              overall: t.targetConfig.overall,
+              byType: t.targetConfig.byType ?? false,
+              perType: t.targetConfig.perType ?? { '1BR': 3, '2BR': 2, '3BR': 3, 'STU': 4 },
+            });
+          }
+        })
+        .catch(() => {}),
+    ]).finally(() => setRankLoading(false));
+  }, [propertyId]);
 
   const handleSaveTarget = () => {
     if (!propertyId) {
-      setSaveNote('SAVING LOCALLY — BACKEND PENDING');
+      setSaveNote('No property selected');
       return;
     }
-    // TODO(backend: POST /api/v1/rankings/:propertyId/target)
     apiClient.post(`/api/v1/rankings/${propertyId}/target`, {
       overall: rankCfg.overall,
       byType: rankCfg.byType,
       perType: rankCfg.perType,
     })
-      .then(() => { setSaveNote('SAVED ✓'); })
-      .catch((err: any) => {
-        if (err?.response?.status === 404) {
-          setSaveNote('SAVING LOCALLY — BACKEND PENDING (/api/v1/rankings/:propertyId/target)');
-        } else {
-          setSaveNote('SAVE FAILED');
-        }
-      });
+      .then(() => { setSaveNote('SAVED ✓'); setTimeout(() => setSaveNote(null), 3000); })
+      .catch(() => { setSaveNote('SAVE FAILED'); });
   };
   return (
     <div style={{ padding: 12 }}>
+      {/* ── CURRENT STANDING ── */}
+      <div style={{
+        display: 'flex', gap: 6, marginBottom: 14,
+        padding: '8px 10px', borderRadius: 3,
+        background: T.bg.input, border: `1px solid ${T.border.subtle}`,
+      }}>
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ fontFamily: T.font.mono, fontSize: 18, fontWeight: 800, color: T.text.primary }}>
+            {rankLoading ? '…' : liveRank?.current_rank != null ? `#${liveRank.current_rank}` : '—'}
+          </div>
+          <div style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted, marginTop: 2 }}>
+            CURRENT RANK{liveRank?.set_size != null ? ` / ${liveRank.set_size}` : ''}
+          </div>
+        </div>
+        <div style={{ width: 1, background: T.border.subtle }} />
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ fontFamily: T.font.mono, fontSize: 18, fontWeight: 800, color: T.text.cyan }}>
+            {rankLoading ? '…' : liveRank?.current_pcs != null ? liveRank.current_pcs : '—'}
+          </div>
+          <div style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted, marginTop: 2 }}>PCS SCORE</div>
+        </div>
+      </div>
+
       <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, letterSpacing: 0.6, marginBottom: 6 }}>
         OVERALL RANK TARGET · set annually
       </div>
@@ -662,7 +709,7 @@ function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps, propertyId }: {
         borderBottom: `1px solid ${T.border.subtle}`, background: T.text.amber + '10',
       }}>
         <span style={{ fontFamily: T.font.label, fontSize: 11, fontWeight: 700, color: T.text.amberBright, flex: 1 }}>▸ {ASSET.name}</span>
-        <Badge c={T.text.amber}>subject · #{RANK.current}</Badge>
+        <Badge c={T.text.amber}>subject · #{liveRank?.current_rank ?? RANK.current}</Badge>
         <span style={{ width: 14 }} />
       </div>
 

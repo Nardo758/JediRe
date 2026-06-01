@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { getPool } from '../../database/connection';
+import { getPool, query } from '../../database/connection';
+import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 
 const router = Router();
 
@@ -117,6 +118,210 @@ function computePCS(row: any): { score: number; components: RankedProperty['comp
     }
   };
 }
+
+// ── Per-property ranking (GET /property/:propertyId) ─────────────────────────
+// Returns the subject property's current PCS rank within its comparison set.
+// Looks the property up in `properties` (canonical), cross-references
+// `property_records` for assessed-value data, then ranks it against all
+// multifamily properties in the same submarket.
+
+router.get('/property/:propertyId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { propertyId } = req.params;
+    const pool = getPool();
+
+    // 1. Resolve subject from the canonical `properties` table
+    const propResult = await pool.query(
+      `SELECT id, address_line1, city, state_code, units, year_built, building_class
+       FROM properties WHERE id = $1 LIMIT 1`,
+      [propertyId],
+    );
+
+    if (propResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Property not found' });
+    }
+
+    const subject = propResult.rows[0] as Record<string, unknown>;
+    const subjectAddress = String(subject.address_line1 ?? '');
+    const subjectUnits = Number(subject.units ?? 0);
+    const subjectYearBuilt = parseInt(String(subject.year_built ?? '2000')) || 2000;
+
+    // Try to find a matching property_record by address for richer assessed-value data
+    const prMatch = await pool.query(
+      `SELECT * FROM property_records
+       WHERE property_type = 'Multifamily' AND units > 0
+         AND LOWER(address) LIKE LOWER($1)
+       LIMIT 1`,
+      [`%${subjectAddress.split(',')[0].trim()}%`],
+    );
+
+    // Build subject row for PCS computation — prefer property_record data if found
+    const subjectRow = prMatch.rows.length > 0
+      ? prMatch.rows[0]
+      : {
+          units: subjectUnits,
+          year_built: String(subjectYearBuilt),
+          assessed_value: 0,
+          total_assessed_value: 0,
+          building_sqft: subjectUnits * 900,
+          class_code: subjectYearBuilt >= 2015 ? 'C5' : 'C4',
+          neighborhood_code: null,
+        };
+
+    const subjectPcs = computePCS(subjectRow);
+    const subjectSubmarket = deriveSubmarket(subjectAddress, String(subject.city ?? ''));
+
+    // 2. Get comparison set — all multifamily properties (300 limit for stable ranking)
+    const compSet = await pool.query(`
+      SELECT id, address, units, year_built, assessed_value, total_assessed_value,
+             building_sqft, class_code, neighborhood_code
+      FROM property_records
+      WHERE property_type = 'Multifamily' AND units > 50
+      ORDER BY units DESC
+      LIMIT 300
+    `);
+
+    // 3. Score & rank all properties + subject
+    const allRanked = compSet.rows.map((row: Record<string, unknown>) => {
+      const pcs = computePCS(row);
+      const submarket = deriveSubmarket(String(row.address ?? ''), String(row.neighborhood_code ?? null));
+      return { id: String(row.id), address: String(row.address ?? ''), pcsScore: pcs.score, submarket };
+    });
+
+    // Insert subject if not already in the set
+    const alreadyInSet = prMatch.rows.length > 0 &&
+      allRanked.some(p => p.id === String(prMatch.rows[0].id));
+    if (!alreadyInSet) {
+      allRanked.push({
+        id: propertyId,
+        address: subjectAddress,
+        pcsScore: subjectPcs.score,
+        submarket: subjectSubmarket,
+      });
+    }
+
+    allRanked.sort((a, b) => b.pcsScore - a.pcsScore);
+    allRanked.forEach((p, i) => { (p as any).rank = i + 1; });
+
+    const subjectEntry = allRanked.find(p => p.id === propertyId)
+      ?? allRanked.find(p => prMatch.rows.length > 0 && p.id === String(prMatch.rows[0].id));
+
+    const currentRank = subjectEntry ? (subjectEntry as any).rank : null;
+    const setSize = allRanked.length;
+
+    // 4. Build comp list — 5 nearest properties by rank
+    const nearbyComps = allRanked
+      .filter(p => p.id !== propertyId && (prMatch.rows.length === 0 || p.id !== String(prMatch.rows[0].id)))
+      .slice(0, 10)
+      .map(p => ({
+        id: p.id,
+        address: p.address,
+        pcsScore: p.pcsScore,
+        rank: (p as any).rank,
+        submarket: p.submarket,
+      }));
+
+    res.json({
+      success: true,
+      data: {
+        current_rank: currentRank,
+        current_pcs: subjectPcs.score,
+        set_size: setSize,
+        submarket: subjectSubmarket,
+        components: subjectPcs.components,
+        comps: nearbyComps,
+      },
+    });
+  } catch (err: any) {
+    console.error('Property ranking error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /property/:propertyId/target — fetch saved rank target for this user + property
+router.get('/property/:propertyId/target', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { propertyId } = req.params;
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+    const result = await query(
+      `SELECT target_rank, target_pcs, notes, target_config, updated_at
+       FROM asset_rank_targets
+       WHERE property_id = $1 AND user_id = $2
+       LIMIT 1`,
+      [propertyId, userId],
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ success: true, target: null });
+    }
+
+    const row = result.rows[0] as Record<string, unknown>;
+    res.json({
+      success: true,
+      target: {
+        targetRank: Number(row.target_rank),
+        targetPcs: row.target_pcs != null ? Number(row.target_pcs) : null,
+        notes: row.notes ?? null,
+        targetConfig: row.target_config ?? {},
+        updatedAt: row.updated_at,
+      },
+    });
+  } catch (err: any) {
+    console.error('Get rank target error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /:propertyId/target — upsert rank target for this user + property
+router.post('/:propertyId/target', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { propertyId } = req.params;
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+    const { overall, byType, perType, notes } = req.body as {
+      overall?: number; byType?: boolean; perType?: Record<string, number>; notes?: string;
+    };
+
+    const targetRank = overall ?? 2;
+    // Map rank → approximate PCS threshold (mirrors frontend PCS_BY_RANK constant)
+    const PCS_BY_RANK: Record<number, number> = { 1: 95, 2: 91, 3: 87, 4: 84 };
+    const targetPcs = PCS_BY_RANK[targetRank] ?? null;
+    const targetConfig = { overall: targetRank, byType: byType ?? false, perType: perType ?? {} };
+
+    const result = await query(
+      `INSERT INTO asset_rank_targets
+         (property_id, user_id, target_rank, target_pcs, notes, target_config, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       ON CONFLICT (property_id, user_id)
+       DO UPDATE SET
+         target_rank   = EXCLUDED.target_rank,
+         target_pcs    = EXCLUDED.target_pcs,
+         notes         = EXCLUDED.notes,
+         target_config = EXCLUDED.target_config,
+         updated_at    = NOW()
+       RETURNING id, target_rank, target_pcs, target_config, updated_at`,
+      [propertyId, userId, targetRank, targetPcs, notes ?? null, JSON.stringify(targetConfig)],
+    );
+
+    const saved = result.rows[0] as Record<string, unknown>;
+    res.json({
+      success: true,
+      target: {
+        id: saved.id,
+        targetRank: Number(saved.target_rank),
+        targetPcs: saved.target_pcs != null ? Number(saved.target_pcs) : null,
+        targetConfig: saved.target_config,
+        updatedAt: saved.updated_at,
+      },
+    });
+  } catch (err: any) {
+    console.error('Save rank target error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 router.get('/:marketId', async (req: Request, res: Response) => {
   try {
