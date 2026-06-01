@@ -2,16 +2,18 @@
 // JEDI RE — Asset Hub Console  (Phase A: shell, IA & drawers — synthetic data)
 // Replaces AssetOwnedPage.tsx as the primary owned-asset view.
 // ============================================================================
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from 'recharts';
 import { useDealStore } from '../stores/dealStore';
+import { apiClient } from '../services/api.client';
 import { DocumentsSection } from '../components/deal/sections/DocumentsSection';
 import { TeamSection } from '../components/deal/sections/TeamSection';
 import { EventTimelineSection } from '../components/deal/sections/EventTimelineSection';
+import { LifecycleSection } from '../components/deal/sections/LifecycleSection';
 import ActivityTab from './admin/sections/intel/ActivityTab';
 import type { Deal } from '../types/deal';
 
@@ -146,6 +148,8 @@ const SUBJECT_ROW = {
   rent: '$1,712', occ: '94.2%', concess: '1.5%', vs: '—',
   src: 'subject', pcs: RANK.currentPCS, rank: RANK.current, subject: true, color: '',
 };
+
+const COMP_COLORS = ['#A78BFA', '#00BCD4', '#FF8C42', '#FF4757', '#00D26A', '#F5A623'];
 
 // ── PERFORMANCE DATA ─────────────────────────────────────────────────────────
 const PERF_SERIES = (() => {
@@ -655,17 +659,168 @@ function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps }: {
 }
 
 // ── REVENUE SCREEN ────────────────────────────────────────────────────────────
-function RevenueScreen({ rankCfg, comps, openDrawer }: {
+function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId }: {
   rankCfg: RankCfg; comps: Comp[]; openDrawer: (d: string) => void;
+  dealId: string; propertyId: string | null;
 }) {
   const [tf, setTf] = useState(12);
   const [mk, setMk] = useState('occ');
   const [cmpSel, setCmpSel] = useState<string[]>([]);
 
+  // ── Live data state ──────────────────────────────────────────
+  const [actualsData, setActualsData] = useState<any[]>([]);
+  const [expirations, setExpirations] = useState<any[]>([]);
+  const [correlSignals, setCorrelSignals] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/operations/${dealId}/monthly-actuals?limit=53`)
+      .then(res => {
+        const rows = (res.data?.data ?? []).slice().reverse(); // convert DESC→ASC
+        setActualsData(rows);
+      })
+      .catch(() => {});
+  }, [dealId]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/operations/${dealId}/lease-expirations?months=24`)
+      .then(res => {
+        setExpirations(res.data?.expirations ?? []);
+      })
+      .catch(() => {});
+  }, [dealId]);
+
+  useEffect(() => {
+    if (!propertyId) return;
+    apiClient.get(`/api/v1/correlations/property/${propertyId}`)
+      .then(res => {
+        setCorrelSignals(res.data?.data?.correlations ?? []);
+      })
+      .catch(() => {});
+  }, [propertyId]);
+
+  // ── Derived series ────────────────────────────────────────────
+  const liveSeries = useMemo(() => {
+    if (!actualsData.length) return null;
+    return actualsData.map(row => {
+      const occ = parseFloat(row.occupancy_rate ?? '0') * 100;
+      const rent = parseFloat(row.avg_effective_rent ?? '0');
+      const noi = parseFloat(row.noi ?? '0');
+      const d = new Date(row.report_month);
+      const mon = d.toLocaleString('en-US', { month: 'short' });
+      const yr  = String(d.getFullYear()).slice(2);
+      return {
+        m: `${mon.slice(0,3)}'${yr}`,
+        occ: Math.round(occ * 10) / 10,
+        rent: Math.round(rent),
+        noi: Math.round(noi),
+        revpau: Math.round(rent * (occ / 100) * 0.985),
+        // TODO(data: LTL/concession monthly series from rent_roll_snapshots.derived_metrics)
+        ltl: null as number | null,
+        conc: null as number | null,
+        tro: null as number | null,
+      };
+    });
+  }, [actualsData]);
+
+  const series = liveSeries ?? SERIES;
+  const latestActual = actualsData.length ? actualsData[actualsData.length - 1] : null;
+
+  // ── Live metric tiles ─────────────────────────────────────────
+  const liveMetrics = useMemo(() => {
+    if (!latestActual) return null;
+    const occ  = parseFloat(latestActual.occupancy_rate ?? '0') * 100;
+    const rent = parseFloat(latestActual.avg_effective_rent ?? '0');
+    const noi  = parseFloat(latestActual.noi ?? '0');
+    const revpau = Math.round(rent * (occ / 100) * 0.985);
+    const ttmRows = actualsData.slice(-12);
+    const noiTtm  = ttmRows.reduce((s: number, r: any) => s + parseFloat(r.noi ?? '0'), 0);
+    return { occ, rent, noi, revpau, noiTtm };
+  }, [actualsData, latestActual]);
+
+  // ── Live overview rail ────────────────────────────────────────
+  const liveOverview = useMemo(() => {
+    if (!liveMetrics) return OVERVIEW;
+    const { occ, rent, revpau, noiTtm } = liveMetrics;
+    const econOcc = occ * 0.976;
+    return [
+      { label: 'Units',          value: ASSET.units.toString() },
+      { label: 'Physical Occ.', value: `${occ.toFixed(1)}%`, tone: occ >= 93 ? T.text.green : T.text.amber },
+      { label: 'Economic Occ.', value: `${econOcc.toFixed(1)}%` },
+      { label: 'In-Place Rent', value: `$${Math.round(rent).toLocaleString()}` },
+      { label: 'Market Rent',   value: '—' },
+      { label: 'Loss-to-Lease', value: '—' },
+      { label: 'Concessions',   value: '—' },
+      { label: 'RevPAU',        value: `$${revpau.toLocaleString()}` },
+      { label: 'NOI (TTM)',     value: `$${(noiTtm / 1_000_000).toFixed(2)}M`, tone: T.text.green },
+      { label: 'In-Place Cap',  value: '—' },
+      { label: 'DSCR',          value: '—' },
+      { label: 'JEDI Score',    value: '—' },
+    ];
+  }, [liveMetrics]);
+
+  // ── Lease roll rows from live expirations ────────────────────
+  const leaseRollRows = useMemo(() => {
+    if (!expirations.length) return LEASE_ROLL;
+    return expirations.map((e: any) => {
+      const d = new Date(e.month + '-01');
+      const monthLabel = d.toLocaleString('en-US', { month: 'short', year: '2-digit' })
+        .replace(' ', "'");
+      const ltlPct = parseFloat(e.lossToLeasePct ?? '0');
+      const spread = ltlPct > 0.5
+        ? `+${ltlPct.toFixed(1)}%`
+        : ltlPct < -0.5
+          ? `−${Math.abs(ltlPct).toFixed(1)}%`
+          : 'flat';
+      const spreadTone = ltlPct > 0.5 ? T.text.green : ltlPct < -0.5 ? T.text.red : T.text.muted;
+      let action = 'HOLD';
+      if (e.recommendedAction?.toUpperCase().includes('AGGRESSIVE')) action = 'PUSH';
+      else if (e.recommendedAction?.toUpperCase().includes('MODERATE')) action = 'PUSH';
+      else if (e.recommendedAction?.toUpperCase().includes('RETENTION')) action = 'HOLD';
+      const expiringUnits = e.expiringUnits ?? 0;
+      const inPlace = e.avgCurrentRent != null ? `$${Math.round(e.avgCurrentRent).toLocaleString()}` : '—';
+      const market  = e.avgMarketRent  != null ? `$${Math.round(e.avgMarketRent).toLocaleString()}`  : '—';
+      return { month: monthLabel, type: 'Mix', units: expiringUnits, inPlace, market, spread, spreadTone, action };
+    });
+  }, [expirations]);
+
+  // ── Correlation signals ───────────────────────────────────────
+  const signalRows = useMemo(() => {
+    if (!correlSignals.length) return SIGNALS;
+    return correlSignals.slice(0, 8).map((c: any) => {
+      const sig = (c.signal ?? '').toUpperCase();
+      const direction = sig.includes('BULL') || sig.includes('POSITIVE') ? 'up'
+        : sig.includes('BEAR') || sig.includes('NEGATIVE') ? 'down' : 'flat';
+      const tone = direction === 'up' ? T.text.green : direction === 'down' ? T.text.red : T.text.amber;
+      const rawValue = c.xValue != null ? Number(c.xValue).toFixed(1) : (c.correlation != null ? `r=${Number(c.correlation).toFixed(2)}` : '—');
+      return {
+        name: (c.name ?? c.id ?? '').replace(/_/g, ' ').slice(0, 28),
+        value: rawValue,
+        dir: direction as 'up' | 'down' | 'flat',
+        tone,
+        lead: c.leadTime ?? '—',
+        src: c.category ?? c.tier?.toString() ?? '—',
+      };
+    });
+  }, [correlSignals]);
+
+  // ── Live metric tile value resolver ──────────────────────────
+  const liveVal = (key: string, fallback: string): string => {
+    if (!liveMetrics) return fallback;
+    const { occ, rent, noi, revpau, noiTtm } = liveMetrics;
+    if (key === 'occ')    return `${occ.toFixed(1)}%`;
+    if (key === 'rent')   return `$${Math.round(rent).toLocaleString()}`;
+    if (key === 'noi')    return `$${(noi / 1_000).toFixed(0)}K`;
+    if (key === 'revpau') return `$${revpau.toLocaleString()}`;
+    if (key === 'noi_ttm') return `$${(noiTtm / 1_000_000).toFixed(2)}M`;
+    return fallback;
+  };
+
   const toggleComp = (n: string) => setCmpSel(s => s.includes(n) ? s.filter(x => x !== n) : [...s, n]);
   const metric = METRICS.find(m => m.key === mk)!;
   const dec = ['occ', 'ltl', 'conc', 'tro'].includes(mk) ? 1 : 0;
-  const base = SERIES.slice(-tf);
+  const base = series.slice(-tf);
   const selComps = comps.filter(c => cmpSel.includes(c.name));
 
   const data = base.map((d: any, i: number) => {
@@ -707,7 +862,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer }: {
                       border: 'none', borderBottom: 'none',
                     }}>
                       <div style={{ fontFamily: T.font.mono, fontSize: 9, color: on ? m.color : T.text.muted, letterSpacing: 0.4 }}>{m.tile}</div>
-                      <div style={{ fontFamily: T.font.mono, fontSize: 15, fontWeight: 700, color: on ? m.color : T.text.primary, marginTop: 2 }}>{m.val}</div>
+                      <div style={{ fontFamily: T.font.mono, fontSize: 15, fontWeight: 700, color: on ? m.color : T.text.primary, marginTop: 2 }}>{liveVal(m.key, m.val)}</div>
                     </button>
                   );
                 })}
@@ -744,7 +899,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer }: {
         />
         <Panel style={{ width: 268, flexShrink: 0 }}>
           <PanelHeader title="ASSET OVERVIEW" sub="fundamentals" />
-          <StatRail rows={OVERVIEW} signal={{ label: 'JEDI SIGNAL', note: 'Loss-to-lease + confirmed rent runway', value: 'PUSH', tone: T.text.green }} />
+          <StatRail rows={liveOverview} signal={{ label: 'JEDI SIGNAL', note: 'Loss-to-lease + confirmed rent runway', value: 'PUSH', tone: T.text.green }} />
         </Panel>
       </div>
 
@@ -781,28 +936,34 @@ function RevenueScreen({ rankCfg, comps, openDrawer }: {
       </Panel>
 
       <div style={{ display: 'flex', gap: 10 }}>
-        {/* LEASE ROLL — expirations WIRED in Phase B; trade-out TODO(backend: tradeout-events) */}
+        {/* LEASE ROLL — expirations wired via /api/v1/operations/:dealId/lease-expirations */}
         <Panel style={{ flex: 1.3, minWidth: 0 }}>
-          <PanelHeader title="LEASE ROLL" sub="schedule · next 24mo" right={<span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted }}>71 units</span>} />
+          <PanelHeader
+            title="LEASE ROLL"
+            sub="schedule · next 24mo"
+            right={<span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted }}>
+              {expirations.length ? `${expirations.reduce((s, e) => s + (e.expiringUnits ?? 0), 0)} units expiring` : '71 units'}
+            </span>}
+          />
           <Table
             head={['MONTH', 'TYPE', 'U', 'IN-PLACE', 'MARKET', 'Δ', 'ACT']}
             align={['l', 'l', 'r', 'r', 'r', 'r', 'c']}
-            rows={LEASE_ROLL.map(r => [
+            rows={leaseRollRows.map((r: any) => [
               r.month, r.type, r.units,
               r.inPlace, r.market,
-              <span key="spread" style={{ color: r.spread.startsWith('−') ? T.text.red : T.text.green }}>{r.spread}</span>,
+              <span key="spread" style={{ color: r.spreadTone ?? (r.spread?.startsWith('−') ? T.text.red : T.text.green) }}>{r.spread}</span>,
               <Badge key="act" c={actionColor(r.action)}>{r.action}</Badge>,
             ])}
           />
         </Panel>
 
-        {/* MARKET SIGNALS — TODO(unwired: correlations/property/:id) */}
+        {/* MARKET SIGNALS — wired via /api/v1/correlations/property/:propertyId */}
         <Panel style={{ flex: 1, minWidth: 0 }}>
           <PanelHeader title="MARKET SIGNALS" sub="throttle · leading" />
           <Table
             head={['SIGNAL', 'VALUE', 'LEAD', 'SRC']}
             align={['l', 'r', 'r', 'r']}
-            rows={SIGNALS.map(s => [
+            rows={signalRows.map((s: any) => [
               s.name,
               <span key="val" style={{ color: s.tone, fontWeight: 700 }}>{s.dir === 'up' ? '▲' : s.dir === 'down' ? '▼' : '▬'} {s.value}</span>,
               <span key="lead" style={{ color: T.text.muted }}>{s.lead}</span>,
@@ -866,10 +1027,69 @@ function RevenueScreen({ rankCfg, comps, openDrawer }: {
 }
 
 // ── PERFORMANCE SCREEN ────────────────────────────────────────────────────────
-function PerformanceScreen() {
+function PerformanceScreen({ dealId }: { dealId: string }) {
   const [sub, setSub] = useState('tracking');
   const [tf, setTf] = useState(12);
-  const data = PERF_SERIES.slice(-tf);
+
+  // ── Live data state ──────────────────────────────────────────
+  const [pvaData, setPvaData] = useState<any[]>([]);
+  const [varData, setVarData] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/operations/${dealId}/projected-vs-actual`)
+      .then(res => { setPvaData(res.data?.data ?? []); })
+      .catch(() => {});
+  }, [dealId]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/operations/${dealId}/variances`)
+      .then(res => { setVarData(res.data?.variances ?? []); })
+      .catch(() => {});
+  }, [dealId]);
+
+  // ── Map PVA to chart data ─────────────────────────────────────
+  const chartData = useMemo(() => {
+    if (!pvaData.length) return PERF_SERIES.slice(-tf);
+    return pvaData.slice(-tf).map(r => ({
+      m: r.month ?? (r.period ? r.period.slice(5, 7) : ''),
+      actual: r.actNOI ?? null,
+      target: r.projNOI ?? null,
+    }));
+  }, [pvaData, tf]);
+
+  // ── TTM NOI and variance vs proforma ────────────────────────
+  const pvaStats = useMemo(() => {
+    if (!pvaData.length) return null;
+    const last12 = pvaData.slice(-12);
+    const noiTtm = last12.reduce((s, r) => s + (r.actNOI ?? 0), 0);
+    const projTtm = last12.reduce((s, r) => s + (r.projNOI ?? 0), 0);
+    const vsPf = projTtm ? ((noiTtm - projTtm) / Math.abs(projTtm)) * 100 : null;
+    const sign = vsPf == null ? '—' : vsPf >= 0 ? `+${vsPf.toFixed(1)}%` : `${vsPf.toFixed(1)}%`;
+    return {
+      noiTtm: `$${(noiTtm / 1_000_000).toFixed(2)}M`,
+      vsPf: sign,
+      vsPfTone: vsPf == null ? T.text.muted : vsPf >= 0 ? T.text.green : T.text.red,
+    };
+  }, [pvaData]);
+
+  // ── Live variance rows from variance_analysis table ──────────
+  const liveVariance = useMemo(() => {
+    if (!varData.length) return VARIANCE;
+    return varData.slice(0, 8).map((v: any) => {
+      const noiImpact = parseFloat(v.noi_impact ?? '0');
+      const pct = v.variance_pct != null ? `${Number(v.variance_pct).toFixed(1)}%` : '—';
+      const flag = Math.abs(noiImpact) > 10_000;
+      return {
+        item: v.line_item ?? v.category ?? '—',
+        uw: v.projected != null ? `$${Math.round(v.projected).toLocaleString()}` : '—',
+        act: v.actual   != null ? `$${Math.round(v.actual).toLocaleString()}`    : '—',
+        d: pct,
+        flag,
+      };
+    });
+  }, [varData]);
 
   return (
     <>
@@ -890,15 +1110,17 @@ function PerformanceScreen() {
           <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
             <ChartPanel
               title="ACTUAL vs PRO FORMA" sub="M22 · monthly NOI"
-              data={data} tf={tf} setTf={setTf}
+              data={chartData} tf={tf} setTf={setTf}
               fmt={v => '$' + (v / 1000).toFixed(0) + 'K'}
               lines={[{ key: 'actual', color: T.text.green }, { key: 'target', color: T.text.muted, dash: '4 3', w: 1.5 }]}
               controls={
                 <div style={{ display: 'flex', borderBottom: `1px solid ${T.border.subtle}` }}>
                   {[
-                    ['NOI TTM', '$3.41M', T.text.green], ['vs PRO FORMA', '−13.0%', T.text.red],
-                    ['EGI VAR', '−6.7%', T.text.amber], ['OPEX VAR', '+3.8%', T.text.red],
-                    ['STABILIZE', 'Q3 \'26', T.text.amber],
+                    ['NOI TTM',     pvaStats?.noiTtm ?? '$3.41M',   T.text.green],
+                    ['vs PRO FORMA', pvaStats?.vsPf  ?? '−13.0%',   pvaStats?.vsPfTone ?? T.text.red],
+                    ['EGI VAR',     '−6.7%',                         T.text.amber],
+                    ['OPEX VAR',    '+3.8%',                         T.text.red],
+                    ['STABILIZE',   "Q3 '26",                        T.text.amber],
                   ].map(([l, v, c], i) => (
                     <div key={l as string} style={{ flex: 1, padding: '9px 12px', borderRight: i < 4 ? `1px solid ${T.border.subtle}` : 'none' }}>
                       <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, letterSpacing: 0.5 }}>{l}</div>
@@ -936,7 +1158,7 @@ function PerformanceScreen() {
               <Table
                 head={['LINE ITEM', 'UW', 'ACTUAL', 'Δ', '']}
                 align={['l', 'r', 'r', 'r', 'c']}
-                rows={VARIANCE.map(r => [
+                rows={liveVariance.map((r: any) => [
                   r.item, r.uw, r.act,
                   <span key="d" style={{ color: r.flag ? T.text.red : T.text.secondary, fontWeight: r.flag ? 700 : 400 }}>{r.d}</span>,
                   r.flag ? <Badge key="flag" c={T.text.red}>FLAG</Badge> : '',
@@ -969,29 +1191,10 @@ function PerformanceScreen() {
         </>
       )}
 
-      {sub === 'lifecycle' && (
-        <div style={{ display: 'flex', gap: 10 }}>
-          <Panel style={{ flex: 1, minWidth: 0 }}>
-            <PanelHeader title="HOLD LIFECYCLE" sub="business plan progress" />
-            <StatRail rows={LIFECYCLE_DATA} />
-          </Panel>
-          <Panel style={{ flex: 1.4, minWidth: 0 }}>
-            <PanelHeader title="DECISION TIMELINE" sub="every point we could have walked" />
-            <div style={{ padding: '4px 0' }}>
-              {[
-                ['Dec \'21', 'Acquired — $51.4M, 78% occ, value-add thesis'],
-                ['Jun \'22', 'Reno launched — interior + amenity'],
-                ['Mar \'23', 'Refi-or-hold decision → held (rate spike)'],
-                ['Q3 \'25', 'Reached 94% stabilized occupancy'],
-                ['Now',     'Exit window opening — Yr 6 optimal'],
-              ].map(([d, n], i) => (
-                <div key={i} style={{ display: 'flex', gap: 10, padding: '8px 12px', borderBottom: i < 4 ? `1px solid ${T.border.subtle}` : 'none' }}>
-                  <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.amber, width: 54, flexShrink: 0 }}>{d}</span>
-                  <span style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary }}>{n}</span>
-                </div>
-              ))}
-            </div>
-          </Panel>
+      {/* LIFECYCLE — wired to LifecycleSection (M22 · reforecast · disposition · debt · capex) */}
+      {sub === 'lifecycle' && dealId && (
+        <div style={{ minHeight: 480 }}>
+          <LifecycleSection dealId={dealId} />
         </div>
       )}
 
@@ -1160,8 +1363,9 @@ export default function AssetHubPage() {
   const { dealId: urlDealId } = useParams<{ dealId: string }>();
   const selectedAssetDealId = useDealStore(s => s.selectedAssetDealId);
   const setSelectedAsset = useDealStore(s => s.setSelectedAsset);
+  const deals = useDealStore(s => (s as any).deals as any[] | undefined);
 
-  // Sync URL param → dealStore (Phase B: also resolves propertyId via deal record)
+  // Sync URL param → dealStore
   useEffect(() => {
     if (urlDealId) {
       setSelectedAsset(urlDealId, null);
@@ -1174,10 +1378,44 @@ export default function AssetHubPage() {
   // Prefer the store value (set by useEffect above); fall back to URL param
   const dealId = selectedAssetDealId ?? urlDealId ?? '';
 
+  // ── Resolve propertyId from the deals list ────────────────────
+  const propertyId = useMemo<string | null>(() => {
+    if (!dealId || !deals?.length) return null;
+    const deal = deals.find((d: any) => d.id === dealId);
+    return deal?.property_id ?? null;
+  }, [deals, dealId]);
+
+  // ── Fetch comps from the API (populates drawer + rank leaderboard) ──
   const [screen, setScreen] = useState<'revenue' | 'performance' | 'capital'>('revenue');
   const [drawer, setDrawer] = useState<string | null>(null);
   const [comps, setComps] = useState<Comp[]>(DEFAULT_COMPS);
   const [rankCfg, setRankCfg] = useState<RankCfg>({ overall: 2, byType: false, perType: { '1BR': 3, '2BR': 2, '3BR': 3, 'STU': 4 } });
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/deals/${dealId}/comp-set`)
+      .then(res => {
+        const rows = res.data?.comps ?? [];
+        if (!rows.length) return;
+        const mapped: Comp[] = rows.map((c: any, i: number) => ({
+          name: c.property_name ?? c.comp_property_address ?? `Comp ${i + 1}`,
+          short: (c.property_name ?? c.comp_property_address ?? `Comp ${i + 1}`).slice(0, 18),
+          dist: c.distance_miles != null ? `${Number(c.distance_miles).toFixed(1)}mi` : '—',
+          rent: c.avg_rent != null ? `$${Math.round(Number(c.avg_rent)).toLocaleString()}` : '—',
+          occ: c.occupancy != null ? `${Number(c.occupancy).toFixed(1)}%`
+            : c.occupancy_rate != null ? `${(Number(c.occupancy_rate) * 100).toFixed(1)}%` : '—',
+          concess: '—',
+          vs: '—',
+          src: 'platform' as const,
+          pcs: Math.round((c.match_score ?? 70)),
+          rank: i + 1,
+          f: 1,
+          color: COMP_COLORS[i % COMP_COLORS.length],
+        }));
+        setComps(mapped);
+      })
+      .catch(() => {});
+  }, [dealId]);
 
   const openDrawer = (d: string) => setDrawer(d);
   const closeDrawer = () => setDrawer(null);
@@ -1207,8 +1445,8 @@ export default function AssetHubPage() {
         </span>
         <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, letterSpacing: 0.6 }}>PORTFOLIO · OWNED ASSETS</span>
         <span style={{ marginLeft: 'auto', fontFamily: T.font.mono, fontSize: 9, color: T.text.green }}>● LIVE</span>
-        <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.amber, border: `1px solid ${T.text.amber}44`, padding: '1px 6px', borderRadius: 2 }}>
-          PHASE A · synthetic data
+        <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.green, border: `1px solid ${T.text.green}44`, padding: '1px 6px', borderRadius: 2 }}>
+          PHASE B · live data
         </span>
       </div>
 
@@ -1312,9 +1550,12 @@ export default function AssetHubPage() {
           {/* Scrollable screen content */}
           <div style={{ flex: 1, overflowY: 'auto', padding: 10 }}>
             {screen === 'revenue' && (
-              <RevenueScreen rankCfg={rankCfg} comps={comps} openDrawer={openDrawer} />
+              <RevenueScreen
+                rankCfg={rankCfg} comps={comps} openDrawer={openDrawer}
+                dealId={dealId} propertyId={propertyId}
+              />
             )}
-            {screen === 'performance' && <PerformanceScreen />}
+            {screen === 'performance' && <PerformanceScreen dealId={dealId} />}
             {screen === 'capital' && <CapitalScreen />}
           </div>
         </div>
