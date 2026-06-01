@@ -1,0 +1,73 @@
+TASK: Read-only architecture audit of the Asset Hub (owned-asset console) and every
+engine, service, table, and route that a Revenue Management surface would need to consume.
+
+CONSTRAINTS — NON-NEGOTIABLE:
+- DO NOT modify, create, or delete any source file except the single output doc below.
+- DO NOT run migrations, install packages, or start services.
+- Every finding must be file:line-grounded. If you assert something exists, cite the path
+  and line range. If you cannot find it, say "NOT FOUND" — do not infer.
+- Use grep/ripgrep to locate real paths. Do not trust the hint paths below blindly; verify.
+
+OUTPUT: Create ONE file at repo root: ASSET_HUB_AUDIT.md
+Nothing else gets written.
+
+═══════════════════════════════════════════════════════════════
+ENUMERATE EACH AREA BELOW. For each item report:
+  [path:lines] · WHAT IT DOES · DATA SOURCE (mock | live | empty table) ·
+  ROUTE (exists? mounted in index.ts?) · DB TABLE (exists? populated?) · GAP
+
+AREA 1 — OWNED-ASSET CONSOLE (the page itself)
+  Hint: frontend route /assets-owned (~401 lines), plus any AssetsOwned*/Portfolio* component.
+  Report: current tab structure, every data source it reads, is it mock or wired,
+  does it subscribe to dealStore or hold local state, does any component call a real API.
+
+AREA 2 — dealStore + owned-asset context
+  Hint: dealStore.ts (Zustand).
+  Report: does dealStore distinguish owned assets from prospect deals? Is there an
+  owned-asset selector? Does DealContext have a mode/variant for owned assets, or is it
+  acquisition-only (broker OM as ground truth)? Quote the DealContext type.
+
+AREA 3 — RENT ROLL + LEASE DATA
+  Report: where is rent-roll parsed/normalized? Does anything compute loss-to-lease,
+  economic occupancy, concession intensity, trade-out, or the lease expiration waterfall?
+  Is there a Lease Velocity Engine? Does it EXPOSE expiration-waterfall / trade-out /
+  signing-velocity via an HTTP route, or only internally?
+
+AREA 4 — TRAFFIC ENGINE (M07)
+  Hint: backend/src/services/trafficPredictionEngine.ts, multifamilyTrafficService.ts,
+  digitalTrafficService.ts, leasingTrafficService.ts; routes in api/rest/trafficPrediction.routes.ts (+3).
+  Report: confirm line counts. Are the routes mounted in index.ts? Do the tables
+  (traffic_predictions, traffic_calibration_factors, validation_properties) exist or are
+  the migrations empty (0 bytes)? Is M07 output consumed by any other module, or an island?
+
+AREA 5 — CORRELATION ENGINE
+  Report: where are COR-xx signals computed? What is the grain — MSA, submarket, or
+  property? Confirm inputs are apartment_market_snapshots + metric_time_series. Is there
+  ANY per-asset binding, or is it market-level only? Is there a route the console can read?
+
+AREA 6 — MARKET COMP / RENT TREND / CONCESSION FEED
+  Hint: apartmentDataSync.ts, any RentCast/CoStar/Apartments.com client.
+  Report: is live submarket rent-by-unit-type available? Is concession prevalence across
+  comps captured anywhere? Is anything wired to the frontend, or is it all mock?
+
+AREA 7 — M22 POST-CLOSE / ACTUAL-VS-UNDERWRITTEN
+  Report: contents and schema of deal_monthly_actuals (row count, date ranges, which
+  properties). Is there a variance calculation engine? An upload flow for ongoing months?
+  Does the M09 live-tracking column (CURRENT | ACTUALS TTM | PRO FORMA | Δ) exist in code?
+
+AREA 8 — WATERFALL / DISTRIBUTIONS
+  Report: is there a waterfall engine? Does it do per-member capital-account and
+  distribution tracking, or only deal-level LP/GP splits? Is the Highlands dual-waterfall
+  (operating + capital-event) modeled anywhere?
+
+AREA 9 — REPORTS
+  Report: is there a Commentary Agent? Excel/PDF export services? Any LP-letter or
+  IC-memo template? What can it compose from today?
+
+═══════════════════════════════════════════════════════════════
+END WITH A CLASSIFICATION TABLE:
+  Capability | WIRED (live) | CODE-EXISTS-UNWIRED | MOCK-ONLY | NOT-BUILT | Blocker
+covering: Positions roll-up, Revenue position, Expiration exposure, Comp/concession feed,
+Forward signal, Performance/variance, Distributions, Reports.
+
+Then a "TOP 5 BLOCKERS TO REVENUE MANAGEMENT" ranked list, each citing the file:line evidence.
