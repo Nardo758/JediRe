@@ -1393,8 +1393,7 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
             </Panel>
           </div>
 
-          {/* LIVE TRACKING — stub; codes against GET /api/v1/operations/:dealId/live-tracking */}
-          {/* TODO(backend: M09 4-col composition endpoint) */}
+          {/* LIVE TRACKING — wired to GET /api/v1/operations/:dealId/live-tracking */}
           <Panel style={{ marginBottom: 10, borderColor: liveTracking === null ? T.text.amber + '44' : T.border.bright }}>
             <PanelHeader
               title="LIVE TRACKING"
@@ -1406,13 +1405,28 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
             <Table
               head={['LINE ITEM', 'CURRENT', 'ACTUALS TTM', 'PRO FORMA', 'Δ TO PF']}
               align={['l', 'r', 'r', 'r', 'r']}
-              rows={FOURCOL.map(r => [
-                <span key="item" style={{ fontWeight: r.bold ? 700 : 400, color: r.bold ? T.text.primary : T.text.secondary }}>{r.item}</span>,
-                r.cur,
-                <span key="ttm" style={{ color: r.bold ? T.text.primary : T.text.secondary }}>{r.ttm}</span>,
-                r.pf,
-                <span key="d" style={{ color: r.tone, fontWeight: 700 }}>{r.d}</span>,
-              ])}
+              rows={liveTracking && liveTracking.length > 0
+                ? liveTracking.map((r: any) => {
+                    const dp: number | null = r.delta_pct ?? null;
+                    const tone = dp == null ? T.text.muted : dp >= 0 ? T.text.green : T.text.red;
+                    const dLabel = dp == null ? '—' : (dp >= 0 ? `+${dp.toFixed(1)}%` : `${dp.toFixed(1)}%`);
+                    const isGl = typeof r.line_item === 'string' && r.line_item.startsWith('  ');
+                    return [
+                      <span key="item" style={{ fontWeight: isGl ? 400 : 600, color: isGl ? T.text.muted : T.text.secondary, paddingLeft: isGl ? 8 : 0 }}>{r.line_item}</span>,
+                      r.current_month_fmt ?? '—',
+                      <span key="ttm" style={{ color: isGl ? T.text.muted : T.text.secondary }}>{r.actuals_ttm_fmt ?? '—'}</span>,
+                      r.pro_forma_fmt ?? '—',
+                      <span key="d" style={{ color: tone, fontWeight: 700 }}>{dLabel}</span>,
+                    ];
+                  })
+                : FOURCOL.map(r => [
+                    <span key="item" style={{ fontWeight: r.bold ? 700 : 400, color: r.bold ? T.text.primary : T.text.secondary }}>{r.item}</span>,
+                    r.cur,
+                    <span key="ttm" style={{ color: r.bold ? T.text.primary : T.text.secondary }}>{r.ttm}</span>,
+                    r.pf,
+                    <span key="d" style={{ color: r.tone, fontWeight: 700 }}>{r.d}</span>,
+                  ])
+              }
             />
           </Panel>
 
@@ -1653,7 +1667,7 @@ function CapitalScreen({ dealId }: { dealId: string }) {
       )}
 
       {sub === 'distributions' && (
-        // TODO(backend: GET /api/v1/capital/:dealId/capital-accounts) — per-member capital accounts
+        // CAPITAL ACCOUNTS — wired to GET /api/v1/capital/:dealId/capital-accounts
         <div style={{ display: 'flex', gap: 10 }}>
           <Panel style={{ flex: 1, minWidth: 0, borderColor: capitalAccounts === null ? T.text.amber + '44' : undefined }}>
             <PanelHeader
@@ -1664,16 +1678,46 @@ function CapitalScreen({ dealId }: { dealId: string }) {
             <Table
               head={['MEMBER', 'COMMITTED', 'CALLED', 'DISTRIBUTED', 'PREF ACCR.', 'TIER']}
               align={['l', 'r', 'r', 'r', 'r', 'c']}
-              rows={MEMBERS.map(m => [
-                m.member, m.committed, m.called, m.distributed,
-                <span key="pref" style={{ color: m.pref === '—' ? T.text.muted : T.text.amber }}>{m.pref}</span>,
-                <Badge key="tier" c={m.tier === 'Promote' ? T.text.purple : T.text.cyan}>{m.tier}</Badge>,
-              ])}
+              rows={capitalAccounts?.members?.length > 0
+                ? capitalAccounts.members.map((m: any) => {
+                    const fmtM = (v: number) => v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M` : `$${Math.round(v).toLocaleString()}`;
+                    const tier = m.class === 'gp' ? 'Promote' : 'Pref';
+                    return [
+                      m.name,
+                      fmtM(m.commitment_amount),
+                      fmtM(m.called),
+                      fmtM(m.distributed),
+                      <span key="pref" style={{ color: T.text.muted }}>—</span>,
+                      <Badge key="tier" c={tier === 'Promote' ? T.text.purple : T.text.cyan}>{tier}</Badge>,
+                    ];
+                  })
+                : MEMBERS.map(m => [
+                    m.member, m.committed, m.called, m.distributed,
+                    <span key="pref" style={{ color: m.pref === '—' ? T.text.muted : T.text.amber }}>{m.pref}</span>,
+                    <Badge key="tier" c={m.tier === 'Promote' ? T.text.purple : T.text.cyan}>{m.tier}</Badge>,
+                  ])
+              }
             />
           </Panel>
           <Panel style={{ width: 268, flexShrink: 0 }}>
             <PanelHeader title="FUND SUMMARY" />
-            <StatRail rows={DIST_SUMMARY.map(([label, value]) => ({ label, value }))} />
+            {capitalAccounts?.summary
+              ? (() => {
+                  const s = capitalAccounts.summary;
+                  const fmtM = (v: number) => v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M` : `$${Math.round(v).toLocaleString()}`;
+                  const dpi = s.total_committed > 0 ? (s.total_distributed / s.total_committed).toFixed(2) + 'x' : '—';
+                  const unreturned = s.total_called - s.total_distributed;
+                  const liveSummary = [
+                    { label: 'Total Equity', value: fmtM(s.total_committed) },
+                    { label: 'Distributed',  value: fmtM(s.total_distributed) },
+                    { label: 'DPI',          value: dpi },
+                    { label: 'Unreturned Capital', value: fmtM(Math.max(0, unreturned)) },
+                    { label: 'Members',      value: String(s.member_count) },
+                  ];
+                  return <StatRail rows={liveSummary} />;
+                })()
+              : <StatRail rows={DIST_SUMMARY.map(([label, value]) => ({ label, value }))} />
+            }
           </Panel>
         </div>
       )}
