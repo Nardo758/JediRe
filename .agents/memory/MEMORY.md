@@ -1,1 +1,2 @@
 - [Highlands p2122 DB write patterns](highlands-p2122-db.md) — constraint gotchas for investors/capital_calls/deal_waterfalls when populating deal financials from source docs
+- [deal_files local path convention](deal-files-path.md) — file_path column is relative to backend/ (process.cwd()), not workspace root; files are in backend/uploads/deals/{dealId}/
