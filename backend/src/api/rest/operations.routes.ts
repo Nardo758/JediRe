@@ -806,6 +806,140 @@ router.get('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedReq
   }
 });
 
+/**
+ * GET /api/v1/operations/:dealId/live-tracking
+ * M09 4-col comparison: current month vs TTM actuals vs pro-forma vs delta.
+ * Derives from deal_monthly_actuals (is_budget=FALSE rows for actuals,
+ * is_budget=TRUE rows for pro-forma; if no budget rows exist, pro_forma is null).
+ */
+router.get('/:dealId/live-tracking', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+
+    // Ownership check
+    const ownerCheck = await query(
+      'SELECT id, property_id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, userId],
+    );
+    if (!ownerCheck.rows.length) return res.status(404).json({ success: false, error: 'Deal not found' });
+    const propId = ownerCheck.rows[0].property_id as string | null;
+
+    // Fetch last 12 actuals (is_budget=FALSE)
+    const actualsRes = propId
+      ? await query(
+          `SELECT report_month, gross_potential_rent, effective_gross_income, noi, expenses,
+                  occupied_units, total_units, occupancy_rate
+           FROM deal_monthly_actuals
+           WHERE property_id = $1 AND is_budget = FALSE AND is_portfolio_asset = TRUE
+           ORDER BY report_month DESC LIMIT 12`,
+          [propId],
+        )
+      : await query(
+          `SELECT report_month, gross_potential_rent, effective_gross_income, noi, expenses,
+                  occupied_units, total_units, occupancy_rate
+           FROM deal_monthly_actuals
+           WHERE deal_id = $1 AND is_budget = FALSE
+           ORDER BY report_month DESC LIMIT 12`,
+          [dealId],
+        );
+
+    // Fetch pro-forma budget row (most recent is_budget=TRUE)
+    const budgetRes = propId
+      ? await query(
+          `SELECT gross_potential_rent, effective_gross_income, noi, expenses, occupancy_rate
+           FROM deal_monthly_actuals
+           WHERE property_id = $1 AND is_budget = TRUE
+           ORDER BY report_month DESC LIMIT 1`,
+          [propId],
+        )
+      : await query(
+          `SELECT gross_potential_rent, effective_gross_income, noi, expenses, occupancy_rate
+           FROM deal_monthly_actuals
+           WHERE deal_id = $1 AND is_budget = TRUE
+           ORDER BY report_month DESC LIMIT 1`,
+          [dealId],
+        );
+
+    const actuals = actualsRes.rows;
+    const budget = budgetRes.rows[0] ?? null;
+    const current = actuals[0] ?? null; // most recent month
+
+    // TTM sums (up to 12 months)
+    function ttmSum(field: string): number {
+      return actuals.reduce((s, r) => s + (parseFloat(r[field] as string) || 0), 0);
+    }
+    function ttmAvg(field: string): number {
+      if (!actuals.length) return 0;
+      return ttmSum(field) / actuals.length;
+    }
+
+    function deltaRow(
+      label: string,
+      cur: number | null,
+      ttm: number,
+      pf: number | null,
+      isMoney: boolean,
+    ) {
+      const delta = pf && pf !== 0 ? ((ttm - pf) / Math.abs(pf)) * 100 : null;
+      const fmt = (v: number | null, annual?: boolean) => {
+        if (v == null) return '—';
+        if (!isMoney) return (v * 100).toFixed(1) + '%';
+        const val = annual ? v : v;
+        return val >= 1_000_000
+          ? '$' + (val / 1_000_000).toFixed(2) + 'M'
+          : '$' + Math.round(val).toLocaleString('en-US');
+      };
+      return {
+        line_item: label,
+        current_month: cur != null ? (isMoney ? cur : cur * 100) : null,
+        current_month_fmt: fmt(cur),
+        actuals_ttm: isMoney ? ttm : ttmAvg('occupancy_rate') * 100,
+        actuals_ttm_fmt: isMoney ? fmt(ttm) : (ttmAvg('occupancy_rate') * 100).toFixed(1) + '%',
+        pro_forma: pf != null ? (isMoney ? pf * 12 : pf) : null,
+        pro_forma_fmt: fmt(pf != null ? (isMoney ? pf * 12 : pf) : null),
+        delta_pct: delta != null ? parseFloat(delta.toFixed(1)) : null,
+      };
+    }
+
+    const gprCur = current ? parseFloat(current.gross_potential_rent as string) || null : null;
+    const egiCur = current ? parseFloat(current.effective_gross_income as string) || null : null;
+    const noiCur = current ? parseFloat(current.noi as string) || null : null;
+    const expCur = current ? parseFloat(current.expenses as string) || null : null;
+    const occCur = current ? parseFloat(current.occupancy_rate as string) || null : null;
+
+    const rows = [
+      deltaRow('Gross Potential Rent', gprCur, ttmSum('gross_potential_rent'), budget ? parseFloat(budget.gross_potential_rent as string) || null : null, true),
+      deltaRow('Effective Gross Income', egiCur, ttmSum('effective_gross_income'), budget ? parseFloat(budget.effective_gross_income as string) || null : null, true),
+      deltaRow('NOI', noiCur, ttmSum('noi'), budget ? parseFloat(budget.noi as string) || null : null, true),
+      deltaRow('Total Expenses', expCur, ttmSum('expenses'), budget ? parseFloat(budget.expenses as string) || null : null, true),
+      {
+        line_item: 'Occupancy',
+        current_month: occCur != null ? occCur * 100 : null,
+        current_month_fmt: occCur != null ? (occCur * 100).toFixed(1) + '%' : '—',
+        actuals_ttm: ttmAvg('occupancy_rate') * 100,
+        actuals_ttm_fmt: (ttmAvg('occupancy_rate') * 100).toFixed(1) + '%',
+        pro_forma: budget ? (parseFloat(budget.occupancy_rate as string) || null) : null,
+        pro_forma_fmt: budget && budget.occupancy_rate ? (parseFloat(budget.occupancy_rate as string) * 100).toFixed(1) + '%' : '—',
+        delta_pct: null,
+      },
+    ];
+
+    res.json({
+      success: true,
+      rows,
+      meta: {
+        months_of_data: actuals.length,
+        current_period: current?.report_month ?? null,
+        has_pro_forma: !!budget,
+      },
+    });
+  } catch (err) {
+    logger.error('Live tracking GET error:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch live tracking data' });
+  }
+});
+
 interface MonthlyActualInput {
   report_month: string;
   is_budget?: boolean;
