@@ -1225,6 +1225,7 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
   // ── Commentary agent — thesis checkpoints ─────────────────────
   useEffect(() => {
     if (!dealId) return;
+    setLiveCheckpoints([]);   // clear stale bullets from any previous deal
     setCheckpointsLoading(true);
     apiClient.post(`/api/v1/operations/${dealId}/commentary`, {})
       .then(res => {

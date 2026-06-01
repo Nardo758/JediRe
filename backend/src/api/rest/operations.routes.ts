@@ -1596,6 +1596,7 @@ router.post('/:dealId/commentary', requireAuth, async (req: AuthenticatedRequest
       signals,
       forceRefresh,
       userId:      req.user!.userId,
+      assetMode:   'owned',
     });
 
     res.json({

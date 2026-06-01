@@ -25,6 +25,13 @@ export interface CommentaryInput {
   signals?: StrategySignalInputs;
   forceRefresh?: boolean;
   userId?: string;
+  /**
+   * 'owned'    — Asset Hub: frame analysis as owned-asset operational review
+   *              (NOI trend, occupancy health vs UW, capex posture).
+   * 'pipeline' — Deal pipeline: frame as acquisition/investment thesis analysis.
+   * undefined  — Legacy callers; treated as 'pipeline'.
+   */
+  assetMode?: 'owned' | 'pipeline';
 }
 
 export interface CommentarySection {
@@ -111,7 +118,7 @@ export class CommentaryAgent {
     try {
       marketNarrative = await this.generateAINarrative(
         entityName, input.entityType, signals, arbitrageResult, jediScore, input.userId,
-        undefined, input.entityId,
+        undefined, input.entityId, input.assetMode,
       );
     } catch (err) {
       logger.warn('Commentary Agent: AI generation failed, using template fallback', { error: err });
@@ -169,6 +176,7 @@ export class CommentaryAgent {
     userId?: string,
     businessType?: string,
     entityId?: string,
+    assetMode?: 'owned' | 'pipeline',
   ): Promise<CommentarySection> {
     const levelLabel = entityType === 'msa' ? 'metro' : entityType === 'submarket' ? 'submarket' : 'property';
     const recommended = STRATEGY_LABELS[arb.recommended];
@@ -213,7 +221,17 @@ export class CommentaryAgent {
       }
     }
 
+    // Owned-asset framing block: injected first so it anchors the AI's output voice
+    const assetModeBlock = assetMode === 'owned'
+      ? `Asset Context: OWNED PORTFOLIO ASSET — Frame all checkpoint bullets as an operational health review of an asset already in the portfolio. ` +
+        `Focus on: NOI trend vs underwriting, occupancy health (delta vs UW target), capex posture (on/behind budget), ` +
+        `rent burn-off rate, stabilization trajectory, and expense escalation risk. ` +
+        `Do NOT use acquisition or market-entry language (e.g. avoid "buy", "enter", "pipeline deal", "acquisition thesis"). ` +
+        `Signal scores below are derived from actual monthly performance data.`
+      : '';
+
     const contextBlock = [
+      assetModeBlock,
       `Entity: ${name} (${levelLabel})`,
       `Signal scores (0-100): Demand=${signals.demandScore}, Supply=${signals.supplyScore}, Momentum=${signals.momentumScore}, Position=${signals.positionScore}, Risk=${signals.riskScore}`,
       `JEDI Composite Score: ${jediScore}`,
