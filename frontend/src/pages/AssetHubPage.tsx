@@ -14,6 +14,7 @@ import { DocumentsSection } from '../components/deal/sections/DocumentsSection';
 import { TeamSection } from '../components/deal/sections/TeamSection';
 import { EventTimelineSection } from '../components/deal/sections/EventTimelineSection';
 import { LifecycleSection } from '../components/deal/sections/LifecycleSection';
+import { ConvergenceChart, RSSBreakdownCards, Q_LABELS, RSS_21Y, OPTIMAL_FWD, NOW_IDX as CONV_NOW_IDX } from '../components/deal/sections/ConvergenceChart';
 import ActivityTab from './admin/sections/intel/ActivityTab';
 import type { Deal } from '../types/deal';
 
@@ -671,6 +672,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId }: {
   const [actualsData, setActualsData] = useState<any[]>([]);
   const [expirations, setExpirations] = useState<any[]>([]);
   const [correlSignals, setCorrelSignals] = useState<any[]>([]);
+  const [rentRollUnits, setRentRollUnits] = useState<any[]>([]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -700,26 +702,47 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId }: {
       .catch(() => {});
   }, [propertyId]);
 
+  useEffect(() => {
+    if (!dealId) return;
+    // Attempt to derive LTL from latest rent roll snapshot units
+    // TODO(data: LTL/concession monthly series from rent_roll_snapshots.derived_metrics)
+    apiClient.get(`/api/v1/operations/${dealId}/rent-roll`)
+      .then(res => { setRentRollUnits(res.data?.units ?? []); })
+      .catch(() => {});
+  }, [dealId]);
+
+  // ── LTL tile value from latest rent roll snapshot ─────────────
+  const liveLtl = useMemo(() => {
+    if (!rentRollUnits.length) return null;
+    const rows = rentRollUnits.filter((u: any) => u.loss_to_lease_pct != null);
+    if (!rows.length) return null;
+    const avg = rows.reduce((s: number, u: any) => s + parseFloat(u.loss_to_lease_pct), 0) / rows.length;
+    return avg;
+  }, [rentRollUnits]);
+
   // ── Derived series ────────────────────────────────────────────
   const liveSeries = useMemo(() => {
     if (!actualsData.length) return null;
-    return actualsData.map(row => {
+    return actualsData.map((row, idx) => {
       const occ = parseFloat(row.occupancy_rate ?? '0') * 100;
       const rent = parseFloat(row.avg_effective_rent ?? '0');
       const noi = parseFloat(row.noi ?? '0');
       const d = new Date(row.report_month);
       const mon = d.toLocaleString('en-US', { month: 'short' });
       const yr  = String(d.getFullYear()).slice(2);
+      // Blend prototype ltl/conc/tro as placeholder sparklines aligned to the same date range
+      // TODO(data: LTL/concession monthly series from rent_roll_snapshots.derived_metrics)
+      const protoOffset = SERIES.length - actualsData.length + idx;
+      const proto = protoOffset >= 0 && protoOffset < SERIES.length ? SERIES[protoOffset] : null;
       return {
         m: `${mon.slice(0,3)}'${yr}`,
         occ: Math.round(occ * 10) / 10,
         rent: Math.round(rent),
         noi: Math.round(noi),
         revpau: Math.round(rent * (occ / 100) * 0.985),
-        // TODO(data: LTL/concession monthly series from rent_roll_snapshots.derived_metrics)
-        ltl: null as number | null,
-        conc: null as number | null,
-        tro: null as number | null,
+        ltl: proto?.ltl ?? null,
+        conc: proto?.conc ?? null,
+        tro: proto?.tro ?? null,
       };
     });
   }, [actualsData]);
@@ -749,8 +772,8 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId }: {
       { label: 'Physical Occ.', value: `${occ.toFixed(1)}%`, tone: occ >= 93 ? T.text.green : T.text.amber },
       { label: 'Economic Occ.', value: `${econOcc.toFixed(1)}%` },
       { label: 'In-Place Rent', value: `$${Math.round(rent).toLocaleString()}` },
-      { label: 'Market Rent',   value: '—' },
-      { label: 'Loss-to-Lease', value: '—' },
+      { label: 'Market Rent',   value: '—' },   // TODO(data: market rent)
+      { label: 'Loss-to-Lease', value: liveLtl != null ? `${liveLtl.toFixed(1)}%` : '—' },
       { label: 'Concessions',   value: '—' },
       { label: 'RevPAU',        value: `$${revpau.toLocaleString()}` },
       { label: 'NOI (TTM)',     value: `$${(noiTtm / 1_000_000).toFixed(2)}M`, tone: T.text.green },
@@ -767,13 +790,9 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId }: {
       const d = new Date(e.month + '-01');
       const monthLabel = d.toLocaleString('en-US', { month: 'short', year: '2-digit' })
         .replace(' ', "'");
-      const ltlPct = parseFloat(e.lossToLeasePct ?? '0');
-      const spread = ltlPct > 0.5
-        ? `+${ltlPct.toFixed(1)}%`
-        : ltlPct < -0.5
-          ? `−${Math.abs(ltlPct).toFixed(1)}%`
-          : 'flat';
-      const spreadTone = ltlPct > 0.5 ? T.text.green : ltlPct < -0.5 ? T.text.red : T.text.muted;
+      // Trade-out spread: — placeholder (TODO(backend: tradeout-events))
+      const spread = '—';
+      const spreadTone = T.text.muted;
       let action = 'HOLD';
       if (e.recommendedAction?.toUpperCase().includes('AGGRESSIVE')) action = 'PUSH';
       else if (e.recommendedAction?.toUpperCase().includes('MODERATE')) action = 'PUSH';
@@ -788,7 +807,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId }: {
   // ── Correlation signals ───────────────────────────────────────
   const signalRows = useMemo(() => {
     if (!correlSignals.length) return SIGNALS;
-    return correlSignals.slice(0, 8).map((c: any) => {
+    return correlSignals.map((c: any) => {
       const sig = (c.signal ?? '').toUpperCase();
       const direction = sig.includes('BULL') || sig.includes('POSITIVE') ? 'up'
         : sig.includes('BEAR') || sig.includes('NEGATIVE') ? 'down' : 'flat';
@@ -899,7 +918,8 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId }: {
         />
         <Panel style={{ width: 268, flexShrink: 0 }}>
           <PanelHeader title="ASSET OVERVIEW" sub="fundamentals" />
-          <StatRail rows={liveOverview} signal={{ label: 'JEDI SIGNAL', note: 'Loss-to-lease + confirmed rent runway', value: 'PUSH', tone: T.text.green }} />
+          {/* JEDI SIGNAL: TODO(backend: repricing synthesizer) */}
+          <StatRail rows={liveOverview} signal={{ label: 'JEDI SIGNAL', note: '// TODO(backend: repricing synthesizer)', value: '—', tone: T.text.muted }} />
         </Panel>
       </div>
 
@@ -1039,6 +1059,13 @@ function PerformanceScreen({ dealId }: { dealId: string }) {
     if (!dealId) return;
     apiClient.get(`/api/v1/operations/${dealId}/projected-vs-actual`)
       .then(res => { setPvaData(res.data?.data ?? []); })
+      .catch(() => {});
+  }, [dealId]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    // Trigger variance computation for current period (idempotent)
+    apiClient.post(`/api/v1/operations/${dealId}/variances/compute`, {})
       .catch(() => {});
   }, [dealId]);
 
@@ -1198,24 +1225,57 @@ function PerformanceScreen({ dealId }: { dealId: string }) {
         </div>
       )}
 
-      {sub === 'exit' && (
-        <Panel>
-          <PanelHeader title="EXIT TIMING" sub="hold · sale · refi by year" />
-          <Table
-            head={['STRATEGY', 'EST. VALUE', 'IRR', 'EM', 'NOTE']}
-            align={['l', 'r', 'r', 'r', 'l']}
-            rows={EXIT_DATA.map(e => [
-              <span key="yr" style={{ fontWeight: e.best ? 700 : 400, color: e.best ? T.text.green : T.text.primary }}>
-                {e.yr}{e.best && <span style={{ marginLeft: 6 }}><Badge c={T.text.green} solid>OPTIMAL</Badge></span>}
-              </span>,
-              e.val,
-              <span key="irr" style={{ color: e.best ? T.text.green : T.text.primary, fontWeight: 700 }}>{e.irr}</span>,
-              e.em,
-              <span key="note" style={{ color: T.text.muted }}>{e.note}</span>,
-            ])}
-          />
-        </Panel>
-      )}
+      {sub === 'exit' && <AssetHubExitTimingTab />}
+    </>
+  );
+}
+
+// ── EXIT TIMING TAB (reuses ConvergenceChart + RSSBreakdownCards) ─────────────
+function AssetHubExitTimingTab() {
+  const [selectedFwd, setSelectedFwd] = useState(OPTIMAL_FWD);
+  const selAbsIdx = CONV_NOW_IDX + selectedFwd;
+  const selRSS = RSS_21Y[selAbsIdx];
+  const selLabel = Q_LABELS[selAbsIdx]?.label ?? '';
+  const rssColor = (v: number) => v >= 70 ? T.text.green : v >= 50 ? T.text.amber : T.text.red;
+  const fwdYears = (selectedFwd / 4).toFixed(1);
+
+  return (
+    <>
+      <Panel>
+        <PanelHeader
+          title="21-YEAR CONVERGENCE CHART"
+          sub="Rent growth · Cap rate · RSS · Supply — Q1 2016 → Q4 2036"
+          right={
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>SELECTED EXIT</div>
+                <div style={{ fontSize: 13, fontWeight: 800, fontFamily: T.font.mono, color: T.text.cyan }}>{selLabel}</div>
+                <div style={{ fontSize: 9, color: T.text.secondary, fontFamily: T.font.mono }}>{fwdYears}yr from now</div>
+              </div>
+              <div style={{
+                width: 56, height: 56, borderRadius: '50%',
+                border: `2px solid ${rssColor(selRSS?.rss ?? 0)}`,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                background: T.bg.input,
+              }}>
+                <div style={{ fontSize: 18, fontWeight: 900, fontFamily: T.font.mono, color: rssColor(selRSS?.rss ?? 0) }}>{selRSS?.rss ?? '—'}</div>
+                <div style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono }}>RSS</div>
+              </div>
+            </div>
+          }
+        />
+        {selRSS && (
+          <div style={{ padding: '0 12px 6px' }}>
+            <RSSBreakdownCards rssData={selRSS} />
+          </div>
+        )}
+        <div style={{ background: T.bg.panel, borderTop: `1px solid ${T.border.subtle}`, padding: 12 }}>
+          <ConvergenceChart selectedFwd={selectedFwd} onSelectFwd={setSelectedFwd} optimalFwd={OPTIMAL_FWD} />
+        </div>
+        <div style={{ padding: '6px 12px', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>
+          Click any projected quarter to inspect exit conditions · RSS = Readiness to Sell Score (market-driven, 0–100)
+        </div>
+      </Panel>
     </>
   );
 }
@@ -1393,7 +1453,7 @@ export default function AssetHubPage() {
 
   useEffect(() => {
     if (!dealId) return;
-    apiClient.get(`/api/v1/deals/${dealId}/comp-set`)
+    apiClient.get(`/api/v1/lifecycle/${dealId}/comp-set`)
       .then(res => {
         const rows = res.data?.comps ?? [];
         if (!rows.length) return;
