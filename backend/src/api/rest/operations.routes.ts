@@ -18,6 +18,7 @@ import { query, getClient } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { CommentaryAgent } from '../../agents/commentary.agent';
 import type { StrategySignalInputs } from '../../services/module-wiring/strategy-arbitrage-engine';
+import { getRentRollDerivations } from '../../services/rent-roll/rent-roll-derivations.service';
 
 const router = Router();
 
@@ -1050,6 +1051,33 @@ interface MonthlyActualInput {
   capex?: number;
   notes?: string;
 }
+
+/**
+ * GET /api/v1/operations/:dealId/derived-metrics
+ * Monthly LTL% and concession-rate% series derived from rent_roll_units snapshots.
+ * LTL%  = AVG((market_rent − current_rent) / market_rent × 100) for occupied units
+ * Conc% = AVG(concession_amount / market_rent × 100) across all units in each snapshot
+ * Returns an empty array (not an error) when no rent roll snapshots exist.
+ */
+router.get('/:dealId/derived-metrics', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    const ownerCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId],
+    );
+    if (!ownerCheck.rows.length) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const metrics = await getRentRollDerivations(dealId);
+    return res.json({ success: true, data: metrics });
+  } catch (err) {
+    logger.error('derived-metrics error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to fetch derived metrics' });
+  }
+});
 
 /**
  * POST /api/v1/operations/:dealId/monthly-actuals

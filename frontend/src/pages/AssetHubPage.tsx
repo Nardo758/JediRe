@@ -759,6 +759,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
   const [tradeoutEvents, setTradeoutEvents] = useState<any[]>([]);
   const [leasingObs, setLeasingObs] = useState<any[]>([]);
   const [courseData, setCourseData] = useState<any>(null); // TODO(backend: repricing synthesizer)
+  const [derivedMetrics, setDerivedMetrics] = useState<any[]>([]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -790,10 +791,15 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
 
   useEffect(() => {
     if (!dealId) return;
-    // Attempt to derive LTL from latest rent roll snapshot units
-    // TODO(data: LTL/concession monthly series from rent_roll_snapshots.derived_metrics)
     apiClient.get(`/api/v1/operations/${dealId}/rent-roll`)
       .then(res => { setRentRollUnits(res.data?.units ?? []); })
+      .catch(() => {});
+  }, [dealId, activeScreen]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/operations/${dealId}/derived-metrics`)
+      .then(res => { setDerivedMetrics(res.data?.data ?? []); })
       .catch(() => {});
   }, [dealId, activeScreen]);
 
@@ -824,13 +830,25 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
   }, [dealId, activeScreen]);
 
   // ── LTL tile value from latest rent roll snapshot ─────────────
+  // Prefer per-unit loss_to_lease_pct average; fall back to latest derived-metrics snapshot.
   const liveLtl = useMemo(() => {
-    if (!rentRollUnits.length) return null;
     const rows = rentRollUnits.filter((u: any) => u.loss_to_lease_pct != null);
-    if (!rows.length) return null;
-    const avg = rows.reduce((s: number, u: any) => s + parseFloat(u.loss_to_lease_pct), 0) / rows.length;
-    return avg;
-  }, [rentRollUnits]);
+    if (rows.length) {
+      const avg = rows.reduce((s: number, u: any) => s + parseFloat(u.loss_to_lease_pct), 0) / rows.length;
+      if (avg > 0) return avg;
+    }
+    // Fall back to most recent derivedMetrics snapshot
+    if (derivedMetrics.length) {
+      const latest = [...derivedMetrics].sort((a, b) => b.month.localeCompare(a.month))[0];
+      return latest?.ltl_pct ?? null;
+    }
+    return null;
+  }, [rentRollUnits, derivedMetrics]);
+
+  // ── Sorted derived-metrics snapshots for nearest-predecessor lookup ──────
+  const sortedDerived = useMemo(() =>
+    [...derivedMetrics].sort((a, b) => a.month.localeCompare(b.month)),
+  [derivedMetrics]);
 
   // ── Derived series ────────────────────────────────────────────
   const liveSeries = useMemo(() => {
@@ -842,22 +860,32 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
       const d = new Date(row.report_month);
       const mon = d.toLocaleString('en-US', { month: 'short' });
       const yr  = String(d.getFullYear()).slice(2);
-      // Blend prototype ltl/conc/tro as placeholder sparklines aligned to the same date range
-      // TODO(data: LTL/concession monthly series from rent_roll_snapshots.derived_metrics)
+      const reportMonth = String(row.report_month).slice(0, 7); // YYYY-MM
+
+      // Find the latest derived-metrics snapshot at or before this actuals month.
+      // Snapshots are annual (Dec 31 each year); this gives the most recent available
+      // LTL% and concession% for each monthly actuals row.
+      let derived: any = null;
+      for (let i = sortedDerived.length - 1; i >= 0; i--) {
+        if (sortedDerived[i].month <= reportMonth) { derived = sortedDerived[i]; break; }
+      }
+
+      // Prototype sparklines for tro (no API yet) — keep as visual placeholder
       const protoOffset = SERIES.length - actualsData.length + idx;
       const proto = protoOffset >= 0 && protoOffset < SERIES.length ? SERIES[protoOffset] : null;
+
       return {
         m: `${mon.slice(0,3)}'${yr}`,
         occ: Math.round(occ * 10) / 10,
         rent: Math.round(rent),
         noi: Math.round(noi),
         revpau: Math.round(rent * (occ / 100) * 0.985),
-        ltl: proto?.ltl ?? null,
-        conc: proto?.conc ?? null,
-        tro: proto?.tro ?? null,
+        ltl:  derived?.ltl_pct          ?? proto?.ltl  ?? null,
+        conc: derived?.concessions_pct  ?? proto?.conc ?? null,
+        tro:  proto?.tro ?? null,
       };
     });
-  }, [actualsData]);
+  }, [actualsData, sortedDerived]);
 
   const series = liveSeries ?? SERIES;
   const latestActual = actualsData.length ? actualsData[actualsData.length - 1] : null;
