@@ -14,7 +14,7 @@ import { DocumentsSection } from '../components/deal/sections/DocumentsSection';
 import { TeamSection } from '../components/deal/sections/TeamSection';
 import { EventTimelineSection } from '../components/deal/sections/EventTimelineSection';
 import { LifecycleSection } from '../components/deal/sections/LifecycleSection';
-import { ConvergenceChart, RSSBreakdownCards, Q_LABELS, RSS_21Y, OPTIMAL_FWD, NOW_IDX as CONV_NOW_IDX } from '../components/deal/sections/ConvergenceChart';
+import { ExitTimingTab } from '../components/deal/sections/ExitTimingTab';
 import ActivityTab from './admin/sections/intel/ActivityTab';
 import type { Deal } from '../types/deal';
 
@@ -315,7 +315,7 @@ const ACTIVITY_DATA = [
 // ── TYPES ────────────────────────────────────────────────────────────────────
 interface Comp {
   name: string; dist: string; rent: string; occ: string; concess: string;
-  vs: string; src: string; pcs: number; rank: number; f?: number;
+  vs: string; src: string; pcs: number | string; rank: number; f?: number;
   color: string; short?: string; subject?: boolean;
 }
 
@@ -660,9 +660,9 @@ function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps }: {
 }
 
 // ── REVENUE SCREEN ────────────────────────────────────────────────────────────
-function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId }: {
+function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeScreen }: {
   rankCfg: RankCfg; comps: Comp[]; openDrawer: (d: string) => void;
-  dealId: string; propertyId: string | null;
+  dealId: string; propertyId: string | null; activeScreen: string;
 }) {
   const [tf, setTf] = useState(12);
   const [mk, setMk] = useState('occ');
@@ -682,7 +682,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId }: {
         setActualsData(rows);
       })
       .catch(() => {});
-  }, [dealId]);
+  }, [dealId, activeScreen]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -691,7 +691,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId }: {
         setExpirations(res.data?.expirations ?? []);
       })
       .catch(() => {});
-  }, [dealId]);
+  }, [dealId, activeScreen]);
 
   useEffect(() => {
     if (!propertyId) return;
@@ -700,7 +700,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId }: {
         setCorrelSignals(res.data?.data?.correlations ?? []);
       })
       .catch(() => {});
-  }, [propertyId]);
+  }, [propertyId, activeScreen]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -709,7 +709,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId }: {
     apiClient.get(`/api/v1/operations/${dealId}/rent-roll`)
       .then(res => { setRentRollUnits(res.data?.units ?? []); })
       .catch(() => {});
-  }, [dealId]);
+  }, [dealId, activeScreen]);
 
   // ── LTL tile value from latest rent roll snapshot ─────────────
   const liveLtl = useMemo(() => {
@@ -1047,7 +1047,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId }: {
 }
 
 // ── PERFORMANCE SCREEN ────────────────────────────────────────────────────────
-function PerformanceScreen({ dealId }: { dealId: string }) {
+function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScreen: string }) {
   const [sub, setSub] = useState('tracking');
   const [tf, setTf] = useState(12);
 
@@ -1060,21 +1060,21 @@ function PerformanceScreen({ dealId }: { dealId: string }) {
     apiClient.get(`/api/v1/operations/${dealId}/projected-vs-actual`)
       .then(res => { setPvaData(res.data?.data ?? []); })
       .catch(() => {});
-  }, [dealId]);
+  }, [dealId, activeScreen]);
 
   useEffect(() => {
     if (!dealId) return;
     // Trigger variance computation for current period (idempotent)
     apiClient.post(`/api/v1/operations/${dealId}/variances/compute`, {})
       .catch(() => {});
-  }, [dealId]);
+  }, [dealId, activeScreen]);
 
   useEffect(() => {
     if (!dealId) return;
     apiClient.get(`/api/v1/operations/${dealId}/variances`)
       .then(res => { setVarData(res.data?.variances ?? []); })
       .catch(() => {});
-  }, [dealId]);
+  }, [dealId, activeScreen]);
 
   // ── Map PVA to chart data ─────────────────────────────────────
   const chartData = useMemo(() => {
@@ -1100,6 +1100,28 @@ function PerformanceScreen({ dealId }: { dealId: string }) {
       vsPfTone: vsPf == null ? T.text.muted : vsPf >= 0 ? T.text.green : T.text.red,
     };
   }, [pvaData]);
+
+  // ── SCORECARD wired from projected-vs-actual response ────────
+  const liveSCORECARD = useMemo(() => {
+    const noiVsUw = pvaStats?.vsPf ?? '—';
+    const noiTone = pvaStats?.vsPfTone ?? T.text.muted;
+    const lastPva = pvaData.length ? pvaData[pvaData.length - 1] : null;
+    let occVsUw = '—';
+    if (lastPva?.actOcc != null && lastPva?.projOcc != null) {
+      const diff = (lastPva.actOcc - lastPva.projOcc) * 100;
+      occVsUw = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}pp`;
+    }
+    return [
+      { label: 'NOI vs Underwriting', value: noiVsUw, tone: noiTone },
+      { label: 'EGI vs UW',           value: '—', tone: T.text.muted },
+      { label: 'OpEx vs UW',          value: '—', tone: T.text.muted },
+      { label: 'Occupancy vs UW',     value: occVsUw, tone: T.text.muted },
+      // TODO(backend: reno premium, stabilization, hold IRR from performance engine)
+      { label: 'Reno Premium',        value: '—', sub: '// TODO', tone: T.text.muted },
+      { label: 'Stabilization',       value: '—', sub: '// TODO', tone: T.text.muted },
+      { label: 'Hold IRR (proj.)',     value: '—', sub: '// TODO', tone: T.text.muted },
+    ];
+  }, [pvaStats, pvaData]);
 
   // ── Live variance rows from variance_analysis table ──────────
   const liveVariance = useMemo(() => {
@@ -1159,13 +1181,17 @@ function PerformanceScreen({ dealId }: { dealId: string }) {
             />
             <Panel style={{ width: 268, flexShrink: 0 }}>
               <PanelHeader title="UNDERWRITING SCORECARD" sub="actual vs UW" />
-              <StatRail rows={SCORECARD} signal={{ label: 'THESIS', note: 'NOI behind on insurance + slow rent burn-off', value: 'AT RISK', tone: T.text.amber }} />
+              <StatRail rows={liveSCORECARD} signal={{ label: 'THESIS', note: 'NOI behind on insurance + slow rent burn-off', value: 'AT RISK', tone: T.text.amber }} />
             </Panel>
           </div>
 
-          {/* LIVE TRACKING — TODO(backend: GET /api/v1/operations/:dealId/live-tracking) */}
+          {/* LIVE TRACKING — stub; real data requires new backend route */}
           <Panel style={{ marginBottom: 10, borderColor: T.border.bright }}>
-            <PanelHeader title="LIVE TRACKING" sub="current → stabilized bridge (M09)" />
+            <PanelHeader
+              title="LIVE TRACKING"
+              sub="current → stabilized bridge (M09)"
+              right={<span style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted }}>// TODO(backend: /api/v1/operations/:dealId/live-tracking)</span>}
+            />
             <Table
               head={['LINE ITEM', 'CURRENT', 'ACTUALS TTM', 'PRO FORMA', 'Δ TO PF']}
               align={['l', 'r', 'r', 'r', 'r']}
@@ -1202,6 +1228,9 @@ function PerformanceScreen({ dealId }: { dealId: string }) {
                   r.flag ? <Badge key="b" c={T.text.amber}>BEHIND</Badge> : <Badge key="b" c={T.text.green}>OK</Badge>,
                 ])}
               />
+              <div style={{ padding: '4px 12px 8px', fontFamily: T.font.mono, fontSize: 8, color: T.text.muted }}>
+                // TODO(data: capex from GL — deal_monthly_actuals_lines WHERE account ILIKE '%capex%')
+              </div>
             </Panel>
             <Panel style={{ flex: 1.1, minWidth: 0 }}>
               <PanelHeader title="THESIS CHECKPOINTS" sub="AI commentary" />
@@ -1209,7 +1238,10 @@ function PerformanceScreen({ dealId }: { dealId: string }) {
                 {CHECKPOINTS.map((c, i) => (
                   <div key={i} style={{ display: 'flex', gap: 8, padding: '8px 12px', borderBottom: i < CHECKPOINTS.length - 1 ? `1px solid ${T.border.subtle}` : 'none' }}>
                     <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.tone, marginTop: 5, flexShrink: 0 }} />
-                    <span style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary, lineHeight: 1.45 }}>{c.note}</span>
+                    <div>
+                      <div style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary, lineHeight: 1.45 }}>{c.note}</div>
+                      <div style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted, marginTop: 2 }}>// TODO(backend: assetMode:'owned' commentary)</div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1225,57 +1257,7 @@ function PerformanceScreen({ dealId }: { dealId: string }) {
         </div>
       )}
 
-      {sub === 'exit' && <AssetHubExitTimingTab />}
-    </>
-  );
-}
-
-// ── EXIT TIMING TAB (reuses ConvergenceChart + RSSBreakdownCards) ─────────────
-function AssetHubExitTimingTab() {
-  const [selectedFwd, setSelectedFwd] = useState(OPTIMAL_FWD);
-  const selAbsIdx = CONV_NOW_IDX + selectedFwd;
-  const selRSS = RSS_21Y[selAbsIdx];
-  const selLabel = Q_LABELS[selAbsIdx]?.label ?? '';
-  const rssColor = (v: number) => v >= 70 ? T.text.green : v >= 50 ? T.text.amber : T.text.red;
-  const fwdYears = (selectedFwd / 4).toFixed(1);
-
-  return (
-    <>
-      <Panel>
-        <PanelHeader
-          title="21-YEAR CONVERGENCE CHART"
-          sub="Rent growth · Cap rate · RSS · Supply — Q1 2016 → Q4 2036"
-          right={
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>SELECTED EXIT</div>
-                <div style={{ fontSize: 13, fontWeight: 800, fontFamily: T.font.mono, color: T.text.cyan }}>{selLabel}</div>
-                <div style={{ fontSize: 9, color: T.text.secondary, fontFamily: T.font.mono }}>{fwdYears}yr from now</div>
-              </div>
-              <div style={{
-                width: 56, height: 56, borderRadius: '50%',
-                border: `2px solid ${rssColor(selRSS?.rss ?? 0)}`,
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                background: T.bg.input,
-              }}>
-                <div style={{ fontSize: 18, fontWeight: 900, fontFamily: T.font.mono, color: rssColor(selRSS?.rss ?? 0) }}>{selRSS?.rss ?? '—'}</div>
-                <div style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono }}>RSS</div>
-              </div>
-            </div>
-          }
-        />
-        {selRSS && (
-          <div style={{ padding: '0 12px 6px' }}>
-            <RSSBreakdownCards rssData={selRSS} />
-          </div>
-        )}
-        <div style={{ background: T.bg.panel, borderTop: `1px solid ${T.border.subtle}`, padding: 12 }}>
-          <ConvergenceChart selectedFwd={selectedFwd} onSelectFwd={setSelectedFwd} optimalFwd={OPTIMAL_FWD} />
-        </div>
-        <div style={{ padding: '6px 12px', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>
-          Click any projected quarter to inspect exit conditions · RSS = Readiness to Sell Score (market-driven, 0–100)
-        </div>
-      </Panel>
+      {sub === 'exit' && <ExitTimingTab dealId={dealId} />}
     </>
   );
 }
@@ -1422,28 +1404,23 @@ function CapitalScreen() {
 export default function AssetHubPage() {
   const { dealId: urlDealId } = useParams<{ dealId: string }>();
   const selectedAssetDealId = useDealStore(s => s.selectedAssetDealId);
+  const propertyId = useDealStore(s => s.selectedAssetPropertyId);
   const setSelectedAsset = useDealStore(s => s.setSelectedAsset);
   const deals = useDealStore(s => (s as any).deals as any[] | undefined);
 
-  // Sync URL param → dealStore
+  // Sync URL param → dealStore; also resolve + set propertyId from deals list
   useEffect(() => {
     if (urlDealId) {
-      setSelectedAsset(urlDealId, null);
+      const deal = (deals ?? []).find((d: any) => d.id === urlDealId);
+      setSelectedAsset(urlDealId, deal?.property_id ?? null);
     }
     return () => {
       setSelectedAsset(null, null);
     };
-  }, [urlDealId, setSelectedAsset]);
+  }, [urlDealId, setSelectedAsset, deals]);
 
   // Prefer the store value (set by useEffect above); fall back to URL param
   const dealId = selectedAssetDealId ?? urlDealId ?? '';
-
-  // ── Resolve propertyId from the deals list ────────────────────
-  const propertyId = useMemo<string | null>(() => {
-    if (!dealId || !deals?.length) return null;
-    const deal = deals.find((d: any) => d.id === dealId);
-    return deal?.property_id ?? null;
-  }, [deals, dealId]);
 
   // ── Fetch comps from the API (populates drawer + rank leaderboard) ──
   const [screen, setScreen] = useState<'revenue' | 'performance' | 'capital'>('revenue');
@@ -1467,7 +1444,8 @@ export default function AssetHubPage() {
           concess: '—',
           vs: '—',
           src: 'platform' as const,
-          pcs: Math.round((c.match_score ?? 70)),
+          // TODO(data: rankings service) — show '—' until PCS ranking engine is wired
+          pcs: c.match_score != null ? Math.round(c.match_score) : '—',
           rank: i + 1,
           f: 1,
           color: COMP_COLORS[i % COMP_COLORS.length],
@@ -1612,10 +1590,10 @@ export default function AssetHubPage() {
             {screen === 'revenue' && (
               <RevenueScreen
                 rankCfg={rankCfg} comps={comps} openDrawer={openDrawer}
-                dealId={dealId} propertyId={propertyId}
+                dealId={dealId} propertyId={propertyId} activeScreen={screen}
               />
             )}
-            {screen === 'performance' && <PerformanceScreen dealId={dealId} />}
+            {screen === 'performance' && <PerformanceScreen dealId={dealId} activeScreen={screen} />}
             {screen === 'capital' && <CapitalScreen />}
           </div>
         </div>
