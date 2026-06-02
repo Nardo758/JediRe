@@ -1601,7 +1601,7 @@ function CapitalScreen({ dealId }: { dealId: string }) {
     sofr:      dpSofr != null ? (dpSofr * 100).toFixed(2) + '%' : '4.30%',
     spread:    dpSpread != null ? `+${dpSpread}bps` : '+285bps',
     dscr:      debtPos?.dscrCovenant ? debtPos.dscrCovenant.toFixed(2) + 'x' : '1.48x',
-    capExpiry: "Sep '26",
+    capExpiry: debtPos?.rateCapExpiry ? fmtMonthYear(debtPos.rateCapExpiry, "Sep '26") : debtPos?.hedgeExpiryDate ? fmtMonthYear(debtPos.hedgeExpiryDate, "Sep '26") : "Sep '26",
   };
   const liveDebtOverview = debtPos ? [
     { label: 'Loan Balance',     value: fmtMoney(debtPos.currentBalance, '$34.8M') },
@@ -1610,7 +1610,7 @@ function CapitalScreen({ dealId }: { dealId: string }) {
     { label: 'Current SOFR',     value: debtChipVals.sofr },
     { label: 'Spread',           value: debtChipVals.spread },
     { label: 'All-In Rate',      value: debtChipVals.allIn, tone: T.text.amber },
-    { label: 'Rate Cap Strike',  value: debtPos.rateCap != null ? fmtPct(debtPos.rateCap, '4.00%') : '4.00%', tone: T.text.cyan },
+    { label: 'Rate Cap Strike',  value: debtPos.rateCapStrike != null ? fmtPct(debtPos.rateCapStrike, '4.00%') : debtPos.rateCap != null ? fmtPct(debtPos.rateCap, '4.00%') : '4.00%', tone: T.text.cyan },
     { label: 'Cap Expiry',       value: debtChipVals.capExpiry, sub: '15mo', tone: T.text.red },
     { label: 'Maturity',         value: fmtMonthYear(debtPos.maturityDate, "Mar '28") },
     { label: 'DSCR',             value: debtChipVals.dscr, tone: T.text.green },
@@ -1679,23 +1679,58 @@ function CapitalScreen({ dealId }: { dealId: string }) {
               <StatRail rows={REFI_DATA} />
             </Panel>
             <Panel style={{ flex: 1, minWidth: 0 }}>
-              {/* TODO(data: rate cap / hedge — wire from loan record once
-                  GET /api/v1/capital/:dealId/capital-accounts returns hedge fields) */}
-              <PanelHeader
-                title="HEDGE STATUS"
-                right={<Badge c={T.text.amber}>TODO(data: rate cap / hedge)</Badge>}
-              />
+              <PanelHeader title="HEDGE STATUS" />
               <div style={{ padding: 12 }}>
-                <div style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.secondary, lineHeight: 1.7 }}>
-                  Rate cap @ <b style={{ color: T.text.cyan }}>4.00%</b>, notional <b style={{ color: T.text.primary }}>$34.8M</b>.<br />
-                  SOFR 4.30% &gt; strike → cap paying <b style={{ color: T.text.green }}>~30bps</b>.<br />
-                  Expires <b style={{ color: T.text.red }}>Sep '26</b> — 15mo before maturity.
-                </div>
-                <div style={{ marginTop: 10, padding: '8px 10px', border: `1px solid ${T.text.amber}44`, background: T.text.amber + '12', borderRadius: 2 }}>
-                  <span style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.amber }}>
-                    ⚑ ILLUSTRATIVE — source from loan record when capital-accounts endpoint is live.
-                  </span>
-                </div>
+                {debtPos ? (() => {
+                  const strike   = debtPos.rateCapStrike ?? debtPos.rateCap;
+                  const expiry   = debtPos.hedgeExpiryDate ?? debtPos.rateCapExpiry;
+                  const htype    = (debtPos.hedgeType && debtPos.hedgeType !== 'none') ? debtPos.hedgeType.toUpperCase() : 'CAP';
+                  const notional = fmtMoney(debtPos.currentBalance, '$34.8M');
+                  const sofrPct  = dpSofr != null ? +(dpSofr * 100).toFixed(2) : 4.30;
+                  const strikePct = strike != null ? (strike <= 1 ? +(strike * 100).toFixed(2) : +strike.toFixed(2)) : 4.00;
+                  const capPaying = sofrPct > strikePct;
+                  const bpsBenefit = capPaying ? Math.round((sofrPct - strikePct) * 100) : 0;
+                  return (
+                    <>
+                      <div style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.secondary, lineHeight: 1.7 }}>
+                        {htype} @ <b style={{ color: T.text.cyan }}>{strikePct.toFixed(2)}%</b>, notional <b style={{ color: T.text.primary }}>{notional}</b>.<br />
+                        SOFR {sofrPct.toFixed(2)}% {capPaying ? '>' : '≤'} strike → {htype.toLowerCase()} {capPaying
+                          ? <><b style={{ color: T.text.green }}>paying ~{bpsBenefit}bps</b></>
+                          : <b style={{ color: T.text.muted }}>not paying (OTM)</b>}.<br />
+                        {expiry
+                          ? <>Expires <b style={{ color: T.text.red }}>{fmtMonthYear(expiry, "Sep '26")}</b> — before maturity.</>
+                          : <>Expiry not set — update loan record.</>}
+                      </div>
+                      {expiry && (() => {
+                        const msToExpiry = new Date(expiry).getTime() - Date.now();
+                        const moToExpiry = Math.round(msToExpiry / (1000 * 60 * 60 * 24 * 30.44));
+                        if (moToExpiry <= 18) {
+                          return (
+                            <div style={{ marginTop: 10, padding: '8px 10px', border: `1px solid ${T.text.red}44`, background: T.text.red + '12', borderRadius: 2 }}>
+                              <span style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.red }}>
+                                ⚑ {htype} expires in {moToExpiry}mo — extension or replacement required before maturity.
+                              </span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </>
+                  );
+                })() : (
+                  <>
+                    <div style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.secondary, lineHeight: 1.7 }}>
+                      Rate cap @ <b style={{ color: T.text.cyan }}>4.00%</b>, notional <b style={{ color: T.text.primary }}>$34.8M</b>.<br />
+                      SOFR 4.30% &gt; strike → cap paying <b style={{ color: T.text.green }}>~30bps</b>.<br />
+                      Expires <b style={{ color: T.text.red }}>Sep '26</b> — 15mo before maturity.
+                    </div>
+                    <div style={{ marginTop: 10, padding: '8px 10px', border: `1px solid ${T.text.amber}44`, background: T.text.amber + '12', borderRadius: 2 }}>
+                      <span style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.amber }}>
+                        ⚑ ILLUSTRATIVE — no active debt position loaded.
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </Panel>
           </div>
