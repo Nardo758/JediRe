@@ -173,7 +173,7 @@ export async function getDebtPositions(dealId: string): Promise<DebtPosition[]> 
     rateCapPurchased: Boolean(row.rate_cap_purchased),
     rateCapStrike: row.rate_cap_strike ? Number(row.rate_cap_strike) : undefined,
     rateCapExpiry: row.rate_cap_expiry ? new Date(row.rate_cap_expiry as string) : undefined,
-    hedgeType: (row.hedge_type as DebtPosition['hedgeType']) ?? 'none',
+    hedgeType: row.hedge_type ? (row.hedge_type as DebtPosition['hedgeType']) : undefined,
     hedgeExpiryDate: row.hedge_expiry_date ? new Date(row.hedge_expiry_date as string) : undefined,
     originationDate: new Date(row.origination_date as string),
     maturityDate: new Date(row.maturity_date as string),

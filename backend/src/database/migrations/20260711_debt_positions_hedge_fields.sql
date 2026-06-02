@@ -3,7 +3,7 @@
 -- hedge_type and hedge_expiry_date are new fields for task #1717
 
 ALTER TABLE debt_positions
-  ADD COLUMN IF NOT EXISTS hedge_type       VARCHAR(20) DEFAULT 'none',
+  ADD COLUMN IF NOT EXISTS hedge_type       VARCHAR(20),
   ADD COLUMN IF NOT EXISTS hedge_expiry_date DATE;
 
 COMMENT ON COLUMN debt_positions.hedge_type        IS 'Rate hedge instrument type: cap | swap | collar | none';

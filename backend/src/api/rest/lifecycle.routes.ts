@@ -230,7 +230,14 @@ router.get('/:dealId/reforecast/history', requireAuth, async (req: Authenticated
 router.get('/:dealId/debt', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const positions = await getDebtPositions(req.params.dealId);
-    res.json({ success: true, positions });
+    // Include snake_case aliases for the hedge/cap fields per API contract
+    const mapped = positions.map(p => ({
+      ...p,
+      rate_cap_strike:   p.rateCapStrike   ?? null,
+      hedge_type:        p.hedgeType        ?? null,
+      hedge_expiry_date: p.hedgeExpiryDate  ?? null,
+    }));
+    res.json({ success: true, positions: mapped });
   } catch (err) {
     logger.error('Get debt positions error:', err);
     res.status(500).json({ success: false, error: 'Failed to get debt positions' });
