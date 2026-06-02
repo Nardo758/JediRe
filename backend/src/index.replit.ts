@@ -697,6 +697,10 @@ app.use('/api/v1/operations', operationsRouter);
 import lifecycleRouter from './api/rest/lifecycle.routes';
 app.use('/api/v1/lifecycle', lifecycleRouter);
 
+// Revenue management — repricing synthesizer (JEDI SIGNAL + REPRICING COURSE)
+import revenueRouter from './api/rest/revenue.routes';
+app.use('/api/v1/revenue', revenueRouter);
+
 // Investor & capital tracking routes (F8 — LP/GP, capital calls, distributions, waterfall)
 import investorCapitalRoutes from './api/rest/investor-capital.routes';
 app.use('/api/v1/capital', requireAuth, investorCapitalRoutes);
