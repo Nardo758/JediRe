@@ -180,7 +180,7 @@ const GL_TAXONOMY: Record<string, [string, Category, string | null]> = {
  * UW targets come from deal_monthly_actuals budget rows (columnar).
  * Falls back to columnar actuals if no GL lines exist.
  */
-async function fetchExpenseLines(
+export async function fetchExpenseLines(
   propertyId: string | null,
   dealId: string,
 ): Promise<{ lines: ExpenseLine[]; glSource: boolean }> {
@@ -201,15 +201,26 @@ async function fetchExpenseLines(
     : `deal_id = $1 AND is_budget = FALSE AND is_proforma = FALSE`;
 
   // ── 1. Discover property_code via period_month overlap ─────────────────────
+  // Use a safe IN-subquery (no join) so we never accidentally resolve the wrong
+  // property's code when multiple properties share the same calendar months.
+  // If the subquery returns more than one distinct property_code the result is
+  // ambiguous; we return null and fall through to the columnar path.
+  const pcSubWhere = propertyId
+    ? `property_id = $1 AND is_portfolio_asset = TRUE AND is_budget = FALSE AND is_proforma = FALSE`
+    : `deal_id = $1 AND is_budget = FALSE AND is_proforma = FALSE`;
   const pcRes = await query(
     `SELECT DISTINCT l.property_code
      FROM deal_monthly_actuals_lines l
-     JOIN deal_monthly_actuals dma ON dma.report_month = l.period_month
-     WHERE ${pcWhere}
-     LIMIT 1`,
+     WHERE l.period_month IN (
+       SELECT report_month FROM deal_monthly_actuals
+       WHERE ${pcSubWhere}
+       ORDER BY report_month DESC LIMIT 12
+     )`,
     [param],
   );
-  const propertyCode: string | null = (pcRes.rows[0] as any)?.property_code ?? null;
+  // Use GL path only when exactly one property_code maps to these months.
+  const propertyCode: string | null =
+    pcRes.rows.length === 1 ? (pcRes.rows[0] as any).property_code : null;
 
   // ── 2. Fetch budget totals per taxonomy column (always columnar) ──────────
   const opexCols = [
@@ -324,10 +335,17 @@ async function fetchExpenseLines(
  *      → provides renewalProbability and concessionWeeks per unit type
  *   2. rent_roll_units → provides in-place rents, unit counts, market rents
  *
+ * marketRent three-tier precedence per spec:
+ *   1. rent_roll_units.market_rent  (per-unit-type)
+ *   2. msas.avg_rent for city/state (correlation engine market rent output, city-level proxy)
+ *   3. inPlaceRent (last resort — caveat added)
+ *
  * If no snapshot is found, falls back to rent_roll_units only (returns caveat).
  */
-async function fetchLeaseCohorts(
+export async function fetchLeaseCohorts(
   dealId: string,
+  city: string,
+  state: string,
 ): Promise<{ cohorts: LeaseCohort[]; caveat: string | null }> {
 
   // ── 1. Load the latest derived snapshot metrics ────────────────────────────
@@ -399,14 +417,42 @@ async function fetchLeaseCohorts(
     };
   }
 
-  let marketRentFallbackCount = 0;
+  // ── 3. Correlation engine market rent (tier-2): MSA city-level avg_rent ────
+  // The correlation engine derives market rent from the msas table.  When
+  // rent_roll_units.market_rent is missing we use this city-level proxy
+  // (with a caveat) rather than silently defaulting to inPlaceRent.
+  const msaRes = await query(
+    `SELECT avg_rent FROM msas WHERE name ILIKE $1 AND state_code ILIKE $2 LIMIT 1`,
+    [`%${city}%`, state],
+  );
+  const correlationAvgRent: number | null =
+    msaRes.rows.length
+      ? parseFloat(String((msaRes.rows[0] as any).avg_rent)) || null
+      : null;
+
+  let msaFallbackCount   = 0;
+  let inPlaceFallbackCount = 0;
+
   const cohorts: LeaseCohort[] = (unitRes.rows as any[]).map((r) => {
     const unitType       = String(r.unit_type || 'Unknown');
     const inPlaceRent    = parseFloat(r.in_place_rent)  || 0;
     const rawMarketRent  = parseFloat(r.market_rent);
-    const marketRentFallback = isNaN(rawMarketRent) || rawMarketRent === 0;
-    if (marketRentFallback) marketRentFallbackCount++;
-    const marketRent     = marketRentFallback ? inPlaceRent : rawMarketRent;
+
+    // Three-tier marketRent precedence per spec:
+    // 1. rent_roll_units.market_rent (per-unit-type, most accurate)
+    // 2. MSA avg_rent from correlation engine (city-level proxy)
+    // 3. inPlaceRent (last resort — caller receives explicit caveat)
+    let marketRent: number;
+    if (!isNaN(rawMarketRent) && rawMarketRent > 0) {
+      marketRent = rawMarketRent;
+    } else if (correlationAvgRent !== null) {
+      marketRent = correlationAvgRent;
+      msaFallbackCount++;
+    } else {
+      marketRent = inPlaceRent;
+      inPlaceFallbackCount++;
+    }
+
     const avgConcession  = parseFloat(r.avg_concession) || 0;
     const avgCurRent     = parseFloat(r.avg_cur_rent_for_conc) || 1;
 
@@ -443,9 +489,14 @@ async function fetchLeaseCohorts(
       'No rent-roll derivation snapshot found — renewal rates and concession weeks sourced from rent_roll_units only (less accurate than snapshot derivations).',
     );
   }
-  if (marketRentFallbackCount > 0) {
+  if (msaFallbackCount > 0) {
     caveats.push(
-      `${marketRentFallbackCount} unit type(s) had no market_rent in rent roll — marketRent defaulted to inPlaceRent. Revenue lever may understate repricing opportunity.`,
+      `${msaFallbackCount} unit type(s) used MSA city-level avg_rent as market_rent proxy (correlation engine output — no per-unit market_rent in rent roll). Repricing lever may differ from actual submarket rates.`,
+    );
+  }
+  if (inPlaceFallbackCount > 0) {
+    caveats.push(
+      `${inPlaceFallbackCount} unit type(s) had no market_rent and no MSA avg_rent — marketRent defaulted to inPlaceRent. Revenue lever may understate repricing opportunity.`,
     );
   }
 
@@ -548,7 +599,7 @@ router.get('/:dealId/beat-plan', requireAuth, async (req: AuthenticatedRequest, 
     const [actuals, proForma, cohortResult, expenseResult] = await Promise.all([
       fetchActualsSnapshot(propertyId, dealId),
       fetchProFormaTargets(propertyId, dealId),
-      fetchLeaseCohorts(dealId),
+      fetchLeaseCohorts(dealId, city, state),
       fetchExpenseLines(propertyId, dealId),
     ]);
 
