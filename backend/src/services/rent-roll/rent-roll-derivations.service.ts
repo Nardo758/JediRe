@@ -66,17 +66,14 @@ export async function getRentRollDerivations(
        FROM rent_roll_units rru
        WHERE rru.deal_id = $1
        GROUP BY rru.as_of_date
-       -- Only include snapshots where at least one metric is meaningful
+       -- Include snapshots where at least one metric (LTL or concessions) is non-trivial.
+       -- A snapshot qualifies if it has any unit with an LTL measurement OR any non-zero concession.
        HAVING
-         AVG(
-           CASE
-             WHEN rru.loss_to_lease_pct IS NOT NULL AND rru.loss_to_lease_pct != 0
-               THEN rru.loss_to_lease_pct::numeric
-             WHEN rru.market_rent > 0 AND rru.current_rent IS NOT NULL AND rru.current_rent > 0
-               THEN (rru.market_rent::numeric - rru.current_rent) / rru.market_rent * 100
-             ELSE NULL
-           END
-         ) IS NOT NULL
+         COUNT(*) FILTER (
+           WHERE (rru.loss_to_lease_pct IS NOT NULL AND rru.loss_to_lease_pct != 0)
+              OR (rru.market_rent > 0 AND rru.current_rent IS NOT NULL AND rru.current_rent > 0)
+         ) > 0
+         OR SUM(COALESCE(rru.concession_amount, 0)) > 0
        ORDER BY rru.as_of_date ASC`,
       [dealId],
     );

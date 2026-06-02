@@ -84,7 +84,7 @@ const METRICS = [
   { key: 'noi',    tile: 'NOI TTM',      val: '$3.41M', color: T.text.amber,  fmt: (v: number) => '$' + (v / 1000).toFixed(0) + 'K' },
   { key: 'revpau', tile: 'RevPAU',       val: '$1,612', color: T.text.primary, fmt: (v: number) => '$' + v.toLocaleString() },
   { key: 'ltl',    tile: 'LOSS-TO-LEASE', val: '6.4%', color: T.text.amber,  fmt: (v: number) => v.toFixed(1) + '%' },
-  { key: 'conc',   tile: 'CONCESSIONS',  val: '1.5%',  color: T.text.orange, fmt: (v: number) => v.toFixed(1) + '%' },
+  { key: 'conc',   tile: 'CONCESSIONS',  val: '$25/u',  color: T.text.orange, fmt: (v: number) => '$' + Math.round(v) + '/u' },
 ];
 
 const TIMEFRAMES: [string, number][] = [['3M', 3], ['6M', 6], ['1Y', 12], ['2Y', 24], ['MAX', 30]];
@@ -874,13 +874,13 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
       const protoOffset = SERIES.length - actualsData.length + idx;
       const proto = protoOffset >= 0 && protoOffset < SERIES.length ? SERIES[protoOffset] : null;
 
-      // Convert concessions_per_unit ($/unit) → concession rate % of in-place rent
-      // for the hero chart (which formats conc as a percentage).
-      // e.g. $25 concession on $1,700 rent → 1.5% concession rate
-      let conc: number | null = proto?.conc ?? null;
-      if (derived?.concessions_per_unit != null && rent > 0) {
-        conc = Math.round((derived.concessions_per_unit / rent) * 1000) / 10; // 1 d.p. %
-      }
+      // concessions_per_unit ($/unit) — used directly on the chart in dollars.
+      // The METRICS formatter for 'conc' shows "$N/u".
+      // Prototype fallback values are percentage-style numbers; when real data is
+      // available (derivedMetrics populated), they are overridden by dollar amounts.
+      const conc: number | null = derived?.concessions_per_unit != null
+        ? Math.round(derived.concessions_per_unit * 100) / 100
+        : proto?.conc ?? null;
 
       return {
         m: `${mon.slice(0,3)}'${yr}`,
