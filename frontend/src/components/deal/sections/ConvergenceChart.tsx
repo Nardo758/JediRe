@@ -6,11 +6,14 @@
  * over 84 quarters (Q1 2016 → Q4 2036).
  *
  * Click any future quarter to set/inspect an exit point.
+ *
+ * Accepts optional live-data props that replace the module-level hardcoded
+ * constants — used by ExitTimingTab when the /exit-timing API responds.
  */
 
 import React, { useState, useCallback, useRef } from 'react';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Constants (hardcoded fallback) ───────────────────────────────────────────
 export const NOW_IDX = 40;
 export const TOTAL_Q = 84;
 
@@ -50,7 +53,7 @@ export const T10_21Y = [
   3.2, 3.2, 3.1, 3.1, 3.0, 3.0, 3.0, 2.9, 2.9, 2.9, 2.8, 2.8,
 ];
 
-interface RSSBreakdown {
+export interface RSSBreakdown {
   rss: number;
   mw: number;
   re: number;
@@ -84,7 +87,6 @@ export const Q_LABELS: Quarter[] = Array.from({ length: TOTAL_Q }, (_, i) => {
   return { idx: i, label: `Q${q}'${String(y).slice(2)}`, yearLabel: q === 1 ? String(y) : null, year: y, isProj: i >= NOW_IDX };
 });
 
-// Find optimal quarter (highest RSS in projected range, weighted toward sooner)
 export const OPTIMAL_FWD = (() => {
   let best = 0;
   let bestScore = -Infinity;
@@ -147,11 +149,34 @@ interface ConvergenceChartProps {
   selectedFwd: number;
   onSelectFwd: (fwd: number) => void;
   optimalFwd: number;
+  /** Optional live data from /exit-timing API — overrides module-level constants when provided */
+  rentGrowth21Y?: number[];
+  capRates21Y?: number[];
+  supply21Y?: number[];
+  t10_21Y?: number[];
+  rss21Y?: RSSBreakdown[];
+  nowIdx?: number;
 }
 
-export function ConvergenceChart({ selectedFwd, onSelectFwd, optimalFwd }: ConvergenceChartProps) {
+export function ConvergenceChart({
+  selectedFwd, onSelectFwd, optimalFwd,
+  rentGrowth21Y: propRG,
+  capRates21Y: propCap,
+  supply21Y: propSup,
+  t10_21Y: propT10,
+  rss21Y: propRSS,
+  nowIdx: propNow,
+}: ConvergenceChartProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
+  // Resolve data: use live props when provided, fall back to module-level constants
+  const RG  = propRG  ?? RENT_GROWTH_21Y;
+  const CAP = propCap ?? CAP_RATES_21Y;
+  const SUP = propSup ?? SUPPLY_21Y;
+  const T10 = propT10 ?? T10_21Y;
+  const RSS = propRSS ?? RSS_21Y;
+  const NOW = propNow ?? NOW_IDX;
 
   const W = 920, H = 360;
   const pad = { t: 30, r: 50, b: 58, l: 50 };
@@ -159,17 +184,17 @@ export function ConvergenceChart({ selectedFwd, onSelectFwd, optimalFwd }: Conve
   const iH = H - pad.t - pad.b;
 
   const x = (i: number) => pad.l + (i / (TOTAL_Q - 1)) * iW;
-  const nowX = x(NOW_IDX);
-  const selAbsIdx = NOW_IDX + selectedFwd;
-  const optAbsIdx = NOW_IDX + optimalFwd;
+  const nowX = x(NOW);
+  const selAbsIdx = NOW + selectedFwd;
+  const optAbsIdx = NOW + optimalFwd;
 
-  const rgMin = -3, rgMax = 15;
+  const rgMin = -5, rgMax = 20;
   const capMin = 3.5, capMax = 6.5;
-  const yRG = (v: number) => pad.t + iH - ((v - rgMin) / (rgMax - rgMin)) * iH;
+  const yRG  = (v: number) => pad.t + iH - ((v - rgMin)  / (rgMax  - rgMin))  * iH;
   const yCap = (v: number) => pad.t + iH - ((v - capMin) / (capMax - capMin)) * iH;
   const yRSS = (v: number) => pad.t + iH - (v / 100) * iH;
 
-  const maxSupply = Math.max(...SUPPLY_21Y);
+  const maxSupply = Math.max(...SUP.filter(v => typeof v === 'number'), 1);
 
   const rgHistPath: string[] = [], rgProjPath: string[] = [];
   const capHistPath: string[] = [], capProjPath: string[] = [];
@@ -177,11 +202,11 @@ export function ConvergenceChart({ selectedFwd, onSelectFwd, optimalFwd }: Conve
 
   for (let i = 0; i < TOTAL_Q; i++) {
     const px = x(i);
-    const pt1 = `${px},${yRG(RENT_GROWTH_21Y[i] ?? 2.5)}`;
-    const pt2 = `${px},${yCap(CAP_RATES_21Y[i] ?? 5.0)}`;
-    const pt3 = `${px},${yRSS(RSS_21Y[i]?.rss ?? 50)}`;
-    if (i <= NOW_IDX) { rgHistPath.push(pt1); capHistPath.push(pt2); rssHistPath.push(pt3); }
-    if (i >= NOW_IDX) { rgProjPath.push(pt1); capProjPath.push(pt2); rssProjPath.push(pt3); }
+    const pt1 = `${px},${yRG(RG[i] ?? 2.5)}`;
+    const pt2 = `${px},${yCap(CAP[i] ?? 5.0)}`;
+    const pt3 = `${px},${yRSS(RSS[i]?.rss ?? 50)}`;
+    if (i <= NOW) { rgHistPath.push(pt1); capHistPath.push(pt2); rssHistPath.push(pt3); }
+    if (i >= NOW) { rgProjPath.push(pt1); capProjPath.push(pt2); rssProjPath.push(pt3); }
   }
 
   const handleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -190,10 +215,9 @@ export function ConvergenceChart({ selectedFwd, onSelectFwd, optimalFwd }: Conve
     const rect = svg.getBoundingClientRect();
     const mx = ((e.clientX - rect.left) / rect.width) * W;
     const absIdx = Math.round(((mx - pad.l) / iW) * (TOTAL_Q - 1));
-    if (absIdx >= NOW_IDX && absIdx < TOTAL_Q) onSelectFwd(absIdx - NOW_IDX);
-  // hook intentionally captures iW, pad.l via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
+    if (absIdx >= NOW && absIdx < TOTAL_Q) onSelectFwd(absIdx - NOW);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onSelectFwd]);
+  }, [onSelectFwd, NOW]);
 
   const handleMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
@@ -202,7 +226,6 @@ export function ConvergenceChart({ selectedFwd, onSelectFwd, optimalFwd }: Conve
     const mx = ((e.clientX - rect.left) / rect.width) * W;
     const idx = Math.round(((mx - pad.l) / iW) * (TOTAL_Q - 1));
     if (idx >= 0 && idx < TOTAL_Q) setHoverIdx(idx);
-  // hook intentionally captures iW, pad.l via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted values are read from the enclosing scope at the moment of fire.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -220,10 +243,10 @@ export function ConvergenceChart({ selectedFwd, onSelectFwd, optimalFwd }: Conve
         <rect x={pad.l} y={pad.t} width={nowX - pad.l} height={iH} fill="rgba(255,255,255,0.008)" />
         <rect x={nowX} y={pad.t} width={W - pad.r - nowX} height={iH} fill="rgba(99,179,237,0.015)" />
 
-        {SUPPLY_21Y.map((v, i) => {
-          if (v === 0 || maxSupply === 0) return null;
+        {SUP.map((v, i) => {
+          if (!v || maxSupply === 0) return null;
           const h = (v / maxSupply) * iH * 0.35;
-          return <rect key={i} x={x(i) - 2} y={pad.t + iH - h} width={4} height={h} fill={i >= NOW_IDX ? 'rgba(246,173,85,0.2)' : 'rgba(246,173,85,0.08)'} rx={1} />;
+          return <rect key={i} x={x(i) - 2} y={pad.t + iH - h} width={4} height={h} fill={i >= NOW ? 'rgba(246,173,85,0.2)' : 'rgba(246,173,85,0.08)'} rx={1} />;
         })}
 
         <path d={`M${rgHistPath.join(' L')}`} fill="none" stroke="#68D391" strokeWidth={1.5} />
@@ -243,7 +266,7 @@ export function ConvergenceChart({ selectedFwd, onSelectFwd, optimalFwd }: Conve
         <line x1={x(selAbsIdx)} y1={pad.t - 2} x2={x(selAbsIdx)} y2={pad.t + iH + 2} stroke="#E8E6E1" strokeWidth={2} />
         <rect x={x(selAbsIdx) - 22} y={pad.t - 20} width={44} height={14} rx={3} fill="#E8E6E1" />
         <text x={x(selAbsIdx)} y={pad.t - 10} textAnchor="middle" fill="#0B0E13" fontSize={8} fontWeight={700} fontFamily="JetBrains Mono">{Q_LABELS[selAbsIdx]?.label}</text>
-        <text x={x(selAbsIdx)} y={yRSS(RSS_21Y[selAbsIdx]?.rss ?? 50) - 10} textAnchor="middle" fill="#10b981" fontSize={11} fontWeight={800} fontFamily="JetBrains Mono">{RSS_21Y[selAbsIdx]?.rss ?? 50}</text>
+        <text x={x(selAbsIdx)} y={yRSS(RSS[selAbsIdx]?.rss ?? 50) - 10} textAnchor="middle" fill="#10b981" fontSize={11} fontWeight={800} fontFamily="JetBrains Mono">{RSS[selAbsIdx]?.rss ?? 50}</text>
 
         {Q_LABELS.filter(q => q.yearLabel).map(q => (
           <text key={q.idx} x={x(q.idx)} y={pad.t + iH + 14} textAnchor="middle" fill={q.isProj ? '#63B3ED60' : 'rgba(232,230,225,0.22)'} fontSize={8} fontFamily="JetBrains Mono" fontWeight={q.year === 2026 ? 700 : 400}>{q.yearLabel}</text>
@@ -295,7 +318,7 @@ export function ConvergenceChart({ selectedFwd, onSelectFwd, optimalFwd }: Conve
             </div>
           );
         })}
-        <div style={{ position: 'absolute', left: `${(50 + (NOW_IDX / (TOTAL_Q - 1)) * 820) / 920 * 100}%`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+        <div style={{ position: 'absolute', left: `${(50 + (NOW / (TOTAL_Q - 1)) * 820) / 920 * 100}%`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
           <div style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderBottom: '6px solid rgba(232,230,225,0.8)' }} />
           <span style={{ fontSize: 7, fontWeight: 700, fontFamily: '"JetBrains Mono",monospace', color: 'rgba(232,230,225,0.8)', whiteSpace: 'nowrap' }}>NOW</span>
         </div>
@@ -308,11 +331,11 @@ export function ConvergenceChart({ selectedFwd, onSelectFwd, optimalFwd }: Conve
             {Q_LABELS[hoverIdx]?.label} {Q_LABELS[hoverIdx]?.isProj ? '(projected)' : ''}
           </div>
           {[
-            { l: 'Rent growth', v: RENT_GROWTH_21Y[hoverIdx], c: '#68D391', s: '%' },
-            { l: 'Cap rate',    v: CAP_RATES_21Y[hoverIdx],   c: '#63B3ED', s: '%' },
-            { l: 'Treasury 10Y', v: T10_21Y[hoverIdx],        c: '#B794F4', s: '%' },
-            { l: 'Supply',     v: SUPPLY_21Y[hoverIdx],        c: '#F6AD55', s: ' units' },
-            { l: 'RSS',        v: RSS_21Y[hoverIdx]?.rss,      c: '#10b981', s: '' },
+            { l: 'Rent growth', v: RG[hoverIdx],  c: '#68D391', s: '%' },
+            { l: 'Cap rate',    v: CAP[hoverIdx], c: '#63B3ED', s: '%' },
+            { l: 'Treasury 10Y', v: T10[hoverIdx], c: '#B794F4', s: '%' },
+            { l: 'Supply',     v: SUP[hoverIdx],   c: '#F6AD55', s: ' units' },
+            { l: 'RSS',        v: RSS[hoverIdx]?.rss, c: '#10b981', s: '' },
           ].map(r => (
             <div key={r.l} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
               <span style={{ fontSize: 9, color: r.c }}>{r.l}</span>
