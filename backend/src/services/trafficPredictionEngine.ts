@@ -1045,7 +1045,23 @@ export class TrafficPredictionEngine {
       }
     }
 
-    const marketResearch = await marketResearchEngine.getCachedReport(propertyId, 24);
+    // Market research is keyed by deal_id in market_research_reports.
+    // Resolve deal_id from property_id when not passed in.
+    let marketResearchKey = dealId;
+    if (!marketResearchKey) {
+      try {
+        const dealLookup = await pool.query<{ id: string }>(
+          `SELECT id FROM deals WHERE property_id = $1 LIMIT 1`,
+          [propertyId]
+        );
+        if (dealLookup.rows.length > 0) {
+          marketResearchKey = dealLookup.rows[0].id;
+        }
+      } catch {
+        // Non-blocking — falls back to propertyId key
+      }
+    }
+    const marketResearch = await marketResearchEngine.getCachedReport(marketResearchKey ?? propertyId, 24);
     
     if (!marketResearch) {
       throw new Error('Market research required for traffic prediction. Generate market report first.');
@@ -1776,10 +1792,10 @@ export class TrafficPredictionEngine {
     const validationCount = await pool.query(`
       SELECT COUNT(*) as count
       FROM validation_properties vp
-      JOIN properties p ON vp.property_id = p.id
+      JOIN properties p ON vp.property_id = p.id::text
       WHERE p.submarket_id = $1
       AND vp.is_active = TRUE
-    `, [property.submarket_id]);
+    `, [property.submarket_id || null]);
     
     const validationConfidence = Math.min(validationCount.rows[0].count / 5, 1.0);
     
@@ -1820,42 +1836,34 @@ export class TrafficPredictionEngine {
     await pool.query(`
       INSERT INTO traffic_predictions (
         property_id,
-        deal_id,
         prediction_week,
         prediction_year,
         weekly_walk_ins,
         daily_average,
         peak_hour_estimate,
-        physical_traffic_component,
-        demand_traffic_component,
-        supply_demand_multiplier,
-        base_before_adjustment,
-        weekday_avg,
-        weekend_avg,
-        weekday_total,
-        weekend_total,
-        peak_day,
-        peak_hour,
+        physical_factor_score,
+        market_demand_score,
+        supply_demand_adjustment,
         confidence_score,
         confidence_tier,
-        confidence_breakdown,
-        submarket_id,
-        foot_traffic_index,
-        supply_demand_ratio,
         model_version,
         prediction_details
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
       )
-      ON CONFLICT (property_id, prediction_week, prediction_year)
+      ON CONFLICT (property_id, prediction_week, prediction_year, model_version)
       DO UPDATE SET
         weekly_walk_ins = EXCLUDED.weekly_walk_ins,
         daily_average = EXCLUDED.daily_average,
+        physical_factor_score = EXCLUDED.physical_factor_score,
+        market_demand_score = EXCLUDED.market_demand_score,
+        supply_demand_adjustment = EXCLUDED.supply_demand_adjustment,
         confidence_score = EXCLUDED.confidence_score,
+        confidence_tier = EXCLUDED.confidence_tier,
+        prediction_details = EXCLUDED.prediction_details,
         updated_at = NOW()
     `, [
       prediction.property_id,
-      prediction.deal_id || null,
       prediction.prediction_week,
       prediction.prediction_year,
       prediction.weekly_walk_ins,
@@ -1864,19 +1872,8 @@ export class TrafficPredictionEngine {
       prediction.breakdown.physical_factors,
       prediction.breakdown.market_demand_factors,
       prediction.breakdown.supply_demand_adjustment,
-      prediction.breakdown.base_before_adjustment,
-      prediction.temporal_patterns.weekday_avg,
-      prediction.temporal_patterns.weekend_avg,
-      prediction.temporal_patterns.weekday_total,
-      prediction.temporal_patterns.weekend_total,
-      prediction.temporal_patterns.peak_day,
-      prediction.temporal_patterns.peak_hour,
       prediction.confidence.score,
       prediction.confidence.tier,
-      JSON.stringify(prediction.confidence.breakdown),
-      prediction.market_context.submarket,
-      prediction.market_context.foot_traffic_index,
-      prediction.market_context.supply_demand_ratio,
       prediction.model_version,
       JSON.stringify(prediction)
     ]);
