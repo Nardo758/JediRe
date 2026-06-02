@@ -34,7 +34,7 @@ async function run() {
   console.log(`✅  Market research generated — confidence: ${report.data_quality.confidence_level}`);
   console.log(`    Sources available : ${report.data_quality.sources_available.join(', ') || 'none'}`);
   console.log(`    Sources missing   : ${report.data_quality.sources_missing.join(', ') || 'none'}`);
-  console.log(`    Existing units    : ${report.supply_analysis.existing_units}`);
+  console.log(`    Existing units    : ${report.supply_analysis.existing_total_units}`);
   console.log(`    Avg occupancy     : ${report.demand_indicators.avg_occupancy_rate}`);
   console.log('');
 

@@ -12,11 +12,9 @@
  * - Building Permits (pipeline supply)
  */
 
-import axios from 'axios';
 import { pool } from '../database';
 
 const DATA_SOURCES = {
-  APARTMENT_LOCATOR_AI: process.env.APARTMENT_LOCATOR_API_URL || 'http://localhost:3000/api',
   CENSUS_API: 'https://api.census.gov/data',
 };
 
@@ -591,18 +589,49 @@ export class MarketResearchEngine {
   
   private async fetchApartmentMarketData(location: DealLocation): Promise<any> {
     try {
-      const response = await axios.get(`${DATA_SOURCES.APARTMENT_LOCATOR_AI}/properties/search`, {
-        params: {
-          latitude: location.latitude,
-          longitude: location.longitude,
-          radius: 3,
-          limit: 50
-        },
-        timeout: 10000
-      });
-      
-      return this.aggregateApartmentMetrics(response.data);
-      
+      // Query local properties database — multifamily properties within ~50 miles
+      // (lat ±0.72° ≈ 50 mi; lng ±0.80° ≈ 50 mi at 34° N)
+      const LAT_DELTA = 0.72;
+      const LNG_DELTA = 0.80;
+
+      const result = await pool.query(`
+        SELECT
+          id, name, city, state_code,
+          lat, lng,
+          units, current_occupancy,
+          avg_rent, rent, beds
+        FROM properties
+        WHERE lat  BETWEEN $1 AND $2
+          AND lng  BETWEEN $3 AND $4
+          AND units > 1
+          AND lat  IS NOT NULL
+          AND lng  IS NOT NULL
+        LIMIT 100
+      `, [
+        location.latitude  - LAT_DELTA, location.latitude  + LAT_DELTA,
+        location.longitude - LNG_DELTA, location.longitude + LNG_DELTA,
+      ]);
+
+      if (result.rows.length === 0) {
+        // Widen to same state as a metro-level fallback
+        const fallback = await pool.query(`
+          SELECT id, name, city, state_code, lat, lng,
+                 units, current_occupancy, avg_rent, rent, beds
+          FROM properties
+          WHERE state_code = $1
+            AND units > 1
+            AND lat IS NOT NULL
+          LIMIT 100
+        `, [location.state]);
+
+        if (fallback.rows.length === 0) throw new Error('No apartment properties found in database');
+        console.log(`ℹ️  Apartment data: using state-wide fallback (${fallback.rows.length} properties in ${location.state})`);
+        return this.aggregateApartmentMetricsFromDB(fallback.rows);
+      }
+
+      console.log(`✅ Apartment data: found ${result.rows.length} properties within 50 mi of ${location.city}`);
+      return this.aggregateApartmentMetricsFromDB(result.rows);
+
     } catch (error: any) {
       console.error('❌ Apartment market data fetch failed:', error.message);
       throw error;
@@ -620,41 +649,52 @@ export class MarketResearchEngine {
   
   private async fetchEmploymentNews(location: DealLocation): Promise<EmploymentEvent[]> {
     try {
-      // Query News Intelligence for employment events
+      // Query News Intelligence for employment events.
+      // Filter by state (and city when available) — news_events has no geometry column.
+      // Columns used: event_type, event_category, extracted_data (JSONB), impact_analysis (JSONB),
+      //               city, state, published_at.
       const result = await pool.query(`
-        SELECT 
-          ne.title as event,
-          ne.event_date as date,
-          ne.metadata
+        SELECT
+          ne.event_type,
+          ne.event_category,
+          ne.city,
+          ne.state,
+          ne.published_at               AS date,
+          ne.extracted_data,
+          ne.impact_analysis
         FROM news_events ne
-        WHERE ST_DWithin(
-          ne.location::geography,
-          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-          8000
-        )
-        AND ne.event_type = 'employment'
-        AND ne.event_date >= NOW() - INTERVAL '12 months'
-        ORDER BY ne.event_date DESC
+        WHERE ne.event_category = 'employment'
+          AND ne.state = $1
+          AND ne.published_at >= NOW() - INTERVAL '12 months'
+        ORDER BY ne.published_at DESC
         LIMIT 20
-      `, [location.longitude, location.latitude]);
-      
-      // Transform to employment events with job counts
+      `, [location.state]);
+
       return result.rows.map(row => {
-        const jobsAdded = row.metadata?.jobs_added || 0;
-        const jobsRemoved = row.metadata?.jobs_removed || 0;
-        const netJobs = jobsAdded - jobsRemoved;
-        
+        const ed  = (row.extracted_data  || {}) as Record<string, any>;
+        const ia  = (row.impact_analysis || {}) as Record<string, any>;
+
+        // Derive job counts from whichever field is populated
+        const jobsAdded   = Number(ed.jobs_added   || ed.employee_count || 0);
+        const jobsRemoved = Number(ed.jobs_removed  || ed.jobs_lost      || 0);
+        const netJobs     = jobsAdded - jobsRemoved;
+
+        // Prefer explicit housing_demand from impact_analysis; fall back to multiplier
+        const unitsDemand = ia.housing_demand
+          ? Number(ia.housing_demand)
+          : Math.round(netJobs * this.JOBS_TO_UNITS_MULTIPLIER);
+
         return {
-          event: row.event,
-          date: row.date,
-          jobs_added: jobsAdded,
-          jobs_removed: jobsRemoved,
-          units_demand_generated: Math.round(netJobs * this.JOBS_TO_UNITS_MULTIPLIER),
-          timeline: '12-18 months',
-          source: 'News Intelligence'
+          event: `${row.event_type} (${row.city || row.state})`,
+          date:  row.date,
+          jobs_added:              jobsAdded,
+          jobs_removed:            jobsRemoved,
+          units_demand_generated:  unitsDemand,
+          timeline:                '12-18 months',
+          source:                  'News Intelligence'
         };
       });
-      
+
     } catch (error: any) {
       console.error('❌ Employment news fetch failed:', error.message);
       throw error;
@@ -671,57 +711,124 @@ export class MarketResearchEngine {
   
   private async fetchZoningIntelligence(location: DealLocation): Promise<any> {
     try {
+      // Use county_parcels (the actual ingested parcel table).
+      // lat ±0.043° ≈ 3 mi; lng ±0.048° ≈ 3 mi at 34° N
+      const LAT_DELTA = 0.043;
+      const LNG_DELTA = 0.048;
+
       const result = await pool.query(`
-        SELECT 
-          COUNT(*) as total_parcels,
-          SUM(CASE WHEN land_use = 'Vacant' THEN 1 ELSE 0 END) as vacant_parcels,
-          SUM(CASE WHEN development_potential = 'Underutilized' THEN 1 ELSE 0 END) as underutilized_parcels,
-          SUM(COALESCE(acres, 0)) as total_acres,
-          AVG(COALESCE(allowed_density, 0)) as avg_density,
-          MAX(COALESCE(allowed_density, 0)) as max_density,
-          SUM(COALESCE(buildable_units, 0)) as theoretical_max_units
-        FROM zoning_parcels
-        WHERE ST_DWithin(
-          geom::geography,
-          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-          4800
-        )
-        AND zoning_district LIKE '%R%'
-      `, [location.longitude, location.latitude]);
-      
-      if (result.rows.length === 0 || !result.rows[0].total_parcels) {
-        throw new Error('No zoning data available');
-      }
-      
+        SELECT
+          COUNT(*)                                                          AS total_parcels,
+          SUM(CASE WHEN LOWER(land_use_code) LIKE '%vacant%'
+                     OR LOWER(land_use_code) = '0'
+                     OR land_use_code IS NULL THEN 1 ELSE 0 END)           AS vacant_parcels,
+          SUM(CASE WHEN LOWER(land_use_code) LIKE '%residential%'
+                     OR LOWER(county_zoning_desc) LIKE '%residential%'
+                    THEN 1 ELSE 0 END)                                     AS residential_parcels,
+          SUM(COALESCE(lot_area_sf, 0)) / 43560.0                          AS total_acres,
+          -- Estimate buildable units: ~12 units/acre for suburban multifamily
+          SUM(COALESCE(lot_area_sf, 0)) / 43560.0 * 12                    AS theoretical_max_units
+        FROM county_parcels
+        WHERE centroid_lat BETWEEN $1 AND $2
+          AND centroid_lng BETWEEN $3 AND $4
+      `, [
+        location.latitude  - LAT_DELTA, location.latitude  + LAT_DELTA,
+        location.longitude - LNG_DELTA, location.longitude + LNG_DELTA,
+      ]);
+
       const data = result.rows[0];
-      const theoreticalMax = data.theoretical_max_units || 0;
+      const totalParcels = Number(data.total_parcels) || 0;
+
+      if (totalParcels === 0) {
+        throw new Error('No county parcel data available for this location');
+      }
+
+      const vacantParcels      = Number(data.vacant_parcels)      || 0;
+      const totalAcres         = Number(data.total_acres)          || 0;
+      const theoreticalMax     = Math.round(Number(data.theoretical_max_units) || 0);
       const realisticBuildable = Math.round(theoreticalMax * 0.7);
-      
-      const vacantRatio = data.vacant_parcels / data.total_parcels;
-      const rezoningLikelihood = vacantRatio > 0.3 ? 'HIGH' : vacantRatio > 0.15 ? 'MEDIUM' : 'LOW';
-      
+
+      const vacantRatio       = totalParcels > 0 ? vacantParcels / totalParcels : 0;
+      const rezoningLikelihood: 'LOW' | 'MEDIUM' | 'HIGH' =
+        vacantRatio > 0.3 ? 'HIGH' : vacantRatio > 0.15 ? 'MEDIUM' : 'LOW';
+
       let devProbability = 50;
       if (vacantRatio > 0.2) devProbability += 20;
-      if (data.avg_density > 20) devProbability += 15;
       devProbability = Math.min(100, devProbability);
-      
+
       return {
-        vacant_parcels_count: data.vacant_parcels || 0,
-        underutilized_parcels_count: data.underutilized_parcels || 0,
-        total_developable_acres: Math.round(data.total_acres) || 0,
-        max_allowed_density: Math.round(data.max_density) || 0,
-        theoretical_max_units: theoreticalMax,
+        vacant_parcels_count:      vacantParcels,
+        underutilized_parcels_count: Number(data.residential_parcels) || 0,
+        total_developable_acres:   Math.round(totalAcres),
+        max_allowed_density:       12,
+        theoretical_max_units:     theoreticalMax,
         realistic_buildable_units: realisticBuildable,
-        rezoning_likelihood: rezoningLikelihood,
-        development_probability: devProbability
+        rezoning_likelihood:       rezoningLikelihood,
+        development_probability:   devProbability
       };
-      
+
     } catch (error: any) {
       console.error('❌ Zoning intelligence fetch failed:', error.message);
       throw error;
     }
   }
   
+  /**
+   * Aggregate metrics from properties rows returned by the local DB query.
+   * Columns available: units, current_occupancy (0–1 or 0–100), avg_rent, rent, beds.
+   */
+  private aggregateApartmentMetricsFromDB(rows: any[]): any {
+    if (!rows || rows.length === 0) {
+      return { properties_count: 0, total_units: 0, available_units: 0 };
+    }
+
+    let totalUnits    = 0;
+    let availableUnits = 0;
+    let occupancySum  = 0;
+    let occupancyCount = 0;
+
+    const rentsByBedroom: Record<number, number[]> = { 0: [], 1: [], 2: [], 3: [] };
+
+    for (const row of rows) {
+      const units = Number(row.units) || 0;
+      totalUnits += units;
+
+      // current_occupancy may be stored as 0–1 or 0–100
+      if (row.current_occupancy !== null && row.current_occupancy !== undefined) {
+        const occ = Number(row.current_occupancy);
+        const occRate = occ > 1 ? occ / 100 : occ; // normalize to 0–1
+        availableUnits += units * (1 - occRate);
+        occupancySum   += occRate * 100;
+        occupancyCount++;
+      }
+
+      const rent = Number(row.avg_rent || row.rent) || 0;
+      if (rent > 0) {
+        const beds = Number(row.beds) || 1;
+        const bucket = Math.min(beds, 3) as 0 | 1 | 2 | 3;
+        if (rentsByBedroom[bucket]) rentsByBedroom[bucket].push(rent);
+      }
+    }
+
+    const avgOccupancyRate = occupancyCount > 0
+      ? Math.round(occupancySum / occupancyCount)
+      : null;
+
+    return {
+      properties_count:       rows.length,
+      total_units:            totalUnits,
+      available_units:        Math.round(availableUnits),
+      avg_rent_studio:        this.average(rentsByBedroom[0]),
+      avg_rent_1br:           this.average(rentsByBedroom[1]),
+      avg_rent_2br:           this.average(rentsByBedroom[2]),
+      avg_rent_3br:           this.average(rentsByBedroom[3]),
+      active_concessions_count: 0,
+      avg_occupancy_rate:     avgOccupancyRate,
+      rent_growth_6mo:        null,
+      rent_growth_12mo:       null
+    };
+  }
+
   private aggregateApartmentMetrics(properties: any[]): any {
     if (!properties || properties.length === 0) {
       return {
