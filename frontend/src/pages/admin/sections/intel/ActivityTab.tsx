@@ -24,10 +24,11 @@ interface Activity {
 }
 
 const TYPE_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
-  document_upload: { label: 'Document',  icon: '📄', color: T.text.cyan   },
-  deal_event:      { label: 'Deal',      icon: '🏠', color: T.text.green  },
-  financial_change:{ label: 'Financial', icon: '📊', color: T.text.amber  },
-  agent_run:       { label: 'Agent',     icon: '🤖', color: T.text.secondary },
+  document_upload:    { label: 'Document',  icon: '📄', color: T.text.cyan      },
+  deal_event:         { label: 'Deal',      icon: '🏠', color: T.text.green     },
+  financial_change:   { label: 'Financial', icon: '📊', color: T.text.amber     },
+  agent_run:          { label: 'Agent',     icon: '🤖', color: T.text.secondary },
+  team_member_change: { label: 'Team',      icon: '👤', color: T.text.primary   },
 };
 const ALL_TYPES = Object.keys(TYPE_CONFIG);
 

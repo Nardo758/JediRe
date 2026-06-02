@@ -1881,7 +1881,8 @@ router.get('/:dealId/activity', requireAuth, async (req: AuthenticatedRequest, r
   try {
     const { dealId } = req.params;
     const { type: typeFilter, limit: limitParam = '100' } = req.query;
-    const limit = Math.min(parseInt(limitParam as string, 10) || 100, 200);
+    const parsedLimit = parseInt(limitParam as string, 10);
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 200) : 100;
 
     const ownerCheck = await query(
       'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
@@ -1925,6 +1926,19 @@ router.get('/:dealId/activity', requireAuth, async (req: AuthenticatedRequest, r
          FROM deal_activity da
          LEFT JOIN users u ON u.id = da.user_id
          WHERE da.deal_id = $1
+
+         UNION ALL
+
+         -- Source 3: team member activity from deal_team_activity
+         SELECT
+           dta.id::text,
+           'team_member_change'                                    AS type,
+           COALESCE(dta.actor_name, 'System')                      AS actor,
+           COALESCE(dta.action, 'Team update')                     AS description,
+           dta.target_type                                         AS meta,
+           dta.created_at                                          AS timestamp
+         FROM deal_team_activity dta
+         WHERE dta.deal_id = $1
        ) feed
        WHERE ($2::text IS NULL OR type = $2)
        ORDER BY timestamp DESC
