@@ -40,6 +40,29 @@ const T = {
   },
 };
 
+// ── BEAT PLAN TYPES (mirrors backend revenue-engine.service.ts) ──────────────
+type RepricingAction = 'PUSH' | 'HOLD' | 'CONCEDE';
+interface NOIBridgeStep { label: string; amount: number; }
+interface CohortRecommendation {
+  unitType: string; units: number; inPlaceRent: number; marketRent: number;
+  signalScore: number; recommendedRent: number; deltaPerUnit: number;
+  action: RepricingAction; annualEGIContribution: number; reason: string;
+}
+interface ExpenseFinding {
+  label: string; category: 'controllable' | 'nonControllable';
+  uwTarget: number; actualRunRate: number; variancePct: number;
+  flagged: boolean; projectedLine: number; recoveryAnnual: number; note: string;
+}
+interface BeatPlan {
+  status: 'BEAT' | 'ON_TRACK' | 'AT_RISK';
+  proFormaNOI: number; projectedNOI: number; beatAnnual: number; beatPct: number;
+  revenueLeverAnnual: number; expenseRecoveryAnnual: number; acceptedExpenseDragAnnual: number;
+  bridge: NOIBridgeStep[];
+  revenue: CohortRecommendation[];
+  expense: ExpenseFinding[];
+  caveats: string[];
+}
+
 const CSS_INJECT = `
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 @keyframes glow{0%,100%{box-shadow:0 0 4px #00D26A44}50%{box-shadow:0 0 9px #00D26A66}}
@@ -377,10 +400,11 @@ function Panel({ children, style }: { children: React.ReactNode; style?: React.C
   );
 }
 
-function Table({ head, rows, align }: {
+function Table({ head, rows, align, rowStyle }: {
   head: string[];
   rows: React.ReactNode[][];
   align: string[];
+  rowStyle?: (row: React.ReactNode[], i: number) => React.CSSProperties | undefined;
 }) {
   const ta = (i: number) => align[i] === 'r' ? 'right' : align[i] === 'c' ? 'center' : 'left';
   return (
@@ -400,7 +424,7 @@ function Table({ head, rows, align }: {
         </thead>
         <tbody>
           {rows.map((r, ri) => (
-            <tr key={ri} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+            <tr key={ri} style={{ borderBottom: `1px solid ${T.border.subtle}`, ...(rowStyle ? rowStyle(r, ri) : {}) }}>
               {r.map((c, ci) => (
                 <td key={ci} style={{
                   textAlign: ta(ci) as any, fontFamily: T.font.mono, fontSize: 10,
@@ -567,10 +591,11 @@ function ListDrawer<T>({ rows, render }: { rows: T[]; render: (r: T) => React.Re
 }
 
 // ── RANK & COMPS DRAWER ───────────────────────────────────────────────────────
-function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps, propertyId }: {
+function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps, propertyId, onTargetSaved }: {
   rankCfg: RankCfg; setRankCfg: (c: RankCfg) => void;
   comps: Comp[]; setComps: (c: Comp[]) => void;
   propertyId: string | null;
+  onTargetSaved?: () => void;
 }) {
   const ranks = [1, 2, 3, 4];
   const [saveNote, setSaveNote] = useState<string | null>(null);
@@ -616,7 +641,11 @@ function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps, propertyId }: {
       byType: rankCfg.byType,
       perType: rankCfg.perType,
     })
-      .then(() => { setSaveNote('SAVED ✓'); setTimeout(() => setSaveNote(null), 3000); })
+      .then(() => {
+        setSaveNote('SAVED ✓');
+        setTimeout(() => setSaveNote(null), 3000);
+        onTargetSaved?.();
+      })
       .catch(() => { setSaveNote('SAVE FAILED'); });
   };
   return (
@@ -742,9 +771,10 @@ function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps, propertyId }: {
 }
 
 // ── REVENUE SCREEN ────────────────────────────────────────────────────────────
-function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeScreen }: {
+function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeScreen, targetSavedVersion }: {
   rankCfg: RankCfg; comps: Comp[]; openDrawer: (d: string) => void;
   dealId: string; propertyId: string | null; activeScreen: string;
+  targetSavedVersion: number;
 }) {
   const [tf, setTf] = useState(12);
   const [mk, setMk] = useState('occ');
@@ -758,7 +788,8 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
   // NEW-BACKEND stubs and new routes
   const [tradeoutEvents, setTradeoutEvents] = useState<any[]>([]);
   const [leasingObs, setLeasingObs] = useState<any[]>([]);
-  const [courseData, setCourseData] = useState<any>(null); // TODO(backend: repricing synthesizer)
+  const [beatPlan, setBeatPlan] = useState<BeatPlan | null>(null);
+  const [beatPlanLoading, setBeatPlanLoading] = useState(false);
   const [derivedMetrics, setDerivedMetrics] = useState<any[]>([]);
 
   useEffect(() => {
@@ -821,13 +852,33 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
       .catch(() => {});
   }, [dealId, activeScreen]);
 
-  // TODO(backend: repricing synthesizer) — GET /api/v1/revenue/:dealId/course
-  useEffect(() => {
+  // ── Beat plan fetch ───────────────────────────────────────────
+  const fetchBeatPlan = () => {
     if (!dealId) return;
-    apiClient.get(`/api/v1/revenue/${dealId}/course`)
-      .then(res => { setCourseData(res.data ?? null); })
-      .catch(() => { setCourseData(null); }); // 404 until synthesizer is built
+    setBeatPlanLoading(true);
+    const params = new URLSearchParams({
+      targetRank: String(rankCfg.overall),
+      byType: String(rankCfg.byType),
+    });
+    if (rankCfg.byType) {
+      Object.entries(rankCfg.perType).forEach(([t, r]) => params.set(`perType[${t}]`, String(r)));
+    }
+    apiClient.get(`/api/v1/revenue/${dealId}/beat-plan?${params.toString()}`)
+      .then(res => { setBeatPlan(res.data ?? null); })
+      .catch(() => { setBeatPlan(null); })
+      .finally(() => setBeatPlanLoading(false));
+  };
+
+  useEffect(() => {
+    fetchBeatPlan();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, activeScreen]);
+
+  useEffect(() => {
+    if (targetSavedVersion === 0) return;
+    fetchBeatPlan();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetSavedVersion]);
 
   // ── LTL tile value from latest rent roll snapshot ─────────────
   // Prefer per-unit loss_to_lease_pct average; fall back to latest derived-metrics snapshot.
@@ -1088,65 +1139,186 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
         />
         <Panel style={{ width: 268, flexShrink: 0 }}>
           <PanelHeader title="ASSET OVERVIEW" sub="fundamentals" />
-          {/* JEDI SIGNAL: wired from courseData.signal when synthesizer is live */}
-          {/* TODO(backend: repricing synthesizer — GET /api/v1/revenue/:dealId/course) */}
           <StatRail rows={liveOverview} signal={{
-            label: 'JEDI SIGNAL',
-            note: courseData?.signal ? '' : '// PENDING',
-            value: courseData?.signal ?? '—',
-            tone: courseData?.signal === 'BUY' ? T.text.green : courseData?.signal === 'HOLD' ? T.text.amber : T.text.muted,
+            label: 'BEAT STATUS',
+            note: beatPlan?.status ? '' : beatPlanLoading ? '// LOADING' : '// PENDING',
+            value: beatPlan?.status ?? '—',
+            tone: beatPlan?.status === 'BEAT' ? T.text.green : beatPlan?.status === 'ON_TRACK' ? T.text.amber : beatPlan?.status === 'AT_RISK' ? T.text.red : T.text.muted,
           }} />
         </Panel>
       </div>
 
-      {/* REPRICING COURSE — stub; codes against GET /api/v1/revenue/:dealId/course */}
-      {/* TODO(backend: repricing synthesizer) */}
-      <Panel style={{ marginBottom: 10, borderColor: courseData ? T.border.bright : T.text.amber + '44' }}>
+      {/* ── PRO FORMA BEAT BAND ─────────────────────────────────── */}
+      {beatPlanLoading ? (
+        <Panel style={{ marginBottom: 10 }}>
+          <div style={{ padding: '14px 16px', fontFamily: T.font.mono, fontSize: 10, color: T.text.muted }}>
+            computing beat plan…
+          </div>
+        </Panel>
+      ) : beatPlan ? (() => {
+        const statusColor = beatPlan.status === 'BEAT' ? T.text.green : beatPlan.status === 'ON_TRACK' ? T.text.amber : T.text.red;
+        const beatPositive = beatPlan.beatAnnual >= 0;
+        const fmtK = (v: number) => {
+          const abs = Math.abs(v);
+          const sign = v < 0 ? '−' : '+';
+          if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+          return `${sign}$${Math.round(abs / 1000)}K`;
+        };
+        return (
+          <Panel style={{ marginBottom: 10, borderColor: statusColor + '55' }}>
+            {/* headline row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px 0', flexWrap: 'wrap' }}>
+              <span style={{ fontFamily: T.font.mono, fontSize: 10, fontWeight: 700, color: T.text.muted, letterSpacing: 0.8 }}>PRO FORMA BEAT</span>
+              <span style={{
+                fontFamily: T.font.mono, fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 2,
+                background: statusColor + '22', border: `1px solid ${statusColor}55`, color: statusColor,
+              }}>{beatPlan.status.replace('_', ' ')}</span>
+              <span style={{ fontFamily: T.font.mono, fontSize: 13, fontWeight: 700, color: statusColor }}>
+                {beatPositive ? '+' : '−'}${Math.abs(beatPlan.beatAnnual).toLocaleString()}
+                <span style={{ fontSize: 9, fontWeight: 400, color: T.text.muted, marginLeft: 5 }}>
+                  {beatPositive ? '+' : ''}{(beatPlan.beatPct * 100).toFixed(1)}% vs pro forma ·
+                </span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: statusColor, marginLeft: 4 }}>
+                  {beatPositive ? 'beat' : 'miss'}
+                </span>
+              </span>
+              <span style={{ marginLeft: 'auto', fontFamily: T.font.mono, fontSize: 9, color: T.text.muted }}>
+                pro forma NOI ${beatPlan.proFormaNOI.toLocaleString()} · projected ${beatPlan.projectedNOI.toLocaleString()}
+              </span>
+            </div>
+
+            {/* NOI waterfall bridge */}
+            <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px 8px', overflowX: 'auto', gap: 0 }}>
+              {beatPlan.bridge.map((step, i) => {
+                const isTotal = step.label.startsWith('=');
+                const isPfn   = step.label.startsWith('vs');
+                const isLast  = i === beatPlan.bridge.length - 1;
+                const amt = step.amount;
+                const tone = isLast
+                  ? statusColor
+                  : isTotal ? T.text.primary
+                  : isPfn ? T.text.muted
+                  : amt >= 0 ? T.text.green : T.text.red;
+                const formatted = isPfn
+                  ? `$${Math.abs(amt).toLocaleString()}`
+                  : amt === 0 ? '$0'
+                  : fmtK(amt);
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                    <div style={{ textAlign: 'center', minWidth: isTotal || isLast ? 90 : 76, padding: '0 4px' }}>
+                      <div style={{
+                        fontFamily: T.font.mono, fontSize: isTotal || isLast ? 12 : 11, fontWeight: isTotal || isLast ? 800 : 600,
+                        color: tone,
+                      }}>{formatted}</div>
+                      <div style={{
+                        fontFamily: T.font.mono, fontSize: 7.5, color: T.text.muted, marginTop: 2,
+                        lineHeight: 1.2, maxWidth: 88, whiteSpace: 'pre-wrap', textAlign: 'center',
+                      }}>{step.label}</div>
+                    </div>
+                    {i < beatPlan.bridge.length - 1 && (
+                      <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.border.bright, margin: '0 2px' }}>›</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* caveats footnote */}
+            {beatPlan.caveats.length > 0 && (
+              <div style={{ padding: '0 14px 10px', borderTop: `1px solid ${T.border.subtle}`, paddingTop: 8 }}>
+                {beatPlan.caveats.map((c, i) => (
+                  <div key={i} style={{ fontFamily: T.font.label, fontSize: 9, color: T.text.muted, fontStyle: 'italic', lineHeight: 1.5 }}>
+                    • {c}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+        );
+      })() : null}
+
+      {/* No market signals amber banner */}
+      {beatPlan && beatPlan.caveats.some(c => c.includes('No market signals')) && (
+        <div style={{
+          marginBottom: 10, padding: '8px 14px',
+          background: T.text.amber + '12', border: `1px solid ${T.text.amber}44`, borderRadius: 2,
+          fontFamily: T.font.label, fontSize: 10, color: T.text.amber,
+        }}>
+          ⚠ No market signal data — revenue lever defaulted to HOLD.
+          Wire correlation/property + M07 to unlock repricing recommendations.
+        </div>
+      )}
+
+      {/* REPRICING COURSE */}
+      <Panel style={{ marginBottom: 10, borderColor: beatPlan?.revenue?.length ? T.border.bright : T.border.subtle }}>
         <PanelHeader
           title="REPRICING COURSE"
           sub={`path to #${rankCfg.overall}${rankCfg.byType ? ' · by unit type' : ''} · fuel × schedule × throttle`}
           right={
             <span style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.secondary, display: 'flex', alignItems: 'center', gap: 8 }}>
-              {courseData === null && (
-                <Badge c={T.text.amber}>ILLUSTRATIVE — BACKEND PENDING</Badge>
+              {!beatPlan && !beatPlanLoading && (
+                <Badge c={T.text.amber}>ILLUSTRATIVE — BEAT PLAN PENDING</Badge>
               )}
-              capturing <b style={{ color: T.text.green }}>{courseData?.captured_per_mo ? `$${Math.round(courseData.captured_per_mo).toLocaleString()}` : tm.captured}</b>/mo · net <b style={{ color: T.text.green }}>{courseData?.net_lift_pct ? `+${(courseData.net_lift_pct * 100).toFixed(1)}%` : tm.lift}</b> eff. rent ·{' '}
+              {beatPlan?.revenue?.length ? (
+                <>
+                  EGI lift{' '}
+                  <b style={{ color: T.text.green }}>
+                    +${Math.round(beatPlan.revenueLeverAnnual).toLocaleString()}/yr
+                  </b>{' '}
+                  ·{' '}
+                </>
+              ) : (
+                <>
+                  capturing <b style={{ color: T.text.green }}>{tm.captured}</b>/mo · net <b style={{ color: T.text.green }}>{tm.lift}</b> eff. rent ·{' '}
+                </>
+              )}
               <span style={{ color: T.text.cyan, cursor: 'pointer' }} onClick={() => openDrawer('rankcomps')}>edit target</span>
             </span>
           }
         />
-        <div style={{ display: 'flex' }}>
-          {courseData?.recommended_rents?.length
-            ? (() => {
-                // Group recommended_rents by unit_type; pick M1 / M6 / M12 targets
-                const byType: Record<string, Array<{ month: string; recommended_rent: number }>> = {};
-                (courseData.recommended_rents as Array<{ month: string; unit_type: string; recommended_rent: number }>)
-                  .forEach(r => {
-                    if (!byType[r.unit_type]) byType[r.unit_type] = [];
-                    byType[r.unit_type].push(r);
-                  });
-                const types = Object.entries(byType);
-                const signalTone = courseData.signal === 'BUY' ? T.text.green : courseData.signal === 'HOLD' ? T.text.amber : T.text.red;
-                return types.map(([ut, entries], i) => {
-                  const m1  = entries[0]?.recommended_rent;
-                  const m6  = entries[5]?.recommended_rent ?? entries[entries.length - 1]?.recommended_rent;
-                  const m12 = entries[11]?.recommended_rent ?? entries[entries.length - 1]?.recommended_rent;
-                  return (
-                    <div key={ut} style={{ flex: 1, padding: '10px 12px', borderRight: i < types.length - 1 ? `1px solid ${T.border.subtle}` : 'none' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <span style={{ fontFamily: T.font.mono, fontSize: 11, fontWeight: 700, color: T.text.primary }}>{ut}</span>
-                        <Badge c={signalTone} solid>{courseData.signal}</Badge>
-                      </div>
-                      <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, marginBottom: 5 }}>
-                        M1 ${m1?.toLocaleString()} · M6 ${m6?.toLocaleString()} · M12 ${m12?.toLocaleString()}
-                      </div>
-                      <div style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary, lineHeight: 1.45 }}>
-                        {entries[0]?.month} → {entries[entries.length - 1]?.month}
+        <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+          {beatPlan?.revenue?.length
+            ? beatPlan.revenue.map((rec, i) => {
+                const actionTone = rec.action === 'PUSH' ? T.text.green : rec.action === 'HOLD' ? T.text.amber : T.text.red;
+                const sigScore = rec.signalScore;
+                const sigColor = sigScore > 0.2 ? T.text.green : sigScore < -0.2 ? T.text.red : T.text.amber;
+                const deltaSign = rec.deltaPerUnit >= 0 ? '+' : '';
+                return (
+                  <div key={`${rec.unitType}-${i}`} style={{
+                    flex: '1 1 180px', padding: '10px 12px',
+                    borderRight: i < beatPlan.revenue.length - 1 ? `1px solid ${T.border.subtle}` : 'none',
+                    borderBottom: `1px solid ${T.border.subtle}`,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                      <span style={{ fontFamily: T.font.mono, fontSize: 11, fontWeight: 700, color: T.text.primary }}>
+                        {rec.unitType}
+                        {rankCfg.byType && <span style={{ color: T.text.muted, fontSize: 9, marginLeft: 5 }}>#{rankCfg.perType[rec.unitType]}</span>}
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ fontFamily: T.font.mono, fontSize: 8, color: sigColor, letterSpacing: 0.3 }}>
+                          S{sigScore >= 0 ? '+' : ''}{sigScore.toFixed(2)}
+                        </span>
+                        <Badge c={actionTone} solid>{rec.action}</Badge>
                       </div>
                     </div>
-                  );
-                });
-              })()
+                    <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, marginBottom: 3 }}>
+                      {rec.units} units · in-place ${Math.round(rec.inPlaceRent).toLocaleString()} · market ${Math.round(rec.marketRent).toLocaleString()}
+                    </div>
+                    <div style={{ fontFamily: T.font.mono, fontSize: 10, fontWeight: 700, color: T.text.primary, marginBottom: 2 }}>
+                      rec ${Math.round(rec.recommendedRent).toLocaleString()}
+                      <span style={{ color: rec.deltaPerUnit >= 0 ? T.text.green : T.text.red, marginLeft: 6 }}>
+                        {deltaSign}${Math.round(Math.abs(rec.deltaPerUnit)).toLocaleString()}/u
+                      </span>
+                    </div>
+                    <div style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.green }}>
+                      +${Math.round(rec.annualEGIContribution).toLocaleString()}/yr EGI
+                    </div>
+                    <div style={{ fontFamily: T.font.label, fontSize: 9, color: T.text.secondary, marginTop: 4, lineHeight: 1.4 }}>
+                      {rec.reason}
+                    </div>
+                  </div>
+                );
+              })
             : COHORTS.map((c, i) => {
                 const a = c.ladder[aggro(c.type)];
                 return (
@@ -1166,6 +1338,64 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
           }
         </div>
       </Panel>
+
+      {/* EXPENSE DISCIPLINE */}
+      {beatPlan?.expense?.length ? (
+        <Panel style={{ marginBottom: 10 }}>
+          <PanelHeader
+            title="EXPENSE DISCIPLINE"
+            sub="controllable opex vs UW · recovery potential"
+            right={
+              <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted }}>
+                recovery{' '}
+                <b style={{ color: T.text.green }}>
+                  +${Math.round(beatPlan.expenseRecoveryAnnual).toLocaleString()}/yr
+                </b>
+                {beatPlan.acceptedExpenseDragAnnual > 0 && (
+                  <> · drag <b style={{ color: T.text.red }}>−${Math.round(beatPlan.acceptedExpenseDragAnnual).toLocaleString()}/yr</b></>
+                )}
+              </span>
+            }
+          />
+          <Table
+            head={['EXPENSE LINE', 'CAT', 'UW TARGET', 'ACTUAL', 'VAR %', 'PROJECTED', 'RECOVERY', 'NOTE']}
+            align={['l', 'c', 'r', 'r', 'r', 'r', 'r', 'l']}
+            rows={beatPlan.expense.map(f => {
+              const varPct = f.variancePct * 100;
+              const varTone = f.flagged ? T.text.red : varPct > 0 ? T.text.amber : T.text.green;
+              const fmtDollar = (v: number) => `$${Math.round(Math.abs(v)).toLocaleString()}`;
+              return [
+                <span key="lbl" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {f.flagged && <span style={{ color: T.text.red, fontSize: 10 }}>⚑</span>}
+                  <span style={{ color: f.flagged ? T.text.red : T.text.primary }}>{f.label}</span>
+                </span>,
+                <Badge key="cat" c={f.category === 'controllable' ? T.text.cyan : T.text.purple}>
+                  {f.category === 'controllable' ? 'CTRL' : 'NON-C'}
+                </Badge>,
+                fmtDollar(f.uwTarget),
+                <span key="act" style={{ color: f.actualRunRate > f.uwTarget ? T.text.red : T.text.green }}>
+                  {fmtDollar(f.actualRunRate)}
+                </span>,
+                <span key="var" style={{ color: varTone, fontWeight: f.flagged ? 700 : 400 }}>
+                  {varPct >= 0 ? '+' : ''}{varPct.toFixed(1)}%
+                </span>,
+                fmtDollar(f.projectedLine),
+                f.recoveryAnnual > 0
+                  ? <span key="rec" style={{ color: T.text.green }}>+${Math.round(f.recoveryAnnual).toLocaleString()}</span>
+                  : <span key="rec" style={{ color: T.text.muted }}>—</span>,
+                <span key="note" style={{ color: T.text.muted, fontStyle: 'italic', fontSize: 9 }}>{f.note}</span>,
+              ];
+            })}
+            rowStyle={(_, i) => beatPlan.expense[i].flagged ? { background: T.text.red + '0C' } : undefined}
+          />
+        </Panel>
+      ) : beatPlanLoading ? (
+        <Panel style={{ marginBottom: 10 }}>
+          <div style={{ padding: '14px 16px', fontFamily: T.font.mono, fontSize: 10, color: T.text.muted }}>
+            loading expense discipline…
+          </div>
+        </Panel>
+      ) : null}
 
       <div style={{ display: 'flex', gap: 10 }}>
         {/* LEASE ROLL — expirations wired via /api/v1/operations/:dealId/lease-expirations */}
@@ -1904,6 +2134,7 @@ export default function AssetHubPage() {
   const [drawer, setDrawer] = useState<string | null>(null);
   const [comps, setComps] = useState<Comp[]>(DEFAULT_COMPS);
   const [rankCfg, setRankCfg] = useState<RankCfg>({ overall: 2, byType: false, perType: { '1BR': 3, '2BR': 2, '3BR': 3, 'STU': 4 } });
+  const [targetSavedVersion, setTargetSavedVersion] = useState(0);
 
   useEffect(() => {
     if (!dealId) return;
@@ -2068,6 +2299,7 @@ export default function AssetHubPage() {
               <RevenueScreen
                 rankCfg={rankCfg} comps={comps} openDrawer={openDrawer}
                 dealId={dealId} propertyId={propertyId} activeScreen={screen}
+                targetSavedVersion={targetSavedVersion}
               />
             )}
             {screen === 'performance' && <PerformanceScreen dealId={dealId} activeScreen={screen} />}
@@ -2079,7 +2311,11 @@ export default function AssetHubPage() {
       {/* ── DRAWERS ── */}
       {drawer === 'rankcomps' && (
         <DrawerShell title="RANK & COMPS" sub="set-it-and-forget · annual" onClose={closeDrawer}>
-          <RankCompsConfig rankCfg={rankCfg} setRankCfg={setRankCfg} comps={comps} setComps={setComps} propertyId={propertyId} />
+          <RankCompsConfig
+            rankCfg={rankCfg} setRankCfg={setRankCfg} comps={comps} setComps={setComps}
+            propertyId={propertyId}
+            onTargetSaved={() => setTargetSavedVersion(v => v + 1)}
+          />
         </DrawerShell>
       )}
 
