@@ -6,7 +6,7 @@
  *   2. Rent-roll loss-to-lease from rent_roll_units
  *   3. Correlation engine signals (bullish / bearish counts)
  *
- * Output: RepricingCourse with PUSH / HOLD / WATCH verdict, confidence,
+ * Output: RepricingCourse with BUY / HOLD / WATCH verdict, confidence,
  * monthly capture estimate, and a 12-month recommended rent trajectory.
  */
 
@@ -181,7 +181,7 @@ export async function synthesizeRepricingCourse(dealId: string, userId?: string)
 
   // ── 5. Signal synthesis ────────────────────────────────────────────────────
   //
-  // PUSH: high occupancy (≥93%) + meaningful LTL (≥2%) + bullish ≥ bearish
+  // BUY: high occupancy (≥93%) + meaningful LTL (≥2%) + bullish ≥ bearish
   // WATCH: low occupancy (<90%) OR strongly bearish (bearish > bullish + 3)
   // HOLD: everything else
   //
@@ -212,11 +212,11 @@ export async function synthesizeRepricingCourse(dealId: string, userId?: string)
   // ── 6. Net lift + monthly capture ─────────────────────────────────────────
   //
   // Net lift = weighted LTL capture rate:
-  //   PUSH: capture 60% of LTL over 12 months  → net_lift_pct = ltl * 0.60 / 100
+  //   BUY:  capture 60% of LTL over 12 months  → net_lift_pct = ltl * 0.60 / 100
   //   HOLD: capture 30%
   //   WATCH: preserve / no lift (0%)
   //
-  const captureRate = signal === 'PUSH' ? 0.60 : signal === 'HOLD' ? 0.30 : 0;
+  const captureRate = signal === 'BUY' ? 0.60 : signal === 'HOLD' ? 0.30 : 0;
   const netLiftPct  = (ltl / 100) * captureRate;
   const capturedPerMo = avgEffRent != null && totalUnits != null
     ? Math.round(avgEffRent * totalUnits * netLiftPct / 12)

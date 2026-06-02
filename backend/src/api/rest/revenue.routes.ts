@@ -31,7 +31,7 @@ const router = Router();
 router.get('/:dealId/course', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const userId = req.user?.id;
+    const userId = req.user?.userId;
     const course = await synthesizeRepricingCourse(dealId, userId);
     res.json({ success: true, ...course });
   } catch (err) {

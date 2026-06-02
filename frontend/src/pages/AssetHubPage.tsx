@@ -1116,22 +1116,54 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
           }
         />
         <div style={{ display: 'flex' }}>
-          {COHORTS.map((c, i) => {
-            const a = c.ladder[aggro(c.type)];
-            return (
-              <div key={c.type} style={{ flex: 1, padding: '10px 12px', borderRight: i < COHORTS.length - 1 ? `1px solid ${T.border.subtle}` : 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontFamily: T.font.mono, fontSize: 11, fontWeight: 700, color: T.text.primary }}>
-                    {c.type}
-                    {rankCfg.byType && <span style={{ color: T.text.muted, fontSize: 9, marginLeft: 5 }}>#{rankCfg.perType[c.type]}</span>}
-                  </span>
-                  <Badge c={actionColor(a)} solid>{a}</Badge>
-                </div>
-                <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, marginBottom: 5 }}>{c.units} units · {c.window}</div>
-                <div style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary, lineHeight: 1.45 }}>{c.reason}</div>
-              </div>
-            );
-          })}
+          {courseData?.recommended_rents?.length
+            ? (() => {
+                // Group recommended_rents by unit_type; pick M1 / M6 / M12 targets
+                const byType: Record<string, Array<{ month: string; recommended_rent: number }>> = {};
+                (courseData.recommended_rents as Array<{ month: string; unit_type: string; recommended_rent: number }>)
+                  .forEach(r => {
+                    if (!byType[r.unit_type]) byType[r.unit_type] = [];
+                    byType[r.unit_type].push(r);
+                  });
+                const types = Object.entries(byType);
+                const signalTone = courseData.signal === 'BUY' ? T.text.green : courseData.signal === 'HOLD' ? T.text.amber : T.text.red;
+                return types.map(([ut, entries], i) => {
+                  const m1  = entries[0]?.recommended_rent;
+                  const m6  = entries[5]?.recommended_rent ?? entries[entries.length - 1]?.recommended_rent;
+                  const m12 = entries[11]?.recommended_rent ?? entries[entries.length - 1]?.recommended_rent;
+                  return (
+                    <div key={ut} style={{ flex: 1, padding: '10px 12px', borderRight: i < types.length - 1 ? `1px solid ${T.border.subtle}` : 'none' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <span style={{ fontFamily: T.font.mono, fontSize: 11, fontWeight: 700, color: T.text.primary }}>{ut}</span>
+                        <Badge c={signalTone} solid>{courseData.signal}</Badge>
+                      </div>
+                      <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, marginBottom: 5 }}>
+                        M1 ${m1?.toLocaleString()} · M6 ${m6?.toLocaleString()} · M12 ${m12?.toLocaleString()}
+                      </div>
+                      <div style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary, lineHeight: 1.45 }}>
+                        {entries[0]?.month} → {entries[entries.length - 1]?.month}
+                      </div>
+                    </div>
+                  );
+                });
+              })()
+            : COHORTS.map((c, i) => {
+                const a = c.ladder[aggro(c.type)];
+                return (
+                  <div key={c.type} style={{ flex: 1, padding: '10px 12px', borderRight: i < COHORTS.length - 1 ? `1px solid ${T.border.subtle}` : 'none' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontFamily: T.font.mono, fontSize: 11, fontWeight: 700, color: T.text.primary }}>
+                        {c.type}
+                        {rankCfg.byType && <span style={{ color: T.text.muted, fontSize: 9, marginLeft: 5 }}>#{rankCfg.perType[c.type]}</span>}
+                      </span>
+                      <Badge c={actionColor(a)} solid>{a}</Badge>
+                    </div>
+                    <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, marginBottom: 5 }}>{c.units} units · {c.window}</div>
+                    <div style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary, lineHeight: 1.45 }}>{c.reason}</div>
+                  </div>
+                );
+              })
+          }
         </div>
       </Panel>
 
