@@ -1870,4 +1870,77 @@ router.post('/:dealId/commentary', requireAuth, async (req: AuthenticatedRequest
   }
 });
 
+/**
+ * GET /api/v1/operations/:dealId/activity
+ * Chronological activity feed for a deal — newest-first.
+ * Sources: deal_files (document uploads) + deal_activity (deal lifecycle events).
+ * Returns [{ id, type, actor, description, meta, timestamp }].
+ * Optional query param: ?type=document_upload|deal_event|financial_change|agent_run
+ */
+router.get('/:dealId/activity', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { type: typeFilter, limit: limitParam = '100' } = req.query;
+    const limit = Math.min(parseInt(limitParam as string, 10) || 100, 200);
+
+    const ownerCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId],
+    );
+    if (!ownerCheck.rows.length) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    // UNION from two sources — deal_files and deal_activity
+    const result = await query(
+      `SELECT *
+       FROM (
+         -- Source 1: document uploads from deal_files
+         SELECT
+           df.id::text,
+           'document_upload'                                        AS type,
+           COALESCE(u.full_name, u.email, 'System')                AS actor,
+           'Uploaded: ' || df.filename                             AS description,
+           df.category                                             AS meta,
+           df.created_at                                           AS timestamp
+         FROM deal_files df
+         LEFT JOIN users u ON u.id = df.uploaded_by
+         WHERE df.deal_id = $1
+           AND df.deleted_at IS NULL
+
+         UNION ALL
+
+         -- Source 2: deal lifecycle events from deal_activity
+         SELECT
+           da.id::text,
+           CASE da.action_type
+             WHEN 'financial_update' THEN 'financial_change'
+             WHEN 'agent_run'        THEN 'agent_run'
+             ELSE 'deal_event'
+           END                                                     AS type,
+           COALESCE(u.full_name, u.email, 'System')                AS actor,
+           da.description                                          AS description,
+           da.entity_type                                          AS meta,
+           da.created_at                                           AS timestamp
+         FROM deal_activity da
+         LEFT JOIN users u ON u.id = da.user_id
+         WHERE da.deal_id = $1
+       ) feed
+       WHERE ($2::text IS NULL OR type = $2)
+       ORDER BY timestamp DESC
+       LIMIT $3`,
+      [dealId, typeFilter ?? null, limit],
+    );
+
+    return res.json({
+      success: true,
+      activities: result.rows,
+      total: result.rows.length,
+    });
+  } catch (err) {
+    logger.error('activity feed error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to fetch activity' });
+  }
+});
+
 export default router;

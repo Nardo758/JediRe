@@ -2036,7 +2036,7 @@ export default function AssetHubPage() {
 
       {drawer === 'activity' && (
         <DrawerShell title="ACTIVITY" sub="audit log" onClose={closeDrawer}>
-          <ActivityTab />
+          <ActivityTab dealId={dealId} />
         </DrawerShell>
       )}
     </div>
