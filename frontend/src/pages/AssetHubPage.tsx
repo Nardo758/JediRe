@@ -1094,7 +1094,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
             label: 'JEDI SIGNAL',
             note: courseData?.signal ? '' : '// PENDING',
             value: courseData?.signal ?? '—',
-            tone: courseData?.signal === 'PUSH' ? T.text.green : courseData?.signal === 'HOLD' ? T.text.amber : T.text.muted,
+            tone: courseData?.signal === 'BUY' ? T.text.green : courseData?.signal === 'HOLD' ? T.text.amber : T.text.muted,
           }} />
         </Panel>
       </div>

@@ -15,8 +15,15 @@ import { getPool } from '../database/connection';
 import { logger } from '../utils/logger';
 import { CorrelationEngineService } from './correlationEngine.service';
 
+export class DealNotFoundError extends Error {
+  constructor(dealId: string) {
+    super(`Deal not found: ${dealId}`);
+    this.name = 'DealNotFoundError';
+  }
+}
+
 export interface RepricingCourse {
-  signal: 'PUSH' | 'HOLD' | 'WATCH';
+  signal: 'BUY' | 'HOLD' | 'WATCH';
   confidence: 'high' | 'medium' | 'low';
   captured_per_mo: number;
   net_lift_pct: number;
@@ -39,24 +46,52 @@ export interface RepricingCourse {
 /**
  * Compute a repricing course recommendation for a deal.
  *
+ * @param dealId  - UUID of the deal
+ * @param userId  - Authenticated user ID for ownership verification (optional — when
+ *                  provided, enforces that the deal belongs to this user; omit only
+ *                  in internal/server-side calls where auth is already verified upstream)
+ *
  * Steps:
- *   1. Resolve property_id and city/state from the deals table
+ *   1. Resolve property_id and city/state from the deals table; 404 if not found
  *   2. Pull trailing-6-month monthly actuals for occupancy + rent
  *   3. Pull avg loss-to-lease % from rent_roll_units
  *   4. Run COR-01–30 correlation suite (merged with 1P data when available)
  *   5. Score and emit signal + recommended rent ramp
  */
-export async function synthesizeRepricingCourse(dealId: string): Promise<RepricingCourse> {
+export async function synthesizeRepricingCourse(dealId: string, userId?: string): Promise<RepricingCourse> {
   const computedAt = new Date().toISOString();
 
   // ── 1. Resolve deal metadata ──────────────────────────────────────────────
-  const dealRes = await query(
-    `SELECT d.property_id, d.city, d.state
-     FROM deals d
-     WHERE d.id = $1
-     LIMIT 1`,
-    [dealId]
-  );
+  // Ownership-aware deal lookup: if userId is provided, restrict to deals that
+  // belong to that user. If the deal doesn't exist (or belongs to another user),
+  // throw DealNotFoundError so the route can return a 404.
+  // NOTE: deals.state is the deal stage ('ACTIVE', 'POST_CLOSE', etc.), not a
+  // geographic state. Geographic city/state come from the linked properties row.
+  const dealRes = userId
+    ? await query(
+        `SELECT d.property_id,
+                COALESCE(p.city, d.city)       AS city,
+                COALESCE(p.state_code, 'GA')   AS state
+         FROM deals d
+         LEFT JOIN properties p ON p.id = d.property_id
+         WHERE d.id = $1 AND d.user_id = $2 AND d.archived_at IS NULL
+         LIMIT 1`,
+        [dealId, userId]
+      )
+    : await query(
+        `SELECT d.property_id,
+                COALESCE(p.city, d.city)       AS city,
+                COALESCE(p.state_code, 'GA')   AS state
+         FROM deals d
+         LEFT JOIN properties p ON p.id = d.property_id
+         WHERE d.id = $1
+         LIMIT 1`,
+        [dealId]
+      );
+
+  if (!dealRes.rows.length) {
+    throw new DealNotFoundError(dealId);
+  }
 
   const propertyId: string | null = (dealRes.rows[0]?.property_id as string) ?? null;
   const city: string   = (dealRes.rows[0]?.city  as string) || 'Atlanta';
@@ -154,11 +189,11 @@ export async function synthesizeRepricingCourse(dealId: string): Promise<Reprici
   const ltl     = avgLtlPct   ?? 0;
   const signalBalance = bullishSignals - bearishSignals;
 
-  let signal: 'PUSH' | 'HOLD' | 'WATCH';
+  let signal: 'BUY' | 'HOLD' | 'WATCH';
   let confidence: 'high' | 'medium' | 'low';
 
   if (occ >= 0.93 && ltl >= 2.0 && signalBalance >= 0) {
-    signal = 'PUSH';
+    signal = 'BUY';
     confidence = (occ >= 0.95 && ltl >= 3.0 && signalBalance >= 3) ? 'high' : 'medium';
   } else if (occ < 0.90 || signalBalance < -3) {
     signal = 'WATCH';

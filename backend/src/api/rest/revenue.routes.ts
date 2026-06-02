@@ -8,7 +8,7 @@
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
-import { synthesizeRepricingCourse } from '../../services/repricing-synthesizer.service';
+import { synthesizeRepricingCourse, DealNotFoundError } from '../../services/repricing-synthesizer.service';
 
 const router = Router();
 
@@ -17,9 +17,10 @@ const router = Router();
  *
  * Compute and return a repricing course recommendation for a deal.
  * Synthesizes from monthly actuals, loss-to-lease, and correlation signals.
+ * Returns 404 when the deal does not exist or is not owned by the requesting user.
  *
  * Response shape (RepricingCourse):
- *   signal:            'PUSH' | 'HOLD' | 'WATCH'
+ *   signal:            'BUY' | 'HOLD' | 'WATCH'
  *   confidence:        'high' | 'medium' | 'low'
  *   captured_per_mo:   estimated monthly dollar capture
  *   net_lift_pct:      projected net effective-rent lift (0–1 fraction)
@@ -30,9 +31,13 @@ const router = Router();
 router.get('/:dealId/course', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const course = await synthesizeRepricingCourse(dealId);
+    const userId = req.user?.id;
+    const course = await synthesizeRepricingCourse(dealId, userId);
     res.json({ success: true, ...course });
   } catch (err) {
+    if (err instanceof DealNotFoundError) {
+      return res.status(404).json({ success: false, error: err.message });
+    }
     logger.error('[revenue] repricing course error:', err);
     res.status(500).json({ success: false, error: 'Failed to compute repricing course' });
   }
