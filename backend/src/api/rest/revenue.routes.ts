@@ -29,7 +29,11 @@ import {
 
 const router = Router();
 
-// ── Simple in-memory beat-plan cache (24-hour TTL) ──────────────────────────
+// ── 24-hour DealContext-scoped beat-plan cache ───────────────────────────────
+// Per spec: "Honor a 24-hour DealContext cache keyed by dealId + targetRank + byType."
+// Implemented as an in-process Map with a 24h TTL. The cache key includes
+// userId so plans are scoped to the requesting user (no cross-user leakage).
+// An ownership check is performed BEFORE any cache read.
 const BEAT_PLAN_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const beatPlanCache = new Map<string, { plan: BeatPlan; cachedAt: number }>();
 
@@ -266,7 +270,12 @@ async function fetchExpenseLines(
       if (actualRunRate === 0 && uwTarget === 0) continue;
       lines.push({ label: displayLabel, category, uwTarget, actualRunRate });
     }
-    return { lines, glSource: true };
+    // If GL labels matched the taxonomy → return. If not (0 mapped lines despite
+    // having a property_code), fall through to the columnar path so the expense
+    // lever is never silently zeroed out.
+    if (lines.length > 0) {
+      return { lines, glSource: true };
+    }
   }
 
   // ── 3b. Columnar fallback ──────────────────────────────────────────────────
@@ -390,10 +399,14 @@ async function fetchLeaseCohorts(
     };
   }
 
+  let marketRentFallbackCount = 0;
   const cohorts: LeaseCohort[] = (unitRes.rows as any[]).map((r) => {
     const unitType       = String(r.unit_type || 'Unknown');
     const inPlaceRent    = parseFloat(r.in_place_rent)  || 0;
-    const marketRent     = parseFloat(r.market_rent)    || inPlaceRent;
+    const rawMarketRent  = parseFloat(r.market_rent);
+    const marketRentFallback = isNaN(rawMarketRent) || rawMarketRent === 0;
+    if (marketRentFallback) marketRentFallbackCount++;
+    const marketRent     = marketRentFallback ? inPlaceRent : rawMarketRent;
     const avgConcession  = parseFloat(r.avg_concession) || 0;
     const avgCurRent     = parseFloat(r.avg_cur_rent_for_conc) || 1;
 
@@ -424,11 +437,19 @@ async function fetchLeaseCohorts(
     } as LeaseCohort;
   }).filter((c) => c.units > 0);
 
-  const caveat = snapshotAvailable
-    ? null
-    : 'No rent-roll derivation snapshot found — renewal rates and concession weeks sourced from rent_roll_units only (less accurate than snapshot derivations).';
+  const caveats: Array<string | null> = [];
+  if (!snapshotAvailable) {
+    caveats.push(
+      'No rent-roll derivation snapshot found — renewal rates and concession weeks sourced from rent_roll_units only (less accurate than snapshot derivations).',
+    );
+  }
+  if (marketRentFallbackCount > 0) {
+    caveats.push(
+      `${marketRentFallbackCount} unit type(s) had no market_rent in rent roll — marketRent defaulted to inPlaceRent. Revenue lever may understate repricing opportunity.`,
+    );
+  }
 
-  return { cohorts, caveat };
+  return { cohorts, caveat: caveats.filter(Boolean).join(' | ') || null };
 }
 
 
