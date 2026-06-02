@@ -1,0 +1,396 @@
+/**
+ * revenue-engine.reference.ts
+ * ────────────────────────────────────────────────────────────────────────
+ * JEDI RE — REVENUE MANAGEMENT ENGINE (reference implementation)
+ *
+ * OBJECTIVE: not "maximize rent" — MAXIMIZE NOI vs the underwritten PRO FORMA.
+ *   NOI = EGI − OpEx, so there are two levers:
+ *     • REVENUE lever  → repricingSynthesizer()  (capture loss-to-lease, market-gated)
+ *     • EXPENSE lever  → expenseDiscipline()      (hold controllable opex to UW)
+ *   proFormaBeatEngine() orchestrates both into one NOI bridge: a course to beat
+ *   the pro forma.
+ *
+ * DESIGN DISCIPLINE (matches platform invariants):
+ *   • Deterministic & explainable. This is a market-GATED HEURISTIC, not an ML
+ *     forecast. Phase 1B stabilization prediction is blocked (empty
+ *     historical_observations). The signal score gates aggressiveness; it does
+ *     not produce a probability distribution. M36 Joint Distribution is the
+ *     upgrade path — it turns captureFraction & vacancy elasticity into
+ *     distributions. Architecture below isolates those so M36 drops in cleanly.
+ *   • Cause/symptom separation: each lever's gain is scored as
+ *     Expected × Validation (multiplicative), never additive mixing. The two
+ *     levers compose ADDITIVELY only at the $ level in the NOI bridge.
+ *   • assetMode = 'owned': ground truth is actuals (deal_monthly_actuals),
+ *     NOT the broker OM. Inputs below come from owned-asset sources.
+ *   • Calibration params (CONFIG) default to sane values but should be learned
+ *     from the archive flywheel + owned actuals, not hardcoded long-term.
+ *
+ * INPUT PROVENANCE (where Claude Code wires each input from):
+ *   ProFormaTargets   ← M09 stabilized pro forma (operations/:dealId/projected-vs-actual)
+ *   ActualsSnapshot   ← deal_monthly_actuals (TTM run-rate), M22 derived fields
+ *   LeaseCohort[]     ← rent-roll-derivations.service.ts: expiration_waterfall +
+ *                       unit_type_breakdown (+ tradeout-events route for spreads)
+ *   MarketSignalSet   ← correlations/property/:id (COR-04/06/15/16/17) + M07 traffic
+ *   ExpenseLine[]     ← deal_monthly_actuals_lines (GL) vs pro forma opex lines
+ *   RankTarget        ← rankings service (annual, set in Rank & Comps drawer)
+ * ──────────────────────────────────────────────────────────────────────── */
+
+// ── scalar helpers ──────────────────────────────────────────────────────
+type USD = number;          // dollars (annualized unless noted)
+type Pct = number;          // 0.05 = 5%
+const clamp = (x: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, x));
+const round2 = (x: number): number => Math.round(x * 100) / 100;
+
+// ── inputs ──────────────────────────────────────────────────────────────
+export interface ProFormaTargets {
+  gpr: USD; otherIncome: USD; vacancyLoss: USD;   // vacancyLoss is negative
+  egi: USD;                                        // = gpr + otherIncome + vacancyLoss
+  opex: USD; noi: USD;                             // noi = egi - opex
+}
+
+export interface ActualsSnapshot {                 // trailing-twelve run-rate
+  gpr: USD; otherIncome: USD; vacancyLoss: USD;
+  egi: USD; opex: USD; noi: USD;
+  units: number;
+}
+
+export interface LeaseCohort {
+  unitType: string;                                // '1BR' | '2BR' | ...
+  expiryMonthOffset: number;                       // months from now the lease rolls (0..horizon)
+  units: number;
+  inPlaceRent: USD;                                // monthly, current
+  marketRent: USD;                                 // monthly, current market (per-unit-type comp)
+  renewalProbability: Pct;                         // share expected to renew vs turn
+  concessionWeeks: number;                         // current concession on this cohort
+}
+
+export interface MarketSignalSet {                 // per submarket / unit-type, at lead time
+  rentRunwayBps: number;                           // wage growth − rent growth, bps (COR-04). +ve = headroom
+  trafficVelocityPct: Pct;                         // M07 traffic velocity. +ve = demand building
+  inMigrationPct: Pct;                             // population in-migration
+  pipelinePressurePct: Pct;                        // forward supply as % of stock (COR-06). +ve = headwind
+  compConcessionTrendWeeks: number;                // Δ comp concessions (COR-15-ish). +ve = softening = headwind
+}
+
+export interface RankTarget {
+  overallRank: number;                             // 1 = top of like-kind set
+  setSize: number;
+  byType: boolean;
+  perType?: Record<string, number>;                // unitType → target rank
+}
+
+export interface ExpenseLine {
+  label: string;
+  category: 'controllable' | 'nonControllable';
+  uwTarget: USD;                                   // annualized underwritten target
+  actualRunRate: USD;                              // annualized TTM actual
+  // realizable share of an overrun a manager can claw back this horizon.
+  // Non-controllable lines (insurance/tax) → ~0. Controllable → CONFIG default.
+  controllableFraction?: Pct;
+}
+
+export interface EngineInputs {
+  proForma: ProFormaTargets;
+  actuals: ActualsSnapshot;
+  cohorts: LeaseCohort[];
+  signalsByUnitType: Record<string, MarketSignalSet>;
+  expenses: ExpenseLine[];
+  rankTarget: RankTarget;
+  horizonMonths: number;                           // typically 12
+}
+
+// ── outputs ─────────────────────────────────────────────────────────────
+export type RepricingAction = 'PUSH' | 'HOLD' | 'CONCEDE';
+
+export interface CohortRecommendation {
+  unitType: string; units: number; expiryMonthOffset: number;
+  inPlaceRent: USD; marketRent: USD;
+  signalScore: number;                             // S ∈ [-1, +1]
+  recommendedRent: USD;
+  deltaPerUnit: USD;                               // recommendedRent - inPlaceRent
+  action: RepricingAction;
+  vacancyPenalty: Pct;                             // Validation haircut applied
+  annualEGIContribution: USD;                      // realized, after haircut, over horizon
+  reason: string;
+}
+
+export interface ExpenseFinding {
+  label: string; category: ExpenseLine['category'];
+  uwTarget: USD; actualRunRate: USD; variancePct: Pct;
+  flagged: boolean;
+  projectedLine: USD;                              // after corrective action (controllable) or accepted (non-)
+  recoveryAnnual: USD;                             // amount pulled back toward UW (0 for accepted drag)
+  note: string;
+}
+
+export interface NOIBridgeStep { label: string; amount: USD; }
+
+export interface BeatPlan {
+  status: 'BEAT' | 'ON_TRACK' | 'AT_RISK';
+  proFormaNOI: USD; projectedNOI: USD; beatAnnual: USD; beatPct: Pct;
+  revenueLeverAnnual: USD;                          // EGI lift from repricing
+  expenseRecoveryAnnual: USD;                       // controllable opex pulled back
+  acceptedExpenseDragAnnual: USD;                   // non-controllable overrun accepted
+  bridge: NOIBridgeStep[];                          // current NOI → projected NOI → vs pro forma
+  revenue: CohortRecommendation[];
+  expense: ExpenseFinding[];
+  caveats: string[];
+}
+
+// ── calibration (CONFIG) — learn these from archive + owned actuals ───────
+const CONFIG = {
+  // signal weights → blended score S
+  w: { rentRunway: 0.30, trafficVelocity: 0.28, inMigration: 0.14, pipeline: 0.18, concession: 0.10 },
+  rentRunwayFullBps: 250,        // bps that maps to full +1 on the runway component
+  // aggressiveness α by target rank position (fraction of supported push to pursue)
+  alphaByRankPct: (rank: number, setSize: number): Pct =>
+    clamp(1 - (rank - 1) / Math.max(1, setSize - 1) * 0.85, 0.15, 1.0),
+  renewalCapFraction: 0.55,      // renewals capture less of the gap than new leases
+  pushAboveMarketCeiling: 0.06,  // max % above market we'll ever recommend
+  vacancyElasticity: 0.9,        // vacancy penalty per 1.0 of (rec-market)/market above market
+  controllableFractionDefault: 0.6,  // realizable clawback on a controllable overrun
+  nonControllableFraction: 0.0,
+  flagThresholdPct: 0.10,        // |variance| over this gets flagged
+  atRiskBandPct: 0.0,            // beat < 0 → at risk; >= small band → on track
+  onTrackBandPct: 0.02,          // within ±2% of pro forma = on track; above = beat
+};
+
+// ── REVENUE LEVER ─────────────────────────────────────────────────────────
+/** Blend the market signal set into a single gating score S ∈ [-1, +1]. */
+function signalScore(s: MarketSignalSet): number {
+  const runway = clamp(s.rentRunwayBps / CONFIG.rentRunwayFullBps, -1, 1);
+  const traffic = clamp(s.trafficVelocityPct / 0.10, -1, 1);          // ±10% → ±1
+  const migration = clamp(s.inMigrationPct / 0.05, -1, 1);            // ±5% → ±1
+  const pipeline = clamp(s.pipelinePressurePct / 0.08, 0, 1);         // headwind only
+  const concession = clamp(s.compConcessionTrendWeeks / 4, 0, 1);     // headwind only
+  const W = CONFIG.w;
+  const raw =
+    W.rentRunway * runway +
+    W.trafficVelocity * traffic +
+    W.inMigration * migration -
+    W.pipeline * pipeline -
+    W.concession * concession;
+  return clamp(raw, -1, 1);
+}
+
+function labelAction(deltaPerUnit: USD): RepricingAction {
+  if (deltaPerUnit > 1) return 'PUSH';
+  if (deltaPerUnit < -1) return 'CONCEDE';
+  return 'HOLD';
+}
+
+export function repricingSynthesizer(
+  cohorts: LeaseCohort[],
+  signalsByUnitType: Record<string, MarketSignalSet>,
+  rankTarget: RankTarget,
+  horizonMonths: number,
+): { recommendations: CohortRecommendation[]; projectedEGILiftAnnual: USD } {
+  const recs: CohortRecommendation[] = [];
+
+  for (const c of cohorts) {
+    const sig = signalsByUnitType[c.unitType];
+    const S = sig ? signalScore(sig) : 0;
+    const lossToLeasePerUnit = c.marketRent - c.inPlaceRent;        // FUEL
+
+    // THROTTLE × rank preference → capture fraction of the gap
+    const rank = rankTarget.byType && rankTarget.perType?.[c.unitType]
+      ? rankTarget.perType[c.unitType]
+      : rankTarget.overallRank;
+    const alpha = CONFIG.alphaByRankPct(rank, rankTarget.setSize);
+
+    // renewals capture less of the spread than new leases (retention/caps)
+    const blendCap = c.renewalProbability * CONFIG.renewalCapFraction
+                   + (1 - c.renewalProbability) * 1.0;
+
+    let recommendedRent: USD;
+    let reason: string;
+
+    if (S <= 0) {
+      // headwind: hold, or concede proportional to how negative the signal is
+      const concedeFrac = S * Math.abs(S) * 0.5;                     // small, ≤0
+      recommendedRent = c.inPlaceRent + concedeFrac * Math.max(0, lossToLeasePerUnit);
+      reason = sig
+        ? `Headwind (S=${S.toFixed(2)}): pipeline/concession pressure — protect occupancy.`
+        : `No market signal for ${c.unitType}; hold.`;
+    } else {
+      // tailwind: capture the gap, scaled by S × α × renewal blend;
+      // allow a bounded push ABOVE market only when S and α are both high
+      const captureFrac = clamp(S * alpha * blendCap, 0, 1);
+      const aboveMarketRoom = c.marketRent * CONFIG.pushAboveMarketCeiling;
+      const target = c.inPlaceRent + captureFrac * lossToLeasePerUnit
+                   + (S > 0.6 ? S * alpha * aboveMarketRoom : 0);
+      recommendedRent = Math.min(target, c.marketRent + aboveMarketRoom);
+      reason = `Tailwind (S=${S.toFixed(2)}, α=${alpha.toFixed(2)}): capture ${(captureFrac * 100).toFixed(0)}% of $${Math.round(lossToLeasePerUnit)} gap.`;
+    }
+
+    // VALIDATION (cause/symptom): pushing above market raises vacancy.
+    // realized gain = Expected × (1 − penalty). Multiplicative, not additive.
+    const aboveMarketPct = Math.max(0, (recommendedRent - c.marketRent) / c.marketRent);
+    const vacancyPenalty = clamp(aboveMarketPct * CONFIG.vacancyElasticity, 0, 0.5);
+    const expectedDelta = recommendedRent - c.inPlaceRent;
+    const realizedDelta = expectedDelta * (1 - vacancyPenalty);
+
+    // annual EGI contribution: realized monthly delta × units × months left in horizon
+    const monthsActive = Math.max(0, horizonMonths - c.expiryMonthOffset);
+    const annualEGIContribution = realizedDelta * c.units * monthsActive;
+
+    recs.push({
+      unitType: c.unitType, units: c.units, expiryMonthOffset: c.expiryMonthOffset,
+      inPlaceRent: round2(c.inPlaceRent), marketRent: round2(c.marketRent),
+      signalScore: round2(S),
+      recommendedRent: round2(recommendedRent),
+      deltaPerUnit: round2(expectedDelta),
+      action: labelAction(expectedDelta),
+      vacancyPenalty: round2(vacancyPenalty),
+      annualEGIContribution: Math.round(annualEGIContribution),
+      reason,
+    });
+  }
+
+  const projectedEGILiftAnnual = recs.reduce((a, r) => a + r.annualEGIContribution, 0);
+  return { recommendations: recs, projectedEGILiftAnnual: Math.round(projectedEGILiftAnnual) };
+}
+
+// ── EXPENSE LEVER ───────────────────────────────────────────────────────
+export function expenseDiscipline(
+  expenses: ExpenseLine[],
+): {
+  findings: ExpenseFinding[];
+  projectedOpexAnnual: USD;
+  controllableRecoveryAnnual: USD;
+  acceptedDragAnnual: USD;
+} {
+  const findings: ExpenseFinding[] = [];
+  let projectedOpex = 0, recovery = 0, drag = 0;
+
+  for (const e of expenses) {
+    const variancePct = e.uwTarget !== 0 ? (e.actualRunRate - e.uwTarget) / e.uwTarget : 0;
+    const over = e.actualRunRate - e.uwTarget;                       // +ve = over budget
+    const flagged = Math.abs(variancePct) >= CONFIG.flagThresholdPct;
+    const frac = e.controllableFraction ??
+      (e.category === 'controllable' ? CONFIG.controllableFractionDefault : CONFIG.nonControllableFraction);
+
+    let projectedLine = e.actualRunRate;
+    let lineRecovery = 0;
+    let note = 'On budget.';
+
+    if (over > 0) {
+      if (e.category === 'controllable') {
+        lineRecovery = over * frac;                                  // pull back toward UW
+        projectedLine = e.actualRunRate - lineRecovery;
+        recovery += lineRecovery;
+        note = flagged
+          ? `Over UW ${(variancePct * 100).toFixed(0)}% — controllable; plan recovers $${Math.round(lineRecovery)} (${(frac * 100).toFixed(0)}%).`
+          : `Slightly over; recover $${Math.round(lineRecovery)}.`;
+      } else {
+        drag += over;                                                // accepted, cannot control
+        note = `Over UW ${(variancePct * 100).toFixed(0)}% — non-controllable (e.g. insurance/tax); accepted drag, re-bid/appeal flagged.`;
+      }
+    } else if (over < 0) {
+      note = `Under UW ${(variancePct * 100).toFixed(0)}% — favorable.`;
+    }
+
+    projectedOpex += projectedLine;
+    findings.push({
+      label: e.label, category: e.category,
+      uwTarget: Math.round(e.uwTarget), actualRunRate: Math.round(e.actualRunRate),
+      variancePct: round2(variancePct), flagged,
+      projectedLine: Math.round(projectedLine),
+      recoveryAnnual: Math.round(lineRecovery), note,
+    });
+  }
+
+  return {
+    findings,
+    projectedOpexAnnual: Math.round(projectedOpex),
+    controllableRecoveryAnnual: Math.round(recovery),
+    acceptedDragAnnual: Math.round(drag),
+  };
+}
+
+// ── ORCHESTRATOR: PRO FORMA BEAT ENGINE ───────────────────────────────────
+export function proFormaBeatEngine(input: EngineInputs): BeatPlan {
+  const { proForma, actuals, cohorts, signalsByUnitType, expenses, rankTarget, horizonMonths } = input;
+
+  const rev = repricingSynthesizer(cohorts, signalsByUnitType, rankTarget, horizonMonths);
+  const exp = expenseDiscipline(expenses);
+
+  // projected stabilized-horizon NOI = (current EGI run-rate + revenue lift) − projected opex
+  const projectedEGI = actuals.egi + rev.projectedEGILiftAnnual;
+  const projectedNOI = projectedEGI - exp.projectedOpexAnnual;
+  const beatAnnual = projectedNOI - proForma.noi;
+  const beatPct = proForma.noi !== 0 ? beatAnnual / proForma.noi : 0;
+
+  // NOI bridge: current → projected, then the gap to pro forma
+  const expenseNet = exp.controllableRecoveryAnnual - exp.acceptedDragAnnual;
+  const bridge: NOIBridgeStep[] = [
+    { label: 'Current NOI (TTM run-rate)', amount: Math.round(actuals.noi) },
+    { label: '+ Revenue lever (repricing)', amount: rev.projectedEGILiftAnnual },
+    { label: '+ Controllable expense recovery', amount: exp.controllableRecoveryAnnual },
+    { label: '− Accepted non-controllable drag', amount: -exp.acceptedDragAnnual },
+    { label: '= Projected NOI', amount: Math.round(projectedNOI) },
+    { label: 'vs Pro Forma NOI', amount: -Math.round(proForma.noi) },
+    { label: '= Beat / (Miss)', amount: Math.round(beatAnnual) },
+  ];
+
+  let status: BeatPlan['status'];
+  if (beatPct >= CONFIG.onTrackBandPct) status = 'BEAT';
+  else if (beatPct >= -CONFIG.onTrackBandPct) status = 'ON_TRACK';
+  else status = 'AT_RISK';
+
+  const caveats: string[] = [
+    'Deterministic market-gated heuristic — not a probabilistic forecast. M36 upgrade adds distributions.',
+    'Capture fractions, vacancy elasticity, and controllable recovery are CONFIG defaults — calibrate from archive + owned actuals.',
+  ];
+  if (Object.keys(signalsByUnitType).length === 0)
+    caveats.push('No market signals supplied — revenue lever defaulted to HOLD. Wire correlation/property + M07.');
+  if (exp.acceptedDragAnnual > 0)
+    caveats.push(`$${exp.acceptedDragAnnual.toLocaleString()} non-controllable overrun accepted (insurance/tax) — outside repricing control.`);
+
+  return {
+    status,
+    proFormaNOI: Math.round(proForma.noi),
+    projectedNOI: Math.round(projectedNOI),
+    beatAnnual: Math.round(beatAnnual),
+    beatPct: round2(beatPct),
+    revenueLeverAnnual: rev.projectedEGILiftAnnual,
+    expenseRecoveryAnnual: exp.controllableRecoveryAnnual,
+    acceptedExpenseDragAnnual: exp.acceptedDragAnnual,
+    bridge,
+    revenue: rev.recommendations,
+    expense: exp.findings,
+    caveats,
+  };
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * WORKED EXAMPLE (Highlands-shaped, illustrative). Run with ts-node to see
+ * the beat plan. Numbers are placeholders, not live.
+ * ──────────────────────────────────────────────────────────────────────
+ */
+export function __example(): BeatPlan {
+  const input: EngineInputs = {
+    proForma: { gpr: 6_740_000, otherIncome: 350_000, vacancyLoss: -810_000, egi: 6_280_000, opex: 2_360_000, noi: 3_920_000 },
+    actuals:  { gpr: 6_380_000, otherIncome: 380_000, vacancyLoss: -900_000, egi: 5_860_000, opex: 2_450_000, noi: 3_410_000, units: 290 },
+    cohorts: [
+      { unitType: '2BR', expiryMonthOffset: 2, units: 38, inPlaceRent: 1712, marketRent: 1810, renewalProbability: 0.55, concessionWeeks: 0 },
+      { unitType: '1BR', expiryMonthOffset: 5, units: 22, inPlaceRent: 1402, marketRent: 1420, renewalProbability: 0.60, concessionWeeks: 2 },
+      { unitType: '3BR', expiryMonthOffset: 3, units: 9,  inPlaceRent: 2080, marketRent: 2160, renewalProbability: 0.50, concessionWeeks: 0 },
+    ],
+    signalsByUnitType: {
+      '2BR': { rentRunwayBps: 210, trafficVelocityPct: 0.082, inMigrationPct: 0.034, pipelinePressurePct: 0.012, compConcessionTrendWeeks: 0 },
+      '1BR': { rentRunwayBps: 60,  trafficVelocityPct: 0.02,  inMigrationPct: 0.034, pipelinePressurePct: 0.072, compConcessionTrendWeeks: 1.2 },
+      '3BR': { rentRunwayBps: 180, trafficVelocityPct: 0.06,  inMigrationPct: 0.034, pipelinePressurePct: 0.02,  compConcessionTrendWeeks: 0 },
+    },
+    expenses: [
+      { label: 'Repair & Maintenance', category: 'controllable',    uwTarget: 410_000, actualRunRate: 484_000 },
+      { label: 'Payroll',              category: 'controllable',    uwTarget: 580_000, actualRunRate: 560_000 },
+      { label: 'Marketing',            category: 'controllable',    uwTarget: 95_000,  actualRunRate: 120_000 },
+      { label: 'Insurance (FL)',       category: 'nonControllable', uwTarget: 320_000, actualRunRate: 400_000 },
+      { label: 'Property Tax',         category: 'nonControllable', uwTarget: 510_000, actualRunRate: 515_000 },
+    ],
+    rankTarget: { overallRank: 2, setSize: 12, byType: false },
+    horizonMonths: 12,
+  };
+  return proFormaBeatEngine(input);
+}
