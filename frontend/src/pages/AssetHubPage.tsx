@@ -7,7 +7,7 @@ import { useParams } from 'react-router-dom';
 import {
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine,
+  ResponsiveContainer, ReferenceLine, Cell, ComposedChart,
 } from 'recharts';
 import { useDealStore } from '../stores/dealStore';
 import { apiClient } from '../services/api.client';
@@ -791,6 +791,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
   const [leasingObs, setLeasingObs] = useState<any[]>([]);
   const [beatPlan, setBeatPlan] = useState<BeatPlan | null>(null);
   const [beatPlanLoading, setBeatPlanLoading] = useState(false);
+  const [selectedBridgeBar, setSelectedBridgeBar] = useState<number | null>(null);
   const [derivedMetrics, setDerivedMetrics] = useState<any[]>([]);
 
   useEffect(() => {
@@ -1188,41 +1189,177 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
               </span>
             </div>
 
-            {/* NOI waterfall bridge */}
-            <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px 8px', overflowX: 'auto', gap: 0 }}>
-              {beatPlan.bridge.map((step, i) => {
-                const isTotal = step.label.startsWith('=');
-                const isPfn   = step.label.startsWith('vs');
-                const isLast  = i === beatPlan.bridge.length - 1;
-                const amt = step.amount;
-                const tone = isLast
-                  ? statusColor
-                  : isTotal ? T.text.primary
-                  : isPfn ? T.text.muted
-                  : amt >= 0 ? T.text.green : T.text.red;
-                const formatted = isPfn
-                  ? `$${Math.abs(amt).toLocaleString()}`
-                  : amt === 0 ? '$0'
-                  : fmtK(amt);
+            {/* NOI waterfall bridge — bar chart with text-only fallback */}
+            {(() => {
+              // Compute waterfall geometry — wrapped in try/catch so a bad bridge
+              // array degrades gracefully to the text-only row below.
+              let chartData: Array<{
+                label: string; base: number; bar: number; fill: string;
+                rawAmount: number; displayAmt: string; isTotal: boolean; isLast: boolean;
+              }> | null = null;
+              try {
+                let running = 0;
+                chartData = beatPlan.bridge.map((step, i) => {
+                  const isTotal = step.label.startsWith('=');
+                  const isPfn   = step.label.startsWith('vs');
+                  const isLast  = i === beatPlan.bridge.length - 1;
+                  const amt = step.amount;
+                  let base: number, bar: number;
+                  if (isTotal) {
+                    base = 0; bar = amt; running = amt;
+                  } else if (isPfn) {
+                    base = amt >= 0 ? running : running + amt;
+                    bar = Math.abs(amt);
+                  } else {
+                    base = amt >= 0 ? running : running + amt;
+                    bar = Math.abs(amt);
+                    running += amt;
+                  }
+                  const fill = isTotal && !isLast
+                    ? T.text.primary
+                    : isLast ? statusColor
+                    : isPfn ? T.text.muted
+                    : amt >= 0 ? T.text.green : T.text.red;
+                  const displayAmt = isPfn
+                    ? `$${Math.abs(amt).toLocaleString()}`
+                    : amt === 0 ? '$0'
+                    : fmtK(amt);
+                  if (!Number.isFinite(base) || !Number.isFinite(bar)) throw new Error('non-finite');
+                  return { label: step.label, base, bar, fill, rawAmount: amt, displayAmt, isTotal, isLast };
+                });
+              } catch {
+                chartData = null;
+              }
+
+              const CustomTick = ({ x, y, payload }: any) => {
+                if (!chartData) return null;
+                const d = chartData[payload.index];
+                if (!d) return null;
+                const lines = d.label.replace(/^[=]/, '').trim().split(/\s+(?=\S{3})/);
                 return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                    <div style={{ textAlign: 'center', minWidth: isTotal || isLast ? 90 : 76, padding: '0 4px' }}>
-                      <div style={{
-                        fontFamily: T.font.mono, fontSize: isTotal || isLast ? 12 : 11, fontWeight: isTotal || isLast ? 800 : 600,
-                        color: tone,
-                      }}>{formatted}</div>
-                      <div style={{
-                        fontFamily: T.font.mono, fontSize: 7.5, color: T.text.muted, marginTop: 2,
-                        lineHeight: 1.2, maxWidth: 88, whiteSpace: 'pre-wrap', textAlign: 'center',
-                      }}>{step.label}</div>
-                    </div>
-                    {i < beatPlan.bridge.length - 1 && (
-                      <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.border.bright, margin: '0 2px' }}>›</span>
+                  <g transform={`translate(${x},${y + 4})`}>
+                    {lines.map((line: string, li: number) => (
+                      <text
+                        key={li}
+                        x={0} y={li * 10}
+                        textAnchor="middle"
+                        fill={T.text.muted}
+                        fontSize={7.5}
+                        fontFamily={T.font.mono}
+                      >{line}</text>
+                    ))}
+                  </g>
+                );
+              };
+
+              // Selected-bar click popover
+              const clickedBar = selectedBridgeBar !== null && chartData ? chartData[selectedBridgeBar] : null;
+
+              if (chartData) {
+                return (
+                  <div style={{ padding: '8px 14px 4px', position: 'relative' }}>
+                    {/* Click-activated tooltip popover */}
+                    {clickedBar && (
+                      <div
+                        style={{
+                          position: 'absolute', top: 4, right: 18, zIndex: 10,
+                          background: T.bg.panel, border: `1px solid ${T.border.bright}`,
+                          borderRadius: 3, padding: '6px 10px',
+                          fontFamily: T.font.mono, fontSize: 11,
+                          boxShadow: '0 2px 8px #00000066',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => setSelectedBridgeBar(null)}
+                      >
+                        <div style={{ color: T.text.muted, fontSize: 9, marginBottom: 3 }}>{clickedBar.label}</div>
+                        <div style={{ color: clickedBar.fill, fontWeight: 700 }}>{clickedBar.displayAmt}</div>
+                        <div style={{ color: T.text.muted, fontSize: 8, marginTop: 2 }}>click to dismiss</div>
+                      </div>
                     )}
+                    <ResponsiveContainer width="100%" height={140}>
+                      <ComposedChart
+                        data={chartData}
+                        barCategoryGap="20%"
+                        margin={{ top: 16, right: 8, left: 8, bottom: 28 }}
+                        onClick={(state: any) => {
+                          const idx = state?.activeTooltipIndex;
+                          if (idx !== undefined && idx !== null) {
+                            setSelectedBridgeBar(prev => prev === idx ? null : idx);
+                          }
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <XAxis
+                          dataKey="label"
+                          tick={<CustomTick />}
+                          tickLine={false}
+                          axisLine={{ stroke: T.border.subtle }}
+                          interval={0}
+                        />
+                        <YAxis hide domain={['auto', 'auto']} />
+                        <Tooltip
+                          content={() => null}
+                          cursor={{ fill: T.border.subtle + '33' }}
+                        />
+                        <Bar dataKey="base" stackId="wf" fill="transparent" isAnimationActive={false} />
+                        <Bar dataKey="bar" stackId="wf" radius={[2, 2, 0, 0]} isAnimationActive={false}>
+                          {chartData.map((d, i) => (
+                            <Cell
+                              key={i}
+                              fill={d.fill}
+                              fillOpacity={selectedBridgeBar === i ? 1 : d.isTotal || d.isLast ? 0.9 : 0.75}
+                              stroke={selectedBridgeBar === i ? d.fill : 'none'}
+                              strokeWidth={selectedBridgeBar === i ? 1.5 : 0}
+                            />
+                          ))}
+                        </Bar>
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                    <div style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted, textAlign: 'right', paddingRight: 4, marginTop: -4 }}>
+                      click bar for detail
+                    </div>
                   </div>
                 );
-              })}
-            </div>
+              }
+
+              // Text-only fallback (shown when chart data cannot be computed)
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px 8px', overflowX: 'auto', gap: 0 }}>
+                  {beatPlan.bridge.map((step, i) => {
+                    const isTotal = step.label.startsWith('=');
+                    const isPfn   = step.label.startsWith('vs');
+                    const isLast  = i === beatPlan.bridge.length - 1;
+                    const amt = step.amount;
+                    const tone = isLast
+                      ? statusColor
+                      : isTotal ? T.text.primary
+                      : isPfn ? T.text.muted
+                      : amt >= 0 ? T.text.green : T.text.red;
+                    const formatted = isPfn
+                      ? `$${Math.abs(amt).toLocaleString()}`
+                      : amt === 0 ? '$0'
+                      : fmtK(amt);
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                        <div style={{ textAlign: 'center', minWidth: isTotal || isLast ? 90 : 76, padding: '0 4px' }}>
+                          <div style={{
+                            fontFamily: T.font.mono, fontSize: isTotal || isLast ? 12 : 11, fontWeight: isTotal || isLast ? 800 : 600,
+                            color: tone,
+                          }}>{formatted}</div>
+                          <div style={{
+                            fontFamily: T.font.mono, fontSize: 7.5, color: T.text.muted, marginTop: 2,
+                            lineHeight: 1.2, maxWidth: 88, whiteSpace: 'pre-wrap', textAlign: 'center',
+                          }}>{step.label}</div>
+                        </div>
+                        {i < beatPlan.bridge.length - 1 && (
+                          <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.border.bright, margin: '0 2px' }}>›</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {/* caveats footnote */}
             {beatPlan.caveats.length > 0 && (
