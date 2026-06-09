@@ -526,17 +526,30 @@ export function M07IntelPanel({ financials, dealId, hasLatLng }: Props) {
   if (!tp) {
     return (
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '6px 12px',
         background: P.bgHeader,
-        borderBottom: `1px solid ${P.border}`,
+        borderBottom: `2px solid ${P.border}`,
+        flexShrink: 0,
       }}>
-        <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 700, color: P.textMuted, letterSpacing: 0.6 }}>
-          M07 TRAFFIC ENGINE
-        </span>
-        <span style={{ fontFamily: MONO, fontSize: 7, color: P.amber, fontStyle: 'italic' }}>
-          Not yet calibrated for this deal — run a traffic prediction to surface leasing signals
-        </span>
+        {/* Banner row */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '6px 12px',
+          borderBottom: dealId ? `1px solid ${P.border}` : undefined,
+        }}>
+          <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 700, color: P.textMuted, letterSpacing: 0.6 }}>
+            M07 TRAFFIC ENGINE
+          </span>
+          <span style={{ fontFamily: MONO, fontSize: 7, color: P.amber, fontStyle: 'italic' }}>
+            Not yet calibrated for this deal — run a traffic prediction to surface leasing signals
+          </span>
+        </div>
+
+        {/* Market Data — shown even before a prediction is run */}
+        {dealId && (
+          <CollapsiblePanel title="MARKET DATA" defaultOpen>
+            <MarketDataPanel dealId={dealId} />
+          </CollapsiblePanel>
+        )}
       </div>
     );
   }
