@@ -2563,6 +2563,11 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
           financials={financials}
           leaseMode={resolveLeaseMode(financials)}
           dealId={dealId}
+          hasLatLng={
+            deal != null &&
+            Number((deal as any).lat) !== 0 && !isNaN(Number((deal as any).lat)) &&
+            Number((deal as any).lng) !== 0 && !isNaN(Number((deal as any).lng))
+          }
           leasingPathOverrides={leasingPathOverrides}
           onFieldCommit={handleLeasingFieldCommit}
           holdYears={holdYears}

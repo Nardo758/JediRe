@@ -76,6 +76,7 @@ interface MarketDataState {
 interface Props {
   financials: F9DealFinancials | null;
   dealId?: string | null;
+  hasLatLng?: boolean;
 }
 
 // ─── Mode resolution ──────────────────────────────────────────────────────────
@@ -249,7 +250,7 @@ function ValueAddKpis({
 
 // ─── Market Data section ──────────────────────────────────────────────────────
 
-function MarketDataPanel({ dealId }: { dealId: string }) {
+function MarketDataPanel({ dealId, hasLatLng = true }: { dealId: string; hasLatLng?: boolean }) {
   const [state, setState] = useState<MarketDataState>({
     status: 'idle',
     indicators: null,
@@ -276,6 +277,11 @@ function MarketDataPanel({ dealId }: { dealId: string }) {
       }
 
       if (res.status === 404) {
+        if (!forceRefresh && hasLatLng) {
+          // No report yet — auto-generate on first view when the deal has coordinates
+          fetchReport(true);
+          return;
+        }
         setState({ status: 'ok', indicators: null, generatedAt: null, hoursOld: null, error: null });
         return;
       }
@@ -305,7 +311,7 @@ function MarketDataPanel({ dealId }: { dealId: string }) {
     } catch (err: any) {
       setState(prev => ({ ...prev, status: 'error', error: err?.message ?? 'Network error' }));
     }
-  }, [dealId]);
+  }, [dealId, hasLatLng]);
 
   useEffect(() => {
     fetchReport(false);
@@ -330,32 +336,38 @@ function MarketDataPanel({ dealId }: { dealId: string }) {
     );
   }
 
-  // No indicators: covers both the "never generated" (ok + null) case and the
-  // "generating for the first time" (refreshing + null) case — show the same
-  // prompt so we never dereference null indicators.
+  // No indicators: covers "generating for the first time" (refreshing + null),
+  // "no lat/lng so auto-gen was skipped" (ok + null + !hasLatLng), and the
+  // fallback manual case — never dereference null indicators.
   if (!state.indicators) {
+    if (state.status === 'refreshing') {
+      return (
+        <span style={{ fontFamily: MONO, fontSize: 7, color: P.textMuted, fontStyle: 'italic' }}>
+          Generating market data…
+        </span>
+      );
+    }
+
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ fontFamily: MONO, fontSize: 7, color: P.textMuted, fontStyle: 'italic' }}>
-          {state.status === 'refreshing'
-            ? 'Generating market data…'
+          {!hasLatLng
+            ? 'No location data — add lat/lng to this deal to enable auto-generation'
             : 'No market report found — generate one to see comparable data'}
         </span>
-        {state.status !== 'refreshing' && (
-          <button
-            onClick={() => fetchReport(true)}
-            disabled={isLoading}
-            style={{
-              alignSelf: 'flex-start',
-              fontFamily: MONO, fontSize: 7, fontWeight: 700,
-              color: P.traffic, background: 'transparent',
-              border: `1px solid ${P.traffic}44`, borderRadius: 2,
-              padding: '2px 8px', cursor: 'pointer', letterSpacing: 0.4,
-            }}
-          >
-            GENERATE REPORT
-          </button>
-        )}
+        <button
+          onClick={() => fetchReport(true)}
+          disabled={isLoading}
+          style={{
+            alignSelf: 'flex-start',
+            fontFamily: MONO, fontSize: 7, fontWeight: 700,
+            color: P.traffic, background: 'transparent',
+            border: `1px solid ${P.traffic}44`, borderRadius: 2,
+            padding: '2px 8px', cursor: 'pointer', letterSpacing: 0.4,
+          }}
+        >
+          GENERATE REPORT
+        </button>
       </div>
     );
   }
@@ -448,28 +460,56 @@ function MarketDataPanel({ dealId }: { dealId: string }) {
         </>
       )}
 
-      {/* Footer: freshness + refresh button */}
+      {/* Footer: freshness + action buttons */}
       <div style={{ marginTop: 4, paddingTop: 4, borderTop: `1px solid ${P.borderSub}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontFamily: MONO, fontSize: 7, color: isStale ? P.amber : P.textMuted }}>
           {state.generatedAt
             ? (isStale ? '⚠ stale — ' : '') + 'as of ' + relDate(state.generatedAt)
             : 'Source: market research engine'}
         </span>
-        <button
-          onClick={() => fetchReport(true)}
-          disabled={isLoading}
-          title="Re-fetch market data from the apartment database"
-          style={{
-            fontFamily: MONO, fontSize: 7, fontWeight: 700,
-            color: isStale ? P.amber : P.traffic,
-            background: 'transparent',
-            border: `1px solid ${isStale ? P.amber + '44' : P.traffic + '44'}`,
-            borderRadius: 2,
-            padding: '1px 6px', cursor: isLoading ? 'wait' : 'pointer', letterSpacing: 0.4,
-          }}
-        >
-          {state.status === 'refreshing' ? 'REFRESHING…' : 'REFRESH'}
-        </button>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <button
+            onClick={() => {
+              const payload = {
+                deal_id: dealId,
+                generated_at: state.generatedAt,
+                demand_indicators: state.indicators,
+              };
+              const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `market-report-${dealId}-${state.generatedAt ? state.generatedAt.slice(0, 10) : 'latest'}.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            title="Download market report as JSON"
+            style={{
+              fontFamily: MONO, fontSize: 7, fontWeight: 700,
+              color: P.textSec, background: 'transparent',
+              border: `1px solid ${P.border}`,
+              borderRadius: 2,
+              padding: '1px 6px', cursor: 'pointer', letterSpacing: 0.4,
+            }}
+          >
+            ↓ JSON
+          </button>
+          <button
+            onClick={() => fetchReport(true)}
+            disabled={isLoading}
+            title="Re-fetch market data from the apartment database"
+            style={{
+              fontFamily: MONO, fontSize: 7, fontWeight: 700,
+              color: isStale ? P.amber : P.traffic,
+              background: 'transparent',
+              border: `1px solid ${isStale ? P.amber + '44' : P.traffic + '44'}`,
+              borderRadius: 2,
+              padding: '1px 6px', cursor: isLoading ? 'wait' : 'pointer', letterSpacing: 0.4,
+            }}
+          >
+            {state.status === 'refreshing' ? 'REFRESHING…' : 'REFRESH'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -477,7 +517,7 @@ function MarketDataPanel({ dealId }: { dealId: string }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function M07IntelPanel({ financials, dealId }: Props) {
+export function M07IntelPanel({ financials, dealId, hasLatLng }: Props) {
   const tp = financials?.trafficProjection ?? null;
   const mode = resolveLeaseMode(financials);
   const ml = modeLabelColor(mode);
@@ -571,7 +611,7 @@ export function M07IntelPanel({ financials, dealId }: Props) {
       {/* Market Data — real occupancy + rent from apartment database */}
       {dealId && (
         <CollapsiblePanel title="MARKET DATA" defaultOpen>
-          <MarketDataPanel dealId={dealId} />
+          <MarketDataPanel dealId={dealId} hasLatLng={hasLatLng} />
         </CollapsiblePanel>
       )}
 

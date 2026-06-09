@@ -491,6 +491,8 @@ export interface LeasingAssumptionsTabProps {
   leaseMode: LeaseMode | null;
   /** Deal ID — passed to M07IntelPanel so it can fetch market research data */
   dealId?: string | null;
+  /** Whether the deal has lat/lng set — gates auto-generation of the market report */
+  hasLatLng?: boolean;
   /**
    * Path-keyed override map — keyed by LeasingFieldDef.path.
    * Numeric enum fields are stored by their index in field.enumValues (backend contract).
@@ -574,7 +576,7 @@ const MONTHLY_LEASING_ROWS: MonthlyLeasingRowDef[] = [
 ];
 
 export function LeasingAssumptionsTab({
-  financials, leaseMode, dealId, leasingPathOverrides, onFieldCommit,
+  financials, leaseMode, dealId, hasLatLng, leasingPathOverrides, onFieldCommit,
   holdYears = 5, monthlyOverrides = {}, onMonthlyChange,
 }: LeasingAssumptionsTabProps) {
   // ── View mode: ANNUAL (category form) or SCHEDULE (monthly grid) ──────────
@@ -707,7 +709,7 @@ export function LeasingAssumptionsTab({
       </div>
 
       {/* ── M07 Traffic Engine Intel Panel ── always above ANNUAL / SCHEDULE content ── */}
-      <M07IntelPanel financials={financials} dealId={dealId} />
+      <M07IntelPanel financials={financials} dealId={dealId} hasLatLng={hasLatLng} />
 
       {/* ── SCHEDULE view: monthly timeline grid ──────────────────────────────── */}
       {viewMode === 'SCHEDULE' && onMonthlyChange && (() => {
