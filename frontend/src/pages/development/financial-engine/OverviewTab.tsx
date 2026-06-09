@@ -37,6 +37,14 @@ interface MarketSignals {
   median_hhi: number | null;
 }
 
+interface MarketSnapshot {
+  propertiesInMarket: number | null;
+  avgOccupancyRate: number | null;
+  avgRent1br: number | null;
+  avgRent2br: number | null;
+  generatedAt: string | null;
+}
+
 function collisionDot(broker: number | null, platform: number | null): React.ReactNode {
   if (broker == null || platform == null || platform === 0) return null;
   const diverge = Math.abs((broker - platform) / platform);
@@ -76,6 +84,8 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
   const [platformData, setPlatformData] = useState<PlatformData>({});
   const [marketSignals, setMarketSignals] = useState<MarketSignals | null>(null);
   const [marketSignalsFetched, setMarketSignalsFetched] = useState(false);
+  const [marketSnapshot, setMarketSnapshot] = useState<MarketSnapshot | null>(null);
+  const [marketSnapshotLoading, setMarketSnapshotLoading] = useState(false);
 
   useEffect(() => {
     if (!dealId) return;
@@ -91,6 +101,31 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
         median_hhi: intel.median_hhi != null ? parseFloat(intel.median_hhi) : null,
       } : null);
     }).catch(() => { setMarketSignals(null); }).finally(() => setMarketSignalsFetched(true));
+  }, [dealId]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    setMarketSnapshot(null);
+    setMarketSnapshotLoading(true);
+    fetch(`/api/v1/market-research/report/${dealId}?maxAge=876000`)
+      .then(async (res) => {
+        if (res.status === 404) { setMarketSnapshot(null); return; }
+        if (!res.ok) return;
+        const body = await res.json();
+        const report = body?.report ?? body;
+        const ind = report?.demand_indicators ?? null;
+        const generatedAt: string | null = body?.generated_at ?? report?.generated_at ?? null;
+        if (!ind) { setMarketSnapshot(null); return; }
+        setMarketSnapshot({
+          propertiesInMarket: ind.properties_in_market ?? null,
+          avgOccupancyRate: ind.avg_occupancy_rate ?? null,
+          avgRent1br: ind.avg_rent_1br ?? null,
+          avgRent2br: ind.avg_rent_2br ?? null,
+          generatedAt,
+        });
+      })
+      .catch(() => setMarketSnapshot(null))
+      .finally(() => setMarketSnapshotLoading(false));
   }, [dealId]);
 
   useEffect(() => {
@@ -311,6 +346,76 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
               </div>
             </SectionPanel>
           )}
+
+          {/* Market Snapshot — sourced from /api/v1/market-research/report/:dealId */}
+          {(() => {
+            const snap = marketSnapshot;
+            const occupancyColor = snap?.avgOccupancyRate != null
+              ? (snap.avgOccupancyRate >= 92 ? BT.met.financial : snap.avgOccupancyRate >= 85 ? BT.text.amber : BT.text.red)
+              : BT.text.muted;
+            const daysOld = snap?.generatedAt
+              ? Math.floor((Date.now() - new Date(snap.generatedAt).getTime()) / 86_400_000)
+              : null;
+            const freshnessLabel = daysOld == null ? null
+              : daysOld < 1 ? 'today'
+              : daysOld === 1 ? '1d ago'
+              : daysOld < 30 ? `${daysOld}d ago`
+              : daysOld < 365 ? `${Math.floor(daysOld / 30)}mo ago`
+              : `${Math.floor(daysOld / 365)}yr ago`;
+            const isStale = daysOld != null && daysOld > 7;
+            return (
+              <SectionPanel title="MARKET SNAPSHOT" subtitle="Comparable market · demand indicators" borderColor={BT.met.occupancy}>
+                {marketSnapshotLoading ? (
+                  <div style={{ padding: '6px 8px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+                    Loading market data…
+                  </div>
+                ) : snap ? (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 1, background: BT.border.subtle, padding: 1 }}>
+                      <div style={{ background: BT.bg.base, padding: '6px 10px' }}>
+                        <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 2, letterSpacing: 0.5 }}>COMPARABLES</div>
+                        <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: BT.text.primary }}>
+                          {snap.propertiesInMarket != null ? snap.propertiesInMarket : '—'}
+                        </div>
+                        <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>props in market</div>
+                      </div>
+                      <div style={{ background: BT.bg.base, padding: '6px 10px' }}>
+                        <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 2, letterSpacing: 0.5 }}>AVG OCCUPANCY</div>
+                        <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: occupancyColor }}>
+                          {snap.avgOccupancyRate != null ? snap.avgOccupancyRate.toFixed(1) + '%' : '—'}
+                        </div>
+                        <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>mkt avg</div>
+                      </div>
+                      <div style={{ background: BT.bg.base, padding: '6px 10px' }}>
+                        <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 2, letterSpacing: 0.5 }}>AVG RENT · 1BR</div>
+                        <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: BT.text.cyan }}>
+                          {snap.avgRent1br != null ? '$' + Math.round(snap.avgRent1br).toLocaleString() : '—'}
+                        </div>
+                        <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>per mo</div>
+                      </div>
+                      <div style={{ background: BT.bg.base, padding: '6px 10px' }}>
+                        <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 2, letterSpacing: 0.5 }}>AVG RENT · 2BR</div>
+                        <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: BT.text.cyan }}>
+                          {snap.avgRent2br != null ? '$' + Math.round(snap.avgRent2br).toLocaleString() : '—'}
+                        </div>
+                        <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>per mo</div>
+                      </div>
+                    </div>
+                    {freshnessLabel && (
+                      <div style={{ padding: '3px 8px', fontFamily: MONO, fontSize: 7, color: isStale ? BT.text.amber : BT.text.muted }}>
+                        {isStale ? '⚠ stale · ' : ''}as of {freshnessLabel} · navigate to LEASING tab to refresh
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ padding: '8px 10px', fontFamily: MONO, fontSize: 9, color: BT.text.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: BT.text.muted }}>◌</span>
+                    Market data not yet generated — open the LEASING tab to run a market report.
+                  </div>
+                )}
+              </SectionPanel>
+            );
+          })()}
 
           {/* Valuation Metrics — sourced from proforma.valuationSnapshot */}
           {f9Financials?.proforma?.valuationSnapshot && (() => {
