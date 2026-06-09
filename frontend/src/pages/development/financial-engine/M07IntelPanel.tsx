@@ -19,6 +19,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import jsPDF from 'jspdf';
 import type { F9DealFinancials } from './types';
 
 const MONO = "'JetBrains Mono','Fira Code',monospace";
@@ -320,6 +321,132 @@ function MarketDataPanel({ dealId, hasLatLng = true }: { dealId: string; hasLatL
   const isStale = state.hoursOld != null && state.hoursOld > 24;
   const isLoading = state.status === 'loading' || state.status === 'refreshing';
 
+  const handleDownloadPdf = useCallback(() => {
+    const ind = state.indicators;
+    if (!ind) return;
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const W = doc.internal.pageSize.getWidth();
+    const margin = 48;
+    const contentW = W - margin * 2;
+    let y = margin;
+
+    const LINE_H = 14;
+    const SECTION_GAP = 10;
+
+    const dateStr = state.generatedAt
+      ? new Date(state.generatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    doc.setFillColor(10, 10, 10);
+    doc.rect(0, 0, W, 56, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(15);
+    doc.setTextColor(203, 213, 225);
+    doc.text('MARKET INTELLIGENCE REPORT', margin, 26);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Deal ID: ${dealId}   ·   Generated: ${dateStr}`, margin, 42);
+
+    y = 72;
+
+    const drawSectionHeader = (title: string) => {
+      doc.setFillColor(240, 244, 248);
+      doc.rect(margin, y - 10, contentW, 16, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(title, margin + 4, y + 2);
+      y += LINE_H + 2;
+    };
+
+    const drawRow = (label: string, value: string, valueColor?: [number, number, number]) => {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(label, margin + 4, y);
+      doc.setFont('helvetica', 'bold');
+      if (valueColor) doc.setTextColor(...valueColor);
+      else doc.setTextColor(51, 65, 85);
+      doc.text(value, W - margin - 4, y, { align: 'right' });
+      doc.setTextColor(51, 65, 85);
+      y += LINE_H;
+    };
+
+    const drawDivider = () => {
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.5);
+      doc.line(margin, y - 2, W - margin, y - 2);
+    };
+
+    const occupancyColor: [number, number, number] = ind.avg_occupancy_rate != null
+      ? (ind.avg_occupancy_rate >= 92 ? [16, 185, 129] : ind.avg_occupancy_rate >= 85 ? [245, 158, 11] : [239, 68, 68])
+      : [100, 116, 139];
+
+    const pressureColor: [number, number, number] = ind.competitive_pressure === 'LOW' ? [16, 185, 129]
+      : ind.competitive_pressure === 'MEDIUM' ? [245, 158, 11]
+      : ind.competitive_pressure === 'HIGH' ? [239, 68, 68]
+      : [100, 116, 139];
+
+    drawSectionHeader('DEMAND INDICATORS');
+    drawRow(
+      'Comparable Properties',
+      ind.properties_in_market != null ? `${ind.properties_in_market} properties` : '—',
+    );
+    drawRow(
+      'Competitive Pressure',
+      ind.competitive_pressure ?? '—',
+      pressureColor,
+    );
+    const trendSymbol = ind.occupancy_trend === 'UP' ? ' ↑' : ind.occupancy_trend === 'DOWN' ? ' ↓' : ind.occupancy_trend === 'STABLE' ? ' →' : '';
+    drawRow(
+      'Avg Occupancy Rate',
+      ind.avg_occupancy_rate != null ? `${ind.avg_occupancy_rate.toFixed(1)}%${trendSymbol}` : '—',
+      occupancyColor,
+    );
+
+    y += SECTION_GAP;
+    drawDivider();
+    y += SECTION_GAP;
+
+    drawSectionHeader('AVG RENT BY BEDROOM TYPE');
+    const rentRows: { label: string; val: number | null }[] = [
+      { label: 'Studio', val: ind.avg_rent_studio },
+      { label: '1 Bedroom', val: ind.avg_rent_1br },
+      { label: '2 Bedroom', val: ind.avg_rent_2br },
+      { label: '3 Bedroom', val: ind.avg_rent_3br },
+    ];
+    rentRows.forEach(r => {
+      drawRow(r.label, r.val != null ? `$${r.val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—');
+    });
+
+    if (ind.rent_growth_6mo != null || ind.rent_growth_12mo != null) {
+      y += SECTION_GAP;
+      drawDivider();
+      y += SECTION_GAP;
+
+      drawSectionHeader('RENT GROWTH');
+      if (ind.rent_growth_6mo != null) {
+        const c6: [number, number, number] = ind.rent_growth_6mo >= 0 ? [16, 185, 129] : [239, 68, 68];
+        drawRow('6-Month', `${ind.rent_growth_6mo.toFixed(1)}%`, c6);
+      }
+      if (ind.rent_growth_12mo != null) {
+        const c12: [number, number, number] = ind.rent_growth_12mo >= 0 ? [16, 185, 129] : [239, 68, 68];
+        drawRow('12-Month', `${ind.rent_growth_12mo.toFixed(1)}%`, c12);
+      }
+    }
+
+    y += SECTION_GAP * 2;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`JEDI RE — Market Intelligence   ·   Confidential   ·   ${dateStr}`, margin, y);
+
+    const filename = `market-report-${dealId}-${state.generatedAt ? state.generatedAt.slice(0, 10) : 'latest'}.pdf`;
+    doc.save(filename);
+  }, [dealId, state.indicators, state.generatedAt]);
+
   if (state.status === 'loading') {
     return (
       <span style={{ fontFamily: MONO, fontSize: 7, color: P.textMuted, fontStyle: 'italic' }}>
@@ -493,6 +620,19 @@ function MarketDataPanel({ dealId, hasLatLng = true }: { dealId: string; hasLatL
             }}
           >
             ↓ JSON
+          </button>
+          <button
+            onClick={handleDownloadPdf}
+            title="Download market report as formatted PDF"
+            style={{
+              fontFamily: MONO, fontSize: 7, fontWeight: 700,
+              color: P.blue, background: 'transparent',
+              border: `1px solid ${P.blue}44`,
+              borderRadius: 2,
+              padding: '1px 6px', cursor: 'pointer', letterSpacing: 0.4,
+            }}
+          >
+            ↓ PDF
           </button>
           <button
             onClick={() => fetchReport(true)}
