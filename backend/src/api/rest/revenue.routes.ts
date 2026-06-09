@@ -51,6 +51,167 @@ function setCache(key: string, plan: BeatPlan): void {
   beatPlanCache.set(key, { plan, cachedAt: Date.now() });
 }
 
+// ── Unit type normalization ───────────────────────────────────────────────────
+// Maps free-form unit type strings from rent rolls, comps, and JSONB keys
+// to a canonical key so comp-set rents can be matched to cohort unit types.
+// The canonical set follows the rent_roll_units convention (e.g. '1BR', '2BR').
+
+const UNIT_TYPE_ALIASES: Array<[RegExp, string]> = [
+  [/^(STU|STUDIO|0BR|0B|STUDIO\/LOFT)/i,                   'STU'],
+  [/^(1\s*[-/]?\s*BR|1\s*BED|1B|ONE\s*BED|ONEBR|1BR)/i,   '1BR'],
+  [/^(2\s*[-/]?\s*BR|2\s*BED|2B|TWO\s*BED|TWOBR|2BR)/i,   '2BR'],
+  [/^(3\s*[-/]?\s*BR|3\s*BED|3B|THREE\s*BED|THREEBR|3BR)/i,'3BR'],
+  [/^(4\s*[-/]?\s*BR|4\s*BED|4B|FOUR\s*BED|FOURBR|4BR)/i, '4BR'],
+];
+
+// Camel-case JSONB keys from market_rent_comps.rents_by_type
+const JSONB_KEY_MAP: Record<string, string> = {
+  studio:   'STU',
+  oneBed:   '1BR',
+  twoBed:   '2BR',
+  threeBed: '3BR',
+  fourBed:  '4BR',
+};
+
+export function normalizeUnitType(raw: string): string {
+  const s = (raw ?? '').trim().toUpperCase().replace(/\s+/g, ' ');
+  for (const [re, canonical] of UNIT_TYPE_ALIASES) {
+    if (re.test(s.replace(/\s/g, ''))) return canonical;
+  }
+  return raw; // preserve as-is when no alias matches
+}
+
+// Result of comp-set market rent lookup: per canonical unit type + overall avg
+export interface CompSetRents {
+  byType:     Record<string, number>;  // canonical unit type → median asking rent
+  overallAvg: number | null;           // property-level avg when no per-type data
+  source:     string;                  // human-readable provenance label
+}
+
+/**
+ * Fetches per-unit-type market rents from the comp set linked to a deal.
+ *
+ * Source precedence (higher = preferred):
+ *   A. market_rent_comps.rents_by_type JSONB (weighted avg across comp properties)
+ *   B. comp_unit_types joined to comp_properties (scraped per-type rents)
+ *   C. deal_rent_comp_sets.avg_rent (property-level avg, no type breakdown)
+ *   D. historical_observations.submarket_avg_asking_rent (submarket-level)
+ *
+ * Returns null when no comp data is available for the deal.
+ */
+export async function fetchCompSetRents(
+  dealId: string,
+  submarketId: string | null,
+): Promise<CompSetRents | null> {
+
+  // ── A. market_rent_comps.rents_by_type JSONB ─────────────────────────────
+  // Each row may have a rents_by_type object like:
+  //   { "oneBed": { "rent": 1997, "units": 158 }, "studio": { "rent": 1627, "units": 67 }, ... }
+  // We aggregate across all comp properties using a weighted average (by units).
+  const mrcRes = await query(
+    `SELECT rents_by_type, avg_asking_rent
+     FROM market_rent_comps
+     WHERE deal_id = $1 AND (rents_by_type IS NOT NULL OR avg_asking_rent IS NOT NULL)`,
+    [dealId],
+  );
+
+  if (mrcRes.rows.length > 0) {
+    const accumulator: Record<string, { sumRent: number; sumUnits: number }> = {};
+    let propertyLevelSum  = 0;
+    let propertyLevelCnt  = 0;
+
+    for (const row of mrcRes.rows as any[]) {
+      const byType = row.rents_by_type as Record<string, { rent: number; units?: number }> | null;
+      const avgAsk = parseFloat(row.avg_asking_rent);
+
+      if (byType && typeof byType === 'object') {
+        for (const [rawKey, val] of Object.entries(byType)) {
+          const canonical = JSONB_KEY_MAP[rawKey] ?? normalizeUnitType(rawKey);
+          const rent  = typeof val === 'object' ? Number(val.rent) : Number(val);
+          const units = (typeof val === 'object' && val.units) ? Number(val.units) : 1;
+          if (!isNaN(rent) && rent > 0) {
+            if (!accumulator[canonical]) accumulator[canonical] = { sumRent: 0, sumUnits: 0 };
+            accumulator[canonical].sumRent  += rent * units;
+            accumulator[canonical].sumUnits += units;
+          }
+        }
+      }
+
+      if (!isNaN(avgAsk) && avgAsk > 0) {
+        propertyLevelSum += avgAsk;
+        propertyLevelCnt++;
+      }
+    }
+
+    const byType: Record<string, number> = {};
+    for (const [canonical, acc] of Object.entries(accumulator)) {
+      if (acc.sumUnits > 0) byType[canonical] = Math.round(acc.sumRent / acc.sumUnits);
+    }
+
+    const overallAvg = propertyLevelCnt > 0
+      ? Math.round(propertyLevelSum / propertyLevelCnt)
+      : null;
+
+    if (Object.keys(byType).length > 0 || overallAvg !== null) {
+      return { byType, overallAvg, source: 'market_rent_comps (comp-set JSONB)' };
+    }
+  }
+
+  // ── B. comp_unit_types joined to comp_properties ──────────────────────────
+  const cutRes = await query(
+    `SELECT cu.unit_type, AVG(cu.avg_rent::float) AS avg_rent, COUNT(*) AS cnt
+     FROM comp_unit_types cu
+     JOIN comp_properties cp ON cp.id = cu.comp_id
+     WHERE cp.deal_id = $1 AND cu.avg_rent IS NOT NULL AND cu.avg_rent > 0
+     GROUP BY cu.unit_type`,
+    [dealId],
+  );
+
+  if (cutRes.rows.length > 0) {
+    const byType: Record<string, number> = {};
+    for (const row of cutRes.rows as any[]) {
+      const canonical = normalizeUnitType(String(row.unit_type));
+      const rent = parseFloat(row.avg_rent);
+      if (!isNaN(rent) && rent > 0) byType[canonical] = Math.round(rent);
+    }
+    if (Object.keys(byType).length > 0) {
+      return { byType, overallAvg: null, source: 'comp_unit_types (scraped comps)' };
+    }
+  }
+
+  // ── C. deal_rent_comp_sets.avg_rent (property-level, no type breakdown) ───
+  const drcsRes = await query(
+    `SELECT AVG(avg_rent::float) AS overall_avg
+     FROM deal_rent_comp_sets
+     WHERE deal_id = $1 AND status = 'active' AND avg_rent IS NOT NULL AND avg_rent > 0`,
+    [dealId],
+  );
+
+  const drcsAvg = parseFloat((drcsRes.rows[0] as any)?.overall_avg);
+  if (!isNaN(drcsAvg) && drcsAvg > 0) {
+    return { byType: {}, overallAvg: Math.round(drcsAvg), source: 'deal_rent_comp_sets (property avg)' };
+  }
+
+  // ── D. historical_observations.submarket_avg_asking_rent ─────────────────
+  if (submarketId) {
+    const hoRes = await query(
+      `SELECT AVG(submarket_avg_asking_rent::float) AS avg_asking
+       FROM historical_observations
+       WHERE submarket_id = $1
+         AND submarket_avg_asking_rent IS NOT NULL
+         AND observation_date >= CURRENT_DATE - INTERVAL '24 months'`,
+      [submarketId],
+    );
+    const hoAvg = parseFloat((hoRes.rows[0] as any)?.avg_asking);
+    if (!isNaN(hoAvg) && hoAvg > 0) {
+      return { byType: {}, overallAvg: Math.round(hoAvg), source: 'historical_observations (submarket avg asking)' };
+    }
+  }
+
+  return null;
+}
+
+
 // ── Input assemblers ─────────────────────────────────────────────────────────
 
 /** Returns annualized TTM actuals from the last ≤12 non-budget months. */
@@ -335,10 +496,12 @@ export async function fetchExpenseLines(
  *      → provides renewalProbability and concessionWeeks per unit type
  *   2. rent_roll_units → provides in-place rents, unit counts, market rents
  *
- * marketRent three-tier precedence per spec:
- *   1. rent_roll_units.market_rent  (per-unit-type)
- *   2. msas.avg_rent for city/state (correlation engine market rent output, city-level proxy)
- *   3. inPlaceRent (last resort — caveat added)
+ * marketRent five-tier precedence:
+ *   1. rent_roll_units.market_rent  (per-unit-type, most accurate)
+ *   2. compSetRents.byType[canonical] (per-unit-type from comp set JSONB / scraped comps)
+ *   3. compSetRents.overallAvg (property-level average from comp set, no type breakdown)
+ *   4. msas.avg_rent for city/state (correlation engine city-level proxy)
+ *   5. inPlaceRent (last resort — caveat added)
  *
  * If no snapshot is found, falls back to rent_roll_units only (returns caveat).
  */
@@ -346,6 +509,7 @@ export async function fetchLeaseCohorts(
   dealId: string,
   city: string,
   state: string,
+  compSetRents?: CompSetRents | null,
 ): Promise<{ cohorts: LeaseCohort[]; caveat: string | null }> {
 
   // ── 1. Load the latest derived snapshot metrics ────────────────────────────
@@ -430,21 +594,43 @@ export async function fetchLeaseCohorts(
       ? parseFloat(String((msaRes.rows[0] as any).avg_rent)) || null
       : null;
 
-  let msaFallbackCount   = 0;
-  let inPlaceFallbackCount = 0;
+  let compSetPerTypeFallbackCount  = 0;
+  let compSetOverallFallbackCount  = 0;
+  let msaFallbackCount             = 0;
+  let inPlaceFallbackCount         = 0;
 
   const cohorts: LeaseCohort[] = (unitRes.rows as any[]).map((r) => {
     const unitType       = String(r.unit_type || 'Unknown');
     const inPlaceRent    = parseFloat(r.in_place_rent)  || 0;
     const rawMarketRent  = parseFloat(r.market_rent);
 
-    // Three-tier marketRent precedence per spec:
+    // Five-tier marketRent precedence:
     // 1. rent_roll_units.market_rent (per-unit-type, most accurate)
-    // 2. MSA avg_rent from correlation engine (city-level proxy)
-    // 3. inPlaceRent (last resort — caller receives explicit caveat)
+    // 2. compSetRents.byType[canonical] (per-unit-type from comp set)
+    // 3. compSetRents.overallAvg (property-level comp avg, no type breakdown)
+    // 4. MSA avg_rent from correlation engine (city-level proxy)
+    // 5. inPlaceRent (last resort — caller receives explicit caveat)
     let marketRent: number;
     if (!isNaN(rawMarketRent) && rawMarketRent > 0) {
       marketRent = rawMarketRent;
+    } else if (compSetRents) {
+      // Try per-unit-type comp rent first (normalize the unit type for lookup)
+      const canonical = normalizeUnitType(unitType);
+      const perTypeComp = compSetRents.byType[canonical]
+        ?? compSetRents.byType[unitType];  // also try raw in case it already matches
+      if (perTypeComp && perTypeComp > 0) {
+        marketRent = perTypeComp;
+        compSetPerTypeFallbackCount++;
+      } else if (compSetRents.overallAvg !== null && compSetRents.overallAvg > 0) {
+        marketRent = compSetRents.overallAvg;
+        compSetOverallFallbackCount++;
+      } else if (correlationAvgRent !== null) {
+        marketRent = correlationAvgRent;
+        msaFallbackCount++;
+      } else {
+        marketRent = inPlaceRent;
+        inPlaceFallbackCount++;
+      }
     } else if (correlationAvgRent !== null) {
       marketRent = correlationAvgRent;
       msaFallbackCount++;
@@ -489,14 +675,24 @@ export async function fetchLeaseCohorts(
       'No rent-roll derivation snapshot found — renewal rates and concession weeks sourced from rent_roll_units only (less accurate than snapshot derivations).',
     );
   }
+  if (compSetPerTypeFallbackCount > 0 && compSetRents) {
+    caveats.push(
+      `${compSetPerTypeFallbackCount} unit type(s) used per-type comp-set market rent (${compSetRents.source}) — no market_rent in rent roll.`,
+    );
+  }
+  if (compSetOverallFallbackCount > 0 && compSetRents) {
+    caveats.push(
+      `${compSetOverallFallbackCount} unit type(s) used comp-set overall average rent (${compSetRents.source}) — no per-type comp rents available.`,
+    );
+  }
   if (msaFallbackCount > 0) {
     caveats.push(
-      `${msaFallbackCount} unit type(s) used MSA city-level avg_rent as market_rent proxy (correlation engine output — no per-unit market_rent in rent roll). Repricing lever may differ from actual submarket rates.`,
+      `${msaFallbackCount} unit type(s) used MSA city-level avg_rent as market_rent proxy (no comp-set or rent-roll market_rent). Repricing lever may differ from actual submarket rates.`,
     );
   }
   if (inPlaceFallbackCount > 0) {
     caveats.push(
-      `${inPlaceFallbackCount} unit type(s) had no market_rent and no MSA avg_rent — marketRent defaulted to inPlaceRent. Revenue lever may understate repricing opportunity.`,
+      `${inPlaceFallbackCount} unit type(s) had no market_rent, no comp-set data, and no MSA avg_rent — marketRent defaulted to inPlaceRent. Revenue lever may understate repricing opportunity.`,
     );
   }
 
@@ -595,13 +791,20 @@ router.get('/:dealId/beat-plan', requireAuth, async (req: AuthenticatedRequest, 
 
     const caveats: string[] = [];
 
-    // ── 3–6. Assemble inputs in parallel ──────────────────────────────────────
-    const [actuals, proForma, cohortResult, expenseResult] = await Promise.all([
+    // ── 3–7. Assemble inputs in two parallel phases ───────────────────────────
+    // Phase A: everything that does not depend on comp-set rents fires together.
+    // Phase B: fetchLeaseCohorts uses comp-set rents resolved in phase A so that
+    //          CohortRecommendation.marketRent reflects real comp data, not only
+    //          the MSA city-level fallback.
+    const [actuals, proForma, expenseResult, compSetRents] = await Promise.all([
       fetchActualsSnapshot(propertyId, dealId),
       fetchProFormaTargets(propertyId, dealId),
-      fetchLeaseCohorts(dealId, city, state),
       fetchExpenseLines(propertyId, dealId),
+      fetchCompSetRents(dealId, submarketId),
     ]);
+
+    // Phase B: build lease cohorts with comp-set rents already available.
+    const cohortResult = await fetchLeaseCohorts(dealId, city, state, compSetRents ?? undefined);
 
     if (!actuals)    caveats.push('No TTM actuals found — NOI projected from pro-forma only. Accuracy degraded.');
     if (!proForma)   caveats.push('No budget/pro-forma rows found — beat-plan comparison unavailable.');
@@ -745,6 +948,7 @@ router.get('/:dealId/beat-plan', requireAuth, async (req: AuthenticatedRequest, 
       state,
       computedAt:    new Date().toISOString(),
       horizonMonths,
+      compSetSource: compSetRents?.source ?? null,
       ...beatPlan,
     });
   } catch (err) {

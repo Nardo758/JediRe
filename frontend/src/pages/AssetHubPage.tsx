@@ -61,6 +61,7 @@ interface BeatPlan {
   revenue: CohortRecommendation[];
   expense: ExpenseFinding[];
   caveats: string[];
+  compSetSource: string | null;  // provenance label when comp-set market rents were wired in
 }
 
 const CSS_INJECT = `
@@ -1237,8 +1238,8 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
         );
       })() : null}
 
-      {/* No market signals amber banner */}
-      {beatPlan && beatPlan.caveats.some(c => c.includes('No market signals')) && (
+      {/* No market signals amber banner — suppressed when comp-set rents are wired in */}
+      {beatPlan && beatPlan.caveats.some(c => c.includes('No market signals')) && !beatPlan.compSetSource && (
         <div style={{
           marginBottom: 10, padding: '8px 14px',
           background: T.text.amber + '12', border: `1px solid ${T.text.amber}44`, borderRadius: 2,
@@ -1246,6 +1247,17 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
         }}>
           ⚠ No market signal data — revenue lever defaulted to HOLD.
           Wire correlation/property + M07 to unlock repricing recommendations.
+        </div>
+      )}
+
+      {/* Comp-set market rent indicator — shows source when real comp rents are wired */}
+      {beatPlan && beatPlan.compSetSource && (
+        <div style={{
+          marginBottom: 10, padding: '8px 14px',
+          background: T.text.cyan + '10', border: `1px solid ${T.text.cyan}33`, borderRadius: 2,
+          fontFamily: T.font.label, fontSize: 10, color: T.text.cyan,
+        }}>
+          ◈ Market rent sourced from comp set ({beatPlan.compSetSource}) — recommendations are comp-gated.
         </div>
       )}
 
