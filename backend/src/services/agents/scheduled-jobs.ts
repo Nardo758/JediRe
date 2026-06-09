@@ -20,6 +20,31 @@ import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { openclawNotifier } from '../notifications/openclawNotifier';
 
+/**
+ * Returns true if the platform has had no agent activity in the last
+ * IDLE_THRESHOLD_DAYS days. Scheduled jobs that would trigger LLM calls
+ * should skip their expensive work when the platform is idle — there is
+ * no user to receive the output and the spend is wasted.
+ *
+ * Uses agent_runs.started_at as the proxy for "is anyone actually using
+ * this?" — it's a stricter signal than user.updated_at.
+ */
+const IDLE_THRESHOLD_DAYS = 14;
+
+async function isPlatformIdle(): Promise<boolean> {
+  try {
+    const result = await query(
+      `SELECT 1 FROM agent_runs
+       WHERE started_at >= NOW() - ($1 || ' days')::interval
+       LIMIT 1`,
+      [IDLE_THRESHOLD_DAYS]
+    );
+    return result.rows.length === 0;
+  } catch {
+    return false;
+  }
+}
+
 // ============================================================================
 // DAILY SCHEDULED JOBS
 // ============================================================================
@@ -32,16 +57,22 @@ export const dailyMorningBriefing = inngest.createFunction(
   async ({ step }) => {
     logger.info('Starting daily morning briefing');
 
-    // Get all active users with agent notifications enabled
+    const idle = await step.run('check-platform-activity', () => isPlatformIdle());
+    if (idle) {
+      logger.info('[DailyMorningBriefing] Platform idle — skipping (no agent activity in last 14 days)');
+      return { skipped: true, reason: 'platform_idle' };
+    }
+
+    // Get all active users (user_preferences table may not exist; fall back to all active users)
     const users = await step.run('get-active-users', async () => {
-      const result = await query(
-        `SELECT DISTINCT u.id, u.email, u.first_name
-         FROM users u
-         JOIN user_preferences up ON u.id = up.user_id
-         WHERE up.agent_notifications = true
-         AND u.is_active = true`
-      );
-      return result.rows;
+      try {
+        const result = await query(
+          `SELECT id, email, first_name FROM users WHERE is_active = true`
+        );
+        return result.rows;
+      } catch {
+        return [];
+      }
     });
 
     // Get agents that run daily
@@ -91,6 +122,12 @@ export const dailyComplianceCheck = inngest.createFunction(
   { id: 'agent-daily-compliance-check', name: 'Daily Compliance Check' , triggers: [{ cron: '0 8 * * *' }] }, // 8 AM daily
   async ({ step }) => {
     logger.info('Starting daily compliance check');
+
+    const idle = await step.run('check-platform-activity', () => isPlatformIdle());
+    if (idle) {
+      logger.info('[DailyComplianceCheck] Platform idle — skipping (no agent activity in last 14 days)');
+      return { skipped: true, reason: 'platform_idle' };
+    }
 
     // Get all active deals
     const deals = await step.run('get-active-deals', async () => {
@@ -194,6 +231,12 @@ export const weeklyPortfolioReview = inngest.createFunction(
   async ({ step }) => {
     logger.info('Starting weekly portfolio review');
 
+    const idle = await step.run('check-platform-activity', () => isPlatformIdle());
+    if (idle) {
+      logger.info('[WeeklyPortfolioReview] Platform idle — skipping (no agent activity in last 14 days)');
+      return { skipped: true, reason: 'platform_idle' };
+    }
+
     const users = await step.run('get-users', async () => {
       const result = await query(
         `SELECT DISTINCT u.id FROM users u
@@ -250,6 +293,12 @@ export const weeklyMarketIntelligence = inngest.createFunction(
   { id: 'agent-weekly-market-intelligence', name: 'Weekly Market Intelligence' , triggers: [{ cron: '0 6 * * 1' }] }, // 6 AM every Monday
   async ({ step }) => {
     logger.info('Starting weekly market intelligence');
+
+    const idle = await step.run('check-platform-activity', () => isPlatformIdle());
+    if (idle) {
+      logger.info('[WeeklyMarketIntelligence] Platform idle — skipping (no agent activity in last 14 days)');
+      return { skipped: true, reason: 'platform_idle' };
+    }
 
     // Get all MSAs with active deals
     const msas = await step.run('get-active-msas', async () => {

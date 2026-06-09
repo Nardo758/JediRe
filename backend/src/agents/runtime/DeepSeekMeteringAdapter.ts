@@ -148,12 +148,42 @@ export class DeepSeekMeteringAdapter {
    * Settlement (credit reconciliation, Stripe meter, ai_usage_log) is
    * awaited before returning so callers cannot bypass accounting.
    */
+  /**
+   * Throws if today's logged DeepSeek spend has already reached the
+   * configured daily cap (DEEPSEEK_DAILY_SPEND_CAP_USD, default $20).
+   * Querying ai_usage_log is cheap — this runs on every call so that the
+   * first call that would breach the cap is blocked, not just the ones after.
+   */
+  private async checkDailySpendCap(): Promise<void> {
+    const capUsd = parseFloat(process.env.DEEPSEEK_DAILY_SPEND_CAP_USD ?? '20');
+    try {
+      const result = await query(
+        `SELECT COALESCE(SUM(credits_consumed), 0)::float AS today_spend
+         FROM ai_usage_log
+         WHERE created_at >= CURRENT_DATE`
+      );
+      const spent: number = result.rows[0]?.today_spend ?? 0;
+      if (spent >= capUsd) {
+        throw new Error(
+          `Daily AI spend cap reached ($${spent.toFixed(2)} of $${capUsd} limit). ` +
+          `No further DeepSeek calls until UTC midnight. ` +
+          `Raise DEEPSEEK_DAILY_SPEND_CAP_USD to increase the limit.`
+        );
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('Daily AI spend cap')) throw err;
+      logger.warn('DeepSeekMeteringAdapter: spend-cap check failed, proceeding anyway', { err });
+    }
+  }
+
   async createMessage(req: DeepSeekRequest): Promise<DeepSeekResponse> {
     if (!this.apiKey) {
       throw new Error(
         'DeepSeek not configured: set DEEPSEEK_API_KEY in environment.'
       );
     }
+
+    await this.checkDailySpendCap();
 
     const { metadata, ...apiParams } = req;
     const estimate = preflightEstimate(apiParams.model);
@@ -417,7 +447,7 @@ export class DeepSeekMeteringAdapter {
          ) VALUES ($1,$2,$3,$4,'agent',$5,$6,$7,$8,$9,0)
          ON CONFLICT DO NOTHING`,
         [
-          (metadata.user_id && metadata.user_id.trim() !== '' ? metadata.user_id : null) ?? '00000000-0000-0000-0000-000000000000',
+          (metadata.user_id && metadata.user_id.trim() !== '') ? metadata.user_id : null,
           metadata.deal_id ?? null,
           metadata.actor_id,
           `agent_run:${metadata.agent_run_id ?? 'unknown'}`,

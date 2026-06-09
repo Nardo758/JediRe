@@ -28,6 +28,11 @@ import { logger } from '../../utils/logger';
 
 const LOOKBACK_DAYS = 7;
 
+/** Hard cap: never process more than this many articles in one nightly run.
+ *  Prevents a backlog spike from generating an unexpectedly large LLM bill.
+ *  Unprocessed articles remain eligible for the next night's run. */
+const MAX_ARTICLES_PER_RUN = 50;
+
 export const nightlyEventExtractionCron = inngest.createFunction(
   {
     id: 'nightly-event-extraction',
@@ -55,18 +60,23 @@ export const nightlyEventExtractionCron = inngest.createFunction(
 
       const newly_found = unextractedResult.rows.length;
       const already_extracted = parseInt(alreadyExtractedResult.rows[0]?.already_extracted ?? '0', 10);
+      const capped = newly_found > MAX_ARTICLES_PER_RUN;
+      const rows = capped ? unextractedResult.rows.slice(0, MAX_ARTICLES_PER_RUN) : unextractedResult.rows;
 
       logger.info('[Inngest/NightlyEventExtraction] Article window scanned', {
         newly_found,
         already_extracted,
         lookback_days: LOOKBACK_DAYS,
+        capped,
+        processing: rows.length,
       });
 
-      return { rows: unextractedResult.rows, already_extracted };
+      return { rows, already_extracted, capped };
     });
 
     const articles = fetchResult.rows;
     const already_extracted = fetchResult.already_extracted;
+    const capped = fetchResult.capped ?? false;
 
     const summary = await step.run('extract-and-persist-events', async () => {
       let totalInserted = 0;
@@ -112,6 +122,7 @@ export const nightlyEventExtractionCron = inngest.createFunction(
         events_skipped_dedup: totalSkipped,
         errors: totalErrors,
         status,
+        capped,
       };
     });
 
