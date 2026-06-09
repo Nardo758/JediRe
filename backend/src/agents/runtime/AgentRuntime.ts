@@ -682,13 +682,20 @@ export class AgentRuntime {
       });
 
       // Handle tool calls
-      const toolUses = response.content.filter(
+      // Guard: filter out null/undefined/non-object blocks that may arrive from
+      // DeepSeek responses. Without this guard, b.type on a null/undefined block
+      // throws a TypeError that propagates out of the loop and fails the entire run.
+      const safeContent = response.content.filter(
+        (b): b is NonNullable<typeof b> => b != null && typeof b === 'object'
+      );
+
+      const toolUses = safeContent.filter(
         (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
       );
 
       if (toolUses.length === 0) {
         // Final output — expect last text block to be JSON
-        const textBlock = response.content.find(
+        const textBlock = safeContent.find(
           (b): b is Anthropic.TextBlock => b.type === 'text'
         );
         let content: Record<string, unknown> = {};
@@ -715,7 +722,7 @@ export class AgentRuntime {
         toolUses.map(tu => this.executeTool(tu, run, ctx, stepIndex++))
       );
 
-      messages.push({ role: 'assistant', content: response.content as any });
+      messages.push({ role: 'assistant', content: safeContent as any });
       messages.push({ role: 'user', content: toolResults });
     }
 
@@ -814,10 +821,30 @@ export class AgentRuntime {
       duration_ms: duration,
     });
 
+    // Guard: JSON.stringify can throw on circular references or objects with
+    // Cytoscape.js internal state (_idmap). Convert serialization errors into
+    // a recoverable tool error so the run continues rather than fails hard.
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(validated);
+    } catch (serErr) {
+      const msg = serErr instanceof Error ? serErr.message : String(serErr);
+      logger.warn('AgentRuntime: tool output serialization failed', {
+        tool: tool.name,
+        err: msg,
+      });
+      return {
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        content: JSON.stringify({ error: `Tool output serialization failed: ${msg}` }),
+        is_error: true,
+      } as const;
+    }
+
     return {
       type: 'tool_result',
       tool_use_id: toolUse.id,
-      content: JSON.stringify(validated),
+      content: serialized,
     };
   }
 

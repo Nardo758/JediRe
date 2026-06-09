@@ -28,6 +28,7 @@ import { commentaryPostProcess } from './commentary.postprocess';
 import { fetchReforecastSummaryTool } from './tools/fetch_reforecast_summary';
 import { fetchVarianceSummaryTool } from './tools/fetch_variance_summary';
 import { fetchDispositionLearningsTool } from './tools/fetch_disposition_learnings';
+import { fetchCashflowSnapshotTool } from './tools/fetch_cashflow_snapshot';
 
 // ── Output schema ─────────────────────────────────────────────────
 
@@ -70,6 +71,8 @@ export const COMMENTARY_AGENT_CONFIG: AgentConfig = {
   agentVersion: '3.2.0',
   promptVersion: 'commentary-v6',
   tools: [
+    // Call fetch_cashflow_snapshot first to ground narrative in underwritten numbers
+    fetchCashflowSnapshotTool,
     fetchDataMatrixTool,
     webSearchTool,
     fetchWebpageTool,
@@ -82,8 +85,9 @@ export const COMMENTARY_AGENT_CONFIG: AgentConfig = {
   budgetCaps: DEFAULT_BUDGET_CAPS.commentary,
   modelName: 'deepseek-chat',
   capabilities: ['read:all', 'web:search', 'data:matrix'],
-  /** Force fetch_data_matrix as the very first action — no output before context */
-  firstToolCall: 'fetch_data_matrix',
+  /** Force fetch_cashflow_snapshot as the very first action to ground the narrative in
+   *  underwritten numbers before raw market data is assembled. */
+  firstToolCall: 'fetch_cashflow_snapshot',
   /** Post-process fills missing required fields from deal context + tool history */
   postProcess: commentaryPostProcess,
 };

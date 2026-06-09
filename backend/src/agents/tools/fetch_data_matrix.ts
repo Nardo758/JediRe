@@ -17,10 +17,66 @@
  */
 
 import { z } from 'zod';
+import { createHash } from 'crypto';
 import type { Pool } from 'pg';
-import { getPool } from '../../database/connection';
+import { getPool, query } from '../../database/connection';
 import { getDataMatrixService, DataLibraryDeal, DataMatrixContext } from '../../services/neural-network';
 import { logger } from '../../utils/logger';
+
+/** TTL for the data-matrix session cache (default 4 hours). */
+const CACHE_TTL_HOURS = Number(process.env.DATA_MATRIX_CACHE_TTL_HOURS ?? 4);
+
+/**
+ * Build a deterministic cache key from the layers selection and search radius.
+ * Deals with the same layer set + radius reuse the same cache entry.
+ */
+function buildCacheKey(layers: string[] | undefined, searchRadiusMiles: number | undefined): string {
+  const normalized = {
+    layers: layers ? [...layers].sort() : 'all',
+    radius: searchRadiusMiles ?? 5,
+  };
+  return createHash('sha256').update(JSON.stringify(normalized)).digest('hex').slice(0, 32);
+}
+
+async function getCachedResult(dealId: string, cacheKey: string): Promise<DataMatrixResult | null> {
+  try {
+    const res = await query(
+      `SELECT payload FROM agent_data_matrix_cache
+       WHERE deal_id = $1 AND cache_key = $2 AND expires_at > NOW()
+       LIMIT 1`,
+      [dealId, cacheKey]
+    );
+    if (res.rows.length === 0) return null;
+    const payload = typeof res.rows[0].payload === 'string'
+      ? JSON.parse(res.rows[0].payload)
+      : res.rows[0].payload;
+    logger.info(`[fetch_data_matrix] Cache HIT for deal=${dealId} key=${cacheKey}`);
+    return payload as DataMatrixResult;
+  } catch (err) {
+    logger.warn('[fetch_data_matrix] Cache read error (non-fatal)', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
+async function setCachedResult(dealId: string, cacheKey: string, result: DataMatrixResult): Promise<void> {
+  try {
+    const expiresAt = new Date(Date.now() + CACHE_TTL_HOURS * 60 * 60 * 1000).toISOString();
+    await query(
+      `INSERT INTO agent_data_matrix_cache (deal_id, cache_key, payload, expires_at)
+       VALUES ($1, $2, $3::jsonb, $4)
+       ON CONFLICT (deal_id, cache_key)
+       DO UPDATE SET payload = EXCLUDED.payload, expires_at = EXCLUDED.expires_at`,
+      [dealId, cacheKey, JSON.stringify(result), expiresAt]
+    );
+    logger.info(`[fetch_data_matrix] Cache WRITE for deal=${dealId} key=${cacheKey} ttl=${CACHE_TTL_HOURS}h`);
+  } catch (err) {
+    logger.warn('[fetch_data_matrix] Cache write error (non-fatal)', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
 
 export const fetchDataMatrixSchema = z.object({
   // Deal identification - one of these is required
@@ -90,9 +146,24 @@ export async function fetchDataMatrix(
   params: FetchDataMatrixParams,
   pool: Pool
 ): Promise<DataMatrixResult> {
-  const service = getDataMatrixService(pool);
-  
   logger.info(`[fetch_data_matrix] Called with dealId=${params.dealId}, assetId=${params.assetId}, layers=${params.layers?.length ?? 'all'}`);
+
+  // ── Session cache: skip DataMatrixService.buildContext() when a fresh entry exists ──
+  const cacheableDealId = params.dealId;
+  if (cacheableDealId) {
+    const cacheKey = buildCacheKey(params.layers, params.searchRadiusMiles);
+    const cached = await getCachedResult(cacheableDealId, cacheKey);
+    if (cached) return cached;
+  }
+
+  let service: ReturnType<typeof getDataMatrixService>;
+  try {
+    service = getDataMatrixService(pool);
+  } catch (initErr) {
+    const msg = initErr instanceof Error ? initErr.message : String(initErr);
+    logger.warn(`[fetch_data_matrix] DataMatrixService init error (recoverable): ${msg}`);
+    throw new Error(`DataMatrixService initialization failed: ${msg}`);
+  }
   
   let deal: DataLibraryDeal;
   
@@ -222,7 +293,15 @@ export async function fetchDataMatrix(
   // Generate summary for agents
   const summary = generateSummary(deal, context);
   
-  return { context, summary };
+  const result: DataMatrixResult = { context, summary };
+
+  // Populate session cache (only for real deal IDs, not inline/assetId lookups)
+  if (cacheableDealId) {
+    const cacheKey = buildCacheKey(params.layers, params.searchRadiusMiles);
+    await setCachedResult(cacheableDealId, cacheKey, result);
+  }
+
+  return result;
 }
 
 function generateSummary(deal: DataLibraryDeal, context: DataMatrixContext): DataMatrixResult['summary'] {

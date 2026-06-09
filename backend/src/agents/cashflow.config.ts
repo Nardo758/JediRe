@@ -75,6 +75,7 @@ import { fetchCycleIntelligenceTool } from './tools/fetch_cycle_intelligence';
 import { fetchSourceDocumentsTool } from './tools/fetch_source_documents';
 import { fetchMarketRentBenchmarkTool } from './tools/fetch_market_rent_benchmark';
 import { fetchAssumptionModuleMapTool } from './tools/fetch_assumption_module_map';
+import { fetchSupplyAnalysisTool } from './tools/fetch_supply_analysis';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -470,6 +471,31 @@ export async function buildCompositePrompt(
   );
   const variantPrompt: string = variantRow.rows[0]?.system_prompt ?? '';
 
+  const pipelineAndBatchInstruction = `
+
+## Supply Pipeline Context (Early Required Step)
+
+After fetch_data_matrix, call fetch_supply_analysis to retrieve the Supply Agent's findings for
+this deal (pipeline_units, delivery_risk, peak_delivery_year). Incorporate delivery_risk into the
+revenue.rent_growth evidence chain before calling compute_proforma:
+  - delivery_risk = "high"   → reduce rent_growth assumption by 25–50 bps and add to risk_adjustments
+  - delivery_risk = "medium" → note the pipeline headwind in risk_adjustments evidence narrative
+  - delivery_risk = "low"    → no adjustment needed; note benign supply environment
+
+## Batch Tool Calls (Efficiency Rules)
+
+To reduce token spend and latency, you MUST batch these tool calls instead of calling them once per field:
+
+1. detect_collision: Call ONCE with all field comparisons in the comparisons array (max 20 entries).
+   Do NOT call detect_collision for each field individually — collect all agent_value/broker_value
+   pairs first, then call detect_collision once with all of them.
+
+2. fetch_archive_assumption_distribution: Call ONCE with all assumption_names in the array (max 20).
+   Do NOT call fetch_archive_assumption_distribution for each assumption separately — call once with
+   the full list: ["vacancy_pct", "rent_growth_pct", "expense_ratio", "exit_cap_rate", ...].
+
+`;
+
   const capitalStructureInstruction = `
 
 ## Capital Structure Optimization (Required Step)
@@ -579,7 +605,7 @@ The requesting user's platform role is **${effectiveRole}** — give ${emphasis}
     ? `\n\n## Execution Context\nREQUESTING_USER_ID: ${requestingUserId}\nThis is the authenticated user ID. Pass it as requesting_user_id when calling run_joint_goal_seek.`
     : '';
 
-  return `${combined}${capitalStructureInstruction}${roleFramingInstruction}${userContextBlock}`;
+  return `${combined}${pipelineAndBatchInstruction}${capitalStructureInstruction}${roleFramingInstruction}${userContextBlock}`;
 }
 
 // ── Agent config ──────────────────────────────────────────────────
@@ -648,6 +674,8 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchOperatorStanceTool,
     // D-MOD-1 — Assumption → Module Mapping (read-only; call before deriving key assumptions)
     fetchAssumptionModuleMapTool,
+    // Supply pipeline context — call early, before compute_proforma (Task #1777)
+    fetchSupplyAnalysisTool,
     // read_gmail_thread is intentionally NOT registered here — it belongs to the deal-intake
     // pipeline (email-intake.function.ts / Inngest), not the underwriting agent. Registering
     // it in the cashflow config would expose Gmail credentials to an unintended call surface.
