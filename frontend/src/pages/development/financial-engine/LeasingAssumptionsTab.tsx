@@ -30,6 +30,7 @@ import {
 import type { F9DealFinancials } from './types';
 import { MonthlyScheduleGrid } from './MonthlyScheduleGrid';
 import type { MonthlyScheduleRow } from './MonthlyScheduleGrid';
+import { useDealStore } from '../../../stores/dealStore';
 
 const MONO = "'JetBrains Mono','Fira Code',monospace";
 
@@ -582,6 +583,18 @@ export function LeasingAssumptionsTab({
   // ── View mode: ANNUAL (category form) or SCHEDULE (monthly grid) ──────────
   const [viewMode, setViewMode] = useState<'ANNUAL' | 'SCHEDULE'>('ANNUAL');
 
+  // ── Derive hasLatLng from deal context store (authoritative source) ────────
+  // The deal API response does not include lat/lng fields; the deal context
+  // store (populated by fetchDealContext) is the reliable source of coordinates.
+  // The prop is accepted as an external hint but the store takes precedence
+  // when it contains valid (non-zero) coordinates.
+  const storeCoords = useDealStore(s => s.coordinates);
+  const storeHasLatLng =
+    storeCoords != null &&
+    Number(storeCoords.lat) !== 0 && !isNaN(Number(storeCoords.lat)) &&
+    Number(storeCoords.lng) !== 0 && !isNaN(Number(storeCoords.lng));
+  const resolvedHasLatLng = storeHasLatLng ? true : (hasLatLng ?? false);
+
   // ── Tier preferences (per-user, persisted in localStorage) ───────────────
   const [tierPrefs, setTierPrefs] = useState<LeasingTierPrefs>(() => {
     try {
@@ -709,7 +722,7 @@ export function LeasingAssumptionsTab({
       </div>
 
       {/* ── M07 Traffic Engine Intel Panel ── always above ANNUAL / SCHEDULE content ── */}
-      <M07IntelPanel financials={financials} dealId={dealId} hasLatLng={hasLatLng} />
+      <M07IntelPanel financials={financials} dealId={dealId} hasLatLng={resolvedHasLatLng} />
 
       {/* ── SCHEDULE view: monthly timeline grid ──────────────────────────────── */}
       {viewMode === 'SCHEDULE' && onMonthlyChange && (() => {
