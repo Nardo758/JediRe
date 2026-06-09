@@ -25,7 +25,13 @@ import {
   RankTarget,
   EngineInputs,
   BeatPlan,
+  ConfigOverrides,
 } from '../../services/revenue/revenue-engine.service';
+import {
+  loadCalibration,
+  calibrateProperty,
+  MIN_MONTHS_REQUIRED,
+} from '../../services/revenue/revenue-calibration.service';
 
 const router = Router();
 
@@ -912,6 +918,49 @@ router.get('/:dealId/beat-plan', requireAuth, async (req: AuthenticatedRequest, 
       ? await fetchRankTarget(propertyId, userId, targetRank, byType)
       : { overallRank: targetRank, setSize: 300, byType };
 
+    // ── 8b. Calibrated CONFIG overrides ───────────────────────────────────────
+    // Attempt to load persisted calibration for this property.  On miss, kick
+    // off a background calibration run so future requests benefit.  Neither
+    // path blocks the response: the fallback is the hardcoded CONFIG constants.
+    let configOverrides: ConfigOverrides | undefined;
+    let calibrationLabel = 'CONFIG defaults — calibrate from archive + owned actuals.';
+
+    if (propertyId) {
+      try {
+        let cal = await loadCalibration(propertyId);
+
+        if (!cal) {
+          // No calibration yet — run it now (typically < 200 ms on warm PG).
+          // Wrap in try/catch so a first-time calibration failure never breaks
+          // the beat-plan response.
+          try {
+            cal = await calibrateProperty(propertyId);
+          } catch (calErr) {
+            logger.warn('[revenue/beat-plan] calibrateProperty failed:', String(calErr));
+          }
+        }
+
+        if (cal) {
+          configOverrides = {
+            vacancyElasticity:          cal.vacancyElasticity,
+            controllableFractionDefault: cal.controllableFractionDefault,
+            renewalCapFraction:         cal.renewalCapFraction,
+            rentRunwayFullBps:          cal.rentRunwayFullBps,
+            pushAboveMarketCeiling:     cal.pushAboveMarketCeiling,
+          };
+          calibrationLabel =
+            `Calibrated from ${cal.monthsOfActuals} months of actuals ` +
+            `(as of ${cal.calibratedAt.slice(0, 10)}). ` +
+            `vacElast=${cal.vacancyElasticity.toFixed(3)}, ` +
+            `ctrlFrac=${cal.controllableFractionDefault.toFixed(3)}, ` +
+            `renewalCap=${cal.renewalCapFraction.toFixed(3)}, ` +
+            `runwayBps=${Math.round(cal.rentRunwayFullBps)}.`;
+        }
+      } catch (calLoadErr) {
+        logger.warn('[revenue/beat-plan] loadCalibration error:', String(calLoadErr));
+      }
+    }
+
     // ── 9. Fallback values so engine always has valid inputs ──────────────────
     const safeActuals: ActualsSnapshot = actuals ?? {
       gpr: 0, otherIncome: 0, vacancyLoss: 0, egi: 0, opex: 0, noi: 0, units: 0,
@@ -931,9 +980,12 @@ router.get('/:dealId/beat-plan', requireAuth, async (req: AuthenticatedRequest, 
       horizonMonths,
     };
 
-    const beatPlan = proFormaBeatEngine(engineInputs);
+    const beatPlan = proFormaBeatEngine(engineInputs, configOverrides);
 
-    // Merge route-level caveats into the engine's own caveats
+    // Merge route-level caveats into the engine's own caveats.
+    // The calibration label always appears — it either confirms calibration is
+    // active or explains the CONFIG-default fallback.
+    beatPlan.caveats.push(calibrationLabel);
     beatPlan.caveats.unshift(...caveats);
 
     // ── 11. Cache (user-scoped key) and return ────────────────────────────────
@@ -954,6 +1006,65 @@ router.get('/:dealId/beat-plan', requireAuth, async (req: AuthenticatedRequest, 
   } catch (err) {
     logger.error('[revenue/beat-plan] error:', err);
     return res.status(500).json({ success: false, error: 'Failed to compute beat plan' });
+  }
+});
+
+// ── Route: POST /api/v1/revenue/:dealId/calibrate ───────────────────────────
+/**
+ * POST /api/v1/revenue/:dealId/calibrate
+ *
+ * Manually trigger a re-calibration run for the property attached to this
+ * deal.  Useful after adding historical actuals or on-demand recalibration
+ * before a beat-plan run.
+ *
+ * Returns the new calibrated CONFIG values or a 400 when fewer than
+ * MIN_MONTHS_REQUIRED months of actuals exist for the property.
+ */
+router.post('/:dealId/calibrate', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const { dealId } = req.params;
+  const userId     = req.user?.userId;
+  if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  try {
+    const dealRes = await query(
+      `SELECT d.property_id
+       FROM deals d
+       WHERE d.id = $1 AND d.user_id = $2 AND d.archived_at IS NULL
+       LIMIT 1`,
+      [dealId, userId],
+    );
+
+    if (!dealRes.rows.length) {
+      return res.status(404).json({ success: false, error: `Deal not found: ${dealId}` });
+    }
+
+    const propertyId: string | null = (dealRes.rows[0] as any).property_id ?? null;
+    if (!propertyId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Deal has no attached property — calibration requires a property with deal_monthly_actuals rows.',
+      });
+    }
+
+    const result = await calibrateProperty(propertyId);
+
+    if (!result) {
+      return res.status(400).json({
+        success: false,
+        error: `Property has fewer than ${MIN_MONTHS_REQUIRED} months of actuals — calibration skipped. Hardcoded CONFIG defaults will be used.`,
+      });
+    }
+
+    // Invalidate the beat-plan cache for this deal so the next request picks
+    // up the fresh calibration values.
+    for (const key of beatPlanCache.keys()) {
+      if (key.includes(`:${dealId}:`)) beatPlanCache.delete(key);
+    }
+
+    return res.json({ success: true, dealId, propertyId, calibration: result });
+  } catch (err) {
+    logger.error('[revenue/calibrate] error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to run calibration' });
   }
 });
 

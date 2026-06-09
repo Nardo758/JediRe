@@ -140,54 +140,90 @@ export interface BeatPlan {
   caveats: string[];
 }
 
-// ── calibration (CONFIG) — learn these from archive + owned actuals ───────
+// ── calibration (CONFIG) — hardcoded fallbacks; overridden at runtime ─────
+// These constants serve as platform defaults for properties with fewer than
+// 6 months of actuals.  The beat-plan route loads learned values from
+// revenue_engine_calibration (via revenue-calibration.service.ts) and passes
+// them as ConfigOverrides so that request-level calibration is applied without
+// mutating this shared object.
 export const CONFIG = {
-  // signal weights → blended score S
-  // TODO(calibrate from archive): learn weights from archive_assumption_benchmarks + owned actuals
+  // signal weights → blended score S (not yet calibrated — architecture is
+  // stable; M36 Joint Distribution is the upgrade path for these weights)
   w: { rentRunway: 0.30, trafficVelocity: 0.28, inMigration: 0.14, pipeline: 0.18, concession: 0.10 },
 
-  // TODO(calibrate from archive): bps that maps to full +1 on the runway component
+  // bps that maps to full +1 on the runway component
+  // Calibrated from archive_assumption_benchmarks annual_rent_growth_pct p50
   rentRunwayFullBps: 250,
 
   // aggressiveness α by target rank position (fraction of supported push to pursue)
-  // TODO(calibrate from archive): learn alpha decay from owned-asset performance vs rank
   alphaByRankPct: (rank: number, setSize: number): Pct =>
     clamp(1 - (rank - 1) / Math.max(1, setSize - 1) * 0.85, 0.15, 1.0),
 
-  // TODO(calibrate from archive): renewals capture less of the gap than new leases
+  // renewals capture less of the gap than new leases (retention/caps)
+  // Calibrated from archive_assumption_benchmarks concessions_pct p50
   renewalCapFraction: 0.55,
 
-  // TODO(calibrate from archive): max % above market we'll ever recommend
+  // max % above market we'll ever recommend
+  // Tightened by calibration when actual vacancy > benchmark
   pushAboveMarketCeiling: 0.06,
 
-  // TODO(calibrate from archive): vacancy penalty per 1.0 of (rec-market)/market above market
+  // vacancy penalty per 1.0 of (rec-market)/market above market
+  // Calibrated from actual vacancy rate vs archive peer median
   vacancyElasticity: 0.9,
 
-  // TODO(calibrate from archive): realizable clawback on a controllable overrun
+  // realizable clawback on a controllable overrun
+  // Calibrated from month-over-month bud-vs-actuals for Highlands
   controllableFractionDefault: 0.6,
 
-  // TODO(calibrate from archive): non-controllable lines (insurance/tax) get zero clawback
+  // non-controllable lines (insurance/tax) get zero clawback
   nonControllableFraction: 0.0,
 
-  // TODO(calibrate from archive): |variance| over this threshold gets flagged
+  // |variance| over this threshold gets flagged
   flagThresholdPct: 0.10,
 
   // beat < 0 → at risk
   atRiskBandPct: 0.0,
 
-  // TODO(calibrate from archive): within ±2% of pro forma = on track; above = beat
+  // within ±2% of pro forma = on track; above = beat
   onTrackBandPct: 0.02,
 };
 
+// ── Per-request config overrides (supplied by calibration service) ─────────
+// Only the keys that the calibration service learns are overrideable here.
+// Signal weights and band thresholds are not yet calibrated (M36 path).
+export interface ConfigOverrides {
+  vacancyElasticity?:          number;
+  controllableFractionDefault?: number;
+  renewalCapFraction?:          number;
+  rentRunwayFullBps?:           number;
+  pushAboveMarketCeiling?:      number;
+}
+
+/** Merge CONFIG defaults with any calibrated overrides. */
+export function resolveConfig(overrides?: ConfigOverrides): typeof CONFIG {
+  if (!overrides) return CONFIG;
+  return {
+    ...CONFIG,
+    rentRunwayFullBps:           overrides.rentRunwayFullBps          ?? CONFIG.rentRunwayFullBps,
+    renewalCapFraction:          overrides.renewalCapFraction         ?? CONFIG.renewalCapFraction,
+    pushAboveMarketCeiling:      overrides.pushAboveMarketCeiling     ?? CONFIG.pushAboveMarketCeiling,
+    vacancyElasticity:           overrides.vacancyElasticity          ?? CONFIG.vacancyElasticity,
+    controllableFractionDefault: overrides.controllableFractionDefault ?? CONFIG.controllableFractionDefault,
+  };
+}
+
 // ── REVENUE LEVER ─────────────────────────────────────────────────────────
 /** Blend the market signal set into a single gating score S ∈ [-1, +1]. */
-export function signalScore(s: MarketSignalSet): number {
-  const runway    = clamp(s.rentRunwayBps / CONFIG.rentRunwayFullBps, -1, 1);
+export function signalScore(
+  s: MarketSignalSet,
+  cfg: ReturnType<typeof resolveConfig> = CONFIG,
+): number {
+  const runway    = clamp(s.rentRunwayBps / cfg.rentRunwayFullBps, -1, 1);
   const traffic   = clamp(s.trafficVelocityPct / 0.10, -1, 1);       // ±10% → ±1
   const migration = clamp(s.inMigrationPct / 0.05, -1, 1);           // ±5% → ±1
   const pipeline  = clamp(s.pipelinePressurePct / 0.08, 0, 1);       // headwind only
   const concession = clamp(s.compConcessionTrendWeeks / 4, 0, 1);    // headwind only
-  const W = CONFIG.w;
+  const W = cfg.w;
   const raw =
     W.rentRunway    * runway +
     W.trafficVelocity * traffic +
@@ -208,22 +244,23 @@ export function repricingSynthesizer(
   signalsByUnitType: Record<string, MarketSignalSet>,
   rankTarget: RankTarget,
   horizonMonths: number,
+  cfg: ReturnType<typeof resolveConfig> = CONFIG,
 ): { recommendations: CohortRecommendation[]; projectedEGILiftAnnual: USD } {
   const recs: CohortRecommendation[] = [];
 
   for (const c of cohorts) {
     const sig = signalsByUnitType[c.unitType];
-    const S = sig ? signalScore(sig) : 0;
+    const S = sig ? signalScore(sig, cfg) : 0;
     const lossToLeasePerUnit = c.marketRent - c.inPlaceRent;         // FUEL
 
     // THROTTLE × rank preference → capture fraction of the gap
     const rank = rankTarget.byType && rankTarget.perType?.[c.unitType]
       ? rankTarget.perType[c.unitType]
       : rankTarget.overallRank;
-    const alpha = CONFIG.alphaByRankPct(rank, rankTarget.setSize);
+    const alpha = cfg.alphaByRankPct(rank, rankTarget.setSize);
 
     // renewals capture less of the spread than new leases (retention/caps)
-    const blendCap = c.renewalProbability * CONFIG.renewalCapFraction
+    const blendCap = c.renewalProbability * cfg.renewalCapFraction
                    + (1 - c.renewalProbability) * 1.0;
 
     let recommendedRent: USD;
@@ -240,7 +277,7 @@ export function repricingSynthesizer(
       // tailwind: capture the gap, scaled by S × α × renewal blend;
       // allow a bounded push ABOVE market only when S and α are both high
       const captureFrac = clamp(S * alpha * blendCap, 0, 1);
-      const aboveMarketRoom = c.marketRent * CONFIG.pushAboveMarketCeiling;
+      const aboveMarketRoom = c.marketRent * cfg.pushAboveMarketCeiling;
       const target = c.inPlaceRent + captureFrac * lossToLeasePerUnit
                    + (S > 0.6 ? S * alpha * aboveMarketRoom : 0);
       recommendedRent = Math.min(target, c.marketRent + aboveMarketRoom);
@@ -250,7 +287,7 @@ export function repricingSynthesizer(
     // VALIDATION (cause/symptom): pushing above market raises vacancy.
     // realized gain = Expected × (1 − penalty). Multiplicative, not additive.
     const aboveMarketPct = Math.max(0, (recommendedRent - c.marketRent) / c.marketRent);
-    const vacancyPenalty = clamp(aboveMarketPct * CONFIG.vacancyElasticity, 0, 0.5);
+    const vacancyPenalty = clamp(aboveMarketPct * cfg.vacancyElasticity, 0, 0.5);
     const expectedDelta  = recommendedRent - c.inPlaceRent;
     const realizedDelta  = expectedDelta * (1 - vacancyPenalty);
 
@@ -279,6 +316,7 @@ export function repricingSynthesizer(
 // ── EXPENSE LEVER ───────────────────────────────────────────────────────
 export function expenseDiscipline(
   expenses: ExpenseLine[],
+  cfg: ReturnType<typeof resolveConfig> = CONFIG,
 ): {
   findings: ExpenseFinding[];
   projectedOpexAnnual: USD;
@@ -291,9 +329,9 @@ export function expenseDiscipline(
   for (const e of expenses) {
     const variancePct = e.uwTarget !== 0 ? (e.actualRunRate - e.uwTarget) / e.uwTarget : 0;
     const over        = e.actualRunRate - e.uwTarget;                // +ve = over budget
-    const flagged     = Math.abs(variancePct) >= CONFIG.flagThresholdPct;
+    const flagged     = Math.abs(variancePct) >= cfg.flagThresholdPct;
     const frac        = e.controllableFraction ??
-      (e.category === 'controllable' ? CONFIG.controllableFractionDefault : CONFIG.nonControllableFraction);
+      (e.category === 'controllable' ? cfg.controllableFractionDefault : cfg.nonControllableFraction);
 
     let projectedLine = e.actualRunRate;
     let lineRecovery  = 0;
@@ -338,11 +376,15 @@ export function expenseDiscipline(
 }
 
 // ── ORCHESTRATOR: PRO FORMA BEAT ENGINE ───────────────────────────────────
-export function proFormaBeatEngine(input: EngineInputs): BeatPlan {
+export function proFormaBeatEngine(
+  input: EngineInputs,
+  overrides?: ConfigOverrides,
+): BeatPlan {
+  const cfg = resolveConfig(overrides);
   const { proForma, actuals, cohorts, signalsByUnitType, expenses, rankTarget, horizonMonths } = input;
 
-  const rev = repricingSynthesizer(cohorts, signalsByUnitType, rankTarget, horizonMonths);
-  const exp = expenseDiscipline(expenses);
+  const rev = repricingSynthesizer(cohorts, signalsByUnitType, rankTarget, horizonMonths, cfg);
+  const exp = expenseDiscipline(expenses, cfg);
 
   // projected stabilized-horizon NOI = (current EGI run-rate + revenue lift) − projected opex
   const projectedEGI = actuals.egi + rev.projectedEGILiftAnnual;
@@ -362,13 +404,12 @@ export function proFormaBeatEngine(input: EngineInputs): BeatPlan {
   ];
 
   let status: BeatPlan['status'];
-  if      (beatPct >= CONFIG.onTrackBandPct)  status = 'BEAT';
-  else if (beatPct >= -CONFIG.onTrackBandPct) status = 'ON_TRACK';
-  else                                         status = 'AT_RISK';
+  if      (beatPct >= cfg.onTrackBandPct)  status = 'BEAT';
+  else if (beatPct >= -cfg.onTrackBandPct) status = 'ON_TRACK';
+  else                                      status = 'AT_RISK';
 
   const caveats: string[] = [
     'Deterministic market-gated heuristic — not a probabilistic forecast. M36 upgrade adds distributions.',
-    'Capture fractions, vacancy elasticity, and controllable recovery are CONFIG defaults — calibrate from archive + owned actuals.',
   ];
   if (Object.keys(signalsByUnitType).length === 0)
     caveats.push('No market signals supplied — revenue lever defaulted to HOLD. Wire correlation/property + M07.');
