@@ -13,9 +13,12 @@
 //     Projections tab Y1 Leases column = per-year projection. Different time slices.
 //   - PEER BENCHMARK: peerBenchmark.peerDistribution P50 = city market avg; P25/P75
 //     are null until per-property distribution data is seeded. Chips show '—' gracefully.
+//   - MARKET DATA: fetched independently from /api/v1/market-research/report/:dealId.
+//     Shows demand_indicators (occupancy, avg rent by bedroom type, comparable count).
+//     Refresh button triggers POST /api/v1/market-research/generate/:dealId when stale.
 // ============================================================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { F9DealFinancials } from './types';
 
 const MONO = "'JetBrains Mono','Fira Code',monospace";
@@ -49,8 +52,30 @@ type LeaseMode =
   | 'VALUE_ADD'
   | 'REDEVELOPMENT';
 
+interface DemandIndicators {
+  avg_occupancy_rate: number | null;
+  occupancy_trend: 'UP' | 'STABLE' | 'DOWN' | 'UNKNOWN' | null;
+  avg_rent_studio: number | null;
+  avg_rent_1br: number | null;
+  avg_rent_2br: number | null;
+  avg_rent_3br: number | null;
+  rent_growth_6mo: number | null;
+  rent_growth_12mo: number | null;
+  properties_in_market: number | null;
+  competitive_pressure: 'LOW' | 'MEDIUM' | 'HIGH' | null;
+}
+
+interface MarketDataState {
+  status: 'idle' | 'loading' | 'ok' | 'error' | 'refreshing';
+  indicators: DemandIndicators | null;
+  generatedAt: string | null;
+  hoursOld: number | null;
+  error: string | null;
+}
+
 interface Props {
   financials: F9DealFinancials | null;
+  dealId?: string | null;
 }
 
 // ─── Mode resolution ──────────────────────────────────────────────────────────
@@ -222,9 +247,237 @@ function ValueAddKpis({
   );
 }
 
+// ─── Market Data section ──────────────────────────────────────────────────────
+
+function MarketDataPanel({ dealId }: { dealId: string }) {
+  const [state, setState] = useState<MarketDataState>({
+    status: 'idle',
+    indicators: null,
+    generatedAt: null,
+    hoursOld: null,
+    error: null,
+  });
+
+  const fetchReport = useCallback(async (forceRefresh = false) => {
+    setState(prev => ({
+      ...prev,
+      status: forceRefresh ? 'refreshing' : 'loading',
+      error: null,
+    }));
+    try {
+      let res: Response;
+      if (forceRefresh) {
+        // Backend route is POST /generate/:dealId — generates a fresh report
+        res = await fetch(`/api/v1/market-research/generate/${dealId}`, { method: 'POST' });
+      } else {
+        // Pass maxAge=876000 (~100 years) so we always get the latest cached report
+        // regardless of age, then compute staleness client-side from generated_at.
+        res = await fetch(`/api/v1/market-research/report/${dealId}?maxAge=876000`);
+      }
+
+      if (res.status === 404) {
+        setState({ status: 'ok', indicators: null, generatedAt: null, hoursOld: null, error: null });
+        return;
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setState(prev => ({ ...prev, status: 'error', error: body?.error ?? `HTTP ${res.status}` }));
+        return;
+      }
+
+      const body = await res.json();
+      // GET /report/:dealId returns { success, report, generated_at, cached }
+      //   where `report` is the MarketResearchReport JSONB object and
+      //   `generated_at` is a top-level field from the DB row.
+      // POST /generate/:dealId also returns { success, report } — fall back to
+      //   report.generated_at if the top-level field is absent (generate route).
+      const report = body?.report ?? body;
+      const indicators: DemandIndicators = report?.demand_indicators ?? null;
+      const generatedAt: string | null =
+        body?.generated_at ?? report?.generated_at ?? null;
+
+      let hoursOld: number | null = null;
+      if (generatedAt) {
+        hoursOld = (Date.now() - new Date(generatedAt).getTime()) / 3_600_000;
+      }
+
+      setState({ status: 'ok', indicators, generatedAt, hoursOld, error: null });
+    } catch (err: any) {
+      setState(prev => ({ ...prev, status: 'error', error: err?.message ?? 'Network error' }));
+    }
+  }, [dealId]);
+
+  useEffect(() => {
+    fetchReport(false);
+  }, [fetchReport]);
+
+  const isStale = state.hoursOld != null && state.hoursOld > 24;
+  const isLoading = state.status === 'loading' || state.status === 'refreshing';
+
+  if (state.status === 'loading') {
+    return (
+      <span style={{ fontFamily: MONO, fontSize: 7, color: P.textMuted, fontStyle: 'italic' }}>
+        Loading market data…
+      </span>
+    );
+  }
+
+  if (state.status === 'error') {
+    return (
+      <span style={{ fontFamily: MONO, fontSize: 7, color: P.red, fontStyle: 'italic' }}>
+        Failed to load: {state.error}
+      </span>
+    );
+  }
+
+  // No indicators: covers both the "never generated" (ok + null) case and the
+  // "generating for the first time" (refreshing + null) case — show the same
+  // prompt so we never dereference null indicators.
+  if (!state.indicators) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontFamily: MONO, fontSize: 7, color: P.textMuted, fontStyle: 'italic' }}>
+          {state.status === 'refreshing'
+            ? 'Generating market data…'
+            : 'No market report found — generate one to see comparable data'}
+        </span>
+        {state.status !== 'refreshing' && (
+          <button
+            onClick={() => fetchReport(true)}
+            disabled={isLoading}
+            style={{
+              alignSelf: 'flex-start',
+              fontFamily: MONO, fontSize: 7, fontWeight: 700,
+              color: P.traffic, background: 'transparent',
+              border: `1px solid ${P.traffic}44`, borderRadius: 2,
+              padding: '2px 8px', cursor: 'pointer', letterSpacing: 0.4,
+            }}
+          >
+            GENERATE REPORT
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const ind = state.indicators;
+
+  // avg_occupancy_rate is stored as 0–100 (e.g., 91 means 91%), not 0–1
+  const occupancyColor = ind.avg_occupancy_rate != null
+    ? (ind.avg_occupancy_rate >= 92 ? P.green : ind.avg_occupancy_rate >= 85 ? P.amber : P.red)
+    : P.textMuted;
+
+  const pressureColor = ind.competitive_pressure === 'LOW' ? P.green
+    : ind.competitive_pressure === 'MEDIUM' ? P.amber
+    : ind.competitive_pressure === 'HIGH' ? P.red
+    : P.textMuted;
+
+  const rentRows: { label: string; val: number | null }[] = [
+    { label: 'Studio', val: ind.avg_rent_studio },
+    { label: '1 BR',   val: ind.avg_rent_1br },
+    { label: '2 BR',   val: ind.avg_rent_2br },
+    { label: '3 BR',   val: ind.avg_rent_3br },
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {/* Comparables + occupancy */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <span style={{ fontFamily: MONO, fontSize: 8, color: P.textSec }}>Comparable Properties</span>
+        <span style={{ fontFamily: MONO, fontSize: 8, color: ind.properties_in_market != null ? P.textPrim : P.textMuted }}>
+          {ind.properties_in_market != null ? ind.properties_in_market + ' props' : '—'}
+          {ind.competitive_pressure && (
+            <span style={{ marginLeft: 4, color: pressureColor }}>
+              [{ind.competitive_pressure}]
+            </span>
+          )}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <span style={{ fontFamily: MONO, fontSize: 8, color: P.textSec }}>Avg Occupancy Rate</span>
+        <span style={{ fontFamily: MONO, fontSize: 8, color: occupancyColor }}>
+          {ind.avg_occupancy_rate != null ? ind.avg_occupancy_rate.toFixed(1) + '%' : '—'}
+          {ind.occupancy_trend && ind.occupancy_trend !== 'UNKNOWN' && (
+            <span style={{ marginLeft: 4, color: P.textMuted }}>
+              {ind.occupancy_trend === 'UP' ? '↑' : ind.occupancy_trend === 'DOWN' ? '↓' : '→'}
+            </span>
+          )}
+        </span>
+      </div>
+
+      {/* Avg rent by bed type */}
+      <div style={{ marginTop: 2, paddingTop: 4, borderTop: `1px solid ${P.borderSub}` }}>
+        <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 700, color: P.textSec, letterSpacing: 0.4 }}>
+          AVG RENT BY BEDROOM TYPE
+        </span>
+      </div>
+      {rentRows.map(r => (
+        <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: P.textSec }}>{r.label}</span>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: r.val != null ? P.textPrim : P.textMuted }}>
+            {fmtDlr(r.val)}
+          </span>
+        </div>
+      ))}
+
+      {/* Rent growth */}
+      {(ind.rent_growth_12mo != null || ind.rent_growth_6mo != null) && (
+        <>
+          <div style={{ marginTop: 2, paddingTop: 4, borderTop: `1px solid ${P.borderSub}` }}>
+            <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 700, color: P.textSec, letterSpacing: 0.4 }}>
+              RENT GROWTH
+            </span>
+          </div>
+          {ind.rent_growth_6mo != null && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ fontFamily: MONO, fontSize: 8, color: P.textSec }}>6-Month</span>
+              <span style={{ fontFamily: MONO, fontSize: 8, color: ind.rent_growth_6mo >= 0 ? P.green : P.red }}>
+                {ind.rent_growth_6mo.toFixed(1)}%
+              </span>
+            </div>
+          )}
+          {ind.rent_growth_12mo != null && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ fontFamily: MONO, fontSize: 8, color: P.textSec }}>12-Month</span>
+              <span style={{ fontFamily: MONO, fontSize: 8, color: ind.rent_growth_12mo >= 0 ? P.green : P.red }}>
+                {ind.rent_growth_12mo.toFixed(1)}%
+              </span>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Footer: freshness + refresh button */}
+      <div style={{ marginTop: 4, paddingTop: 4, borderTop: `1px solid ${P.borderSub}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontFamily: MONO, fontSize: 7, color: isStale ? P.amber : P.textMuted }}>
+          {state.generatedAt
+            ? (isStale ? '⚠ stale — ' : '') + 'as of ' + relDate(state.generatedAt)
+            : 'Source: market research engine'}
+        </span>
+        <button
+          onClick={() => fetchReport(true)}
+          disabled={isLoading}
+          title="Re-fetch market data from the apartment database"
+          style={{
+            fontFamily: MONO, fontSize: 7, fontWeight: 700,
+            color: isStale ? P.amber : P.traffic,
+            background: 'transparent',
+            border: `1px solid ${isStale ? P.amber + '44' : P.traffic + '44'}`,
+            borderRadius: 2,
+            padding: '1px 6px', cursor: isLoading ? 'wait' : 'pointer', letterSpacing: 0.4,
+          }}
+        >
+          {state.status === 'refreshing' ? 'REFRESHING…' : 'REFRESH'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function M07IntelPanel({ financials }: Props) {
+export function M07IntelPanel({ financials, dealId }: Props) {
   const tp = financials?.trafficProjection ?? null;
   const mode = resolveLeaseMode(financials);
   const ml = modeLabelColor(mode);
@@ -314,6 +567,13 @@ export function M07IntelPanel({ financials }: Props) {
       </div>
 
       {/* ── Collapsible sub-panels ── */}
+
+      {/* Market Data — real occupancy + rent from apartment database */}
+      {dealId && (
+        <CollapsiblePanel title="MARKET DATA" defaultOpen>
+          <MarketDataPanel dealId={dealId} />
+        </CollapsiblePanel>
+      )}
 
       {/* Derived Projections (Y1) */}
       <CollapsiblePanel title="DERIVED PROJECTIONS — YR 1">

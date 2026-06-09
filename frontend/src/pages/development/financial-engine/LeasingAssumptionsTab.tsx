@@ -489,6 +489,8 @@ export function LeasingSummaryCard({ financials, leasingPathOverrides, onGoToLea
 export interface LeasingAssumptionsTabProps {
   financials: F9DealFinancials | null;
   leaseMode: LeaseMode | null;
+  /** Deal ID — passed to M07IntelPanel so it can fetch market research data */
+  dealId?: string | null;
   /**
    * Path-keyed override map — keyed by LeasingFieldDef.path.
    * Numeric enum fields are stored by their index in field.enumValues (backend contract).
@@ -572,7 +574,7 @@ const MONTHLY_LEASING_ROWS: MonthlyLeasingRowDef[] = [
 ];
 
 export function LeasingAssumptionsTab({
-  financials, leaseMode, leasingPathOverrides, onFieldCommit,
+  financials, leaseMode, dealId, leasingPathOverrides, onFieldCommit,
   holdYears = 5, monthlyOverrides = {}, onMonthlyChange,
 }: LeasingAssumptionsTabProps) {
   // ── View mode: ANNUAL (category form) or SCHEDULE (monthly grid) ──────────
@@ -705,7 +707,7 @@ export function LeasingAssumptionsTab({
       </div>
 
       {/* ── M07 Traffic Engine Intel Panel ── always above ANNUAL / SCHEDULE content ── */}
-      <M07IntelPanel financials={financials} />
+      <M07IntelPanel financials={financials} dealId={dealId} />
 
       {/* ── SCHEDULE view: monthly timeline grid ──────────────────────────────── */}
       {viewMode === 'SCHEDULE' && onMonthlyChange && (() => {

@@ -2562,6 +2562,7 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
         <LeasingAssumptionsTab
           financials={financials}
           leaseMode={resolveLeaseMode(financials)}
+          dealId={dealId}
           leasingPathOverrides={leasingPathOverrides}
           onFieldCommit={handleLeasingFieldCommit}
           holdYears={holdYears}
