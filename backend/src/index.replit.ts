@@ -39,6 +39,7 @@ import opportunityEngineRoutes from './api/rest/opportunity-engine.routes';
 import settingsAiRouter from './api/rest/settings-ai.routes';
 import settingsBrandingRouter from './api/rest/settings-branding.routes';
 import billingRouter from './api/rest/billing.routes';
+import { mountAdminRoutes } from './routes';
 
 import healthRouter from './api/rest/inline-health.routes';
 import authRouter from './api/rest/inline-auth.routes';
@@ -89,18 +90,6 @@ import { createKGDealContextRoutes } from './services/knowledge-graph/kg-deal-co
 import { createContextAwarenessRoutes } from './api/rest/context-awareness.routes';
 import scheduledRefreshRoutes from './api/rest/scheduled-refresh.routes';
 import dataMatrixRoutes from './api/rest/data-matrix.routes';
-import propertyBoundaryRouter from './api/rest/property-boundary.routes';
-import siteIntelligenceRouter from './api/rest/site-intelligence.routes';
-import zoningCapacityRouter from './api/rest/zoning-capacity.routes';
-import teamManagementRouter from './api/rest/team-management.routes';
-import collaborationRouter from './api/rest/collaboration.routes';
-import contactsSyncRouter from './api/rest/contacts-sync.routes';
-import notarizeRouter from './api/rest/notarize.routes';
-import contextTrackerRouter from './api/rest/context-tracker.routes';
-import { createZoningIntelligenceRoutes } from './api/rest/zoning-intelligence.routes';
-import { createZoningLearningRoutes } from './api/rest/zoning-learning.routes';
-import zoningVerificationRouter from './api/rest/zoning-verification.routes';
-import zoningProfileRouter from './api/rest/zoning-profile.routes';
 import developmentScenariosRouter from './api/rest/development-scenarios.routes';
 import moduleWiringRouter from './api/rest/module-wiring.routes';
 import taskCompletionRouter from './api/rest/task-completion.routes';
@@ -115,13 +104,11 @@ import proformaGeneratorRouter from './api/rest/proforma-generator.routes';
 import proformaRouter from './api/rest/proforma.routes';
 import stabilizedPotentialRouter from './api/rest/stabilized-potential.routes';
 import benchmarkTimelineRouter from './api/rest/benchmark-timeline.routes';
-import adminApiKeyRouter from './api/rest/admin-api-key.routes';
 import entitlementRouter from './api/rest/entitlement.routes';
 import regulatoryAlertRouter from './api/rest/regulatory-alert.routes';
 import scenariosRouter from './api/rest/scenarios.routes';
 import riskRouter from './api/rest/risk.routes';
 import kafkaEventsRouter from './api/rest/kafka-events.routes';
-import adminDataCoverageRouter from './api/rest/admin-data-coverage.routes';
 import municodeRouter from './api/rest/municode.routes';
 import scrapeRouter from './api/rest/scrape.routes';
 import designReferencesRouter from './api/rest/design-references.routes';
@@ -253,18 +240,7 @@ app.use('/health', healthRouter);
 app.use('/api/v1/auth', authRouter);
 
 // Admin routes MUST be registered before generic /api/v1 routes
-import dataTrackerRoutes from './api/rest/data-tracker.routes';
-app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
-app.use('/api/v1/admin/data-coverage', adminDataCoverageRouter);
-import adminRouter from './api/rest/admin.routes';
-app.use('/api/v1/admin', adminRouter);
-import dotAdminRouter from './api/rest/dot-admin.routes';
-app.use('/api/v1/admin', dotAdminRouter);
-import atlantaUrlDiscoveryRouter from './api/rest/atlanta-url-discovery.routes';
-app.use('/api/v1/admin/atlanta-url-discovery', atlantaUrlDiscoveryRouter);
-import enrichmentAdminRouter from './api/rest/enrichment-admin.routes';
-app.use('/api/v1/admin', enrichmentAdminRouter);
-app.use('/api/v1/admin-api', adminApiKeyRouter);
+mountAdminRoutes(app);
 
 // Supply Signal routes under the /supply prefix (deal-scoped pipeline +
 // trade-area metrics). Provides GET /api/v1/supply/deals/:dealId/supply that
