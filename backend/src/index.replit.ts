@@ -1,4 +1,4 @@
-﻿/**
+/**
  * JediRe Backend - Replit Entry Point
  * Route handlers extracted to dedicated router modules
  */
@@ -449,7 +449,8 @@ app.use(
       dataCorpusReminderCron,
       weeklyCorpusDigestCron,
       // M07 Traffic Engine (FIX-1): weekly Bayesian calibration update
-      trafficCalibrationCron,
+      // DISABLED — superseded by node-cron daily M07 calibration in m28-scheduler.service.ts
+      // trafficCalibrationCron,
       // Task #919: nightly rolling correlation compute (12m + 36m windows → correlation_history)
       correlationRollingComputeCron,
       // Task #1078: nightly market event extraction from news_article_cache (03:00 UTC)
