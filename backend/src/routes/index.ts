@@ -7,6 +7,7 @@
  */
 
 import { Express } from 'express';
+import { requireAuth } from '../middleware/auth';
 
 // ─── Admin Routes ───────────────────────────────────────────────────────────
 // Admin routes MUST be registered before generic /api/v1 routes
