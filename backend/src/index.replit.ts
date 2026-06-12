@@ -36,7 +36,7 @@ import opportunityEngineRoutes from './api/rest/opportunity-engine.routes';
 import settingsAiRouter from './api/rest/settings-ai.routes';
 import settingsBrandingRouter from './api/rest/settings-branding.routes';
 import billingRouter from './api/rest/billing.routes';
-import { mountAdminRoutes, mountDealRoutes, mountZoningRoutes, mountM35Routes, mountPropertyRoutes } from './routes';
+import { mountAdminRoutes, mountDealRoutes, mountZoningRoutes, mountM35Routes, mountPropertyRoutes, mountGridPortfolioRoutes } from './routes';
 
 import healthRouter from './api/rest/inline-health.routes';
 import authRouter from './api/rest/inline-auth.routes';
@@ -52,7 +52,6 @@ import geographicContextRoutes from './api/rest/geographic-context.routes';
 import isochroneRoutes from './api/rest/isochrone.routes';
 import trafficAiRoutes from './api/rest/traffic-ai.routes';
 import mapConfigsRouter from './api/rest/map-configs.routes';
-import gridRouter from './api/rest/grid.routes';
 import modulesRouter from './api/rest/modules.routes';
 import financialModelsRouter from './api/rest/financial-models.routes';
 import strategyAnalysesRouter from './api/rest/strategy-analyses.routes';
@@ -65,8 +64,6 @@ import supplyRoutes, { supplyExtraRouter } from './api/rest/supply.routes';
 import demandRoutes from './api/rest/demand.routes';
 import trafficPredictionRoutes from './api/rest/trafficPrediction.routes';
 import leasingTrafficRoutes from './api/rest/leasing-traffic.routes';
-import marketIntelligenceRouter from './api/rest/market-intelligence.routes';
-import { createEnhancedMarketIntelligenceRoutes } from './api/rest/market-intelligence-enhanced.routes';
 import { createOpusRoutes } from './api/rest/opus.routes';
 import { createReplacementCostRoutes } from './api/rest/replacement-cost.routes';
 import { createBrokerNarrativesRoutes } from './api/rest/broker-narratives.routes';
@@ -97,9 +94,6 @@ import trafficCompsRouter from './api/rest/traffic-comps.routes';
 import m07CalibrationRouter from './api/rest/m07-calibration.routes';
 import macroIndicatorsRouter from './api/rest/macro-indicators.routes';
 import correlationRouter from './api/rest/correlation.routes';
-import rankingsRouter from './api/rest/rankings.routes';
-import marketRouter from './api/rest/market.routes';
-import portfolioRouter from './api/rest/portfolio.routes';
 import { createCoStarUploadRoutes } from './api/rest/costar-upload.routes';
 import exitTrajectoryRouter from './api/rest/exit-trajectory.routes';
 import forwardSupplyRouter from './api/rest/forward-supply.routes';
@@ -265,16 +259,10 @@ app.get('/api/v1/column-insights', insightsHandler);
 import gridTemplatesRoutes from './api/rest/grid-templates.routes';
 app.use('/api/v1/grid-templates', optionalAuth, gridTemplatesRoutes);
 
-app.use('/api/v1/markets', optionalAuth, marketIntelligenceRouter(pool));
-app.use('/api/v1/markets', optionalAuth, createEnhancedMarketIntelligenceRoutes(pool));
-
 mountPropertyRoutes(app, pool);
+mountGridPortfolioRoutes(app, pool);
 
-app.use('/api/v1/grid', optionalAuth, gridRouter);
-app.use('/api/v1/rankings', optionalAuth, rankingsRouter);
-app.use('/api/v1/portfolio', portfolioRouter);
-
-// Neural Network Hub: GET /api/v1/agents/status â€” must be mounted BEFORE the
+// Neural Network Hub: GET /api/v1/agents/status — must be mounted BEFORE the
 // broader /api/v1/agents routers below so the existing GET /status in
 // agent-chat.routes.ts (which returns hard-coded fake data) doesn't shadow it.
 import { createAgentStatusRoutes } from './api/rest/agent-status.routes';

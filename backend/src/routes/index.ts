@@ -243,3 +243,22 @@ export function mountPropertyRoutes(app: Express, pool: any) {
   // Property proxy (must be after specific property sub-routes)
   app.use('/api/v1', requireAuth, propertyProxyRoutes);
 }
+
+// ─── Grid & Portfolio Routes ────────────────────────────────────────────────
+//
+// Market intelligence, grid, rankings, and portfolio routes.
+// Mounted after property routes so /properties isn't shadowed.
+
+import gridRouter from '../api/rest/grid.routes';
+import rankingsRouter from '../api/rest/rankings.routes';
+import portfolioRouter from '../api/rest/portfolio.routes';
+import marketIntelligenceRouter from '../api/rest/market-intelligence.routes';
+import { createEnhancedMarketIntelligenceRoutes } from '../api/rest/market-intelligence-enhanced.routes';
+
+export function mountGridPortfolioRoutes(app: Express, pool: any) {
+  app.use('/api/v1/markets', optionalAuth, marketIntelligenceRouter(pool));
+  app.use('/api/v1/markets', optionalAuth, createEnhancedMarketIntelligenceRoutes(pool));
+  app.use('/api/v1/grid', optionalAuth, gridRouter);
+  app.use('/api/v1/rankings', optionalAuth, rankingsRouter);
+  app.use('/api/v1/portfolio', portfolioRouter);
+}
