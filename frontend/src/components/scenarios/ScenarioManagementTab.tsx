@@ -15,6 +15,8 @@ import {
   type ScenarioDiff,
 } from '../../services/underwriting-scenarios.api';
 
+import { ScenarioCIFindings } from './ScenarioCIFindings';
+
 const MONO = BT.font.mono;
 
 interface ScenarioManagementTabProps {
@@ -499,6 +501,7 @@ function ScenarioRow(props: RowProps) {
   } = props;
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showCie, setShowCie] = useState(false);
   const isAgent = scenario.created_by === 'agent';
   const color = isAgent ? '#8B5CF6' : '#F5A623';
   const isLoading = actionLoading === scenario.id;
@@ -592,6 +595,17 @@ function ScenarioRow(props: RowProps) {
             <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber }}>…</span>
           )}
           <button
+            onClick={() => setShowCie(o => !o)}
+            style={{
+              background: 'transparent', border: 'none',
+              color: BT.text.muted, fontFamily: MONO, fontSize: 11,
+              cursor: 'pointer', padding: '0 2px',
+            }}
+            title="CIE findings"
+          >
+            ◐
+          </button>
+          <button
             onClick={() => setMenuOpen(o => !o)}
             style={{
               background: 'transparent', border: 'none',
@@ -627,6 +641,13 @@ function ScenarioRow(props: RowProps) {
           </span>
         )}
       </div>
+
+      {/* CIE findings panel */}
+      {showCie && (
+        <div style={{ marginTop: 8, marginLeft: isActive ? 14 : 0 }}>
+          <ScenarioCIFindings dealId={scenario.deal_id} scenarioId={scenario.id} />
+        </div>
+      )}
 
       {/* Menu */}
       {menuOpen && !isRenaming && (

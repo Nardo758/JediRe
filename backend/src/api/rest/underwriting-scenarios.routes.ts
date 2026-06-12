@@ -202,4 +202,22 @@ router.delete('/:dealId/underwriting-scenarios/:scenarioId', async (req: Request
   }
 });
 
+// ── M40 Phase 4 — Update CIE findings ──────────────────────────────────────────
+// PATCH /api/v1/deals/:dealId/underwriting-scenarios/:scenarioId/cie-findings
+// Body: { findings: CompetitiveIntelligenceFinding[] }
+
+router.patch('/:dealId/underwriting-scenarios/:scenarioId/cie-findings', async (req: Request, res: Response) => {
+  try {
+    const { dealId, scenarioId } = req.params;
+    const { findings } = req.body;
+    if (!Array.isArray(findings)) {
+      return res.status(400).json({ success: false, error: 'findings must be an array' });
+    }
+    const scenario = await uwScenarioService.updateCieFindings(dealId, scenarioId, findings);
+    res.json({ success: true, data: { scenario } });
+  } catch (err) {
+    handleError(res, err, 'updateCieFindings');
+  }
+});
+
 export default router;

@@ -31,6 +31,7 @@ export interface UWScenario {
   parent_id: string | null;
   primary_snapshot_id: string | null;
   year1: Record<string, unknown>;
+  ci_findings: Record<string, unknown>[] | null;
   tags: string[] | null;
   notes: string | null;
 }
@@ -341,6 +342,30 @@ export class UWScenarioService {
         WHERE id = $1 AND deal_id = $2`,
       [scenarioId, dealId]
     );
+  }
+
+  // ── CIE findings ───────────────────────────────────────────────────────────
+
+  /**
+   * M40 Phase 4 — Write CIE findings to a scenario.
+   * Called by the CIE post-pass after it completes analysis.
+   * The sponsor_state on each finding is preserved (upsert logic).
+   */
+  async updateCieFindings(
+    dealId: string,
+    scenarioId: string,
+    findings: Record<string, unknown>[]
+  ): Promise<UWScenario> {
+    const r = await this.pool.query<UWScenario>(
+      `UPDATE deal_underwriting_scenarios
+          SET ci_findings = $3::jsonb,
+              updated_at = NOW()
+        WHERE id = $1 AND deal_id = $2 AND deleted_at IS NULL
+        RETURNING *`,
+      [scenarioId, dealId, JSON.stringify(findings)]
+    );
+    if (r.rows.length === 0) throw Object.assign(new Error('Scenario not found'), { statusCode: 404 });
+    return r.rows[0];
   }
 
   // ── Diff computation ─────────────────────────────────────────────────────

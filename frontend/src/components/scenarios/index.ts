@@ -9,3 +9,4 @@ export { default as ScenarioPicker } from './ScenarioPicker';
 export { default as ScenarioIndicator } from './ScenarioIndicator';
 export { default as ScenarioManagementTab } from './ScenarioManagementTab';
 export { default as ScenarioComparePane } from './ScenarioComparePane';
+export { default as ScenarioCIFindings } from './ScenarioCIFindings';
