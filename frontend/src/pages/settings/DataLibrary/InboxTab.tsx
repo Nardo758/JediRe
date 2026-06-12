@@ -131,6 +131,26 @@ function fmtDateTime(d: string | null): string {
   return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+function fmtRelative(d: string | null): string {
+  if (!d) return '—';
+  const diffMs = Date.now() - new Date(d).getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return 'just now';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDays = Math.floor(diffHr / 24);
+  if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+  const diffWeeks = Math.floor(diffDays / 7);
+  return `${diffWeeks} wk${diffWeeks === 1 ? '' : 's'} ago`;
+}
+
+function getAgeMs(d: string | null): number {
+  if (!d) return 0;
+  return Date.now() - new Date(d).getTime();
+}
+
 const LOG_STATUS_COLOR: Record<string, string> = {
   ok: '#4ade80', blocked: '#e06c75', error: '#e06c75', not_implemented: '#8892b0',
 };
@@ -346,6 +366,19 @@ function BlockedJobCard({ job, onResolved }: BlockedJobCardProps) {
 
   const isConflict = job.block_reason === 'parcel_id_conflict';
 
+  // Determine the best age reference: earliest detected_at from conflict entries, else updated_at
+  const ageRefTs: string | null = (() => {
+    if (Array.isArray(job.conflict_data) && job.conflict_data.length > 0) {
+      const dates = job.conflict_data.map(c => c.detected_at).filter(Boolean);
+      if (dates.length > 0) return dates.reduce((a, b) => (a < b ? a : b));
+    }
+    return job.updated_at;
+  })();
+
+  const ageMs = getAgeMs(ageRefTs);
+  const isUrgent = ageMs > 24 * 60 * 60 * 1000;
+  const ageBadgeLabel = fmtRelative(ageRefTs);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const input: Record<string, string> = {};
@@ -372,12 +405,13 @@ function BlockedJobCard({ job, onResolved }: BlockedJobCardProps) {
 
   const hasAnyInput = formParcelId.trim() || formAddress.trim() || formPropertyName.trim();
 
-  const accentColor = isConflict ? '#e3c07e' : '#e06c75';
-  const borderColor = isConflict ? '#4a3a10' : '#4a2020';
-  const bgColor = isConflict ? '#1a1200' : '#1a0f0f';
-  const chipBg = isConflict ? '#2d2200' : '#2d1515';
-  const chipBorder = isConflict ? '#e3c07e44' : '#e06c7544';
-  const expandedBorder = isConflict ? '#2d2200' : '#2d1515';
+  // Urgent (>24h) cards get a warmer orange accent regardless of type
+  const accentColor = isUrgent ? '#f97316' : (isConflict ? '#e3c07e' : '#e06c75');
+  const borderColor = isUrgent ? '#4a2800' : (isConflict ? '#4a3a10' : '#4a2020');
+  const bgColor = isUrgent ? '#1a0d00' : (isConflict ? '#1a1200' : '#1a0f0f');
+  const chipBg = isUrgent ? '#2d1800' : (isConflict ? '#2d2200' : '#2d1515');
+  const chipBorder = isUrgent ? '#f9731644' : (isConflict ? '#e3c07e44' : '#e06c7544');
+  const expandedBorder = isUrgent ? '#2d1800' : (isConflict ? '#2d2200' : '#2d1515');
 
   return (
     <div style={{
@@ -425,8 +459,27 @@ function BlockedJobCard({ job, onResolved }: BlockedJobCardProps) {
                 {job.original_filename}
               </span>
             )}
-            <span style={{ color: '#555e6b', fontFamily: MONO, fontSize: 10, marginLeft: 'auto' }}>
-              {fmtDateTime(job.updated_at)}
+            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
+              {isUrgent && (
+                <span style={{
+                  background: '#f9731622', border: `1px solid #f9731655`,
+                  color: '#f97316', borderRadius: 3,
+                  padding: '1px 6px', fontFamily: MONO, fontSize: 10, fontWeight: 700,
+                }}>
+                  URGENT
+                </span>
+              )}
+              <span style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                background: isUrgent ? '#f9731618' : 'transparent',
+                border: isUrgent ? `1px solid #f9731633` : '1px solid transparent',
+                color: isUrgent ? '#f97316' : '#555e6b',
+                borderRadius: 3, padding: isUrgent ? '1px 6px' : '1px 0',
+                fontFamily: MONO, fontSize: 10,
+              }}>
+                <Clock size={9} style={{ flexShrink: 0 }} />
+                {ageBadgeLabel}
+              </span>
             </span>
           </div>
         </div>
