@@ -27,10 +27,10 @@ export const modules: ModuleMap = {
   "./components/mockups/m35-integration/F4IntelligenceTab.tsx": () => import("../components/mockups/m35-integration/F4IntelligenceTab.tsx"),
   "./components/mockups/m35-integration/F6TrafficWithEvents.tsx": () => import("../components/mockups/m35-integration/F6TrafficWithEvents.tsx"),
   "./components/mockups/m35-integration/M35ConnectorAdmin.tsx": () => import("../components/mockups/m35-integration/M35ConnectorAdmin.tsx"),
-  "./components/mockups/market-performance/Combined.tsx": () => import("../components/mockups/market-performance/Combined.tsx"),
-  "./components/mockups/msa-overview/Overview.tsx": () => import("../components/mockups/msa-overview/Overview.tsx"),
   "./components/mockups/m35-pages/EventDetailPage.tsx": () => import("../components/mockups/m35-pages/EventDetailPage.tsx"),
   "./components/mockups/m35-pages/MSAIntelligencePage.tsx": () => import("../components/mockups/m35-pages/MSAIntelligencePage.tsx"),
   "./components/mockups/m35-pages/PlaybookLibrary.tsx": () => import("../components/mockups/m35-pages/PlaybookLibrary.tsx"),
-  "./components/mockups/m35-pages/PortfolioDashboard.tsx": () => import("../components/mockups/m35-pages/PortfolioDashboard.tsx")
+  "./components/mockups/m35-pages/PortfolioDashboard.tsx": () => import("../components/mockups/m35-pages/PortfolioDashboard.tsx"),
+  "./components/mockups/market-performance/Combined.tsx": () => import("../components/mockups/market-performance/Combined.tsx"),
+  "./components/mockups/msa-overview/Overview.tsx": () => import("../components/mockups/msa-overview/Overview.tsx")
 };
