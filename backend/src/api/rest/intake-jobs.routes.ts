@@ -45,7 +45,7 @@ export function createIntakeJobsRoutes(pool: Pool): Router {
         pool.query(
           `SELECT
              ij.id, ij.file_id, ij.parcel_id, ij.state,
-             ij.block_reason, ij.user_input, ij.source_type,
+             ij.block_reason, ij.conflict_data, ij.user_input, ij.source_type,
              ij.source_data, ij.enrichment_log,
              ij.created_at, ij.updated_at,
              dlf.original_filename, dlf.document_type,
@@ -109,6 +109,78 @@ export function createIntakeJobsRoutes(pool: Pool): Router {
       return res.json({ job: result.rows[0] });
     } catch (err: any) {
       logger.error('[intake-jobs] POST user-input error', { jobId, error: err.message });
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  /**
+   * PATCH /:jobId/user-input
+   *
+   * Conflict resolution endpoint. Accepts a `resolved_parcel_id` field when the
+   * analyst has chosen between two conflicting parcel IDs (or typed their own).
+   * Writes the winning value authoritatively to `parcel_id`, clears `conflict_data`,
+   * and requeues the job to `pending` so the enrichment chain reruns with the
+   * correct identifier.
+   *
+   * Body fields:
+   *   resolved_parcel_id  — the canonical parcel ID chosen by the analyst (required)
+   *   [any other key]     — stored in user_input for downstream reference
+   */
+  router.patch('/:jobId/user-input', async (req: Request, res: Response) => {
+    const { jobId } = req.params;
+    const body = req.body as Record<string, string>;
+
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({ error: 'Body must be a JSON object' });
+    }
+
+    const resolvedParcelId = (body.resolved_parcel_id || '').trim() || null;
+
+    try {
+      let result;
+      if (resolvedParcelId) {
+        // Conflict-resolution path: analyst chose a canonical parcel ID.
+        // Write it authoritatively, clear the conflict, and requeue.
+        result = await pool.query(
+          `UPDATE intake_jobs
+              SET parcel_id      = $1,
+                  conflict_data  = NULL,
+                  block_reason   = NULL,
+                  state          = 'pending',
+                  user_input     = $2::jsonb,
+                  enrichment_log = '[]'::jsonb,
+                  updated_at     = NOW()
+            WHERE id = $3
+            RETURNING id, state, parcel_id, conflict_data, user_input, updated_at`,
+          [resolvedParcelId, JSON.stringify(body), jobId],
+        );
+        logger.info('[intake-jobs] Conflict resolved, job requeued', { jobId, resolvedParcelId });
+      } else {
+        // Generic user-input patch (no conflict resolution).
+        // Behaves like POST /:jobId/user-input — updates user_input and requeues.
+        const newParcelId = (body.parcel_id || body.address || body.property_name || '').trim() || null;
+        result = await pool.query(
+          `UPDATE intake_jobs
+              SET user_input     = $1::jsonb,
+                  state          = 'pending',
+                  block_reason   = NULL,
+                  parcel_id      = COALESCE($2, parcel_id),
+                  enrichment_log = '[]'::jsonb,
+                  updated_at     = NOW()
+            WHERE id = $3
+            RETURNING id, state, parcel_id, conflict_data, user_input, updated_at`,
+          [JSON.stringify(body), newParcelId, jobId],
+        );
+        logger.info('[intake-jobs] Job patched and requeued', { jobId, newParcelId });
+      }
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Job not found' });
+      }
+
+      return res.json({ job: result.rows[0] });
+    } catch (err: any) {
+      logger.error('[intake-jobs] PATCH user-input error', { jobId, error: err.message });
       return res.status(500).json({ error: err.message });
     }
   });

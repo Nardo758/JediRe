@@ -150,6 +150,14 @@ interface MunicipalStepResult {
    * are already confirmed by the municipal chain.
    */
   hasLatLng: boolean;
+  /** Owner name returned by the municipal adapter (for attribute conflict detection). */
+  owner: string | null;
+  /**
+   * Canonical/matched address returned by the Census geocoder (GA only).
+   * Null when geocoding was skipped, failed, or not supported for the state.
+   * Used for non-blocking address variant conflict detection.
+   */
+  canonicalAddress: string | null;
 }
 
 async function stepMunicipalLookup(
@@ -166,12 +174,17 @@ async function stepMunicipalLookup(
       ts: ts(),
       detail: { reason: 'missing_state', address, state },
     });
-    return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false };
+    return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false, owner: null, canonicalAddress: null };
   }
 
   // Tracks whether the Census geocoder resolved lat/lng for this address.
   // Set inside the GA geocoder block; used for the Places cost guard.
   let resolvedLatLng = false;
+
+  // Canonical/matched address from the Census geocoder (GA only).
+  // Set when geocoding succeeds so attribute conflict detection can compare
+  // it against source_data.address without re-reading the enrichment log.
+  let geocoderMatchedAddress: string | null = null;
 
   // ── Primary path: address lookup ─────────────────────────────────────────
   if (address) {
@@ -228,6 +241,7 @@ async function stepMunicipalLookup(
             lng:               cached.lng  ?? undefined,
           };
           resolvedLatLng = !!(cached.lat && cached.lng);
+          geocoderMatchedAddress = cached.matchedAddress ?? null;
         }
 
         await appendLog(jobId, {
@@ -266,7 +280,7 @@ async function stepMunicipalLookup(
         ts: ts(),
         detail: { lookup_mode: 'address', error: err?.message ?? String(err), address, state },
       });
-      return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false };
+      return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false, owner: null, canonicalAddress: null };
     }
 
     if (result.status === 'ok' && result.parcel_id) {
@@ -297,7 +311,14 @@ async function stepMunicipalLookup(
         result.county &&
         (result.assessed_value != null || result.appraised_value != null)
       );
-      return { resolved: true, parcel_id: result.parcel_id, hasFullAttributes, hasLatLng: resolvedLatLng };
+      return {
+        resolved: true,
+        parcel_id: result.parcel_id,
+        hasFullAttributes,
+        hasLatLng: resolvedLatLng,
+        owner: typeof result.owner === 'string' ? result.owner : null,
+        canonicalAddress: geocoderMatchedAddress,
+      };
     }
 
     // Address lookup returned not_found / not_implemented / error — fall through
@@ -327,7 +348,7 @@ async function stepMunicipalLookup(
         ts: ts(),
         detail: { lookup_mode: 'address', status: result.status, state, source: result.source ?? null },
       });
-      return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false };
+      return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false, owner: null, canonicalAddress: null };
     }
   }
 
@@ -352,7 +373,7 @@ async function stepMunicipalLookup(
         ts: ts(),
         detail: { lookup_mode: 'parcel_id', error: err?.message ?? String(err), parcel_id: sourceParcelId, state },
       });
-      return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false };
+      return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false, owner: null, canonicalAddress: null };
     }
 
     const fallbackLogStatus =
@@ -387,7 +408,14 @@ async function stepMunicipalLookup(
         fallbackResult.county &&
         (fallbackResult.assessed_value != null || fallbackResult.appraised_value != null)
       );
-      return { resolved: true, parcel_id: fallbackResult.parcel_id, hasFullAttributes, hasLatLng: false };
+      return {
+        resolved: true,
+        parcel_id: fallbackResult.parcel_id,
+        hasFullAttributes,
+        hasLatLng: false,
+        owner: typeof fallbackResult.owner === 'string' ? fallbackResult.owner : null,
+        canonicalAddress: null,
+      };
     }
   } else if (!address) {
     // No address and parcel_id doesn't look like a county ID — nothing to try
@@ -399,7 +427,7 @@ async function stepMunicipalLookup(
     });
   }
 
-  return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false };
+  return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false, owner: null, canonicalAddress: null };
 }
 
 // ── Step (c): web search ─────────────────────────────────────────────────────
@@ -577,9 +605,19 @@ async function processJob(job: {
   source_data: Record<string, unknown> | null;
   source_type: string | null;
   file_id: string | null;
+  /** Analyst-submitted resolution data; non-null when analyst previously resolved a conflict. */
+  user_input: Record<string, unknown> | null;
 }): Promise<void> {
-  const { id, source_data, source_type, file_id } = job;
+  const { id, source_data, source_type, file_id, user_input } = job;
   let parcel_id = job.parcel_id;
+
+  // When the analyst has previously resolved a parcel_id conflict, their
+  // explicit choice is the authoritative source of truth for this job.
+  // We must not re-block on municipal disagreement after resolution.
+  const analystResolvedParcelId =
+    user_input && typeof user_input.resolved_parcel_id === 'string'
+      ? (user_input.resolved_parcel_id as string).trim() || null
+      : null;
 
   try {
     // ── State: parsing ────────────────────────────────────────────────────────
@@ -765,28 +803,127 @@ async function processJob(job: {
       await appendLog(id, { step: 'google_places', status: 'not_implemented', ts: ts(), detail: { note: 'no address or property_name available' } });
     }
 
-    // If municipal lookup found a real county parcel_id that differs from the
-    // current parcel_id (which is often just the property name), update the row.
-    // Use a conditional UPDATE that skips if another row already holds the same
-    // parcel_id (partial UNIQUE index on parcel_id WHERE parcel_id IS NOT NULL).
+    // ── Parcel-ID conflict detection ──────────────────────────────────────────
+    // When municipal lookup returns a parcel_id that disagrees with the one
+    // already on the job, surface the conflict to the analyst rather than
+    // silently overwriting or discarding either value.
+    //
+    // Three scenarios:
+    //   (A) Analyst already resolved — skip re-blocking; log disagreement as
+    //       informational only. The analyst-chosen ID is authoritative.
+    //   (B) First-run conflict — block the job so the analyst can adjudicate.
+    //   (C) No prior parcel_id — municipal result wins unconditionally.
     if (municipal.resolved && municipal.parcel_id && municipal.parcel_id !== parcel_id) {
-      try {
-        const updateRes = await query(
-          `UPDATE intake_jobs SET parcel_id = $1, updated_at = NOW()
-           WHERE id = $2 AND NOT EXISTS (
-             SELECT 1 FROM intake_jobs WHERE parcel_id = $1 AND id != $2
-           )`,
-          [municipal.parcel_id, id]
+      if (parcel_id && analystResolvedParcelId) {
+        // (A) Analyst has already picked a parcel_id. Municipal disagrees, but
+        // the analyst's explicit resolution takes precedence — do not re-block.
+        // Log the disagreement for audit visibility.
+        await appendLog(id, {
+          step: 'parcel_id_conflict',
+          status: 'ok',
+          ts: ts(),
+          detail: {
+            note: 'Municipal lookup disagrees with analyst-resolved parcel_id — no re-block (analyst resolution is authoritative)',
+            analyst_resolved: analystResolvedParcelId,
+            municipal_returned: municipal.parcel_id,
+          },
+        });
+        logger.info(
+          `[intake-worker] job ${id} municipal returned "${municipal.parcel_id}" ` +
+          `but analyst resolved to "${analystResolvedParcelId}" — proceeding without re-block`,
         );
-        // Only update in-memory value if the DB row was actually changed
-        if (updateRes.rowCount && updateRes.rowCount > 0) {
-          parcel_id = municipal.parcel_id;
-          logger.debug(`[intake-worker] job ${id} parcel_id updated to ${parcel_id} via municipal lookup`);
-        } else {
-          logger.warn(`[intake-worker] job ${id} parcel_id ${municipal.parcel_id} not written (conflict or no-op)`);
-        }
-      } catch (pErr: any) {
-        logger.warn(`[intake-worker] job ${id} parcel_id update skipped: ${pErr.message}`);
+        // Keep parcel_id as-is (the analyst-chosen value already written to the row).
+      } else if (parcel_id) {
+        // (B) Both sources disagree and no analyst resolution on record — block.
+        const conflictEntry = {
+          step: 'municipal_lookup',
+          field: 'parcel_id',
+          value_a: parcel_id,
+          source_a: 'source_data',
+          value_b: municipal.parcel_id,
+          source_b: 'municipal_lookup',
+          detected_at: ts(),
+        };
+        await query(
+          `UPDATE intake_jobs
+              SET conflict_data = $1::jsonb,
+                  state         = 'blocked_needs_user',
+                  block_reason  = 'parcel_id_conflict',
+                  updated_at    = NOW()
+            WHERE id = $2`,
+          [JSON.stringify([conflictEntry]), id],
+        );
+        await appendLog(id, {
+          step: 'parcel_id_conflict',
+          status: 'blocked',
+          ts: ts(),
+          detail: {
+            value_a: parcel_id,
+            source_a: 'source_data',
+            value_b: municipal.parcel_id,
+            source_b: 'municipal_lookup',
+            note: 'Analyst must resolve via PATCH /intake-jobs/:id/user-input with resolved_parcel_id',
+          },
+        });
+        logger.info(
+          `[intake-worker] job ${id} → blocked_needs_user (parcel_id_conflict: ` +
+          `"${parcel_id}" [source_data] vs "${municipal.parcel_id}" [municipal_lookup])`,
+        );
+        return; // Analyst resolves; requeue will restart the chain with the winning ID.
+      } else {
+        // (C) No pre-existing parcel_id — municipal result wins without conflict.
+        await query(
+          `UPDATE intake_jobs SET parcel_id = $1, updated_at = NOW() WHERE id = $2`,
+          [municipal.parcel_id, id],
+        );
+        parcel_id = municipal.parcel_id;
+        logger.debug(`[intake-worker] job ${id} parcel_id set to ${parcel_id} via municipal lookup`);
+      }
+    }
+
+    // ── Non-identifier attribute conflict logging (non-blocking) ──────────────
+    // When source_data and municipal lookup disagree on owner name or address,
+    // append audit entries to enrichment_log. The first-write-wins rule applies
+    // during writeback — these entries are informational only, never blocking.
+    if (municipal.resolved) {
+      const sdOwner = (sd.owner as string | undefined)?.trim() || null;
+      if (sdOwner && municipal.owner && sdOwner.toLowerCase() !== municipal.owner.toLowerCase()) {
+        await appendLog(id, {
+          step: 'attribute_conflict',
+          status: 'ok',
+          ts: ts(),
+          detail: {
+            field: 'owner',
+            value_a: sdOwner,
+            source_a: 'source_data',
+            value_b: municipal.owner,
+            source_b: 'municipal_lookup',
+            resolution: 'first_write_wins',
+          },
+        });
+      }
+
+      // Address variant: compare source_data address against the Census-matched
+      // canonical form (GA only; null for other states or when geocoding failed).
+      if (
+        lookupAddress &&
+        municipal.canonicalAddress &&
+        lookupAddress.toLowerCase().replace(/\s+/g, ' ').trim() !==
+          municipal.canonicalAddress.toLowerCase().replace(/\s+/g, ' ').trim()
+      ) {
+        await appendLog(id, {
+          step: 'attribute_conflict',
+          status: 'ok',
+          ts: ts(),
+          detail: {
+            field: 'address',
+            value_a: lookupAddress,
+            source_a: 'source_data',
+            value_b: municipal.canonicalAddress,
+            source_b: 'census_geocoder',
+            resolution: 'first_write_wins',
+          },
+        });
       }
     }
 
@@ -896,8 +1033,9 @@ async function poll(): Promise<void> {
       source_data: Record<string, unknown> | null;
       source_type: string | null;
       file_id: string | null;
+      user_input: Record<string, unknown> | null;
     }>(
-      `SELECT id, parcel_id, source_data, source_type, file_id
+      `SELECT id, parcel_id, source_data, source_type, file_id, user_input
        FROM intake_jobs
        WHERE state = 'pending'
        ORDER BY created_at ASC
