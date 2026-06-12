@@ -31,7 +31,6 @@ import propertyTypeStrategiesRouter from './api/rest/property-type-strategies.ro
 import customStrategiesRouter from './api/rest/custom-strategies.routes';
 import strategiesRouter from './api/rest/strategies.routes';
 import strategyDefinitionsRouter from './api/rest/strategy-definitions.routes';
-import dealStrategyRouter from './api/rest/deal-strategy.routes';
 import metricsCatalogRouter from './api/rest/metrics-catalog.routes';
 import marketMetricsRouter from './api/rest/market-metrics.routes';
 import f40PerformanceRoutes from './api/rest/f40-performance.routes';
@@ -39,14 +38,11 @@ import opportunityEngineRoutes from './api/rest/opportunity-engine.routes';
 import settingsAiRouter from './api/rest/settings-ai.routes';
 import settingsBrandingRouter from './api/rest/settings-branding.routes';
 import billingRouter from './api/rest/billing.routes';
-import { mountAdminRoutes } from './routes';
+import { mountAdminRoutes, mountDealRoutes } from './routes';
 
 import healthRouter from './api/rest/inline-health.routes';
 import authRouter from './api/rest/inline-auth.routes';
 import dataRouter from './api/rest/inline-data.routes';
-import dealsRouter from './api/rest/inline-deals.routes';
-import tasksRouter from './api/rest/tasks.routes';
-import inboxRouter from './api/rest/inline-inbox.routes';
 import zoningAnalyzeRouter from './api/rest/inline-zoning-analyze.routes';
 import { createMicrosoftInlineRoutes } from './api/rest/inline-microsoft.routes';
 import microsoftRouter from './api/rest/microsoft.routes';
@@ -62,7 +58,6 @@ import gridRouter from './api/rest/grid.routes';
 import modulesRouter from './api/rest/modules.routes';
 import financialModelsRouter from './api/rest/financial-models.routes';
 import strategyAnalysesRouter from './api/rest/strategy-analyses.routes';
-import ddChecklistsRouter from './api/rest/dd-checklists.routes';
 import dashboardRouter from './api/rest/dashboard.routes';
 import gmailRouter from './api/rest/gmail.routes';
 import emailRouter from './api/rest/email.routes';
@@ -101,8 +96,6 @@ import uploadTemplatesRouter from './api/rest/upload-templates.routes';
 import uploadRouter from './api/rest/upload.routes';
 import compQueryRouter from './api/rest/comp-query.routes';
 import proformaGeneratorRouter from './api/rest/proforma-generator.routes';
-import proformaRouter from './api/rest/proforma.routes';
-import stabilizedPotentialRouter from './api/rest/stabilized-potential.routes';
 import benchmarkTimelineRouter from './api/rest/benchmark-timeline.routes';
 import entitlementRouter from './api/rest/entitlement.routes';
 import regulatoryAlertRouter from './api/rest/regulatory-alert.routes';
@@ -124,16 +117,9 @@ import correlationRouter from './api/rest/correlation.routes';
 import rankingsRouter from './api/rest/rankings.routes';
 import marketRouter from './api/rest/market.routes';
 import portfolioRouter from './api/rest/portfolio.routes';
-import competitionRouter from './api/rest/competition.routes';
-import dealMarketIntelligenceRoutes from './api/rest/deal-market-intelligence.routes';
-import dealCompSetsRoutes from './api/rest/deal-comp-sets.routes';
 import { createCoStarUploadRoutes } from './api/rest/costar-upload.routes';
-import dealPhotosRoutes from './api/rest/deal-photos.routes';
-import dealContextRoutes from './api/rest/deal-context.routes';
 import exitTrajectoryRouter from './api/rest/exit-trajectory.routes';
 import forwardSupplyRouter from './api/rest/forward-supply.routes';
-import financialModelRoutes from './api/rest/financial-model.routes';
-import deterministicModelRouter from './api/rest/deterministic-model.routes';
 import clawdbotWebhooksRouter from './api/rest/clawdbot-webhooks.routes';
 import oppgridRouter from './api/rest/oppgrid.routes';
 import rentScraperAdminRouter from './api/rest/rent-scraper-admin.routes';
@@ -141,18 +127,7 @@ import m26TaxRouter from './api/rest/m26-tax.routes';
 import m27CompsRouter from './api/rest/m27-comps.routes';
 import m28CycleIntelligenceRoutes from './api/rest/m28-cycle-intelligence.routes';
 import { createUnitMixRoutes } from './api/rest/unitMix.routes';
-import dealValidationRoutes from './api/rest/deal-validation.routes';
-import fieldDivergencesRoutes from './api/rest/field-divergences.routes';
-import dealCompletenessRoutes from './api/rest/deal-completeness.routes';
-import vendorFreshnessRoutes from './api/rest/vendor-freshness.routes';
-import unitMixPropagationRoutes from './api/rest/unit-mix-propagation.routes';
-import dealAssumptionsRoutes from './api/rest/deal-assumptions.routes';
-import financialDocumentsRoutes from './api/rest/financial-documents.routes';
-import sourceDocumentsRoutes from './api/rest/source-documents.routes';
-import capsuleSharingRoutes from './api/rest/capsule-sharing.routes';
 import workspaceRouter from './api/rest/workspace.routes';
-import dealSharesRoutes from './api/rest/deal-shares.routes';
-import jediRoutes from './api/rest/jedi.routes';
 import agentChatRouter from './routes/agent-chat.routes';
 import m35ConnectorsRouter from './routes/m35-connectors.routes';
 import m35EventsRouter from './routes/m35-events.routes';
@@ -255,10 +230,7 @@ app.use('/api/v1', dataRouter);
 // Capsule sharing routes mounted here (second, early mount) so that the
 // unauthenticated GET /api/v1/deals/:dealId/deal-book endpoint is reachable
 // before the authenticated dealsRouter at the next line intercepts the request.
-app.use('/api/v1', capsuleSharingRoutes);
-app.use('/api/v1/deals', dealsRouter);
-app.use('/api/v1/tasks', tasksRouter);
-app.use('/api/v1/inbox', inboxRouter);
+mountDealRoutes(app);
 app.use('/api/v1', zoningAnalyzeRouter);
 
 app.use('/api/v1/billing', billingRouter);
@@ -340,20 +312,6 @@ app.use('/api/v1/agents/status', createAgentStatusRoutes(pool));
 
 import agentRouter from './api/rest/agent.routes';
 app.use('/api/v1/agents', agentRouter);
-
-// Agent runtime routes (Phase 3): trigger, run detail, steps
-import agentRunsRouter, { dealAgentRunsRouter } from './api/rest/agent-runs.routes';
-app.use('/api/v1/agents', agentRunsRouter);
-app.use('/api/v1/deals', dealAgentRunsRouter);
-
-// CashFlow underwriting routes: POST /api/v1/agents/cashflow/underwrite + deal-scoped evidence endpoints
-import cashflowUnderwritingRoutes, { dealUnderwritingRouter } from './api/rest/cashflow-underwriting.routes';
-app.use('/api/v1/agents', cashflowUnderwritingRoutes);
-app.use('/api/v1/deals', dealUnderwritingRouter);
-
-// Roadmap Mode routes: POST/GET /api/v1/deals/:dealId/roadmap
-import { roadmapRouter } from './api/rest/roadmap.routes';
-app.use('/api/v1/deals', requireAuth, roadmapRouter);
 
 // Inngest durable function serve handler
 // In dev: Inngest Dev Server proxies to /api/inngest
@@ -505,57 +463,18 @@ app.use('/api/v1/isochrone', requireAuth, isochroneRoutes);
 app.use('/api/v1/traffic-ai', requireAuth, trafficAiRoutes);
 app.use('/api/v1', requireAuth, geographicContextRoutes);
 app.use('/api/v1/deals', requireAuth, geographicContextRoutes);
-app.use('/api/v1/deals', dealMarketIntelligenceRoutes);
-app.use('/api/v1/deals', dealCompSetsRoutes);
-app.use('/api/v1/deals', requireAuth, dealPhotosRoutes);
-app.use('/api/v1/deals', requireAuth, dealContextRoutes);
-app.use('/api/v1/deals', requireAuth, financialModelRoutes);
-app.use('/api/v1/financial-models', requireAuth, financialModelRoutes);
-app.use('/api/v1/jedi', jediRoutes);
+
 app.use('/api/v1/agents', agentChatRouter);
 app.use('/api/v1/corporate-health', requireAuth, corporateHealthRouter);
 app.use('/api/media', mediaRouter);
 // org.routes.ts: role-gated org CRUD, member management, invitations (/api/v1/orgs/:orgId/...)
 app.use('/api/v1/orgs', requireAuth, orgRouter);
 
-// Phase 10: Cross-Module Validation
-app.use('/api/v1/deals', requireAuth, dealValidationRoutes);
-app.use('/api/v1/deals', requireAuth, fieldDivergencesRoutes);
-app.use('/api/v1/deals', requireAuth, dealCompletenessRoutes);
-app.use('/api/v1/deals', requireAuth, vendorFreshnessRoutes);
-
-// Phase 11: Unit Mix Propagation
-app.use('/api/v1/deals', requireAuth, unitMixPropagationRoutes);
-app.use('/api/v1/deals', requireAuth, competitionRouter);
-app.use('/api/v1/proforma', requireAuth, stabilizedPotentialRouter);
-app.use('/api/v1/proforma', requireAuth, proformaRouter);
-app.use('/api/v1/deals', dealAssumptionsRoutes);
-app.use('/api/v1/deals', financialDocumentsRoutes);
-app.use('/api/v1/deals', requireAuth, sourceDocumentsRoutes);
-// Deal-level share management (Task B) — owner-only endpoints.
-// GET  /api/v1/deals/:dealId/shares
-// POST /api/v1/deals/:dealId/shares/:shareId/revoke
-app.use('/api/v1/deals', requireAuth, dealSharesRoutes);
-
-// Capsule Sharing: authenticated capsule-owner actions at /api/v1/capsules-ext.
-// Token-based recipient actions are already mounted above (before requireAuth handlers).
-app.use('/api/v1/capsules-ext', requireAuth, capsuleSharingRoutes);
-
-// Scene storage for 3D scenes â€” must be BEFORE documentsFilesRoutes so
-// /:dealId/files/3d-scene wins match against /:dealId/files/:fileId (Express first-match)
-import { sceneStorageRouter } from './services/design/scene-storage.service';
-app.use('/api/v1/deals', requireAuth, sceneStorageRouter);
-
-import documentsFilesRoutes from './api/rest/documentsFiles.routes';
-app.use('/api/v1', documentsFilesRoutes);
-import submarketDocumentsRoutes from './api/rest/submarketDocuments.routes';
-app.use('/api/v1', submarketDocumentsRoutes);
-
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
+
 app.use('/api/v1/modules', requireAuth, modulesRouter);
 app.use('/api/v1/financial-models', requireAuth, financialModelsRouter);
 app.use('/api/v1/strategy-analyses', requireAuth, strategyAnalysesRouter);
-app.use('/api/v1/dd-checklists', requireAuth, ddChecklistsRouter);
 app.use('/api/v1/market-research', requireAuth, marketResearchRoutes);
 app.use('/api/v1/market', requireAuth, marketRouter);
 app.use('/api/v1', requireAuth, supplyRoutes);
@@ -574,7 +493,6 @@ app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesR
 app.use('/api/v1/custom-strategies', requireAuth, customStrategiesRouter);
 app.use('/api/v1/strategies', requireAuth, strategiesRouter);
 app.use('/api/v1/strategy-definitions', requireAuth, strategyDefinitionsRouter);
-app.use('/api/v1/deals', requireAuth, dealStrategyRouter);
 app.use('/api/v1/metrics', requireAuth, metricsCatalogRouter);
 app.use('/api/v1/market-metrics', requireAuth, marketMetricsRouter);
 app.use('/api/v1/module-libraries', requireAuth, moduleLibrariesRouter);
