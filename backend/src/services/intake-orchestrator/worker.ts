@@ -935,6 +935,27 @@ async function poll(): Promise<void> {
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
+/**
+ * processJobById — exported for use by backfill/enrichment scripts.
+ * Reads the job from the DB then delegates to processJob.
+ * Throws if the job does not exist.
+ */
+export async function processJobById(jobId: string): Promise<void> {
+  const res = await query<{
+    id: string;
+    parcel_id: string | null;
+    source_data: Record<string, unknown> | null;
+    source_type: string | null;
+    file_id: string | null;
+  }>(
+    `SELECT id, parcel_id, source_data, source_type, file_id
+     FROM intake_jobs WHERE id = $1 LIMIT 1`,
+    [jobId],
+  );
+  if (res.rows.length === 0) throw new Error(`intake_job ${jobId} not found`);
+  await processJob(res.rows[0]);
+}
+
 export function startIntakeWorker(): void {
   if (intervalHandle) return;
   logger.info(`[intake-worker] starting — poll interval ${POLL_INTERVAL_MS}ms, batch size ${BATCH_SIZE}`);
