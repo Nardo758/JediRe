@@ -13,9 +13,14 @@
  *
  * Shows a "No vault data" placeholder when the deal has no linked parcel or
  * when enrichment has not yet run.
+ *
+ * The "Re-enrich" button in the card header lets analysts trigger a fresh
+ * enrichment job (POST /api/v1/properties/by-parcel/:parcelId/enrich) without
+ * leaving the deal view. The card polls for job completion and auto-refreshes
+ * vault data when done.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import api from '@/services/api';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -85,6 +90,8 @@ interface VaultIntelResponse {
   regulatory?:      VaultRegulatory | null;
   enrichment_steps?: VaultEnrichmentStep[];
 }
+
+type EnrichStatus = 'idle' | 'enriching' | 'complete' | 'no_match' | 'pending_review' | 'error';
 
 // ── Theme (inherits from parent palette) ──────────────────────────────────────
 
@@ -208,39 +215,264 @@ function EnrichmentStepRow({ step }: { step: VaultEnrichmentStep }) {
   );
 }
 
+// Minimal spinner using CSS animation via a style tag injected once
+const SPINNER_CSS = `
+@keyframes jedi-vault-spin {
+  to { transform: rotate(360deg); }
+}
+.jedi-vault-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid ${T.text.muted}44;
+  border-top-color: ${T.text.cyan};
+  border-radius: 50%;
+  animation: jedi-vault-spin 0.7s linear infinite;
+  vertical-align: middle;
+  flex-shrink: 0;
+}`;
+
+let spinnerStyleInjected = false;
+function ensureSpinnerStyle() {
+  if (spinnerStyleInjected) return;
+  const el = document.createElement('style');
+  el.textContent = SPINNER_CSS;
+  document.head.appendChild(el);
+  spinnerStyleInjected = true;
+}
+
+function Spinner() {
+  useEffect(() => { ensureSpinnerStyle(); }, []);
+  return <span className="jedi-vault-spinner" />;
+}
+
+// ── Re-enrich button ───────────────────────────────────────────────────────────
+
+interface ReEnrichButtonProps {
+  parcelId:     string;
+  enrichStatus: EnrichStatus;
+  onStart:      (jobId: string) => void;
+  onError:      (msg: string) => void;
+}
+
+function ReEnrichButton({ parcelId, enrichStatus, onStart, onError }: ReEnrichButtonProps) {
+  const isRunning = enrichStatus === 'enriching';
+
+  const handleClick = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isRunning) return;
+
+    try {
+      const res = await api.post<{
+        jobId: string;
+        status: string;
+        message?: string;
+      }>(`/properties/by-parcel/${encodeURIComponent(parcelId)}/enrich`);
+
+      onStart(res.data.jobId);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } }; message?: string })
+          ?.response?.data?.error ??
+        (err as { message?: string })?.message ??
+        'Failed to start enrichment';
+      onError(msg);
+    }
+  }, [parcelId, isRunning, onStart, onError]);
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={isRunning}
+      title={isRunning ? 'Enrichment in progress' : 'Re-run web search and Places enrichment'}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5,
+        fontSize: 8,
+        fontFamily: T.font.mono,
+        fontWeight: 700,
+        letterSpacing: '0.06em',
+        color: isRunning ? T.text.muted : T.text.cyan,
+        background: 'transparent',
+        border: `1px solid ${isRunning ? T.text.muted + '44' : T.text.cyan + '44'}`,
+        borderRadius: 3,
+        padding: '2px 7px',
+        cursor: isRunning ? 'not-allowed' : 'pointer',
+        opacity: isRunning ? 0.7 : 1,
+        transition: 'opacity 0.15s',
+        flexShrink: 0,
+      }}
+    >
+      {isRunning ? (
+        <>
+          <Spinner />
+          RUNNING…
+        </>
+      ) : (
+        '⟳ RE-ENRICH'
+      )}
+    </button>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
+
+const POLL_INTERVAL_MS  = 3000;
+const POLL_MAX_ATTEMPTS = 40; // ~2 min max
 
 interface PropertyVaultProfileCardProps {
   dealId: string;
 }
 
 export function PropertyVaultProfileCard({ dealId }: PropertyVaultProfileCardProps) {
-  const [expanded, setExpanded]   = useState(false);
-  const [loading, setLoading]     = useState(false);
-  const [data, setData]           = useState<VaultIntelResponse | null>(null);
-  const [error, setError]         = useState<string | null>(null);
-  const [showSteps, setShowSteps] = useState(false);
+  const [expanded, setExpanded]         = useState(false);
+  const [loading, setLoading]           = useState(false);
+  const [data, setData]                 = useState<VaultIntelResponse | null>(null);
+  const [error, setError]               = useState<string | null>(null);
+  const [showSteps, setShowSteps]       = useState(false);
 
-  useEffect(() => {
-    if (!expanded || data || loading) return;
+  // Re-enrichment state
+  const [enrichStatus, setEnrichStatus] = useState<EnrichStatus>('idle');
+  const [enrichJobId, setEnrichJobId]   = useState<string | null>(null);
+  const [enrichError, setEnrichError]   = useState<string | null>(null);
 
-    let cancelled = false;
+  const pollTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollAttemptRef = useRef(0);
+
+  // ── Load vault data ──────────────────────────────────────────────────────────
+  const loadVaultData = useCallback((cancelled?: { value: boolean }) => {
     setLoading(true);
     setError(null);
 
     api.get<VaultIntelResponse>(`/properties/vault-intel/${dealId}`)
       .then(res => {
-        if (!cancelled) setData(res.data);
+        if (cancelled?.value) return;
+        setData(res.data);
       })
       .catch(err => {
-        if (!cancelled) setError(err?.response?.data?.error ?? err?.message ?? 'Failed to load vault data');
+        if (cancelled?.value) return;
+        setError(err?.response?.data?.error ?? err?.message ?? 'Failed to load vault data');
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (cancelled?.value) return;
+        setLoading(false);
       });
+  }, [dealId]);
+
+  useEffect(() => {
+    if (!expanded || data || loading) return;
+
+    const cancelled = { value: false };
+    loadVaultData(cancelled);
+    return () => { cancelled.value = true; };
+  }, [expanded, dealId, data, loading, loadVaultData]);
+
+  // ── Poll enrichment status ───────────────────────────────────────────────────
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  const pollStatus = useCallback((parcelId: string, jobId: string) => {
+    if (pollAttemptRef.current >= POLL_MAX_ATTEMPTS) {
+      setEnrichStatus('error');
+      setEnrichError('Enrichment timed out — check the archive inbox for results.');
+      stopPolling();
+      return;
+    }
+
+    pollAttemptRef.current += 1;
+
+    api.get<{
+      status: string;
+      jobId?: string;
+      fieldsEnriched?: string[];
+      error_msg?: string;
+    }>(`/properties/by-parcel/${encodeURIComponent(parcelId)}/enrich/status?jobId=${encodeURIComponent(jobId)}`)
+      .then(res => {
+        const { status } = res.data;
+
+        if (status === 'enriching') {
+          pollTimerRef.current = setTimeout(() => pollStatus(parcelId, jobId), POLL_INTERVAL_MS);
+        } else if (status === 'error') {
+          setEnrichJobId(null);
+          setEnrichStatus('error');
+          setEnrichError(res.data.error_msg ?? 'Enrichment failed.');
+          stopPolling();
+        } else {
+          // complete, no_match, pending_review
+          // Clear enrichJobId FIRST so the polling useEffect does not re-fire
+          // when data reloads and data?.parcel_id triggers the dependency array.
+          setEnrichJobId(null);
+          setEnrichStatus(status as EnrichStatus);
+          stopPolling();
+          // Refresh vault data to show updated results
+          setData(null);
+          loadVaultData();
+        }
+      })
+      .catch(() => {
+        // Network hiccup — keep polling
+        pollTimerRef.current = setTimeout(() => pollStatus(parcelId, jobId), POLL_INTERVAL_MS);
+      });
+  }, [loadVaultData, stopPolling]);
+
+  // Kick off polling whenever enrichJobId is set (and enriching is the current status)
+  useEffect(() => {
+    const parcelId = data?.parcel_id;
+    if (!enrichJobId || !parcelId) return;
+
+    pollAttemptRef.current = 0;
+    pollStatus(parcelId, enrichJobId);
+
+    return () => { stopPolling(); };
+  }, [enrichJobId, data?.parcel_id, pollStatus, stopPolling]);
+
+  // Proactive check: when parcel data first loads, query enrichment status once.
+  // If a job is already running (started from the archive inbox or a script),
+  // set the button to "Running…" and begin polling automatically.
+  useEffect(() => {
+    const parcelId = data?.parcel_id;
+    if (!parcelId || enrichStatus !== 'idle') return;
+
+    let cancelled = false;
+
+    api.get<{ status: string; jobId?: string }>(
+      `/properties/by-parcel/${encodeURIComponent(parcelId)}/enrich/status`,
+    )
+      .then(res => {
+        if (cancelled) return;
+        if (res.data.status === 'enriching') {
+          setEnrichStatus('enriching');
+          // Use the returned jobId if present; the status endpoint also works
+          // without a known jobId by falling back to the property_descriptions scan.
+          setEnrichJobId(res.data.jobId ?? `__probe_${parcelId}`);
+        }
+      })
+      .catch(() => { /* best-effort — silently ignore probe failures */ });
 
     return () => { cancelled = true; };
-  }, [expanded, dealId]);
+  // enrichStatus is intentionally included: guard prevents re-firing after 'idle' → 'enriching'
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.parcel_id, enrichStatus]);
+
+  // Cleanup on unmount
+  useEffect(() => () => { stopPolling(); }, [stopPolling]);
+
+  // ── Enrich handlers ──────────────────────────────────────────────────────────
+  const handleEnrichStart = useCallback((jobId: string) => {
+    setEnrichStatus('enriching');
+    setEnrichError(null);
+    setEnrichJobId(jobId);
+  }, []);
+
+  const handleEnrichError = useCallback((msg: string) => {
+    setEnrichStatus('error');
+    setEnrichError(msg);
+  }, []);
 
   const fmt = {
     currency: (v: number | null) => v != null ? '$' + v.toLocaleString('en-US', { maximumFractionDigits: 0 }) : null,
@@ -249,6 +481,8 @@ export function PropertyVaultProfileCard({ dealId }: PropertyVaultProfileCardPro
     stars:    (v: number | null) => v != null ? '★ ' + v.toFixed(1) : null,
   };
 
+  const parcelId = data?.parcel_id ?? null;
+
   return (
     <div style={{
       border: `1px solid ${T.border.subtle}`,
@@ -256,49 +490,96 @@ export function PropertyVaultProfileCard({ dealId }: PropertyVaultProfileCardPro
       overflow: 'hidden',
       marginBottom: 8,
     }}>
-      {/* Header / toggle */}
-      <button
-        onClick={() => setExpanded(e => !e)}
-        style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '8px 12px',
-          background: T.bg.card,
-          border: 'none',
-          cursor: 'pointer',
-          color: T.text.primary,
+      {/* Header row — toggle + re-enrich button live side-by-side */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        background: T.bg.card,
+        borderBottom: expanded ? `1px solid ${T.border.subtle}` : 'none',
+      }}>
+        {/* Expand / collapse toggle (takes most of the width) */}
+        <button
+          onClick={() => setExpanded(e => !e)}
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '8px 12px',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: T.text.primary,
+            fontFamily: T.font.mono,
+            minWidth: 0,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>🏢 PROPERTY PROFILE</span>
+            {data?.found && (
+              <span style={{ fontSize: 8, color: T.text.green, border: `1px solid ${T.text.green}44`, borderRadius: 2, padding: '1px 5px', flexShrink: 0 }}>
+                VAULT
+              </span>
+            )}
+          </div>
+          <span style={{ fontSize: 10, color: T.text.muted, flexShrink: 0 }}>{expanded ? '▲' : '▼'}</span>
+        </button>
+
+        {/* Re-enrich button — only shown when parcel_id is known */}
+        {parcelId && (
+          <div style={{ padding: '0 10px', flexShrink: 0 }}>
+            <ReEnrichButton
+              parcelId={parcelId}
+              enrichStatus={enrichStatus}
+              onStart={handleEnrichStart}
+              onError={handleEnrichError}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Enrich status / error banner (shown regardless of expand state) */}
+      {enrichStatus !== 'idle' && enrichStatus !== 'enriching' && (
+        <div style={{
+          padding: '5px 12px',
+          fontSize: 9,
           fontFamily: T.font.mono,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 10, fontWeight: 700 }}>🏢 PROPERTY PROFILE</span>
-          {data?.found && (
-            <span style={{ fontSize: 8, color: T.text.green, border: `1px solid ${T.text.green}44`, borderRadius: 2, padding: '1px 5px' }}>
-              VAULT
-            </span>
-          )}
+          background: enrichStatus === 'error'
+            ? `${T.text.red}14`
+            : enrichStatus === 'complete'
+            ? `${T.text.green}14`
+            : `${T.text.amber}14`,
+          color: enrichStatus === 'error'
+            ? T.text.red
+            : enrichStatus === 'complete'
+            ? T.text.green
+            : T.text.amber,
+          borderBottom: `1px solid ${T.border.subtle}`,
+        }}>
+          {enrichStatus === 'error' && `⚠ Enrichment failed: ${enrichError}`}
+          {enrichStatus === 'complete' && '✓ Enrichment complete — vault data refreshed.'}
+          {enrichStatus === 'no_match' && '○ Enrichment ran but found no new data for this property.'}
+          {enrichStatus === 'pending_review' && '✓ Enrichment complete — results pending review in the archive inbox.'}
         </div>
-        <span style={{ fontSize: 10, color: T.text.muted }}>{expanded ? '▲' : '▼'}</span>
-      </button>
+      )}
 
       {expanded && (
         <div style={{ padding: '10px 12px', background: T.bg.row }}>
 
-          {loading && (
-            <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono, padding: '12px 0', textAlign: 'center' }}>
-              Loading vault data…
+          {(loading || enrichStatus === 'enriching') && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10, color: T.text.muted, fontFamily: T.font.mono, padding: '12px 0', justifyContent: 'center' }}>
+              <Spinner />
+              {enrichStatus === 'enriching' ? 'Enrichment running…' : 'Loading vault data…'}
             </div>
           )}
 
-          {error && (
+          {error && enrichStatus !== 'enriching' && (
             <div style={{ fontSize: 10, color: T.text.red, fontFamily: T.font.mono, padding: '8px 0' }}>
               ⚠ {error}
             </div>
           )}
 
-          {!loading && !error && data && !data.found && (
+          {!loading && !error && data && !data.found && enrichStatus !== 'enriching' && (
             <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono, padding: '12px 0', textAlign: 'center' }}>
               <div style={{ fontSize: 18, marginBottom: 6 }}>🔍</div>
               <div>No vault data</div>
@@ -308,7 +589,7 @@ export function PropertyVaultProfileCard({ dealId }: PropertyVaultProfileCardPro
             </div>
           )}
 
-          {!loading && !error && data?.found && (
+          {!loading && !error && data?.found && enrichStatus !== 'enriching' && (
             <>
               {/* Municipal attributes */}
               {data.municipal && (
