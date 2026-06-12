@@ -932,6 +932,7 @@ export default function PropertyDetailsPage() {
   const [unitsSaving, setUnitsSaving] = useState(false);
   const [unitsOverride, setUnitsOverride] = useState<number | null>(null);
   const [unitsSaveError, setUnitsSaveError] = useState<string | null>(null);
+  const [unitsSavedToast, setUnitsSavedToast] = useState(false);
 
   const navState = (location.state || {}) as {
     propertyName?: string;
@@ -1136,6 +1137,8 @@ export default function PropertyDetailsPage() {
       }
       setUnitsOverride(val);
       setUnitsEditing(false);
+      setUnitsSavedToast(true);
+      setTimeout(() => setUnitsSavedToast(false), 2000);
     } catch (err: any) {
       setUnitsSaveError(err?.response?.data?.error ?? err?.message ?? 'Save failed');
     } finally {
@@ -1219,6 +1222,9 @@ export default function PropertyDetailsPage() {
             >
               <span style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.secondary }}>Units</span>
               <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                {unitsSavedToast && (
+                  <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.green, fontWeight: 700 }}>Saved ✓</span>
+                )}
                 <span style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 600, color: (unitsOverride ?? p.units) ? T.text.primary : T.text.muted }}>
                   {unitsOverride ?? p.units ?? <span style={{ fontStyle: "italic", fontSize: 8 }}>enter…</span>}
                 </span>

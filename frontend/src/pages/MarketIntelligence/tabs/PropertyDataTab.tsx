@@ -27,6 +27,13 @@ interface PropertyRow {
 
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code',monospace" };
 
+function getBuildingType(stories: number | null | undefined): string {
+  if (stories == null) return '—';
+  if (stories <= 3) return 'Garden';
+  if (stories <= 6) return 'Mid-rise';
+  return 'High-rise';
+}
+
 const NEIGHBORHOOD_NAMES: Record<string, string> = {
   'CB04':'Downtown','CB03':'Midtown','CB02':'Midtown West','CB01':'Atlantic Station',
   'CB00':'Centennial Hill','CB06':'Midtown East','C305':'Buckhead','C306':'Buckhead South',
@@ -320,7 +327,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
                   <td style={{ padding: '6px 10px', fontSize: 10, color: T.secondary, ...mono }}>{row.submarket}</td>
                   <td style={{ padding: '6px 10px', fontSize: 11, color: T.text, ...mono }}>{row.units.toLocaleString()}</td>
                   <td style={{ padding: '6px 10px', fontSize: 11, color: T.secondary, ...mono }}>{row.year || '—'}</td>
-                  <td style={{ padding: '6px 10px', fontSize: 11, color: T.secondary, ...mono }}>{row.stories != null ? row.stories : '—'}</td>
+                  <td style={{ padding: '6px 10px', fontSize: 11, color: T.secondary, ...mono }}>{row.stories != null ? `${row.stories} (${getBuildingType(row.stories)})` : '—'}</td>
                   <td style={{ padding: '6px 10px', textAlign: 'center' }}>
                     <span style={{ fontSize: 9, fontWeight: 700, color: classColor(row.class), background: classColor(row.class) + '18', padding: '1px 5px', borderRadius: 2, ...mono }}>{row.class}</span>
                   </td>
@@ -398,7 +405,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
               </div>
               <span style={{ fontSize: 9, color: T.secondary, ...mono }}>{selectedProperty.address}</span>
               <div style={{ fontSize: 9, color: T.muted, marginTop: 3, ...mono }}>
-                {selectedProperty.units} units · {selectedProperty.year} · {selectedProperty.stories} stories · {selectedProperty.acres} acres
+                {selectedProperty.units} units · {selectedProperty.year} · {selectedProperty.stories != null ? `${selectedProperty.stories} (${getBuildingType(selectedProperty.stories)})` : '—'} · {selectedProperty.acres} acres
               </div>
             </div>
             <button onClick={() => setSelectedProperty(null)} style={{ fontSize: 11, color: T.muted, background: 'none', border: 'none', cursor: 'pointer', padding: 4, ...mono }}>CLOSE ×</button>

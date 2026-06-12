@@ -908,8 +908,24 @@ router.patch('/:id/property', requireAuth, async (req: AuthenticatedRequest, res
 
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
-        updates.push(`${field} = $${paramIndex}`);
-        values.push(req.body[field]);
+        if (field === 'stories') {
+          const val = parseInt(String(req.body[field]), 10);
+          if (isNaN(val) || val < 1 || val > 200) {
+            return res.status(400).json({ success: false, error: 'stories must be an integer between 1 and 200' });
+          }
+          updates.push(`${field} = $${paramIndex}`);
+          values.push(val);
+        } else if (field === 'units') {
+          const val = parseInt(String(req.body[field]), 10);
+          if (isNaN(val) || val < 1 || val > 10000) {
+            return res.status(400).json({ success: false, error: 'units must be an integer between 1 and 10000' });
+          }
+          updates.push(`${field} = $${paramIndex}`);
+          values.push(val);
+        } else {
+          updates.push(`${field} = $${paramIndex}`);
+          values.push(req.body[field]);
+        }
         paramIndex++;
       }
     }

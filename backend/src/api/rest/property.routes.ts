@@ -266,9 +266,9 @@ router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response,
 
 /**
  * PATCH /api/v1/properties/:id
- * Partial update — currently limited to `stories` so analysts can manually
- * enter the building story count when the OM doesn't include it.
- * Writes directly to properties.stories, bypassing the subject-population
+ * Partial update — supports `stories` and `units` so analysts can manually
+ * enter building specs when the OM doesn't include them.
+ * Writes directly to properties.{stories,units}, bypassing the subject-population
  * resolution chain (which only reads from extraction sources).
  */
 router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
@@ -280,7 +280,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res: Respons
       throw new AppError(404, 'Property not found');
     }
 
-    const allowedFields = ['stories'];
+    const allowedFields = ['stories', 'units'];
     const setClause: string[] = [];
     const params: any[] = [];
     let paramIndex = 1;
@@ -294,6 +294,13 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res: Respons
           }
           setClause.push(`${field} = $${paramIndex}`);
           params.push(val);
+        } else if (field === 'units') {
+          const val = parseInt(String(req.body[field]), 10);
+          if (isNaN(val) || val < 1 || val > 10000) {
+            throw new AppError(400, 'units must be an integer between 1 and 10000');
+          }
+          setClause.push(`${field} = $${paramIndex}`);
+          params.push(val);
         } else {
           setClause.push(`${field} = $${paramIndex}`);
           params.push(req.body[field]);
@@ -303,7 +310,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res: Respons
     }
 
     if (setClause.length === 0) {
-      throw new AppError(400, 'No patchable fields provided. Supported: stories');
+      throw new AppError(400, 'No patchable fields provided. Supported: stories, units');
     }
 
     params.push(id);
@@ -311,7 +318,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res: Respons
     const result = await query(
       `UPDATE properties SET ${setClause.join(', ')}, updated_at = NOW()
        WHERE id = $${paramIndex}
-       RETURNING id, stories`,
+       RETURNING id, stories, units`,
       params
     );
 
