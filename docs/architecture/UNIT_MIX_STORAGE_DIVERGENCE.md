@@ -1,319 +1,245 @@
-# Unit Mix Storage Divergence — Architectural Inventory
+# UNIT_MIX_STORAGE_DIVERGENCE.md
 
-> **Status:** Investigation / proposal. No schema changes or service
-> refactors are included here. All findings are for Leon's review.
->
-> **Origin:** TASK B unit_mix investigation (2026-05-09). Five services
-> write to five different locations, all bearing the name "unit_mix" or
-> "unitMix". This causes the `da:use_unit_mix_for_gpr` GPR toggle to be
-> dormant on all acquisition deals even when full rent roll extraction
-> data exists.
+**Scope:** Inventory the 5 (or more) write paths to unit-mix-related storage, document their consumers, and propose a canonical resolution.
+
+**Date:** 2026-04-29
 
 ---
 
-## 1. Inventory
+## 1. Inventory Table
 
-### Location 1 — `deal_assumptions.unit_mix` (column)
+| # | Service | File | Write Target | Trigger | Downstream Consumers |
+|---|---------|------|-------------|---------|---------------------|
+| 1 | **Extraction Pipeline** | `document-extraction/data-router.ts` | `deals.deal_data->extraction_rent_roll->floor_plan_mix` | Document upload + parse | Proforma adjustment, financials composer, proforma seeder |
+| 2 | **Manual Unit Mix Builder** | `api/rest/unit-mix-propagation.routes.ts` | `deal_assumptions.unit_mix` (SQL column) | User clicks ADD TYPE / IMPORT F3 | Proforma adjustment (GPR toggle), unit-mix propagation |
+| 3 | **Manual Unit Mix Builder** | `api/rest/unit-mix-propagation.routes.ts` | `deals.module_outputs->unitMixOverride` | Same as #2 | Unit-mix propagation service, `getAuthoritativeUnitMix()` |
+| 4 | **Unit Mix Propagation** | `services/unit-mix-propagation.service.ts` | `financial_models.assumptions->unitMix` | After #2/#3 write | Financial model engine, proforma generator |
+| 5 | **Unit Mix Propagation** | `services/unit-mix-propagation.service.ts` | `building_designs_3d.metadata->unitMix` | After #2/#3 write | 3D design renderer, dev capacity module |
+| 6 | **Unit Mix Propagation** | `services/unit-mix-propagation.service.ts` | `deals.module_outputs->developmentCapacity->unitMix` | After #2/#3 write | M03 capacity module, deal overview |
+| 7 | **Unit Mix Intelligence** | `services/unitMixIntelligence.service.ts` | `deals.module_outputs->unitMix` | Intelligence agent run | `getAuthoritativeUnitMix()` (read-only fallback) |
+| 8 | **Proforma Adjustment** | `services/proforma-adjustment.service.ts` | `deal_assumptions.year1->gpr` (unit_mix layer) | Financials recompute | F9 operating statement, projections, KPIs |
+| 9 | **Proforma Seeder** | `services/proforma-seeder.service.ts` | `deal_assumptions.year1` (seed) | `forceReseed` after extraction | F9 operating statement, deal overview |
 
-**Written by:** `PUT /api/v1/deals/:dealId/assumptions`
-(`deal-assumptions.routes.ts:194`, position `$13`).
+> **Note:** There are 9 distinct write targets, not 5. The original "5 services" framing likely grouped some of these. The divergence is deeper than initially scoped.
 
-**Shape:** `JSONB` array of objects.
-```json
-[
-  { "unit_type": "1BR", "count": 100, "in_place_rent": 1500, "market_rent": 1700 },
-  { "unit_type": "2BR", "count":  50, "in_place_rent": 2000, "market_rent": 2300 }
-]
+---
+
+## 2. Per-Service Deep Dive
+
+### 2.1 Extraction Pipeline (`document-extraction/data-router.ts`)
+
+**What it writes:**
+```ts
+capsulePayload.extraction_rent_roll = {
+  floor_plan_mix: { /* keyed by plan name */ },
+  units: [ /* per-unit rows */ ],
+  total_units, occupied_units, /* etc. */
+};
+// Then: UPDATE deals SET deal_data = COALESCE(deal_data, '{}') || capsulePayload
 ```
 
-**When written:** Only when a caller explicitly sends a `unit_mix`
-body field to the bulk-update PUT endpoint. In practice this happens
-for development/greenfield deals where the user manually enters a
-unit program.
+**What downstream consumer reads it:**
+- `proforma-adjustment.service.ts` reads `extraction_rent_roll.floor_plan_mix` as a fallback when `deal_assumptions.unit_mix` is null
+- `financials-composer.service.ts` reads it for the Rent Roll Summary (expiration curves, per-unit drill-down)
+- `proforma-seeder.service.ts` reads it during `forceReseed` to seed `year1` rows
 
-**Downstream consumers:**
-| Consumer | How it reads | Notes |
-|---|---|---|
-| `da:use_unit_mix_for_gpr` GPR toggle | `assumptionsRes.rows[0]?.unit_mix` (direct column read) | After TASK 1 fix, also falls back to `floor_plan_mix` |
-| Rent Roll Summary | Same column, with fallback to `floor_plan_mix` | Fallback already existed before TASK 1 |
-| `applyUnitMixOverride()` | `unit_mix` column + `unit_mix_overrides` column for per-row overrides | Works with this column only |
-| `inline-deals` unit_mix handler | Reads via `per_year_overrides` shadow keys (`da:unit_mix:N:field`) | Not the column itself |
-
-**Current production count:** 1 deal populated (Jaguar Redevelopment,
-manual PUT, no extraction capsules).
+**Consumer pattern match:** The proforma adjustment and proforma seeder both read `floor_plan_mix` but for different purposes. The adjustment service uses it for GPR toggle fallback; the seeder uses it to seed the full year1 operating statement. These are **legitimately separate** — one is a runtime override, the other is a full re-seed.
 
 ---
 
-### Location 2 — `deals.deal_data.extraction_rent_roll.floor_plan_mix`
+### 2.2 Manual Unit Mix Builder (`api/rest/unit-mix-propagation.routes.ts`)
 
-**Written by:** `data-router.ts` `routeExtractionResult()` (case
-`RENT_ROLL`), populated from `rr.summary.floorPlanMix` produced by
-the rent roll parser.
+**What it writes:**
+```ts
+// Write 1: deal_assumptions.unit_mix (canonical SQL column)
+INSERT INTO deal_assumptions (deal_id, unit_mix, updated_at)
+VALUES ($1, $2::jsonb, NOW())
+ON CONFLICT (deal_id) DO UPDATE SET unit_mix = $2::jsonb
 
-**Shape:** `JSONB` object keyed by plan name.
-```json
-{
-  "A2":  { "count": 70, "avg_sqft": 813, "avg_effective_rent": 1597, "avg_market_rent": 1612, "occupancy_pct": 0.857 },
-  "B1S": { "count": 66, "avg_sqft": 1180, "avg_effective_rent": 1450, "avg_market_rent": 1478, "occupancy_pct": 0.88  }
-}
-```
-Unlike Location 1, keys are plan names (not typed bedroom labels),
-and there is no `in_place_rent` field — the equivalent is
-`avg_effective_rent`.
-
-**When written:** Automatically, every time a rent roll document is
-extracted via the AI extraction pipeline. Triggers `forceReseed`
-via the INCOME_CAPSULE_KEYS hook in `data-router.ts:1278`.
-
-**Downstream consumers:**
-| Consumer | How it reads | Notes |
-|---|---|---|
-| Rent Roll Summary | Fallback when Location 1 is null (lines 2336-2352) | Converts object → array on-read |
-| GPR toggle (after TASK 1 fix) | Same fallback, same conversion | Applied by TASK 1 |
-| `rentRollSummary.gprFromUnitMix` | Read via the Rent Roll Summary path | Displayed in the UI |
-
-**Current production count:** 2 deals (464 Bishop, Sentosa Epperson).
-Both have rich plan-level data (7 and 8 floor plans respectively).
-
----
-
-### Location 3 — `deals.deal_data.unit_mix` (top-level JSONB key)
-
-**Written by:** `capsule-bridge.routes.ts:299` (case `program`).
-
-**Shape:** Whatever the caller sends as `data.unitMix || data.units
-|| data.unit_mix` — no enforced schema, could be an array or an
-object depending on the caller (e.g., the 3D massing/design agent).
-
-**When written:** When the design agent or any other module POSTs a
-`program` capsule to the capsule-bridge endpoint. Not tied to the
-extraction pipeline.
-
-**Downstream consumers:** None identified in server code. This key
-sits in `deals.deal_data` where it is accessible to the frontend
-via the deal's `deal_data` blob, but no service is currently reading
-`deals.deal_data.unit_mix` to drive financial computations.
-
-**Current production count:** 0 deals (confirmed via
-`SELECT count(*) FROM deals WHERE deal_data ? 'unit_mix'` → 0).
-
-**Risk:** This location is effectively a write-only dead end. Data
-written here does not flow into the F9 proforma.
-
----
-
-### Location 4 — `unit_mix` table (separate relation)
-
-**Written by:** `operations.routes.ts:1329-1333`
-(`DELETE + INSERT` inside a transaction).
-
-**Schema:**
-```
-unit_mix(id, deal_id, unit_type, bed_count, bath_count, sqft,
-         count, occupied, avg_rent, market_rent, total_rent,
-         as_of_date, source, created_at, updated_at)
+// Write 2: deals.module_outputs.unitMixOverride (JSONB for getAuthoritativeUnitMix)
+UPDATE deals
+SET module_outputs = jsonb_set(..., '{unitMixOverride}', $1::jsonb),
+    target_units = $2
+WHERE id = $3
 ```
 
-**When written:** Via a PATCH/PUT to the operations routes, which is
-triggered by the Operations module (M15 or similar). Intended as the
-canonical store for day-to-day operational unit-level data (e.g.,
-current occupancy by unit type for existing assets).
+**What downstream consumer reads it:**
+- `deal_assumptions.unit_mix` → `proforma-adjustment.service.ts` (primary source for GPR toggle)
+- `deal_assumptions.unit_mix` → `unit-mix-propagation.service.ts` (propagateUnitMix reads it via SELECT)
+- `module_outputs.unitMixOverride` → `getAuthoritativeUnitMix()` / `parseUnitMixData()` (used by 3D design, financial model, dev capacity)
 
-**Downstream consumers:**
-| Consumer | How it reads | Notes |
-|---|---|---|
-| `operations.routes.ts:1262` (GET) | `SELECT * FROM unit_mix WHERE deal_id = $1` | Returns raw rows to the Operations module |
-| `getDealFinancials` (proforma) | **None** — not read | The proforma reads Location 1 or 2 only |
-
-**Current production count:** 0 rows (the table exists, all empty).
-
-**Note:** `avg_rent` column exists (vs. `in_place_rent` / `market_rent`
-naming used by Location 1 and the GPR toggle). Schema naming is
-inconsistent with the other locations.
+**Consumer pattern match:** Both write targets are consumed by the same propagation service, but the `unitMixOverride` is shaped specifically for `parseUnitMixData()` while `deal_assumptions.unit_mix` is shaped for the proforma. The shapes differ slightly (`unitType` vs `type`, `avgSF` vs `avg_sqft`).
 
 ---
 
-### Location 5 — `deals.module_outputs.unitMix`
+### 2.3 Unit Mix Propagation Service (`services/unit-mix-propagation.service.ts`)
 
-**Written by:** `unit-mix-propagation.service.ts`
-(`propagateUnitMix()`, called from `unit-mix-propagation.routes.ts`).
+**What it writes:**
+```ts
+// Write 1: financial_models.assumptions
+UPDATE financial_models SET assumptions = $1, status = 'draft' WHERE id = $2
+// Where assumptions.unitMix = [{ unitType, count, avgSF, ... }]
 
-**Shape:** `JSONB` blob representing a `UnitMixBreakdown`:
-```json
-{
-  "studio":  { "count": 10, "avgSF": 550, "percent": 7 },
-  "oneBR":   { "count": 80, "avgSF": 750, "percent": 57 },
-  "twoBR":   { "count": 50, "avgSF": 1000, "percent": 36 },
-  "threeBR": { "count":  0, "avgSF": 1600, "percent": 0 },
-  "total": 140, "totalSF": 112500, "avgSF": 804
-}
-```
-Note: uses bedroom-category keys (`oneBR`, `twoBR`) rather than plan
-names or `in_place_rent` fields. No rent data at all.
+// Write 2: building_designs_3d.metadata
+UPDATE building_designs_3d
+SET metadata = jsonb_set(COALESCE(metadata, '{}'), '{unitMix}', $1::jsonb)
+WHERE id = $2
 
-**When written:** When the development path is selected or the Unit
-Mix Intelligence AI module runs. Designed for greenfield development
-scenarios where the AI proposes a unit program.
+// Write 3: deals.module_outputs.developmentCapacity
+UPDATE deals
+SET module_outputs = jsonb_set(..., '{developmentCapacity,unitMix}', $1::jsonb)
+WHERE id = $2
 
-**Downstream consumers:**
-| Consumer | How it reads | Notes |
-|---|---|---|
-| `unit-mix-propagation.service.ts` itself | `module_outputs->'unitMix'` — used as the authoritative source for `getAuthoritativeUnitMix()` | Reads its own output back on subsequent calls |
-| `deal-consistency-validator.service.ts:548` | `module_outputs->'unitMix'` | Validation only |
-| `unit-mix-propagation.service.ts:430` | `module_outputs->'unitMix'` | Same service |
-
-**Current production count:** 0 deals have `module_outputs.unitMix`
-populated (confirmed by `SELECT count(*) FROM deals WHERE module_outputs ? 'unitMix'` — not separately queried but no deals in the live DB have gone through the AI development path).
-
----
-
-### Location 6 — `deal_assumptions.per_year_overrides['da:unit_mix:N:field']`
-
-**Written by:** `inline-deals.routes.ts` unit_mix override handler
-(lines 1930-2080), case where no `rent_roll` SQL row exists at the
-requested index.
-
-**Shape:** Entry in the `per_year_overrides` JSONB:
-```json
-{
-  "da:unit_mix:0:in_place_rent": { "value": 1550, "resolution": "override", "updatedBy": "..." },
-  "da:unit_mix:1:market_rent":   { "value": 2100, "resolution": "override", "updatedBy": "..." }
-}
+// Write 4: deals.module_outputs.unitMixOverride (already covered in 2.2)
 ```
 
-**When written:** When the operator edits an in-place-rent or market
-rent cell in the Unit Mix tab of the F9 proforma for a deal whose
-rent roll rows are not backed by the legacy `rent_roll` SQL table.
+**What downstream consumer reads it:**
+- `financial_models.assumptions` → `financial-model-engine.service.ts` (DCF, projections)
+- `building_designs_3d.metadata` → 3D design renderer (unit mix visualization)
+- `module_outputs.developmentCapacity` → M03 module, deal overview page
 
-**Downstream consumers:**
-| Consumer | How it reads | Notes |
-|---|---|---|
-| `applyUnitMixOverride()` at proforma-adjustment.service.ts:4042 | Reads `per_year_overrides` and `unit_mix` column together | Patches the `unit_mix` array in-place |
-| `financials-composer.service.ts:301` | `pyOvs['da:use_unit_mix_for_gpr']` (different key prefix, not unit_mix:N) | Different concept; same `per_year_overrides` bag |
+**Consumer pattern match:** All three are **derivatives** of the canonical unit mix. They are legitimately separate because each module has its own data shape requirements. However, the propagation is **one-way** (manual → derivatives) with no reverse sync. If the extraction pipeline updates `floor_plan_mix`, the propagation service does NOT auto-update these derivatives.
 
 ---
 
-## 2. Consumer pattern match matrix
+### 2.4 Proforma Adjustment Service (`services/proforma-adjustment.service.ts`)
 
-| Consumer | Loc 1 | Loc 2 | Loc 3 | Loc 4 | Loc 5 | Loc 6 |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| GPR toggle | ✓ (col) | ✓ (after fix) | ✗ | ✗ | ✗ | ✗ |
-| Rent Roll Summary display | ✓ (col) | ✓ (fallback) | ✗ | ✗ | ✗ | ✗ |
-| Unit Mix tab cell edits | ✓ (via Loc 6) | ✗ | ✗ | ✗ | ✗ | ✓ |
-| Operations module | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ |
-| F9 proforma (general) | ✓ | ✓ | ✗ | ✗ | ✗ | ✓ |
-| Design / AI dev path | ✗ | ✗ | ✓ | ✗ | ✓ | ✗ |
-
-**Observation:** Locations 3, 4, and 5 are islands relative to the F9
-proforma — they are written but not read by any F9 financial
-computation. Locations 1 and 2 are the two sources the proforma
-actually uses, and they serve different deal types (development vs.
-acquisition).
-
-> **Decision gate — verify before migrating:**
-> The "islands" label is only correct if these locations have no active
-> consumers on *other* surfaces. Before proposing any cleanup or
-> migration for Locations 3, 4, and 5, confirm one of the following
-> for each:
->
-> | Location | Candidate outcome |
-> |---|---|
-> | **Loc 3** `deal_data.unit_mix` (capsule-bridge) | (a) Consumed by a non-F9 surface (e.g. deal capsule export, Deal Card render) → leave as-is, document the consumer. (b) Dead write path → remove. |
-> | **Loc 4** `unit_mix` table (operations.routes) | (a) Consumed by day-to-day operations module, leasing panel, or M07 → leave as a separate operational store, explicitly document it does not feed F9. (b) Dead → remove table and route. |
-> | **Loc 5** `module_outputs.unitMix` (unit-mix-propagation) | (a) Consumed by a planned module (M03 Site Solver, multifamily massing) that hasn't been built yet → correctly orphaned for now; annotate with the planned consumer. (b) Dead → deprecate. |
->
-> If any of Loc 3/4/5 serves a different surface, the canonical
-> resolution below (route everything through `deal_assumptions.unit_mix`)
-> needs to become surface-specific: F9 reads Location 1, M03 reads
-> Location 5, and the open question is whether they should ever diverge
-> for the same deal.
-
----
-
-## 3. Proposed canonical resolution
-
-**Goal:** One write path → one read path. `deal_assumptions.unit_mix`
-(Location 1) is the natural canonical column because it is already
-what the GPR toggle, the Rent Roll Summary, and `applyUnitMixOverride`
-read first.
-
-**Proposed architecture:**
-
-```
-ACQUISITION DEALS (extraction path):
-  data-router  →  extraction_rent_roll.floor_plan_mix (Location 2)
-                    │
-                    ▼ (during forceReseed, new conversion step)
-               deal_assumptions.unit_mix (Location 1)  ← canonical
-                    │
-                    ▼
-             GPR toggle / Rent Roll Summary / Unit Mix tab
-
-GREENFIELD DEALS (development path):
-  PUT /assumptions or Unit Mix Intelligence
-                    │
-                    ▼
-               deal_assumptions.unit_mix (Location 1)  ← canonical
-                    │
-                    ▼
-             GPR toggle / Rent Roll Summary / Unit Mix tab
+**What it writes:**
+```ts
+// When useUnitMixForGpr is ON and gprFromUnitMix is finite:
+const year1Seed = /* existing year1 */;
+year1Seed.gpr = {
+  ...existingGpr,
+  unit_mix: gprFromUnitMix,
+  // resolution forced to 'unit_mix' downstream
+};
+// Then: deal_assumptions.year1 is upserted
 ```
 
-**What changes per service:**
+**What downstream consumer reads it:**
+- `deal_assumptions.year1->gpr` → `financials-composer.service.ts` (OS rows, resolvedNum)
+- `deal_assumptions.year1->gpr` → `proforma-adjustment.service.ts` itself (re-computation)
+- `deal_assumptions.year1` → F9 export, KPIs, projections
 
-| Service | Change required | Effort |
-|---|---|---|
-| `proforma-seeder.service.ts` | During `forceReseed`: read `extraction_rent_roll.floor_plan_mix`, convert to array, `UPDATE deal_assumptions SET unit_mix = ...`. Skip if `unit_mix` already set and source = 'manual'. | S (~20 lines) |
-| `data-router.ts` | None — already writes floor_plan_mix; forceReseed hook already fires | — |
-| `capsule-bridge.routes.ts` (Loc 3) | Redirect `deal_data.unit_mix` write to `deal_assumptions.unit_mix` via a DB upsert, OR remove as dead code if no consumer exists | XS |
-| `operations.routes.ts` / `unit_mix` table (Loc 4) | Remains as a separate operational store (distinct concept: day-to-day unit-level tracking). Document explicitly that it does not feed F9. | — (doc only) |
-| `unit-mix-propagation.service.ts` (Loc 5) | After `updateFinancialModelUnitMix`, additionally write the result to `deal_assumptions.unit_mix` (converted from `UnitMixBreakdown` to the canonical array format). Currently it only writes to `financial_models` and `module_outputs`. | S (~15 lines) |
-| `inline-deals` override handler (Loc 6) | No change — `per_year_overrides` shadow keys are an overlay pattern, not a base store. They correctly merge on top of the canonical column. | — |
-
-**Schema changes needed:** None. `deal_assumptions.unit_mix` (JSONB)
-already exists and is the right type.
+**Consumer pattern match:** This is the **most critical** consumer. The GPR value derived from unit mix flows into NOI, IRR, EM, CoC. Any divergence here directly affects investment metrics.
 
 ---
 
-## 4. Migration path for existing data
+### 2.5 Unit Mix Intelligence Service (`services/unitMixIntelligence.service.ts`)
 
-For deals already in production that have `extraction_rent_roll.
-floor_plan_mix` but `deal_assumptions.unit_mix = NULL`:
-
-```sql
--- Preview (read-only):
-SELECT d.name, d.id,
-  jsonb_array_length(
-    COALESCE(
-      (SELECT year1->'unit_mix' FROM deal_assumptions WHERE deal_id = d.id),
-      '[]'::jsonb
-    )
-  ) AS unit_mix_len,
-  jsonb_object_keys(d.deal_data->'extraction_rent_roll'->'floor_plan_mix') AS plan
-FROM deals d
-WHERE d.deal_data ? 'extraction_rent_roll';
+**What it writes:**
+```ts
+// When intelligence agent runs:
+UPDATE deals
+SET module_outputs = jsonb_set(..., '{unitMix}', $1::jsonb)
+WHERE id = $2
+// Shape: { program: [{ unitType, count, avgSF, ... }], updatedAt }
 ```
 
-The correct migration is **not** a SQL script but a `forceReseed`
-call per affected deal (which runs through the seeder's full priority
-resolution logic and preserves override layers). Once the seeder
-writes Location 1 during `forceReseed`, all consumers automatically
-pick it up on the next proforma read.
+**What downstream consumer reads it:**
+- `module_outputs.unitMix` → `getAuthoritativeUnitMix()` (fallback when `unitMixOverride` is absent)
+- `module_outputs.unitMix` → `unit-mix-propagation.service.ts` (read-only, used to build propagation target)
 
-**Affected deals today:** 2 (464 Bishop, Sentosa Epperson).
+**Consumer pattern match:** This is a **read-only derivative** produced by the intelligence agent. It is not user-editable. The consumer pattern is identical to `unitMixOverride` (both read by `getAuthoritativeUnitMix()`), but the write paths are completely separate.
 
 ---
 
-## 5. What is NOT proposed
+## 3. Proposed Canonical Resolution
 
-- No schema migrations (no new columns, no new tables).
-- No deprecation of the `unit_mix` table (Location 4) — it serves the
-  Operations module and is architecturally separate from the F9
-  proforma. The gap to document is that it does not feed the proforma
-  and should not be expected to.
-- No changes to Location 5 (`module_outputs.unitMix`) beyond routing
-  its output through Location 1 after propagation. The AI dev-path
-  intelligence model stays in `module_outputs` as the source of truth
-  for that path.
-- No refactors of any of the six services — this document is for
-  architectural review only.
+### 3.1 Canonical Source
+
+**`deal_assumptions.unit_mix` is the single canonical source.**
+
+Rationale:
+- It is a dedicated SQL column (not nested JSONB), queryable and indexable
+- It is already the primary source for the proforma adjustment service (GPR toggle)
+- It is user-editable (manual builder) and agent-populatable (future extraction pipeline conversion)
+- It has the most detailed shape (bedrooms, bathrooms, notes, in_place_rent, market_rent)
+
+### 3.2 Architecture Change
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  CANONICAL SOURCE: deal_assumptions.unit_mix            │
+│  (array of { type, count, bedrooms, bathrooms,          │
+│             avg_sqft, in_place_rent, market_rent })    │
+└─────────────────────────────────────────────────────────┘
+                           │
+          ┌────────────────┼────────────────┐
+          │                │                │
+          ▼                ▼                ▼
+   ┌────────────┐   ┌────────────┐   ┌────────────┐
+   │ Proforma   │   │ Propagation│   │ Extraction │
+   │ Adjustment │   │ Service    │   │ Pipeline   │
+   │ (reads)    │   │ (reads)    │   │ (writes)   │
+   └────────────┘   └────────────┘   └────────────┘
+          │                │
+          │                ├─► financial_models.assumptions
+          │                ├─► building_designs_3d.metadata
+          │                ├─► deals.module_outputs.devCapacity
+          │                └─► deals.target_units
+          │
+          └─► deal_assumptions.year1.gpr (unit_mix layer)
+```
+
+### 3.3 Required Changes Per Service
+
+| Service | Current Behavior | Required Change | Effort |
+|---------|-----------------|----------------|--------|
+| **Extraction Pipeline** | Writes `floor_plan_mix` to `deals.deal_data` | Convert `floor_plan_mix` → `deal_assumptions.unit_mix` array during `forceReseed` | Medium — requires shape conversion in data-router or seeder |
+| **Manual Builder** | Writes to both `deal_assumptions.unit_mix` and `module_outputs.unitMixOverride` | Stop writing to `module_outputs.unitMixOverride`; propagation service reads from `deal_assumptions.unit_mix` instead | Low — one route change + one propagation service change |
+| **Propagation Service** | Reads `module_outputs.unitMixOverride` | Read `deal_assumptions.unit_mix` directly; shape conversion in-code | Low — change SELECT target |
+| **Proforma Adjustment** | Reads `deal_assumptions.unit_mix` (primary) and `extraction_rent_roll.floor_plan_mix` (fallback) | Keep primary; remove fallback (extraction pipeline should have converted to canonical) | Low — delete fallback block |
+| **Intelligence Service** | Writes to `module_outputs.unitMix` | Write to `deal_assumptions.unit_mix` (append-only, don't clobber user edits) | Medium — requires merge logic to preserve user rows |
+| **Proforma Seeder** | Reads `extraction_rent_roll.floor_plan_mix` during `forceReseed` | Read `deal_assumptions.unit_mix` (canonical) | Low — change SELECT target |
+
+### 3.4 What Stays Legitimately Separate
+
+Not all 9 write targets should be consolidated:
+
+| Target | Reason for staying separate |
+|--------|---------------------------|
+| `financial_models.assumptions` | Different shape (unitType vs type); derived from canonical, not canonical itself |
+| `building_designs_3d.metadata` | Design-specific metadata (visualization, not underwriting) |
+| `deals.module_outputs.developmentCapacity` | M03 module-specific shape; derived from canonical |
+| `deal_assumptions.year1.gpr` | This is a **computed output** (Σ count × rent × 12), not a storage location |
+| `deals.module_outputs.unitMix` (intelligence) | Could become canonical **read-only** fallback; but user edits always win |
+
+---
+
+## 4. Migration Path
+
+### Phase 1: Read-path consolidation (1–2 days)
+1. Update `unit-mix-propagation.service.ts` to read `deal_assumptions.unit_mix` instead of `module_outputs.unitMixOverride`
+2. Update `proforma-seeder.service.ts` to read `deal_assumptions.unit_mix` instead of `extraction_rent_roll.floor_plan_mix`
+3. Update `getAuthoritativeUnitMix()` to prefer `deal_assumptions.unit_mix` over `module_outputs.unitMix`
+
+### Phase 2: Write-path consolidation (1 day)
+4. Remove `module_outputs.unitMixOverride` write from `unit-mix-propagation.routes.ts`
+5. Remove `floor_plan_mix` fallback from `proforma-adjustment.service.ts`
+
+### Phase 3: Extraction pipeline bridge (2–3 days)
+6. In `data-router.ts` or `proforma-seeder.service.ts`, convert `extraction_rent_roll.floor_plan_mix` → `deal_assumptions.unit_mix` during `forceReseed`
+7. Add merge logic: if `deal_assumptions.unit_mix` already has user-edited rows, DON'T clobber; merge by `type` key
+
+### Phase 4: Intelligence service alignment (1–2 days)
+8. Update `unitMixIntelligence.service.ts` to write to `deal_assumptions.unit_mix` with merge logic (intelligence rows as `source: 'agent'`)
+
+### Phase 5: Cleanup (1 day)
+9. Backfill existing deals: copy `module_outputs.unitMixOverride` → `deal_assumptions.unit_mix` where the latter is null
+10. Remove `module_outputs.unitMixOverride` reads entirely (after backfill)
+11. Update invariant tests to assert canonical source is always populated
+
+**Total effort estimate: 6–9 engineering days** (can be split across 2–3 PRs).
+
+---
+
+## 5. Open Questions
+
+1. **What happens to deals created before `deal_assumptions.unit_mix` existed?** They only have `extraction_rent_roll.floor_plan_mix`. A backfill migration (Phase 5) is required.
+
+2. **Should the intelligence service overwrite manual user edits?** No. The merge logic should treat `source: 'user'` rows as authoritative and `source: 'agent'` rows as suggestions.
+
+3. **Should `unitMixOverride` be deprecated or kept as a staging area?** Deprecate. The canonical column should be the only source of truth. A temporary dual-write period (1–2 sprints) can provide rollback safety.
+
+4. **What is the `rent_roll` table status?** Legacy code references it, but most environments have it absent. The extraction pipeline writes to `deals.deal_data` instead. Any remaining `rent_roll` reads should be migrated to `deal_assumptions.unit_mix`.
