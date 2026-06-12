@@ -2,15 +2,17 @@ import React, { useState } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { CompareTab } from './CompareTab';
 import { UnderwritingWalkthrough } from '../../../components/f9/UnderwritingWalkthrough';
+import { ScenarioComparePane } from '../../../components/scenarios/ScenarioComparePane';
 import { BtTabWrapper } from '../../../components/deal/bloomberg-ui';
 import type { FinancialEngineTabProps } from './types';
 
 const MONO = BT.font.mono;
 
-type Section = 'compare' | 'walkthrough';
+type Section = 'compare' | 'walkthrough' | 'scenarios';
 
 const SECTIONS: { id: Section; label: string; icon: string }[] = [
   { id: 'compare',     label: 'COMPARE',     icon: '⇔' },
+  { id: 'scenarios',   label: 'SCENARIOS',   icon: '◐' },
   { id: 'walkthrough', label: 'WALKTHROUGH',  icon: '⊟' },
 ];
 
@@ -51,6 +53,7 @@ export function CompareHubTab(props: FinancialEngineTabProps) {
 
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {section === 'compare'     && <CompareTab {...props} />}
+        {section === 'scenarios'  && <ScenarioComparePane dealId={props.dealId} />}
         {section === 'walkthrough' && (
           <BtTabWrapper>
             <UnderwritingWalkthrough dealId={props.dealId} />

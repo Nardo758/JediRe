@@ -14,6 +14,8 @@ import { CapitalHubTab } from './financial-engine/CapitalHubTab';
 import { ReturnsHubTab } from './financial-engine/ReturnsHubTab';
 import { CompareHubTab } from './financial-engine/CompareHubTab';
 import { DecisionTab } from './financial-engine/DecisionTab';
+import { ScenarioManagementTab } from '../../components/scenarios/ScenarioManagementTab';
+import { ScenarioIndicator } from '../../components/scenarios/ScenarioIndicator';
 import { RoadmapTab } from './financial-engine/RoadmapTab';
 import { SensitivityTab } from './financial-engine/SensitivityTab';
 import { ValuationGridTab } from './financial-engine/ValuationGridTab';
@@ -1607,6 +1609,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
               ? <Bd c={BT.met.financial}>LIVE MODEL</Bd>
               : <Bd c={BT.text.secondary}>NO MODEL</Bd>
           }
+          <ScenarioIndicator dealId={resolvedDealId} onCompare={() => setActiveTab(8)} />
           {(() => {
             const mixRows = f9Financials?.rentRollSummary?.unitMix ?? [];
             const mixTotal = f9Financials?.totalUnits ?? 0;
@@ -2128,7 +2131,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           {activeTab === 4 && <BtTabWrapper><CapitalHubTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 5 && <BtTabWrapper><ReturnsHubTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 6 && <BtTabWrapper style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}><ValuationGridTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 7 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 7 && <BtTabWrapper><ScenarioManagementTab dealId={resolvedDealId} /></BtTabWrapper>}
           {activeTab === 8 && <BtTabWrapper><CompareHubTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 9 && (
             <BtTabWrapper style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>

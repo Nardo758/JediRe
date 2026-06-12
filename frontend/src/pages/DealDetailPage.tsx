@@ -90,6 +90,7 @@ import { EventHeroBanner } from '../components/m35/EventHeroBanner';
 import type { HeroBannerEvent, EventSensitivity } from '../components/m35/EventHeroBanner';
 import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
 import { CompletenesBadge } from '../components/deal/CompletenesBadge';
+import { ScenarioPicker } from '../components/scenarios/ScenarioPicker';
 import api from '../services/api';
 
 interface DealTab extends Tab {
@@ -961,6 +962,13 @@ const DealDetailPage: React.FC = () => {
                   ) : (
                     <DealTypeBadge current={dealType} onChange={handleDealTypeChange} saving={savingDealType} />
                   )}
+                </>
+              )}
+              {/* Scenario Picker — M40 Phase 2 */}
+              {effectiveDealId && (
+                <>
+                  <span style={{ color: BORDER, margin: '0 6px', fontSize: 9 }}>·</span>
+                  <ScenarioPicker dealId={effectiveDealId} compact />
                 </>
               )}
               {deal.pipeline_stage && (
