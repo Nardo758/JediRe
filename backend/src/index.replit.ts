@@ -41,7 +41,7 @@ import collaborationRouter from './api/rest/collaboration.routes';
 import contactsSyncRouter from './api/rest/contacts-sync.routes';
 import notarizeRouter from './api/rest/notarize.routes';
 import contextTrackerRouter from './api/rest/context-tracker.routes';
-import { mountAdminRoutes, mountDealRoutes, mountZoningRoutes, mountM35Routes, mountPropertyRoutes, mountGridPortfolioRoutes, mountEmailRoutes, mountFinancialRoutes } from './routes';
+import { mountAdminRoutes, mountDealRoutes, mountZoningRoutes, mountM35Routes, mountPropertyRoutes, mountGridPortfolioRoutes, mountEmailRoutes, mountFinancialRoutes, mountKnowledgeGraphRoutes } from './routes';
 
 import healthRouter from './api/rest/inline-health.routes';
 import authRouter from './api/rest/inline-auth.routes';
@@ -57,12 +57,6 @@ import geographicContextRoutes from './api/rest/geographic-context.routes';
 import isochroneRoutes from './api/rest/isochrone.routes';
 import trafficAiRoutes from './api/rest/traffic-ai.routes';
 import mapConfigsRouter from './api/rest/map-configs.routes';
-import modulesRouter from './api/rest/modules.routes';
-import { createKnowledgeGraphRoutes } from './api/rest/knowledge-graph.routes';
-import { createKGDealIngestionRoutes } from './services/knowledge-graph/kg-deal-ingestion.routes';
-import { createKGDealContextRoutes } from './services/knowledge-graph/kg-deal-context.routes';
-import { createContextAwarenessRoutes } from './api/rest/context-awareness.routes';
-import scheduledRefreshRoutes from './api/rest/scheduled-refresh.routes';
 import correlationRouter from './api/rest/correlation.routes';
 import { createCoStarUploadRoutes } from './api/rest/costar-upload.routes';
 import exitTrajectoryRouter from './api/rest/exit-trajectory.routes';
@@ -396,11 +390,9 @@ app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
 
 mountFinancialRoutes(app, pool);
 
-app.use('/api/v1/knowledge-graph', createKnowledgeGraphRoutes(pool));
-app.use('/api/v1/knowledge-graph', createKGDealIngestionRoutes(pool));
-app.use('/api/v1/knowledge-graph/context', requireAuth, createKGDealContextRoutes(pool));
+mountKnowledgeGraphRoutes(app, pool);
 
-// KG Deal Listener â€” auto-ingests deal analysis results into the knowledge graph.
+// KG Deal Listener — auto-ingests deal analysis results into the knowledge graph.
 // Hooks into zoning analysis, market analysis, and program target events.
 // Initialized lazily â€” no background thread, no blocking startup.
 import { getKGDealListener } from './services/knowledge-graph/kg-deal-listener.service';
@@ -418,8 +410,6 @@ app.use('/api', createKgAliasRoutes(pool));
 // query). Wrapped in requireAuth so the LLM-backed /query endpoint can never
 // be reached unauthenticated even if the broader '/api/v1' requireAuth chain
 // above is reordered in the future.
-app.use('/api/v1/context', requireAuth, createContextAwarenessRoutes(pool));
-app.use('/api/v1/scheduled-refresh', scheduledRefreshRoutes);
 
 mountZoningRoutes(app, pool);
 

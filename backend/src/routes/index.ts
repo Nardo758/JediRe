@@ -384,3 +384,21 @@ export function mountFinancialRoutes(app: Express, pool: any) {
   app.use('/api/v1/calibration', requireAuth, m07CalibrationRouter);
   app.use('/api/v1/macro', requireAuth, macroIndicatorsRouter);
 }
+
+// ─── Knowledge Graph & Context Routes ───────────────────────────────────────
+//
+// Knowledge graph ingestion, context awareness, and scheduled refresh routes.
+
+import { createKnowledgeGraphRoutes } from '../api/rest/knowledge-graph.routes';
+import { createKGDealIngestionRoutes } from '../services/knowledge-graph/kg-deal-ingestion.routes';
+import { createKGDealContextRoutes } from '../services/knowledge-graph/kg-deal-context.routes';
+import { createContextAwarenessRoutes } from '../api/rest/context-awareness.routes';
+import scheduledRefreshRoutes from '../api/rest/scheduled-refresh.routes';
+
+export function mountKnowledgeGraphRoutes(app: Express, pool: any) {
+  app.use('/api/v1/knowledge-graph', createKnowledgeGraphRoutes(pool));
+  app.use('/api/v1/knowledge-graph', createKGDealIngestionRoutes(pool));
+  app.use('/api/v1/knowledge-graph/context', requireAuth, createKGDealContextRoutes(pool));
+  app.use('/api/v1/context', requireAuth, createContextAwarenessRoutes(pool));
+  app.use('/api/v1/scheduled-refresh', scheduledRefreshRoutes);
+}
