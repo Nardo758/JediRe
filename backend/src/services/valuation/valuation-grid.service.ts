@@ -184,6 +184,15 @@ export interface CompCriteria {
 
 export type StalenessLabel = 'fresh' | 'aging' | 'seasoned' | 'stale';
 
+/** Per-gate result for PSF method eligibility. null when gate data is unavailable. */
+export interface PsfGateResult {
+  passed: boolean;
+  failedGate: 'sqft' | 'similarity' | 'stories' | null;
+  reason: string | null;
+  /** True when the operator forced this comp into the PSF pool via customIncludedCompIds. */
+  forced: boolean;
+}
+
 export interface CompReviewItem {
   id: string;
   address: string;
@@ -207,6 +216,8 @@ export interface CompReviewItem {
   excluded: boolean;
   /** Whether this comp was manually added by the operator (not in system comp set). */
   manually_added: boolean;
+  /** Task #1804 — PSF gate status for this comp. null when sqft/subject data unavailable. */
+  psf_gate: PsfGateResult | null;
 }
 
 export interface CompReviewResult {
@@ -265,6 +276,96 @@ function stalenessWeight(ageMonths: number, maxAgeMonths: number = MAX_COMP_AGE_
   if (ageMonths > 24) return 0.70;              // seasoned
   if (ageMonths > 12) return 0.85;              // aging
   return 1.00;                                   // fresh
+}
+
+// ── PSF gate adjacency map ─────────────────────────────────────────────────────
+// Mirrors the same map used in computeSalesCompPSF so evaluation is consistent.
+const PSF_CLASS_ADJACENT: Record<string, string[]> = {
+  A: ['A', 'B'],
+  B: ['A', 'B', 'C'],
+  C: ['B', 'C', 'D'],
+  D: ['C', 'D'],
+};
+
+/**
+ * Task #1804 — Evaluate a single comp against the three PSF gate filters.
+ *
+ * Returns a PsfGateResult describing whether the comp passes, which gate it
+ * failed (if any), a human-readable reason, and whether it was force-included
+ * by the operator via customIncludedCompIds.
+ *
+ * When `isCustomIncluded` is true the gates are skipped entirely and the comp
+ * is treated as passed so operators can force thin PSF pools to use specific
+ * comps.
+ *
+ * Returns null only when neither sale_price nor building_sf is present and
+ * the subject has no data that makes gate evaluation meaningful.
+ */
+function evaluatePsfGate(
+  comp: any,
+  subject: { units: number | null; yearBuilt: number | null; assetClass: string | null; stories: number | null },
+  isCustomIncluded: boolean,
+): PsfGateResult {
+  if (isCustomIncluded) {
+    return { passed: true, failedGate: null, reason: 'Force-included by operator', forced: true };
+  }
+
+  const salePrice = safeFloat(comp.derived_sale_price ?? comp.sale_price, 0);
+  const compSF    = safeFloat(comp.building_sf, 0);
+
+  // Gate 1: sqft validity
+  if (salePrice <= 0 || compSF <= 0) {
+    return { passed: false, failedGate: 'sqft', reason: 'Missing sale price or building sqft', forced: false };
+  }
+  if (compSF < 500 || compSF > 1_000_000) {
+    return { passed: false, failedGate: 'sqft', reason: `Implausible building sqft: ${Math.round(compSF).toLocaleString()}`, forced: false };
+  }
+  const psf = salePrice / compSF;
+  if (psf < 10 || psf > 5_000) {
+    return { passed: false, failedGate: 'sqft', reason: `Implausible PSF: $${psf.toFixed(0)}/SF`, forced: false };
+  }
+  const compUnits = comp.units != null ? parseInt(String(comp.units), 10) : null;
+  if (compUnits && compUnits > 0) {
+    const sfPerUnit = compSF / compUnits;
+    if (sfPerUnit < 200 || sfPerUnit > 2_500) {
+      return { passed: false, failedGate: 'sqft', reason: `Implausible SF/unit: ${sfPerUnit.toFixed(0)} SF/unit`, forced: false };
+    }
+  }
+
+  // Gate 2: similarity (unit count, vintage, class)
+  if (subject.units && compUnits) {
+    const ratio = compUnits / subject.units;
+    if (ratio < 0.4 || ratio > 2.5) {
+      return { passed: false, failedGate: 'similarity', reason: `Unit ratio ${ratio.toFixed(2)}× outside [0.4×, 2.5×] band`, forced: false };
+    }
+  }
+  const compYearBuilt = comp.year_built != null ? parseInt(String(comp.year_built), 10) : null;
+  if (subject.yearBuilt && compYearBuilt) {
+    const diff = Math.abs(compYearBuilt - subject.yearBuilt);
+    if (diff > 20) {
+      return { passed: false, failedGate: 'similarity', reason: `Vintage gap ${diff}yr exceeds ±20yr band`, forced: false };
+    }
+  }
+  const subjectClass = (subject.assetClass ?? '').toUpperCase().charAt(0);
+  const compClass    = ((comp.property_class ?? comp.asset_class ?? '') as string).toUpperCase().charAt(0);
+  if (subjectClass && compClass) {
+    const allowed = PSF_CLASS_ADJACENT[subjectClass] ?? [subjectClass];
+    if (!allowed.includes(compClass)) {
+      return { passed: false, failedGate: 'similarity', reason: `Class ${compClass} not adjacent to subject class ${subjectClass}`, forced: false };
+    }
+  }
+
+  // Gate 3: stories (optional — only when both subject and comp have data)
+  const compStories    = comp.stories != null ? parseInt(String(comp.stories), 10) : null;
+  const subjectStories = subject.stories;
+  if (subjectStories && compStories) {
+    const diff = Math.abs(compStories - subjectStories);
+    if (diff > 3) {
+      return { passed: false, failedGate: 'stories', reason: `Stories gap ${diff} exceeds ±3 floors`, forced: false };
+    }
+  }
+
+  return { passed: true, failedGate: null, reason: null, forced: false };
 }
 
 // ── Confidence weight map ─────────────────────────────────────────────────────
@@ -409,7 +510,7 @@ export class ValuationGridService {
     methods.push(m3);
 
     // PSF sub-method — only if subject has sqft and comp PSF is meaningful
-    const m3b = this.computeSalesCompPSF(m3, subject);
+    const m3b = this.computeSalesCompPSF(m3, subject, compCriteria);
     if (m3b) methods.push(m3b);
 
     // Method 4 — Operator Override — always appended (may be INSUFFICIENT if not set)
@@ -1749,7 +1850,8 @@ export class ValuationGridService {
 
   private computeSalesCompPSF(
     ppuMethod: ValuationMethod & { _compSetRaw?: any },
-    subject: SubjectProperty
+    subject: SubjectProperty,
+    compCriteria: CompCriteria,
   ): ValuationMethod | null {
     if (!subject.totalSF) return null;
 
@@ -1758,70 +1860,49 @@ export class ValuationGridService {
     if (!compSet || comps.length === 0) return null;
 
     const warnings: string[] = [];
-    let sqftExcluded = 0;
+    let sqftExcluded       = 0;
     let similarityExcluded = 0;
-    let storiesExcluded = 0;
+    let storiesExcluded    = 0;
+    let forcedIncluded     = 0;
 
-    // Class adjacency: a comp class must be the same as or one step away from subject.
-    const CLASS_ADJACENT: Record<string, string[]> = {
-      A: ['A', 'B'],
-      B: ['A', 'B', 'C'],
-      C: ['B', 'C', 'D'],
-      D: ['C', 'D'],
+    const customSet = new Set<string>(compCriteria.customIncludedCompIds ?? []);
+
+    // Subject fields used by evaluatePsfGate
+    const subjectForGate = {
+      units:      subject.units,
+      yearBuilt:  subject.yearBuilt,
+      assetClass: subject.assetClass,
+      stories:    subject.stories,
     };
 
     const psfValues: number[] = [];
 
     for (const c of comps) {
+      const isCustom = customSet.has(String(c.id));
+      const gate = evaluatePsfGate(c, subjectForGate, isCustom);
+
+      if (gate.forced) {
+        // Operator force-included: still need valid sale_price + building_sf to compute PSF
+        const salePrice = safeFloat(c.derived_sale_price, 0);
+        const compSF    = safeFloat(c.building_sf, 0);
+        if (salePrice > 0 && compSF > 0) {
+          psfValues.push(salePrice / compSF);
+          forcedIncluded++;
+        }
+        continue;
+      }
+
+      if (!gate.passed) {
+        if (gate.failedGate === 'sqft')       sqftExcluded++;
+        else if (gate.failedGate === 'similarity') similarityExcluded++;
+        else if (gate.failedGate === 'stories')    storiesExcluded++;
+        continue;
+      }
+
+      // Gate passed — compute PSF
       const salePrice = safeFloat(c.derived_sale_price, 0);
       const compSF    = safeFloat(c.building_sf, 0);
-
-      // ── Gate 1: sqft validity ──────────────────────────────────────────────
-      if (salePrice <= 0 || compSF <= 0) { sqftExcluded++; continue; }
-      // Implausible total sqft: below 500 SF (single-family noise) or above 1M SF
-      if (compSF < 500 || compSF > 1_000_000) { sqftExcluded++; continue; }
-
-      const psf = salePrice / compSF;
-      // Implausible PSF for multifamily (< $10 or > $5,000/SF)
-      if (psf < 10 || psf > 5_000) { sqftExcluded++; continue; }
-
-      // Implausible SF/unit ratio: < 200 SF/unit or > 2,500 SF/unit
-      const compUnits = c.units != null ? parseInt(String(c.units), 10) : null;
-      if (compUnits && compUnits > 0) {
-        const sfPerUnit = compSF / compUnits;
-        if (sfPerUnit < 200 || sfPerUnit > 2_500) { sqftExcluded++; continue; }
-      }
-
-      // ── Gate 2: similarity ─────────────────────────────────────────────────
-      // Unit count: keep comps within [0.4×, 2.5×] of subject unit count
-      if (subject.units && compUnits) {
-        const ratio = compUnits / subject.units;
-        if (ratio < 0.4 || ratio > 2.5) { similarityExcluded++; continue; }
-      }
-
-      // Year built: keep comps within ±20 years of subject
-      const compYearBuilt = c.year_built != null ? parseInt(String(c.year_built), 10) : null;
-      if (subject.yearBuilt && compYearBuilt) {
-        if (Math.abs(compYearBuilt - subject.yearBuilt) > 20) { similarityExcluded++; continue; }
-      }
-
-      // Asset class: same class or one step adjacent (A↔B, B↔C, C↔D)
-      const subjectClass = (subject.assetClass ?? '').toUpperCase().charAt(0);
-      const compClass    = ((c.property_class ?? c.asset_class ?? '') as string).toUpperCase().charAt(0);
-      if (subjectClass && compClass) {
-        const allowed = CLASS_ADJACENT[subjectClass] ?? [subjectClass];
-        if (!allowed.includes(compClass)) { similarityExcluded++; continue; }
-      }
-
-      // ── Gate 3: stories (optional) ─────────────────────────────────────────
-      // Only applied when both subject and comp have stories data.
-      const compStories    = c.stories != null ? parseInt(String(c.stories), 10) : null;
-      const subjectStories = subject.stories;
-      if (subjectStories && compStories) {
-        if (Math.abs(compStories - subjectStories) > 3) { storiesExcluded++; continue; }
-      }
-
-      psfValues.push(psf);
+      psfValues.push(salePrice / compSF);
     }
 
     if (sqftExcluded > 0) {
@@ -1832,6 +1913,19 @@ export class ValuationGridService {
     }
     if (storiesExcluded > 0) {
       warnings.push(`${storiesExcluded} comp${storiesExcluded !== 1 ? 's' : ''} excluded — more than 3 stories different from subject.`);
+    }
+    if (forcedIncluded > 0) {
+      warnings.push(`${forcedIncluded} comp${forcedIncluded !== 1 ? 's' : ''} force-included by operator (bypassed PSF gates).`);
+    }
+
+    // Gate breakdown evidence lines (always included for transparency)
+    const gateBreakdown: EvidenceLine[] = [
+      { label: 'Gate 1 — sqft excluded',       value: String(sqftExcluded) },
+      { label: 'Gate 2 — similarity excluded',  value: String(similarityExcluded) },
+      { label: 'Gate 3 — stories excluded',     value: String(storiesExcluded) },
+    ];
+    if (forcedIncluded > 0) {
+      gateBreakdown.push({ label: 'Operator force-included', value: String(forcedIncluded) });
     }
 
     // Require at least 3 PSF-valid comps to report a result
@@ -1852,6 +1946,7 @@ export class ValuationGridService {
         evidenceTrail: [
           { label: 'PSF-valid comps', value: String(psfValues.length) },
           { label: 'Status', value: `Need ≥3 comps with reliable sqft data; got ${psfValues.length}` },
+          ...gateBreakdown,
         ],
         warningFlags: [
           ...warnings,
@@ -1897,6 +1992,7 @@ export class ValuationGridService {
         { label: 'PSF Range (P25–P75)', value: `$${p25PSF.toFixed(0)} – $${p75PSF.toFixed(0)}/SF` },
         { label: 'Subject Total SF', value: `${subject.totalSF.toLocaleString()} SF` },
         { label: 'Indicated Value P50', value: fmt$(valP50) },
+        ...gateBreakdown,
       ],
       warningFlags: warnings,
     };
@@ -2942,19 +3038,35 @@ export class ValuationGridService {
 
   async listCompsForReview(dealId: string, asOf?: Date): Promise<CompReviewResult> {
     const compSetService = new (await import('../saleComps/compSet.service')).CompSetService();
-    const criteria = await this.getCompCriteria(dealId);
+
+    // Task #1804: Fetch criteria and subject property in parallel so we have
+    // all data needed to evaluate PSF gates per-comp without extra round trips.
+    const [criteria, subjectRow] = await Promise.all([
+      this.getCompCriteria(dealId),
+      this.pool.query(
+        `SELECT p.latitude, p.longitude,
+                p.units, p.year_built, p.building_class AS asset_class, p.stories
+         FROM deals d
+         LEFT JOIN properties p ON p.deal_id = d.id
+         WHERE d.id = $1::uuid LIMIT 1`,
+        [dealId]
+      ),
+    ]);
+
+    const subjectData = subjectRow.rows[0] ?? null;
+    // Subject fields needed by evaluatePsfGate
+    const subjectForGate = subjectData ? {
+      units:      subjectData.units != null ? parseInt(String(subjectData.units), 10) : null,
+      yearBuilt:  subjectData.year_built != null ? parseInt(String(subjectData.year_built), 10) : null,
+      assetClass: subjectData.asset_class ?? null,
+      stories:    subjectData.stories != null ? parseInt(String(subjectData.stories), 10) : null,
+    } : null;
 
     // 1. Use compSetService as the authoritative source for the scoring comp set
     let compSet = await compSetService.getCompSetByDeal(dealId);
     if (!compSet) {
       // Fall back to generating a comp set if none exists
-      const subjectFallback = await this.pool.query(
-        `SELECT p.latitude, p.longitude FROM deals d
-         LEFT JOIN properties p ON p.deal_id = d.id WHERE d.id = $1::uuid LIMIT 1`,
-        [dealId]
-      );
-      const sf = subjectFallback.rows[0];
-      if (sf?.latitude && sf?.longitude) {
+      if (subjectData?.latitude && subjectData?.longitude) {
         try {
           compSet = await compSetService.generateCompSet({
             deal_id: dealId,
@@ -2985,6 +3097,12 @@ export class ValuationGridService {
       const saleDate = comp.recording_date ?? comp.sale_date;
       const saleDateMs = saleDate ? new Date(saleDate).getTime() : 0;
       const ageMonths = saleDateMs > 0 ? (now - saleDateMs) / (1000 * 60 * 60 * 24 * 30.44) : 999;
+      // Task #1804: Evaluate PSF gate for this comp so the review panel can
+      // show pass/fail status without requiring an extra round trip.
+      const isCustom = customSet.has(String(comp.id)) || opts.manually_added;
+      const psf_gate: PsfGateResult | null = subjectForGate
+        ? evaluatePsfGate(comp, subjectForGate, isCustom)
+        : null;
       return {
         id: String(comp.id),
         address: comp.property_address ?? comp.address ?? '',
@@ -3009,6 +3127,7 @@ export class ValuationGridService {
         staleness_weight: stalenessWeight(ageMonths, criteria.maxAgeMonths),
         excluded: opts.excluded,
         manually_added: opts.manually_added,
+        psf_gate,
       };
     };
 
@@ -3059,7 +3178,8 @@ export class ValuationGridService {
           `SELECT id, sale_date AS recording_date, address AS property_address,
                   units, year_built, asset_class AS property_class,
                   sale_price AS derived_sale_price, price_per_unit,
-                  cap_rate AS implied_cap_rate, source
+                  cap_rate AS implied_cap_rate, source,
+                  building_sf, stories
            FROM market_sale_comps
            WHERE id = ANY($1::uuid[])
              AND (source != 'costar_upload' OR deal_id = $2::uuid OR deal_id IS NULL)`,
@@ -3076,15 +3196,10 @@ export class ValuationGridService {
 
     // 3. Fetch additional candidates from market_sale_comps within 1.5× radius
     //    for the "manual add" pool — only comps NOT already in the comp set.
+    //    Task #1804: include building_sf and stories so PSF gate can be evaluated.
     let additionalCandidates: CompReviewItem[] = [];
     try {
-      const subjectResult = await this.pool.query(
-        `SELECT p.latitude, p.longitude FROM deals d
-         LEFT JOIN properties p ON p.deal_id = d.id WHERE d.id = $1::uuid LIMIT 1`,
-        [dealId]
-      );
-      const subject = subjectResult.rows[0];
-      if (subject?.latitude && subject?.longitude) {
+      if (subjectData?.latitude && subjectData?.longitude) {
         const widerRadius = criteria.radiusMiles * 1.5;
         const candidateResult = await this.pool.query(
           `SELECT
@@ -3092,6 +3207,7 @@ export class ValuationGridService {
              t.units, t.year_built, t.asset_class AS property_class,
              t.sale_date AS recording_date, t.sale_price AS derived_sale_price,
              t.price_per_unit, t.cap_rate AS implied_cap_rate, t.source,
+             t.building_sf, t.stories,
              ROUND((
                point(t.longitude::float, t.latitude::float)
                <@> point($2::float, $1::float)
@@ -3105,7 +3221,7 @@ export class ValuationGridService {
            ORDER BY (point(t.longitude::float, t.latitude::float) <@> point($2::float, $1::float)) ASC,
                     t.sale_date DESC
            LIMIT 150`,
-          [subject.latitude, subject.longitude, widerRadius, dealId]
+          [subjectData.latitude, subjectData.longitude, widerRadius, dealId]
         );
         additionalCandidates = candidateResult.rows
           .filter((r: any) => !activeCompIds.has(String(r.id)))

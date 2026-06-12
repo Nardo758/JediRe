@@ -124,6 +124,13 @@ interface CompCriteria {
   excludedCompIds: string[];
 }
 
+interface PsfGateResult {
+  passed: boolean;
+  failedGate: 'sqft' | 'similarity' | 'stories' | null;
+  reason: string | null;
+  forced: boolean;
+}
+
 interface CompReviewItem {
   id: string;
   address: string;
@@ -145,6 +152,8 @@ interface CompReviewItem {
   manually_added: boolean;
   relevance_score: number | null;
   relevance_tier: string | null;
+  /** PSF gate evaluation for this comp. null when building sqft data is unavailable. */
+  psf_gate: PsfGateResult | null;
 }
 
 interface CompReviewResult {
@@ -1063,6 +1072,69 @@ const TIER_COLOR: Record<string, string> = {
   M2: '#64748b',  // muted slate
 };
 
+// ── Task #1804: PSF Gate Chip ──────────────────────────────────────────────────
+
+const PSF_GATE_LABEL: Record<string, string> = {
+  sqft:       'SQFT',
+  similarity: 'SIM',
+  stories:    'STRY',
+};
+
+function PsfGateChip({ gate }: { gate: PsfGateResult | null }) {
+  if (!gate) return null;
+
+  if (gate.forced) {
+    return (
+      <span
+        title="Force-included by operator — PSF gates bypassed"
+        style={{
+          fontFamily: MONO, fontSize: 7, letterSpacing: 1, fontWeight: 700,
+          color: BT.text.cyan, border: `1px solid ${BT.text.cyan}55`,
+          borderRadius: 2, padding: '0px 3px', cursor: 'help',
+          display: 'inline-flex', alignItems: 'center', gap: 2,
+        }}
+      >
+        PSF FORCED
+      </span>
+    );
+  }
+
+  if (gate.passed) {
+    return (
+      <span
+        title="Passes all PSF gate filters (sqft validity, similarity, stories)"
+        style={{
+          fontFamily: MONO, fontSize: 7, letterSpacing: 1, fontWeight: 700,
+          color: BT.text.green, border: `1px solid ${BT.text.green}55`,
+          borderRadius: 2, padding: '0px 3px', cursor: 'help',
+          display: 'inline-flex', alignItems: 'center', gap: 2,
+        }}
+      >
+        PSF ✓
+      </span>
+    );
+  }
+
+  const gateLabel = gate.failedGate ? (PSF_GATE_LABEL[gate.failedGate] ?? gate.failedGate.toUpperCase()) : '?';
+  const tooltip = gate.reason
+    ? `PSF gate failed (${gate.failedGate}): ${gate.reason}`
+    : `PSF gate failed (${gate.failedGate})`;
+
+  return (
+    <span
+      title={tooltip}
+      style={{
+        fontFamily: MONO, fontSize: 7, letterSpacing: 1, fontWeight: 700,
+        color: BT.met.risk, border: `1px solid ${BT.met.risk}55`,
+        borderRadius: 2, padding: '0px 3px', cursor: 'help',
+        display: 'inline-flex', alignItems: 'center', gap: 2,
+      }}
+    >
+      PSF ✗ {gateLabel}
+    </span>
+  );
+}
+
 function CompRow({ comp, saving, onToggle, onAdd, isCandidate }: {
   comp: CompReviewItem;
   saving: boolean;
@@ -1090,7 +1162,7 @@ function CompRow({ comp, saving, onToggle, onAdd, isCandidate }: {
         <div style={{ fontFamily: MONO, fontSize: 10, color: comp.excluded ? BT.text.muted : BT.text.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {comp.address}
         </div>
-        <div style={{ display: 'flex', gap: 4, marginTop: 2, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 4, marginTop: 2, alignItems: 'center', flexWrap: 'wrap' }}>
           <StalenessChip label={comp.staleness_label} />
           {comp.relevance_tier && tierColor && (
             <span style={{
@@ -1101,6 +1173,7 @@ function CompRow({ comp, saving, onToggle, onAdd, isCandidate }: {
               {comp.relevance_tier}
             </span>
           )}
+          <PsfGateChip gate={comp.psf_gate ?? null} />
           {comp.manually_added && (
             <span style={{
               fontFamily: MONO, fontSize: 7, letterSpacing: 1, color: BT.text.cyan,
