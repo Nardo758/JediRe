@@ -121,6 +121,8 @@ export interface SubjectProperty {
   assetClass: string | null;
   /** Year built from properties row — used as a factor in comp relevance scoring. */
   yearBuilt: number | null;
+  /** Number of stories from properties row — used as an optional PSF comp similarity filter. */
+  stories: number | null;
   city: string;
   state: string;
   submarket: string | null;
@@ -481,6 +483,7 @@ export class ValuationGridService {
            p.longitude,
            p.building_class                          AS asset_class,
            p.year_built,
+           p.stories,
            p.submarket_id                            AS submarket,
            p.acquisition_price                      AS purchase_price,
            da.valuation_override_lv                 AS valuation_override_lv,
@@ -591,6 +594,7 @@ export class ValuationGridService {
       holdPeriodYearsSource,
       assetClass: row.asset_class || null,
       yearBuilt: row.year_built ? parseInt(String(row.year_built), 10) : null,
+      stories: row.stories ? parseInt(String(row.stories), 10) : null,
       city: row.city || '',
       state: row.state || '',
       submarket: row.submarket || null,
@@ -1731,41 +1735,166 @@ export class ValuationGridService {
   }
 
   // ── Method 3b: Sales Comp PSF ─────────────────────────────────────────────
+  //
+  // Computes PSF indicated value from individual comps that pass three gates:
+  //   1. Sqft validity  — comp must have a plausible total_sf and SF/unit ratio
+  //   2. Similarity     — year built ±20 yrs, unit count ×0.4–2.5, class match/adjacent
+  //   3. Stories        — optional ±3 stories filter when both subject and comp have data
+  //
+  // The pre-aggregated median_price_per_sf stored on the comp set is NOT used here
+  // because it is computed before any filtering and can be severely distorted by
+  // comps with sparse or incorrect sqft data. Instead this method recomputes PSF
+  // from each comp's derived_sale_price ÷ building_sf after the gates are applied.
+  // Requires ≥3 valid comps; degrades to INSUFFICIENT otherwise.
 
   private computeSalesCompPSF(
     ppuMethod: ValuationMethod & { _compSetRaw?: any },
     subject: SubjectProperty
   ): ValuationMethod | null {
     if (!subject.totalSF) return null;
+
     const compSet = (ppuMethod as any)._compSetRaw;
-    if (!compSet || !compSet.median_price_per_sf || safeFloat(compSet.median_price_per_sf) <= 0) return null;
-
-    const medianPSF = safeFloat(compSet.median_price_per_sf);
-    if (medianPSF <= 0) return null;
-
-    const valP50 = medianPSF * subject.totalSF;
-    const valP25 = valP50 * 0.85;
-    const valP75 = valP50 * 1.15;
-    const ppu = subject.units ? valP50 / subject.units : null;
+    const comps: any[] = compSet?.comps ?? [];
+    if (!compSet || comps.length === 0) return null;
 
     const warnings: string[] = [];
-    if (!subject.totalSF) warnings.push('Subject total SF not available.');
+    let sqftExcluded = 0;
+    let similarityExcluded = 0;
+    let storiesExcluded = 0;
+
+    // Class adjacency: a comp class must be the same as or one step away from subject.
+    const CLASS_ADJACENT: Record<string, string[]> = {
+      A: ['A', 'B'],
+      B: ['A', 'B', 'C'],
+      C: ['B', 'C', 'D'],
+      D: ['C', 'D'],
+    };
+
+    const psfValues: number[] = [];
+
+    for (const c of comps) {
+      const salePrice = safeFloat(c.derived_sale_price, 0);
+      const compSF    = safeFloat(c.building_sf, 0);
+
+      // ── Gate 1: sqft validity ──────────────────────────────────────────────
+      if (salePrice <= 0 || compSF <= 0) { sqftExcluded++; continue; }
+      // Implausible total sqft: below 500 SF (single-family noise) or above 1M SF
+      if (compSF < 500 || compSF > 1_000_000) { sqftExcluded++; continue; }
+
+      const psf = salePrice / compSF;
+      // Implausible PSF for multifamily (< $10 or > $5,000/SF)
+      if (psf < 10 || psf > 5_000) { sqftExcluded++; continue; }
+
+      // Implausible SF/unit ratio: < 200 SF/unit or > 2,500 SF/unit
+      const compUnits = c.units != null ? parseInt(String(c.units), 10) : null;
+      if (compUnits && compUnits > 0) {
+        const sfPerUnit = compSF / compUnits;
+        if (sfPerUnit < 200 || sfPerUnit > 2_500) { sqftExcluded++; continue; }
+      }
+
+      // ── Gate 2: similarity ─────────────────────────────────────────────────
+      // Unit count: keep comps within [0.4×, 2.5×] of subject unit count
+      if (subject.units && compUnits) {
+        const ratio = compUnits / subject.units;
+        if (ratio < 0.4 || ratio > 2.5) { similarityExcluded++; continue; }
+      }
+
+      // Year built: keep comps within ±20 years of subject
+      const compYearBuilt = c.year_built != null ? parseInt(String(c.year_built), 10) : null;
+      if (subject.yearBuilt && compYearBuilt) {
+        if (Math.abs(compYearBuilt - subject.yearBuilt) > 20) { similarityExcluded++; continue; }
+      }
+
+      // Asset class: same class or one step adjacent (A↔B, B↔C, C↔D)
+      const subjectClass = (subject.assetClass ?? '').toUpperCase().charAt(0);
+      const compClass    = ((c.property_class ?? c.asset_class ?? '') as string).toUpperCase().charAt(0);
+      if (subjectClass && compClass) {
+        const allowed = CLASS_ADJACENT[subjectClass] ?? [subjectClass];
+        if (!allowed.includes(compClass)) { similarityExcluded++; continue; }
+      }
+
+      // ── Gate 3: stories (optional) ─────────────────────────────────────────
+      // Only applied when both subject and comp have stories data.
+      const compStories    = c.stories != null ? parseInt(String(c.stories), 10) : null;
+      const subjectStories = subject.stories;
+      if (subjectStories && compStories) {
+        if (Math.abs(compStories - subjectStories) > 3) { storiesExcluded++; continue; }
+      }
+
+      psfValues.push(psf);
+    }
+
+    if (sqftExcluded > 0) {
+      warnings.push(`${sqftExcluded} comp${sqftExcluded !== 1 ? 's' : ''} excluded — missing or implausible sqft data.`);
+    }
+    if (similarityExcluded > 0) {
+      warnings.push(`${similarityExcluded} comp${similarityExcluded !== 1 ? 's' : ''} excluded — outside size, vintage, or class similarity bands.`);
+    }
+    if (storiesExcluded > 0) {
+      warnings.push(`${storiesExcluded} comp${storiesExcluded !== 1 ? 's' : ''} excluded — more than 3 stories different from subject.`);
+    }
+
+    // Require at least 3 PSF-valid comps to report a result
+    if (psfValues.length < 3) {
+      return {
+        id: 'sales_comp_psf',
+        label: 'Sales Comp PSF',
+        direction: 'top_down',
+        status: 'insufficient',
+        confidence: 'INSUFFICIENT',
+        indicatedValueP25: null,
+        indicatedValueP50: null,
+        indicatedValueP75: null,
+        indicatedPPU: null,
+        indicatedPSF: null,
+        compCount: psfValues.length,
+        sourceProvenance: 'Sales Comp PSF — insufficient sqft-valid comps',
+        evidenceTrail: [
+          { label: 'PSF-valid comps', value: String(psfValues.length) },
+          { label: 'Status', value: `Need ≥3 comps with reliable sqft data; got ${psfValues.length}` },
+        ],
+        warningFlags: [
+          ...warnings,
+          `Only ${psfValues.length} comp${psfValues.length !== 1 ? 's' : ''} passed sqft and similarity gates — PSF method requires ≥3.`,
+        ],
+      };
+    }
+
+    // Compute median and empirical P25/P75 from filtered PSF values
+    psfValues.sort((a, b) => a - b);
+    const n         = psfValues.length;
+    const medIdx    = Math.floor(n / 2);
+    const medianPSF = n % 2 === 1
+      ? psfValues[medIdx]
+      : (psfValues[medIdx - 1] + psfValues[medIdx]) / 2;
+
+    const p25PSF = psfValues[Math.max(0, Math.floor(n * 0.25))];
+    const p75PSF = psfValues[Math.min(n - 1, Math.floor(n * 0.75))];
+
+    const valP50 = medianPSF * subject.totalSF;
+    const valP25 = p25PSF * subject.totalSF;
+    const valP75 = p75PSF * subject.totalSF;
+    const ppu    = subject.units ? valP50 / subject.units : null;
+
+    const confidence = ppuMethod.confidence;
 
     return {
       id: 'sales_comp_psf',
       label: 'Sales Comp PSF',
       direction: 'top_down',
       status: 'active',
-      confidence: ppuMethod.confidence,
+      confidence,
       indicatedValueP25: valP25,
       indicatedValueP50: valP50,
       indicatedValueP75: valP75,
       indicatedPPU: ppu,
       indicatedPSF: medianPSF,
-      compCount: ppuMethod.compCount,
-      sourceProvenance: `${ppuMethod.compCount} market sale comps (PSF)`,
+      compCount: n,
+      sourceProvenance: `${n} market sale comps (PSF, sqft-validated)`,
       evidenceTrail: [
-        { label: 'Median PSF', value: `$${medianPSF.toFixed(0)}/SF`, source: 'market_sale_comps' },
+        { label: 'PSF-valid comps', value: String(n), source: 'market_sale_comps' },
+        { label: 'Median PSF', value: `$${medianPSF.toFixed(0)}/SF` },
+        { label: 'PSF Range (P25–P75)', value: `$${p25PSF.toFixed(0)} – $${p75PSF.toFixed(0)}/SF` },
         { label: 'Subject Total SF', value: `${subject.totalSF.toLocaleString()} SF` },
         { label: 'Indicated Value P50', value: fmt$(valP50) },
       ],
