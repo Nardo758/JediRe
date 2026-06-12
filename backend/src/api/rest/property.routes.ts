@@ -265,6 +265,63 @@ router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response,
 });
 
 /**
+ * PATCH /api/v1/properties/:id
+ * Partial update — currently limited to `stories` so analysts can manually
+ * enter the building story count when the OM doesn't include it.
+ * Writes directly to properties.stories, bypassing the subject-population
+ * resolution chain (which only reads from extraction sources).
+ */
+router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await query('SELECT id FROM properties WHERE id = $1', [id]);
+    if (existing.rows.length === 0) {
+      throw new AppError(404, 'Property not found');
+    }
+
+    const allowedFields = ['stories'];
+    const setClause: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        if (field === 'stories') {
+          const val = parseInt(String(req.body[field]), 10);
+          if (isNaN(val) || val < 1 || val > 200) {
+            throw new AppError(400, 'stories must be an integer between 1 and 200');
+          }
+          setClause.push(`${field} = $${paramIndex}`);
+          params.push(val);
+        } else {
+          setClause.push(`${field} = $${paramIndex}`);
+          params.push(req.body[field]);
+        }
+        paramIndex++;
+      }
+    }
+
+    if (setClause.length === 0) {
+      throw new AppError(400, 'No patchable fields provided. Supported: stories');
+    }
+
+    params.push(id);
+
+    const result = await query(
+      `UPDATE properties SET ${setClause.join(', ')}, updated_at = NOW()
+       WHERE id = $${paramIndex}
+       RETURNING id, stories`,
+      params
+    );
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * DELETE /api/v1/properties/:id
  * Delete property
  */

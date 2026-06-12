@@ -96,6 +96,13 @@ interface SubjectProperty {
   noi: number | null; noiSource: string;
   assetClass: string | null; city: string; state: string; submarket: string | null;
 }
+interface SubjectMissingField {
+  field: string;
+  label: string;
+  suggestion: string;
+  blocksModules: string[];
+}
+
 interface ValuationGridResult {
   dealId: string; computedAt: string; subject: SubjectProperty;
   methods: ValuationMethod[];
@@ -108,6 +115,11 @@ interface ValuationGridResult {
     /** Task #1417 (6.3) */
     valuationConfidence?: ConfidenceLevel;
     valuationConfidenceText?: string;
+  };
+  subjectCompleteness?: {
+    complete: boolean;
+    missingFields: SubjectMissingField[];
+    availableFields: string[];
   };
 }
 
@@ -1303,6 +1315,10 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
   const [showCompReview, setShowCompReview] = useState(false);
   const [costarMissing, setCostarMissing] = useState(false);
   const [divergences, setDivergences] = useState<FieldDivergence[]>([]);
+  const [storiesInput, setStoriesInput] = useState('');
+  const [storiesSaving, setStoriesSaving] = useState(false);
+  const [storiesSavedLocally, setStoriesSavedLocally] = useState<number | null>(null);
+  const [storiesSaveError, setStoriesSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!dealId) return;
@@ -1356,6 +1372,24 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
   }, [divergences]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleStoriesSave = useCallback(async () => {
+    const val = parseInt(storiesInput, 10);
+    if (isNaN(val) || val < 1 || val > 200) return;
+    setStoriesSaving(true);
+    setStoriesSaveError(null);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/property`, { stories: val });
+      setStoriesSavedLocally(val);
+      setStoriesInput('');
+      // Reload the grid so the PSF similarity filter activates immediately
+      load();
+    } catch (err: any) {
+      setStoriesSaveError(err?.response?.data?.error ?? err?.message ?? 'Save failed');
+    } finally {
+      setStoriesSaving(false);
+    }
+  }, [dealId, storiesInput, load]);
 
   const purchasePrice = data?.subject?.purchasePrice ?? null;
 
@@ -1494,6 +1528,64 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
 
       {/* Subject summary */}
       <SubjectSummary subject={data.subject} purchasePrice={purchasePrice} />
+
+      {/* ── Missing stories prompt — shown when PSF comps exist but stories is unset ── */}
+      {(() => {
+        const storiesMissing = data.subjectCompleteness?.missingFields?.some(f => f.field === 'stories');
+        if (!storiesMissing || storiesSavedLocally != null) return null;
+        return (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+            padding: '5px 12px',
+            background: '#A78BFA08',
+            borderBottom: `1px solid #A78BFA33`,
+            fontFamily: MONO,
+          }}>
+            <span style={{ fontSize: 10, color: '#A78BFA' }}>◈</span>
+            <span style={{ fontSize: 8, color: '#A78BFA', fontWeight: 700, letterSpacing: 0.5 }}>
+              STORIES NOT SET
+            </span>
+            <span style={{ fontSize: 8, color: '#94A3B8' }}>
+              · Enter building stories to activate the ±3-stories PSF comp similarity filter
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+              <input
+                type="number"
+                min={1}
+                max={200}
+                placeholder="# floors"
+                value={storiesInput}
+                onChange={e => setStoriesInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleStoriesSave(); }}
+                style={{
+                  width: 68, background: '#0D1117', border: '1px solid #A78BFA44',
+                  borderRadius: 2, color: '#E8ECF1', fontFamily: MONO, fontSize: 9,
+                  padding: '2px 5px', textAlign: 'right',
+                }}
+              />
+              <button
+                onClick={handleStoriesSave}
+                disabled={storiesSaving || !storiesInput}
+                style={{
+                  fontSize: 7.5, fontWeight: 700, color: '#A78BFA',
+                  letterSpacing: 0.5, background: 'none',
+                  padding: '2px 7px', border: '1px solid #A78BFA44',
+                  borderRadius: 2, cursor: storiesSaving ? 'default' : 'pointer',
+                  opacity: (!storiesInput || storiesSaving) ? 0.45 : 1,
+                  fontFamily: MONO,
+                }}
+              >
+                {storiesSaving ? '…' : 'SAVE →'}
+              </button>
+            </div>
+            {storiesSaveError && (
+              <span style={{ fontSize: 7, fontFamily: MONO, color: '#FF4757', marginLeft: 4 }}>
+                {storiesSaveError}
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Convergence / reconciliation banner */}
       {rec.activeMethodCount > 0 && (

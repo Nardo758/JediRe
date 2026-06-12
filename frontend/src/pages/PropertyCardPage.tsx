@@ -914,6 +914,11 @@ export default function PropertyDetailsPage() {
   const [pcImpliedCapLoading, setPcImpliedCapLoading] = useState(false);
   const [compSortField, setCompSortField] = useState<'date' | 'ppu' | 'cap'>('date');
   const [compVintageBand, setCompVintageBand] = useState<string | null>(null);
+  const [storiesEditing, setStoriesEditing] = useState(false);
+  const [storiesInputVal, setStoriesInputVal] = useState('');
+  const [storiesSaving, setStoriesSaving] = useState(false);
+  const [storiesOverride, setStoriesOverride] = useState<number | null>(null);
+  const [storiesSaveError, setStoriesSaveError] = useState<string | null>(null);
 
   const navState = (location.state || {}) as {
     propertyName?: string;
@@ -1104,6 +1109,27 @@ export default function PropertyDetailsPage() {
     return () => obs.disconnect();
   }, []);
 
+  // ─── STORIES SAVE HANDLER ────────────────────────────────
+  const handleStoriesSave = useCallback(async () => {
+    const val = parseInt(storiesInputVal, 10);
+    if (isNaN(val) || val < 1 || val > 200) return;
+    setStoriesSaving(true);
+    setStoriesSaveError(null);
+    try {
+      if (marketCompsDealId) {
+        await apiClient.patch(`/api/v1/deals/${marketCompsDealId}/property`, { stories: val });
+      } else if (id && UUID_RE.test(id)) {
+        await apiClient.patch(`/api/v1/properties/${id}`, { stories: val });
+      }
+      setStoriesOverride(val);
+      setStoriesEditing(false);
+    } catch (err: any) {
+      setStoriesSaveError(err?.response?.data?.error ?? err?.message ?? 'Save failed');
+    } finally {
+      setStoriesSaving(false);
+    }
+  }, [storiesInputVal, marketCompsDealId, id]);
+
   // ─── OVERVIEW TAB ────────────────────────────────────────
   const OverviewTab = () => (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 8, animation: "fadeIn 0.15s" }}>
@@ -1115,7 +1141,56 @@ export default function PropertyDetailsPage() {
           <DataRow label="Type" value={p.type} sub={`· ${p.subtype}`} />
           <DataRow label="Class" value={p.class} />
           <DataRow label="Units" value={p.units} />
-          <DataRow label="Stories" value={p.stories ?? "—"} />
+          {/* Editable Stories row */}
+          {storiesEditing ? (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 10px", borderBottom: `1px solid ${T.border.subtle}08` }}>
+              <span style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.secondary }}>Stories</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={storiesInputVal}
+                  onChange={e => setStoriesInputVal(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleStoriesSave(); if (e.key === 'Escape') setStoriesEditing(false); }}
+                  autoFocus
+                  style={{ width: 52, background: T.bg.input, border: `1px solid ${T.border.bright}`, borderRadius: 2, color: T.text.primary, fontFamily: T.font.mono, fontSize: 10, padding: "1px 4px", textAlign: "right" }}
+                />
+                <button
+                  onClick={handleStoriesSave}
+                  disabled={storiesSaving}
+                  style={{ fontSize: 8, fontFamily: T.font.mono, background: T.text.green, color: "#000", border: "none", borderRadius: 2, padding: "2px 6px", cursor: "pointer", opacity: storiesSaving ? 0.5 : 1 }}
+                >
+                  {storiesSaving ? "…" : "SAVE"}
+                </button>
+                <button
+                  onClick={() => { setStoriesEditing(false); setStoriesSaveError(null); }}
+                  style={{ fontSize: 8, fontFamily: T.font.mono, background: "transparent", color: T.text.muted, border: `1px solid ${T.border.subtle}`, borderRadius: 2, padding: "2px 6px", cursor: "pointer" }}
+                >
+                  ✕
+                </button>
+              </div>
+              {storiesSaveError && (
+                <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.red, marginTop: 2, display: 'block', textAlign: 'right' }}>
+                  {storiesSaveError}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 10px", borderBottom: `1px solid ${T.border.subtle}08`, cursor: "pointer" }}
+              title="Click to enter stories"
+              onClick={() => { setStoriesInputVal(String(storiesOverride ?? p.stories ?? '')); setStoriesEditing(true); }}
+            >
+              <span style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.secondary }}>Stories</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 600, color: (storiesOverride ?? p.stories) ? T.text.primary : T.text.muted }}>
+                  {storiesOverride ?? p.stories ?? <span style={{ fontStyle: "italic", fontSize: 8 }}>enter…</span>}
+                </span>
+                <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, opacity: 0.6 }}>✎</span>
+              </div>
+            </div>
+          )}
           <DataRow label="Year Built" value={p.yearBuilt} sub={p.yearRenovated ? `· Renov ${p.yearRenovated}` : ""} />
           <DataRow label="Lot Size" value={`${p.lotSizeAc} ac`} sub={`${p.lotSizeSF.toLocaleString()} SF`} />
           <DataRow label="Building SF" value={`${p.buildingSF.toLocaleString()}`} />

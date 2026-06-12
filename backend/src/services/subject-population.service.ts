@@ -116,7 +116,7 @@ const FIELD_META: Record<string, {
   },
   stories: {
     label: 'Number of stories',
-    suggestion: 'Upload an Offering Memorandum — the OM parser captures stories automatically. Without it, the ±3-stories PSF comp similarity filter is skipped.',
+    suggestion: 'Enter stories manually in the property card (PROPERTY VITALS → Stories), or upload an Offering Memorandum so the OM parser captures it automatically. Without it, the ±3-stories PSF comp similarity filter is skipped.',
     blocksModules: ['sales_comp_psf'],
     required: false,
   },
