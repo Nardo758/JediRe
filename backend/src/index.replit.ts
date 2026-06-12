@@ -243,6 +243,7 @@ import { dataCorpusReminderCron } from './inngest/functions/dataCorpusReminderCr
 import { weeklyCorpusDigestCron } from './inngest/functions/weeklyCorpusDigestCron';
 import { trafficCalibrationCron } from './inngest/functions/trafficCalibrationCron';
 import { correlationRollingComputeCron } from './inngest/functions/correlation-rolling-compute';
+import { scenarioArchivalCron } from './inngest/functions/scenarioArchivalCron';
 import { nightlyEventExtractionCron } from './inngest/functions/nightly-event-extraction';
 import { nightlyApartmentSyncCron } from './inngest/functions/nightly-apartment-sync';
 import { calibrationRealizationCron } from './inngest/functions/calibrationRealizationCron';
@@ -289,6 +290,8 @@ app.use(
       // trafficCalibrationCron,
       // Task #919: nightly rolling correlation compute (12m + 36m windows → correlation_history)
       correlationRollingComputeCron,
+      // M40 Phase 5: daily scenario archival (auto-archive + compression + hard-delete)
+      scenarioArchivalCron,
       // Task #1078: nightly market event extraction from news_article_cache (03:00 UTC)
       nightlyEventExtractionCron,
       // Task #635: nightly apartment locator sync — all metros (04:00 UTC)

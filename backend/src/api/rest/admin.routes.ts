@@ -8,7 +8,7 @@ import { AgentRuntime } from '../../agents/runtime/AgentRuntime';
 import { BudgetEnforcer } from '../../agents/runtime/BudgetEnforcer';
 import { BudgetExceededError } from '../../agents/runtime/types';
 import type { AgentConfig } from '../../agents/runtime/types';
-import { StubMeteringAdapter } from '../../agents/runtime/StubMeteringAdapter';
+import { scenarioArchivalService } from '../../services/scenario-archival.service';
 
 const router = Router();
 
@@ -1907,6 +1907,43 @@ router.delete('/pricing-alerts/:id', requireAdminAuth, async (req: Authenticated
   } catch (err: any) {
     logger.error('pricing-alerts delete error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── M40 Phase 5 — Scenario Archival Admin ───────────────────────────────────
+
+router.post('/scenario-archival/run', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const report = await scenarioArchivalService.runDaily();
+    res.json({ success: true, data: report });
+  } catch (err: any) {
+    logger.error('[Admin] Scenario archival manual trigger failed', { err: err?.message ?? String(err) });
+    res.status(500).json({ success: false, error: err?.message ?? 'Archival failed' });
+  }
+});
+
+router.get('/scenario-archival/status', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const [active, archived, deleted, agent30d, agent90d] = await Promise.all([
+      query(`SELECT COUNT(*) as cnt FROM deal_underwriting_scenarios WHERE is_active = TRUE AND deleted_at IS NULL`).then(r => parseInt(r.rows[0].cnt)),
+      query(`SELECT COUNT(*) as cnt FROM deal_underwriting_scenarios WHERE archived_at IS NOT NULL AND deleted_at IS NULL`).then(r => parseInt(r.rows[0].cnt)),
+      query(`SELECT COUNT(*) as cnt FROM deal_underwriting_scenarios WHERE deleted_at IS NOT NULL`).then(r => parseInt(r.rows[0].cnt)),
+      query(`SELECT COUNT(*) as cnt FROM deal_underwriting_scenarios WHERE created_by = 'agent' AND created_at < NOW() - INTERVAL '30 days' AND archived_at IS NULL AND deleted_at IS NULL`).then(r => parseInt(r.rows[0].cnt)),
+      query(`SELECT COUNT(*) as cnt FROM deal_underwriting_scenarios WHERE created_by = 'agent' AND created_at < NOW() - INTERVAL '90 days' AND archived_at IS NULL AND deleted_at IS NULL`).then(r => parseInt(r.rows[0].cnt)),
+    ]);
+    res.json({
+      success: true,
+      data: {
+        active_scenarios: active,
+        archived_scenarios: archived,
+        deleted_scenarios: deleted,
+        agent_scenarios_older_than_30d: agent30d,
+        agent_scenarios_older_than_90d: agent90d,
+      },
+    });
+  } catch (err: any) {
+    logger.error('[Admin] Scenario archival status query failed', { err: err?.message ?? String(err) });
+    res.status(500).json({ success: false, error: err?.message ?? 'Status query failed' });
   }
 });
 
