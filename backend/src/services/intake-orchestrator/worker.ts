@@ -16,6 +16,7 @@
 
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import { emailService } from '../email.service';
 import { municipalEnrichment } from '../municipal-enrichment';
 import { stripUnitSuffix } from '../municipal-enrichment/address-normalize';
 import { censusGeocode } from '../geocoder/census/census-geocoder.client';
@@ -869,6 +870,204 @@ async function processJob(job: {
           `[intake-worker] job ${id} → blocked_needs_user (parcel_id_conflict: ` +
           `"${parcel_id}" [source_data] vs "${municipal.parcel_id}" [municipal_lookup])`,
         );
+
+        // ── Conflict alert email (one per conflict event, non-fatal) ──────────
+        //
+        // Dedup uses two persistent DB columns (not enrichment_log, which is
+        // reset to '[]' on every requeue by PATCH/POST /user-input):
+        //
+        //   conflict_alert_sent_at     — when the last successful full-delivery
+        //                                alert was dispatched
+        //   conflict_alert_fingerprint — sorted canonical string of the two
+        //                                parcel IDs that produced the conflict
+        //
+        // Same fingerprint AND sent_at set → same event → skip.
+        // Different fingerprint (new conflict pair) → allow fresh alert.
+        //
+        // Recipients — account-scoped, no broad fallbacks:
+        //   1. source_data.uploaded_by → users.email  (direct job-owner lookup)
+        //   2. file_id → data_library_files.uploaded_by → users.email (FK chain)
+        //   3. INTAKE_ALERT_EMAILS env var — non-production environments only
+        //   If nothing resolves, log a warning and skip; never broadcast.
+        //
+        // Dedup marker is only set when ALL required recipients received the
+        // message — partial delivery leaves the marker unset so a future
+        // re-queue can retry sending to the missed recipients.
+        try {
+          // Build a stable fingerprint; sort so order of discovery is irrelevant.
+          const fpParts = [parcel_id, municipal.parcel_id].sort();
+          const currentFingerprint = fpParts.join('|||');
+
+          const alertFlagRow = await query<{
+            conflict_alert_sent_at: string | null;
+            conflict_alert_fingerprint: string | null;
+          }>(
+            `SELECT conflict_alert_sent_at, conflict_alert_fingerprint
+               FROM intake_jobs WHERE id = $1`,
+            [id],
+          );
+          const storedFingerprint = alertFlagRow.rows[0]?.conflict_alert_fingerprint ?? null;
+          const alreadySentForThisEvent =
+            !!(alertFlagRow.rows[0]?.conflict_alert_sent_at) &&
+            storedFingerprint === currentFingerprint;
+
+          if (!alreadySentForThisEvent) {
+            // ── Resolve recipients (account-scoped) ──────────────────────
+            let recipients: string[] = [];
+
+            // 1. source_data.uploaded_by — stored in JSONB at intake creation
+            //    by both the archive upload route and data-library-upload service.
+            //    This is the most direct job-owner → email path.
+            const sdUploadedBy = (sd.uploaded_by as string | undefined)?.trim() || null;
+            if (sdUploadedBy) {
+              const ownerResult = await query<{ email: string }>(
+                `SELECT email FROM users
+                  WHERE id = $1
+                    AND email IS NOT NULL
+                    AND is_active = true
+                  LIMIT 1`,
+                [sdUploadedBy],
+              );
+              recipients = ownerResult.rows.map((r) => r.email).filter(Boolean);
+            }
+
+            // 2. file FK chain — fallback for jobs where source_data lacks
+            //    uploaded_by (e.g. older rows created before the field existed).
+            if (recipients.length === 0 && file_id) {
+              const uploaderResult = await query<{ email: string }>(
+                `SELECT u.email
+                   FROM data_library_files dlf
+                   JOIN users u ON u.id = dlf.uploaded_by
+                  WHERE dlf.id = $1
+                    AND u.email IS NOT NULL
+                    AND u.is_active = true
+                  LIMIT 1`,
+                [file_id],
+              );
+              recipients = uploaderResult.rows.map((r) => r.email).filter(Boolean);
+            }
+
+            // 3. INTAKE_ALERT_EMAILS — non-production override only.
+            //    In production this path is intentionally disabled to prevent
+            //    cross-account information disclosure via a shared env var.
+            if (
+              recipients.length === 0 &&
+              process.env.NODE_ENV !== 'production'
+            ) {
+              const envEmails = (process.env.INTAKE_ALERT_EMAILS ?? '')
+                .split(',')
+                .map((e) => e.trim())
+                .filter(Boolean);
+              recipients = envEmails;
+            }
+
+            if (recipients.length === 0) {
+              logger.warn(
+                `[intake-worker] job ${id} conflict alert: no account-scoped ` +
+                `recipient resolved — ensure the file has an uploader or set ` +
+                `source_data.uploaded_by at job creation`,
+              );
+            } else {
+              // ── Build absolute inbox deep link ──────────────────────────
+              const rawBase: string =
+                process.env.APP_URL ??
+                process.env.FRONTEND_URL ??
+                (process.env.REPLIT_DEV_DOMAIN
+                  ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+                  : 'http://localhost:3000');
+              const inboxUrl = `${rawBase.replace(/\/$/, '')}/archive/inbox`;
+
+              const propertyLabel =
+                (sd.property_name as string | undefined)?.trim() ||
+                (sd.name as string | undefined)?.trim() ||
+                parcel_id ||
+                id;
+
+              let sentCount = 0;
+              const sendErrors: string[] = [];
+
+              for (const email of recipients) {
+                try {
+                  await emailService.sendParcelConflictAlert({
+                    to: email,
+                    jobId: id,
+                    propertyLabel,
+                    valueA: parcel_id,
+                    sourceA: 'source_data',
+                    valueB: municipal.parcel_id,
+                    sourceB: 'municipal_lookup',
+                    inboxUrl,
+                  });
+                  sentCount++;
+                } catch (perRecipientErr: any) {
+                  const msg = perRecipientErr?.message ?? String(perRecipientErr);
+                  logger.warn(
+                    `[intake-worker] job ${id} conflict alert failed for ${email}: ${msg}`,
+                  );
+                  sendErrors.push(`${email}: ${msg}`);
+                }
+              }
+
+              if (sentCount === recipients.length) {
+                // All recipients delivered — set durable dedup marker so the
+                // same conflict pair never triggers a second alert.
+                await query(
+                  `UPDATE intake_jobs
+                      SET conflict_alert_sent_at    = NOW(),
+                          conflict_alert_fingerprint = $1
+                    WHERE id = $2`,
+                  [currentFingerprint, id],
+                );
+                await appendLog(id, {
+                  step: 'conflict_alert_sent',
+                  status: 'ok',
+                  ts: ts(),
+                  detail: {
+                    sent_count: sentCount,
+                    fingerprint: currentFingerprint,
+                    provider: emailService.providerName(),
+                  },
+                });
+                logger.info(
+                  `[intake-worker] job ${id} conflict alert sent to all ` +
+                  `${sentCount} recipient(s)`,
+                );
+              } else {
+                // Partial or total delivery failure — do NOT set dedup marker
+                // so the next re-queue can retry the full recipient list.
+                await appendLog(id, {
+                  step: 'conflict_alert_sent',
+                  status: sentCount > 0 ? 'ok' : 'error',
+                  ts: ts(),
+                  detail: {
+                    sent_count: sentCount,
+                    total_recipients: recipients.length,
+                    errors: sendErrors,
+                    note: 'Dedup marker not set — retry on next re-queue',
+                  },
+                }).catch(() => {});
+                logger.warn(
+                  `[intake-worker] job ${id} conflict alert partial delivery ` +
+                  `${sentCount}/${recipients.length} — dedup marker withheld`,
+                );
+              }
+            }
+          }
+        } catch (alertErr: any) {
+          // Alert infrastructure failure is non-fatal — job is already blocked,
+          // analyst will see it in the Inbox UI even without an email.
+          logger.warn(
+            `[intake-worker] job ${id} failed to send conflict alert: ` +
+            `${alertErr?.message ?? String(alertErr)}`,
+          );
+          await appendLog(id, {
+            step: 'conflict_alert_sent',
+            status: 'error',
+            ts: ts(),
+            detail: { error: alertErr?.message ?? String(alertErr) },
+          }).catch(() => {});
+        }
+
         return; // Analyst resolves; requeue will restart the chain with the winning ID.
       } else {
         // (C) No pre-existing parcel_id — municipal result wins without conflict.
