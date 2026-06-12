@@ -1045,7 +1045,23 @@ export class TrafficPredictionEngine {
       }
     }
 
-    const marketResearch = await marketResearchEngine.getCachedReport(propertyId, 24);
+    // Market research is keyed by deal_id in market_research_reports.
+    // Resolve deal_id from property_id when not passed in.
+    let marketResearchKey = dealId;
+    if (!marketResearchKey) {
+      try {
+        const dealLookup = await pool.query<{ id: string }>(
+          `SELECT id FROM deals WHERE property_id = $1 LIMIT 1`,
+          [propertyId]
+        );
+        if (dealLookup.rows.length > 0) {
+          marketResearchKey = dealLookup.rows[0].id;
+        }
+      } catch {
+        // Non-blocking — falls back to propertyId key
+      }
+    }
+    const marketResearch = await marketResearchEngine.getCachedReport(marketResearchKey ?? propertyId, 24);
     
     if (!marketResearch) {
       throw new Error('Market research required for traffic prediction. Generate market report first.');
@@ -1116,8 +1132,9 @@ export class TrafficPredictionEngine {
     //   2. Starting state drives mode-dispatched prediction paths (§4.4)
     let earlyResolvedCoefficients: ResolvedCoefficients | null = null;
     let earlyStartingState: StartingState | null = null;
+    let actualsAnchor: { weeklyInquiries: number; monthsOfData: number; avgOccupancy: number } | null = null;
     try {
-      [earlyResolvedCoefficients, earlyStartingState] = await Promise.all([
+      [earlyResolvedCoefficients, earlyStartingState, actualsAnchor] = await Promise.all([
         this.coefficientResolver.resolveForDeal(
           dealId ?? null,
           property.submarket_id || null,
@@ -1126,6 +1143,7 @@ export class TrafficPredictionEngine {
           property.msa_id || null,
         ),
         this.startingStateService.resolveStartingState(dealId ?? null),
+        this.loadActualsAnchor(dealId ?? null, propertyId),
       ]);
     } catch {
       // Non-blocking — engine falls through to hard-coded defaults
@@ -1193,7 +1211,7 @@ export class TrafficPredictionEngine {
     }
     
     // Step 9: Calculate confidence
-    const confidence = await this.calculateConfidence(property, marketResearch);
+    const confidence = await this.calculateConfidence(property, marketResearch, actualsAnchor);
     
     // Step 10: Get current week/year
     const { week, year } = targetWeek 
@@ -1231,6 +1249,27 @@ export class TrafficPredictionEngine {
       // observed occupancy/ADT and is the most accurate path for stabilized properties.
     }
 
+    // Actuals anchor: for stabilized properties with known deal_monthly_actuals, blend a
+    // back-solved leasing-velocity estimate into the prediction. This corrects near-zero
+    // outputs that occur when ADT road data and submarket market data are both unavailable.
+    //
+    // Blend weights:
+    //   - prediction < 1  (no signal): actuals used directly
+    //   - prediction < 10 (weak signal): actuals 70%, signals 30%
+    //   - prediction ≥ 10 (reasonable signal): actuals 40%, signals 60%
+    if (actualsAnchor !== null) {
+      const actualsEstimate = actualsAnchor.weeklyInquiries;
+      if (finalWeeklyWalkins < 1) {
+        finalWeeklyWalkins = actualsEstimate;
+        console.log(`📊 [TrafficEngine] Actuals anchor applied (no signal): ${actualsEstimate} weekly inquiries (occ=${(actualsAnchor.avgOccupancy * 100).toFixed(1)}%, n=${actualsAnchor.monthsOfData}mo)`);
+      } else {
+        const actualsWeight = finalWeeklyWalkins < 10 ? 0.70 : 0.40;
+        const signalWeight  = 1 - actualsWeight;
+        const blended = Math.round(finalWeeklyWalkins * signalWeight + actualsEstimate * actualsWeight);
+        console.log(`📊 [TrafficEngine] Actuals anchor blended: signal=${finalWeeklyWalkins} actuals=${actualsEstimate} → ${blended} (actualsWeight=${actualsWeight})`);
+        finalWeeklyWalkins = blended;
+      }
+    }
 
     const peakHourWalkin = hourlyPotential && hourlyPotential.length > 0
       ? Math.round(Math.max(...hourlyPotential.map(h => h.walk_in_potential)) * 100) / 100
@@ -1765,21 +1804,82 @@ export class TrafficPredictionEngine {
   }
   
   /**
+   * Back-solve a weekly-inquiry estimate from known deal_monthly_actuals.
+   *
+   * Logic:
+   *   Annual turnover rate ≈ 40% + (1 − occupancy) × 2  (stabilised Class B/C empirical)
+   *   Monthly leasings     = units × annual_turnover / 12
+   *   Weekly leasings      = monthly_leasings / 4.33
+   *   Inquiries per lease  = 10  (industry standard for stabilised multifamily)
+   *
+   * Example — Highlands at 95% occ, 290 units:
+   *   annual_turnover = 0.40 + 0.10 = 0.50
+   *   monthly_leasings = 290 × 0.50 / 12 = 12.08
+   *   weekly_leasings  = 12.08 / 4.33  = 2.79
+   *   weekly_inquiries = 2.79 × 10     = 28   ← in the 20–60 target range
+   */
+  private async loadActualsAnchor(
+    dealId: string | null,
+    propertyId: string,
+  ): Promise<{ weeklyInquiries: number; monthsOfData: number; avgOccupancy: number } | null> {
+    try {
+      const LOOKBACK_MONTHS = 6;
+      const query = `
+        SELECT
+          MAX(total_units)             AS total_units,
+          AVG(occupancy_rate::numeric) AS avg_occupancy,
+          COUNT(*)                     AS months
+        FROM deal_monthly_actuals
+        WHERE ($1::uuid IS NOT NULL AND deal_id = $1::uuid
+               OR $2::uuid IS NOT NULL AND property_id = $2::uuid)
+          AND occupancy_rate IS NOT NULL
+          AND total_units    IS NOT NULL
+          AND report_month  >= NOW() - ($3 * INTERVAL '1 month')
+      `;
+      const result = await pool.query<{
+        total_units: string | null;
+        avg_occupancy: string | null;
+        months: string;
+      }>(query, [dealId, propertyId, LOOKBACK_MONTHS]);
+
+      const row = result.rows[0];
+      const monthsOfData = parseInt(row.months ?? '0', 10);
+      if (monthsOfData < 2) return null;
+
+      const totalUnits  = parseInt(row.total_units ?? '0', 10);
+      const avgOccupancy = parseFloat(row.avg_occupancy ?? '0');
+      if (!totalUnits || totalUnits < 1 || isNaN(avgOccupancy) || avgOccupancy <= 0) return null;
+
+      // Clamp turnover to realistic band for stabilised multifamily
+      const annualTurnoverRate = Math.max(0.35, Math.min(0.65, 0.40 + (1 - avgOccupancy) * 2));
+      const monthlyLeasings    = totalUnits * annualTurnoverRate / 12;
+      const weeklyLeasings     = monthlyLeasings / 4.33;
+      const inquiriesPerLease  = 10;
+      const weeklyInquiries    = Math.max(1, Math.round(weeklyLeasings * inquiriesPerLease));
+
+      return { weeklyInquiries, monthsOfData, avgOccupancy };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Calculate prediction confidence
    */
   private async calculateConfidence(
     property: Property,
-    marketResearch: any
+    marketResearch: any,
+    actualsAnchor?: { weeklyInquiries: number; monthsOfData: number; avgOccupancy: number } | null
   ): Promise<TrafficPrediction['confidence']> {
     
     // Factor 1: Do we have validation data for similar properties?
     const validationCount = await pool.query(`
       SELECT COUNT(*) as count
       FROM validation_properties vp
-      JOIN properties p ON vp.property_id = p.id
+      JOIN properties p ON vp.property_id = p.id::text
       WHERE p.submarket_id = $1
       AND vp.is_active = TRUE
-    `, [property.submarket_id]);
+    `, [property.submarket_id || null]);
     
     const validationConfidence = Math.min(validationCount.rows[0].count / 5, 1.0);
     
@@ -1787,17 +1887,39 @@ export class TrafficPredictionEngine {
     const marketConfidence = marketResearch.data_quality?.confidence_level === 'HIGH' ? 0.9 :
                              marketResearch.data_quality?.confidence_level === 'MEDIUM' ? 0.7 : 0.5;
     
-    // Factor 3: Data completeness
+    // Factor 3: Data completeness (ADT + demographics)
     const hasADT = property.adt && property.adt > 0;
     const hasDemographics = property.residential_units_400m && property.residential_units_400m > 0;
     const dataCompleteness = ((hasADT ? 0.5 : 0) + (hasDemographics ? 0.5 : 0));
+
+    // Factor 4: Actuals anchor — known operating history is strong calibration evidence.
+    // ≥6 months of data → 0.80 confidence; ≥3 months → 0.60; fewer → 0 (not enough).
+    const actualsConfidence = actualsAnchor
+      ? actualsAnchor.monthsOfData >= 6 ? 0.80
+      : actualsAnchor.monthsOfData >= 3 ? 0.60
+      : 0
+      : 0;
+    const hasActuals = actualsConfidence > 0;
     
-    // Combined confidence
-    const overallConfidence = (
-      validationConfidence * 0.40 +
-      marketConfidence * 0.35 +
-      dataCompleteness * 0.25
-    );
+    // Combined confidence — for stabilised properties with known actuals, the operating
+    // history is the single strongest calibration signal and carries 50% of the weight.
+    // The traditional signals (validation peers, market research, ADT completeness) split
+    // the remaining 50%.  Without actuals, the original three-factor formula is used.
+    let overallConfidence: number;
+    if (hasActuals) {
+      overallConfidence = (
+        validationConfidence * 0.15 +
+        marketConfidence     * 0.20 +
+        dataCompleteness     * 0.15 +
+        actualsConfidence    * 0.50
+      );
+    } else {
+      overallConfidence = (
+        validationConfidence * 0.40 +
+        marketConfidence * 0.35 +
+        dataCompleteness * 0.25
+      );
+    }
     
     const tier = overallConfidence >= 0.75 ? 'High' :
                  overallConfidence >= 0.50 ? 'Medium' : 'Low';
@@ -1808,7 +1930,8 @@ export class TrafficPredictionEngine {
       breakdown: {
         validation_data: Math.round(validationConfidence * 100) / 100,
         market_research: Math.round(marketConfidence * 100) / 100,
-        data_completeness: Math.round(dataCompleteness * 100) / 100
+        data_completeness: Math.round(dataCompleteness * 100) / 100,
+        ...(hasActuals && { actuals_anchor: Math.round(actualsConfidence * 100) / 100 }),
       }
     };
   }
@@ -1820,42 +1943,34 @@ export class TrafficPredictionEngine {
     await pool.query(`
       INSERT INTO traffic_predictions (
         property_id,
-        deal_id,
         prediction_week,
         prediction_year,
         weekly_walk_ins,
         daily_average,
         peak_hour_estimate,
-        physical_traffic_component,
-        demand_traffic_component,
-        supply_demand_multiplier,
-        base_before_adjustment,
-        weekday_avg,
-        weekend_avg,
-        weekday_total,
-        weekend_total,
-        peak_day,
-        peak_hour,
+        physical_factor_score,
+        market_demand_score,
+        supply_demand_adjustment,
         confidence_score,
         confidence_tier,
-        confidence_breakdown,
-        submarket_id,
-        foot_traffic_index,
-        supply_demand_ratio,
         model_version,
         prediction_details
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
       )
-      ON CONFLICT (property_id, prediction_week, prediction_year)
+      ON CONFLICT (property_id, prediction_week, prediction_year, model_version)
       DO UPDATE SET
         weekly_walk_ins = EXCLUDED.weekly_walk_ins,
         daily_average = EXCLUDED.daily_average,
+        physical_factor_score = EXCLUDED.physical_factor_score,
+        market_demand_score = EXCLUDED.market_demand_score,
+        supply_demand_adjustment = EXCLUDED.supply_demand_adjustment,
         confidence_score = EXCLUDED.confidence_score,
+        confidence_tier = EXCLUDED.confidence_tier,
+        prediction_details = EXCLUDED.prediction_details,
         updated_at = NOW()
     `, [
       prediction.property_id,
-      prediction.deal_id || null,
       prediction.prediction_week,
       prediction.prediction_year,
       prediction.weekly_walk_ins,
@@ -1864,19 +1979,8 @@ export class TrafficPredictionEngine {
       prediction.breakdown.physical_factors,
       prediction.breakdown.market_demand_factors,
       prediction.breakdown.supply_demand_adjustment,
-      prediction.breakdown.base_before_adjustment,
-      prediction.temporal_patterns.weekday_avg,
-      prediction.temporal_patterns.weekend_avg,
-      prediction.temporal_patterns.weekday_total,
-      prediction.temporal_patterns.weekend_total,
-      prediction.temporal_patterns.peak_day,
-      prediction.temporal_patterns.peak_hour,
       prediction.confidence.score,
       prediction.confidence.tier,
-      JSON.stringify(prediction.confidence.breakdown),
-      prediction.market_context.submarket,
-      prediction.market_context.foot_traffic_index,
-      prediction.market_context.supply_demand_ratio,
       prediction.model_version,
       JSON.stringify(prediction)
     ]);

@@ -353,6 +353,7 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         zoningCode: row.linkedZoningCode || null,
         lotSizeAcres: parseFloat(row.linkedLotSizeAcres) || null,
         landCost: parseFloat(row.linkedLandCost) || null,
+        property_id: row.property_id ?? null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }

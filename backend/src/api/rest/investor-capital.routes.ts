@@ -529,11 +529,11 @@ router.post('/deals/:dealId/distributions/:distId/process', requireAuth, async (
 // WATERFALL
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.get('/deals/:dealId/waterfall', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+async function handleGetWaterfall(dealId: string, userId: string, res: Response) {
   try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
+    if (!(await ownsDeal(dealId, userId)))
       return res.status(404).json({ success: false, error: 'Deal not found' });
-    const wf = await query('SELECT * FROM deal_waterfalls WHERE deal_id=$1', [req.params.dealId]);
+    const wf = await query('SELECT * FROM deal_waterfalls WHERE deal_id=$1', [dealId]);
     if (!wf.rows.length) {
       return res.json({
         success: true, waterfall: null,
@@ -550,6 +550,88 @@ router.get('/deals/:dealId/waterfall', requireAuth, async (req: AuthenticatedReq
     logger.error('GET waterfall', err);
     res.status(500).json({ success: false, error: 'Failed to fetch waterfall' });
   }
+}
+
+// ── Short-path alias: /api/v1/capital/:dealId/capital-accounts ────────────────
+// Returns per-member capital account balances: commitment, called capital
+// (from capital_call_items.paid_amount), and distributions received
+// (from distribution_items.net_amount, falling back to gross_amount).
+// Sources the authoritative transaction tables, not the ledger view.
+router.get('/:dealId/capital-accounts', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+    if (!(await ownsDeal(dealId, userId))) return res.status(404).json({ success: false, error: 'Deal not found' });
+
+    const membersRes = await query(
+      `SELECT
+         i.id        AS investor_id,
+         i.name,
+         i.type,
+         di.class,
+         di.ownership_pct,
+         di.commitment_amount::numeric                               AS commitment_amount,
+         COALESCE(cci_agg.called,      0::numeric)                  AS called,
+         COALESCE(di_agg.distributed,  0::numeric)                  AS distributed
+       FROM deal_investments di
+       JOIN investors i ON i.id = di.investor_id
+       -- called capital: sum of paid amounts across all capital calls for this deal
+       LEFT JOIN (
+         SELECT cci.investor_id,
+                SUM(COALESCE(cci.paid_amount, 0)::numeric) AS called
+           FROM capital_call_items cci
+           JOIN capital_calls cc ON cc.id = cci.capital_call_id
+          WHERE cc.deal_id = $1
+          GROUP BY cci.investor_id
+       ) cci_agg ON cci_agg.investor_id = di.investor_id
+       -- distributions: sum of net (after withholding) or gross amounts per investor
+       LEFT JOIN (
+         SELECT diitem.investor_id,
+                SUM(COALESCE(diitem.net_amount, diitem.gross_amount, 0)::numeric) AS distributed
+           FROM distribution_items diitem
+           JOIN distributions d ON d.id = diitem.distribution_id
+          WHERE d.deal_id = $1
+            AND d.status IN ('approved', 'completed')
+          GROUP BY diitem.investor_id
+       ) di_agg ON di_agg.investor_id = di.investor_id
+       WHERE di.deal_id = $1
+       ORDER BY di.commitment_amount DESC`,
+      [dealId],
+    );
+
+    const members = membersRes.rows.map(r => ({
+      investor_id:       r.investor_id,
+      name:              r.name,
+      type:              r.type,
+      class:             r.class,
+      ownership_pct:     r.ownership_pct != null ? parseFloat(r.ownership_pct) : null,
+      commitment_amount: parseFloat(r.commitment_amount),
+      called:            parseFloat(r.called),
+      distributed:       parseFloat(r.distributed),
+      net_capital:       parseFloat(r.called) - parseFloat(r.distributed),
+    }));
+
+    const summary = {
+      total_committed:   members.reduce((s, m) => s + m.commitment_amount, 0),
+      total_called:      members.reduce((s, m) => s + m.called, 0),
+      total_distributed: members.reduce((s, m) => s + m.distributed, 0),
+      member_count:      members.length,
+    };
+
+    res.json({ success: true, members, summary });
+  } catch (err) {
+    logger.error('GET capital-accounts', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch capital accounts' });
+  }
+});
+
+// Short-path alias used by the Asset Hub frontend: /api/v1/capital/:dealId/waterfall
+router.get('/:dealId/waterfall', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  return handleGetWaterfall(req.params.dealId, req.user!.userId, res);
+});
+
+router.get('/deals/:dealId/waterfall', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  return handleGetWaterfall(req.params.dealId, req.user!.userId, res);
 });
 
 router.put('/deals/:dealId/waterfall', requireAuth, async (req: AuthenticatedRequest, res: Response) => {

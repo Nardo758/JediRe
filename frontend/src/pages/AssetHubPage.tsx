@@ -7,7 +7,7 @@ import { useParams } from 'react-router-dom';
 import {
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine,
+  ResponsiveContainer, ReferenceLine, Cell, ComposedChart,
 } from 'recharts';
 import { useDealStore } from '../stores/dealStore';
 import { apiClient } from '../services/api.client';
@@ -39,6 +39,30 @@ const T = {
     label: "'IBM Plex Sans',sans-serif",
   },
 };
+
+// ── BEAT PLAN TYPES (mirrors backend revenue-engine.service.ts) ──────────────
+type RepricingAction = 'PUSH' | 'HOLD' | 'CONCEDE';
+interface NOIBridgeStep { label: string; amount: number; }
+interface CohortRecommendation {
+  unitType: string; units: number; inPlaceRent: number; marketRent: number;
+  signalScore: number; recommendedRent: number; deltaPerUnit: number;
+  action: RepricingAction; annualEGIContribution: number; reason: string;
+}
+interface ExpenseFinding {
+  label: string; category: 'controllable' | 'nonControllable';
+  uwTarget: number; actualRunRate: number; variancePct: number;
+  flagged: boolean; projectedLine: number; recoveryAnnual: number; note: string;
+}
+interface BeatPlan {
+  status: 'BEAT' | 'ON_TRACK' | 'AT_RISK';
+  proFormaNOI: number; projectedNOI: number; beatAnnual: number; beatPct: number;
+  revenueLeverAnnual: number; expenseRecoveryAnnual: number; acceptedExpenseDragAnnual: number;
+  bridge: NOIBridgeStep[];
+  revenue: CohortRecommendation[];
+  expense: ExpenseFinding[];
+  caveats: string[];
+  compSetSource: string | null;  // provenance label when comp-set market rents were wired in
+}
 
 const CSS_INJECT = `
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
@@ -84,7 +108,7 @@ const METRICS = [
   { key: 'noi',    tile: 'NOI TTM',      val: '$3.41M', color: T.text.amber,  fmt: (v: number) => '$' + (v / 1000).toFixed(0) + 'K' },
   { key: 'revpau', tile: 'RevPAU',       val: '$1,612', color: T.text.primary, fmt: (v: number) => '$' + v.toLocaleString() },
   { key: 'ltl',    tile: 'LOSS-TO-LEASE', val: '6.4%', color: T.text.amber,  fmt: (v: number) => v.toFixed(1) + '%' },
-  { key: 'conc',   tile: 'CONCESSIONS',  val: '1.5%',  color: T.text.orange, fmt: (v: number) => v.toFixed(1) + '%' },
+  { key: 'conc',   tile: 'CONCESSIONS',  val: '$25/u',  color: T.text.orange, fmt: (v: number) => '$' + Math.round(v) + '/u' },
 ];
 
 const TIMEFRAMES: [string, number][] = [['3M', 3], ['6M', 6], ['1Y', 12], ['2Y', 24], ['MAX', 30]];
@@ -377,10 +401,11 @@ function Panel({ children, style }: { children: React.ReactNode; style?: React.C
   );
 }
 
-function Table({ head, rows, align }: {
+function Table({ head, rows, align, rowStyle }: {
   head: string[];
   rows: React.ReactNode[][];
   align: string[];
+  rowStyle?: (row: React.ReactNode[], i: number) => React.CSSProperties | undefined;
 }) {
   const ta = (i: number) => align[i] === 'r' ? 'right' : align[i] === 'c' ? 'center' : 'left';
   return (
@@ -400,7 +425,7 @@ function Table({ head, rows, align }: {
         </thead>
         <tbody>
           {rows.map((r, ri) => (
-            <tr key={ri} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+            <tr key={ri} style={{ borderBottom: `1px solid ${T.border.subtle}`, ...(rowStyle ? rowStyle(r, ri) : {}) }}>
               {r.map((c, ci) => (
                 <td key={ci} style={{
                   textAlign: ta(ci) as any, fontFamily: T.font.mono, fontSize: 10,
@@ -567,36 +592,88 @@ function ListDrawer<T>({ rows, render }: { rows: T[]; render: (r: T) => React.Re
 }
 
 // ── RANK & COMPS DRAWER ───────────────────────────────────────────────────────
-function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps, propertyId }: {
+function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps, propertyId, onTargetSaved }: {
   rankCfg: RankCfg; setRankCfg: (c: RankCfg) => void;
   comps: Comp[]; setComps: (c: Comp[]) => void;
   propertyId: string | null;
+  onTargetSaved?: () => void;
 }) {
   const ranks = [1, 2, 3, 4];
   const [saveNote, setSaveNote] = useState<string | null>(null);
+  const [liveRank, setLiveRank] = useState<{
+    current_rank: number | null; current_pcs: number | null; set_size: number | null;
+  } | null>(null);
+  const [rankLoading, setRankLoading] = useState(false);
+
+  // Fetch live rank + restore saved target when propertyId is available
+  useEffect(() => {
+    if (!propertyId) return;
+    setRankLoading(true);
+    // Parallel: live rank computation + saved target restore
+    Promise.all([
+      apiClient.get(`/api/v1/rankings/property/${propertyId}`)
+        .then(res => {
+          const d = res.data?.data;
+          if (d) setLiveRank({ current_rank: d.current_rank, current_pcs: d.current_pcs, set_size: d.set_size });
+        })
+        .catch(() => {}),
+      apiClient.get(`/api/v1/rankings/property/${propertyId}/target`)
+        .then(res => {
+          const t = res.data?.target;
+          if (t?.targetConfig && typeof t.targetConfig.overall === 'number') {
+            setRankCfg({
+              overall: t.targetConfig.overall,
+              byType: t.targetConfig.byType ?? false,
+              perType: t.targetConfig.perType ?? { '1BR': 3, '2BR': 2, '3BR': 3, 'STU': 4 },
+            });
+          }
+        })
+        .catch(() => {}),
+    ]).finally(() => setRankLoading(false));
+  }, [propertyId]);
 
   const handleSaveTarget = () => {
     if (!propertyId) {
-      setSaveNote('SAVING LOCALLY — BACKEND PENDING');
+      setSaveNote('No property selected');
       return;
     }
-    // TODO(backend: POST /api/v1/rankings/:propertyId/target)
     apiClient.post(`/api/v1/rankings/${propertyId}/target`, {
       overall: rankCfg.overall,
       byType: rankCfg.byType,
       perType: rankCfg.perType,
     })
-      .then(() => { setSaveNote('SAVED ✓'); })
-      .catch((err: any) => {
-        if (err?.response?.status === 404) {
-          setSaveNote('SAVING LOCALLY — BACKEND PENDING (/api/v1/rankings/:propertyId/target)');
-        } else {
-          setSaveNote('SAVE FAILED');
-        }
-      });
+      .then(() => {
+        setSaveNote('SAVED ✓');
+        setTimeout(() => setSaveNote(null), 3000);
+        onTargetSaved?.();
+      })
+      .catch(() => { setSaveNote('SAVE FAILED'); });
   };
   return (
     <div style={{ padding: 12 }}>
+      {/* ── CURRENT STANDING ── */}
+      <div style={{
+        display: 'flex', gap: 6, marginBottom: 14,
+        padding: '8px 10px', borderRadius: 3,
+        background: T.bg.input, border: `1px solid ${T.border.subtle}`,
+      }}>
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ fontFamily: T.font.mono, fontSize: 18, fontWeight: 800, color: T.text.primary }}>
+            {rankLoading ? '…' : liveRank?.current_rank != null ? `#${liveRank.current_rank}` : '—'}
+          </div>
+          <div style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted, marginTop: 2 }}>
+            CURRENT RANK{liveRank?.set_size != null ? ` / ${liveRank.set_size}` : ''}
+          </div>
+        </div>
+        <div style={{ width: 1, background: T.border.subtle }} />
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ fontFamily: T.font.mono, fontSize: 18, fontWeight: 800, color: T.text.cyan }}>
+            {rankLoading ? '…' : liveRank?.current_pcs != null ? liveRank.current_pcs : '—'}
+          </div>
+          <div style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted, marginTop: 2 }}>PCS SCORE</div>
+        </div>
+      </div>
+
       <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, letterSpacing: 0.6, marginBottom: 6 }}>
         OVERALL RANK TARGET · set annually
       </div>
@@ -662,7 +739,7 @@ function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps, propertyId }: {
         borderBottom: `1px solid ${T.border.subtle}`, background: T.text.amber + '10',
       }}>
         <span style={{ fontFamily: T.font.label, fontSize: 11, fontWeight: 700, color: T.text.amberBright, flex: 1 }}>▸ {ASSET.name}</span>
-        <Badge c={T.text.amber}>subject · #{RANK.current}</Badge>
+        <Badge c={T.text.amber}>subject · #{liveRank?.current_rank ?? RANK.current}</Badge>
         <span style={{ width: 14 }} />
       </div>
 
@@ -695,9 +772,10 @@ function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps, propertyId }: {
 }
 
 // ── REVENUE SCREEN ────────────────────────────────────────────────────────────
-function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeScreen }: {
+function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeScreen, targetSavedVersion }: {
   rankCfg: RankCfg; comps: Comp[]; openDrawer: (d: string) => void;
   dealId: string; propertyId: string | null; activeScreen: string;
+  targetSavedVersion: number;
 }) {
   const [tf, setTf] = useState(12);
   const [mk, setMk] = useState('occ');
@@ -711,7 +789,10 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
   // NEW-BACKEND stubs and new routes
   const [tradeoutEvents, setTradeoutEvents] = useState<any[]>([]);
   const [leasingObs, setLeasingObs] = useState<any[]>([]);
-  const [courseData, setCourseData] = useState<any>(null); // TODO(backend: repricing synthesizer)
+  const [beatPlan, setBeatPlan] = useState<BeatPlan | null>(null);
+  const [beatPlanLoading, setBeatPlanLoading] = useState(false);
+  const [selectedBridgeBar, setSelectedBridgeBar] = useState<number | null>(null);
+  const [derivedMetrics, setDerivedMetrics] = useState<any[]>([]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -743,10 +824,15 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
 
   useEffect(() => {
     if (!dealId) return;
-    // Attempt to derive LTL from latest rent roll snapshot units
-    // TODO(data: LTL/concession monthly series from rent_roll_snapshots.derived_metrics)
     apiClient.get(`/api/v1/operations/${dealId}/rent-roll`)
       .then(res => { setRentRollUnits(res.data?.units ?? []); })
+      .catch(() => {});
+  }, [dealId, activeScreen]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/operations/${dealId}/derived-metrics`)
+      .then(res => { setDerivedMetrics(res.data?.data ?? []); })
       .catch(() => {});
   }, [dealId, activeScreen]);
 
@@ -768,22 +854,54 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
       .catch(() => {});
   }, [dealId, activeScreen]);
 
-  // TODO(backend: repricing synthesizer) — GET /api/v1/revenue/:dealId/course
-  useEffect(() => {
+  // ── Beat plan fetch ───────────────────────────────────────────
+  const fetchBeatPlan = () => {
     if (!dealId) return;
-    apiClient.get(`/api/v1/revenue/${dealId}/course`)
-      .then(res => { setCourseData(res.data ?? null); })
-      .catch(() => { setCourseData(null); }); // 404 until synthesizer is built
+    setBeatPlanLoading(true);
+    const params = new URLSearchParams({
+      targetRank: String(rankCfg.overall),
+      byType: String(rankCfg.byType),
+    });
+    if (rankCfg.byType) {
+      Object.entries(rankCfg.perType).forEach(([t, r]) => params.set(`perType[${t}]`, String(r)));
+    }
+    apiClient.get(`/api/v1/revenue/${dealId}/beat-plan?${params.toString()}`)
+      .then(res => { setBeatPlan(res.data ?? null); })
+      .catch(() => { setBeatPlan(null); })
+      .finally(() => setBeatPlanLoading(false));
+  };
+
+  useEffect(() => {
+    fetchBeatPlan();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealId, activeScreen]);
 
+  useEffect(() => {
+    if (targetSavedVersion === 0) return;
+    fetchBeatPlan();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetSavedVersion]);
+
   // ── LTL tile value from latest rent roll snapshot ─────────────
+  // Prefer per-unit loss_to_lease_pct average; fall back to latest derived-metrics snapshot.
   const liveLtl = useMemo(() => {
-    if (!rentRollUnits.length) return null;
     const rows = rentRollUnits.filter((u: any) => u.loss_to_lease_pct != null);
-    if (!rows.length) return null;
-    const avg = rows.reduce((s: number, u: any) => s + parseFloat(u.loss_to_lease_pct), 0) / rows.length;
-    return avg;
-  }, [rentRollUnits]);
+    if (rows.length) {
+      const avg = rows.reduce((s: number, u: any) => s + parseFloat(u.loss_to_lease_pct), 0) / rows.length;
+      if (avg > 0) return avg;
+    }
+    // Fall back to most recent derivedMetrics snapshot
+    if (derivedMetrics.length) {
+      const latest = [...derivedMetrics].sort((a, b) => b.month.localeCompare(a.month))[0];
+      return latest?.ltl_pct ?? null;
+    }
+    return null;
+  }, [rentRollUnits, derivedMetrics]);
+
+  // ── Sorted derived-metrics snapshots for nearest-predecessor lookup ──────
+  const sortedDerived = useMemo(() =>
+    [...derivedMetrics].sort((a, b) => a.month.localeCompare(b.month)),
+  [derivedMetrics]);
 
   // ── Derived series ────────────────────────────────────────────
   const liveSeries = useMemo(() => {
@@ -795,22 +913,40 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
       const d = new Date(row.report_month);
       const mon = d.toLocaleString('en-US', { month: 'short' });
       const yr  = String(d.getFullYear()).slice(2);
-      // Blend prototype ltl/conc/tro as placeholder sparklines aligned to the same date range
-      // TODO(data: LTL/concession monthly series from rent_roll_snapshots.derived_metrics)
+      const reportMonth = String(row.report_month).slice(0, 7); // YYYY-MM
+
+      // Find the latest derived-metrics snapshot at or before this actuals month.
+      // Snapshots are annual (Dec 31 each year); this gives the most recent available
+      // LTL% and concession% for each monthly actuals row.
+      let derived: any = null;
+      for (let i = sortedDerived.length - 1; i >= 0; i--) {
+        if (sortedDerived[i].month <= reportMonth) { derived = sortedDerived[i]; break; }
+      }
+
+      // Prototype sparklines for tro (no API yet) — keep as visual placeholder
       const protoOffset = SERIES.length - actualsData.length + idx;
       const proto = protoOffset >= 0 && protoOffset < SERIES.length ? SERIES[protoOffset] : null;
+
+      // concessions_per_unit ($/unit) — used directly on the chart in dollars.
+      // The METRICS formatter for 'conc' shows "$N/u".
+      // Prototype fallback values are percentage-style numbers; when real data is
+      // available (derivedMetrics populated), they are overridden by dollar amounts.
+      const conc: number | null = derived?.concessions_per_unit != null
+        ? Math.round(derived.concessions_per_unit * 100) / 100
+        : proto?.conc ?? null;
+
       return {
         m: `${mon.slice(0,3)}'${yr}`,
         occ: Math.round(occ * 10) / 10,
         rent: Math.round(rent),
         noi: Math.round(noi),
         revpau: Math.round(rent * (occ / 100) * 0.985),
-        ltl: proto?.ltl ?? null,
-        conc: proto?.conc ?? null,
-        tro: proto?.tro ?? null,
+        ltl:  derived?.ltl_pct ?? proto?.ltl ?? null,
+        conc,
+        tro:  proto?.tro ?? null,
       };
     });
-  }, [actualsData]);
+  }, [actualsData, sortedDerived]);
 
   const series = liveSeries ?? SERIES;
   const latestActual = actualsData.length ? actualsData[actualsData.length - 1] : null;
@@ -1005,52 +1141,410 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
         />
         <Panel style={{ width: 268, flexShrink: 0 }}>
           <PanelHeader title="ASSET OVERVIEW" sub="fundamentals" />
-          {/* JEDI SIGNAL: wired from courseData.signal when synthesizer is live */}
-          {/* TODO(backend: repricing synthesizer — GET /api/v1/revenue/:dealId/course) */}
           <StatRail rows={liveOverview} signal={{
-            label: 'JEDI SIGNAL',
-            note: courseData?.signal ? '' : '// PENDING',
-            value: courseData?.signal ?? '—',
-            tone: courseData?.signal === 'PUSH' ? T.text.green : courseData?.signal === 'HOLD' ? T.text.amber : T.text.muted,
+            label: 'BEAT STATUS',
+            note: beatPlan?.status ? '' : beatPlanLoading ? '// LOADING' : '// PENDING',
+            value: beatPlan?.status ?? '—',
+            tone: beatPlan?.status === 'BEAT' ? T.text.green : beatPlan?.status === 'ON_TRACK' ? T.text.amber : beatPlan?.status === 'AT_RISK' ? T.text.red : T.text.muted,
           }} />
         </Panel>
       </div>
 
-      {/* REPRICING COURSE — stub; codes against GET /api/v1/revenue/:dealId/course */}
-      {/* TODO(backend: repricing synthesizer) */}
-      <Panel style={{ marginBottom: 10, borderColor: courseData ? T.border.bright : T.text.amber + '44' }}>
+      {/* ── PRO FORMA BEAT BAND ─────────────────────────────────── */}
+      {beatPlanLoading ? (
+        <Panel style={{ marginBottom: 10 }}>
+          <div style={{ padding: '14px 16px', fontFamily: T.font.mono, fontSize: 10, color: T.text.muted }}>
+            computing beat plan…
+          </div>
+        </Panel>
+      ) : beatPlan ? (() => {
+        const statusColor = beatPlan.status === 'BEAT' ? T.text.green : beatPlan.status === 'ON_TRACK' ? T.text.amber : T.text.red;
+        const beatPositive = beatPlan.beatAnnual >= 0;
+        const fmtK = (v: number) => {
+          const abs = Math.abs(v);
+          const sign = v < 0 ? '−' : '+';
+          if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+          return `${sign}$${Math.round(abs / 1000)}K`;
+        };
+        return (
+          <Panel style={{ marginBottom: 10, borderColor: statusColor + '55' }}>
+            {/* headline row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px 0', flexWrap: 'wrap' }}>
+              <span style={{ fontFamily: T.font.mono, fontSize: 10, fontWeight: 700, color: T.text.muted, letterSpacing: 0.8 }}>PRO FORMA BEAT</span>
+              <span style={{
+                fontFamily: T.font.mono, fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 2,
+                background: statusColor + '22', border: `1px solid ${statusColor}55`, color: statusColor,
+              }}>{beatPlan.status.replace('_', ' ')}</span>
+              <span style={{ fontFamily: T.font.mono, fontSize: 13, fontWeight: 700, color: statusColor }}>
+                {beatPositive ? '+' : '−'}${Math.abs(beatPlan.beatAnnual).toLocaleString()}
+                <span style={{ fontSize: 9, fontWeight: 400, color: T.text.muted, marginLeft: 5 }}>
+                  {beatPositive ? '+' : ''}{(beatPlan.beatPct * 100).toFixed(1)}% vs pro forma ·
+                </span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: statusColor, marginLeft: 4 }}>
+                  {beatPositive ? 'beat' : 'miss'}
+                </span>
+              </span>
+              <span style={{ marginLeft: 'auto', fontFamily: T.font.mono, fontSize: 9, color: T.text.muted }}>
+                pro forma NOI ${beatPlan.proFormaNOI.toLocaleString()} · projected ${beatPlan.projectedNOI.toLocaleString()}
+              </span>
+            </div>
+
+            {/* NOI waterfall bridge — bar chart with text-only fallback */}
+            {(() => {
+              // Compute waterfall geometry — wrapped in try/catch so a bad bridge
+              // array degrades gracefully to the text-only row below.
+              let chartData: Array<{
+                label: string; base: number; bar: number; fill: string;
+                rawAmount: number; displayAmt: string; isTotal: boolean; isLast: boolean;
+              }> | null = null;
+              try {
+                let running = 0;
+                chartData = beatPlan.bridge.map((step, i) => {
+                  const isTotal = step.label.startsWith('=');
+                  const isPfn   = step.label.startsWith('vs');
+                  const isLast  = i === beatPlan.bridge.length - 1;
+                  const amt = step.amount;
+                  let base: number, bar: number;
+                  if (isTotal) {
+                    base = 0; bar = amt; running = amt;
+                  } else if (isPfn) {
+                    base = amt >= 0 ? running : running + amt;
+                    bar = Math.abs(amt);
+                  } else {
+                    base = amt >= 0 ? running : running + amt;
+                    bar = Math.abs(amt);
+                    running += amt;
+                  }
+                  const fill = isTotal && !isLast
+                    ? T.text.primary
+                    : isLast ? statusColor
+                    : isPfn ? T.text.muted
+                    : amt >= 0 ? T.text.green : T.text.red;
+                  const displayAmt = isPfn
+                    ? `$${Math.abs(amt).toLocaleString()}`
+                    : amt === 0 ? '$0'
+                    : fmtK(amt);
+                  if (!Number.isFinite(base) || !Number.isFinite(bar)) throw new Error('non-finite');
+                  return { label: step.label, base, bar, fill, rawAmount: amt, displayAmt, isTotal, isLast };
+                });
+              } catch {
+                chartData = null;
+              }
+
+              const CustomTick = ({ x, y, payload }: any) => {
+                if (!chartData) return null;
+                const d = chartData[payload.index];
+                if (!d) return null;
+                const lines = d.label.replace(/^[=]/, '').trim().split(/\s+(?=\S{3})/);
+                return (
+                  <g transform={`translate(${x},${y + 4})`}>
+                    {lines.map((line: string, li: number) => (
+                      <text
+                        key={li}
+                        x={0} y={li * 10}
+                        textAnchor="middle"
+                        fill={T.text.muted}
+                        fontSize={7.5}
+                        fontFamily={T.font.mono}
+                      >{line}</text>
+                    ))}
+                  </g>
+                );
+              };
+
+              // Selected-bar click popover
+              const clickedBar = selectedBridgeBar !== null && chartData ? chartData[selectedBridgeBar] : null;
+
+              if (chartData) {
+                return (
+                  <div style={{ padding: '8px 14px 4px', position: 'relative' }}>
+                    {/* Click-activated tooltip popover */}
+                    {clickedBar && (
+                      <div
+                        style={{
+                          position: 'absolute', top: 4, right: 18, zIndex: 10,
+                          background: T.bg.panel, border: `1px solid ${T.border.bright}`,
+                          borderRadius: 3, padding: '6px 10px',
+                          fontFamily: T.font.mono, fontSize: 11,
+                          boxShadow: '0 2px 8px #00000066',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => setSelectedBridgeBar(null)}
+                      >
+                        <div style={{ color: T.text.muted, fontSize: 9, marginBottom: 3 }}>{clickedBar.label}</div>
+                        <div style={{ color: clickedBar.fill, fontWeight: 700 }}>{clickedBar.displayAmt}</div>
+                        <div style={{ color: T.text.muted, fontSize: 8, marginTop: 2 }}>click to dismiss</div>
+                      </div>
+                    )}
+                    <ResponsiveContainer width="100%" height={140}>
+                      <ComposedChart
+                        data={chartData}
+                        barCategoryGap="20%"
+                        margin={{ top: 16, right: 8, left: 8, bottom: 28 }}
+                        onClick={(state: any) => {
+                          const idx = state?.activeTooltipIndex;
+                          if (idx !== undefined && idx !== null) {
+                            setSelectedBridgeBar(prev => prev === idx ? null : idx);
+                          }
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <XAxis
+                          dataKey="label"
+                          tick={<CustomTick />}
+                          tickLine={false}
+                          axisLine={{ stroke: T.border.subtle }}
+                          interval={0}
+                        />
+                        <YAxis hide domain={['auto', 'auto']} />
+                        <Tooltip
+                          content={() => null}
+                          cursor={{ fill: T.border.subtle + '33' }}
+                        />
+                        <Bar dataKey="base" stackId="wf" fill="transparent" isAnimationActive={false} />
+                        <Bar dataKey="bar" stackId="wf" radius={[2, 2, 0, 0]} isAnimationActive={false}>
+                          {chartData.map((d, i) => (
+                            <Cell
+                              key={i}
+                              fill={d.fill}
+                              fillOpacity={selectedBridgeBar === i ? 1 : d.isTotal || d.isLast ? 0.9 : 0.75}
+                              stroke={selectedBridgeBar === i ? d.fill : 'none'}
+                              strokeWidth={selectedBridgeBar === i ? 1.5 : 0}
+                            />
+                          ))}
+                        </Bar>
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                    <div style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted, textAlign: 'right', paddingRight: 4, marginTop: -4 }}>
+                      click bar for detail
+                    </div>
+                  </div>
+                );
+              }
+
+              // Text-only fallback (shown when chart data cannot be computed)
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px 8px', overflowX: 'auto', gap: 0 }}>
+                  {beatPlan.bridge.map((step, i) => {
+                    const isTotal = step.label.startsWith('=');
+                    const isPfn   = step.label.startsWith('vs');
+                    const isLast  = i === beatPlan.bridge.length - 1;
+                    const amt = step.amount;
+                    const tone = isLast
+                      ? statusColor
+                      : isTotal ? T.text.primary
+                      : isPfn ? T.text.muted
+                      : amt >= 0 ? T.text.green : T.text.red;
+                    const formatted = isPfn
+                      ? `$${Math.abs(amt).toLocaleString()}`
+                      : amt === 0 ? '$0'
+                      : fmtK(amt);
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                        <div style={{ textAlign: 'center', minWidth: isTotal || isLast ? 90 : 76, padding: '0 4px' }}>
+                          <div style={{
+                            fontFamily: T.font.mono, fontSize: isTotal || isLast ? 12 : 11, fontWeight: isTotal || isLast ? 800 : 600,
+                            color: tone,
+                          }}>{formatted}</div>
+                          <div style={{
+                            fontFamily: T.font.mono, fontSize: 7.5, color: T.text.muted, marginTop: 2,
+                            lineHeight: 1.2, maxWidth: 88, whiteSpace: 'pre-wrap', textAlign: 'center',
+                          }}>{step.label}</div>
+                        </div>
+                        {i < beatPlan.bridge.length - 1 && (
+                          <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.border.bright, margin: '0 2px' }}>›</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {/* caveats footnote */}
+            {beatPlan.caveats.length > 0 && (
+              <div style={{ padding: '0 14px 10px', borderTop: `1px solid ${T.border.subtle}`, paddingTop: 8 }}>
+                {beatPlan.caveats.map((c, i) => (
+                  <div key={i} style={{ fontFamily: T.font.label, fontSize: 9, color: T.text.muted, fontStyle: 'italic', lineHeight: 1.5 }}>
+                    • {c}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+        );
+      })() : null}
+
+      {/* No market signals amber banner — suppressed when comp-set rents are wired in */}
+      {beatPlan && beatPlan.caveats.some(c => c.includes('No market signals')) && !beatPlan.compSetSource && (
+        <div style={{
+          marginBottom: 10, padding: '8px 14px',
+          background: T.text.amber + '12', border: `1px solid ${T.text.amber}44`, borderRadius: 2,
+          fontFamily: T.font.label, fontSize: 10, color: T.text.amber,
+        }}>
+          ⚠ No market signal data — revenue lever defaulted to HOLD.
+          Wire correlation/property + M07 to unlock repricing recommendations.
+        </div>
+      )}
+
+      {/* Comp-set market rent indicator — shows source when real comp rents are wired */}
+      {beatPlan && beatPlan.compSetSource && (
+        <div style={{
+          marginBottom: 10, padding: '8px 14px',
+          background: T.text.cyan + '10', border: `1px solid ${T.text.cyan}33`, borderRadius: 2,
+          fontFamily: T.font.label, fontSize: 10, color: T.text.cyan,
+        }}>
+          ◈ Market rent sourced from comp set ({beatPlan.compSetSource}) — recommendations are comp-gated.
+        </div>
+      )}
+
+      {/* REPRICING COURSE */}
+      <Panel style={{ marginBottom: 10, borderColor: beatPlan?.revenue?.length ? T.border.bright : T.border.subtle }}>
         <PanelHeader
           title="REPRICING COURSE"
           sub={`path to #${rankCfg.overall}${rankCfg.byType ? ' · by unit type' : ''} · fuel × schedule × throttle`}
           right={
             <span style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.secondary, display: 'flex', alignItems: 'center', gap: 8 }}>
-              {courseData === null && (
-                <Badge c={T.text.amber}>ILLUSTRATIVE — BACKEND PENDING</Badge>
+              {!beatPlan && !beatPlanLoading && (
+                <Badge c={T.text.amber}>ILLUSTRATIVE — BEAT PLAN PENDING</Badge>
               )}
-              capturing <b style={{ color: T.text.green }}>{courseData?.captured_per_mo ? `$${Math.round(courseData.captured_per_mo).toLocaleString()}` : tm.captured}</b>/mo · net <b style={{ color: T.text.green }}>{courseData?.net_lift_pct ? `+${(courseData.net_lift_pct * 100).toFixed(1)}%` : tm.lift}</b> eff. rent ·{' '}
+              {beatPlan?.revenue?.length ? (
+                <>
+                  EGI lift{' '}
+                  <b style={{ color: T.text.green }}>
+                    +${Math.round(beatPlan.revenueLeverAnnual).toLocaleString()}/yr
+                  </b>{' '}
+                  ·{' '}
+                </>
+              ) : (
+                <>
+                  capturing <b style={{ color: T.text.green }}>{tm.captured}</b>/mo · net <b style={{ color: T.text.green }}>{tm.lift}</b> eff. rent ·{' '}
+                </>
+              )}
               <span style={{ color: T.text.cyan, cursor: 'pointer' }} onClick={() => openDrawer('rankcomps')}>edit target</span>
             </span>
           }
         />
-        <div style={{ display: 'flex' }}>
-          {COHORTS.map((c, i) => {
-            const a = c.ladder[aggro(c.type)];
-            return (
-              <div key={c.type} style={{ flex: 1, padding: '10px 12px', borderRight: i < COHORTS.length - 1 ? `1px solid ${T.border.subtle}` : 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontFamily: T.font.mono, fontSize: 11, fontWeight: 700, color: T.text.primary }}>
-                    {c.type}
-                    {rankCfg.byType && <span style={{ color: T.text.muted, fontSize: 9, marginLeft: 5 }}>#{rankCfg.perType[c.type]}</span>}
-                  </span>
-                  <Badge c={actionColor(a)} solid>{a}</Badge>
-                </div>
-                <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, marginBottom: 5 }}>{c.units} units · {c.window}</div>
-                <div style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary, lineHeight: 1.45 }}>{c.reason}</div>
-              </div>
-            );
-          })}
+        <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+          {beatPlan?.revenue?.length
+            ? beatPlan.revenue.map((rec, i) => {
+                const actionTone = rec.action === 'PUSH' ? T.text.green : rec.action === 'HOLD' ? T.text.amber : T.text.red;
+                const sigScore = rec.signalScore;
+                const sigColor = sigScore > 0.2 ? T.text.green : sigScore < -0.2 ? T.text.red : T.text.amber;
+                const deltaSign = rec.deltaPerUnit >= 0 ? '+' : '';
+                return (
+                  <div key={`${rec.unitType}-${i}`} style={{
+                    flex: '1 1 180px', padding: '10px 12px',
+                    borderRight: i < beatPlan.revenue.length - 1 ? `1px solid ${T.border.subtle}` : 'none',
+                    borderBottom: `1px solid ${T.border.subtle}`,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                      <span style={{ fontFamily: T.font.mono, fontSize: 11, fontWeight: 700, color: T.text.primary }}>
+                        {rec.unitType}
+                        {rankCfg.byType && <span style={{ color: T.text.muted, fontSize: 9, marginLeft: 5 }}>#{rankCfg.perType[rec.unitType]}</span>}
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ fontFamily: T.font.mono, fontSize: 8, color: sigColor, letterSpacing: 0.3 }}>
+                          S{sigScore >= 0 ? '+' : ''}{sigScore.toFixed(2)}
+                        </span>
+                        <Badge c={actionTone} solid>{rec.action}</Badge>
+                      </div>
+                    </div>
+                    <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, marginBottom: 3 }}>
+                      {rec.units} units · in-place ${Math.round(rec.inPlaceRent).toLocaleString()} · market ${Math.round(rec.marketRent).toLocaleString()}
+                    </div>
+                    <div style={{ fontFamily: T.font.mono, fontSize: 10, fontWeight: 700, color: T.text.primary, marginBottom: 2 }}>
+                      rec ${Math.round(rec.recommendedRent).toLocaleString()}
+                      <span style={{ color: rec.deltaPerUnit >= 0 ? T.text.green : T.text.red, marginLeft: 6 }}>
+                        {deltaSign}${Math.round(Math.abs(rec.deltaPerUnit)).toLocaleString()}/u
+                      </span>
+                    </div>
+                    <div style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.green }}>
+                      +${Math.round(rec.annualEGIContribution).toLocaleString()}/yr EGI
+                    </div>
+                    <div style={{ fontFamily: T.font.label, fontSize: 9, color: T.text.secondary, marginTop: 4, lineHeight: 1.4 }}>
+                      {rec.reason}
+                    </div>
+                  </div>
+                );
+              })
+            : COHORTS.map((c, i) => {
+                const a = c.ladder[aggro(c.type)];
+                return (
+                  <div key={c.type} style={{ flex: 1, padding: '10px 12px', borderRight: i < COHORTS.length - 1 ? `1px solid ${T.border.subtle}` : 'none' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontFamily: T.font.mono, fontSize: 11, fontWeight: 700, color: T.text.primary }}>
+                        {c.type}
+                        {rankCfg.byType && <span style={{ color: T.text.muted, fontSize: 9, marginLeft: 5 }}>#{rankCfg.perType[c.type]}</span>}
+                      </span>
+                      <Badge c={actionColor(a)} solid>{a}</Badge>
+                    </div>
+                    <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, marginBottom: 5 }}>{c.units} units · {c.window}</div>
+                    <div style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary, lineHeight: 1.45 }}>{c.reason}</div>
+                  </div>
+                );
+              })
+          }
         </div>
       </Panel>
+
+      {/* EXPENSE DISCIPLINE */}
+      {beatPlan?.expense?.length ? (
+        <Panel style={{ marginBottom: 10 }}>
+          <PanelHeader
+            title="EXPENSE DISCIPLINE"
+            sub="controllable opex vs UW · recovery potential"
+            right={
+              <span style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted }}>
+                recovery{' '}
+                <b style={{ color: T.text.green }}>
+                  +${Math.round(beatPlan.expenseRecoveryAnnual).toLocaleString()}/yr
+                </b>
+                {beatPlan.acceptedExpenseDragAnnual > 0 && (
+                  <> · drag <b style={{ color: T.text.red }}>−${Math.round(beatPlan.acceptedExpenseDragAnnual).toLocaleString()}/yr</b></>
+                )}
+              </span>
+            }
+          />
+          <Table
+            head={['EXPENSE LINE', 'CAT', 'UW TARGET', 'ACTUAL', 'VAR %', 'PROJECTED', 'RECOVERY', 'NOTE']}
+            align={['l', 'c', 'r', 'r', 'r', 'r', 'r', 'l']}
+            rows={beatPlan.expense.map(f => {
+              const varPct = f.variancePct * 100;
+              const varTone = f.flagged ? T.text.red : varPct > 0 ? T.text.amber : T.text.green;
+              const fmtDollar = (v: number) => `$${Math.round(Math.abs(v)).toLocaleString()}`;
+              return [
+                <span key="lbl" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {f.flagged && <span style={{ color: T.text.red, fontSize: 10 }}>⚑</span>}
+                  <span style={{ color: f.flagged ? T.text.red : T.text.primary }}>{f.label}</span>
+                </span>,
+                <Badge key="cat" c={f.category === 'controllable' ? T.text.cyan : T.text.purple}>
+                  {f.category === 'controllable' ? 'CTRL' : 'NON-C'}
+                </Badge>,
+                fmtDollar(f.uwTarget),
+                <span key="act" style={{ color: f.actualRunRate > f.uwTarget ? T.text.red : T.text.green }}>
+                  {fmtDollar(f.actualRunRate)}
+                </span>,
+                <span key="var" style={{ color: varTone, fontWeight: f.flagged ? 700 : 400 }}>
+                  {varPct >= 0 ? '+' : ''}{varPct.toFixed(1)}%
+                </span>,
+                fmtDollar(f.projectedLine),
+                f.recoveryAnnual > 0
+                  ? <span key="rec" style={{ color: T.text.green }}>+${Math.round(f.recoveryAnnual).toLocaleString()}</span>
+                  : <span key="rec" style={{ color: T.text.muted }}>—</span>,
+                <span key="note" style={{ color: T.text.muted, fontStyle: 'italic', fontSize: 9 }}>{f.note}</span>,
+              ];
+            })}
+            rowStyle={(_, i) => beatPlan.expense[i].flagged ? { background: T.text.red + '0C' } : undefined}
+          />
+        </Panel>
+      ) : beatPlanLoading ? (
+        <Panel style={{ marginBottom: 10 }}>
+          <div style={{ padding: '14px 16px', fontFamily: T.font.mono, fontSize: 10, color: T.text.muted }}>
+            loading expense discipline…
+          </div>
+        </Panel>
+      ) : null}
 
       <div style={{ display: 'flex', gap: 10 }}>
         {/* LEASE ROLL — expirations wired via /api/v1/operations/:dealId/lease-expirations */}
@@ -1188,6 +1682,8 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
   // ── Live data state ──────────────────────────────────────────
   const [pvaData, setPvaData] = useState<any[]>([]);
   const [varData, setVarData] = useState<any[]>([]);
+  const [liveCheckpoints, setLiveCheckpoints] = useState<{ icon: string; color: 'green' | 'amber' | 'red'; text: string }[]>([]);
+  const [checkpointsLoading, setCheckpointsLoading] = useState(false);
   // TODO(backend: M09 4-col endpoint) — GET /api/v1/operations/:dealId/live-tracking
   const [liveTracking, setLiveTracking] = useState<any[] | null>(null);
 
@@ -1219,6 +1715,20 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
       .then(res => { setLiveTracking(res.data?.rows ?? []); })
       .catch(() => { setLiveTracking(null); });
   }, [dealId, activeScreen]);
+
+  // ── Commentary agent — thesis checkpoints ─────────────────────
+  useEffect(() => {
+    if (!dealId) return;
+    setLiveCheckpoints([]);   // clear stale bullets from any previous deal
+    setCheckpointsLoading(true);
+    apiClient.post(`/api/v1/operations/${dealId}/commentary`, {})
+      .then(res => {
+        const pts = res.data?.checkpoints;
+        if (Array.isArray(pts) && pts.length > 0) setLiveCheckpoints(pts);
+      })
+      .catch(() => {})
+      .finally(() => setCheckpointsLoading(false));
+  }, [dealId]);
 
   // ── Map PVA to chart data ─────────────────────────────────────
   const chartData = useMemo(() => {
@@ -1330,8 +1840,7 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
             </Panel>
           </div>
 
-          {/* LIVE TRACKING — stub; codes against GET /api/v1/operations/:dealId/live-tracking */}
-          {/* TODO(backend: M09 4-col composition endpoint) */}
+          {/* LIVE TRACKING — wired to GET /api/v1/operations/:dealId/live-tracking */}
           <Panel style={{ marginBottom: 10, borderColor: liveTracking === null ? T.text.amber + '44' : T.border.bright }}>
             <PanelHeader
               title="LIVE TRACKING"
@@ -1343,13 +1852,28 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
             <Table
               head={['LINE ITEM', 'CURRENT', 'ACTUALS TTM', 'PRO FORMA', 'Δ TO PF']}
               align={['l', 'r', 'r', 'r', 'r']}
-              rows={FOURCOL.map(r => [
-                <span key="item" style={{ fontWeight: r.bold ? 700 : 400, color: r.bold ? T.text.primary : T.text.secondary }}>{r.item}</span>,
-                r.cur,
-                <span key="ttm" style={{ color: r.bold ? T.text.primary : T.text.secondary }}>{r.ttm}</span>,
-                r.pf,
-                <span key="d" style={{ color: r.tone, fontWeight: 700 }}>{r.d}</span>,
-              ])}
+              rows={liveTracking && liveTracking.length > 0
+                ? liveTracking.map((r: any) => {
+                    const dp: number | null = r.delta_pct ?? null;
+                    const tone = dp == null ? T.text.muted : dp >= 0 ? T.text.green : T.text.red;
+                    const dLabel = dp == null ? '—' : (dp >= 0 ? `+${dp.toFixed(1)}%` : `${dp.toFixed(1)}%`);
+                    const isGl = typeof r.line_item === 'string' && r.line_item.startsWith('  ');
+                    return [
+                      <span key="item" style={{ fontWeight: isGl ? 400 : 600, color: isGl ? T.text.muted : T.text.secondary, paddingLeft: isGl ? 8 : 0 }}>{r.line_item}</span>,
+                      r.current_month_fmt ?? '—',
+                      <span key="ttm" style={{ color: isGl ? T.text.muted : T.text.secondary }}>{r.actuals_ttm_fmt ?? '—'}</span>,
+                      r.pro_forma_fmt ?? '—',
+                      <span key="d" style={{ color: tone, fontWeight: 700 }}>{dLabel}</span>,
+                    ];
+                  })
+                : FOURCOL.map(r => [
+                    <span key="item" style={{ fontWeight: r.bold ? 700 : 400, color: r.bold ? T.text.primary : T.text.secondary }}>{r.item}</span>,
+                    r.cur,
+                    <span key="ttm" style={{ color: r.bold ? T.text.primary : T.text.secondary }}>{r.ttm}</span>,
+                    r.pf,
+                    <span key="d" style={{ color: r.tone, fontWeight: 700 }}>{r.d}</span>,
+                  ])
+              }
             />
           </Panel>
 
@@ -1381,17 +1905,29 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
               </div>
             </Panel>
             <Panel style={{ flex: 1.1, minWidth: 0 }}>
-              <PanelHeader title="THESIS CHECKPOINTS" sub="AI commentary" />
+              <PanelHeader title="THESIS CHECKPOINTS" sub={checkpointsLoading ? 'generating…' : 'AI commentary · owned-asset'} />
               <div style={{ padding: '4px 0' }}>
-                {CHECKPOINTS.map((c, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 8, padding: '8px 12px', borderBottom: i < CHECKPOINTS.length - 1 ? `1px solid ${T.border.subtle}` : 'none' }}>
-                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.tone, marginTop: 5, flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary, lineHeight: 1.45 }}>{c.note}</div>
-                      <div style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted, marginTop: 2 }}>// TODO(backend: assetMode:'owned' commentary)</div>
+                {(() => {
+                  const colorMap: Record<string, string> = {
+                    green: T.text.green,
+                    amber: T.text.amber,
+                    red:   T.text.red,
+                  };
+                  const display = liveCheckpoints.length
+                    ? liveCheckpoints.map(c => ({ note: c.text, tone: colorMap[c.color] ?? T.text.muted }))
+                    : CHECKPOINTS;
+                  return display.map((c, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8, padding: '8px 12px', borderBottom: i < display.length - 1 ? `1px solid ${T.border.subtle}` : 'none' }}>
+                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.tone, marginTop: 5, flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary, lineHeight: 1.45 }}>{c.note}</div>
+                        {!liveCheckpoints.length && (
+                          <div style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted, marginTop: 2 }}>// loading commentary…</div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ));
+                })()}
               </div>
             </Panel>
           </div>
@@ -1415,6 +1951,7 @@ function CapitalScreen({ dealId }: { dealId: string }) {
   const [sub, setSub] = useState('debt');
   const [tf, setTf] = useState(12);
   const data = DEBT_SERIES.slice(-tf);
+  const [debtPos, setDebtPos] = useState<any>(null);
 
   // TODO(backend: GET /api/v1/capital/:dealId/capital-accounts) — per-member accounts
   const [capitalAccounts, setCapitalAccounts] = useState<any>(null);
@@ -1438,6 +1975,59 @@ function CapitalScreen({ dealId }: { dealId: string }) {
       .then(res => { setWaterfallCap(res.data ?? null); })
       .catch(() => { setWaterfallCap(null); });
   }, [dealId]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/lifecycle/${dealId}/debt`)
+      .then(res => {
+        const positions = res.data?.positions ?? [];
+        if (positions.length > 0) setDebtPos(positions[0]);
+      })
+      .catch(() => {});
+  }, [dealId]);
+
+  // ── Compute display values from live debt position (fall back to hardcoded) ──
+  const fmtPct = (v: number | undefined, fallback: string) => {
+    if (v == null) return fallback;
+    const pct = v <= 1 ? v * 100 : v;
+    return pct.toFixed(2) + '%';
+  };
+  const fmtMoney = (v: number | undefined, fallback: string) => {
+    if (v == null) return fallback;
+    return '$' + (v / 1_000_000).toFixed(1) + 'M';
+  };
+  const fmtMonthYear = (d: string | Date | undefined, fallback: string) => {
+    if (!d) return fallback;
+    const dt = new Date(d);
+    const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()];
+    return `${mon} '${String(dt.getFullYear()).slice(2)}`;
+  };
+  const dpRate = debtPos?.currentRate;
+  const dpSpread = debtPos?.spreadBps;
+  const dpSofr = (dpRate != null && dpSpread != null)
+    ? ((dpRate <= 1 ? dpRate : dpRate / 100) - dpSpread / 10000)
+    : null;
+  const debtChipVals = {
+    allIn:     fmtPct(dpRate, '6.85%'),
+    sofr:      dpSofr != null ? (dpSofr * 100).toFixed(2) + '%' : '4.30%',
+    spread:    dpSpread != null ? `+${dpSpread}bps` : '+285bps',
+    dscr:      debtPos?.dscrCovenant ? debtPos.dscrCovenant.toFixed(2) + 'x' : '1.48x',
+    capExpiry: debtPos?.rateCapExpiry ? fmtMonthYear(debtPos.rateCapExpiry, "Sep '26") : debtPos?.hedgeExpiryDate ? fmtMonthYear(debtPos.hedgeExpiryDate, "Sep '26") : "Sep '26",
+  };
+  const liveDebtOverview = debtPos ? [
+    { label: 'Loan Balance',     value: fmtMoney(debtPos.currentBalance, '$34.8M') },
+    { label: 'Lender',           value: debtPos.lenderName ?? 'Bridge' },
+    { label: 'Index',            value: debtPos.baseRate ?? '1M SOFR' },
+    { label: 'Current SOFR',     value: debtChipVals.sofr },
+    { label: 'Spread',           value: debtChipVals.spread },
+    { label: 'All-In Rate',      value: debtChipVals.allIn, tone: T.text.amber },
+    { label: 'Rate Cap Strike',  value: debtPos.rateCapStrike != null ? fmtPct(debtPos.rateCapStrike, '4.00%') : debtPos.rateCap != null ? fmtPct(debtPos.rateCap, '4.00%') : '4.00%', tone: T.text.cyan },
+    { label: 'Cap Expiry',       value: debtChipVals.capExpiry, sub: '15mo', tone: T.text.red },
+    { label: 'Maturity',         value: fmtMonthYear(debtPos.maturityDate, "Mar '28") },
+    { label: 'DSCR',             value: debtChipVals.dscr, tone: T.text.green },
+    { label: 'Debt Yield',       value: debtPos.debtYieldCovenant != null ? fmtPct(debtPos.debtYieldCovenant, '9.2%') : '9.2%' },
+    { label: 'Breakeven Occ.',   value: '78.4%' },
+  ] : DEBT_OVERVIEW;
 
   return (
     <>
@@ -1464,9 +2054,9 @@ function CapitalScreen({ dealId }: { dealId: string }) {
               controls={
                 <div style={{ display: 'flex', borderBottom: `1px solid ${T.border.subtle}` }}>
                   {[
-                    ['ALL-IN', '6.85%', T.text.amber], ['SOFR', '4.30%', T.text.orange],
-                    ['SPREAD', '+285bps', T.text.primary], ['DSCR', '1.48x', T.text.green],
-                    ['CAP EXPIRY', 'Sep \'26', T.text.red],
+                    ['ALL-IN', debtChipVals.allIn, T.text.amber], ['SOFR', debtChipVals.sofr, T.text.orange],
+                    ['SPREAD', debtChipVals.spread, T.text.primary], ['DSCR', debtChipVals.dscr, T.text.green],
+                    ['CAP EXPIRY', debtChipVals.capExpiry, T.text.red],
                   ].map(([l, v, c], i) => (
                     <div key={l as string} style={{ flex: 1, padding: '9px 12px', borderRight: i < 4 ? `1px solid ${T.border.subtle}` : 'none' }}>
                       <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, letterSpacing: 0.5 }}>{l}</div>
@@ -1478,7 +2068,7 @@ function CapitalScreen({ dealId }: { dealId: string }) {
             />
             <Panel style={{ width: 268, flexShrink: 0 }}>
               <PanelHeader title="DEBT OVERVIEW" sub="capital stack" />
-              <StatRail rows={DEBT_OVERVIEW} signal={{ label: 'RATE EXPOSURE', note: 'Capped to Sep \'26, then floating → refi before maturity', value: 'EXPOSED', tone: T.text.amber }} />
+              <StatRail rows={liveDebtOverview} signal={{ label: 'RATE EXPOSURE', note: 'Capped to Sep \'26, then floating → refi before maturity', value: 'EXPOSED', tone: T.text.amber }} />
             </Panel>
           </div>
 
@@ -1500,23 +2090,58 @@ function CapitalScreen({ dealId }: { dealId: string }) {
               <StatRail rows={REFI_DATA} />
             </Panel>
             <Panel style={{ flex: 1, minWidth: 0 }}>
-              {/* TODO(data: rate cap / hedge — wire from loan record once
-                  GET /api/v1/capital/:dealId/capital-accounts returns hedge fields) */}
-              <PanelHeader
-                title="HEDGE STATUS"
-                right={<Badge c={T.text.amber}>TODO(data: rate cap / hedge)</Badge>}
-              />
+              <PanelHeader title="HEDGE STATUS" />
               <div style={{ padding: 12 }}>
-                <div style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.secondary, lineHeight: 1.7 }}>
-                  Rate cap @ <b style={{ color: T.text.cyan }}>4.00%</b>, notional <b style={{ color: T.text.primary }}>$34.8M</b>.<br />
-                  SOFR 4.30% &gt; strike → cap paying <b style={{ color: T.text.green }}>~30bps</b>.<br />
-                  Expires <b style={{ color: T.text.red }}>Sep '26</b> — 15mo before maturity.
-                </div>
-                <div style={{ marginTop: 10, padding: '8px 10px', border: `1px solid ${T.text.amber}44`, background: T.text.amber + '12', borderRadius: 2 }}>
-                  <span style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.amber }}>
-                    ⚑ ILLUSTRATIVE — source from loan record when capital-accounts endpoint is live.
-                  </span>
-                </div>
+                {debtPos ? (() => {
+                  const strike   = debtPos.rateCapStrike ?? debtPos.rateCap;
+                  const expiry   = debtPos.hedgeExpiryDate ?? debtPos.rateCapExpiry;
+                  const htype    = (debtPos.hedgeType && debtPos.hedgeType !== 'none') ? debtPos.hedgeType.toUpperCase() : 'CAP';
+                  const notional = fmtMoney(debtPos.currentBalance, '$34.8M');
+                  const sofrPct  = dpSofr != null ? +(dpSofr * 100).toFixed(2) : 4.30;
+                  const strikePct = strike != null ? (strike <= 1 ? +(strike * 100).toFixed(2) : +strike.toFixed(2)) : 4.00;
+                  const capPaying = sofrPct > strikePct;
+                  const bpsBenefit = capPaying ? Math.round((sofrPct - strikePct) * 100) : 0;
+                  return (
+                    <>
+                      <div style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.secondary, lineHeight: 1.7 }}>
+                        {htype} @ <b style={{ color: T.text.cyan }}>{strikePct.toFixed(2)}%</b>, notional <b style={{ color: T.text.primary }}>{notional}</b>.<br />
+                        SOFR {sofrPct.toFixed(2)}% {capPaying ? '>' : '≤'} strike → {htype.toLowerCase()} {capPaying
+                          ? <><b style={{ color: T.text.green }}>paying ~{bpsBenefit}bps</b></>
+                          : <b style={{ color: T.text.muted }}>not paying (OTM)</b>}.<br />
+                        {expiry
+                          ? <>Expires <b style={{ color: T.text.red }}>{fmtMonthYear(expiry, "Sep '26")}</b> — before maturity.</>
+                          : <>Expiry not set — update loan record.</>}
+                      </div>
+                      {expiry && (() => {
+                        const msToExpiry = new Date(expiry).getTime() - Date.now();
+                        const moToExpiry = Math.round(msToExpiry / (1000 * 60 * 60 * 24 * 30.44));
+                        if (moToExpiry <= 18) {
+                          return (
+                            <div style={{ marginTop: 10, padding: '8px 10px', border: `1px solid ${T.text.red}44`, background: T.text.red + '12', borderRadius: 2 }}>
+                              <span style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.red }}>
+                                ⚑ {htype} expires in {moToExpiry}mo — extension or replacement required before maturity.
+                              </span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </>
+                  );
+                })() : (
+                  <>
+                    <div style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.secondary, lineHeight: 1.7 }}>
+                      Rate cap @ <b style={{ color: T.text.cyan }}>4.00%</b>, notional <b style={{ color: T.text.primary }}>$34.8M</b>.<br />
+                      SOFR 4.30% &gt; strike → cap paying <b style={{ color: T.text.green }}>~30bps</b>.<br />
+                      Expires <b style={{ color: T.text.red }}>Sep '26</b> — 15mo before maturity.
+                    </div>
+                    <div style={{ marginTop: 10, padding: '8px 10px', border: `1px solid ${T.text.amber}44`, background: T.text.amber + '12', borderRadius: 2 }}>
+                      <span style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.amber }}>
+                        ⚑ ILLUSTRATIVE — no active debt position loaded.
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </Panel>
           </div>
@@ -1524,7 +2149,7 @@ function CapitalScreen({ dealId }: { dealId: string }) {
       )}
 
       {sub === 'distributions' && (
-        // TODO(backend: GET /api/v1/capital/:dealId/capital-accounts) — per-member capital accounts
+        // CAPITAL ACCOUNTS — wired to GET /api/v1/capital/:dealId/capital-accounts
         <div style={{ display: 'flex', gap: 10 }}>
           <Panel style={{ flex: 1, minWidth: 0, borderColor: capitalAccounts === null ? T.text.amber + '44' : undefined }}>
             <PanelHeader
@@ -1535,16 +2160,46 @@ function CapitalScreen({ dealId }: { dealId: string }) {
             <Table
               head={['MEMBER', 'COMMITTED', 'CALLED', 'DISTRIBUTED', 'PREF ACCR.', 'TIER']}
               align={['l', 'r', 'r', 'r', 'r', 'c']}
-              rows={MEMBERS.map(m => [
-                m.member, m.committed, m.called, m.distributed,
-                <span key="pref" style={{ color: m.pref === '—' ? T.text.muted : T.text.amber }}>{m.pref}</span>,
-                <Badge key="tier" c={m.tier === 'Promote' ? T.text.purple : T.text.cyan}>{m.tier}</Badge>,
-              ])}
+              rows={capitalAccounts?.members?.length > 0
+                ? capitalAccounts.members.map((m: any) => {
+                    const fmtM = (v: number) => v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M` : `$${Math.round(v).toLocaleString()}`;
+                    const tier = m.class === 'gp' ? 'Promote' : 'Pref';
+                    return [
+                      m.name,
+                      fmtM(m.commitment_amount),
+                      fmtM(m.called),
+                      fmtM(m.distributed),
+                      <span key="pref" style={{ color: T.text.muted }}>—</span>,
+                      <Badge key="tier" c={tier === 'Promote' ? T.text.purple : T.text.cyan}>{tier}</Badge>,
+                    ];
+                  })
+                : MEMBERS.map(m => [
+                    m.member, m.committed, m.called, m.distributed,
+                    <span key="pref" style={{ color: m.pref === '—' ? T.text.muted : T.text.amber }}>{m.pref}</span>,
+                    <Badge key="tier" c={m.tier === 'Promote' ? T.text.purple : T.text.cyan}>{m.tier}</Badge>,
+                  ])
+              }
             />
           </Panel>
           <Panel style={{ width: 268, flexShrink: 0 }}>
             <PanelHeader title="FUND SUMMARY" />
-            <StatRail rows={DIST_SUMMARY.map(([label, value]) => ({ label, value }))} />
+            {capitalAccounts?.summary
+              ? (() => {
+                  const s = capitalAccounts.summary;
+                  const fmtM = (v: number) => v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M` : `$${Math.round(v).toLocaleString()}`;
+                  const dpi = s.total_committed > 0 ? (s.total_distributed / s.total_committed).toFixed(2) + 'x' : '—';
+                  const unreturned = s.total_called - s.total_distributed;
+                  const liveSummary = [
+                    { label: 'Total Equity', value: fmtM(s.total_committed) },
+                    { label: 'Distributed',  value: fmtM(s.total_distributed) },
+                    { label: 'DPI',          value: dpi },
+                    { label: 'Unreturned Capital', value: fmtM(Math.max(0, unreturned)) },
+                    { label: 'Members',      value: String(s.member_count) },
+                  ];
+                  return <StatRail rows={liveSummary} />;
+                })()
+              : <StatRail rows={DIST_SUMMARY.map(([label, value]) => ({ label, value }))} />
+            }
           </Panel>
         </div>
       )}
@@ -1612,11 +2267,23 @@ export default function AssetHubPage() {
   // Prefer the store value (set by useEffect above); fall back to URL param
   const dealId = selectedAssetDealId ?? urlDealId ?? '';
 
+  // Fallback: when the deals list hasn't loaded yet, resolve propertyId from the API
+  useEffect(() => {
+    if (!dealId || propertyId) return;
+    apiClient.get(`/api/v1/deals/${dealId}`)
+      .then(res => {
+        const pid = res.data?.deal?.property_id ?? null;
+        if (pid) setSelectedAsset(dealId, pid);
+      })
+      .catch(() => {});
+  }, [dealId, propertyId, setSelectedAsset]);
+
   // ── Fetch comps from the API (populates drawer + rank leaderboard) ──
   const [screen, setScreen] = useState<'revenue' | 'performance' | 'capital'>('revenue');
   const [drawer, setDrawer] = useState<string | null>(null);
   const [comps, setComps] = useState<Comp[]>(DEFAULT_COMPS);
   const [rankCfg, setRankCfg] = useState<RankCfg>({ overall: 2, byType: false, perType: { '1BR': 3, '2BR': 2, '3BR': 3, 'STU': 4 } });
+  const [targetSavedVersion, setTargetSavedVersion] = useState(0);
 
   useEffect(() => {
     if (!dealId) return;
@@ -1781,6 +2448,7 @@ export default function AssetHubPage() {
               <RevenueScreen
                 rankCfg={rankCfg} comps={comps} openDrawer={openDrawer}
                 dealId={dealId} propertyId={propertyId} activeScreen={screen}
+                targetSavedVersion={targetSavedVersion}
               />
             )}
             {screen === 'performance' && <PerformanceScreen dealId={dealId} activeScreen={screen} />}
@@ -1792,7 +2460,11 @@ export default function AssetHubPage() {
       {/* ── DRAWERS ── */}
       {drawer === 'rankcomps' && (
         <DrawerShell title="RANK & COMPS" sub="set-it-and-forget · annual" onClose={closeDrawer}>
-          <RankCompsConfig rankCfg={rankCfg} setRankCfg={setRankCfg} comps={comps} setComps={setComps} propertyId={propertyId} />
+          <RankCompsConfig
+            rankCfg={rankCfg} setRankCfg={setRankCfg} comps={comps} setComps={setComps}
+            propertyId={propertyId}
+            onTargetSaved={() => setTargetSavedVersion(v => v + 1)}
+          />
         </DrawerShell>
       )}
 
@@ -1816,7 +2488,7 @@ export default function AssetHubPage() {
 
       {drawer === 'activity' && (
         <DrawerShell title="ACTIVITY" sub="audit log" onClose={closeDrawer}>
-          <ActivityTab />
+          <ActivityTab dealId={dealId} />
         </DrawerShell>
       )}
     </div>

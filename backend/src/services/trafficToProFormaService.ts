@@ -870,6 +870,91 @@ export interface TrafficProjectionResult {
 }
 
 /**
+ * fetchPeerBenchmark — queries deal_market_data + apartment_market_snapshots
+ * independently of traffic_projections. Safe to call on any deal whether or
+ * not a traffic prediction has ever been run.
+ */
+export async function fetchPeerBenchmark(
+  pool: import('pg').Pool,
+  dealId: string
+): Promise<PeerBenchmark | null> {
+  const res = await pool.query<{
+    mkt_n_peers: string | null;
+    mkt_avg_occ: string | null;
+    mkt_avg_rent: string | null;
+    mkt_avg_days_to_lease: string | null;
+    dmd_comp_count: string | null;
+    dmd_comp_avg_occ: string | null;
+    dmd_comp_avg_rent: string | null;
+    dmd_rent_percentile: string | null;
+  }>(
+    `SELECT
+       mkt.total_properties    AS mkt_n_peers,
+       mkt.avg_occupancy       AS mkt_avg_occ,
+       mkt.avg_rent            AS mkt_avg_rent,
+       mkt.avg_days_to_lease   AS mkt_avg_days_to_lease,
+       dmd.comp_count          AS dmd_comp_count,
+       dmd.comp_avg_occupancy  AS dmd_comp_avg_occ,
+       dmd.comp_avg_rent       AS dmd_comp_avg_rent,
+       dmd.rent_percentile     AS dmd_rent_percentile
+     FROM deals d
+     LEFT JOIN LATERAL (
+       SELECT total_properties, avg_occupancy, avg_rent, avg_days_to_lease
+       FROM apartment_market_snapshots
+       WHERE d.city IS NOT NULL AND LOWER(city) = LOWER(d.city)
+       ORDER BY snapshot_date DESC
+       LIMIT 1
+     ) mkt ON TRUE
+     LEFT JOIN deal_market_data dmd ON dmd.deal_id = d.id
+     WHERE d.id = $1`,
+    [dealId]
+  );
+
+  if (res.rows.length === 0) return null;
+  const row = res.rows[0];
+
+  const dmdCompCount   = row.dmd_comp_count    != null ? Number(row.dmd_comp_count)    : null;
+  const dmdCompAvgOcc  = row.dmd_comp_avg_occ  != null ? Number(row.dmd_comp_avg_occ)  : null;
+  const dmdCompAvgRent = row.dmd_comp_avg_rent  != null ? Number(row.dmd_comp_avg_rent) : null;
+  const dmdRentPctile  = row.dmd_rent_percentile != null ? Number(row.dmd_rent_percentile) : null;
+  const mktNPeers      = row.mkt_n_peers        != null ? Number(row.mkt_n_peers)       : null;
+  const mktAvgOcc      = row.mkt_avg_occ        != null ? Number(row.mkt_avg_occ)       : null;
+  const mktAvgRent     = row.mkt_avg_rent       != null ? Number(row.mkt_avg_rent)      : null;
+  const mktDaysToLease = row.mkt_avg_days_to_lease != null ? Number(row.mkt_avg_days_to_lease) : null;
+
+  const nPeerProperties = dmdCompCount ?? mktNPeers;
+  const rentP50    = dmdCompAvgRent ?? mktAvgRent;
+  const occP50Raw  = dmdCompAvgOcc != null ? dmdCompAvgOcc / 100 : mktAvgOcc;
+  const vacancyP50 = occP50Raw != null ? +(1 - occP50Raw).toFixed(4) : null;
+  const leaseVelP50 = mktDaysToLease != null && mktDaysToLease > 0 ? +(7 / mktDaysToLease).toFixed(3) : null;
+
+  const hasAnyBenchmark =
+    nPeerProperties != null || rentP50 != null || vacancyP50 != null ||
+    dmdRentPctile != null || leaseVelP50 != null;
+
+  if (!hasAnyBenchmark) return null;
+
+  return {
+    nPeerProperties,
+    submarketPercentile: dmdRentPctile != null ? {
+      vacancy: null,
+      rent: dmdRentPctile,
+      leaseVelocity: null,
+    } : null,
+    peerDistribution: (rentP50 != null || vacancyP50 != null || leaseVelP50 != null) ? {
+      vacancy:       { p25: null, p50: vacancyP50,  p75: null },
+      rent:          { p25: null, p50: rentP50,      p75: null },
+      leaseVelocity: { p25: null, p50: leaseVelP50,  p75: null },
+    } : null,
+    dataSource: (dmdCompCount != null || dmdCompAvgRent != null || dmdCompAvgOcc != null || dmdRentPctile != null)
+      ? 'deal_market_data'
+      : (mktNPeers != null || mktAvgRent != null || mktAvgOcc != null || mktDaysToLease != null)
+      ? 'apartment_market_snapshots'
+      : null,
+  };
+}
+
+/**
  * getTrafficProjection — reads the stored traffic_projections row for a deal
  * and returns per-year trajectory data for the specified hold period.
  *

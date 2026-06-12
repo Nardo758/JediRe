@@ -16,6 +16,9 @@ import {
 } from '../../services/revenue-management.service';
 import { query, getClient } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import { CommentaryAgent } from '../../agents/commentary.agent';
+import type { StrategySignalInputs } from '../../services/module-wiring/strategy-arbitrage-engine';
+import { getRentRollDerivations } from '../../services/rent-roll/rent-roll-derivations.service';
 
 const router = Router();
 
@@ -804,6 +807,226 @@ router.get('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedReq
   }
 });
 
+/**
+ * GET /api/v1/operations/:dealId/live-tracking
+ * M09 4-col comparison: current month vs TTM actuals vs annualized pro-forma vs delta.
+ * Derives summary rows from deal_monthly_actuals and GL line-item breakdown from
+ * deal_monthly_actuals_lines (joined on matching period_month values).
+ * delta_pct = (actuals_ttm − pro_forma_annualized) / |pro_forma_annualized| × 100
+ */
+router.get('/:dealId/live-tracking', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+
+    // Ownership check
+    const ownerCheck = await query(
+      'SELECT id, property_id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, userId],
+    );
+    if (!ownerCheck.rows.length) return res.status(404).json({ success: false, error: 'Deal not found' });
+    const propId = ownerCheck.rows[0].property_id as string | null;
+
+    // ── Fetch last 12 actual months ───────────────────────────────────────────
+    const actualsRes = propId
+      ? await query(
+          `SELECT report_month, gross_potential_rent, effective_gross_income, noi, expenses,
+                  occupied_units, total_units, occupancy_rate
+           FROM deal_monthly_actuals
+           WHERE property_id = $1 AND is_budget = FALSE AND is_portfolio_asset = TRUE
+           ORDER BY report_month DESC LIMIT 12`,
+          [propId],
+        )
+      : await query(
+          `SELECT report_month, gross_potential_rent, effective_gross_income, noi, expenses,
+                  occupied_units, total_units, occupancy_rate
+           FROM deal_monthly_actuals
+           WHERE deal_id = $1 AND is_budget = FALSE
+           ORDER BY report_month DESC LIMIT 12`,
+          [dealId],
+        );
+
+    // ── Fetch most recent pro-forma (budget) month if one exists ─────────────
+    const budgetRes = propId
+      ? await query(
+          `SELECT gross_potential_rent, effective_gross_income, noi, expenses, occupancy_rate
+           FROM deal_monthly_actuals
+           WHERE property_id = $1 AND is_budget = TRUE
+           ORDER BY report_month DESC LIMIT 1`,
+          [propId],
+        )
+      : await query(
+          `SELECT gross_potential_rent, effective_gross_income, noi, expenses, occupancy_rate
+           FROM deal_monthly_actuals
+           WHERE deal_id = $1 AND is_budget = TRUE
+           ORDER BY report_month DESC LIMIT 1`,
+          [dealId],
+        );
+
+    const actuals = actualsRes.rows;
+    const budget  = budgetRes.rows[0] ?? null;
+    const current = actuals[0] ?? null; // most recent actual month
+
+    // ── GL line-item breakdown from deal_monthly_actuals_lines ───────────────
+    // Uses the canonical prop_code CTE (same as /tradeout-events, /leasing-observations)
+    // to derive the property_code from deal_monthly_actuals, then scopes lines by that
+    // property_code — preventing cross-deal contamination when multiple properties share
+    // the same period months.
+    const GL_LABELS = [
+      'Payroll', 'Maintenance & Repairs', 'Utilities', 'Management Fees',
+      'Insurance', 'Property Taxes', 'Marketing', 'Admin/Office',
+    ] as const;
+
+    let glCurrent: Record<string, number> = {};
+    let glTtm: Record<string, number> = {};
+
+    if (actuals.length > 0) {
+      const actualMonths = actuals.map((r: Record<string, unknown>) => r.report_month);
+      const dmaFilter = propId
+        ? `dma.property_id = $2 AND dma.is_portfolio_asset = TRUE`
+        : `dma.deal_id = $2`;
+      const dmaParam = propId ?? dealId;
+
+      const glRes = await query(
+        `WITH prop_code AS (
+           -- Pick the property_code with the most rows matching this deal's actual months.
+           -- Ordering by match-count DESC + property_code ASC makes the result deterministic
+           -- even if multiple properties share some of the same period_months.
+           SELECT dmal.property_code
+           FROM deal_monthly_actuals_lines dmal
+           WHERE dmal.period_month IN (
+             SELECT dma.report_month::date
+             FROM deal_monthly_actuals dma
+             WHERE ${dmaFilter}
+           )
+           GROUP BY dmal.property_code
+           ORDER BY COUNT(*) DESC, dmal.property_code ASC
+           LIMIT 1
+         )
+         SELECT dmal.account_label, dmal.period_month, SUM(dmal.amount::numeric) AS total
+         FROM deal_monthly_actuals_lines dmal
+         JOIN prop_code pc ON dmal.property_code = pc.property_code
+         WHERE dmal.period_month = ANY($3::date[])
+           AND dmal.account_label = ANY($1::text[])
+         GROUP BY dmal.account_label, dmal.period_month`,
+        [GL_LABELS, dmaParam, actualMonths],
+      );
+
+      // Partition into current-month vs all-TTM-months
+      const mostRecentMonth = actualMonths[0];
+      for (const row of glRes.rows) {
+        const label = row.account_label as string;
+        const amount = parseFloat(row.total as string) || 0;
+        glTtm[label] = (glTtm[label] ?? 0) + amount;
+        if (
+          row.period_month instanceof Date
+            ? row.period_month.getTime() === new Date(mostRecentMonth as string | Date).getTime()
+            : String(row.period_month).slice(0, 7) === String(mostRecentMonth).slice(0, 7)
+        ) {
+          glCurrent[label] = (glCurrent[label] ?? 0) + amount;
+        }
+      }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function sf(r: Record<string, unknown>, field: string): number {
+      return parseFloat(r[field] as string) || 0;
+    }
+    function ttmSum(field: string): number {
+      return actuals.reduce((s: number, r: Record<string, unknown>) => s + sf(r, field), 0);
+    }
+    function ttmAvgOcc(): number {
+      if (!actuals.length) return 0;
+      return actuals.reduce((s: number, r: Record<string, unknown>) => s + sf(r, 'occupancy_rate'), 0) / actuals.length;
+    }
+    function fmtMoney(v: number | null): string {
+      if (v == null) return '—';
+      return v >= 1_000_000
+        ? '$' + (v / 1_000_000).toFixed(2) + 'M'
+        : '$' + Math.round(v).toLocaleString('en-US');
+    }
+    function fmtPct(v: number | null): string {
+      if (v == null) return '—';
+      return (v * 100).toFixed(1) + '%';
+    }
+
+    // Build a money comparison row.
+    // pf is a SINGLE monthly budget value; we annualize it (×12) to compare with TTM sum.
+    function moneyRow(label: string, cur: number | null, ttm: number, pfMonthly: number | null) {
+      const pfAnnual = pfMonthly != null ? pfMonthly * 12 : null;
+      const delta = pfAnnual && pfAnnual !== 0
+        ? parseFloat(((ttm - pfAnnual) / Math.abs(pfAnnual) * 100).toFixed(1))
+        : null;
+      return {
+        line_item: label,
+        current_month: cur,
+        current_month_fmt: fmtMoney(cur),
+        actuals_ttm: ttm,
+        actuals_ttm_fmt: fmtMoney(ttm),
+        pro_forma: pfAnnual,
+        pro_forma_fmt: fmtMoney(pfAnnual),
+        delta_pct: delta,
+      };
+    }
+
+    // ── Build response rows ───────────────────────────────────────────────────
+    const gprCur = current ? sf(current, 'gross_potential_rent') || null : null;
+    const egiCur = current ? sf(current, 'effective_gross_income') || null : null;
+    const noiCur = current ? sf(current, 'noi') || null : null;
+    const expCur = current ? sf(current, 'expenses') || null : null;
+    const occCur = current ? sf(current, 'occupancy_rate') || null : null;
+
+    const summaryRows = [
+      moneyRow('Gross Potential Rent', gprCur, ttmSum('gross_potential_rent'),
+        budget ? sf(budget, 'gross_potential_rent') || null : null),
+      moneyRow('Effective Gross Income', egiCur, ttmSum('effective_gross_income'),
+        budget ? sf(budget, 'effective_gross_income') || null : null),
+      moneyRow('NOI', noiCur, ttmSum('noi'),
+        budget ? sf(budget, 'noi') || null : null),
+      moneyRow('Total Expenses', expCur, ttmSum('expenses'),
+        budget ? sf(budget, 'expenses') || null : null),
+      {
+        line_item: 'Occupancy',
+        current_month: occCur != null ? occCur * 100 : null,
+        current_month_fmt: occCur != null ? (occCur * 100).toFixed(1) + '%' : '—',
+        actuals_ttm: ttmAvgOcc() * 100,
+        actuals_ttm_fmt: (ttmAvgOcc() * 100).toFixed(1) + '%',
+        pro_forma: budget ? (sf(budget, 'occupancy_rate') * 100 || null) : null,
+        pro_forma_fmt: budget ? fmtPct(sf(budget, 'occupancy_rate') || null) : '—',
+        delta_pct: null as number | null,
+      },
+    ];
+
+    // GL line-item expense breakdown from deal_monthly_actuals_lines
+    const lineRows = GL_LABELS
+      .filter(label => glTtm[label] != null)
+      .map(label => ({
+        line_item: `  ${label}`,
+        current_month: glCurrent[label] ?? null,
+        current_month_fmt: fmtMoney(glCurrent[label] ?? null),
+        actuals_ttm: glTtm[label],
+        actuals_ttm_fmt: fmtMoney(glTtm[label]),
+        pro_forma: null as number | null,
+        pro_forma_fmt: '—',
+        delta_pct: null as number | null,
+      }));
+
+    res.json({
+      success: true,
+      rows: [...summaryRows, ...lineRows],
+      meta: {
+        months_of_data: actuals.length,
+        current_period: current?.report_month ?? null,
+        has_pro_forma: !!budget,
+        gl_labels_found: Object.keys(glTtm),
+      },
+    });
+  } catch (err) {
+    logger.error('Live tracking GET error:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch live tracking data' });
+  }
+});
+
 interface MonthlyActualInput {
   report_month: string;
   is_budget?: boolean;
@@ -828,6 +1051,40 @@ interface MonthlyActualInput {
   capex?: number;
   notes?: string;
 }
+
+/**
+ * GET /api/v1/operations/:dealId/derived-metrics
+ * Monthly LTL% and concessions-per-unit $ series derived from rent_roll_units snapshots.
+ * Returns [{ month, ltl_pct, concessions_per_unit, unit_count }] sorted ASC.
+ * Returns an empty array (not an error) when no rent roll snapshots exist.
+ *
+ * Uses the standard deal→property bridge: property_id is resolved from the deal record
+ * and passed to the service for future use (rent_roll_units is currently deal-scoped only).
+ */
+router.get('/:dealId/derived-metrics', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    // Ownership check — also resolves property_id for the bridge pattern
+    const ownerCheck = await query(
+      'SELECT id, property_id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId],
+    );
+    if (!ownerCheck.rows.length) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+    // Bridge: property_id is resolved here and forwarded to the service.
+    // rent_roll_units currently stores rows by deal_id only; property_id is reserved
+    // for when the table gains a property_id column (parallel to deal_monthly_actuals).
+    const propertyId = (ownerCheck.rows[0].property_id as string | null) ?? null;
+
+    const metrics = await getRentRollDerivations(dealId, propertyId);
+    return res.json({ success: true, data: metrics });
+  } catch (err) {
+    logger.error('derived-metrics error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to fetch derived metrics' });
+  }
+});
 
 /**
  * POST /api/v1/operations/:dealId/monthly-actuals
@@ -1523,6 +1780,180 @@ router.get('/:dealId/leasing-observations', requireAuth, async (req: Authenticat
   } catch (err) {
     logger.error('leasing-observations error:', err);
     res.status(500).json({ error: 'Failed to fetch leasing observations' });
+  }
+});
+
+// ─── Commentary Agent (owned-asset mode) ─────────────────────────────
+
+/**
+ * POST /api/v1/operations/:dealId/commentary
+ * Invoke the commentary agent framed as an owned-asset review.
+ * Returns thesis checkpoint bullets suitable for the PERFORMANCE screen.
+ * Responses are cached 24 h in market_commentary; pass { forceRefresh: true }
+ * in the request body or ?refresh=true in the query to bypass the cache.
+ */
+router.post('/:dealId/commentary', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const forceRefresh = req.body?.forceRefresh === true || req.query.refresh === 'true';
+
+    const ownerCheck = await query(
+      'SELECT id, property_id, name FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const propertyId = ownerCheck.rows[0].property_id as string | null;
+    const dealName   = (ownerCheck.rows[0].name as string | null) ?? 'Owned Asset';
+
+    // Derive signals from real monthly actuals so the commentary is grounded
+    // in actual performance rather than the hash-based defaults.
+    let signals: StrategySignalInputs | undefined;
+    if (propertyId) {
+      const actualsRes = await query(
+        `SELECT occupancy_rate, noi
+         FROM deal_monthly_actuals
+         WHERE property_id = $1 AND is_portfolio_asset = TRUE
+           AND is_budget = false AND is_proforma = false
+           AND occupancy_rate IS NOT NULL
+         ORDER BY report_month DESC
+         LIMIT 6`,
+        [propertyId]
+      );
+      if (actualsRes.rows.length >= 1) {
+        const rows = actualsRes.rows as { occupancy_rate: string; noi: string }[];
+        const latestOcc = parseFloat(rows[0].occupancy_rate ?? '0');
+
+        // NOI momentum: average of most-recent 3 months vs prior 3 months
+        const recent = rows.slice(0, 3).map(r => parseFloat(r.noi ?? '0'));
+        const prior  = rows.slice(3, 6).map(r => parseFloat(r.noi ?? '0'));
+        const recentAvg = recent.reduce((a, b) => a + b, 0) / (recent.length || 1);
+        const priorAvg  = prior.length ? prior.reduce((a, b) => a + b, 0) / prior.length : recentAvg;
+        const noiDelta  = priorAvg > 0 ? ((recentAvg - priorAvg) / Math.abs(priorAvg)) * 100 : 0;
+
+        signals = {
+          demandScore:   Math.min(100, Math.max(0, Math.round(latestOcc * 100))),
+          supplyScore:   65,
+          momentumScore: Math.min(100, Math.max(0, 55 + Math.round(noiDelta))),
+          positionScore: 65,
+          riskScore:     60,
+        };
+      }
+    }
+
+    const agent = new CommentaryAgent();
+    const result = await agent.execute({
+      entityType:  'property',
+      entityId:    propertyId ?? dealId,
+      entityName:  dealName,
+      signals,
+      forceRefresh,
+      userId:      req.user!.userId,
+      assetMode:   'owned',
+    });
+
+    res.json({
+      success:         true,
+      checkpoints:     result.investmentThesis.points,
+      recommendation:  result.investmentThesis.recommendation,
+      marketNarrative: result.marketNarrative.content,
+      jediScore:       result.jediScore,
+    });
+  } catch (err) {
+    logger.error('Operations commentary error:', err);
+    res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to generate commentary',
+    });
+  }
+});
+
+/**
+ * GET /api/v1/operations/:dealId/activity
+ * Chronological activity feed for a deal — newest-first.
+ * Sources: deal_files (document uploads) + deal_activity (deal lifecycle events).
+ * Returns [{ id, type, actor, description, meta, timestamp }].
+ * Optional query param: ?type=document_upload|deal_event|financial_change|agent_run
+ */
+router.get('/:dealId/activity', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { type: typeFilter, limit: limitParam = '100' } = req.query;
+    const parsedLimit = parseInt(limitParam as string, 10);
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 200) : 100;
+
+    const ownerCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId],
+    );
+    if (!ownerCheck.rows.length) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    // UNION from two sources — deal_files and deal_activity
+    const result = await query(
+      `SELECT *
+       FROM (
+         -- Source 1: document uploads from deal_files
+         SELECT
+           df.id::text,
+           'document_upload'                                        AS type,
+           COALESCE(u.full_name, u.email, 'System')                AS actor,
+           'Uploaded: ' || df.filename                             AS description,
+           df.category                                             AS meta,
+           df.created_at                                           AS timestamp
+         FROM deal_files df
+         LEFT JOIN users u ON u.id = df.uploaded_by
+         WHERE df.deal_id = $1
+           AND df.deleted_at IS NULL
+
+         UNION ALL
+
+         -- Source 2: deal lifecycle events from deal_activity
+         SELECT
+           da.id::text,
+           CASE da.action_type
+             WHEN 'financial_update' THEN 'financial_change'
+             WHEN 'agent_run'        THEN 'agent_run'
+             ELSE 'deal_event'
+           END                                                     AS type,
+           COALESCE(u.full_name, u.email, 'System')                AS actor,
+           da.description                                          AS description,
+           da.entity_type                                          AS meta,
+           da.created_at                                           AS timestamp
+         FROM deal_activity da
+         LEFT JOIN users u ON u.id = da.user_id
+         WHERE da.deal_id = $1
+
+         UNION ALL
+
+         -- Source 3: team member activity from deal_team_activity
+         SELECT
+           dta.id::text,
+           'team_member_change'                                    AS type,
+           COALESCE(dta.actor_name, 'System')                      AS actor,
+           COALESCE(dta.action, 'Team update')                     AS description,
+           dta.target_type                                         AS meta,
+           dta.created_at                                          AS timestamp
+         FROM deal_team_activity dta
+         WHERE dta.deal_id = $1
+       ) feed
+       WHERE ($2::text IS NULL OR type = $2)
+       ORDER BY timestamp DESC
+       LIMIT $3`,
+      [dealId, typeFilter ?? null, limit],
+    );
+
+    return res.json({
+      success: true,
+      activities: result.rows,
+      total: result.rows.length,
+    });
+  } catch (err) {
+    logger.error('activity feed error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to fetch activity' });
   }
 });
 

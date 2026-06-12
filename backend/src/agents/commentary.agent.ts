@@ -25,6 +25,13 @@ export interface CommentaryInput {
   signals?: StrategySignalInputs;
   forceRefresh?: boolean;
   userId?: string;
+  /**
+   * 'owned'    — Asset Hub: frame analysis as owned-asset operational review
+   *              (NOI trend, occupancy health vs UW, capex posture).
+   * 'pipeline' — Deal pipeline: frame as acquisition/investment thesis analysis.
+   * undefined  — Legacy callers; treated as 'pipeline'.
+   */
+  assetMode?: 'owned' | 'pipeline';
 }
 
 export interface CommentarySection {
@@ -86,7 +93,7 @@ export class CommentaryAgent {
     });
 
     if (!input.forceRefresh) {
-      const cached = await this.getCachedCommentary(input.entityType, input.entityId, input.userId);
+      const cached = await this.getCachedCommentary(input.entityType, input.entityId, input.userId, input.assetMode);
       if (cached) {
         logger.info('Commentary Agent: returning cached commentary', {
           requestId,
@@ -108,15 +115,27 @@ export class CommentaryAgent {
     const jediScore = this.computeJediScore(signals);
 
     let marketNarrative: CommentarySection;
+    let aiThesisPoints: { icon: string; color: 'green' | 'amber' | 'red'; text: string }[] | undefined;
+    let aiRecommendation: string | undefined;
     try {
-      marketNarrative = await this.generateAINarrative(
+      const aiResult = await this.generateAINarrative(
         entityName, input.entityType, signals, arbitrageResult, jediScore, input.userId,
-        undefined, input.entityId,
+        undefined, input.entityId, input.assetMode,
       );
+      marketNarrative = aiResult.narrative;
+      aiThesisPoints   = aiResult.aiThesisPoints;
+      aiRecommendation = aiResult.aiRecommendation;
     } catch (err) {
       logger.warn('Commentary Agent: AI generation failed, using template fallback', { error: err });
       marketNarrative = this.generateMarketNarrative(entityName, input.entityType, signals, arbitrageResult);
     }
+
+    // Use AI-generated thesis points when the runtime produced them; otherwise fall
+    // back to the deterministic template so the panel never shows an empty state.
+    const deterministicThesis = this.generateInvestmentThesis(entityName, input.entityType, signals, arbitrageResult);
+    const investmentThesis = aiThesisPoints?.length
+      ? { recommendation: aiRecommendation ?? deterministicThesis.recommendation, points: aiThesisPoints }
+      : deterministicThesis;
 
     const result: CommentaryResult = {
       requestId,
@@ -125,7 +144,7 @@ export class CommentaryAgent {
       entityName,
       timestamp: new Date().toISOString(),
       marketNarrative,
-      investmentThesis: this.generateInvestmentThesis(entityName, input.entityType, signals, arbitrageResult),
+      investmentThesis,
       signalCommentary: this.generateSignalCommentary(entityName, signals),
       riskOpportunity: this.generateRiskOpportunity(entityName, input.entityType, signals),
       peerContext: this.generatePeerContext(entityName, input.entityType, jediScore),
@@ -144,7 +163,7 @@ export class CommentaryAgent {
       cacheTTLHours: CACHE_TTL_HOURS,
     };
 
-    await this.cacheCommentary(result, input.userId);
+    await this.cacheCommentary(result, input.userId, input.assetMode);
 
     const elapsed = Date.now() - startTime;
     logger.info('Commentary Agent: generation complete', {
@@ -169,7 +188,8 @@ export class CommentaryAgent {
     userId?: string,
     businessType?: string,
     entityId?: string,
-  ): Promise<CommentarySection> {
+    assetMode?: 'owned' | 'pipeline',
+  ): Promise<{ narrative: CommentarySection; aiThesisPoints?: { icon: string; color: 'green' | 'amber' | 'red'; text: string }[]; aiRecommendation?: string }> {
     const levelLabel = entityType === 'msa' ? 'metro' : entityType === 'submarket' ? 'submarket' : 'property';
     const recommended = STRATEGY_LABELS[arb.recommended];
 
@@ -213,7 +233,17 @@ export class CommentaryAgent {
       }
     }
 
+    // Owned-asset framing block: injected first so it anchors the AI's output voice
+    const assetModeBlock = assetMode === 'owned'
+      ? `Asset Context: OWNED PORTFOLIO ASSET — Frame all checkpoint bullets as an operational health review of an asset already in the portfolio. ` +
+        `Focus on: NOI trend vs underwriting, occupancy health (delta vs UW target), capex posture (on/behind budget), ` +
+        `rent burn-off rate, stabilization trajectory, and expense escalation risk. ` +
+        `Do NOT use acquisition or market-entry language (e.g. avoid "buy", "enter", "pipeline deal", "acquisition thesis"). ` +
+        `Signal scores below are derived from actual monthly performance data.`
+      : '';
+
     const contextBlock = [
+      assetModeBlock,
       `Entity: ${name} (${levelLabel})`,
       `Signal scores (0-100): Demand=${signals.demandScore}, Supply=${signals.supplyScore}, Momentum=${signals.momentumScore}, Position=${signals.positionScore}, Risk=${signals.riskScore}`,
       `JEDI Composite Score: ${jediScore}`,
@@ -255,10 +285,21 @@ export class CommentaryAgent {
       const narrativeContent = output.market_narrative?.content
         ?? `${name} analysis generated with JEDI Score ${jediScore}.`;
 
+      // Extract AI-generated thesis points so the caller can use real model output
+      // instead of the deterministic template fallback in generateInvestmentThesis().
+      const rawPoints = output.investment_thesis?.points;
+      const aiThesisPoints = Array.isArray(rawPoints) && rawPoints.length > 0
+        ? rawPoints
+        : undefined;
+
       return {
-        title: 'Market Narrative',
-        content: narrativeContent,
-        sentiment: output.market_narrative?.sentiment ?? sentiment,
+        narrative: {
+          title: 'Market Narrative',
+          content: narrativeContent,
+          sentiment: output.market_narrative?.sentiment ?? sentiment,
+        },
+        aiThesisPoints,
+        aiRecommendation: output.investment_thesis?.recommendation,
       };
     } catch (runtimeErr: unknown) {
       logger.warn('[Commentary] commentaryRuntime.run() failed, falling back to jediAI.generate()', {
@@ -301,7 +342,7 @@ IMPORTANT CITATION RULES:
       .map(block => block.text)
       .join('');
 
-    return { title: 'Market Narrative', content, sentiment };
+    return { narrative: { title: 'Market Narrative', content, sentiment } };
   }
 
   private computeJediScore(signals: StrategySignalInputs): number {
@@ -700,16 +741,19 @@ IMPORTANT CITATION RULES:
     entityType: string,
     entityId: string,
     _userId?: string,
+    assetMode?: 'owned' | 'pipeline',
   ): Promise<CommentaryResult | null> {
+    const tabContext = assetMode === 'owned' ? 'commentary_owned' : 'commentary';
     try {
       const result = await query(
         `SELECT commentary FROM market_commentary
          WHERE entity_type = $1
            AND entity_id   = $2
+           AND tab_context  = $3
            AND cache_expires_at > NOW()
          ORDER BY generated_at DESC
          LIMIT 1`,
-        [entityType, entityId],
+        [entityType, entityId, tabContext],
       );
 
       if (result.rows.length === 0) return null;
@@ -723,18 +767,20 @@ IMPORTANT CITATION RULES:
     }
   }
 
-  private async cacheCommentary(result: CommentaryResult, _userId?: string): Promise<void> {
+  private async cacheCommentary(result: CommentaryResult, _userId?: string, assetMode?: 'owned' | 'pipeline'): Promise<void> {
+    const tabContext = assetMode === 'owned' ? 'commentary_owned' : 'commentary';
     try {
       await query(
         `INSERT INTO market_commentary
            (entity_type, entity_id, tab_context, commentary, cache_expires_at)
-         VALUES ($1, $2, 'commentary', $3, NOW() + INTERVAL '${CACHE_TTL_HOURS} hours')
+         VALUES ($1, $2, $3, $4, NOW() + INTERVAL '${CACHE_TTL_HOURS} hours')
          ON CONFLICT (entity_type, entity_id, tab_context)
          DO UPDATE SET commentary     = EXCLUDED.commentary,
                        cache_expires_at = EXCLUDED.cache_expires_at`,
         [
           result.entityType,
           result.entityId,
+          tabContext,
           JSON.stringify(result),
         ],
       );

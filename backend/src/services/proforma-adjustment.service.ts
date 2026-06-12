@@ -1657,6 +1657,9 @@ export interface DealFinancials {
       dataSource: string | null;
     } | null;
   } | null;
+  /** Top-level peer benchmark — sourced from deal_market_data / apartment_market_snapshots
+   *  independently of traffic_projections. Available even before a traffic prediction is run. */
+  peerBenchmark?: import('./trafficToProFormaService').PeerBenchmark | null;
   assumptions: {
     holdYears: number;
     exitCap: number | null;
@@ -2185,14 +2188,14 @@ export async function getDealFinancials(
   dealId: string,
   holdYears = 10
 ): Promise<DealFinancials> {
-  const { getTrafficProjection } = await import('./trafficToProFormaService');
+  const { getTrafficProjection, fetchPeerBenchmark } = await import('./trafficToProFormaService');
   const { ensureDealAssumptionsSeeded } = await import('./proforma-seeder.service');
 
   // Auto-seed if year1 is missing — guarantees non-null data for deals with extraction capsules
   // No-op when year1 already exists; safe to call on every request
   await ensureDealAssumptionsSeeded(pool, dealId);
 
-  const [dealRes, assumptionsRes, proformaAssumRes, trafficProjection, trafficSnapshotRes] = await Promise.all([
+  const [dealRes, assumptionsRes, proformaAssumRes, trafficProjection, trafficSnapshotRes, standalonePeerBenchmark] = await Promise.all([
     pool.query(
       'SELECT id, name, city, state_code, target_units, budget, deal_data, operator_stance, timeline_start, deal_type FROM deals WHERE id = $1',
       [dealId]
@@ -2229,6 +2232,7 @@ export async function getDealFinancials(
       `SELECT summary FROM deal_traffic_snapshots WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [dealId]
     ),
+    fetchPeerBenchmark(pool, dealId).catch(() => null),
   ]);
 
   if (dealRes.rows.length === 0) throw new Error(`Deal not found: ${dealId}`);
@@ -5122,6 +5126,7 @@ export async function getDealFinancials(
     capitalStack: capitalStackWithOverrides,
     rentRollSummary,
     trafficProjection: trafficProjectionOut,
+    peerBenchmark: trafficProjection?.peerBenchmark ?? standalonePeerBenchmark ?? null,
     assumptions,
     userOverrides,
     userOverrideRationales,

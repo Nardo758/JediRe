@@ -101,7 +101,7 @@ export const AGENT_SEARCH_CONFIG: Record<AgentId, SearchConfig | null> = {
   },
 
   supply: {
-    maxSearchesPerRun: 8,
+    maxSearchesPerRun: 3,
     allowlistDomains: [
       // Government permit & property APIs
       '*.gov',

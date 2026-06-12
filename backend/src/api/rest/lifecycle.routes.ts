@@ -230,7 +230,14 @@ router.get('/:dealId/reforecast/history', requireAuth, async (req: Authenticated
 router.get('/:dealId/debt', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const positions = await getDebtPositions(req.params.dealId);
-    res.json({ success: true, positions });
+    // Include snake_case aliases for the hedge/cap fields per API contract
+    const mapped = positions.map(p => ({
+      ...p,
+      rate_cap_strike:   p.rateCapStrike   ?? null,
+      hedge_type:        p.hedgeType        ?? null,
+      hedge_expiry_date: p.hedgeExpiryDate  ?? null,
+    }));
+    res.json({ success: true, positions: mapped });
   } catch (err) {
     logger.error('Get debt positions error:', err);
     res.status(500).json({ success: false, error: 'Failed to get debt positions' });
@@ -646,5 +653,224 @@ router.post('/preferences/:viewName', requireAuth, async (req: AuthenticatedRequ
     res.status(500).json({ success: false, error: 'Failed to save preferences' });
   }
 });
+
+/**
+ * GET /api/v1/lifecycle/:dealId/exit-timing
+ * Returns an 84-quarter market-cycle series (Q1 2016 → Q4 2036) for the
+ * deal's CS submarket: rent growth, cap rate, supply, T10Y, and computed RSS.
+ * Historical quarters are sourced from CoStar annual data (interpolated to quarterly).
+ * Projected quarters use trend-based mean-reversion extrapolation.
+ *
+ * Response: { quarters: [{ idx, label, rent_growth, cap_rate, supply, t10,
+ *             rss, mw, re, sp, or, bp, is_proj }], optimal_fwd, now_idx, submarket_name }
+ */
+router.get('/:dealId/exit-timing', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    // 1. Auth + ownership + resolve city/county via property join
+    const dealRow = await query(
+      `SELECT d.id, d.city, d.state_code, d.property_id,
+              p.county
+       FROM deals d
+       LEFT JOIN properties p ON p.id = d.property_id
+       WHERE d.id = $1 AND d.user_id = $2 AND d.archived_at IS NULL`,
+      [dealId, req.user!.userId],
+    );
+    if (!dealRow.rows.length) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+    const { city, state_code, county } = dealRow.rows[0] as Record<string, string | null>;
+
+    // 2. Determine CS submarket geography_ids
+    const geoIds = exitTimingResolveGeoIds(county, city, state_code);
+
+    // 3. Query CS annual metrics (averaged across geography_ids)
+    const csResult = await query(
+      `SELECT metric_id,
+              EXTRACT(YEAR FROM period_date)::int AS yr,
+              AVG(value)::float               AS value
+       FROM metric_time_series
+       WHERE geography_id = ANY($1)
+         AND metric_id IN ('CS_EFF_RENT_GROWTH', 'CS_CAP_RATE', 'CS_DELIVERIES')
+         AND period_type = 'annual'
+       GROUP BY metric_id, yr
+       ORDER BY metric_id, yr`,
+      [geoIds],
+    );
+
+    // 4. Query T10Y quarterly averages (full history + near-term)
+    const t10Result = await query(
+      `SELECT EXTRACT(YEAR FROM period_date)::int    AS yr,
+              EXTRACT(QUARTER FROM period_date)::int  AS qtr,
+              AVG(value)::float                       AS val
+       FROM metric_time_series
+       WHERE metric_id = 'RATE_TREASURY_10Y' AND geography_type = 'national'
+         AND period_date >= '2016-01-01'
+       GROUP BY yr, qtr
+       ORDER BY yr, qtr`,
+    );
+
+    // 5. Build per-year lookup maps
+    const rgByYr:  Record<number, number> = {};
+    const capByYr: Record<number, number> = {};
+    const supByYr: Record<number, number> = {};
+    for (const row of csResult.rows as Array<{ metric_id: string; yr: number; value: number }>) {
+      if (row.metric_id === 'CS_EFF_RENT_GROWTH') rgByYr[row.yr]  = row.value;
+      else if (row.metric_id === 'CS_CAP_RATE')   capByYr[row.yr] = row.value;
+      else if (row.metric_id === 'CS_DELIVERIES')  supByYr[row.yr] = row.value;
+    }
+    const t10ByYrQtr: Record<string, number> = {};
+    for (const row of t10Result.rows as Array<{ yr: number; qtr: number; val: number }>) {
+      t10ByYrQtr[`${row.yr}-${row.qtr}`] = row.val;
+    }
+
+    // 6. Build 84-quarter arrays (Q1 2016 → Q4 2036)
+    const TOTAL_Q   = 84;
+    const START_YR  = 2016;
+    const NOW_IDX   = 40; // Q1 2026
+
+    const rgArr  = exitTimingInterpolate(rgByYr,  TOTAL_Q, START_YR, 2.5,  false);
+    const capArr = exitTimingInterpolate(capByYr, TOTAL_Q, START_YR, 5.0,  false);
+    const supArr = exitTimingInterpolate(supByYr, TOTAL_Q, START_YR, 0.0,  true);
+
+    const t10Arr: number[] = Array.from({ length: TOTAL_Q }, (_, i) => {
+      const yr  = START_YR + Math.floor(i / 4);
+      const qtr = (i % 4) + 1;
+      const known = t10ByYrQtr[`${yr}-${qtr}`];
+      if (known !== undefined) return +(known.toFixed(3));
+      // Extrapolate: current ~4.3% easing toward 3.0% over ~5 years
+      const lastKnown = t10ByYrQtr['2026-1'] ?? 4.3;
+      const steps = i - NOW_IDX;
+      return +(Math.max(2.8, lastKnown - steps * 0.04).toFixed(3));
+    });
+
+    // 7. Compute RSS for each quarter
+    const quarters = Array.from({ length: TOTAL_Q }, (_, i) => {
+      const yr    = START_YR + Math.floor(i / 4);
+      const qtr   = (i % 4) + 1;
+      const label = `Q${qtr}'${String(yr).slice(2)}`;
+      const rg  = rgArr[i]  ?? 2.5;
+      const cap = capArr[i] ?? 5.0;
+      const sup = supArr[i] ?? 0;
+      const t10 = t10Arr[i] ?? 3.5;
+      const rssBreak = exitTimingComputeRSS(i, rg, cap, sup, t10, NOW_IDX);
+      return { idx: i, label, rent_growth: +rg.toFixed(2), cap_rate: +cap.toFixed(3),
+               supply: Math.round(sup), t10: +t10.toFixed(3), is_proj: i >= NOW_IDX, ...rssBreak };
+    });
+
+    // 8. Optimal forward quarter (best RSS / earliest bias, 1–6 years out)
+    let optFwd = 4, bestScore = -Infinity;
+    for (let fwd = 4; fwd <= 24; fwd++) {
+      const qi = NOW_IDX + fwd;
+      if (qi >= TOTAL_Q) break;
+      const score = (quarters[qi].rss ?? 0) - fwd * 0.5;
+      if (score > bestScore) { bestScore = score; optFwd = fwd; }
+    }
+
+    // 9. Resolve submarket display name
+    let submktName = 'Atlanta MSA';
+    if (geoIds[0] !== 'atlanta-ga-ga') {
+      const nameRes = await query(
+        `SELECT geography_name FROM metric_time_series WHERE geography_id = $1 LIMIT 1`,
+        [geoIds[0]],
+      );
+      submktName = (nameRes.rows[0] as any)?.geography_name ?? submktName;
+    }
+
+    return res.json({
+      success: true, quarters, optimal_fwd: optFwd, now_idx: NOW_IDX, submarket_name: submktName,
+    });
+  } catch (err) {
+    logger.error('exit-timing error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to compute exit timing' });
+  }
+});
+
+// ─── exit-timing helpers ──────────────────────────────────────────────────────
+
+/** Map county/city to CoStar CS geography_id(s). Falls back to Atlanta metro. */
+function exitTimingResolveGeoIds(county: string | null, city: string | null, stateCode: string | null): string[] {
+  if (stateCode !== 'GA') return ['atlanta-ga-ga'];
+  const key = (county ?? city ?? '').toLowerCase();
+  if (key.includes('gwinnett')) return ['apt-1-10126', 'apt-1-6730'];
+  if (key.includes('fulton'))   return ['apt-1-6729', 'apt-1-6751'];
+  if (key.includes('cobb'))     return ['apt-1-6713', 'apt-1-6725'];
+  if (key.includes('dekalb'))   return ['apt-1-6715', 'apt-1-6750'];
+  if (key.includes('cherokee')) return ['apt-1-6710'];
+  if (key.includes('forsyth'))  return ['apt-1-6720'];
+  if (key.includes('henry'))    return ['apt-1-6722'];
+  if (key.includes('clayton'))  return ['apt-1-6711'];
+  return ['atlanta-ga-ga'];
+}
+
+/**
+ * Maps annual CS data (anchored to Q4 of each year) to a quarterly array via
+ * linear interpolation. After the last known data point, applies mean-reversion
+ * trend extrapolation over ~20 quarters.
+ */
+function exitTimingInterpolate(
+  byYear: Record<number, number>,
+  totalQ: number,
+  startYear: number,
+  fallback: number,
+  isSupply: boolean,
+): number[] {
+  const result = new Array<number | null>(totalQ).fill(null);
+
+  // Place annual values at Q4 of each year: idx = (yr - startYear) * 4 + 3
+  for (let yr = startYear; yr <= startYear + Math.floor(totalQ / 4) + 1; yr++) {
+    const qi = (yr - startYear) * 4 + 3;
+    if (qi < totalQ && byYear[yr] !== undefined) result[qi] = byYear[yr];
+  }
+
+  // Linear interpolation between known anchors
+  let prevI = -1, prevV = 0;
+  for (let i = 0; i < totalQ; i++) {
+    if (result[i] !== null) {
+      if (prevI >= 0) {
+        for (let j = prevI + 1; j < i; j++) {
+          result[j] = prevV + (result[i]! - prevV) * (j - prevI) / (i - prevI);
+        }
+      }
+      prevI = i;
+      prevV = result[i]!;
+    }
+  }
+
+  // Back-fill before first known
+  const firstKnown = result.findIndex(v => v !== null);
+  if (firstKnown > 0) for (let i = 0; i < firstKnown; i++) result[i] = result[firstKnown];
+
+  // Forward extrapolation after last known (mean-reversion over 20 quarters)
+  const lastKnownR = [...result].reverse().findIndex(v => v !== null);
+  const lastKnownI = lastKnownR === -1 ? -1 : totalQ - 1 - lastKnownR;
+  if (lastKnownI >= 0 && lastKnownI < totalQ - 1) {
+    const anchorStep = 4;
+    const prevAnchorI = Math.max(0, lastKnownI - anchorStep);
+    const trend = (result[lastKnownI]! - (result[prevAnchorI] ?? result[lastKnownI]!)) / anchorStep;
+    for (let i = lastKnownI + 1; i < totalQ; i++) {
+      const steps = i - lastKnownI;
+      const revW  = Math.min(1, steps / 20);
+      let v = result[lastKnownI]! + trend * steps * (1 - revW) + fallback * revW - result[lastKnownI]! * revW;
+      if (isSupply) v = Math.max(0, v);
+      result[i] = v;
+    }
+  }
+
+  return result.map(v => +(v ?? fallback).toFixed(3));
+}
+
+/** RSS (Readiness to Sell Score) — identical formula to ConvergenceChart.tsx. */
+function exitTimingComputeRSS(i: number, rg: number, cap: number, supply: number, rate: number, nowIdx: number) {
+  const txn = Math.max(20, 60 + Math.sin(i * 0.15) * 20);
+  const bp  = Math.max(30, 55 + Math.sin(i * 0.12) * 18);
+  const mw  = Math.min(100, Math.max(0, (rg / 6) * 40 + ((1 - cap / 7) * 100 * 0.3) + txn * 0.2 + 5));
+  const re  = Math.min(100, Math.max(0, ((5.0 - rate) / 2.5) * 100 * 0.4 + ((cap - rate) * 100 * 0.35) / 3 + ((4.5 - rate) / 2.5) * 100 * 0.25));
+  const sp  = Math.max(0, 100 - supply / 8);
+  const opR = Math.min(100, 30 + Math.max(0, i - nowIdx) * 3.5);
+  const rss = Math.round(Math.max(0, Math.min(100, mw * 0.35 + re * 0.25 + sp * 0.2 + opR * 0.15 + bp * 0.05)));
+  return { rss, mw: Math.round(mw), re: Math.round(Math.max(0, re)), sp: Math.round(sp), or: Math.round(opR), bp: Math.round(bp) };
+}
 
 export default router;

@@ -85,18 +85,28 @@ router.get('/report/:dealId', async (req, res) => {
     const { dealId } = req.params;
     const { maxAge = 24 } = req.query;
     
-    const report = await marketResearchEngine.getCachedReport(dealId, Number(maxAge));
-    
-    if (!report) {
+    // Query both report_data and generated_at so callers can compute staleness.
+    const result = await pool.query(`
+      SELECT report_data, generated_at
+      FROM market_research_reports
+      WHERE deal_id = $1
+      AND generated_at >= NOW() - INTERVAL '${Number(maxAge)} hours'
+      ORDER BY generated_at DESC
+      LIMIT 1
+    `, [dealId]);
+
+    if (result.rows.length === 0) {
       return res.status(404).json({
         error: 'No market research report found',
         message: 'Generate a report first using POST /generate/:dealId'
       });
     }
-    
+
+    const row = result.rows[0];
     res.json({
       success: true,
-      report,
+      report: row.report_data,
+      generated_at: row.generated_at,
       cached: true
     });
     

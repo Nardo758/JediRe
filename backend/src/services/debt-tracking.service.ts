@@ -31,7 +31,9 @@ export interface DebtPosition {
   rateCapPurchased?: boolean;
   rateCapStrike?: number;
   rateCapExpiry?: Date;
-  
+  hedgeType?: 'cap' | 'swap' | 'collar' | 'none';
+  hedgeExpiryDate?: Date;
+
   originationDate: Date;
   maturityDate: Date;
   extensionOptions?: number;
@@ -105,7 +107,8 @@ export async function upsertDebtPosition(debt: DebtPosition): Promise<string> {
       amortization_type, io_period_months, amortization_years,
       monthly_payment, annual_debt_service,
       dscr_covenant, ltv_covenant, debt_yield_covenant,
-      prepayment_type, prepayment_penalty_pct, prepay_lockout_until
+      prepayment_type, prepayment_penalty_pct, prepay_lockout_until,
+      hedge_type, hedge_expiry_date
     ) VALUES (
       $1, $2, $3, $4,
       $5, $6, $7,
@@ -115,12 +118,15 @@ export async function upsertDebtPosition(debt: DebtPosition): Promise<string> {
       $21, $22, $23,
       $24, $25,
       $26, $27, $28,
-      $29, $30, $31
+      $29, $30, $31,
+      $32, $33
     )
     ON CONFLICT (id) WHERE id IS NOT NULL DO UPDATE SET
       current_balance = EXCLUDED.current_balance,
       current_rate = EXCLUDED.current_rate,
       monthly_payment = EXCLUDED.monthly_payment,
+      hedge_type = EXCLUDED.hedge_type,
+      hedge_expiry_date = EXCLUDED.hedge_expiry_date,
       updated_at = NOW()
     RETURNING id`,
     [
@@ -133,6 +139,7 @@ export async function upsertDebtPosition(debt: DebtPosition): Promise<string> {
       debt.monthlyPayment, debt.annualDebtService,
       debt.dscrCovenant, debt.ltvCovenant, debt.debtYieldCovenant,
       debt.prepaymentType, debt.prepaymentPenaltyPct, debt.prepayLockoutUntil,
+      debt.hedgeType ?? 'none', debt.hedgeExpiryDate ?? null,
     ]
   );
   
@@ -164,6 +171,10 @@ export async function getDebtPositions(dealId: string): Promise<DebtPosition[]> 
     rateFloor: row.rate_floor ? Number(row.rate_floor) : undefined,
     rateCap: row.rate_cap ? Number(row.rate_cap) : undefined,
     rateCapPurchased: Boolean(row.rate_cap_purchased),
+    rateCapStrike: row.rate_cap_strike ? Number(row.rate_cap_strike) : undefined,
+    rateCapExpiry: row.rate_cap_expiry ? new Date(row.rate_cap_expiry as string) : undefined,
+    hedgeType: row.hedge_type ? (row.hedge_type as DebtPosition['hedgeType']) : undefined,
+    hedgeExpiryDate: row.hedge_expiry_date ? new Date(row.hedge_expiry_date as string) : undefined,
     originationDate: new Date(row.origination_date as string),
     maturityDate: new Date(row.maturity_date as string),
     extensionOptions: Number(row.extension_options ?? 0),

@@ -224,6 +224,18 @@ export interface F9GprDecomposition {
 
 export interface F9DealFinancials {
   dealId: string; dealName: string; totalUnits: number;
+  /** Top-level peer benchmark — available even before a traffic prediction is run.
+   *  Sourced from deal_market_data / apartment_market_snapshots independently of trafficProjection. */
+  peerBenchmark?: {
+    nPeerProperties: number|null;
+    submarketPercentile: { vacancy: number|null; rent: number|null; leaseVelocity: number|null }|null;
+    peerDistribution: {
+      vacancy:       { p25: number|null; p50: number|null; p75: number|null };
+      rent:          { p25: number|null; p50: number|null; p75: number|null };
+      leaseVelocity: { p25: number|null; p50: number|null; p75: number|null };
+    }|null;
+    dataSource: string|null;
+  }|null;
   proforma: {
     year1: Array<{
       field: string; label: string;

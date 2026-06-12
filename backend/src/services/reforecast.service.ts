@@ -203,8 +203,8 @@ export async function computeReforecast(
       reforecastIrr,
       irrDeltaBps: (reforecastIrr - originalIrr) * 100,
     });
-    
-    return {
+
+    const computedResult: ReforecastResult = {
       dealId,
       reforecastDate: new Date(),
       reforecastType: triggerReason,
@@ -220,6 +220,18 @@ export async function computeReforecast(
       reforecastEm,
       changeDrivers,
     };
+
+    // Write a lightweight audit row so getReforecastHistory() can surface it.
+    try {
+      await insertLifecycleReforecast(dealId, triggerReason, computedResult);
+    } catch (insertErr) {
+      logger.warn('[reforecast] lifecycle_reforecasts insert failed (non-fatal)', {
+        dealId,
+        error: insertErr instanceof Error ? insertErr.message : String(insertErr),
+      });
+    }
+
+    return computedResult;
     
   } catch (err) {
     logger.error('[reforecast] Computation failed', {
@@ -378,7 +390,7 @@ export async function checkReforecastTriggers(dealId: string): Promise<{
 }
 
 /**
- * Get reforecast history for a deal
+ * Get reforecast history for a deal (reads from lifecycle_reforecasts).
  */
 export async function getReforecastHistory(dealId: string): Promise<{
   id: string;
@@ -391,23 +403,55 @@ export async function getReforecastHistory(dealId: string): Promise<{
   changeDrivers: { driver: string; impactBps: number }[];
 }[]> {
   const result = await query(`
-    SELECT 
-      id, reforecast_date, reforecast_type,
-      original_irr, reforecast_irr, irr_delta_bps,
-      status, change_drivers
-    FROM reforecasts
+    SELECT
+      id, created_at AS reforecast_date,
+      trigger_reason AS reforecast_type,
+      snapshot_data
+    FROM lifecycle_reforecasts
     WHERE deal_id = $1
-    ORDER BY reforecast_date DESC
+    ORDER BY created_at DESC
   `, [dealId]);
-  
-  return (result.rows as Record<string, unknown>[]).map(row => ({
-    id: String(row.id),
-    reforecastDate: new Date(row.reforecast_date as string),
-    reforecastType: String(row.reforecast_type),
-    originalIrr: Number(row.original_irr),
-    reforecastIrr: Number(row.reforecast_irr),
-    irrDeltaBps: Number(row.irr_delta_bps),
-    status: String(row.status),
-    changeDrivers: (row.change_drivers as { driver: string; impactBps: number }[]) ?? [],
-  }));
+
+  return (result.rows as Record<string, unknown>[]).map(row => {
+    const snap = (row.snapshot_data ?? {}) as Record<string, unknown>;
+    return {
+      id: String(row.id),
+      reforecastDate: new Date(row.reforecast_date as string),
+      reforecastType: String(row.reforecast_type),
+      originalIrr: Number(snap.originalIrr ?? 0),
+      reforecastIrr: Number(snap.reforecastIrr ?? 0),
+      irrDeltaBps: Number(snap.irrDeltaBps ?? 0),
+      status: String(snap.status ?? 'complete'),
+      changeDrivers: (snap.changeDrivers as { driver: string; impactBps: number }[]) ?? [],
+    };
+  });
+}
+
+/**
+ * Insert a lightweight row into lifecycle_reforecasts after a successful
+ * computeReforecast() run so that getReforecastHistory() can surface it.
+ */
+async function insertLifecycleReforecast(
+  dealId: string,
+  triggerReason: string,
+  result: ReforecastResult,
+  createdBy?: string,
+): Promise<void> {
+  const snapshotData = {
+    originalIrr: result.originalIrr,
+    reforecastIrr: result.reforecastIrr,
+    irrDeltaBps: result.irrDeltaBps,
+    originalNoiYear1: result.originalNoiYear1,
+    reforecastNoiYear1: result.reforecastNoiYear1,
+    noiYear1DeltaPct: result.noiYear1DeltaPct,
+    originalEm: result.originalEm,
+    reforecastEm: result.reforecastEm,
+    changeDrivers: result.changeDrivers,
+    status: 'complete',
+  };
+  await query(
+    `INSERT INTO lifecycle_reforecasts (deal_id, trigger_reason, snapshot_data, created_by)
+     VALUES ($1, $2, $3, $4)`,
+    [dealId, triggerReason, JSON.stringify(snapshotData), createdBy ?? null],
+  );
 }
