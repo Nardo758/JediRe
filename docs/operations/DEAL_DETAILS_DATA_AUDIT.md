@@ -1,634 +1,791 @@
 # Deal Details Capsule — End-to-End Data Audit
 
-**Audit date:** 2026-05-30  
-**Test deal:** 464 Bishop — `3f32276f-aacd-4da3-b306-317c5109b403`  
-**Test deal address:** 464 Bishop Street NW, Atlanta, GA 30318  
-**Scope:** All operator-visible surfaces inside the Deal Details capsule (F9 Financial Engine F1–F12, Validation Grid, Valuation Grid, Document Library)  
-**Method:** Live database queries against the dev PostgreSQL instance + code trace through frontend components → backend routes → service layer → SQL  
-**Status:** Read-only investigation; no code changes made
+**Generated:** 2026-06-12  
+**Audit type:** Read-only investigation  
+**Test deal:** 464 Bishop Street NW, Atlanta GA 30318 (`3f32276f-aacd-4da3-b306-317c5109b403`)  
+**Scope:** Every operator-visible field in the Deal Details capsule — F1–F12 screens (M01–M21 + M12), F9 Financial Engine sub-tabs (⊞ OVERVIEW through ⊛ ROADMAP), Validation Grid, Valuation Grid, Document Library  
+**Method:** Live database queries against dev PostgreSQL + code trace through frontend components → backend routes → service layer → SQL  
+**Status:** COMPLETE — all field states verified against live database; no production code changes made
+
+---
+
+## F-Key / Module Map
+
+| F-Key | Module | Label | Component |
+|---|---|---|---|
+| F1 | M01 | Overview | OverviewScreen |
+| F2 | M02 | Zoning | ZoningModuleSection |
+| F3 | M05 | Market Intel | MarketScreen |
+| F4 | M04 | Supply Pipeline | SupplyPipelineScreen |
+| F5 | M08 | Strategy | StrategyScreen |
+| F6 | M07 | Traffic Intel | TrafficScreen |
+| F7 | M03 | 3D Design | Design3DScreen |
+| F8 | M11+M12 | Debt & Capital + Exit Strategy | DebtCapitalScreen (ExitCapitalModule) |
+| F9 | M08 | Financial Engine | FinancialEnginePage (11 sub-tabs) |
+| F10 | M13 | Risk | RiskScreen |
+| F11 | M21 | Deal Tools | DealToolsScreen |
+| F12\* | — | keyboard shortcut alias for F11 | — |
+
+**F12 note:** The `allDealScreens` array defines exactly 11 canonical screens (F1–F11). The keyboard shortcut mapping (`DealDetailPage.tsx` line 790) assigns `F12 → 'deal-tools'` as an alias for the F11 key. The task's "F12 (Exit Strategy / Debt Markets / Exit Timing)" refers to the **M12 sub-module** within F8 (DebtCapitalScreen, subtitle "M11+M12 · EXIT STRATEGY + DEBT MARKET"), not a standalone 12th screen. M12 is documented separately in the F8 section below.
 
 ---
 
 ## Executive Summary
 
-### Per-Surface Gap Counts
+### Gap Counts (464 Bishop test deal)
 
-| Surface | Fields Audited | POPULATED | SPARSELY POPULATED | EMPTY | BROKEN | MISSING |
-|---|---:|---:|---:|---:|---:|---:|
-| F1 — Overview | 14 | 8 | 2 | 3 | 1 | 0 |
-| F2/Console — Assumptions Hub | 28 | 14 | 4 | 6 | 2 | 2 |
-| F2a — Validation Grid | 12 | 7 | 2 | 2 | 1 | 0 |
-| F3 — Pro Forma Summary | 22 | 12 | 3 | 4 | 3 | 0 |
-| F4 — Projections Hub | 18 | 10 | 2 | 3 | 3 | 0 |
-| F5 — Capital Hub | 20 | 4 | 2 | 10 | 2 | 2 |
-| F6 — Returns Hub | 16 | 5 | 1 | 7 | 2 | 1 |
-| F7 — Valuation Grid | 10 | 3 | 2 | 3 | 2 | 0 |
-| F8 — Decision Tab | 8 | 2 | 1 | 4 | 1 | 0 |
-| F9 — Compare Hub | 12 | 4 | 0 | 6 | 2 | 0 |
-| F10 — Sensitivity/Goal Seek | 8 | 5 | 0 | 2 | 1 | 0 |
-| F11 — Roadmap Tab | 10 | 0 | 0 | 10 | 0 | 0 |
-| F12 — Custom Tabs | 4 | 0 | 0 | 4 | 0 | 0 |
-| Document Library | 8 | 5 | 1 | 1 | 1 | 0 |
-| **TOTAL** | **190** | **79 (42%)** | **20 (11%)** | **65 (34%)** | **19 (10%)** | **5 (3%)** |
-
-### Author-Class Distribution (across all audited fields)
-
-| Author Class | Field Count | % |
-|---|---:|---:|
-| OPERATOR-UPLOAD (T12 / Rent Roll / OM / Tax Bill extraction) | 48 | 25% |
-| COMPUTED (platform formula, no external data) | 42 | 22% |
-| RESEARCH-PULL (apartment_locator, Georgia ingest, ACS, FRED, traffic API) | 35 | 18% |
-| OPERATOR (human UI input, PATCH endpoints) | 28 | 15% |
-| AGENT (Cashflow Agent, Zoning Agent, Correlation Engine) | 22 | 12% |
-| UNKNOWN (writer unconfirmed in code) | 15 | 8% |
-
-### Top-10 Critical Findings
-
-| # | Finding | Severity |
+| Gap Status | Table / Surface Count | Notes |
 |---|---|---|
-| CF-01 | `noi` resolves to `840,231` (platform_fallback) for 464 Bishop — 72% below OM-extracted `2,999,564`. Resolution layer shows `platform_fallback` even though OM extraction is present. | P1 BROKEN |
-| CF-02 | Per-year projections loop ignores `deal_assumptions.per_year_overrides` (e.g. `payroll:yr2`, `gpr:yr2`). Operator edits to individual projection years are stored but reverted on every fetch. | P1 BROKEN |
-| CF-03 | `deal_monthly_actuals` — 24 rows exist but GPR, NOI, EGI, and `occupancy_rate` are all NULL for 464 Bishop. Shell rows written with no financial data populated. | P1 BROKEN |
-| CF-04 | `jedi_scores` table has zero rows for 464 Bishop; `deals.jedi_score` is NULL. JEDI Score displayed as NULL across all surfaces that consume it (F1, F8, Decision). | EMPTY |
-| CF-05 | `deal_market_intelligence` — zero rows for 464 Bishop. F1 market context strip, F4-downstream deal context, and F8 market signal overlay are all empty for this deal. | EMPTY |
-| CF-06 | `deal_debt_schedule`, `deal_waterfall_config`, `deal_capex_items`, `deal_risks`, `deal_comparable_properties` — all zero rows for 464 Bishop. F5, F6, F8 surfaces are hollow for this deal. | EMPTY (5 tables) |
-| CF-07 | `deal_monthly_actuals` has no user-facing write path and shell rows have no ETL backfill for this deal — 24 rows exist with no data. Author is UNKNOWN. | EMPTY / UNKNOWN |
-| CF-08 | `electric` and `gas_fuel` OpEx fields resolve to NULL with `resolution: platform_fallback` even though T12 and OM extractions are present — seeder is not propagating these utility lines from extraction to `year1`. | BROKEN |
-| CF-09 | `deal_assumptions.unit_mix` is empty (`{}`); `da:use_unit_mix_for_gpr` flag not set. Unit Mix Tab edits are stored in `unit_mix_overrides` but have no effect on GPR or Pro Forma — no user-facing toggle exists to activate the flag. | BROKEN (silent) |
-| CF-10 | `deal.property_id` is NULL for 464 Bishop — the deal has no linked `properties` row. All surfaces that read from `properties` (unit count, year built, building SF, lat/lng) fall back to `deals.deal_data` JSONB or extraction capsule data, bypassing the canonical property entity. | MISSING |
+| POPULATED | 11 | `deal_assumptions`, `deal_files`, `deal_context_fields`, `deal_monthly_actuals`, `deal_underwriting_snapshots`, `deal_zoning_profiles`, `deal_traffic_snapshots`, `cashflow_projections`, `jedi_score_history`, `data_quality_alerts`, `market_rent_comps` |
+| SPARSE | 4 | `cashflow_projections` (1 row), `deal_traffic_snapshots` (4 rows), `jedi_score_history` (1 row), `deal_activity` (1 row) |
+| EMPTY | 13 | `deal_market_intelligence`, `supply_events`, `deal_tasks`, `deal_risks`, `deal_scenarios`, `deal_waterfall_config`, `deal_waterfalls`, `deal_debt_schedule`, `deal_contexts`, `zoning_analyses`, `dispositions`, `building_designs_3d`, `capex_budget` |
+| BROKEN | 1 | `deal_documents` (legacy) — superseded by `deal_files`; 0 rows despite 19 active `deal_files` rows |
+| MISSING | 2 | Investment strategy LV `{detected:null, override:null}`; Exit strategy LV `{detected:null, override:null}` |
+
+### Author Class Definitions
+
+| Author Class | Definition | Primary Surfaces |
+|---|---|---|
+| **AGENT** | Written by a Claude/LLM agent run; `agent_run_id` linkable | `deal_context_fields` (all 47 rows tagged `agent:research`), `cashflow_projections`, `deal_underwriting_snapshots` |
+| **OPERATOR** | Written by the authenticated user via a UI input or PATCH endpoint | `deal_assumptions` (user edits), `deal_files` (uploads), `deal_monthly_actuals` (manual entry), waterfall config |
+| **RESEARCH-PULL** | Pulled from an external or internal data service without direct operator action | `deal_context_fields` market/macro/parcel paths, `deal_traffic_snapshots` (M07), `deal_zoning_profiles` (zoning lookup) |
+| **OPERATOR-UPLOAD** | Uploaded document whose extraction populates structured data | `deal_files` + `extraction_result` JSONB, `deal_monthly_actuals` rows (T12/rent roll extraction) |
+| **COMPUTED** | Deterministic formula or model output derived from other populated fields | All F9 proforma outputs (NOI, IRR, EM, DSCR, GPR, debt), JEDI score, valuation grid, divergence checks |
+| **UNKNOWN** | Written to the database but no identifiable writer found in current code | Several keys in `deals.deal_data` JSONB (`sale_date`, `close_date`, some `module_outputs`) |
+
+### Top 10 Critical Findings
+
+1. **`deal_market_intelligence` is empty for 464 Bishop** — F1 Overview market signals panel, F3 Market Intel, and F9 valuation context all render placeholders with no live data.
+2. **Investment and exit strategy are `{detected:null, override:null}`** — F5 Strategy surface shows NOT SET; F9 Deal Terms tab shows amber badge. No default is applied per the canonical constraint.
+3. **`deal_documents` table unused; superseded by `deal_files`** — Any code still reading `deal_documents` finds 0 rows. Stale coupling risk for scripts or agent tools referencing the old table.
+4. **Waterfall/LP-GP split data absent** — `deal_waterfall_config`, `deal_waterfalls`, and `deal_debt_schedule` each have 0 rows; F9 Capital tab waterfall panel renders empty or with defaults.
+5. **Purchase price not set in `deal_assumptions.land_cost`** — The F9 capital stack, Sources & Uses, IRR computation, and going-in cap rate all depend on this field. `irr_levered` and `noi_stabilized` are both null.
+6. **All 47 `deal_context_fields` rows authored by `agent:research`** — No OPERATOR overrides exist; there is no way to tell from this table whether the agent's values have ever been reviewed by a human.
+7. **315 `deal_underwriting_snapshots` with 0 corresponding `deal_scenarios`** — Snapshots accumulate from every agent/model run but are not surfaced in the Compare tab without user-created scenario references.
+8. **`supply_events` is empty for 464 Bishop** — F4 Supply Pipeline has no deal-level pipeline data; all supply metrics shown are market-level estimates from `deal_context_fields.market.*` (agent:research).
+9. **Freshness coverage absent for `deal_context_fields` agent-authored values** — The schema has `created_at`/`updated_at` but no TTL or staleness flag; the UI has no per-field "as of" indicator.
+10. **`deal_files` extraction is 50% failed** — 9 of 19 files have `extraction_status = 'done'`; 8 have `extraction_status = 'failed'`; 2 are `'queued'`. Half the uploaded documents have not produced structured data.
 
 ---
 
-## Per-Surface Breakdown
+## Test Deal Verification
 
-### F1 — Overview
+All field states below are verified against the live database for 464 Bishop (`3f32276f-aacd-4da3-b306-317c5109b403`).
 
-**Component:** `frontend/src/pages/development/financial-engine/OverviewTab.tsx`  
-**Primary endpoint:** `GET /api/v1/deals/:dealId` + `GET /api/v1/deal-assumptions/:dealId/assumptions`  
-**Secondary endpoints:** `GET /api/v1/jedi/score/:dealId`, `GET /api/v1/deals/:dealId/market-intelligence`
+### Live database row counts
 
-| Field (operator label) | Backend Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap Status (464 Bishop) |
+| Table | Row Count | Status |
+|---|---|---|
+| `deals` | 1 | POPULATED |
+| `deal_assumptions` | 1 | POPULATED |
+| `proforma_assumptions` | 1 | SPARSE |
+| `deal_context_fields` | 47 | POPULATED |
+| `deal_files` | 19 (done=9, failed=8, queued=2) | POPULATED |
+| `deal_monthly_actuals` | 24 | POPULATED |
+| `deal_underwriting_snapshots` | 315 | POPULATED |
+| `cashflow_projections` | 1 | SPARSE |
+| `deal_traffic_snapshots` | 4 | SPARSE |
+| `deal_zoning_profiles` | 1 | POPULATED |
+| `jedi_score_history` | 1 | SPARSE |
+| `data_quality_alerts` | 15 | POPULATED |
+| `market_rent_comps` | 13 | POPULATED |
+| `agent_runs` | 5,176 | POPULATED |
+| `deal_activity` | 1 | SPARSE |
+| `building_designs_3d` | 0 | EMPTY |
+| `dispositions` | 0 | EMPTY |
+| `capex_budget` | 0 | EMPTY |
+| `deal_market_intelligence` | 0 | EMPTY |
+| `supply_events` | 0 | EMPTY |
+| `deal_tasks` | 0 | EMPTY |
+| `deal_risks` | 0 | EMPTY |
+| `deal_scenarios` | 0 | EMPTY |
+| `deal_waterfall_config` | 0 | EMPTY |
+| `deal_waterfalls` | 0 | EMPTY |
+| `deal_debt_schedule` | 0 | EMPTY |
+| `zoning_analyses` | 0 | EMPTY |
+| `deal_contexts` | 0 | EMPTY |
+| `deal_documents` (legacy) | 0 | BROKEN |
+
+### Key field values (464 Bishop, live)
+
+| Field | Table.column | Value |
+|---|---|---|
+| Purchase price | `deal_assumptions.land_cost` | NULL |
+| Avg rent / unit | `deal_assumptions.avg_rent_per_unit` | $1,642 |
+| Vacancy % | `deal_assumptions.vacancy_pct` | 19.83% |
+| Exit cap rate | `deal_assumptions.exit_cap` | 5.00% |
+| Hold period | `deal_assumptions.hold_period_years` | 5 years |
+| Assumptions source | `deal_assumptions.assumptions_source` | `manual` |
+| Source type | `deal_assumptions.source_type` | `apt_locator` |
+| Last computed | `deal_assumptions.last_computed_at` | NULL |
+| IRR levered | `deal_assumptions.irr_levered` | NULL |
+| NOI stabilized | `deal_assumptions.noi_stabilized` | NULL |
+| Investment strategy | `deal_assumptions.investment_strategy_lv` | `{detected:null, override:null}` |
+| Exit strategy | `deal_assumptions.exit_strategy_lv` | `{detected:null, override:null}` |
+| JEDI score | `deals.jedi_score` | NULL |
+| Deal stage | `deals.stage` | `prospect` |
+
+### All 47 `deal_context_fields` paths (all `agent:research`)
+
+```
+backtest.median_irr_accuracy        backtest.outperformance_rate         backtest.similar_deals_count
+comps.avg_market_rent               comps.avg_occupancy                  comps.count
+macro.job_growth_yoy                macro.median_household_income        macro.population_growth_yoy
+macro.unemployment_rate             market.absorption_rate               market.avg_asking_rent
+market.avg_effective_rent           market.construction_units            market.delivered_12mo_units
+market.existing_units               market.months_of_supply              market.pipeline_units
+market.price_per_sqft               market.stabilized_occupancy          market.total_pipeline_units
+market.under_construction_units     market.vacancy_rate                  market_events.key_opportunities
+market_events.key_risks             market_events.net_sentiment          market_events.upcoming_count
+ownership.acquisition_date          ownership.acquisition_price          ownership.owner_name
+ownership.owner_type                parcel.address                       parcel.avg_rent
+parcel.not_found                    parcel.occupancy                     parcel.property_name
+parcel.sqft                         parcel.units                         parcel.year_built
+proximity.estimated_rent_premium_pct  proximity.grocery_grade            proximity.safety_grade
+proximity.school_grade              proximity.transit_grade              tax.annual_amount
+tax.assessed_value                  tax.effective_rate
+```
+
+---
+
+## Per-Surface Field Breakdown
+
+**Column schema for all field tables:**
+- **Field** — operator-visible label
+- **Endpoint** — backend API route that delivers or accepts this field
+- **Source Table(s)** — database table(s) where the value is stored
+- **Author Class** — who creates/updates the value (AGENT / OPERATOR / RESEARCH-PULL / OPERATOR-UPLOAD / COMPUTED / UNKNOWN)
+- **Freshness Indicator** — column or mechanism tracking data age, if any
+- **Gap (464 Bishop)** — POPULATED / SPARSE / EMPTY / MISSING / UNKNOWN
+
+---
+
+### F1 — Overview (M01 · OverviewScreen)
+
+**Backend endpoints:** `GET /api/v1/deals/:id`, `GET /api/v1/jedi/score/:dealId`, `GET /api/v1/deals/:id/completeness`, `GET /api/v1/entitlements/:dealId`, `GET /api/market-research/intelligence/:dealId`
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
 |---|---|---|---|---|---|
-| JEDI Score (total) | GET /api/v1/jedi/score/:dealId | `jedi_scores.total_score` | COMPUTED | `jedi_scores.updated_at` | EMPTY — 0 rows |
-| Demand Score | GET /api/v1/jedi/score/:dealId | `jedi_scores.demand_score` | COMPUTED | `jedi_scores.updated_at` | EMPTY |
-| Supply Score | GET /api/v1/jedi/score/:dealId | `jedi_scores.supply_score` | COMPUTED | `jedi_scores.updated_at` | EMPTY |
-| Momentum Score | GET /api/v1/jedi/score/:dealId | `jedi_scores.momentum_score` | COMPUTED | `jedi_scores.updated_at` | EMPTY |
-| Position Score | GET /api/v1/jedi/score/:dealId | `jedi_scores.position_score` | COMPUTED | `jedi_scores.updated_at` | EMPTY |
-| Risk Score | GET /api/v1/jedi/score/:dealId | `jedi_scores.risk_score` | COMPUTED | `jedi_scores.updated_at` | EMPTY |
-| Deal Name | GET /api/v1/deals/:dealId | `deals.name` | OPERATOR | `deals.updated_at` | POPULATED — "464 Bishop" |
-| Address | GET /api/v1/deals/:dealId | `deals.address` | OPERATOR | `deals.updated_at` | POPULATED |
-| Pipeline Stage | GET /api/v1/deals/:dealId | `deals.pipeline_stage` | OPERATOR | `deals.updated_at` | POPULATED — "prospect" |
-| Deal Strategy | GET /api/v1/deals/:dealId | `deals.strategy` | OPERATOR | `deals.updated_at` | POPULATED |
-| IRR (levered) | GET /api/v1/deal-assumptions/:dealId/assumptions | `deal_assumptions.irr_levered` | COMPUTED | `deal_assumptions.last_computed_at` | EMPTY — NULL |
-| Equity Multiple | GET /api/v1/deal-assumptions/:dealId/assumptions | `deal_assumptions.equity_multiple` | COMPUTED | `deal_assumptions.last_computed_at` | EMPTY — NULL |
-| NOI (Year 1, resolved) | GET /api/v1/deal-assumptions/:dealId | `deal_assumptions.year1['noi'].resolved` | COMPUTED | `year1.noi.updated_at` | BROKEN — resolved=840,231 (platform_fallback vs OM 2,999,564) |
-| Market Intelligence Context | GET /api/v1/deals/:dealId/market-intelligence | `deal_market_intelligence` | RESEARCH-PULL | `deal_market_intelligence.created_at` | EMPTY — 0 rows |
+| Deal name | `GET /api/v1/deals/:id` | `deals.name` | OPERATOR | None | POPULATED |
+| Address | `GET /api/v1/deals/:id` | `deals.address` | OPERATOR | None | POPULATED |
+| Stage | `GET /api/v1/deals/:id` | `deals.stage` | OPERATOR | None | POPULATED (`prospect`) |
+| Deal type | `GET /api/v1/deals/:id` | `deals.deal_type` | OPERATOR | None | POPULATED (`existing`) |
+| City / state | `GET /api/v1/deals/:id` | `deals.city`, `deals.state_code` | OPERATOR | None | POPULATED |
+| Total units | `GET /api/v1/deals/:id` | `deals.unit_count` / `deal_context_fields.parcel.units` | OPERATOR / AGENT | None | SPARSE |
+| JEDI score | `GET /api/v1/jedi/score/:dealId` | `jedi_score_history` | COMPUTED | `created_at` | SPARSE (1 row; `deals.jedi_score` null) |
+| KPI strip (IRR, EM, NOI) | `GET /api/v1/deals/:id/financials` | `deal_assumptions`, `cashflow_projections` | COMPUTED | None | SPARSE (purchase price absent) |
+| Completeness % | `GET /api/v1/deals/:id/completeness` | Multiple tables | COMPUTED | None | POPULATED |
+| Zoning summary | `GET /api/v1/entitlements/:dealId` | `deal_zoning_profiles` | RESEARCH-PULL | None | SPARSE (1 row, no analysis) |
+| Market signal strip (avg rent, occupancy, rent growth, HHI) | `GET /api/market-research/intelligence/:dealId` | `deal_market_intelligence` | RESEARCH-PULL | None | **EMPTY** (0 rows) |
+| Acquisition date | `GET /api/v1/deals/:id` | `deals.acquisition_date` | OPERATOR | None | EMPTY (null) |
+| Legal owner | `GET /api/v1/deals/:id` | `deals.legal_owner` | OPERATOR | None | EMPTY (null) |
+| Purchase price | `GET /api/v1/deals/:id/financials` | `deals.deal_data` JSONB + `deal_assumptions.land_cost` | OPERATOR / OPERATOR-UPLOAD | None | **EMPTY** (both null) |
+| Submarket | `GET /api/v1/deals/:id` | `deals.deal_data->>'submarketId'` | RESEARCH-PULL / UNKNOWN | None | EMPTY (not set) |
 
 ---
 
-### F2/Console — Assumptions Hub
+### F2 — Zoning (M02 · ZoningModuleSection)
 
-**Component:** `frontend/src/pages/development/financial-engine/ConsoleHubTab.tsx` (shell)  
-Sub-tabs: Stance, Deal Terms, Inputs/Assumptions, Unit Mix, Other Income, Taxes, Leasing Assumptions
+**Backend endpoints:** `POST /api/v1/zoning/lookup`, `POST /api/v1/zoning/analyze`, `GET /api/v1/zoning/districts/:municipality/:state`, `GET /api/v1/building-envelope/:dealId`
 
-**Primary endpoints:**  
-- `GET /api/v1/deal-assumptions/:dealId/assumptions` → `deal_assumptions` row  
-- `GET /api/v1/deals/:dealId/financials` → Engine A `getDealFinancials()` in `proforma-adjustment.service.ts`  
-- `GET /api/v1/deals/:dealId/assumptions/monthly` → `deal_assumptions.per_year_overrides`
-
-#### Deal Terms Sub-tab
-
-**Component:** `frontend/src/pages/development/financial-engine/DealTermsTab.tsx`  
-**Write endpoint:** `PATCH /api/v1/deal-assumptions/:dealId/purchase-price`, `PATCH /api/v1/deal-assumptions/:dealId/assumptions/hold-period`
-
-| Field | Source Table | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| Purchase Price | `deals.budget` / `deals.deal_data->>'purchase_price'` (dual-write) | OPERATOR | `deals.updated_at` | POPULATED — $60M |
-| Hold Period (years) | `deal_assumptions.hold_period_years` | OPERATOR | `deal_assumptions.updated_at` | POPULATED — 5 years |
-| Exit Cap Rate | `deal_assumptions.exit_cap` | OPERATOR / COMPUTED | `deal_assumptions.updated_at` | POPULATED — 5.0% |
-| Exit Strategy | `deal_assumptions.exit_strategy_lv` (LayeredValue JSONB) | OPERATOR | `deal_assumptions.updated_at` | POPULATED — SET |
-| Investment Strategy | `deal_assumptions.investment_strategy_lv` (LayeredValue JSONB) | OPERATOR | `deal_assumptions.updated_at` | POPULATED — SET |
-| Target IRR | `deal_assumptions.target_irr` | OPERATOR | `deal_assumptions.updated_at` | POPULATED |
-| Target EM | `deal_assumptions.target_em` | OPERATOR | `deal_assumptions.updated_at` | POPULATED |
-| Selling Costs % | `deal_assumptions.selling_costs_pct` | OPERATOR | `deal_assumptions.updated_at` | POPULATED |
-
-#### Inputs/Assumptions Sub-tab
-
-**Component:** `frontend/src/pages/development/financial-engine/AssumptionsTab.tsx`  
-**Data source:** `deal_assumptions.year1` JSONB (Engine A)
-
-| Field | Source Layer(s) | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| GPR (Year 1) | `year1.gpr` — priority: override > agent > t12 > rent_roll > om > platform | OPERATOR-UPLOAD (resolved: agent/OM) | `year1.gpr.updated_at` | POPULATED — $4,901,400 |
-| Vacancy % | `year1.vacancy_pct` — priority: override > rent_roll > t12 > platform | OPERATOR-UPLOAD | `year1.vacancy_pct.updated_at` | POPULATED |
-| Concessions % | `year1.concessions_pct` — priority: override > t12 > rent_roll > platform | OPERATOR-UPLOAD | `year1.concessions_pct.updated_at` | POPULATED |
-| Payroll | `year1.payroll` — priority: override > agent > t12 > platform | OPERATOR-UPLOAD (resolved: agent/OM) | `year1.payroll.updated_at` | POPULATED — $324,800 |
-| G&A | `year1.g_and_a` — priority: override > agent > t12 > platform | OPERATOR-UPLOAD | `year1.g_and_a.updated_at` | POPULATED — $69,600 |
-| Electric | `year1.electric` — priority: t12 > platform | OPERATOR-UPLOAD | `year1.electric.updated_at` | BROKEN — resolved=null (platform_fallback, T12 present) |
-| Gas/Fuel | `year1.gas_fuel` — priority: t12 > platform | OPERATOR-UPLOAD | `year1.gas_fuel.updated_at` | BROKEN — resolved=null |
-| Real Estate Tax | `year1.real_estate_tax` — priority: tax_bill > t12 > platform | OPERATOR-UPLOAD / AGENT | `year1.real_estate_tax.updated_at` | SPARSELY POPULATED |
-| Insurance | `year1.insurance` — priority: t12 > platform | OPERATOR-UPLOAD | `year1.insurance.updated_at` | SPARSELY POPULATED |
-| Management Fee % | `year1.management_fee_pct` | OPERATOR-UPLOAD | `year1.management_fee_pct.updated_at` | POPULATED |
-| Replacement Reserves | `year1.replacement_reserves_per_unit` | OPERATOR-UPLOAD / COMPUTED | `year1.replacement_reserves_per_unit.updated_at` | POPULATED |
-| Other Income / unit | `year1.other_income_per_unit` — priority: override > rent_roll > t12 > om | OPERATOR-UPLOAD | `year1.other_income_per_unit.updated_at` | POPULATED |
-| NOI (computed) | `year1.noi` | COMPUTED | `year1.noi.updated_at` | BROKEN — 840,231 (platform_fallback) |
-| EGI | `year1.egi` | COMPUTED | `year1.egi.updated_at` | POPULATED — $3,669,151 (agent) |
-
-#### Unit Mix Sub-tab
-
-**Component:** `frontend/src/pages/development/financial-engine/` (UnitMixTab referenced in F9 module map)  
-**Write endpoint:** `PATCH /api/v1/deal-assumptions/:dealId/financials/override`
-
-| Field | Source Table | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| Unit mix (type / count / SF / rent) | `deal_assumptions.unit_mix` JSONB | OPERATOR-UPLOAD / OPERATOR | `deal_assumptions.updated_at` | EMPTY — `unit_mix = {}` |
-| Unit mix overrides | `deal_assumptions.unit_mix_overrides` JSONB | OPERATOR | `deal_assumptions.updated_at` | POPULATED — SET |
-| GPR-from-unit-mix gate | `deal_assumptions.per_year_overrides['da:use_unit_mix_for_gpr']` | OPERATOR | N/A | MISSING — flag not set, no UI to set it |
-
-#### OperatorStance Sub-tab
-
-**Component:** `frontend/src/pages/development/financial-engine/StanceTab.tsx`  
-**Source:** `deals.operator_stance` (JSONB column on `deals`)  
-**Write endpoint:** `PATCH /api/v1/deal-assumptions/:dealId/assumptions` (stance fields)
-
-| Field | Source Table | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| Underwriting Posture | `deals.operator_stance->>'underwritingPosture'` | OPERATOR | `deals.updated_at` | SPARSELY POPULATED |
-| Rate Environment | `deals.operator_stance->>'rateEnvironment'` | OPERATOR | `deals.updated_at` | SPARSELY POPULATED |
-| Cycle Position | `deals.operator_stance->>'cyclePosition'` | OPERATOR | `deals.updated_at` | SPARSELY POPULATED |
-| Expense Growth Posture | `deals.operator_stance->>'expenseGrowthPosture'` | OPERATOR | `deals.updated_at` | SPARSELY POPULATED |
-
-#### Growth Rate Scalars (Projections Growth)
-
-**Source:** `proforma_assumptions` table  
-**Write paths:** capsule-bridge at deal creation, `calculateRentGrowthAdjustment()`, operator override, OperatorStance reblend
-
-| Field | Source Table | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| Rent Growth % | `proforma_assumptions.rent_growth_current` | RESEARCH-PULL / OPERATOR / AGENT | `proforma_assumptions.updated_at` | POPULATED — 3.5% (no override, at baseline) |
-| Vacancy % (growth scalar) | `proforma_assumptions.vacancy_current` | RESEARCH-PULL / OPERATOR / AGENT | `proforma_assumptions.updated_at` | POPULATED — 5.0% |
-| OpEx Growth % | `proforma_assumptions.opex_growth_current` | RESEARCH-PULL / OPERATOR | `proforma_assumptions.updated_at` | POPULATED — 2.8% |
-| Exit Cap Rate (growth) | `proforma_assumptions.exit_cap_current` | RESEARCH-PULL / AGENT | `proforma_assumptions.updated_at` | POPULATED — 5.5% |
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Zoning designation | `POST /api/v1/zoning/lookup` | `deal_zoning_profiles`, `property_zoning_cache` | RESEARCH-PULL | None | SPARSE (1 profile row) |
+| Zoning name / description | `POST /api/v1/zoning/lookup` | `deal_zoning_profiles` | RESEARCH-PULL | None | SPARSE |
+| Max density (DU/acre) | `GET /api/v1/zoning/rules/:districtId` | `zoning_profiles` | RESEARCH-PULL | None | SPARSE |
+| Max height (ft) | `GET /api/v1/zoning/rules/:districtId` | `zoning_profiles` | RESEARCH-PULL | None | SPARSE |
+| Max FAR | `GET /api/v1/zoning/rules/:districtId` | `zoning_profiles` | RESEARCH-PULL | None | SPARSE |
+| Setbacks (front/side/rear) | `GET /api/v1/zoning/rules/:districtId` | `zoning_profiles` | RESEARCH-PULL | None | SPARSE |
+| Parking ratio | `GET /api/v1/zoning/rules/:districtId` | `zoning_profiles` | RESEARCH-PULL | None | SPARSE |
+| Lot coverage % | `GET /api/v1/zoning/rules/:districtId` | `zoning_profiles` | RESEARCH-PULL | None | SPARSE |
+| Entitlement milestones | `GET /api/v1/entitlements/:dealId` | `entitlements`, `entitlement_milestones` | OPERATOR | None | EMPTY |
+| Building envelope (buildable SF, units achievable) | `GET /api/v1/building-envelope/:dealId` | `deal_assumptions` (COMPUTED) | COMPUTED | None | SPARSE |
+| Zoning analysis text | `POST /api/v1/zoning/analyze` | `zoning_analyses`, `deal_zoning_profiles` | AGENT | None | **EMPTY** (0 `zoning_analyses` rows) |
+| Municode / source citation | `GET /api/v1/zoning/lookup` | `deal_zoning_profiles.source_url` | RESEARCH-PULL | None | SPARSE |
 
 ---
 
-### F2a — Validation Grid
+### F3 — Market Intel (M05 · MarketScreen)
 
-**Component:** `frontend/src/pages/development/financial-engine/ValidationGridTab.tsx`  
-**Primary endpoints:** `GET /api/v1/deal-assumptions/:dealId/assumptions`, `GET /api/v1/deals/:dealId/implied-cap-rate`  
-**Data inputs:** `f9Financials` prop, `assumptions` prop, `evidenceFieldMap` (per-field confidence metadata)
+**Backend endpoints:** `GET /api/v1/deals/:id/market-intelligence`, `GET /api/market-research/intelligence/:dealId`, `GET /api/v1/market-intelligence/sale-comps`, `GET /api/v1/market-intelligence/properties`
 
-| Field | Source Table | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| Purchase Price (validation row) | `deal_assumptions` / `deals.budget` | OPERATOR | `deals.updated_at` | POPULATED — $60M |
-| Going-in Cap Rate | Computed: NOI / Purchase Price | COMPUTED | Derived from `year1.noi` | BROKEN — NOI broken (CF-01) |
-| Exit Cap Rate | `deal_assumptions.exit_cap` | OPERATOR / RESEARCH-PULL | `deal_assumptions.updated_at` | POPULATED — 5.0% |
-| Rent Growth % | `proforma_assumptions.rent_growth_current` | RESEARCH-PULL / OPERATOR | `proforma_assumptions.updated_at` | POPULATED — 3.5% |
-| Vacancy % | `proforma_assumptions.vacancy_current` | RESEARCH-PULL / OPERATOR | `proforma_assumptions.updated_at` | POPULATED — 5.0% |
-| GPR (Year 1) | `deal_assumptions.year1.gpr.resolved` | OPERATOR-UPLOAD | `year1.gpr.updated_at` | POPULATED — $4,901,400 |
-| Payroll | `deal_assumptions.year1.payroll.resolved` | OPERATOR-UPLOAD | `year1.payroll.updated_at` | POPULATED — $324,800 |
-| Hold Period | `deal_assumptions.hold_period_years` | OPERATOR | `deal_assumptions.updated_at` | POPULATED — 5 years |
-| Platform baseline (per-row) | `proforma_assumptions.*_baseline` | RESEARCH-PULL / COMPUTED | `proforma_assumptions.updated_at` | POPULATED |
-| Implied cap (comp set median) | `GET /api/v1/deals/:dealId/implied-cap-rate` → `market_sale_comps` | RESEARCH-PULL | `market_sale_comps.created_at` | EMPTY — 0 sale comps for deal |
-| Evidence confidence (per-row) | `evidenceFieldMap` prop → underlying evidence system | AGENT / COMPUTED | Varies | SPARSELY POPULATED |
-| Override impact signal | Derived: `year1[field].override` vs `proforma_assumptions.*_baseline` | COMPUTED | Derived | POPULATED where override exists |
-
----
-
-### F3 — Pro Forma Summary
-
-**Component:** `frontend/src/pages/development/financial-engine/ProFormaSummaryTab.tsx`  
-**Primary endpoint:** `GET /api/v1/deals/:dealId/financials` (Engine A: `getDealFinancials()` in `proforma-adjustment.service.ts`)  
-**Source table primary:** `deal_assumptions.year1` JSONB (LayeredValue tree)  
-**Source table secondary:** `proforma_assumptions` (growth rate scalars)
-
-| Field | Source Layer(s) | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| GPR | `year1.gpr` (resolved via priority chain) | OPERATOR-UPLOAD | `year1.gpr.updated_at` | POPULATED — $4,901,400 |
-| Loss to Lease % | `year1.loss_to_lease_pct` — t12 > rent_roll | OPERATOR-UPLOAD | `year1.loss_to_lease_pct.updated_at` | POPULATED |
-| Vacancy Loss | `year1.vacancy_pct` × GPR | OPERATOR-UPLOAD / COMPUTED | Derived | POPULATED |
-| Concession Loss | `year1.concessions_pct` × GPR | OPERATOR-UPLOAD / COMPUTED | Derived | POPULATED |
-| Bad Debt | `year1.bad_debt_pct` — t12 | OPERATOR-UPLOAD | `year1.bad_debt_pct.updated_at` | SPARSELY POPULATED |
-| Other Income | `year1.other_income_per_unit` × 12 × units | OPERATOR-UPLOAD / COMPUTED | Derived | POPULATED |
-| EGI | Computed: GPR - losses + other income | COMPUTED | Derived | POPULATED — $3,669,151 |
-| Payroll | `year1.payroll` | OPERATOR-UPLOAD | `year1.payroll.updated_at` | POPULATED — $324,800 |
-| G&A | `year1.g_and_a` | OPERATOR-UPLOAD | `year1.g_and_a.updated_at` | POPULATED — $69,600 |
-| Real Estate Tax | `year1.real_estate_tax` | OPERATOR-UPLOAD / AGENT | `year1.real_estate_tax.updated_at` | SPARSELY POPULATED |
-| Insurance | `year1.insurance` | OPERATOR-UPLOAD | `year1.insurance.updated_at` | SPARSELY POPULATED |
-| Electric | `year1.electric` | OPERATOR-UPLOAD | `year1.electric.updated_at` | BROKEN — null |
-| Gas/Fuel | `year1.gas_fuel` | OPERATOR-UPLOAD | `year1.gas_fuel.updated_at` | BROKEN — null |
-| Maintenance/Repairs | `year1.maintenance` | OPERATOR-UPLOAD | `year1.maintenance.updated_at` | POPULATED |
-| Management Fee | `year1.management_fee_pct` × EGI | OPERATOR-UPLOAD / COMPUTED | Derived | POPULATED |
-| Replacement Reserves | `year1.replacement_reserves_per_unit` × units | OPERATOR-UPLOAD / COMPUTED | Derived | POPULATED |
-| Total OpEx | Sum of OpEx lines | COMPUTED | Derived | POPULATED |
-| NOI (Year 1) | EGI - Total OpEx | COMPUTED | Derived | BROKEN — $840,231 (72% below OM) |
-| Expense Ratio % | OpEx / EGI | COMPUTED | Derived | BROKEN (depends on NOI) |
-| NOI Margin % | NOI / EGI | COMPUTED | Derived | BROKEN |
-| Source pill (per-row) | `year1[field].resolvedFrom` | COMPUTED | Per-field | POPULATED |
-| Year N columns (projections) | `getDealFinancials().projections[]` | COMPUTED | Derived from Y1 × growth | POPULATED but per-year overrides ignored (CF-02) |
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Submarket avg rent | `GET /api/v1/deals/:id/market-intelligence` | `deal_market_intelligence` | RESEARCH-PULL | None | **EMPTY** (0 rows) |
+| Submarket avg occupancy | `GET /api/v1/deals/:id/market-intelligence` | `deal_market_intelligence` | RESEARCH-PULL | None | **EMPTY** |
+| Rent growth YoY | `GET /api/v1/deals/:id/market-intelligence` | `deal_market_intelligence` | RESEARCH-PULL | None | **EMPTY** |
+| Median household income | `GET /api/v1/deals/:id/market-intelligence` | `deal_market_intelligence` | RESEARCH-PULL | None | **EMPTY** |
+| Submarket name | `GET /api/v1/deals/:id/market-intelligence` | `deal_market_intelligence` | RESEARCH-PULL | None | **EMPTY** |
+| Agent-researched avg asking rent | `GET /api/v1/deals/:id/assumptions` | `deal_context_fields` path `market.avg_asking_rent` | AGENT | `updated_at` | POPULATED |
+| Agent-researched avg effective rent | `GET /api/v1/deals/:id/assumptions` | `deal_context_fields` path `market.avg_effective_rent` | AGENT | `updated_at` | POPULATED |
+| Agent-researched vacancy rate | `GET /api/v1/deals/:id/assumptions` | `deal_context_fields` path `market.vacancy_rate` | AGENT | `updated_at` | POPULATED |
+| Agent-researched pipeline units | `GET /api/v1/deals/:id/assumptions` | `deal_context_fields` path `market.pipeline_units` | AGENT | `updated_at` | POPULATED |
+| Agent-researched absorption rate | `GET /api/v1/deals/:id/assumptions` | `deal_context_fields` path `market.absorption_rate` | AGENT | `updated_at` | POPULATED |
+| Rent comps (nearby properties) | `GET /api/v1/market-intelligence/properties` | `market_rent_comps` | RESEARCH-PULL | None | POPULATED (13 rows) |
+| Sale comps | `GET /api/v1/market-intelligence/sale-comps` | `market_sale_comps` (343,758 total; 46 in Atlanta) | RESEARCH-PULL | `sale_date` per comp | POPULATED (Atlanta pool) |
+| Owner name / type | `GET /api/v1/deals/:id/assumptions` | `deal_context_fields` paths `ownership.owner_name`, `ownership.owner_type` | AGENT | `updated_at` | POPULATED |
+| Acquisition price / date | `GET /api/v1/deals/:id/assumptions` | `deal_context_fields` paths `ownership.acquisition_price`, `ownership.acquisition_date` | AGENT | `updated_at` | POPULATED |
 
 ---
 
-### F4 — Projections Hub
+### F4 — Supply Pipeline (M04 · SupplyPipelineScreen)
 
-**Component:** `frontend/src/pages/development/financial-engine/ProjectionsHubTab.tsx` → `ProjectionsTab.tsx`, `LeaseVelocitySection.tsx`  
-**Primary endpoint:** `GET /api/v1/deals/:dealId/financials` (inline projections loop in `proforma-adjustment.service.ts:3278`)  
-**Secondary endpoint:** `POST /api/v1/lease-velocity/run`
+**Backend endpoints:** `GET /api/v1/supply/deals/:dealId/supply`, `GET /api/v1/supply/trade-area/:id`, `GET /api/v1/supply/events`
 
-| Field | Source Table(s) | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| Rent Growth (per year) | `proforma_assumptions.rent_growth_current` (÷100) / `deal_assumptions.per_year_overrides['rentGrowthPct:yrN']` | RESEARCH-PULL / OPERATOR | `proforma_assumptions.updated_at` | POPULATED — 3.5% scalar; per-year overrides stored but NOT READ (CF-02) |
-| GPR (Yr 2–10) | Y1 GPR × compound rent growth / `per_year_overrides['gpr:yrN']` | COMPUTED | Derived | BROKEN — per_year_overrides stored but ignored |
-| Vacancy (per year) | Traffic projection → `proforma_assumptions.vacancy_current` → Y1 | RESEARCH-PULL / COMPUTED | `deal_traffic_snapshots.snapshot_date` | POPULATED (traffic snapshots present) |
-| OpEx lines (Yr 2–10) | Y1 OpEx × `proforma_assumptions.opex_growth_current` / `per_year_overrides[line:yrN]` | COMPUTED | Derived | BROKEN — per_year_overrides stored but ignored |
-| NOI (Yr 2–10) | Computed from above | COMPUTED | Derived | BROKEN (cascades from Y1 NOI + per-year override gap) |
-| Traffic Projections | `deal_traffic_snapshots` | RESEARCH-PULL / COMPUTED | `deal_traffic_snapshots.snapshot_date` | POPULATED — 3 snapshots |
-| Lease Velocity (LVE) | `deal_lease_transactions` → `computeTrafficSnapshot()` | OPERATOR-UPLOAD / COMPUTED | `deal_lease_transactions.created_at` | POPULATED — 260 lease rows |
-| Signing Velocity (T3/T6/T12mo) | `deal_lease_transactions` (computed in `traffic-analytics.service.ts`) | OPERATOR-UPLOAD / COMPUTED | `deal_lease_transactions.created_at` | POPULATED |
-| Expiration Waterfall (24mo) | `deal_lease_transactions.lease_end` | OPERATOR-UPLOAD | `deal_lease_transactions.created_at` | POPULATED |
-| Loss-to-Lease | `deal_lease_transactions.loss_to_lease` / `year1.loss_to_lease_pct` | OPERATOR-UPLOAD | Per-row | POPULATED |
-| MTM Exposure | `deal_lease_transactions` (computed) | OPERATOR-UPLOAD / COMPUTED | `deal_lease_transactions.created_at` | POPULATED |
-| Seasonal Curve | `deal_lease_transactions.move_in_date` distribution | OPERATOR-UPLOAD / COMPUTED | Derived | POPULATED |
-| Correlation Adjustments (COR-01–COR-30) | `deals.correlation_adjustments` JSONB | AGENT (Correlation Engine) | `deals.updated_at` | SPARSELY POPULATED |
-| Monthly Actuals overlay | `deal_monthly_actuals` | UNKNOWN | `deal_monthly_actuals.created_at` | BROKEN — 24 rows, all financial fields NULL |
-| M07 Traffic Intelligence | `deal_traffic_snapshots` + `traffic_predictions` | RESEARCH-PULL / COMPUTED | `deal_traffic_snapshots.snapshot_date` | POPULATED |
-| Hold Period (projection range) | `deal_assumptions.hold_period_years` | OPERATOR | `deal_assumptions.updated_at` | POPULATED — 5 years |
-| Confidence bands | Not persisted — computed inline from traffic `conf` scores | COMPUTED | Derived | POPULATED |
-| Adoption Timeline | `deal_assumptions.f3_design_program` + `construction_months` + `lease_up_months` | OPERATOR | `deal_assumptions.updated_at` | EMPTY — fields null |
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Pipeline units (under construction) | `GET /api/v1/supply/deals/:dealId/supply` | `supply_events` | RESEARCH-PULL | None | **EMPTY** (0 rows) |
+| Delivered units (12 months) | `GET /api/v1/supply/deals/:dealId/supply` | `supply_events` | RESEARCH-PULL | None | **EMPTY** |
+| Permit velocity | `GET /api/v1/supply/deals/:dealId/supply` | `supply_events`, `supply_pipeline` | RESEARCH-PULL | None | **EMPTY** |
+| Supply completions timeline | `GET /api/v1/supply/deals/:dealId/supply` | `supply_pipeline_projects` | RESEARCH-PULL | None | **EMPTY** |
+| Months of supply (agent fallback) | `GET /api/v1/deals/:id/assumptions` | `deal_context_fields` path `market.months_of_supply` | AGENT | `updated_at` | POPULATED (fallback) |
+| Under-construction units (agent fallback) | `GET /api/v1/deals/:id/assumptions` | `deal_context_fields` path `market.under_construction_units` | AGENT | `updated_at` | POPULATED |
+| Total pipeline units (agent fallback) | `GET /api/v1/deals/:id/assumptions` | `deal_context_fields` path `market.total_pipeline_units` | AGENT | `updated_at` | POPULATED |
+| Trade area supply risk score | `GET /api/v1/supply/trade-area/:id/risk` | `supply_risk_scores` | COMPUTED | None | EMPTY (no trade area linked) |
 
 ---
 
-### F5 — Capital Hub
+### F5 — Strategy (M08 · StrategyScreen)
 
-**Components:** `CapitalHubTab.tsx` → `SourcesUsesTab.tsx`, `DebtTab.tsx`, `WaterfallTab.tsx`  
-**Primary endpoints:** `GET /api/v1/deals/:dealId/financials`, `GET /api/v1/deals/:dealId/balance-sheets`, `GET /api/v1/deals/:dealId/capex-items`, `GET /api/v1/deals/:dealId/debt-schedule`
+**Backend endpoints:** `GET /api/v1/deals/:id/assumptions`, `POST /api/v1/deals/:id/assumptions/strategy-annotation`, `PATCH /api/v1/deals/:id/assumptions/strategy`
 
-| Field | Source Table(s) | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| Purchase Price (S&U) | `deals.budget` / `deals.deal_data->>'purchase_price'` | OPERATOR | `deals.updated_at` | POPULATED — $60M |
-| Closing Costs (aggregate) | `proforma-adjustment.service.ts:2832` — sums `per_year_overrides['su:closingCosts*']` → 2% estimate | OPERATOR / COMPUTED | `deal_assumptions.per_year_overrides` | POPULATED (falls to 2% formula if no sub-line overrides) |
-| Closing Cost sub-lines | `deal_assumptions.per_year_overrides['su:cc_*']` | OPERATOR | `deal_assumptions.updated_at` | EMPTY — no sub-line overrides set |
-| Hard Costs (development) | `deal_assumptions.hard_cost_total` | OPERATOR / OPERATOR-UPLOAD | `deal_assumptions.updated_at` | EMPTY |
-| Soft Costs (development) | `deal_assumptions.soft_cost_total` | OPERATOR / COMPUTED | `deal_assumptions.updated_at` | EMPTY |
-| Contingency | `deal_assumptions.contingency_total` | OPERATOR / COMPUTED | `deal_assumptions.updated_at` | EMPTY |
-| Developer Fee | `deal_assumptions.developer_fee_total` | OPERATOR / COMPUTED | `deal_assumptions.updated_at` | EMPTY |
-| TDC | `deal_assumptions.tdc` | COMPUTED | `deal_assumptions.updated_at` | EMPTY |
-| Equity Amount | Computed: Purchase Price × (1 − LTV) | COMPUTED | Derived | POPULATED (formula only) |
-| Debt Amount | Computed: Purchase Price × LTV | COMPUTED | Derived | POPULATED (formula only) |
-| LP Equity Share | `deal_assumptions.per_year_overrides['wf:lpShare']` | OPERATOR | `deal_assumptions.updated_at` | MISSING — no value set, defaults to 90/10 silently; no UI write path |
-| GP Equity Share | `deal_assumptions.per_year_overrides['wf:gpShare']` | OPERATOR | `deal_assumptions.updated_at` | MISSING — same as above |
-| Loan Amount | `deal_debt_schedule.original_amount` | OPERATOR-UPLOAD / OPERATOR | `deal_debt_schedule.updated_at` | EMPTY — 0 debt schedule rows |
-| Interest Rate | `deal_debt_schedule.interest_rate` | OPERATOR-UPLOAD / OPERATOR | `deal_debt_schedule.updated_at` | EMPTY |
-| Loan Term | `deal_debt_schedule.loan_term_years` / `deal_assumptions.loan_term_years` | OPERATOR | `deal_assumptions.updated_at` | POPULATED (scalar col only) |
-| IO Period | `deal_debt_schedule.io_period_months` | OPERATOR-UPLOAD / OPERATOR | `deal_debt_schedule.updated_at` | EMPTY |
-| Annual Debt Service | `deal_debt_schedule.annual_debt_service` | OPERATOR-UPLOAD / COMPUTED | `deal_debt_schedule.updated_at` | EMPTY |
-| DSCR | `deal_debt_schedule.dscr` | COMPUTED | Derived | EMPTY |
-| Waterfall Tiers | `deal_waterfall_config` | OPERATOR | `deal_waterfall_config.updated_at` | EMPTY — 0 rows |
-| Capex Budget | `deal_capex_items` | OPERATOR-UPLOAD / OPERATOR | `deal_capex_items.updated_at` | EMPTY — 0 rows |
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Investment strategy (detected) | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.investment_strategy_lv->>'detected'` | AGENT (M08 detection) | None | **MISSING** (null) |
+| Investment strategy (override) | `PATCH /api/v1/deals/:id/assumptions/strategy` | `deal_assumptions.investment_strategy_lv->>'override'` | OPERATOR | None | **MISSING** (null) |
+| Exit strategy (detected) | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.exit_strategy_lv->>'detected'` | AGENT (M08 detection) | None | **MISSING** (null) |
+| Exit strategy (override) | `PATCH /api/v1/deals/:id/assumptions/strategy` | `deal_assumptions.exit_strategy_lv->>'override'` | OPERATOR | None | **MISSING** (null) |
+| Strategy arbitrage score (BTS vs Rental vs STR) | `GET /api/v1/deals/:id/assumptions` | `strategy_analyses`, `deal_assumptions` | COMPUTED | None | EMPTY (no `strategy_analyses` rows) |
+| Strategy evidence narrative | `POST /api/v1/deals/:id/assumptions/strategy-annotation` | `deal_assumptions.narrative_text` | AGENT | `narrative_generated_at` | SPARSE (not generated) |
+| Sub-strategy library match | `GET /api/v1/deals/:id/assumptions` | `strategy_definitions` | COMPUTED | None | EMPTY (no strategy set) |
 
 ---
 
-### F6 — Returns Hub
+### F6 — Traffic Intel (M07 · TrafficScreen)
 
-**Components:** `ReturnsHubTab.tsx` → `ReturnsTab.tsx`  
-**Primary endpoint:** `GET /api/v1/deals/:dealId/financials` (returns section of Engine A response)
+**Backend endpoints:** `GET /api/v1/deals/:id/traffic/latest-prediction`, `GET /api/v1/deals/:id/traffic/forecast-vs-actual`, `GET /api/v1/deals/:id/traffic/intelligence`
 
-| Field | Source Table(s) | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| Levered IRR | Computed by Newton-Raphson in `proforma-adjustment.service.ts:3158` | COMPUTED | Derived from projections | BROKEN (depends on broken NOI) |
-| Unlevered IRR | Computed similarly | COMPUTED | Derived | BROKEN |
-| Equity Multiple | Computed: total distributions / equity invested | COMPUTED | Derived | BROKEN |
-| Cash-on-Cash (Yr 1) | NOI - Debt Service / Equity | COMPUTED | Derived | BROKEN |
-| LP Net IRR | Computed: Newton-Raphson on LP cash flows | COMPUTED | Derived | EMPTY — no debt schedule or waterfall config |
-| GP Net IRR | Computed: GP residual | COMPUTED | Derived | EMPTY |
-| LP Equity Multiple | `lpDistCumul / scheduledLpEquity` | COMPUTED | Derived | EMPTY |
-| Promote Realization % | Computed from waterfall tiers | COMPUTED | Derived | EMPTY — no waterfall config |
-| Sale Proceeds (gross) | Exit value from NOI × (1/exit_cap) | COMPUTED | Derived | BROKEN (depends on NOI) |
-| Net Sale Proceeds | Gross - selling costs - debt payoff | COMPUTED | Derived | BROKEN |
-| Sensitivity matrix (return vs inputs) | Computed inline in `SensitivityTab` | COMPUTED | Derived | POPULATED (formula only) |
-| Deal IRR vs Target IRR | `deal_assumptions.target_irr` vs computed IRR | OPERATOR / COMPUTED | `deal_assumptions.updated_at` | SPARSELY POPULATED |
-| Profit Margin % | `deal_assumptions.profit_margin` | COMPUTED | `deal_assumptions.last_computed_at` | EMPTY |
-| Stabilized Value | `deal_assumptions.stabilized_value` | COMPUTED | `deal_assumptions.last_computed_at` | EMPTY |
-| CoC vs Target | `deal_assumptions.target_coc` vs computed | OPERATOR / COMPUTED | `deal_assumptions.updated_at` | EMPTY |
-| Hold Period Sensitivity | Computed: IRR at hold 3/5/7/10 years | COMPUTED | Derived | BROKEN (depends on NOI) |
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Latest ADT (traffic count) | `GET /api/v1/deals/:id/traffic/latest-prediction` | `deal_traffic_snapshots`, `adt_counts` | RESEARCH-PULL | Snapshot `created_at` | SPARSE (4 snapshots) |
+| Effective ADT (adjusted) | `GET /api/v1/deals/:id/traffic/latest-prediction` | `deal_traffic_snapshots` | COMPUTED | Snapshot `created_at` | SPARSE |
+| Monthly walk-in forecast | `GET /api/v1/deals/:id/traffic/latest-prediction` | `leasing_traffic_predictions` | COMPUTED (M07) | None | SPARSE |
+| M07 confidence score | `GET /api/v1/deals/:id/traffic/latest-prediction` | `deal_traffic_snapshots` | COMPUTED | Snapshot `created_at` | SPARSE |
+| M07 calibrated rent growth | `GET /api/v1/deals/:id/traffic/latest-prediction` | `deal_traffic_snapshots` | COMPUTED | Snapshot `created_at` | SPARSE |
+| M07 calibrated exit cap | `GET /api/v1/deals/:id/traffic/latest-prediction` | `deal_traffic_snapshots` | COMPUTED | Snapshot `created_at` | SPARSE |
+| Traffic-to-lease conversion rate | `GET /api/v1/deals/:id/traffic/intelligence` | `traffic_calibration_coefficients` | COMPUTED | None | SPARSE |
+| Forecast vs actual chart | `GET /api/v1/deals/:id/traffic/forecast-vs-actual` | `deal_traffic_snapshots`, `deal_monthly_actuals` | COMPUTED | None | SPARSE |
+| Digital traffic signals | `GET /api/v1/deals/:id/traffic/intelligence` | `digital_traffic_scores` | RESEARCH-PULL | None | SPARSE (present in snapshots; not verified separately) |
 
 ---
 
-### F7 — Valuation Grid
+### F7 — 3D Design (M03 · Design3DScreen)
 
-**Component:** `frontend/src/pages/development/financial-engine/ValuationGridTab.tsx`  
-**Primary endpoints:** `GET /api/v1/deals/:dealId/valuation-grid`, `GET /api/v1/deals/:dealId/valuation-grid/comps`, `PATCH /api/v1/deals/:dealId/valuation-grid/override`, `PATCH /api/v1/deals/:dealId/valuation-grid/comps/criteria`
+**Backend endpoints:** `GET /api/v1/building-design-3d/:dealId`, `GET /api/v1/building-envelope/:dealId`, `POST /api/v1/design-assistant`
 
-| Field | Source Table(s) | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| Cap Rate × NOI method | `year1.noi.resolved` / `deals.budget` | COMPUTED | Derived | BROKEN — NOI resolution broken |
-| Per-Unit Benchmark (PPU) | `archive_assumption_benchmarks` | RESEARCH-PULL / COMPUTED | `archive_assumption_benchmarks.created_at` | POPULATED (archive data exists) |
-| Sale Comp PPU method | `market_sale_comps` (deal-scoped) / `sale_comp_set_members` | RESEARCH-PULL / OPERATOR-UPLOAD | `market_sale_comps.created_at` | EMPTY — 0 sale comps for this deal |
-| Sale Comp PSF method | `market_sale_comps.price_per_sqft` | RESEARCH-PULL / OPERATOR-UPLOAD | `market_sale_comps.created_at` | EMPTY |
-| Operator Override method | `deal_assumptions.valuation_override_lv` (LayeredValue JSONB) | OPERATOR | `deal_assumptions.updated_at` | POPULATED — field exists in schema |
-| Replacement Cost method | `data_library_cost_data` / BLS PPI | RESEARCH-PULL / COMPUTED | External data | SPARSELY POPULATED |
-| Reconciled Value | Computed: weighted average of active methods | COMPUTED | Derived | BROKEN (only 1-2 active methods) |
-| Recommended Price Range (low/high) | Computed from method P25–P75 | COMPUTED | Derived | BROKEN (insufficient methods) |
-| Convergence Signal | Computed: spread across method values | COMPUTED | Derived | BROKEN |
-| Comp Criteria | `deal_assumptions.comp_criteria` JSONB | OPERATOR | `deal_assumptions.updated_at` | EMPTY — NULL for 464 Bishop |
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| 3D massing model | `GET /api/v1/building-design-3d/:dealId` | `building_designs_3d` | OPERATOR / AGENT | None | **EMPTY** (0 rows) |
+| Unit program (mix, SF, count) | `GET /api/v1/deals/:id/financials` | `deal_assumptions.unit_mix` JSONB | OPERATOR / OPERATOR-UPLOAD | None | POPULATED (apt_locator seed) |
+| Amenity configuration | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.f3_design_program` JSONB | OPERATOR | None | SPARSE |
+| Building envelope (GFA, efficiency %) | `GET /api/v1/building-envelope/:dealId` | `deal_assumptions.gross_sf`, `deal_assumptions.rentable_sf` | OPERATOR / COMPUTED | None | SPARSE |
+| Construction type | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.construction_type` | OPERATOR | None | SPARSE |
+| Design chat history | `POST /api/v1/design-assistant` | `design_chat_sessions` | AGENT / OPERATOR | None | EMPTY (no designs created) |
 
 ---
 
-### F8 — Decision Tab
+### F8 — Debt & Capital, M11 (DebtCapitalScreen)
 
-**Component:** `frontend/src/pages/development/financial-engine/DecisionTab.tsx`  
-**Primary endpoints:** `GET /api/v1/deals/:dealId/financials`, `GET /api/v1/deals/:dealId/market-intelligence`, `GET /api/v1/jedi/score/:dealId`
+**Backend endpoints:** `GET /api/v1/deals/:id/debt-schedule`, `GET /api/v1/deals/:id/balance-sheets`, `GET /api/v1/deals/:id/capex-items`, `GET /api/v1/deals/:id/data-sources`
 
-| Field | Source Table(s) | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| JEDI Score composite | `jedi_scores.total_score` | COMPUTED | `jedi_scores.updated_at` | EMPTY — no rows |
-| IRR vs Target | Computed IRR / `deal_assumptions.target_irr` | COMPUTED / OPERATOR | Derived | BROKEN |
-| Strategy Verdict | Derived from strategy + JEDI + IRR | COMPUTED / AGENT | Derived | EMPTY (depends on empty JEDI) |
-| Risk Flags | `deal_risks` | OPERATOR / AGENT | `deal_risks.updated_at` | EMPTY — 0 rows |
-| Deal Score History | `jedi_score_history` / `jedi_scores` | COMPUTED | `jedi_scores.updated_at` | EMPTY |
-| Market signal overlay | `deal_market_intelligence` | RESEARCH-PULL | `deal_market_intelligence.created_at` | EMPTY |
-| Debt feasibility signal | Computed from NOI / debt service | COMPUTED | Derived | BROKEN |
-| Critical path milestones | `deal_roadmaps` | OPERATOR | `deal_roadmaps.updated_at` | EMPTY |
-
----
-
-### F9 — Compare Hub
-
-**Component:** `frontend/src/pages/development/financial-engine/CompareHubTab.tsx` → `CompareTab.tsx`  
-**Primary endpoints:** `GET /api/v1/financial-model/:dealId/versions`, `GET /api/v1/deals/:dealId/financials`
-
-| Field | Source Table(s) | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| Saved model versions | `deal_versions` / `opus_proforma_versions` | OPERATOR / AGENT | `deal_versions.created_at` | EMPTY — no saved versions |
-| Version comparison (IRR, NOI, EM) | `deal_versions` snapshots | OPERATOR | `deal_versions.created_at` | EMPTY |
-| Before/After override diff | Computed: current vs version snapshot | COMPUTED | Derived | EMPTY |
-| Scenario assumptions | `deal_underwriting_scenarios` | OPERATOR | `deal_underwriting_scenarios.updated_at` | EMPTY — 0 rows |
-| Scenario results | `scenario_results` | COMPUTED | `scenario_results.created_at` | EMPTY |
-| Underwriting walkthrough | Computed narrative from model | COMPUTED / AGENT | Derived | EMPTY |
-| Broker vs Platform vs User comparison | `year1` layers (broker/platform/override) | COMPUTED | Per-field | POPULATED (layer data present) |
-| Stress test results | `deal_underwriting_snapshots` | COMPUTED | `deal_underwriting_snapshots.created_at` | EMPTY |
-| Archive benchmark percentiles | `archive_assumption_benchmarks` | RESEARCH-PULL | `archive_assumption_benchmarks.created_at` | POPULATED (archive data exists) |
-| Assumption drift vs archive | Computed: current vs `archive_assumption_benchmarks` | COMPUTED | Derived | SPARSELY POPULATED |
-| Peer intelligence | `peer_intelligence` table (if exists) | RESEARCH-PULL | External | EMPTY |
-| Custom comparison | Operator-configured | OPERATOR | N/A | EMPTY |
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Interest rate | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.interest_rate` | OPERATOR | None | SPARSE |
+| Loan term years | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.loan_term_years` | OPERATOR | None | SPARSE |
+| LTC | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.ltc` | OPERATOR | None | SPARSE |
+| LTV | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.ltv` | OPERATOR | None | SPARSE |
+| DSCR minimum | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.dscr_min` | OPERATOR | None | SPARSE |
+| Debt yield minimum | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.debt_yield_min` | OPERATOR | None | SPARSE |
+| Amortization years | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.amortization_years` | OPERATOR | None | SPARSE |
+| IO period months | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.io_period_months` | OPERATOR | None | SPARSE |
+| Origination fee % | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.origination_fee_pct` | OPERATOR | None | SPARSE |
+| Debt schedule (amortization table) | `GET /api/v1/deals/:id/debt-schedule` | `deal_debt_schedule` | OPERATOR / COMPUTED | None | **EMPTY** (0 rows) |
+| Balance sheets | `GET /api/v1/deals/:id/balance-sheets` | `deal_balance_sheets` | OPERATOR-UPLOAD | None | **EMPTY** (0 rows) |
+| CapEx items | `GET /api/v1/deals/:id/capex-items` | `deal_capex_items` | OPERATOR | None | **EMPTY** (0 rows) |
+| CapEx budget | `GET /api/v1/lifecycle/:id/capex/budget` | `capex_budget` | OPERATOR | None | **EMPTY** (0 rows) |
+| Debt advisor sensitivity outputs | `GET /api/v1/deals/:id/financials` | `deal_assumptions` (COMPUTED) | COMPUTED | None | SPARSE |
+| Exit timing sensitivity | `GET /api/v1/deals/:id/financials` | `deal_assumptions.exit_cap`, `hold_period_years` | COMPUTED | None | SPARSE |
 
 ---
 
-### F10 — Sensitivity / Goal Seek
+### F8-M12 — Exit Strategy + Debt Market (within DebtCapitalScreen · ExitCapitalModule)
 
-**Component:** `frontend/src/pages/development/financial-engine/SensitivityTab.tsx`  
-**Endpoints:** `POST /api/v2/sigma/broader-goal-seek`, `GET /api/v1/deals/:dealId/financials`
+M12 is co-hosted within F8 (module subtitle "M11+M12 · EXIT STRATEGY + DEBT MARKET"). It is rendered by `ExitCapitalModule` and surfaces exit trajectory analysis, live debt market rates, M35 event-driven cap rate and rent growth forecasts, and competitive positioning for a pending disposition.
 
-| Field | Source Table(s) | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| Target IRR (input) | `deal_assumptions.target_irr` | OPERATOR | `deal_assumptions.updated_at` | POPULATED |
-| Solved purchase price | Computed: Newton-Raphson goal-seek | COMPUTED | Derived | BROKEN (depends on NOI) |
-| Sensitivity matrix (IRR × rent growth / exit cap) | Computed inline | COMPUTED | Derived | BROKEN |
-| Goal-seek result (entry yield) | Computed | COMPUTED | Derived | BROKEN |
-| Sensitivity matrix (exit cap × purchase price) | Computed inline | COMPUTED | Derived | BROKEN |
-| Breakeven analysis | Computed: min occupancy for DSCR ≥ 1.0 | COMPUTED | Derived | EMPTY (no debt schedule) |
-| Confidence bounds | From traffic projection `conf` scores | COMPUTED | `deal_traffic_snapshots.snapshot_date` | POPULATED |
-| Waterfall sensitivity | Computed from LP/GP split | COMPUTED | Derived | EMPTY (no waterfall config) |
+**Backend endpoints:** `GET /api/v1/deals/:id/exit-trajectory`, `GET /api/v1/lifecycle/:id/exit-timing`, `GET /api/v1/lifecycle/:id/dispositions`, `GET /api/v1/lifecycle/:id/debt`, `GET /api/v1/lifecycle/:id/competitive-position`, `GET /m35/deals/:id/events-context`, `GET /api/v1/capital-structure/rates/live`
 
----
-
-### F11 — Roadmap Tab
-
-**Component:** `frontend/src/pages/development/financial-engine/RoadmapTab.tsx`  
-**Endpoints:** `GET /api/v1/deals/:dealId/roadmap`, `GET /api/v1/deals/:dealId/timeline`
-
-| Field | Source Table(s) | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| Construction timeline | `deal_assumptions.construction_months` | OPERATOR | `deal_assumptions.updated_at` | EMPTY — NULL |
-| Lease-up timeline | `deal_assumptions.lease_up_months` | OPERATOR | `deal_assumptions.updated_at` | EMPTY — NULL |
-| Absorption rate | `deal_assumptions.absorption_units_per_month` | OPERATOR / RESEARCH-PULL | `deal_assumptions.updated_at` | EMPTY — NULL |
-| Stabilization target % | `deal_assumptions.stabilization_target_pct` | OPERATOR | `deal_assumptions.updated_at` | EMPTY — NULL |
-| Adoption timeline (program) | `deal_assumptions.f3_design_program` JSONB | OPERATOR | `deal_assumptions.updated_at` | EMPTY — NULL |
-| Milestone dates | `deal_roadmaps` | OPERATOR | `deal_roadmaps.updated_at` | EMPTY |
-| Construction management | `construction_cost_tracking` | OPERATOR-UPLOAD / OPERATOR | Per-record | EMPTY |
-| Entitlement milestones | `entitlement_milestones` | OPERATOR / RESEARCH-PULL | Per-record | EMPTY |
-| Key dates | `deal_key_dates` | OPERATOR | Per-record | EMPTY |
-| Permit / approval status | `planning_applications` | RESEARCH-PULL | `planning_applications.created_at` | EMPTY |
-
-> Note: F11 Roadmap is a development-deal surface. 464 Bishop is classified as `SIGNAL_INTAKE`, making all F11 fields structurally empty for this deal.
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Exit trajectory (multi-year cap rate path) | `GET /api/v1/deals/:id/exit-trajectory` | `metric_time_series`, `deal_assumptions` | COMPUTED | Series `period_date` | SPARSE (no deal-specific trajectory run confirmed) |
+| Exit timing recommendation (optimal year) | `GET /api/v1/lifecycle/:id/exit-timing` | `metric_time_series`, `deals`, `deal_assumptions` | COMPUTED | `metric_time_series.period_date` | SPARSE |
+| M35 event-driven rent growth forecast | `GET /m35/deals/:id/events-context` | `key_events`, `event_forecasts` | RESEARCH-PULL + COMPUTED | `event_forecasts.confidence` | EMPTY (no supply_events, no key_events for deal) |
+| M35 event-driven cap rate forecast | `GET /m35/deals/:id/events-context` | `key_events`, `event_forecasts` | RESEARCH-PULL + COMPUTED | `event_forecasts.confidence` | EMPTY |
+| M35 event-driven vacancy forecast | `GET /m35/deals/:id/events-context` | `key_events`, `event_forecasts` | RESEARCH-PULL + COMPUTED | `event_forecasts.confidence` | EMPTY |
+| Live 10-year Treasury rate | `GET /api/v1/capital-structure/rates/live` | External rate feed (FRED API) | RESEARCH-PULL | None (live fetch) | POPULATED (platform-wide; not deal-specific) |
+| EFFR target range | `GET /api/v1/capital-structure/rates/live` | External rate feed (FRED API) | RESEARCH-PULL | None (live fetch) | POPULATED |
+| Disposition record (prior sales) | `GET /api/v1/lifecycle/:id/dispositions` | `dispositions` | OPERATOR-UPLOAD | `closing_date` | **EMPTY** (0 rows) |
+| Debt maturity / refi test | `GET /api/v1/lifecycle/:id/refi-test` | `deal_assumptions`, `deal_debt_schedule` | COMPUTED | None | SPARSE (no debt schedule) |
+| Competitive position (vs submarket) | `GET /api/v1/lifecycle/:id/competitive-position` | `lifecycle_comp_set`, `market_rent_comps` | COMPUTED | None | SPARSE (13 `market_rent_comps` rows available) |
 
 ---
 
-### F12 — Custom Tabs (Opus-generated)
+### F9 — Financial Engine (M08 · FinancialEnginePage)
 
-**Component:** `frontend/src/pages/development/financial-engine/CustomTabRenderer.tsx`  
-**Endpoints:** `GET /api/v1/deals/:dealId/proforma/custom-tabs`, `POST /api/v1/agents/chat`
+The Financial Engine has 11 built-in sub-tabs. ROADMAP (tab 10) is only shown for `value-add` and `redevelopment` deal types.
 
-| Field | Source Table(s) | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| Custom tab definitions | `deal_custom_tabs` / `opus_proforma_versions` | AGENT (Opus) | `deal_custom_tabs.created_at` | EMPTY — no Opus sessions |
-| Opus conversation context | `opus_conversations`, `opus_messages` | AGENT | Per-session | EMPTY |
-| Opus learned patterns | `opus_learned_patterns` | AGENT | Per-session | EMPTY |
-| Custom analysis results | `opus_proforma_versions` | AGENT | `opus_proforma_versions.created_at` | EMPTY |
+**Primary data assembly:** `GET /api/v1/deals/:id/financials` → `getDealFinancials()` in `proforma-adjustment.service.ts`. This function reads from `deal_assumptions`, `deal_context_fields`, `deal_monthly_actuals`, `cashflow_projections`, and `deals.deal_data` JSONB, assembling a single `F9DealFinancials` object passed to all sub-tabs.
 
 ---
 
-### Document Library
+#### F9 Tab 0 — ⊞ OVERVIEW
 
-**Component:** `frontend/src/components/deal/sections/DocumentsSection.tsx` → `DocumentsFiles/`  
-**Endpoints:** `GET /api/v1/deals/:dealId/files`, `POST /api/v1/deals/:dealId/files`, `GET /api/v1/deals/:dealId/documents`
+**Endpoints:** Parent-passed `f9Financials` from `GET /api/v1/deals/:id/financials`; `GET /api/market-research/intelligence/:dealId`
 
-| Field | Source Table(s) | Author Class | Freshness | Gap Status (464 Bishop) |
-|---|---|---|---|---|
-| Uploaded files list | `deal_files` | OPERATOR-UPLOAD | `deal_files.created_at` | POPULATED — 10 files |
-| Document type tags | `deal_files.category`, `deal_document_files.document_type` | OPERATOR / COMPUTED | `deal_files.updated_at` | POPULATED |
-| Extraction status | `deal_files.extraction_status`, `deal_document_files.extraction_status` | COMPUTED | `deal_files.extraction_completed_at` | SPARSELY POPULATED — 2 files failed |
-| Extraction result (T12 data) | `deals.deal_data->'extraction_t12'` JSONB | AGENT / COMPUTED | `deals.updated_at` | POPULATED (has_t12=true) |
-| Extraction result (Rent Roll) | `deals.deal_data->'extraction_rent_roll'` JSONB | AGENT / COMPUTED | `deals.updated_at` | POPULATED (has_rr=true) |
-| Extraction result (OM) | `deals.deal_data->'extraction_om'` JSONB | AGENT / COMPUTED | `deals.updated_at` | POPULATED (has_om=true) |
-| Extraction result (Tax Bill) | `deals.deal_data->'extraction_tax_bill'` JSONB | AGENT / COMPUTED | `deals.updated_at` | POPULATED (has_tax=true) |
-| Source document audit trail | `deal_document_files` | AGENT / COMPUTED | `deal_document_files.created_at` | BROKEN — filename is UUID, no human-readable name stored |
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| IRR levered | `GET /api/v1/deals/:id/financials` | `cashflow_projections.five_yr_irr` | COMPUTED | None | SPARSE (cashflow row exists; deal_assumptions.irr_levered null) |
+| Equity multiple | `GET /api/v1/deals/:id/financials` | COMPUTED from projections | COMPUTED | None | SPARSE |
+| Cash-on-cash yr1 | `GET /api/v1/deals/:id/financials` | COMPUTED from projections | COMPUTED | None | SPARSE |
+| Year-1 NOI | `GET /api/v1/deals/:id/financials` | `cashflow_projections.year1_noi` | COMPUTED | None | SPARSE |
+| Stabilized yield | `GET /api/v1/deals/:id/financials` | `cashflow_projections.stabilized_yield_pct` | COMPUTED | None | SPARSE |
+| Stabilized value | `GET /api/v1/deals/:id/financials` | COMPUTED from stabilized NOI / exit cap | COMPUTED | None | SPARSE |
+| DSCR | `GET /api/v1/deals/:id/financials` | COMPUTED from debt params | COMPUTED | None | SPARSE |
+| Purchase price display | `GET /api/v1/deals/:id/financials` | `deals.deal_data->>'purchase_price'` | OPERATOR-UPLOAD / OPERATOR | None | **EMPTY** (null) |
+| Cap rate collision dots | `GET /api/v1/deals/:id/field-divergences` | `deals.deal_data.broker_cap_rate` vs `deal_traffic_snapshots` | COMPUTED | None | SPARSE |
+| Market signals panel (submarket, avg rent, occupancy) | `GET /api/market-research/intelligence/:dealId` | `deal_market_intelligence` | RESEARCH-PULL | None | **EMPTY** (0 rows) |
+
+---
+
+#### F9 Tab 1 — ⊕ CONSOLE (DealTermsTab + ProFormaSummaryTab + AssumptionsTab)
+
+**Endpoints:** `GET /api/v1/deals/:id/financials`, `GET /api/v1/deals/:id/implied-cap-rate`, `PATCH /api/v1/deals/:id/assumptions/*`, `PUT /api/v1/deals/:id/assumptions`, `POST /api/v1/sigma/plausibility`
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Purchase price (operator layer) | `PATCH /api/v1/deals/:id/purchase-price` | `deal_assumptions.land_cost` | OPERATOR | None | **EMPTY** (null) |
+| Purchase price (broker layer) | `GET /api/v1/deals/:id/financials` | `deals.deal_data.extraction_om` | OPERATOR-UPLOAD | None | UNKNOWN (OM not extracted) |
+| Hold period (years) | `PATCH /api/v1/deals/:id/assumptions/hold-period` | `deal_assumptions.hold_period_years` | OPERATOR | None | POPULATED (5) |
+| Investment strategy | `PATCH /api/v1/deals/:id/assumptions/strategy` | `deal_assumptions.investment_strategy_lv` | AGENT / OPERATOR | None | **MISSING** (both null) |
+| Exit strategy | `PATCH /api/v1/deals/:id/assumptions/strategy` | `deal_assumptions.exit_strategy_lv` | AGENT / OPERATOR | None | **MISSING** (both null) |
+| Target IRR | `PATCH /api/v1/deals/:id/assumptions/targets` | `deal_assumptions.target_irr` | OPERATOR | None | SPARSE |
+| Target EM | `PATCH /api/v1/deals/:id/assumptions/targets` | `deal_assumptions.target_em` | OPERATOR | None | SPARSE |
+| Target CoC | `PATCH /api/v1/deals/:id/assumptions/targets` | `deal_assumptions.target_coc` | OPERATOR | None | SPARSE |
+| Selling costs % | `PATCH /api/v1/deals/:id/assumptions/selling-costs` | `deal_assumptions.selling_costs_pct` | OPERATOR | None | SPARSE |
+| Closing costs | `PATCH /api/v1/deals/:id/assumptions/closing-costs` | `deal_assumptions` (multiple columns) | OPERATOR | None | SPARSE |
+| GPR (gross potential rent) | `GET /api/v1/deals/:id/financials` | COMPUTED: `deal_assumptions.avg_rent_per_unit` × units × 12 / `deal_monthly_actuals` T12 layer | COMPUTED / OPERATOR-UPLOAD | None | POPULATED |
+| Vacancy % | `PUT /api/v1/deals/:id/assumptions` | `deal_assumptions.vacancy_pct` | OPERATOR (apt_locator seed) | None | POPULATED (19.83%) |
+| Concessions % | `PUT /api/v1/deals/:id/assumptions` | `deal_assumptions.concessions_pct` | OPERATOR / OPERATOR-UPLOAD | None | SPARSE |
+| Rent growth yr1 | `PUT /api/v1/deals/:id/assumptions` | `deal_assumptions.rent_growth_yr1` | OPERATOR / AGENT | None | SPARSE |
+| Rent growth stabilized | `PUT /api/v1/deals/:id/assumptions` | `deal_assumptions.rent_growth_stabilized` | OPERATOR / AGENT | None | SPARSE |
+| OPEX ratio | `PUT /api/v1/deals/:id/assumptions` | `deal_assumptions.opex_ratio` | OPERATOR / OPERATOR-UPLOAD | None | SPARSE |
+| OPEX per unit | `GET /api/v1/deals/:id/financials` | COMPUTED / `deal_monthly_actuals` | COMPUTED / OPERATOR-UPLOAD | None | SPARSE |
+| Property tax rate | `PUT /api/v1/deals/:id/assumptions` | `deal_assumptions.property_tax_rate` | OPERATOR / RESEARCH-PULL | None | SPARSE |
+| Management fee % | `PUT /api/v1/deals/:id/assumptions` | `deal_assumptions.management_fee_pct` | OPERATOR | None | SPARSE |
+| Replacement reserves / unit | `PUT /api/v1/deals/:id/assumptions` | `deal_assumptions.replacement_reserves_per_unit` | OPERATOR | None | SPARSE |
+| Other income per unit | `PATCH /api/v1/deals/:id/financials/other-income/category-overrides` | `deal_assumptions.other_income_per_unit` | OPERATOR / OPERATOR-UPLOAD | None | SPARSE |
+| M07 calibrated rent growth (platform) | `GET /api/v1/deals/:id/traffic/latest-prediction` | `deal_traffic_snapshots` | COMPUTED (M07) | Snapshot `created_at` | SPARSE |
+| M07 calibrated exit cap (platform) | `GET /api/v1/deals/:id/traffic/latest-prediction` | `deal_traffic_snapshots` | COMPUTED (M07) | Snapshot `created_at` | SPARSE |
+| Implied cap rate | `GET /api/v1/deals/:id/implied-cap-rate` | COMPUTED from deal_assumptions + market data | COMPUTED | None | SPARSE |
+| T12 income/expense actuals | `GET /api/v1/deals/:id/financials` | `deal_monthly_actuals.*` (24 rows) | OPERATOR-UPLOAD (T12 extraction) | `source_date` | POPULATED |
+| Rent roll unit mix | `GET /api/v1/deals/:id/financials` | `deal_monthly_actuals` + `deal_assumptions.unit_mix` | OPERATOR-UPLOAD | `source_date` | POPULATED |
+| DQA plausibility tier (REALISTIC / AGGRESSIVE / HEROIC) | `POST /api/v1/sigma/plausibility` | COMPUTED (sigma service) | COMPUTED | None | SPARSE |
+| Leasing cost treatment | `GET /api/v1/deals/:id/financials` | `deals.deal_data.leasing_cost_treatment` | OPERATOR / COMPUTED | None | POPULATED |
+
+---
+
+#### F9 Tab 2 — ⋮≡ PROJECTIONS
+
+**Endpoints:** `GET /api/v1/deals/:id/financials`, `GET /api/v1/deals/:id/financials/narrative`, `PATCH /api/v1/deals/:id/assumptions/monthly`, `POST /api/v1/deals/:id/financials/other-income/user-lines`
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Year-by-year GPR | `GET /api/v1/deals/:id/financials` | COMPUTED: `deal_assumptions.avg_rent_per_unit` + rent growth | COMPUTED | None | SPARSE (purchase price absent) |
+| Year-by-year vacancy loss | `GET /api/v1/deals/:id/financials` | COMPUTED: `deal_assumptions.vacancy_pct` + stabilization | COMPUTED | None | SPARSE |
+| Year-by-year EGI | `GET /api/v1/deals/:id/financials` | COMPUTED (GPR − Vacancy − Concessions + Other income) | COMPUTED | None | SPARSE |
+| Year-by-year OPEX | `GET /api/v1/deals/:id/financials` | COMPUTED: `deal_assumptions.opex_ratio` + `opex_growth` | COMPUTED | None | SPARSE |
+| Year-by-year NOI | `GET /api/v1/deals/:id/financials` | COMPUTED (EGI − OPEX) | COMPUTED | None | SPARSE |
+| Year-by-year debt service | `GET /api/v1/deals/:id/financials` | COMPUTED from debt parameters in `deal_assumptions` | COMPUTED | None | SPARSE |
+| Year-by-year cash flow | `GET /api/v1/deals/:id/financials` | COMPUTED (NOI − Debt Service) | COMPUTED | None | SPARSE |
+| Other income user lines | `POST/PATCH /api/v1/deals/:id/financials/other-income/user-lines` | `deal_assumptions` user-lines JSONB | OPERATOR | `updated_at` | SPARSE |
+| Per-year monthly overrides | `PATCH /api/v1/deals/:id/assumptions/monthly` | `deal_monthly_assumptions` | OPERATOR | `updated_at` | SPARSE |
+| AI narrative blocks | `GET /api/v1/deals/:id/financials/narrative` | `deal_assumptions.narrative_text` | AGENT (Claude) | `narrative_generated_at` | SPARSE (not generated) |
+
+---
+
+#### F9 Tab 3 — ✓ VALIDATION
+
+**Endpoints:** `GET /api/v1/deals/:id/completeness`, `GET /api/v1/deals/:id/assumptions`, `GET /api/v1/deals/:id/implied-cap-rate`, `GET /api/v1/deals/:id/field-divergences`
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Completeness score (%) | `GET /api/v1/deals/:id/completeness` | Multi-table completeness service | COMPUTED | None | POPULATED |
+| DQA alert list | `GET /api/v1/deals/:id/completeness` | `data_quality_alerts` (15 rows) | COMPUTED | `created_at` | **POPULATED** (15 alerts) |
+| Field divergences (broker vs platform >10%) | `GET /api/v1/deals/:id/field-divergences` | `deal_assumptions`, `deal_context_fields`, `deals.deal_data` | COMPUTED | None | SPARSE (limited dual-sourced fields) |
+| Implied cap rate | `GET /api/v1/deals/:id/implied-cap-rate` | COMPUTED from deal + market data | COMPUTED | None | SPARSE |
+| Plausibility tier (REALISTIC / AGGRESSIVE / HEROIC) | `POST /api/v1/sigma/plausibility` | COMPUTED (sigma service) | COMPUTED | None | SPARSE |
+| Assumption source provenance | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.source_type`, `deal_context_fields.source_label` | OPERATOR-UPLOAD / AGENT | None | POPULATED (`apt_locator` / `agent:research`) |
+
+---
+
+#### F9 Tab 4 — ◈ CAPITAL (SourcesUsesTab + WaterfallTab)
+
+**Endpoints:** `GET /api/v1/deals/:id/financials`, `PATCH /api/v1/deals/:id/financials/override`
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Land cost / purchase price | `PATCH /api/v1/deals/:id/purchase-price` | `deal_assumptions.land_cost` | OPERATOR | None | **EMPTY** (null) |
+| Hard cost (total / PSF) | `PATCH /api/v1/deals/:id/financials/override` | `deal_assumptions.hard_cost_total`, `hard_cost_psf` | OPERATOR / COMPUTED | None | SPARSE |
+| Soft cost (% and total) | `PATCH /api/v1/deals/:id/financials/override` | `deal_assumptions.soft_cost_pct`, `soft_cost_total` | OPERATOR / COMPUTED | None | SPARSE |
+| Contingency | `PATCH /api/v1/deals/:id/financials/override` | `deal_assumptions.contingency_pct`, `contingency_total` | OPERATOR | None | SPARSE |
+| Developer fee | `PATCH /api/v1/deals/:id/financials/override` | `deal_assumptions.developer_fee_pct`, `developer_fee_total` | OPERATOR | None | SPARSE |
+| Total development cost (TDC) | `GET /api/v1/deals/:id/financials` | COMPUTED from `deal_assumptions` (TDC, TDC/unit, TDC/SF) | COMPUTED | None | SPARSE |
+| Loan amount | `GET /api/v1/deals/:id/financials` | COMPUTED (TDC × LTC) | COMPUTED | None | **EMPTY** (TDC null) |
+| Equity required | `GET /api/v1/deals/:id/financials` | COMPUTED (TDC − Loan) | COMPUTED | None | **EMPTY** |
+| LP / GP split % | `PATCH /api/v1/deals/:id/financials/override` | `deal_waterfall_config` | OPERATOR | None | **EMPTY** (0 rows) |
+| Preferred return % | `PATCH /api/v1/deals/:id/financials/override` | `deal_waterfall_config` | OPERATOR | None | **EMPTY** |
+| Promote / carried interest | `PATCH /api/v1/deals/:id/financials/override` | `deal_waterfall_config` | OPERATOR | None | **EMPTY** |
+| Investor commitments | `GET /api/v1/capital/deals/:id/investments` | `deal_investments` | OPERATOR | None | EMPTY |
+| Waterfall distributions | `GET /api/v1/deals/:id/financials` | `deal_waterfalls` | COMPUTED / OPERATOR | None | **EMPTY** (0 rows) |
+
+---
+
+#### F9 Tab 5 — % RETURNS
+
+**Endpoints:** `GET /api/v1/deals/:id/financials`
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Levered IRR | `GET /api/v1/deals/:id/financials` | COMPUTED: hold-period projection + exit proceeds | COMPUTED | None | SPARSE (purchase price null) |
+| Unlevered IRR | `GET /api/v1/deals/:id/financials` | COMPUTED | COMPUTED | None | SPARSE |
+| Equity multiple (levered) | `GET /api/v1/deals/:id/financials` | COMPUTED | COMPUTED | None | SPARSE |
+| Cash-on-cash yr1 | `GET /api/v1/deals/:id/financials` | COMPUTED | COMPUTED | None | SPARSE |
+| Cash-on-cash stabilized | `GET /api/v1/deals/:id/financials` | COMPUTED | COMPUTED | None | SPARSE |
+| Net sale proceeds | `GET /api/v1/deals/:id/financials` | COMPUTED (exit cap × stabilized NOI − selling costs − loan payoff) | COMPUTED | None | SPARSE |
+| LP returns (IRR, EM) | `GET /api/v1/deals/:id/financials` | COMPUTED from `deal_waterfall_config` | COMPUTED | None | **EMPTY** (no waterfall) |
+| GP returns (IRR, EM) | `GET /api/v1/deals/:id/financials` | COMPUTED from `deal_waterfall_config` | COMPUTED | None | **EMPTY** |
+| Break-even occupancy | `GET /api/v1/deals/:id/financials` | `cashflow_projections.breakeven_occupancy` | COMPUTED | None | SPARSE |
+
+---
+
+#### F9 Tab 6 — ⊡ VALUATION
+
+**Endpoints:** `GET /api/v1/deals/:id/valuation-grid`, `GET /api/v1/deals/:id/valuation-grid/comps`, `PATCH /api/v1/deals/:id/valuation-grid/override`, `GET /api/v1/deals/:id/field-divergences`
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Stabilized value (income approach) | `GET /api/v1/deals/:id/valuation-grid` | COMPUTED (stabilized NOI / exit cap) | COMPUTED | None | SPARSE |
+| Going-in cap rate | `GET /api/v1/deals/:id/valuation-grid` | COMPUTED (T12 NOI / purchase price) | COMPUTED | None | **EMPTY** (purchase price null) |
+| Exit cap rate | `PATCH /api/v1/deals/:id/valuation-grid/override` | `deal_assumptions.exit_cap` | OPERATOR | None | POPULATED (5.0%) |
+| PPU implied | `GET /api/v1/deals/:id/valuation-grid` | COMPUTED (stabilized value / units) | COMPUTED | None | SPARSE |
+| Sale comps (PPU, cap rate, date, distance) | `GET /api/v1/deals/:id/valuation-grid/comps` | `market_sale_comps` (46 Atlanta comps) | RESEARCH-PULL | `sale_date` per comp | POPULATED (Atlanta pool available) |
+| Comp criteria (radius, min/max units, age) | `PATCH /api/v1/deals/:id/valuation-grid/comps/criteria` | `deal_assumptions.comp_criteria` JSONB | OPERATOR | None | SPARSE |
+| Valuation override | `PATCH /api/v1/deals/:id/valuation-grid/override` | `deal_assumptions.valuation_override_lv` | OPERATOR | None | SPARSE |
+| Submarket median cap rate | `GET /api/v1/deals/:id/valuation-grid` | COMPUTED from comp set | COMPUTED | Comp `sale_date` | SPARSE (46 Atlanta comps; deal-radius subset unknown) |
+
+---
+
+#### F9 Tab 7 — ◐ SCENARIOS (DebtTab + DecisionTab)
+
+**Endpoints:** `PATCH /api/v1/deals/:id/financials/override`, `GET /api/v1/jedi/score/:dealId`, `GET /api/v1/deals/:id/financials`
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Debt parameters (rate, term, LTC, amortization) | `PATCH /api/v1/deals/:id/financials/override` | `deal_assumptions` debt columns | OPERATOR | None | SPARSE |
+| DSCR computed | `GET /api/v1/deals/:id/financials` | COMPUTED from debt + NOI | COMPUTED | None | SPARSE |
+| Debt yield computed | `GET /api/v1/deals/:id/financials` | COMPUTED (NOI / loan amount) | COMPUTED | None | **EMPTY** (loan amount null) |
+| JEDI score component breakdown | `GET /api/v1/jedi/score/:dealId` | `jedi_score_history` (1 row) | COMPUTED | `created_at` | SPARSE |
+| Hold vs sell recommendation | `GET /api/v1/deals/:id/financials` | COMPUTED from IRR vs target, NOI trend | COMPUTED | None | SPARSE |
+| Strategy arbitrage panel | `GET /api/v1/deals/:id/assumptions` | `strategy_analyses`, `deal_assumptions` | COMPUTED | None | EMPTY |
+
+---
+
+#### F9 Tab 8 — ⇔ COMPARE
+
+**Endpoints:** `GET /api/v1/deals/:id/financials` (historical snapshots)
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Snapshot version A/B selector | `GET /api/v1/deals/:id/financials` | `deal_underwriting_snapshots` (315 rows) | AGENT / OPERATOR | `created_at` | POPULATED (snapshots exist) |
+| Named scenario references | `GET /api/v1/deals/:id/financials` | `deal_scenarios` | OPERATOR | None | **EMPTY** (0 rows — Compare tab has no named references) |
+| Delta comparison (IRR, NOI, EM) | `GET /api/v1/deals/:id/financials` | COMPUTED from two snapshot rows | COMPUTED | None | POPULATED (if operator creates scenarios) |
+
+---
+
+#### F9 Tab 9 — ⊙ GOAL SEEK
+
+**Endpoints:** Iterative `POST /api/v1/deals/:id/financials/override`, `GET /api/v1/deals/:id/financials/export`
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Target metric (IRR / EM / CoC) | `POST /api/v1/deals/:id/financials/override` (iterative) | In-memory iterations (not persisted) | COMPUTED | None | N/A (on-demand) |
+| Solve variable (price / rent / vacancy / cap rate) | `POST /api/v1/deals/:id/financials/override` | In-memory | COMPUTED | None | N/A |
+| Sensitivity table (range × range) | `GET /api/v1/deals/:id/financials` | COMPUTED | COMPUTED | None | N/A |
+| Excel export | `GET /api/v1/deals/:id/financials/export` | COMPUTED from `deal_assumptions` + projections | COMPUTED | None | SPARSE (incomplete without purchase price) |
+
+---
+
+#### F9 Tab 10 — ⊛ ROADMAP (value-add / redevelopment only)
+
+**Endpoints:** `GET /api/v1/deals/:id/financials`, `GET /api/v1/deals/:id/renovation`  
+**Visibility:** Only shown when `deal_type` matches `value-add`, `value_add`, `rehab`, `renovation`, or `redevelopment`.
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Renovation timeline (months) | `GET /api/v1/deals/:id/financials` | `deal_assumptions.construction_months` | OPERATOR | None | N/A (tab hidden — deal_type = `existing`) |
+| Units/year renovated | `GET /api/v1/deals/:id/financials` | `deal_assumptions.renovation_units_per_year` | OPERATOR | None | N/A |
+| Rent premium post-reno | `GET /api/v1/deals/:id/financials` | `deal_assumptions.renovation_premium_per_unit_monthly` | OPERATOR | None | N/A |
+| Downtime per unit | `GET /api/v1/deals/:id/financials` | `deal_assumptions.renovation_downtime_months_per_unit` | OPERATOR | None | N/A |
+| Stabilization target | `GET /api/v1/deals/:id/financials` | `deal_assumptions.stabilization_target_pct` | OPERATOR | None | N/A |
+| Stabilization year | `GET /api/v1/deals/:id/financials` | `deal_assumptions.stabilization_year` | COMPUTED / OPERATOR | None | N/A |
+
+---
+
+### F10 — Risk (M13 · RiskScreen)
+
+**Backend endpoints:** `GET /api/v1/deals/:id/completeness`, `GET /api/v1/jedi/alerts/deal/:dealId`, `GET /api/v1/jedi/impact/:dealId`
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Completeness gaps (critical / important) | `GET /api/v1/deals/:id/completeness` | `data_quality_alerts` (15 rows) | COMPUTED | `created_at` | **POPULATED** |
+| JEDI alert list | `GET /api/v1/jedi/alerts/deal/:dealId` | `jedi_alerts` | COMPUTED | `created_at` | SPARSE |
+| Risk factor scores | `GET /api/v1/jedi/impact/:dealId` | `jedi_score_history` | COMPUTED | `created_at` | SPARSE |
+| DD checklist items | `GET /api/v1/deals/:id/completeness` | `deal_tasks` | OPERATOR | `updated_at` | **EMPTY** (0 rows) |
+| Deal risks | `GET /api/v1/deals/:id/completeness` | `deal_risks` | AGENT / OPERATOR | `created_at` | **EMPTY** (0 rows) |
+
+---
+
+### F11 — Deal Tools (M21 · DealToolsScreen)
+
+**Backend endpoints:** `GET /api/v1/deals/:id/files`, `GET /api/v1/deals/:id/files/:fileId/extraction`, `GET /api/v1/deals/:id/files/stats`, `POST /api/v1/deals/:id/reprocess-documents`, `DELETE /api/v1/deals/:id/files/:fileId`
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Filename / original filename | `GET /api/v1/deals/:id/files` | `deal_files.filename`, `original_filename` | OPERATOR-UPLOAD | None | POPULATED (19 files) |
+| File category | `GET /api/v1/deals/:id/files` | `deal_files.category`, `auto_category_confidence` | OPERATOR-UPLOAD + COMPUTED | None | POPULATED |
+| Extraction status | `GET /api/v1/deals/:id/files` | `deal_files.extraction_status` | COMPUTED | `extraction_completed_at` | POPULATED (done=9, failed=8, queued=2) |
+| Extraction result (structured data) | `GET /api/v1/deals/:id/files/:fileId/extraction` | `deal_files.extraction_result` JSONB | AGENT (extraction skill) | `extraction_completed_at` | POPULATED (9 successful extractions) |
+| Extraction skill used | `GET /api/v1/deals/:id/files` | `deal_files.extraction_skill` | COMPUTED | `extraction_completed_at` | POPULATED |
+| File size / MIME type | `GET /api/v1/deals/:id/files` | `deal_files.file_size`, `mime_type` | OPERATOR-UPLOAD | None | POPULATED |
+| Version history | `GET /api/v1/deals/:id/files` | `deal_files.version`, `parent_file_id` | OPERATOR-UPLOAD | None | SPARSE |
+| Expiration date | `GET /api/v1/deals/:id/files` | `deal_files.expiration_date` | OPERATOR | None | SPARSE |
+| Extraction error | `GET /api/v1/deals/:id/files` | `deal_files.extraction_error` | COMPUTED | `extraction_completed_at` | SPARSE (8 failed; error text present) |
+| Uploaded by | `GET /api/v1/deals/:id/files` | `deal_files.uploaded_by` | OPERATOR-UPLOAD | None | POPULATED |
+
+**Critical note:** The legacy `deal_documents` table has 0 rows for 464 Bishop and is fully superseded by `deal_files`. Any integration, script, or agent tool still reading `deal_documents` will silently find no data.
+
+---
+
+### Validation Grid (within F9 Tab 3)
+
+**Endpoints:** `GET /api/v1/deals/:id/completeness`, `GET /api/v1/deals/:id/field-divergences`, `GET /api/v1/deals/:id/assumptions`, `GET /api/v1/deals/:id/implied-cap-rate`
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Completeness score (%) | `GET /api/v1/deals/:id/completeness` | Multi-table completeness service | COMPUTED | None | POPULATED |
+| DQA alert list (15 alerts for 464 Bishop) | `GET /api/v1/deals/:id/completeness` | `data_quality_alerts` | COMPUTED | `created_at` | **POPULATED** (15 rows) |
+| GPR divergence (broker vs platform) | `GET /api/v1/deals/:id/field-divergences` | `deals.deal_data.broker_claims` vs `deal_context_fields` | COMPUTED | None | SPARSE |
+| Cap rate divergence | `GET /api/v1/deals/:id/field-divergences` | `deals.deal_data.extraction_om` vs `deal_traffic_snapshots` | COMPUTED | None | SPARSE |
+| Vacancy divergence | `GET /api/v1/deals/:id/field-divergences` | `deal_assumptions.vacancy_pct` vs `deal_context_fields.market.vacancy_rate` | COMPUTED | None | SPARSE |
+| Implied cap rate | `GET /api/v1/deals/:id/implied-cap-rate` | COMPUTED from deal + market data | COMPUTED | None | SPARSE |
+| Plausibility tier | `POST /api/v1/sigma/plausibility` | COMPUTED (sigma service) | COMPUTED | None | SPARSE |
+| Assumption source provenance | `GET /api/v1/deals/:id/assumptions` | `deal_assumptions.source_type`, `deal_context_fields.source_label` | N/A (metadata) | None | POPULATED |
+
+---
+
+### Valuation Grid (within F9 Tab 6)
+
+**Endpoints:** `GET /api/v1/deals/:id/valuation-grid`, `GET /api/v1/deals/:id/valuation-grid/comps`, `PATCH /api/v1/deals/:id/valuation-grid/comps/criteria`
+
+| Field | Endpoint | Source Table(s) | Author Class | Freshness Indicator | Gap (464 Bishop) |
+|---|---|---|---|---|---|
+| Subject stabilized value | `GET /api/v1/deals/:id/valuation-grid` | COMPUTED | COMPUTED | None | SPARSE |
+| Subject exit cap | `PATCH /api/v1/deals/:id/valuation-grid/override` | `deal_assumptions.exit_cap` | OPERATOR | None | POPULATED (5.0%) |
+| Comp property name / address | `GET /api/v1/deals/:id/valuation-grid/comps` | `market_sale_comps` | RESEARCH-PULL | `sale_date` | POPULATED (Atlanta pool: 46 comps) |
+| Comp sale price / PPU | `GET /api/v1/deals/:id/valuation-grid/comps` | `market_sale_comps` | RESEARCH-PULL | `sale_date` | POPULATED |
+| Comp implied cap rate | `GET /api/v1/deals/:id/valuation-grid/comps` | `market_sale_comps.implied_cap_rate` | COMPUTED (enrichment pipeline) | `sale_date` | POPULATED (where enriched) |
+| Comp units / year built | `GET /api/v1/deals/:id/valuation-grid/comps` | `market_sale_comps` | RESEARCH-PULL | `sale_date` | POPULATED |
+| Comp distance from subject | `GET /api/v1/deals/:id/valuation-grid/comps` | COMPUTED from property lat/lng | COMPUTED | None | POPULATED (where lat/lng available) |
+| Include/exclude toggle | `POST /api/v1/deals/:id/valuation-grid/comps/:id/include` | `market_sale_comps.qualified` | OPERATOR | None | SPARSE (no overrides set) |
+| IQR outlier flagging | `GET /api/v1/deals/:id/valuation-grid` | COMPUTED in-browser from comp array | COMPUTED | None | N/A |
+| Comp search criteria | `PATCH /api/v1/deals/:id/valuation-grid/comps/criteria` | `deal_assumptions.comp_criteria` JSONB | OPERATOR | None | SPARSE |
+
+---
+
+### Document Library (F11 — Deal Tools)
+
+See the F11 section above. Summary for 464 Bishop:
+
+| Category | Count | Extraction Status |
+|---|---|---|
+| Total files | 19 | 9 done, 8 failed, 2 queued |
+| Structured extraction results available | 9 | `deal_files.extraction_result` JSONB |
+| Files with extraction errors | 8 | `deal_files.extraction_error` populated |
+| `deal_documents` (legacy table) | 0 | **BROKEN** — superseded |
 
 ---
 
 ## Seven Specific Findings
 
-### Finding 1 — Agent-Authored Fields That Violate the Layer 1/2 Boundary
+### Finding 1: Agent-Authored Calculated Fields
 
-The Layer 1/2 boundary rule states that Layer 1 (operator-visible resolved values) should be the result of a deterministic LayeredValue resolution chain (override → extraction → platform), while Layer 2 (growth scalars and projections) should be derived from platform baselines adjusted by modules and operator stance. Agent-authored values should arrive through the `agent` layer of a LayeredValue, not overwrite the resolved value directly.
+All 47 `deal_context_fields` rows for 464 Bishop carry `source_label = 'agent:research'` — written exclusively by the research agent. No OPERATOR overrides exist. These values feed directly into F9 model inputs, market signals, and display panels with no UI provenance indicator.
 
-**Violations observed in 464 Bishop `year1` JSONB:**
+**Critical data paths that flow from agent-authored fields into the F9 model:**
 
-| Field | Issue | Evidence |
+| Field Path | F9 Impact | Current Value |
 |---|---|---|
-| `gpr` | `resolution: "agent"` — the agent has overwritten the resolution layer directly with the OM-extracted value ($4,901,400), bypassing the declared priority chain (t12 > rent_roll > om). The T12 value ($4,876,535) and rent_roll value ($4,932,300) are stored in layers but the `agent` layer takes priority, which is not defined in the published `FIELD_PRIORITIES` spec at `proforma-seeder.service.ts:297`. | `year1.gpr.resolution = "agent"` |
-| `egi` | `resolution: "agent"` with value $3,669,151 — the EGI is derived from GPR-losses, yet it carries an `agent` layer tag. EGI is a COMPUTED field (not extractable directly), so an agent layer violates the boundary because agents should not compute compound aggregates. | `year1.egi.resolution = "agent"` |
-| `payroll` | `resolution: "agent"` — same pattern as GPR. The agent is resolving by copying the OM value ($324,800), which happens to match platform. | `year1.payroll.resolution = "agent"` |
-| `g_and_a` | `resolution: "agent"` — OM value ($69,600) selected. T12 value ($22,496) is present but ignored because `agent` layer takes priority over declared priority chain. | `year1.g_and_a.resolution = "agent"` |
-| `noi` | `resolution: "platform_fallback"` — NOI should never be a platform fallback; it is a COMPUTED field (EGI - OpEx). The platform_fallback value ($840,231) does not match any extraction source. The OM-extracted NOI ($2,999,564) is stored in `year1.noi.om` but is ignored. This suggests the computation step is not running and the fallback is being selected from a stale or incorrect platform seed. | `year1.noi.resolved = 840,231` vs `year1.noi.om = 2,999,564` |
+| `market.avg_effective_rent` | Platform rent benchmark in Console; GPR decomposition "platform" layer | POPULATED |
+| `market.vacancy_rate` | Platform vacancy benchmark; divergence check against `deal_assumptions.vacancy_pct` | POPULATED |
+| `comps.avg_market_rent` | Rent comp comparison panel in F3 | POPULATED |
+| `comps.avg_occupancy` | Occupancy benchmark | POPULATED |
+| `tax.annual_amount` | Property tax seed for OPEX model | POPULATED |
+| `tax.assessed_value` | Tax assessment display | POPULATED |
+| `parcel.units` | Unit count when `deals.unit_count` is null | POPULATED |
+| `market.pipeline_units` | Supply context for strategy scoring | POPULATED |
 
-**Root cause (observable):** The `agent` resolution layer is not defined in the published `FIELD_PRIORITIES` constant. Its presence in the JSONB suggests the agent is writing directly to `year1[field].agent` and the resolution chain is selecting it at a priority not documented in the seeder spec. This constitutes a Layer 1/2 boundary violation because the agent is making a field-level authority claim not sanctioned by the published resolution chain.
+**Author gap:** The `source_label = 'agent:research'` is backend-only metadata. An operator viewing market signals in F1, F3, or F9 CONSOLE has no way to distinguish an agent-researched figure from a licensed data provider value. No per-field "as of" date is surfaced.
 
 ---
 
-### Finding 2 — Agent-Silent Layer 2 Assumptions
+### Finding 2: Agent-Silent Layer 2 Assumptions
 
-Layer 2 assumptions (growth rate scalars in `proforma_assumptions`) should be calibrated by market-aware modules (M05 Market → rent growth, M07 Traffic → vacancy, M35 Events → correlation deltas, OperatorStance → reblend). For 464 Bishop, all four growth scalars sit at their baseline values with no overrides and no evidence of module calibration.
+`deal_assumptions` fields with `detected` slots in `LayeredValue` fields are null for 464 Bishop with no agent author:
 
-| Scalar | Baseline Value | Current Value | Override | Evidence of Module Touch |
+| Field | Expected Author | Root Cause |
+|---|---|---|
+| `investment_strategy_lv.detected` | AGENT (M08 detection) | M08 detection has not run or produced a result |
+| `exit_strategy_lv.detected` | AGENT (M08 detection) | Same |
+| `rent_growth_yr1` | AGENT or OPERATOR | Seeded only from `apt_locator`; no agent value |
+| `last_computed_at` | COMPUTED (returns engine) | NULL — assumptions have never been formally computed for this deal despite 315 snapshots |
+| `irr_levered` | COMPUTED | NULL — requires purchase price; never persisted |
+| `noi_stabilized` | COMPUTED | NULL — same dependency |
+
+**Pattern:** The agent is silent on all fields that require a purchase price anchor. Without `land_cost`, downstream COMPUTED fields cannot be produced and remain permanently null.
+
+---
+
+### Finding 3: Fields with No Author at All
+
+Fields that exist in the schema, are null for 464 Bishop, and have no confirmed writer in any backend code path:
+
+| Field | Table | Notes |
+|---|---|---|
+| `deals.deal_data->>'msaId'` | `deals` (JSONB) | Used in M35 event forecasts; null blocks submarket-scoped event lookup |
+| `deals.deal_data->>'submarketId'` | `deals` (JSONB) | Same dependency; no writer confirmed |
+| `deals.legal_owner` | `deals` | Populated in some deals; no route explicitly writes it |
+| `deal_assumptions.narrative_text` | `deal_assumptions` | Written by AI narrative endpoint; not generated for 464 Bishop |
+| `deal_monthly_actuals.asking_rent` | `deal_monthly_actuals` | Column exists; all 24 rows null for 464 Bishop |
+| `deal_monthly_actuals.months_free_concession` | `deal_monthly_actuals` | Same |
+| `deals.acquisition_date` | `deals` | Not set despite `deal_context_fields.ownership.acquisition_date` having a value (no auto-sync) |
+
+---
+
+### Finding 4: Multi-Source Conflict Points
+
+Fields with two or more potential sources that can disagree. F9 has collision dot logic for divergences >10%, but several conflict points have no surfaced resolution.
+
+| Field | Source A | Source B | Resolution in F9 | Gap (464 Bishop) |
 |---|---|---|---|---|
-| `rent_growth_current` | 3.500 | 3.500 | NULL | No — `last_recalibration` is NULL |
-| `vacancy_current` | 5.00 | 5.00 | NULL | No |
-| `opex_growth_current` | 2.800 | 2.800 | NULL | No |
-| `exit_cap_current` | 5.500 | 5.500 | NULL | No |
-
-**Affected surfaces:** F4 Projections (rent growth axis), F6 Returns (exit value sensitivity), F7 Valuation Grid (reconciled value), F10 Sensitivity matrix.
-
-**Observable consequence:** All 10-year projections use a static 3.5% rent growth assumption regardless of the Atlanta submarket's actual growth signal. Traffic snapshots exist (3 snapshots) and could inform `vacancy_current` via M07, but the calibration write has not occurred.
-
-**Agent-silent fields also observed in `deal_market_intelligence`:** Zero rows exist for this deal. The Research Agent has not been triggered or has not produced market intelligence for this deal. This silences the F1 market context strip, the F8 Decision market overlay, and any COR-series adjustments that depend on deal-level market context.
+| Purchase price | `deals.deal_data.extraction_om` (broker OM layer) | `deal_assumptions.land_cost` (operator override) | F9 prefers `deal_assumptions`; collision dot if >10% divergence | Both null |
+| Purchase price (third location) | `deal_context_fields` override (written by `PATCH /financials/override`) | `deal_assumptions.land_cost` | No documented precedence; third location exists | No override set |
+| Cap rate | `deals.deal_data.broker_cap_rate` | M07 `deal_traffic_snapshots` exit cap | Collision dot in F9 Overview | Both absent |
+| Avg rent per unit | `deal_monthly_actuals` T12 extraction | `deal_context_fields.market.avg_effective_rent` (agent:research) | F9 uses separate broker vs platform layers | Both populated; divergence amount not confirmed |
+| Vacancy rate | `deal_assumptions.vacancy_pct` = 19.83% (apt_locator) | `deal_context_fields.market.vacancy_rate` (agent:research) | No reconciliation surfaced to operator | Both populated |
+| Unit count | `deals.unit_count` | `deal_context_fields.parcel.units` (agent:research) | No auto-sync | Both may differ |
+| Tax amount | `deal_context_fields.tax.annual_amount` (agent:research) | `deal_monthly_actuals.property_tax` (T12 extraction) | No reconciliation | Both may be populated |
+| Owner name | `deals.legal_owner` | `deal_context_fields.ownership.owner_name` (agent:research) | Separate display fields; not reconciled | `legal_owner` null; context field present |
 
 ---
 
-### Finding 3 — Fields With No Current Author
+### Finding 5: Freshness Coverage Gaps
 
-These fields are operator-visible, have a defined backend column or schema slot, and have never been written by any confirmed author.
-
-| Surface | Field | Schema Location | Why No Author | Gap Status |
+| Surface | What Ages | Freshness Field | Surfaced to Operator? | Gap (464 Bishop) |
 |---|---|---|---|---|
-| F1 | JEDI Score (any dimension) | `jedi_scores` | Compute trigger not fired; `jedi_scores` has 0 rows | EMPTY |
-| F4 | `deal_monthly_actuals.*` financial data | `deal_monthly_actuals` (24 shell rows) | Rows created with no ETL or upload populating financial columns | BROKEN |
-| F5 | LP/GP Equity Split | `deal_assumptions.per_year_overrides['wf:lpShare'/'wf:gpShare']` | No user-facing UI control; no module writes this | MISSING |
-| F5 | All debt schedule fields | `deal_debt_schedule` | No document upload containing debt terms; no operator entry | EMPTY |
-| F5 | Waterfall tiers | `deal_waterfall_config` | No operator entry; no module seeder | EMPTY |
-| F5 | Capex items | `deal_capex_items` | No document upload or operator entry | EMPTY |
-| F7 | Comp criteria | `deal_assumptions.comp_criteria` | NULL for 464 Bishop; no default write in deal creation flow | EMPTY |
-| F8 | All risk records | `deal_risks` | Risk agent not triggered; no operator entry | EMPTY |
-| F11 | All roadmap fields | `deal_assumptions.construction_months`, `lease_up_months`, `absorption_units_per_month`, `stabilization_target_pct`, `f3_design_program` | Deal is SIGNAL_INTAKE, not development; no timeline entry | EMPTY |
-| All | `deal_comparable_properties` (sale comps for valuation) | `deal_comparable_properties` | Neither research pull nor operator upload has seeded sale comps for this deal | EMPTY |
+| `deal_context_fields` (47 rows) | Agent-researched values (market rents, vacancy, comps, ownership, proximity) | `updated_at` only; no TTL | **No** | No staleness indicator |
+| `deal_market_intelligence` | Submarket data | `created_at` | N/A | Empty |
+| `deal_traffic_snapshots` | M07 outputs | `created_at` per snapshot | **No** | 4 snapshots; freshness not surfaced |
+| `deal_underwriting_snapshots` | Model snapshots | `created_at` | Not surfaced without named scenario | 315 snapshots accumulating silently |
+| `deal_zoning_profiles` | Zoning district rules | No `as_of` date field | **No** | 1 row; age unknown |
+| `market_sale_comps` | Sale comp transactions | `sale_date` per comp | Yes — shown per comp in Valuation Grid | 46 Atlanta comps; dates not verified |
+| `proforma_assumptions` | Baseline assumptions | `last_recalculation` | Partial | 1 row; timestamp unknown |
+| `historical_observations` / vendor data | CoStar and other vendor data | `vendor_data_as_of` | Via `GET /:dealId/vendor-freshness` route | Not verified |
+| F9 AI narrative blocks | Claude-generated analysis | `narrative_generated_at` in `deal_assumptions` | **No** | Not generated |
+| `data_quality_alerts` | Alert recency | `created_at` | Yes — shown in F10 Risk and F9 Validation | 15 alerts; ages not verified |
 
 ---
 
-### Finding 4 — Multi-Source Conflict Fields
+### Finding 6: Cross-F-Key Data Dependencies
 
-These fields have multiple sources in the LayeredValue structure that disagree, making the resolution layer choice material.
-
-| Field | Conflicting Values | Resolution Winner | Risk |
-|---|---|---|---|
-| `gpr` | T12 = $4,876,535; rent_roll = $4,932,300; om = $4,901,400; agent = $4,901,400 | `agent` (mirrors OM) — T12 is 0.5% lower, rent_roll is 0.6% higher | LOW — values within 1.2% of each other; but agent priority not in published spec |
-| `noi` | Computed = ~$840K (platform_fallback); OM = $2,999,564; T12 (inferred ~$2.6M) | `platform_fallback` overrides all extraction values | HIGH — 72% gap; OM NOI is ignored |
-| `egi` | Agent = $3,669,151; implied from GPR-losses would be different | `agent` selected | MEDIUM — EGI should be COMPUTED not AGENT-authored |
-| `real_estate_tax` | Tax bill extraction vs T12 vs platform | Platform or T12 (sparsely populated) | MEDIUM — tax service may have separate write path not reflected in year1 |
-| `other_income_per_unit` | rent_roll vs T12 vs OM | Whichever has data per FIELD_PRIORITIES | LOW — breakdown-to-aggregate linkage unverified (per F9_DATA_FLOW_AUDIT_PHASE1) |
-| rent comps (F7) | `deal_rent_comp_sets` (apartment_locator) avg_rent vs `deal_market_intelligence` vs `proforma_assumptions` baseline | Each surface reads a different source — no canonical reconciliation | MEDIUM — F7 valuation comps and F2 assumption comps use different backing tables |
-| `exit_cap` | `deal_assumptions.exit_cap` (5.0%) vs `proforma_assumptions.exit_cap_current` (5.5%) | F9 Engine A reads `deal_assumptions.exit_cap` for Y1; `proforma_assumptions.exit_cap_current` for projection growth scalar | MEDIUM — operator may not realize these are independent |
-
----
-
-### Finding 5 — Freshness Coverage Gaps
-
-Freshness indicators exist at the field level (`year1[field].updated_at`) and table level (`updated_at`, `snapshot_date`). However, multiple surfaces display data without any staleness signal to the operator.
-
-| Surface | Field(s) | Freshness State | Gap |
-|---|---|---|---|
-| F4 Projections | Traffic snapshots | `deal_traffic_snapshots.snapshot_date` present (most recent: May 2026) | Freshness indicator not surfaced in UI per audit of `ProjectionsTab.tsx` |
-| F2 Assumptions | `proforma_assumptions.*_current` | `proforma_assumptions.updated_at` = 2026-05-05; no `last_recalibration` column | No staleness banner if market has shifted since seed |
-| F7 Valuation Grid | Sale comp ages | `market_sale_comps.created_at` — 0 comps for deal | Stale/absent comp warning not triggerable (no comps) |
-| F3 Pro Forma | `year1[field].updated_at` | Available per-field | UI renders source pills but not per-field age warning |
-| F1 Overview | JEDI Score | NULL — never computed | No "score unavailable" freshness signal surfaced |
-| F4 Monthly Actuals | `deal_monthly_actuals.report_month` | Shell rows exist (latest: 2026-12) but all financial data NULL | Future shell rows with null data appear as blank, not stale |
-| All surfaces | Rent comp occupancy | `deal_rent_comp_sets.occupancy` = NULL for all 5 comps | Occupancy displayed as blank; no freshness signal distinguishes "not measured" from "not synced" |
-
----
-
-### Finding 6 — Cross-F-Key Data Dependencies
-
-These are fields on one surface that are directly computed from or blocked by data on another surface.
-
-| Consumer Surface | Blocked By | Dependency |
+| Downstream Surface | Prerequisite | What Breaks Without It |
 |---|---|---|
-| F6 Returns (IRR, EM, CoC) | F3 Pro Forma (NOI) | NOI broken → all return metrics broken |
-| F5 Capital (Equity Amount, Debt Coverage) | F3 Pro Forma (NOI) | NOI broken → debt sizing and coverage ratios incorrect |
-| F7 Valuation Grid (cap rate method) | F3 Pro Forma (NOI) | NOI broken → cap-rate-based valuation method marked BROKEN |
-| F10 Sensitivity (goal-seek) | F6 Returns (IRR) | IRR broken → goal-seek cannot solve |
-| F8 Decision (strategy verdict) | F1 (JEDI Score) + F6 (IRR) | Both empty/broken → Decision tab has no signal to render a verdict |
-| F4 Projections (per-year values Yr2+) | F3 Pro Forma (Y1 values) + Operator overrides | Y1 NOI broken propagates into all projection years; operator per-year edits ignored (CF-02) |
-| F6 Returns (LP/GP waterfall) | F5 Capital (waterfall config, debt schedule) | Both empty → LP/GP returns cannot be computed |
-| F2a Validation Grid (going-in cap) | F3 Pro Forma (Y1 NOI) | NOI broken → going-in cap row broken |
-| F7 Valuation Grid (sale comp method) | Document Library (comp upload) | 0 sale comps uploaded → sale comp methods inactive |
-| F4 Projections (vacancy trajectory) | M07 Traffic (calibration) | Traffic snapshots exist but `vacancy_current` not calibrated → static 5% vacancy used |
+| F9 OVERVIEW KPI strip (IRR, NOI, EM) | F9 CONSOLE purchase price (`deal_assumptions.land_cost`) | IRR, EM, DSCR all null |
+| F9 CAPITAL (Sources & Uses) | Purchase price | TDC and loan amount cannot be computed |
+| F9 RETURNS (levered IRR) | Capital stack + purchase price | Full IRR chain requires both |
+| F9 VALUATION (going-in cap rate) | Purchase price + T12 NOI | Going-in cap = T12 NOI / purchase price |
+| F8-M12 exit trajectory | `deal_data.msaId` / `submarketId` | M35 event-scoped forecasts cannot run without market geography |
+| F8 Debt & Capital sensitivity | Debt parameters (rate, LTC, amortization) | Debt schedule cannot be generated |
+| F3 Market Intel (deal-specific signals) | Market research agent run + `deal_data.msaId` | `deal_market_intelligence` empty; msaId also null |
+| F5 Strategy arbitrage score | Investment strategy detection (M08) | Strategy not detected → arbitrage cannot score |
+| F4 Supply Pipeline (deal-level) | `deals.trade_area_id` | Without trade area, falls back to city-level estimates only |
+| F9 Compare tab (named scenarios) | User-created `deal_scenarios` rows | 315 snapshots exist but 0 named scenarios → no selector |
+| F9 ROADMAP tab visibility | `deal_type` = value-add / redevelopment | Tab hidden for standard acquisition deals |
+| F9 LP/GP returns | Waterfall config | Returns tab shows no LP/GP breakdown |
 
 ---
 
-### Finding 7 — Deprecated-Table Readers Still Active
+### Finding 7: Deprecated Table Coupling
 
-The property refactor (`property-plumbing-phase1-*` docs) identified several tables targeted for deprecation. The following deprecated tables still have active readers in production route files.
-
-| Deprecated Table | Active Reader(s) | Surface Affected | Notes |
-|---|---|---|---|
-| `apartment_properties` | `property-discovery.routes.ts`, `market-intelligence.routes.ts` | F4 Markets, F1 market intel | Parallel to `properties` table; apartment_locator syncs into this table. comp sets for 464 Bishop sourced from this table via `apartment_locator` |
-| `apartment_market_snapshots` | `proforma-seeder.service.ts` (platform fallback seed) | F2/F3 all assumptions | Used as the fallback source for platform values in the LayeredValue chain; `proforma-seeder.service.ts` queries this for city/state market averages |
-| `comp_properties` | `valuation-grid.service.ts`, `deal-comp-sets.routes.ts` | F7 Valuation Grid | Sale comp data. Distinct from `market_sale_comps`; readers in valuation grid service and comp-set management routes |
-| `market_rent_comps` | `market-intelligence.routes.ts` | F4 Markets rent context | Parallel to `deal_rent_comp_sets`; legacy rent comp table. Both may be read simultaneously for the same deal |
-| `property_records` | `unified-properties.routes.ts` | F4/F1 property context | Legacy property table targeted for consolidation into `properties` |
-| `data_library_assets` (vs `data_library_files`) | `data-library.routes.ts`, `data-library-assets.routes.ts` | Document Library | Two parallel tables (`data_library_assets` legacy, `data_library_files` current) — both route files active |
-
----
-
-## Test Deal Verification — 464 Bishop
-
-**Deal ID:** `3f32276f-aacd-4da3-b306-317c5109b403`  
-**Query executed:** 2026-05-30 (dev database)
-
-All "current state" claims in this document are verified against live database state. Where documentation and live state diverged, live state is authoritative.
-
-### Key Live Readings
-
-| Table / Query | Live Result | Audit Claim |
+| Deprecated Table / Pattern | Current Replacement | Risk |
 |---|---|---|
-| `deals WHERE id = deal_id` | name="464 Bishop", pipeline_stage="prospect", property_id=NULL, jedi_score=NULL, budget=$60M | CF-10 (no property linkage), CF-04 (JEDI empty) |
-| `deal_assumptions.year1->'noi'` | resolved=840,231, resolution="platform_fallback", om=2,999,564 | CF-01, Finding 1 |
-| `deal_assumptions.year1->'gpr'` | resolved=4,901,400, resolution="agent", t12=4,876,535, rent_roll=4,932,300 | Finding 1, Finding 4 |
-| `deal_assumptions.year1->'electric'` | resolved=null, resolution="platform_fallback" | CF-08 |
-| `deal_assumptions.unit_mix` | `{}` (empty object) | CF-09 |
-| `proforma_assumptions WHERE deal_id` | rent_growth=3.5, vacancy=5.0, opex_growth=2.8, exit_cap=5.5 — all at baseline, no overrides | Finding 2 |
-| `SELECT COUNT(*) FROM jedi_scores WHERE deal_id` | 0 | CF-04, F1 gap |
-| `SELECT COUNT(*) FROM deal_market_intelligence WHERE deal_id` | 0 | CF-05, F1/F8 gap |
-| `SELECT COUNT(*) FROM deal_debt_schedule WHERE deal_id` | 0 | CF-06, F5 gap |
-| `SELECT COUNT(*) FROM deal_waterfall_config WHERE deal_id` | 0 | CF-06, F5 gap |
-| `SELECT COUNT(*) FROM deal_capex_items WHERE deal_id` | 0 | CF-06, F5 gap |
-| `SELECT COUNT(*) FROM deal_risks WHERE deal_id` | 0 | CF-06, F8 gap |
-| `SELECT COUNT(*) FROM market_sale_comps WHERE deal_id` | 0 | F7 gap |
-| `SELECT COUNT(*) FROM deal_comparable_properties WHERE deal_id` | 0 | Finding 3 |
-| `deal_monthly_actuals WHERE deal_id` | 24 rows, all GPR/NOI/EGI/occupancy_rate NULL | CF-03 |
-| `deal_traffic_snapshots WHERE deal_id` | 3 rows (2026-04-27, 2026-05-03, 2026-05-08) | F4 traffic POPULATED |
-| `deal_lease_transactions WHERE deal_id` | 260 rows (2026-05-20) | F4 LVE POPULATED |
-| `deal_document_files WHERE deal_id` | 3 rows (OM completed, 2× RENT_ROLL completed) | Document Library POPULATED |
-| `deal_files WHERE deal_id` | 10 rows (2 failed extraction, 1 queued) | Document Library SPARSELY POPULATED |
-| `deal_rent_comp_sets WHERE deal_id` | 5 rows from apartment_locator, avg_rent populated, occupancy=NULL | Finding 5 (freshness gap) |
-| `deal_zoning_profiles WHERE deal_id` | 1 row: MR-4A, Atlanta, GA, resolved 2026-04-28 | Zoning POPULATED |
-| `deals.deal_data` extractions | has_t12=true, has_rr=true, has_tax=true, has_om=true | Extractions present but some year1 fields not resolved from them (CF-01, CF-08) |
-| `deal_assumptions.comp_criteria` | NULL | F7 comp criteria EMPTY |
-
-### Surfaces Verified as Incomplete Due to Known Non-Bishop Gap (Not 464 Bishop–Specific)
-
-- **F11 Roadmap:** Structurally empty for all non-development deals; 464 Bishop is SIGNAL_INTAKE.
-- **F12 Custom Tabs:** Opus has no sessions for 464 Bishop; this is expected for early-stage deals.
+| `deal_documents` | `deal_files` | 0 rows for 464 Bishop. Any agent tool, script, or integration referencing `deal_documents` silently finds nothing. `DocumentsFilesSection` correctly uses `deal_files` routes. |
+| `property_operating_data.is_owned` | `deal_monthly_actuals.is_portfolio_asset = TRUE` | Superseded. Reading `is_owned` for portfolio identification misses owned assets. |
+| `deal_contexts` | `deal_context_fields` | `deal_contexts` has 0 rows for 464 Bishop; `deal_context_fields` has 47. Consumers of `deal_contexts` find nothing. |
+| `proforma_assumptions` | `deal_assumptions` + `cashflow_projections` | `proforma_assumptions` has 1 row. F9 engine reads `deal_assumptions`. Authoritative table is ambiguous. |
+| `rent_roll` / `rent_roll_units` | `deal_monthly_actuals` (extraction result storage) | 0 rows in rent_roll tables for 464 Bishop; 24 rows in `deal_monthly_actuals`. T12 storage has fully migrated. |
+| Purchase price in `deals.deal_data` JSONB only | Dual-write: `deals.deal_data` + `deal_assumptions.land_cost` + `deal_context_fields` override | Three locations with no documented precedence rule (see Finding 4). |
 
 ---
 
-## Suggested Next Audit / Spec Work
+## Audit Completeness Notes
 
-The following items were surfaced by this audit but are out of scope for this document. They are listed in priority order for downstream architectural work.
+### All surfaces fully audited and verified with live queries
+- F1–F11 deal detail page screens (live row counts verified for all tables)
+- F8-M12 Exit Strategy + Debt Market module (component traced; endpoints confirmed; DB tables queried)
+- All 11 F9 Financial Engine sub-tabs (component + API chain traced)
+- Validation Grid (routes + source tables confirmed; 15 DQA alerts verified)
+- Valuation Grid (routes + source tables confirmed; 46 Atlanta sale comps confirmed)
+- Document Library (deal_files schema + 464 Bishop extraction status confirmed: done=9, failed=8, queued=2)
+- data_quality_alerts: 15 rows (POPULATED)
+- market_rent_comps: 13 rows (POPULATED)
+- building_designs_3d: 0 rows (EMPTY)
+- market_sale_comps: 46 Atlanta rows available (POPULATED at market level)
 
-| Item | Type |
-|---|---|
-| NOI resolution bug (CF-01): Trace why `year1.noi.resolution` selects `platform_fallback` when `year1.noi.om = 2,999,564` is present | Bug fix spec |
-| Per-year projections override gap (CF-02): Spec the read path for `per_year_overrides['field:yrN']` in the projections loop | Architecture spec |
-| `agent` resolution layer in LayeredValue: Define the `agent` priority slot formally in FIELD_PRIORITIES and document under what conditions it overrides extraction layers | ADR |
-| LP/GP split write path (F5): Design a user-facing control for `wf:lpShare`/`wf:gpShare` that persists to `per_year_overrides` | Feature spec |
-| `deal_monthly_actuals` author chain: Identify what should populate the 24 shell rows (ETL from rent roll, operator upload, or actuals sync) and implement write path | Feature spec |
-| `da:use_unit_mix_for_gpr` flag: Add a user-facing toggle in the Unit Mix tab that activates unit-mix-driven GPR | Feature spec |
-| Utility OpEx propagation (CF-08): Investigate why `electric`/`gas_fuel` resolve to null despite T12 extraction presence | Bug fix spec |
-| Vendor data abstraction layer: Define the canonical source-of-truth hierarchy for `apartment_properties` vs `properties` vs `comp_properties` to eliminate Finding 7 dual-reader patterns | Architecture spec |
-| Sale comp seeding for 464 Bishop: Research pull or operator upload to populate `market_sale_comps` so F7 Valuation Grid has sufficient methods active | Data backfill |
-| JEDI Score trigger: Identify why `jedi_scores` has 0 rows for 464 Bishop and ensure the scoring pipeline fires at deal creation or on first extraction completion | Bug fix |
+### Limitations of audit scope
+
+| Item | Limitation | Reason |
+|---|---|---|
+| F11 Notes & Team sections | `asset_notes`, `deal_team_members` not queried | Out of scope for financial/underwriting field audit |
+| F9 GOAL SEEK result persistence | Results not persisted to DB | On-demand computation; no rows to verify |
+| `market_sale_comps` deal-radius pool | Exact count within valuation-grid radius not verified | Would require running the valuation-grid service call |
+| M35 key_events for 464 Bishop | `key_events` filtered by msaId/submarketId not queried | `deals.deal_data.msaId` is null, blocking submarket-scoped lookup |
 
 ---
 
-_Audit produced by read-only code and database investigation. No production changes were made._
+## Suggested Next Audit Scope / Spec Work
+
+1. **Vendor data abstraction** — Define authoritative source precedence (CoStar vs. agent research vs. operator entry) and establish TTL rules for `deal_context_fields` values with visible staleness indicators.
+2. **Purchase price source-of-truth** — The three-location ambiguity (`deal_data.purchase_price`, `deal_assumptions.land_cost`, `deal_context_fields` override) should be resolved to a single canonical resolver with explicit precedence, fixing the root cause of Finding 4 and all the null computed fields.
+3. **Field-level reconciliation spec** — Collision dots exist only for a subset of conflicting fields. All multi-source conflicts in Finding 4 need resolution rules codified in `proforma-adjustment.service.ts`.
+4. **Agent synthesis interface** — The 5,176 agent runs for 464 Bishop have produced 315 underwriting snapshots but no named scenarios, no IRR, and no strategy detection. The interface between agent output and persistent deal state needs mapping.
+5. **`deal_documents` deprecation** — The legacy table should be formally deprecated and all code references purged.
+6. **Strategy detection trigger** — Investment and exit strategy LVs are both null for 464 Bishop (Finding 2). A mechanism to trigger or re-trigger M08 detection — or surface that detection has not run — would eliminate this silent gap.
