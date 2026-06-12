@@ -926,6 +926,11 @@ export default function PropertyDetailsPage() {
   const [storiesSaving, setStoriesSaving] = useState(false);
   const [storiesOverride, setStoriesOverride] = useState<number | null>(null);
   const [storiesSaveError, setStoriesSaveError] = useState<string | null>(null);
+  const [unitsEditing, setUnitsEditing] = useState(false);
+  const [unitsInputVal, setUnitsInputVal] = useState('');
+  const [unitsSaving, setUnitsSaving] = useState(false);
+  const [unitsOverride, setUnitsOverride] = useState<number | null>(null);
+  const [unitsSaveError, setUnitsSaveError] = useState<string | null>(null);
 
   const navState = (location.state || {}) as {
     propertyName?: string;
@@ -1116,6 +1121,27 @@ export default function PropertyDetailsPage() {
     return () => obs.disconnect();
   }, []);
 
+  // ─── UNITS SAVE HANDLER ──────────────────────────────────
+  const handleUnitsSave = useCallback(async () => {
+    const val = parseInt(unitsInputVal, 10);
+    if (isNaN(val) || val < 1 || val > 10000) return;
+    setUnitsSaving(true);
+    setUnitsSaveError(null);
+    try {
+      if (marketCompsDealId) {
+        await apiClient.patch(`/api/v1/deals/${marketCompsDealId}/property`, { units: val });
+      } else if (id && UUID_RE.test(id)) {
+        await apiClient.patch(`/api/v1/properties/${id}`, { units: val });
+      }
+      setUnitsOverride(val);
+      setUnitsEditing(false);
+    } catch (err: any) {
+      setUnitsSaveError(err?.response?.data?.error ?? err?.message ?? 'Save failed');
+    } finally {
+      setUnitsSaving(false);
+    }
+  }, [unitsInputVal, marketCompsDealId, id]);
+
   // ─── STORIES SAVE HANDLER ────────────────────────────────
   const handleStoriesSave = useCallback(async () => {
     const val = parseInt(storiesInputVal, 10);
@@ -1147,7 +1173,56 @@ export default function PropertyDetailsPage() {
           <SectionHeader title="PROPERTY VITALS" icon="◈" borderColor={T.text.cyan} />
           <DataRow label="Type" value={p.type} sub={`· ${p.subtype}`} />
           <DataRow label="Class" value={p.class} />
-          <DataRow label="Units" value={p.units} />
+          {/* Editable Units row */}
+          {unitsEditing ? (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 10px", borderBottom: `1px solid ${T.border.subtle}08` }}>
+              <span style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.secondary }}>Units</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <input
+                  type="number"
+                  min={1}
+                  max={10000}
+                  value={unitsInputVal}
+                  onChange={e => setUnitsInputVal(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleUnitsSave(); if (e.key === 'Escape') setUnitsEditing(false); }}
+                  autoFocus
+                  style={{ width: 60, background: T.bg.input, border: `1px solid ${T.border.bright}`, borderRadius: 2, color: T.text.primary, fontFamily: T.font.mono, fontSize: 10, padding: "1px 4px", textAlign: "right" }}
+                />
+                <button
+                  onClick={handleUnitsSave}
+                  disabled={unitsSaving}
+                  style={{ fontSize: 8, fontFamily: T.font.mono, background: T.text.green, color: "#000", border: "none", borderRadius: 2, padding: "2px 6px", cursor: "pointer", opacity: unitsSaving ? 0.5 : 1 }}
+                >
+                  {unitsSaving ? "…" : "SAVE"}
+                </button>
+                <button
+                  onClick={() => { setUnitsEditing(false); setUnitsSaveError(null); }}
+                  style={{ fontSize: 8, fontFamily: T.font.mono, background: "transparent", color: T.text.muted, border: `1px solid ${T.border.subtle}`, borderRadius: 2, padding: "2px 6px", cursor: "pointer" }}
+                >
+                  ✕
+                </button>
+              </div>
+              {unitsSaveError && (
+                <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.red, marginTop: 2, display: 'block', textAlign: 'right' }}>
+                  {unitsSaveError}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 10px", borderBottom: `1px solid ${T.border.subtle}08`, cursor: "pointer" }}
+              title="Click to enter unit count"
+              onClick={() => { setUnitsInputVal(String(unitsOverride ?? p.units ?? '')); setUnitsEditing(true); }}
+            >
+              <span style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.secondary }}>Units</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 600, color: (unitsOverride ?? p.units) ? T.text.primary : T.text.muted }}>
+                  {unitsOverride ?? p.units ?? <span style={{ fontStyle: "italic", fontSize: 8 }}>enter…</span>}
+                </span>
+                <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, opacity: 0.6 }}>✎</span>
+              </div>
+            </div>
+          )}
           {/* Editable Stories row */}
           {storiesEditing ? (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 10px", borderBottom: `1px solid ${T.border.subtle}08` }}>

@@ -1319,6 +1319,10 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
   const [storiesSaving, setStoriesSaving] = useState(false);
   const [storiesSavedLocally, setStoriesSavedLocally] = useState<number | null>(null);
   const [storiesSaveError, setStoriesSaveError] = useState<string | null>(null);
+  const [unitsInput, setUnitsInput] = useState('');
+  const [unitsSaving, setUnitsSaving] = useState(false);
+  const [unitsSavedLocally, setUnitsSavedLocally] = useState<number | null>(null);
+  const [unitsSaveError, setUnitsSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!dealId) return;
@@ -1390,6 +1394,23 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
       setStoriesSaving(false);
     }
   }, [dealId, storiesInput, load]);
+
+  const handleUnitsSave = useCallback(async () => {
+    const val = parseInt(unitsInput, 10);
+    if (isNaN(val) || val < 1 || val > 10000) return;
+    setUnitsSaving(true);
+    setUnitsSaveError(null);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/property`, { units: val });
+      setUnitsSavedLocally(val);
+      setUnitsInput('');
+      load();
+    } catch (err: any) {
+      setUnitsSaveError(err?.response?.data?.error ?? err?.message ?? 'Save failed');
+    } finally {
+      setUnitsSaving(false);
+    }
+  }, [dealId, unitsInput, load]);
 
   const purchasePrice = data?.subject?.purchasePrice ?? null;
 
@@ -1581,6 +1602,64 @@ export function ValuationGridTab({ dealId, deal }: FinancialEngineTabProps) {
             {storiesSaveError && (
               <span style={{ fontSize: 7, fontFamily: MONO, color: '#FF4757', marginLeft: 4 }}>
                 {storiesSaveError}
+              </span>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── Missing units prompt — shown when units is unset (required for PPU and most methods) ── */}
+      {(() => {
+        const unitsMissing = data.subjectCompleteness?.missingFields?.some(f => f.field === 'units');
+        if (!unitsMissing || unitsSavedLocally != null) return null;
+        return (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+            padding: '5px 12px',
+            background: '#F5A62308',
+            borderBottom: `1px solid #F5A62333`,
+            fontFamily: MONO,
+          }}>
+            <span style={{ fontSize: 10, color: '#F5A623' }}>⚠</span>
+            <span style={{ fontSize: 8, color: '#F5A623', fontWeight: 700, letterSpacing: 0.5 }}>
+              UNIT COUNT NOT SET
+            </span>
+            <span style={{ fontSize: 8, color: '#94A3B8' }}>
+              · Required for per-unit benchmarks, PPU comps, and replacement cost methods
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+              <input
+                type="number"
+                min={1}
+                max={10000}
+                placeholder="# units"
+                value={unitsInput}
+                onChange={e => setUnitsInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleUnitsSave(); }}
+                style={{
+                  width: 68, background: '#0D1117', border: '1px solid #F5A62344',
+                  borderRadius: 2, color: '#E8ECF1', fontFamily: MONO, fontSize: 9,
+                  padding: '2px 5px', textAlign: 'right',
+                }}
+              />
+              <button
+                onClick={handleUnitsSave}
+                disabled={unitsSaving || !unitsInput}
+                style={{
+                  fontSize: 7.5, fontWeight: 700, color: '#F5A623',
+                  letterSpacing: 0.5, background: 'none',
+                  padding: '2px 7px', border: '1px solid #F5A62344',
+                  borderRadius: 2, cursor: unitsSaving ? 'default' : 'pointer',
+                  opacity: (!unitsInput || unitsSaving) ? 0.45 : 1,
+                  fontFamily: MONO,
+                }}
+              >
+                {unitsSaving ? '…' : 'SAVE →'}
+              </button>
+            </div>
+            {unitsSaveError && (
+              <span style={{ fontSize: 7, fontFamily: MONO, color: '#FF4757', marginLeft: 4 }}>
+                {unitsSaveError}
               </span>
             )}
           </div>
