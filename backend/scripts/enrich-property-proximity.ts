@@ -136,6 +136,7 @@ interface PropertyRow {
   lat: number | null;
   lng: number | null;
   parcel_id: string | null;
+  stories: number | null;
 }
 
 interface CrimeCounts {
@@ -177,6 +178,96 @@ function countIncidentsWithinRadius(
   return { total, violent, property: propertyCnt };
 }
 
+/**
+ * Look up stories for a property from county assessor sources and persist to
+ * properties.stories when the column is not already set.
+ *
+ * Priority:
+ *   1. property_info_cache by parcel_id (ArcGIS / county assessor ingestion)
+ *   2. property_info_cache by address + city + state (fallback when no parcel_id)
+ *   3. data_library_assets with county source types linked to any deal for this property
+ *
+ * Uses COALESCE so an existing stories value is never overwritten.
+ * Returns the resolved stories value if one was written, null otherwise.
+ */
+async function persistStoriesFromCounty(
+  pool: Pool,
+  prop: PropertyRow
+): Promise<number | null> {
+  if (prop.stories != null && prop.stories > 0) {
+    return null;
+  }
+
+  let resolvedStories: number | null = null;
+
+  if (prop.parcel_id) {
+    const res = await pool.query<{ stories: number | null }>(
+      `SELECT stories
+       FROM property_info_cache
+       WHERE parcel_id = $1
+         AND stories IS NOT NULL
+         AND stories > 0
+       ORDER BY fetched_at DESC
+       LIMIT 1`,
+      [prop.parcel_id]
+    );
+    if (res.rows.length > 0 && res.rows[0].stories != null) {
+      resolvedStories = Number(res.rows[0].stories);
+    }
+  }
+
+  if (resolvedStories == null && prop.address_line1 && prop.city && prop.state_code) {
+    const res = await pool.query<{ stories: number | null }>(
+      `SELECT stories
+       FROM property_info_cache
+       WHERE address ILIKE $1
+         AND city ILIKE $2
+         AND state ILIKE $3
+         AND stories IS NOT NULL
+         AND stories > 0
+       ORDER BY fetched_at DESC
+       LIMIT 1`,
+      [prop.address_line1, prop.city, prop.state_code]
+    );
+    if (res.rows.length > 0 && res.rows[0].stories != null) {
+      resolvedStories = Number(res.rows[0].stories);
+    }
+  }
+
+  if (resolvedStories == null) {
+    const res = await pool.query<{ stories: number | null }>(
+      `SELECT dla.stories
+       FROM data_library_assets dla
+       JOIN deals d ON d.id = dla.deal_id
+       JOIN properties p ON p.deal_id = d.id
+       WHERE p.id = $1::uuid
+         AND dla.stories IS NOT NULL
+         AND dla.stories > 0
+         AND dla.source_type IN ('county_records', 'tax_bill', 'assessor')
+       ORDER BY dla.stories DESC
+       LIMIT 1`,
+      [prop.id]
+    );
+    if (res.rows.length > 0 && res.rows[0].stories != null) {
+      resolvedStories = Number(res.rows[0].stories);
+    }
+  }
+
+  if (resolvedStories != null && resolvedStories > 0) {
+    const updateRes = await pool.query(
+      `UPDATE properties
+       SET stories    = COALESCE(NULLIF(stories, 0), $2::integer),
+           updated_at = NOW()
+       WHERE id = $1::uuid
+         AND (stories IS NULL OR stories = 0)`,
+      [prop.id, resolvedStories]
+    );
+    return updateRes.rowCount != null && updateRes.rowCount > 0 ? resolvedStories : null;
+  }
+
+  return null;
+}
+
 async function main() {
   const args = parseArgs();
   console.log(
@@ -188,7 +279,8 @@ async function main() {
 
   try {
     const propRes = await pool.query<PropertyRow>(
-      `SELECT id, address_line1, city, state_code, county, zip, lat, lng, parcel_id
+      `SELECT id, address_line1, city, state_code, county, zip, lat, lng, parcel_id,
+              stories
        FROM properties
        WHERE city ILIKE $1
          AND lat IS NOT NULL
@@ -239,6 +331,8 @@ async function main() {
     let failed = 0;
     let withCrime = 0;
     let withTransit = 0;
+    let storiesWritten = 0;
+    let storiesAlreadySet = 0;
 
     for (const p of propRes.rows) {
       const c = counts.get(p.id);
@@ -270,6 +364,16 @@ async function main() {
         ok++;
         if (scores.safety.crimeIndex !== undefined) withCrime++;
         if ((scores.transit.transitScore ?? 0) > 0) withTransit++;
+
+        // Persist stories from county assessor records (property_info_cache)
+        // when not already set on the properties row.
+        if (p.stories != null && p.stories > 0) {
+          storiesAlreadySet++;
+        } else {
+          const written = await persistStoriesFromCounty(pool, p);
+          if (written != null) storiesWritten++;
+        }
+
         await new Promise((r) => setTimeout(r, 30));
       } catch (err) {
         failed++;
@@ -279,6 +383,9 @@ async function main() {
 
     console.log(`[Enrich] Complete: ${ok} succeeded, ${failed} failed`);
     console.log(`[Enrich] Coverage: transit_score on ${withTransit}/${ok}, crime_index on ${withCrime}/${ok}`);
+    console.log(
+      `[Enrich] Stories: ${storiesAlreadySet} already set, ${storiesWritten} written from county records`
+    );
 
     const verifyRes = await pool.query(
       `SELECT
