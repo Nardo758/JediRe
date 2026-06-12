@@ -429,8 +429,12 @@ export class ReplacementCostServiceV2 {
           }
         };
       }
-    } catch (error) {
-      console.warn('[ReplacementCostV2] Permit query failed:', error);
+    } catch (error: any) {
+      if (error?.code === '42P01') {
+        console.warn('[ReplacementCostV2] building_permits table not found — skipping permit-derived baseline, using defaults');
+      } else {
+        console.warn('[ReplacementCostV2] Permit query failed:', error);
+      }
     }
     
     return this.getDefaultPermitBaseline(input);
@@ -576,8 +580,12 @@ export class ReplacementCostServiceV2 {
           sampleSize: parseInt(targetResult.rows[0].sample_size) || 0
         };
       }
-    } catch (error) {
-      console.warn('[ReplacementCostV2] Permit regional factor query failed:', error);
+    } catch (error: any) {
+      if (error?.code === '42P01') {
+        console.warn('[ReplacementCostV2] building_permits table not found — skipping permit-derived regional factor, falling back to BLS RPP');
+      } else {
+        console.warn('[ReplacementCostV2] Permit regional factor query failed:', error);
+      }
     }
     
     return { factor: 100, sampleSize: 0 };
@@ -596,24 +604,27 @@ export class ReplacementCostServiceV2 {
     avgAgeMonths: number;
   }> {
     try {
-      // Query Data Library for cost_data assets matching this market
+      // Query Data Library for cost_data assets matching this market.
+      // data_library_cost_data joins to data_library_assets via source_file_id = dla.file_id.
+      // Geographic fields (state, city, county, asset_class) live on data_library_assets.
+      // Cost columns: hard_cost_psf, cost_source, captured_at (not cost_per_sf/cost_type/as_of_date).
       const result = await this.pool.query(`
         SELECT 
-          cd.cost_per_sf,
-          cd.cost_type,
-          cd.as_of_date,
-          cd.square_footage,
-          cd.total_cost,
-          cd.asset_class,
-          cd.construction_type
+          cd.hard_cost_psf      AS cost_per_sf,
+          cd.cost_source        AS cost_type,
+          cd.captured_at        AS as_of_date,
+          cd.net_rentable_sf    AS square_footage,
+          cd.hard_cost_total    AS total_cost,
+          dla.asset_class,
+          dla.construction_type
         FROM data_library_cost_data cd
-        JOIN data_library_assets dla ON cd.asset_id = dla.id
-        WHERE cd.state = $1
-          AND (cd.city ILIKE $2 OR cd.county ILIKE $3 OR $2 IS NULL)
-          AND cd.as_of_date > NOW() - INTERVAL '36 months'
-          AND cd.cost_per_sf > 50 AND cd.cost_per_sf < 500
-          AND (cd.asset_class = $4 OR $4 IS NULL)
-        ORDER BY cd.as_of_date DESC
+        JOIN data_library_assets dla ON cd.source_file_id = dla.file_id
+        WHERE dla.state = $1
+          AND (dla.city ILIKE $2 OR dla.county ILIKE $3 OR $2 IS NULL)
+          AND cd.captured_at > NOW() - INTERVAL '36 months'
+          AND cd.hard_cost_psf > 50 AND cd.hard_cost_psf < 500
+          AND (dla.asset_class = $4 OR $4 IS NULL)
+        ORDER BY cd.captured_at DESC
         LIMIT 50
       `, [
         input.state,
@@ -636,7 +647,7 @@ export class ReplacementCostServiceV2 {
         const medianCost = costs[medianIdx].costPerSF;
         
         // Get unique types
-        const types = [...new Set(result.rows.map(r => r.cost_type))];
+        const types = [...new Set(result.rows.map(r => r.cost_type as string))];
         
         // Average age
         const avgAgeMonths = costs.reduce((sum, c) => sum + c.ageMonths, 0) / costs.length;
