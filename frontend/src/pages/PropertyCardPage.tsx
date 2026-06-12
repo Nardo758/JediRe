@@ -1113,7 +1113,7 @@ export default function PropertyDetailsPage() {
           <DataRow label="Type" value={p.type} sub={`· ${p.subtype}`} />
           <DataRow label="Class" value={p.class} />
           <DataRow label="Units" value={p.units} />
-          <DataRow label="Stories" value={p.stories} />
+          <DataRow label="Stories" value={p.stories ?? "—"} />
           <DataRow label="Year Built" value={p.yearBuilt} sub={p.yearRenovated ? `· Renov ${p.yearRenovated}` : ""} />
           <DataRow label="Lot Size" value={`${p.lotSizeAc} ac`} sub={`${p.lotSizeSF.toLocaleString()} SF`} />
           <DataRow label="Building SF" value={`${p.buildingSF.toLocaleString()}`} />
@@ -2847,6 +2847,7 @@ export default function PropertyDetailsPage() {
           {[
             { label: "UNITS", value: p.units },
             { label: "BUILT", value: p.yearBuilt },
+            { label: "STORIES", value: p.stories ?? "—" },
             { label: "OCC", value: pct(p.currentOccupancy), color: T.text.green },
             { label: "CAP", value: pct(p.capRateImplied), color: T.text.cyan },
           ].map((s, i) => (
