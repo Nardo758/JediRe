@@ -262,3 +262,28 @@ export function mountGridPortfolioRoutes(app: Express, pool: any) {
   app.use('/api/v1/rankings', optionalAuth, rankingsRouter);
   app.use('/api/v1/portfolio', portfolioRouter);
 }
+
+// ─── Email & Communication Routes ───────────────────────────────────────────
+//
+// Gmail, email extractions, contacts sync, team management, collaboration,
+// and notarize routes. Mounted after deal routes but before financial routes.
+
+import gmailRouter from '../api/rest/gmail.routes';
+import emailRouter from '../api/rest/email.routes';
+import emailExtractionsRouter from '../api/rest/email-extractions.routes';
+import teamManagementRouter from '../api/rest/team-management.routes';
+import collaborationRouter from '../api/rest/collaboration.routes';
+import contactsSyncRouter from '../api/rest/contacts-sync.routes';
+import notarizeRouter from '../api/rest/notarize.routes';
+import contextTrackerRouter from '../api/rest/context-tracker.routes';
+
+export function mountEmailRoutes(app: Express) {
+  app.use('/api/v1/gmail', requireAuth, gmailRouter);
+  app.use('/api/v1/emails', emailRouter);
+  app.use('/api/v1/email-extractions', emailExtractionsRouter);
+  app.use('/api/v1', requireAuth, teamManagementRouter);
+  app.use('/api/v1', requireAuth, collaborationRouter);
+  app.use('/api/v1', requireAuth, contactsSyncRouter);
+  app.use('/api/v1', notarizeRouter);
+  app.use('/api/v1/context', requireAuth, contextTrackerRouter);
+}

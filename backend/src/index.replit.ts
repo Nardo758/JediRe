@@ -36,7 +36,12 @@ import opportunityEngineRoutes from './api/rest/opportunity-engine.routes';
 import settingsAiRouter from './api/rest/settings-ai.routes';
 import settingsBrandingRouter from './api/rest/settings-branding.routes';
 import billingRouter from './api/rest/billing.routes';
-import { mountAdminRoutes, mountDealRoutes, mountZoningRoutes, mountM35Routes, mountPropertyRoutes, mountGridPortfolioRoutes } from './routes';
+import teamManagementRouter from './api/rest/team-management.routes';
+import collaborationRouter from './api/rest/collaboration.routes';
+import contactsSyncRouter from './api/rest/contacts-sync.routes';
+import notarizeRouter from './api/rest/notarize.routes';
+import contextTrackerRouter from './api/rest/context-tracker.routes';
+import { mountAdminRoutes, mountDealRoutes, mountZoningRoutes, mountM35Routes, mountPropertyRoutes, mountGridPortfolioRoutes, mountEmailRoutes } from './routes';
 
 import healthRouter from './api/rest/inline-health.routes';
 import authRouter from './api/rest/inline-auth.routes';
@@ -56,9 +61,6 @@ import modulesRouter from './api/rest/modules.routes';
 import financialModelsRouter from './api/rest/financial-models.routes';
 import strategyAnalysesRouter from './api/rest/strategy-analyses.routes';
 import dashboardRouter from './api/rest/dashboard.routes';
-import gmailRouter from './api/rest/gmail.routes';
-import emailRouter from './api/rest/email.routes';
-import emailExtractionsRouter from './api/rest/email-extractions.routes';
 import marketResearchRoutes from './api/rest/marketResearch.routes';
 import supplyRoutes, { supplyExtraRouter } from './api/rest/supply.routes';
 import demandRoutes from './api/rest/demand.routes';
@@ -406,7 +408,6 @@ app.use('/api/v1/archive', archiveRouter);
 // Per-Property Visibility Substrate — unified summary + file-list endpoints.
 // Mounted before requireAuth catch-alls; each route guards itself.
 app.use('/api/v1/dashboard', requireAuth, dashboardRouter);
-app.use('/api/v1/gmail', requireAuth, gmailRouter);
 app.use('/api/v1/news', requireAuth, newsRouter);
 app.use('/api/v1/intelligence', requireAuth, intelligenceRouter);
 app.use('/api/v1/trade-areas', requireAuth, tradeAreasRoutes);
@@ -414,6 +415,8 @@ app.use('/api/v1/isochrone', requireAuth, isochroneRoutes);
 app.use('/api/v1/traffic-ai', requireAuth, trafficAiRoutes);
 app.use('/api/v1', requireAuth, geographicContextRoutes);
 app.use('/api/v1/deals', requireAuth, geographicContextRoutes);
+
+mountEmailRoutes(app);
 
 app.use('/api/v1/agents', agentChatRouter);
 app.use('/api/v1/corporate-health', requireAuth, corporateHealthRouter);
@@ -474,13 +477,8 @@ app.use('/api/v1/scheduled-refresh', scheduledRefreshRoutes);
 
 mountZoningRoutes(app, pool);
 
-app.use('/api/v1', requireAuth, teamManagementRouter);
-app.use('/api/v1', requireAuth, collaborationRouter);
-app.use('/api/v1/emails', emailRouter);
-app.use('/api/v1/email-extractions', emailExtractionsRouter);
-app.use('/api/v1', requireAuth, contactsSyncRouter);
-app.use('/api/v1', notarizeRouter);
-app.use('/api/v1/context', requireAuth, contextTrackerRouter);
+mountEmailRoutes(app);
+
 app.use('/api/v1/module-wiring', requireAuth, moduleWiringRouter);
 app.use('/api/v1/task-completion', requireAuth, taskCompletionRouter);
 app.use('/api/v1/capital-structure', requireAuth, capitalStructureRouter);
