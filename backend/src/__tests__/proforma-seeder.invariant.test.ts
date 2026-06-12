@@ -206,6 +206,85 @@ describe('isExcludedFromOpex — S1-01 gap patterns', () => {
       expect(isExcludedFromOpex('Turnover/Make-Ready')).toBe(false);
     });
   });
+
+  describe('S1-01 normalization: snake_case forms must be excluded after _→space', () => {
+    // Revenue lines (patterns use \s+ which fails on underscores)
+    it('excludes "gross_potential_rent"', () => {
+      expect(isExcludedFromOpex('gross_potential_rent')).toBe(true);
+    });
+    it('excludes "effective_gross_income"', () => {
+      expect(isExcludedFromOpex('effective_gross_income')).toBe(true);
+    });
+    it('excludes "rental_income"', () => {
+      expect(isExcludedFromOpex('rental_income')).toBe(true);
+    });
+    it('excludes "other_income"', () => {
+      expect(isExcludedFromOpex('other_income')).toBe(true);
+    });
+    it('excludes "rental_revenue"', () => {
+      expect(isExcludedFromOpex('rental_revenue')).toBe(true);
+    });
+    it('excludes "revenue_share"', () => {
+      expect(isExcludedFromOpex('revenue_share')).toBe(true);
+    });
+    it('excludes "net_rental"', () => {
+      expect(isExcludedFromOpex('net_rental')).toBe(true);
+    });
+    it('excludes "loss_to_lease"', () => {
+      expect(isExcludedFromOpex('loss_to_lease')).toBe(true);
+    });
+    it('excludes "vacancy_loss"', () => {
+      expect(isExcludedFromOpex('vacancy_loss')).toBe(true);
+    });
+    it('excludes "bad_debt"', () => {
+      expect(isExcludedFromOpex('bad_debt')).toBe(true);
+    });
+    it('excludes "administrative_income"', () => {
+      expect(isExcludedFromOpex('administrative_income')).toBe(true);
+    });
+    it('excludes "storage_income"', () => {
+      expect(isExcludedFromOpex('storage_income')).toBe(true);
+    });
+    // Rollup / subtotal
+    it('excludes "total_opex"', () => {
+      expect(isExcludedFromOpex('total_opex')).toBe(true);
+    });
+    it('excludes "net_operating_income"', () => {
+      expect(isExcludedFromOpex('net_operating_income')).toBe(true);
+    });
+    it('excludes "subtotal_expenses"', () => {
+      expect(isExcludedFromOpex('subtotal_expenses')).toBe(true);
+    });
+    it('excludes "net_loss"', () => {
+      expect(isExcludedFromOpex('net_loss')).toBe(true);
+    });
+    // Below-the-line
+    it('excludes "debt_service"', () => {
+      expect(isExcludedFromOpex('debt_service')).toBe(true);
+    });
+    it('excludes "interest_expense"', () => {
+      expect(isExcludedFromOpex('interest_expense')).toBe(true);
+    });
+    it('excludes "capital_expenditure"', () => {
+      expect(isExcludedFromOpex('capital_expenditure')).toBe(true);
+    });
+    it('excludes "replacement_reserve"', () => {
+      expect(isExcludedFromOpex('replacement_reserve')).toBe(true);
+    });
+    // Genuine opex snake_case must still pass through
+    it('passes through "payroll_benefits"', () => {
+      expect(isExcludedFromOpex('payroll_benefits')).toBe(false);
+    });
+    it('passes through "repairs_maintenance"', () => {
+      expect(isExcludedFromOpex('repairs_maintenance')).toBe(false);
+    });
+    it('passes through "contract_services"', () => {
+      expect(isExcludedFromOpex('contract_services')).toBe(false);
+    });
+    it('passes through "utilities"', () => {
+      expect(isExcludedFromOpex('utilities')).toBe(false);
+    });
+  });
 });
 
 describe('applyUserOverride invariant — no forceReseed on override saves', () => {

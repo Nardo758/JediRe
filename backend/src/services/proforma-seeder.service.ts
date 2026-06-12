@@ -326,8 +326,10 @@ export const EXCLUDE_FROM_CUSTOM_OPEX: RegExp[] = [
 ];
 
 /** Returns true when a raw GL label should be excluded from the custom opex bucket. */
-export const isExcludedFromOpex = (label: string): boolean =>
-  EXCLUDE_FROM_CUSTOM_OPEX.some(pattern => pattern.test(label));
+export const isExcludedFromOpex = (label: string): boolean => {
+  const normalized = label.replace(/_/g, ' ');
+  return EXCLUDE_FROM_CUSTOM_OPEX.some(pattern => pattern.test(normalized));
+};
 
 /**
  * Field-name → priority map shared between the initial seed (`resolve()` inside
