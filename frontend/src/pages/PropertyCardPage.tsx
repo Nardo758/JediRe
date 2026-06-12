@@ -1066,6 +1066,8 @@ export default function PropertyDetailsPage() {
       for (const [k, v] of Object.entries(mappedReal)) {
         if (v !== null && v !== undefined && v !== "") merged[k] = v;
       }
+      // stories must not bleed from the demo mock when real data has no value
+      merged.stories = mappedReal.stories ?? null;
     }
     if (navState.propertyName && !merged.name) merged.name = navState.propertyName;
     if (navState.submarketName && !merged.submarket) merged.submarket = navState.submarketName;
