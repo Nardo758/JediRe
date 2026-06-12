@@ -114,6 +114,12 @@ const FIELD_META: Record<string, {
     blocksModules: ['per_unit_benchmark'],
     required: false,
   },
+  stories: {
+    label: 'Number of stories',
+    suggestion: 'Upload an Offering Memorandum — the OM parser captures stories automatically. Without it, the ±3-stories PSF comp similarity filter is skipped.',
+    blocksModules: ['sales_comp_psf'],
+    required: false,
+  },
   latitude: {
     label: 'Property geocode (latitude / longitude)',
     suggestion: 'Ensure a valid street address is entered when creating the deal.',
@@ -234,6 +240,7 @@ export class SubjectPopulationService {
          p.building_sf                                 AS cur_building_sf,
          p.year_built                                  AS cur_year_built,
          p.building_class                              AS cur_building_class,
+         p.stories                                     AS cur_stories,
          p.submarket_id                                AS cur_submarket_id,
          p.latitude                                    AS cur_latitude,
          p.longitude                                   AS cur_longitude,
@@ -265,6 +272,10 @@ export class SubjectPopulationService {
          -- buildingSf: raw string preserved — comma normalisation done in TS
          d.deal_data->'broker_claims'->'property'->>'buildingSf'
                                                        AS om_building_sf,
+         -- stories: integer from OM extraction
+         NULLIF(REGEXP_REPLACE(
+           COALESCE(d.deal_data->'broker_claims'->'property'->>'stories',''),
+           '[^0-9]', '', 'g'), '')::integer            AS om_stories,
          -- Rent roll extraction — same guard against non-numeric text.
          NULLIF(REGEXP_REPLACE(
            COALESCE(d.deal_data->'extraction_rent_roll'->>'total_units',''),
@@ -421,6 +432,65 @@ export class SubjectPopulationService {
       sources.building_class = 'broker_claims_om';
     }
 
+    // ── stories: county_records > om_parse > data_library_assets ─────────────
+    // Used by the valuation grid's optional ±3-stories PSF comp similarity gate.
+    // Priority chain mirrors year_built:
+    //   1. county_records (highest trust): data_library_assets with assessor/
+    //      tax-bill source types — the ArcGIS / Georgia ingestion pipelines write
+    //      here with source_type='county_records'|'tax_bill'|'assessor'.
+    //   2. OM extraction: broker_claims.property.stories parsed by the OM parser.
+    //   3. data_library_assets (any source): broadest fallback if neither of the
+    //      above is populated.
+    // No deal-intake scalar path for stories (no column on the deals table).
+    let resolvedStories: number | null = null;
+
+    // Pass 1: county/assessor records (highest trust)
+    const countyStories = await this.pool.query(
+      `SELECT stories
+       FROM data_library_assets
+       WHERE deal_id = $1::uuid
+         AND stories IS NOT NULL
+         AND stories > 0
+         AND source_type IN ('county_records', 'tax_bill', 'assessor')
+       ORDER BY stories DESC
+       LIMIT 1`,
+      [dealId]
+    );
+    if (countyStories.rows.length > 0) {
+      const parsed = parseInt(countyStories.rows[0].stories, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        resolvedStories = parsed;
+        sources.stories = 'county_records';
+      }
+    }
+
+    // Pass 2: OM extraction (broker claims)
+    if (resolvedStories == null && s.om_stories != null && s.om_stories > 0) {
+      resolvedStories = Number(s.om_stories);
+      sources.stories = 'broker_claims_om';
+    }
+
+    // Pass 3: any data_library_assets row for this deal with stories
+    if (resolvedStories == null) {
+      const libStories = await this.pool.query(
+        `SELECT stories
+         FROM data_library_assets
+         WHERE deal_id = $1::uuid
+           AND stories IS NOT NULL
+           AND stories > 0
+         ORDER BY stories DESC
+         LIMIT 1`,
+        [dealId]
+      );
+      if (libStories.rows.length > 0) {
+        const parsed = parseInt(libStories.rows[0].stories, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          resolvedStories = parsed;
+          sources.stories = 'data_library_assets';
+        }
+      }
+    }
+
     // ── lat / lng: deals.latitude/longitude > boundary centroid > null ────────
     let resolvedLat: number | null = null;
     let resolvedLng: number | null = null;
@@ -492,6 +562,7 @@ export class SubjectPopulationService {
       { field: 'building_sf',    cur: s.cur_building_sf,    resolved: resolvedBuildingSf },
       { field: 'year_built',     cur: s.cur_year_built,     resolved: resolvedYearBuilt },
       { field: 'building_class', cur: s.cur_building_class, resolved: resolvedBuildingClass },
+      { field: 'stories',        cur: s.cur_stories,        resolved: resolvedStories },
       { field: 'latitude',       cur: s.cur_latitude,       resolved: resolvedLat },
       { field: 'longitude',      cur: s.cur_longitude,      resolved: resolvedLng },
       { field: 'city',           cur: s.cur_city,           resolved: resolvedCity },
@@ -505,6 +576,7 @@ export class SubjectPopulationService {
       building_sf: resolvedBuildingSf,
       year_built: resolvedYearBuilt,
       building_class: resolvedBuildingClass,
+      stories: resolvedStories,
       latitude: resolvedLat,
       longitude: resolvedLng,
       city: resolvedCity,
@@ -538,13 +610,14 @@ export class SubjectPopulationService {
            building_sf    = COALESCE(building_sf,    $3::numeric),
            year_built     = COALESCE(year_built,     $4::integer),
            building_class = COALESCE(building_class, $5::varchar),
-           latitude       = COALESCE(latitude,       $6::float8),
-           longitude      = COALESCE(longitude,      $7::float8),
-           lat            = COALESCE(lat,             $6::float8),
-           lng            = COALESCE(lng,             $7::float8),
-           city           = COALESCE(city,            $8::varchar),
-           state_code     = COALESCE(state_code,      $9::varchar),
-           submarket_id   = COALESCE(submarket_id,   $10::varchar),
+           stories        = COALESCE(stories,        $6::integer),
+           latitude       = COALESCE(latitude,       $7::float8),
+           longitude      = COALESCE(longitude,      $8::float8),
+           lat            = COALESCE(lat,             $7::float8),
+           lng            = COALESCE(lng,             $8::float8),
+           city           = COALESCE(city,            $9::varchar),
+           state_code     = COALESCE(state_code,     $10::varchar),
+           submarket_id   = COALESCE(submarket_id,   $11::varchar),
            updated_at     = NOW()
          WHERE id = $1::uuid`,
         [
@@ -553,6 +626,7 @@ export class SubjectPopulationService {
           resolvedBuildingSf,
           resolvedYearBuilt,
           resolvedBuildingClass,
+          resolvedStories,
           resolvedLat,
           resolvedLng,
           resolvedCity,
@@ -613,9 +687,18 @@ export class SubjectPopulationService {
          p.building_sf,
          p.year_built,
          p.building_class,
+         p.stories,
          p.latitude,
          p.longitude,
-         p.submarket_id
+         p.submarket_id,
+         -- Count of PSF-eligible comps (have sqft) for this deal's property.
+         -- Used to decide whether to surface the stories soft-prompt.
+         (SELECT COUNT(*)
+          FROM market_sale_comps msc
+          WHERE msc.deal_id = d.id
+            AND msc.sqft IS NOT NULL
+            AND msc.sqft > 0
+         )::integer AS psf_comp_count
        FROM deals d
        LEFT JOIN properties p ON p.deal_id = d.id
        WHERE d.id = $1::uuid
@@ -637,10 +720,15 @@ export class SubjectPopulationService {
     }
 
     const row = result.rows[0];
+    const hasPsfComps = (row.psf_comp_count ?? 0) > 0;
 
     const fieldsToCheck: string[] = (() => {
       if (purpose === 'valuation_grid') {
-        return ['units', 'building_sf', 'year_built', 'building_class', 'latitude', 'submarket_id'];
+        // Include stories only when the deal has PSF comps — the ±3-stories gate
+        // is only relevant when building_sqft comps are present to filter.
+        const base = ['units', 'building_sf', 'year_built', 'building_class', 'latitude', 'submarket_id'];
+        if (hasPsfComps) base.push('stories');
+        return base;
       }
       if (purpose === 'comp_search') {
         return ['units', 'latitude', 'submarket_id'];
