@@ -474,3 +474,44 @@ export function mountAnalyticsRoutes(app: Express) {
   app.use('/api/v1/corporate-health', requireAuth, corporateHealthRouter);
   app.use('/api/v1/orgs', requireAuth, orgRouter);
 }
+
+// ─── Misc & Extensions Routes ────────────────────────────────────────────────
+//
+// Remaining utility, tool, and extension routes that don't fit into the main
+// domain clusters. Includes deal extensions, training, chat, and misc tools.
+
+import chatRouter from '../api/rest/chat.routes';
+import correlationRouter from '../api/rest/correlation.routes';
+import workspaceRouter from '../api/rest/workspace.routes';
+import leadLagRoutes from '../api/rest/lead-lag.routes';
+import newsConnectionsRoutes from '../api/rest/news-connections.routes';
+import archiveRouter from '../api/rest/archive.routes';
+import calibrationRouter from '../api/rest/calibration.routes';
+import causalDisciplineRouter from '../api/rest/causal-discipline.routes';
+import peerIntelligenceRouter from '../api/rest/peer-intelligence.routes';
+import { createCapsuleRoutes } from '../api/rest/capsule.routes';
+import { createDealCapsuleBridge } from '../api/rest/capsule-bridge.routes';
+import { createRenovationRoutes } from '../api/rest/renovation.routes';
+
+export function mountMiscRoutes(app: Express, pool: any) {
+  // Chat & communication
+  app.use('/api/v1/chat', chatRouter);
+  app.use('/api/v1/correlations', correlationRouter);
+  app.use('/api/v1/workspaces', workspaceRouter);
+  app.use('/api/v1/lead-lag', leadLagRoutes);
+  app.use('/api/v1/news-connections', newsConnectionsRoutes);
+  app.use('/api/v1/archive', archiveRouter);
+
+  // Training & peer intelligence
+  app.use('/api/v1/calibration-ledger', requireAuth, calibrationRouter);
+  app.use('/api/v1/causal', requireAuth, causalDisciplineRouter);
+  app.use('/api/v1/peers', requireAuth, peerIntelligenceRouter);
+
+  // Capsules & deal extensions
+  app.use('/api/v1/capsules', requireAuth, createCapsuleRoutes(pool));
+  app.use('/api/v1/deals/:dealId/costar', createCoStarUploadRoutes(pool));
+  app.use('/api/v1/deals/:dealId/capsule', requireAuth, createDealCapsuleBridge(pool));
+  app.use('/api/v1/deals/:dealId/renovation', requireAuth, createRenovationRoutes(pool));
+  app.use('/api/v1/deals', requireAuth, exitTrajectoryRouter);
+  app.use('/api/v1/deals', requireAuth, forwardSupplyRouter);
+}

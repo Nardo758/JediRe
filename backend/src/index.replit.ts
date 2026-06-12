@@ -18,12 +18,6 @@ import { agentAlertService } from './services/agent-alert.service';
 import { taskCoordinatorService } from './services/task-coordinator.service';
 import { createTrainingRoutes } from './api/rest/training.routes';
 import analogRouter from './api/rest/analog.routes';
-import calibrationRouter from './api/rest/calibration.routes';
-import causalDisciplineRouter from './api/rest/causal-discipline.routes';
-import peerIntelligenceRouter from './api/rest/peer-intelligence.routes';
-import { createCapsuleRoutes } from './api/rest/capsule.routes';
-import { createDealCapsuleBridge } from './api/rest/capsule-bridge.routes';
-import { createRenovationRoutes } from './api/rest/renovation.routes';
 import zoningTriangulationRouter from './api/rest/zoning-triangulation.routes';
 import preferencesRouter from './api/rest/preferences.routes';
 import customStrategiesRouter from './api/rest/custom-strategies.routes';
@@ -41,7 +35,7 @@ import collaborationRouter from './api/rest/collaboration.routes';
 import contactsSyncRouter from './api/rest/contacts-sync.routes';
 import notarizeRouter from './api/rest/notarize.routes';
 import contextTrackerRouter from './api/rest/context-tracker.routes';
-import { mountAdminRoutes, mountDealRoutes, mountZoningRoutes, mountM35Routes, mountPropertyRoutes, mountGridPortfolioRoutes, mountEmailRoutes, mountFinancialRoutes, mountKnowledgeGraphRoutes, mountOperationsRoutes, mountAnalyticsRoutes } from './routes';
+import { mountAdminRoutes, mountDealRoutes, mountZoningRoutes, mountM35Routes, mountPropertyRoutes, mountGridPortfolioRoutes, mountEmailRoutes, mountFinancialRoutes, mountKnowledgeGraphRoutes, mountOperationsRoutes, mountAnalyticsRoutes, mountMiscRoutes } from './routes';
 
 import healthRouter from './api/rest/inline-health.routes';
 import authRouter from './api/rest/inline-auth.routes';
@@ -52,10 +46,7 @@ import microsoftRouter from './api/rest/microsoft.routes';
 import dashboardRouter from './api/rest/dashboard.routes';
 
 import mapConfigsRouter from './api/rest/map-configs.routes';
-import correlationRouter from './api/rest/correlation.routes';
 import { createCoStarUploadRoutes } from './api/rest/costar-upload.routes';
-import exitTrajectoryRouter from './api/rest/exit-trajectory.routes';
-import forwardSupplyRouter from './api/rest/forward-supply.routes';
 import clawdbotWebhooksRouter from './api/rest/clawdbot-webhooks.routes';
 import oppgridRouter from './api/rest/oppgrid.routes';
 import rentScraperAdminRouter from './api/rest/rent-scraper-admin.routes';
@@ -63,7 +54,6 @@ import m26TaxRouter from './api/rest/m26-tax.routes';
 import m27CompsRouter from './api/rest/m27-comps.routes';
 import m28CycleIntelligenceRoutes from './api/rest/m28-cycle-intelligence.routes';
 import { createUnitMixRoutes } from './api/rest/unitMix.routes';
-import workspaceRouter from './api/rest/workspace.routes';
 import agentChatRouter from './routes/agent-chat.routes';
 import mediaRouter from './api/rest/media.routes';
 import underwritingScenariosRouter from './api/rest/underwriting-scenarios.routes';
@@ -332,33 +322,11 @@ app.use(
   })
 );
 
-import chatRouter from './api/rest/chat.routes';
-app.use('/api/v1/chat', chatRouter);
+mountMiscRoutes(app, pool);
 
 import { MessageRouter } from './services/chat/messageRouter';
 const messageRouter = new MessageRouter();
 app.use('/', messageRouter.createRouter());
-
-// Correlations - public read, admin-key-protected compute
-app.use('/api/v1/correlations', correlationRouter);
-app.use('/api/v1/workspaces', workspaceRouter);
-
-// Lead/Lag Discovery - public read, admin-key-protected compute
-import leadLagRoutes from './api/rest/lead-lag.routes';
-app.use('/api/v1/lead-lag', leadLagRoutes);
-
-// News Subscriptions (per-user inbound email + RSS + enterprise OAuth stub).
-// Mounted BEFORE the global '/api/v1' requireAuth middleware below so the
-// /inbound-email webhook can be POSTed publicly (token-gated by unique address).
-// Auth is enforced per-route inside the router for everything else.
-import newsConnectionsRoutes from './api/rest/news-connections.routes';
-app.use('/api/v1/news-connections', newsConnectionsRoutes);
-
-// Archive management routes — mounted BEFORE all catch-all '/api/v1' requireAuth
-// middleware so that /ingest-rows (secret-header auth) is reachable externally.
-// Existing archive routes carry per-route requireAuth guards internally.
-import archiveRouter from './api/rest/archive.routes';
-app.use('/api/v1/archive', archiveRouter);
 
 // Per-Property Visibility Substrate — unified summary + file-list endpoints.
 // Mounted before requireAuth catch-alls; each route guards itself.
@@ -651,27 +619,7 @@ app.post('/api/v1/strategy-scoring/analyze', requireAuth, async (req: any, res) 
 });
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
-app.use('/api/v1/calibration-ledger', requireAuth, calibrationRouter);
-app.use('/api/v1/causal', requireAuth, causalDisciplineRouter);
-app.use('/api/v1/peers', requireAuth, peerIntelligenceRouter);
-app.use('/api/capsules', requireAuth, createCapsuleRoutes(pool));
-app.use('/api/v1/capsules', requireAuth, createCapsuleRoutes(pool));
 app.use('/api/v1/email', emailRouter);
-
-// â”€â”€ Deal Capsule Bridge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// ── CoStar Comp Upload (D-COSTAR-1 / D-COSTAR-2, Task #1407) ────────────────
-app.use('/api/v1/deals/:dealId/costar', createCoStarUploadRoutes(pool));
-
-app.use('/api/v1/deals/:dealId/capsule', requireAuth, createDealCapsuleBridge(pool));
-
-// â”€â”€ Renovation Data API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-app.use('/api/v1/deals/:dealId/renovation', requireAuth, createRenovationRoutes(pool));
-
-// -- Exit Trajectory (W-10 / CE-12) --
-app.use('/api/v1/deals', requireAuth, exitTrajectoryRouter);
-
-// -- Forward Supply (WS-3 Layers 1+2) --
-app.use('/api/v1/deals', requireAuth, forwardSupplyRouter);
 
 const activeUsers = new Map<string, any>();
 const dealPresence = new Map<string, Map<string, { userId: string; email: string; activeModule?: string; joinedAt: number }>>();
