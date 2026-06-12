@@ -2420,7 +2420,7 @@ export default function PropertyDetailsPage() {
       <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
         <SectionHeader
           title="SALE COMP TRANSACTIONS"
-          subtitle={`${filteredPcComps.length}${compVintageBand ? ` of ${pcCompCount}` : ' RECORDS'} · PROPERTY / DATE / PRICE / $/UNIT / NOI/UNIT / CAP RATE / SRC / DIST`}
+          subtitle={`${filteredPcComps.length}${compVintageBand ? ` of ${pcCompCount}` : ' RECORDS'} · PROPERTY / DATE / STR / PRICE / $/UNIT / NOI/UNIT / CAP RATE / SRC / DIST`}
           icon="◈"
           borderColor={T.text.amber}
         />
@@ -2647,8 +2647,8 @@ export default function PropertyDetailsPage() {
           )}
 
           {/* Column headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.9fr 0.9fr 0.9fr 1fr 0.7fr 0.6fr 0.35fr', padding: '4px 8px', background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, fontSize: 7, fontFamily: T.font.mono }}>
-            {['PROPERTY', 'DATE', 'PRICE', '$/UNIT', 'NOI/UNIT', 'CAP RATE', 'SRC', 'DIST', ''].map(h => (
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.35fr 0.9fr 0.9fr 0.9fr 1fr 0.7fr 0.6fr 0.35fr', padding: '4px 8px', background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, fontSize: 7, fontFamily: T.font.mono }}>
+            {['PROPERTY', 'DATE', 'STR', 'PRICE', '$/UNIT', 'NOI/UNIT', 'CAP RATE', 'SRC', 'DIST', ''].map(h => (
               <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: '0.05em' }}>{h}</span>
             ))}
           </div>
@@ -2668,9 +2668,10 @@ export default function PropertyDetailsPage() {
             const capColor = isOutlier ? T.text.amber : (capRaw != null ? T.text.amber : T.text.muted);
             const distLabel = c.distance_miles != null ? `${Number(c.distance_miles).toFixed(2)} mi` : '—';
             return (
-              <div key={c.id ?? i} style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.9fr 0.9fr 0.9fr 1fr 0.7fr 0.6fr 0.35fr', padding: '4px 8px', borderBottom: `1px solid ${T.border.subtle}08`, background: isOutlier ? `${T.text.amber}06` : c.source === 'costar_upload' ? `${T.text.cyan}08` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt), fontSize: 8, fontFamily: T.font.mono, alignItems: 'center' }}>
+              <div key={c.id ?? i} style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.35fr 0.9fr 0.9fr 0.9fr 1fr 0.7fr 0.6fr 0.35fr', padding: '4px 8px', borderBottom: `1px solid ${T.border.subtle}08`, background: isOutlier ? `${T.text.amber}06` : c.source === 'costar_upload' ? `${T.text.cyan}08` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt), fontSize: 8, fontFamily: T.font.mono, alignItems: 'center' }}>
                 <span style={{ color: T.text.secondary, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.property_address || '—'}</span>
                 <span style={{ color: T.text.muted }}>{c.recording_date ? String(c.recording_date).slice(0, 10) : '—'}</span>
+                <span style={{ color: T.text.secondary }}>{c.stories != null ? c.stories : '—'}</span>
                 <span style={{ color: T.text.green }}>{c.derived_sale_price ? pcFmtUsd(Number(c.derived_sale_price)) : '—'}</span>
                 <span style={{ color: T.text.cyan, fontWeight: 600 }}>{c.price_per_unit ? pcFmtUsd(Number(c.price_per_unit)) : '—'}</span>
                 <span style={{ color: T.text.muted }}>{noiPerUnit != null ? pcFmtUsd(noiPerUnit) : '—'}</span>
