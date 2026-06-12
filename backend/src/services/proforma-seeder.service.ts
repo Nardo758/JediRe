@@ -1272,11 +1272,11 @@ export async function seedProFormaYear1(
     //
     // buildSeed preserves operator overrides (via getOverride()) but has no
     // equivalent for agent-written values.  Without this step, uploading a new
-    // document would silently erase every AI analysis result (resolution='agent')
-    // from the 16 AGENT_FIELD_TO_YEAR1 fields.
+    // document would silently erase every AI analysis result (resolution starts
+    // with 'agent') from the 16 AGENT_FIELD_TO_YEAR1 fields.
     //
     // Rules:
-    //   1. Only re-apply when existingSeed[field].resolution === 'agent'
+    //   1. Only re-apply when existingSeed[field].resolution starts with 'agent'
     //      (the agent was the winning source before the re-seed).
     //   2. Skip re-application if the newly-built field already has a live
     //      operator override — override beats agent.
@@ -1290,10 +1290,14 @@ export async function seedProFormaYear1(
         if (!rawLv || typeof rawLv !== 'object') continue;
         const lv = rawLv as Record<string, unknown>;
         const agentVal = lv.agent;
+        // With the §5 source-tag taxonomy, resolution may be 'agent:cashflow',
+        // 'agent:financial_analysis', etc. We treat any resolution starting with
+        // 'agent' as an agent-written value that should survive re-seed.
         if (
           agentVal === null || agentVal === undefined ||
           typeof agentVal !== 'number' || !isFinite(agentVal as number) ||
-          lv.resolution !== 'agent'
+          typeof lv.resolution !== 'string' ||
+          !lv.resolution.startsWith('agent')
         ) {
           continue;
         }
@@ -1311,7 +1315,9 @@ export async function seedProFormaYear1(
           if (!hasOperatorOverride) {
             newLv.agent      = agentVal;
             newLv.resolved   = agentVal;
-            newLv.resolution = 'agent';
+            // Preserve the original source-tag (e.g., 'agent:cashflow') rather
+            // than collapsing it to the coarse 'agent' label.
+            newLv.resolution = lv.resolution;
           }
         } else if (newField === undefined) {
           // Agent-created field not produced by buildSeed — copy verbatim so
@@ -1512,7 +1518,7 @@ export async function seedProFormaYear1(
            year1 = (
              -- Step 1: iterate existing fields; merge extraction delta into
              -- each field that appears in $3, leave others (including agent-
-             -- written fields like real_estate_tax with resolution='agent')
+             -- written fields like real_estate_tax with resolution starting with 'agent')
              -- completely untouched.
              COALESCE(
                (SELECT jsonb_object_agg(

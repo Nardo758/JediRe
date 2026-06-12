@@ -443,22 +443,24 @@ function resolveLayeredValue(
   // Agent layer overrides seeder's stored value
   if (agent != null) {
     resolved   = agent;
-    resolution = 'agent';
-    source     = 'agent';
+    // Preserve the stored source-tag (e.g. 'agent:cashflow') if present;
+    // fall back to the coarse 'agent:cashflow' label for legacy entries.
+    resolution = storedRes && storedRes.startsWith('agent') ? storedRes : 'agent:cashflow';
+    source     = storedSource && storedSource.startsWith('agent') ? storedSource : 'agent:cashflow';
   }
 
   // Engine A computed overrides agent (unless operator override present)
   if (computedValue != null && override == null) {
     resolved   = computedValue;
-    resolution = 'computed';
-    source     = 'computed';
+    resolution = 'engine:cashflow';
+    source     = 'engine:cashflow';
   }
 
   // Operator override is always final winner
   if (override != null) {
     resolved   = override;
     resolution = 'override';
-    source     = 'operator_override';
+    source     = 'override';
   }
 
   return { resolved, resolution, source };

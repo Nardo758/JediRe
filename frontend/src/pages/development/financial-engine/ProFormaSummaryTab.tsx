@@ -355,10 +355,11 @@ function sourceToTier(source: string | null): number {
       s === 'tax_bill'  || s === 'taxbill'  ||
       s === 'document'  || s === 'uploaded') return 1;
   if (s === 'platform' || s === 'computed' || s === 'proforma' ||
-      s === 'calibration' || s === 'estimate' || s === 'user') return 2;
+      s === 'calibration' || s === 'estimate' || s === 'user' ||
+      s === 'engine:cashflow' || s.startsWith('engine:')) return 2;
   if (s === 'bls' || s === 'costar'  || s === 'public'  ||
       s === 'research' || s === 'market' ||
-      s === 'agent'   || s === 'capsule') return 3;
+      s === 'agent'   || s === 'capsule' || s.startsWith('agent:')) return 3;
   if (s === 'broker' || s === 'om' || s === 'offering_memorandum' ||
       s === 'offering') return 4;
   return 0;

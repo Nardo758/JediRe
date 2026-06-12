@@ -1467,7 +1467,7 @@ export const useDealStore = create<DealStore>()(
         oldValue: existing?.value,
         newValue: value,
         timestamp: now,
-        actor: source === 'user' ? 'user' : source === 'agent' ? 'agent' : 'platform',
+        actor: source === 'user' ? 'user' : (source === 'agent' || (typeof source === 'string' && source.startsWith('agent:'))) ? 'agent' : 'platform',
       };
       newState.editLog = [...(state.editLog || []), entry];
 

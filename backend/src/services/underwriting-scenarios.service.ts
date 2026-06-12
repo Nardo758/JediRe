@@ -432,7 +432,7 @@ export class UWScenarioService {
     dealId: string,
     year1Key: string,
     agentValue: number,
-    resolution: string = 'agent'
+    resolution: string = 'agent:cashflow'
   ): Promise<boolean> {
     const r = await this.pool.query(
       `UPDATE deal_underwriting_scenarios

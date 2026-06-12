@@ -465,15 +465,70 @@ export async function cashflowPostProcess(
       }
     }
 
+    // ── Source-tag taxonomy (Reclassification Spec §5) ───────────────────────────
+    // Map the agent's proforma_fields.source to the correct source tag.
+    // Deterministic engine fields → engine:cashflow or tierN:*
+    // Reasoned fields (agent made a judgment call) → agent:cashflow
+    //
+    // Merge order: platform/engine → agent:* → t12/rent_roll/tax_bill → override
+    //
+    // Engine sources: tools that are pure arithmetic/rules (compute_proforma, math engine)
+    // Tier 1 sources: subject ground truth (T12, rent roll, tax bill)
+    // Tier 2 sources: owned portfolio actuals
+    // Tier 3 sources: platform intelligence (market data, comps)
+    // Tier 4 sources: broker reference (collision only, never primary)
+    // Agent sources: single-shot reasoning call on ambiguous residue
+    // Override: user committed judgment (always wins)
+
+    const ENGINE_TOOL_SOURCES = new Set([
+      'compute_proforma', 'compute', 'proforma', 'math_engine',
+      'goal_seek', 'optimize_capital_structure', 'run_joint_goal_seek',
+    ]);
+    const TIER1_SOURCES = new Set([
+      't12', 'rent_roll', 'tax_bill', 'om', 'operating_memorandum',
+      'subject', 'ground_truth',
+    ]);
+    const TIER2_SOURCES = new Set([
+      'owned_asset', 'owned_asset_actuals', 'portfolio_actuals', 'actuals',
+    ]);
+    const TIER3_SOURCES = new Set([
+      'platform', 'market', 'market_data', 'comp', 'comps', 'archive',
+      'peer_comp', 'm35', 'supply', 'demand', 'correlation', 'cor_engine',
+    ]);
+    const TIER4_SOURCES = new Set([
+      'broker', 'broker_claim', 'broker_claims', 'reference',
+    ]);
+
+    function resolveSourceTag(fieldEntry: any): string {
+      const src = (fieldEntry?.source ?? '').toLowerCase().trim();
+      if (src.startsWith('agent:')) return src;               // already qualified
+      if (src.startsWith('override')) return 'override';
+      if (src.startsWith('user')) return 'override';
+      if (ENGINE_TOOL_SOURCES.has(src)) return 'engine:cashflow';
+      if (src.includes('compute') || src.includes('engine')) return 'engine:cashflow';
+      if (TIER1_SOURCES.has(src)) return `tier1:${src}`;
+      if (TIER2_SOURCES.has(src)) return `tier2:${src}`;
+      if (TIER3_SOURCES.has(src)) return `tier3:${src}`;
+      if (TIER4_SOURCES.has(src)) return `tier4:${src}`;
+      // Default: if the agent wrote it with a non-specific source, it's probably
+      // engine-computed (the agent loop delegates to deterministic tools). Only
+      // fields that explicitly came from a reasoning call should be agent:cashflow.
+      return 'engine:cashflow';
+    }
+
     // ── Agent line-item write-back to deal_assumptions.year1 ──────────────────
     // Writes the agent's resolved leaf values into year1 so the F9 Proforma
     // grid reflects them immediately. Operator overrides take precedence: if a
     // field's override slot is a non-null finite number, the agent write is
     // skipped for that field. Non-fatal — failures never block agent output.
     //
-    // resolution: "agent" is the coarse operator-facing label. Full provenance
-    // (residual derivations, archive cohort, source tier) is preserved in
-    // deal_underwriting_snapshots and accessible via the evidence drawer.
+    // resolution: per the source-tag taxonomy (§5 Reclassification Spec):
+    //   engine:cashflow  = deterministic math-engine output
+    //   tier1/2/3/4:*  = input feed provenance
+    //   agent:*        = LLM-reasoned value (badge-triggering)
+    //   override       = operator override
+    // Full provenance (residual derivations, archive cohort, source tier) is
+    // preserved in deal_underwriting_snapshots and accessible via the evidence drawer.
     if (ctx.dealId && output.proforma_fields && typeof output.proforma_fields === 'object') {
       try {
         // Maps agent proforma_fields key → deal_assumptions.year1 short key.
@@ -611,7 +666,7 @@ export async function cashflowPostProcess(
             continue;
           }
 
-          // Write agent slot, update resolved, set resolution = "agent".
+          // Write agent slot, update resolved, set resolution from source tag.
           // Each field is wrapped in its own try/catch so a single failure never
           // prevents remaining fields from being written (per-field isolation).
           // Uses || (jsonb concatenation) to merge the three agent sub-keys into
@@ -619,6 +674,7 @@ export async function cashflowPostProcess(
           // keys like management_fee_dollars / concessions). This preserves existing
           // slots (t12, om, override, platform) while adding/updating agent,
           // resolved, and resolution sub-keys.
+          const sourceTag = resolveSourceTag(field);
           try {
             // M40: write agent value to the target underwriting scenario.
             // When scenarioTarget='create_new', this writes to a new agent scenario.
@@ -655,8 +711,8 @@ export async function cashflowPostProcess(
                    WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
                    RETURNING id`,
               targetScenario.id
-                ? [year1Key, agentValue, 'agent']
-                : [ctx.dealId, year1Key, agentValue, 'agent']
+                ? [year1Key, agentValue, sourceTag]
+                : [ctx.dealId, year1Key, agentValue, sourceTag]
             );
             if ((agentScenarioRes.rowCount ?? 0) === 0) {
               await query(
@@ -672,7 +728,7 @@ export async function cashflowPostProcess(
                    true
                  )
                  WHERE deal_id = $1`,
-                [ctx.dealId, year1Key, agentValue, 'agent']
+                [ctx.dealId, year1Key, agentValue, sourceTag]
               );
             }
             agentWriteCount++;
@@ -755,8 +811,8 @@ export async function cashflowPostProcess(
                          WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
                          RETURNING id`,
                     targetScenario.id
-                      ? ['management_fee_pct', derivedPct, 'agent']
-                      : [ctx.dealId, 'management_fee_pct', derivedPct, 'agent']
+                      ? ['management_fee_pct', derivedPct, 'engine:cashflow']
+                      : [ctx.dealId, 'management_fee_pct', derivedPct, 'engine:cashflow']
                   );
                   if ((pctScenRes.rowCount ?? 0) === 0) {
                     await query(
@@ -772,7 +828,7 @@ export async function cashflowPostProcess(
                          true
                        )
                        WHERE deal_id = $1`,
-                      [ctx.dealId, 'management_fee_pct', derivedPct, 'agent']
+                      [ctx.dealId, 'management_fee_pct', derivedPct, 'engine:cashflow']
                     );
                   }
                   agentWriteCount++;
@@ -873,7 +929,7 @@ export async function cashflowPostProcess(
               const subPayload = JSON.stringify({
                 value:      subVal,
                 confidence: conf ?? null,
-                source:     (subObj['source'] as string | null) ?? 'agent:cashflow',
+                source:     (subObj['source'] as string | null) ?? resolveSourceTag(field),
                 note:       (subObj['note'] as string | null) ?? null,
               });
 
@@ -1229,10 +1285,10 @@ export async function cashflowPostProcess(
               isFinite(existingOverride2 as number)
             ) continue;
 
-            // Skip if field already carries resolution:"agent" (prior run already wrote it
+            // Skip if field already carries an agent resolution (prior run already wrote it
             // and nothing has invalidated it — avoid a no-op re-write).
             const existingResolution = existingLv2?.resolution;
-            if (existingResolution === 'agent') continue;
+            if (typeof existingResolution === 'string' && existingResolution.startsWith('agent')) continue;
 
             try {
               const agentScenarioRes2 = await query(
@@ -1250,7 +1306,7 @@ export async function cashflowPostProcess(
                  updated_at = NOW()
                  WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
                  RETURNING id`,
-                [ctx.dealId, fb.year1Key, fb.value, 'agent']
+                [ctx.dealId, fb.year1Key, fb.value, 'agent:cashflow']
               );
               if ((agentScenarioRes2.rowCount ?? 0) === 0) {
                 await query(
@@ -1266,7 +1322,7 @@ export async function cashflowPostProcess(
                      true
                    )
                    WHERE deal_id = $1`,
-                  [ctx.dealId, fb.year1Key, fb.value, 'agent']
+                  [ctx.dealId, fb.year1Key, fb.value, 'agent:cashflow']
                 );
               }
               derivedWriteCount++;

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * financials-composer.service.ts
  *
  * Composes the full F9DealFinancials shape for the /api/v1/deals/:dealId/financials endpoint.
@@ -1512,7 +1512,7 @@ function buildOSRows(
       ? oiDollarsLV.resolved
       : null;
   const otherPick = agentOiDollars != null
-    ? { resolved: agentOiDollars, source: oiDollarsLV.resolution ?? 'agent' }
+    ? { resolved: agentOiDollars, source: oiDollarsLV.resolution ?? 'agent:cashflow' }
     : chooseSource<number>(null, platformOtherIncome);
 
   // Bad Debt: per spec, T-12 or Rent Roll. Use the LayeredValue's resolution to

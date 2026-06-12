@@ -44,6 +44,7 @@ export type LayeredValueSource =
   | 'broker'
   | 'user'
   | 'computed'
+  | 'engine:cashflow'
   /** Track 6 module-source literals — written by cross-module apply pipeline */
   | 'strategy:entry'
   | 'strategy:exit'

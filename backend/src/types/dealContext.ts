@@ -36,6 +36,7 @@ export type LayeredValueSource =
   | 'override'          // user edit
   | 'user'              // user-entered value
   | 'computed'          // derived value
+  | 'engine:cashflow'   // deterministic math-engine output
   // M07 Subject History tiers (single snapshot → longitudinal)
   | 'subject_history:s1'
   | 'subject_history:s2'

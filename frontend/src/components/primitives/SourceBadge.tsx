@@ -47,6 +47,7 @@ export type LayeredValueSource =
   | 'broker'
   | 'user'
   | 'computed'
+  | 'engine:cashflow'
   | 'vault:municipal'
   | 'vault:places'
   | 'vault:web_search'
@@ -97,6 +98,7 @@ const BADGE_CONFIG: Partial<Record<LayeredValueSource | string, BadgeConfig>> = 
   // Silent — no badge
   'platform':         undefined,
   'computed':         undefined,
+  'engine:cashflow':  undefined,
 };
 
 interface SourceBadgeProps {
