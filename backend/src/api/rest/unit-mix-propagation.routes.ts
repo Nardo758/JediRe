@@ -181,11 +181,16 @@ router.put('/:dealId/unit-mix/types', async (req: Request, res: Response) => {
     }
 
     const dealCheck = await query(
-      'SELECT id, name, target_units FROM deals WHERE id = $1 AND user_id = $2',
+      'SELECT id, name, target_units, deal_category, development_type FROM deals WHERE id = $1 AND user_id = $2',
       [dealId, userId]
     );
     if (dealCheck.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
+    }
+
+    const dealType = dealCheck.rows[0].deal_category || dealCheck.rows[0].development_type || '';
+    if (dealType === 'development' || dealType === 'redevelopment') {
+      return res.status(403).json({ success: false, error: 'Unit mix cannot be changed for development or redevelopment deals' });
     }
 
     logger.info('Saving manual unit mix types:', { userId, dealId, count: types.length });

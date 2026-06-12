@@ -2312,11 +2312,16 @@ router.patch('/:dealId/financials/override', requireAuth, requireCapability('edi
 
     // Validate ownership
     const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      'SELECT id, deal_category, development_type FROM deals WHERE id = $1 AND user_id = $2',
       [dealId, userId]
     );
     if (ownerCheck.rows.length === 0) {
       return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    const dealType = ownerCheck.rows[0].deal_category || ownerCheck.rows[0].development_type || '';
+    if (dealType === 'development' || dealType === 'redevelopment') {
+      return res.status(403).json({ success: false, error: 'Unit mix cannot be changed for development or redevelopment deals' });
     }
 
     // Parse the field path: unit_mix:<rowIdx>:<field>

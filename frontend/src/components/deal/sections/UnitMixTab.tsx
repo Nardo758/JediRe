@@ -862,7 +862,7 @@ function AncillaryPanel({
  */
 function CellOverrideDisplay({
   value, overridden, originalValue, saving, justSaved,
-  onEdit, onReset, tone, placeholderHint,
+  onEdit, onReset, tone, placeholderHint, readOnly,
 }: {
   value: number | null | undefined;
   overridden: boolean;
@@ -873,6 +873,7 @@ function CellOverrideDisplay({
   onReset: () => void;
   tone: 'cyan' | 'amber';
   placeholderHint?: string | null;
+  readOnly?: boolean;
 }) {
   const accent = tone === 'cyan' ? C.cyan : C.amber;
   const valueColor = overridden ? C.amber : (value != null ? C.text : C.dim);
@@ -894,13 +895,13 @@ function CellOverrideDisplay({
         >OVR</span>
       )}
       <span
-        onClick={saving ? undefined : onEdit}
-        style={{ color: valueColor, cursor: saving ? 'wait' : 'pointer' }}
+        onClick={readOnly || saving ? undefined : onEdit}
+        style={{ color: valueColor, cursor: readOnly || saving ? 'default' : 'pointer' }}
       >{fmt$(value)}</span>
       {placeholderHint && value == null && (
         <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>{placeholderHint}</span>
       )}
-      {saving ? (
+      {readOnly ? null : saving ? (
         <Loader2 size={9} color={C.muted} style={{ animation: 'spin 1s linear infinite' }} />
       ) : overridden ? (
         <button
@@ -1928,6 +1929,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
   const isExisting    = dealType === 'existing';
   const isValueAdd    = dealType === 'redevelopment' || dealType === 'value-add';
   const isDevelopment = dealType === 'development';
+  const isReadOnly    = dealType === 'development' || dealType === 'redevelopment';
 
   // Renovation completion months for value-add deals — used by the cohort timeline strip.
   const renoCompletionMonths = React.useMemo((): number | null => {
@@ -1980,6 +1982,15 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
           <span style={{ fontFamily: LABEL, fontSize: 9, color: C.muted, marginLeft: 12 }}>
             {isDevelopment ? 'Target program · absorption model' : isValueAdd ? 'In-place · renovation upside · absorption' : 'In-place rents · floor plan economics · absorption link'}
           </span>
+          {isReadOnly && (
+            <span style={{
+              fontFamily: LABEL, fontSize: 7, fontWeight: 700, color: C.red,
+              background: `${C.red}18`, border: `1px solid ${C.red}55`,
+              borderRadius: 3, padding: '2px 6px', marginLeft: 10, letterSpacing: '0.06em',
+            }}>
+              READ-ONLY · DEV/REDEVELOPMENT
+            </span>
+          )}
         </div>
         <button
           onClick={load}
@@ -2173,15 +2184,15 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
               </span>
               <button
                 onClick={handleToggleUnitMixForGpr}
-                disabled={togglingUnitMixGpr || unitMix.length === 0}
-                title={unitMix.length === 0 ? 'No unit mix data to derive GPR from' : (useUnitMixForGpr ? 'Switch GPR source back to extraction data' : 'Derive GPR from this unit mix table')}
+                disabled={togglingUnitMixGpr || unitMix.length === 0 || isReadOnly}
+                title={isReadOnly ? 'GPR source locked for development/redevelopment deals' : unitMix.length === 0 ? 'No unit mix data to derive GPR from' : (useUnitMixForGpr ? 'Switch GPR source back to extraction data' : 'Derive GPR from this unit mix table')}
                 style={{
                   fontFamily: LABEL, fontSize: 8,
-                  cursor: (togglingUnitMixGpr || unitMix.length === 0) ? 'not-allowed' : 'pointer',
+                  cursor: (togglingUnitMixGpr || unitMix.length === 0 || isReadOnly) ? 'not-allowed' : 'pointer',
                   padding: '2px 8px', borderRadius: 3,
                   background: useUnitMixForGpr ? C.dim : C.cyan,
                   color: useUnitMixForGpr ? C.text : C.bg,
-                  border: 'none', opacity: togglingUnitMixGpr ? 0.6 : 1,
+                  border: 'none', opacity: (togglingUnitMixGpr || isReadOnly) ? 0.6 : 1,
                   letterSpacing: '0.04em', fontWeight: 700,
                 }}
               >
@@ -2224,11 +2235,13 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                 <>
                   <div style={{ fontFamily: LABEL, fontSize: 10, color: C.muted, marginBottom: 6 }}>NO UNITS DEFINED</div>
                   <div style={{ fontFamily: LABEL, fontSize: 9, color: C.dim, marginBottom: 16 }}>
-                    This development deal has no rent roll. Build the unit mix manually.
+                    {isReadOnly
+                      ? 'This development deal is read-only. Unit mix cannot be changed for development or redevelopment deals.'
+                      : 'This development deal has no rent roll. Build the unit mix manually.'}
                   </div>
                   {m03TargetUnits != null && m03TargetUnits > 0 && (
                     <div style={{ background: C.cyanDim, border: `1px solid ${C.cyan}44`, borderRadius: 4, padding: '8px 12px', marginBottom: 14, fontFamily: LABEL, fontSize: 9, color: C.cyan }}>
-                      M03 capacity suggests <strong>{m03TargetUnits}</strong> total units — add floor plan types below that sum to this target.
+                      M03 capacity suggests <strong>{m03TargetUnits}</strong> total units.
                       {f3UnitMix && (
                         <div style={{ marginTop: 6, fontFamily: LABEL, fontSize: 8, color: C.cyan }}>
                           F3 program: Studio {f3UnitMix.studio}% · 1BR {f3UnitMix.oneBed}% · 2BR {f3UnitMix.twoBed}% · 3BR {f3UnitMix.threeBed}%
@@ -2242,34 +2255,36 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                       Deal target: <strong style={{ color: C.amber }}>{targetUnits}</strong> units
                     </div>
                   )}
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-                    <button
-                      onClick={() => { setEditingType(null); setShowAddModal(true); }}
-                      style={{
-                        fontFamily: LABEL, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
-                        background: C.cyan, border: 'none', color: C.bg, borderRadius: 4,
-                        padding: '8px 18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
-                      }}
-                    >
-                      <Plus size={12} /> ADD FIRST UNIT TYPE
-                    </button>
-                    {f3UnitMix && (targetUnits ?? m03TargetUnits) != null && (targetUnits ?? m03TargetUnits)! > 0 && (
+                  {!isReadOnly && (
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
                       <button
-                        onClick={() => { void handlePrefillFromM03F3(); }}
-                        disabled={savingTypes}
-                        title={`Seed ${targetUnits ?? m03TargetUnits} units from F3 Programming % splits`}
+                        onClick={() => { setEditingType(null); setShowAddModal(true); }}
                         style={{
                           fontFamily: LABEL, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
-                          padding: '8px 16px', borderRadius: 4, border: `1px solid ${C.purple}66`,
-                          background: '#1a0a2a', color: C.purple, cursor: savingTypes ? 'not-allowed' : 'pointer',
-                          display: 'inline-flex', alignItems: 'center', gap: 6, opacity: savingTypes ? 0.6 : 1,
+                          background: C.cyan, border: 'none', color: C.bg, borderRadius: 4,
+                          padding: '8px 18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
                         }}
                       >
-                        {savingTypes ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={12} />}
-                        IMPORT FROM F3 PROGRAM
+                        <Plus size={12} /> ADD FIRST UNIT TYPE
                       </button>
-                    )}
-                  </div>
+                      {f3UnitMix && (targetUnits ?? m03TargetUnits) != null && (targetUnits ?? m03TargetUnits)! > 0 && (
+                        <button
+                          onClick={() => { void handlePrefillFromM03F3(); }}
+                          disabled={savingTypes}
+                          title={`Seed ${targetUnits ?? m03TargetUnits} units from F3 Programming % splits`}
+                          style={{
+                            fontFamily: LABEL, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
+                            padding: '8px 16px', borderRadius: 4, border: `1px solid ${C.purple}66`,
+                            background: '#1a0a2a', color: C.purple, cursor: savingTypes ? 'not-allowed' : 'pointer',
+                            display: 'inline-flex', alignItems: 'center', gap: 6, opacity: savingTypes ? 0.6 : 1,
+                          }}
+                        >
+                          {savingTypes ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={12} />}
+                          IMPORT FROM F3 PROGRAM
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
@@ -2317,7 +2332,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                     <Loader2 size={11} color={C.muted} style={{ animation: 'spin 1s linear infinite' }} />
                   )}
                   {/* F3 + M03 prefill button — opens Replace/Merge dialog when mix has rows */}
-                  {f3UnitMix != null && (targetUnits ?? m03TargetUnits) != null && (targetUnits ?? m03TargetUnits)! > 0 && (
+                  {f3UnitMix != null && (targetUnits ?? m03TargetUnits) != null && (targetUnits ?? m03TargetUnits)! > 0 && !isReadOnly && (
                     <button
                       disabled={savingTypes}
                       onClick={() => { setShowF3Dialog(true); }}
@@ -2332,7 +2347,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                       <Save size={9} /> F3 PROGRAM
                     </button>
                   )}
-                  {isDevelopment && (
+                  {isDevelopment && !isReadOnly && (
                     <button
                       onClick={() => { setEditingType(null); setShowAddModal(true); }}
                       title="Add a new unit type (development deals)"
@@ -2555,6 +2570,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                                 onEdit={() => setEditingRent({ idx, field: 'inPlace', val: String(effRent ?? '') })}
                                 onReset={() => resetRentEdit(idx, 'inPlace', u.type)}
                                 tone="cyan"
+                                readOnly={isReadOnly}
                               />
                             )}
                           </td>
@@ -2594,6 +2610,7 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                                 onReset={() => resetRentEdit(idx, 'market', u.type)}
                                 tone="amber"
                                 placeholderHint={mktRent == null ? 'ENTER' : null}
+                                readOnly={isReadOnly}
                               />
                             )}
                           </td>
@@ -2617,59 +2634,63 @@ export function UnitMixTab(props: FinancialEngineTabProps) {
                           <td style={td(true, false, C.green)}>{fmt$(gpr)}</td>
                           {/* Edit / delete affordances */}
                           <td style={{ ...td(), width: 60 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                              <button
-                                title="Edit unit type"
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  const lt = localTypes.find(t => t.type === u.type);
-                                  if (lt) {
-                                    setEditingType(lt);
-                                    setShowAddModal(true);
-                                  } else {
-                                    // Build a ManualUnitType from the server row — prefer server bed/bath, fall back to label heuristic
-                                    const newLt: ManualUnitType = {
+                            {isReadOnly ? (
+                              <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim, letterSpacing: '0.06em' }}>LOCKED</span>
+                            ) : (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                <button
+                                  title="Edit unit type"
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    const lt = localTypes.find(t => t.type === u.type);
+                                    if (lt) {
+                                      setEditingType(lt);
+                                      setShowAddModal(true);
+                                    } else {
+                                      // Build a ManualUnitType from the server row — prefer server bed/bath, fall back to label heuristic
+                                      const newLt: ManualUnitType = {
+                                        _id: `srv-${idx}-${u.type}`,
+                                        type: u.type,
+                                        bedrooms: u.bedrooms != null ? u.bedrooms : bedsFromLabel(u.type),
+                                        bathrooms: u.bathrooms != null ? u.bathrooms : bathsFromLabel(u.type),
+                                        count: u.count,
+                                        avg_sqft: u.avgSf,
+                                        in_place_rent: u.inPlaceRent,
+                                        market_rent: u.marketRent,
+                                        notes: '',
+                                      };
+                                      setEditingType(newLt);
+                                      setShowAddModal(true);
+                                    }
+                                  }}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: C.dim, lineHeight: 0 }}
+                                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.cyan; }}
+                                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.dim; }}
+                                >
+                                  <Edit3 size={10} />
+                                </button>
+                                <button
+                                  title="Delete unit type"
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    const lt = localTypes.find(t => t.type === u.type) ?? {
                                       _id: `srv-${idx}-${u.type}`,
                                       type: u.type,
                                       bedrooms: u.bedrooms != null ? u.bedrooms : bedsFromLabel(u.type),
                                       bathrooms: u.bathrooms != null ? u.bathrooms : bathsFromLabel(u.type),
-                                      count: u.count,
-                                      avg_sqft: u.avgSf,
-                                      in_place_rent: u.inPlaceRent,
-                                      market_rent: u.marketRent,
-                                      notes: '',
+                                      count: u.count, avg_sqft: u.avgSf,
+                                      in_place_rent: u.inPlaceRent, market_rent: u.marketRent, notes: '',
                                     };
-                                    setEditingType(newLt);
-                                    setShowAddModal(true);
-                                  }
-                                }}
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: C.dim, lineHeight: 0 }}
-                                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.cyan; }}
-                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.dim; }}
-                              >
-                                <Edit3 size={10} />
-                              </button>
-                              <button
-                                title="Delete unit type"
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  const lt = localTypes.find(t => t.type === u.type) ?? {
-                                    _id: `srv-${idx}-${u.type}`,
-                                    type: u.type,
-                                    bedrooms: u.bedrooms != null ? u.bedrooms : bedsFromLabel(u.type),
-                                    bathrooms: u.bathrooms != null ? u.bathrooms : bathsFromLabel(u.type),
-                                    count: u.count, avg_sqft: u.avgSf,
-                                    in_place_rent: u.inPlaceRent, market_rent: u.marketRent, notes: '',
-                                  };
-                                  setPendingDelete(lt);
-                                }}
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: C.dim, lineHeight: 0 }}
-                                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.red; }}
-                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.dim; }}
-                              >
-                                <Trash2 size={10} />
-                              </button>
-                            </div>
+                                    setPendingDelete(lt);
+                                  }}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: C.dim, lineHeight: 0 }}
+                                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = C.red; }}
+                                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = C.dim; }}
+                                >
+                                  <Trash2 size={10} />
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                         {isExpanded && rentRollUnits && (
