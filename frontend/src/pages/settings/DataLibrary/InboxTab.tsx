@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../services/api.client';
-import { ChevronDown, ChevronRight, AlertTriangle, Clock, RefreshCw, Send } from 'lucide-react';
+import { ChevronDown, ChevronRight, AlertTriangle, Clock, RefreshCw, Send, GitMerge } from 'lucide-react';
 
 const MONO = "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace";
 
@@ -12,12 +12,23 @@ interface LogEntry {
   detail?: Record<string, unknown>;
 }
 
+interface ConflictEntry {
+  step: string;
+  field: string;
+  value_a: string;
+  source_a: string;
+  value_b: string;
+  source_b: string;
+  detected_at: string;
+}
+
 interface IntakeJob {
   id: string;
   file_id: string | null;
   parcel_id: string | null;
   state: string;
   block_reason: string | null;
+  conflict_data: ConflictEntry[] | null;
   user_input: Record<string, string> | null;
   source_type: string | null;
   source_data: Record<string, unknown> | null;
@@ -87,6 +98,10 @@ const BLOCK_REASON_LABEL: Record<string, { short: string; detail: string }> = {
     short: 'Duplicate parcel',
     detail: 'A record with this parcel ID already exists. Confirm this is a new submission or supply a different parcel ID.',
   },
+  parcel_id_conflict: {
+    short: 'Parcel ID conflict',
+    detail: 'Two different sources returned different parcel IDs for this property. Select the correct one below or enter the right ID manually.',
+  },
 };
 
 function resolveBlockReason(raw: string | null): { short: string; detail: string } {
@@ -133,6 +148,191 @@ interface BlockedJobCardProps {
   onResolved: (jobId: string, updatedJob: Partial<IntakeJob>) => void;
 }
 
+/** Sub-component rendered inside BlockedJobCard when block_reason === 'parcel_id_conflict' */
+function ParcelConflictResolver({ job, onResolved }: BlockedJobCardProps) {
+  const conflicts = Array.isArray(job.conflict_data) ? job.conflict_data : [];
+  // Use the first parcel_id conflict entry; fall back to first entry of any kind
+  const entry = conflicts.find(c => c.field === 'parcel_id') ?? conflicts[0] ?? null;
+
+  const [selected, setSelected] = useState<'a' | 'b' | 'custom' | null>(null);
+  const [customValue, setCustomValue] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const resolvedValue =
+    selected === 'a' ? (entry?.value_a ?? '')
+    : selected === 'b' ? (entry?.value_b ?? '')
+    : selected === 'custom' ? customValue.trim()
+    : '';
+
+  const canSubmit = !submitting && resolvedValue.length > 0;
+
+  const handlePickAndSubmit = async (pick: 'a' | 'b' | 'custom') => {
+    const value =
+      pick === 'a' ? (entry?.value_a ?? '')
+      : pick === 'b' ? (entry?.value_b ?? '')
+      : customValue.trim();
+
+    if (!value) {
+      setSubmitError('Enter a parcel ID before submitting.');
+      return;
+    }
+    setSelected(pick);
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await apiClient.patch(`/api/v1/intake-jobs/${job.id}/user-input`, { resolved_parcel_id: value });
+      onResolved(job.id, { state: 'pending', block_reason: null, conflict_data: null, enrichment_log: [] });
+    } catch (err: any) {
+      setSubmitError(err?.response?.data?.error || 'Failed to submit. Please try again.');
+      setSelected(null);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const candidateCard = (
+    label: string,
+    value: string,
+    source: string,
+    side: 'a' | 'b',
+  ) => (
+    <div style={{
+      flex: 1,
+      background: '#0d1117',
+      border: '1px solid #21262d',
+      borderRadius: 6,
+      padding: '14px 16px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 8,
+    }}>
+      <div style={{ color: '#8892b0', fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: '0.08em' }}>
+        {label}
+      </div>
+      <div style={{
+        color: '#e3c07e',
+        fontFamily: MONO,
+        fontSize: 16,
+        fontWeight: 700,
+        letterSpacing: '0.04em',
+        wordBreak: 'break-all',
+      }}>
+        {value || <span style={{ color: '#555e6b' }}>(empty)</span>}
+      </div>
+      <div style={{ color: '#8892b0', fontFamily: MONO, fontSize: 10 }}>
+        <span style={{ color: '#555e6b' }}>source:</span> {source}
+      </div>
+      <button
+        disabled={submitting}
+        onClick={() => handlePickAndSubmit(side)}
+        style={{
+          marginTop: 'auto',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          background: submitting ? '#161b22' : '#1f3a1f',
+          border: `1px solid ${submitting ? '#30363d' : '#4ade8066'}`,
+          color: submitting ? '#555e6b' : '#4ade80',
+          borderRadius: 4, padding: '7px 14px',
+          cursor: submitting ? 'default' : 'pointer',
+          fontFamily: MONO, fontSize: 11, fontWeight: 700,
+          transition: 'all 0.15s ease',
+        }}
+      >
+        {submitting && selected === side
+          ? <><RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} /> Requeueing…</>
+          : 'Use this'}
+      </button>
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Explanation banner */}
+      <div style={{
+        background: '#1a1200', border: '1px solid #b8860b44', borderRadius: 4,
+        padding: '10px 12px', marginBottom: 16,
+        display: 'flex', alignItems: 'flex-start', gap: 8,
+      }}>
+        <GitMerge size={13} style={{ color: '#e3c07e', flexShrink: 0, marginTop: 1 }} />
+        <div style={{ color: '#cdd9e5', fontFamily: MONO, fontSize: 11, lineHeight: 1.6 }}>
+          Two sources disagree on the parcel ID for this property. Pick the correct one
+          or enter the right ID manually — the job will requeue immediately.
+        </div>
+      </div>
+
+      {/* Side-by-side candidates */}
+      {entry ? (
+        <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+          {candidateCard('OPTION A', entry.value_a, entry.source_a, 'a')}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#555e6b', fontFamily: MONO, fontSize: 10, fontWeight: 700,
+            flexShrink: 0,
+          }}>
+            VS
+          </div>
+          {candidateCard('OPTION B', entry.value_b, entry.source_b, 'b')}
+        </div>
+      ) : (
+        <div style={{ color: '#8892b0', fontFamily: MONO, fontSize: 11, marginBottom: 16 }}>
+          No conflict details were recorded. Enter the correct parcel ID manually below.
+        </div>
+      )}
+
+      {/* Manual entry fallback */}
+      <div style={{
+        borderTop: '1px solid #21262d', paddingTop: 14,
+        display: 'flex', alignItems: 'flex-end', gap: 10,
+      }}>
+        <div style={{ flex: 1 }}>
+          <label style={{ display: 'block', color: '#8892b0', fontFamily: MONO, fontSize: 10, fontWeight: 700, marginBottom: 4, letterSpacing: '0.08em' }}>
+            OR ENTER PARCEL ID MANUALLY
+          </label>
+          <input
+            type="text"
+            value={customValue}
+            onChange={e => { setCustomValue(e.target.value); setSelected('custom'); }}
+            placeholder="e.g. 18-200-01-023"
+            disabled={submitting}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              background: '#0d1117', border: '1px solid #30363d', borderRadius: 4,
+              color: '#cdd9e5', fontFamily: MONO, fontSize: 11,
+              padding: '7px 10px', outline: 'none',
+              opacity: submitting ? 0.5 : 1,
+            }}
+          />
+        </div>
+        <button
+          disabled={!canSubmit || !customValue.trim()}
+          onClick={() => handlePickAndSubmit('custom')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: canSubmit && customValue.trim() ? '#1a3a1f' : '#161b22',
+            border: `1px solid ${canSubmit && customValue.trim() ? '#4ade8066' : '#30363d'}`,
+            color: canSubmit && customValue.trim() ? '#4ade80' : '#555e6b',
+            borderRadius: 4, padding: '7px 14px',
+            cursor: canSubmit && customValue.trim() ? 'pointer' : 'default',
+            fontFamily: MONO, fontSize: 11, fontWeight: 700,
+            transition: 'all 0.15s ease', whiteSpace: 'nowrap',
+          }}
+        >
+          {submitting && selected === 'custom'
+            ? <><RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} /> Requeueing…</>
+            : <><Send size={11} /> Use manual ID</>
+          }
+        </button>
+      </div>
+
+      {submitError && (
+        <div style={{ color: '#e06c75', fontFamily: MONO, fontSize: 11, marginTop: 10 }}>
+          {submitError}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BlockedJobCard({ job, onResolved }: BlockedJobCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [formParcelId, setFormParcelId] = useState('');
@@ -143,6 +343,8 @@ function BlockedJobCard({ job, onResolved }: BlockedJobCardProps) {
 
   const { name, address } = getPropertyDisplay(job);
   const { short: reasonShort, detail: reasonDetail } = resolveBlockReason(job.block_reason);
+
+  const isConflict = job.block_reason === 'parcel_id_conflict';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,12 +372,19 @@ function BlockedJobCard({ job, onResolved }: BlockedJobCardProps) {
 
   const hasAnyInput = formParcelId.trim() || formAddress.trim() || formPropertyName.trim();
 
+  const accentColor = isConflict ? '#e3c07e' : '#e06c75';
+  const borderColor = isConflict ? '#4a3a10' : '#4a2020';
+  const bgColor = isConflict ? '#1a1200' : '#1a0f0f';
+  const chipBg = isConflict ? '#2d2200' : '#2d1515';
+  const chipBorder = isConflict ? '#e3c07e44' : '#e06c7544';
+  const expandedBorder = isConflict ? '#2d2200' : '#2d1515';
+
   return (
     <div style={{
-      border: '1px solid #4a2020',
-      borderLeft: '3px solid #e06c75',
+      border: `1px solid ${borderColor}`,
+      borderLeft: `3px solid ${accentColor}`,
       borderRadius: 6,
-      background: '#1a0f0f',
+      background: bgColor,
       marginBottom: 8,
       overflow: 'hidden',
     }}>
@@ -187,7 +396,10 @@ function BlockedJobCard({ job, onResolved }: BlockedJobCardProps) {
           padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
         }}
       >
-        <AlertTriangle size={14} style={{ color: '#e06c75', flexShrink: 0 }} />
+        {isConflict
+          ? <GitMerge size={14} style={{ color: accentColor, flexShrink: 0 }} />
+          : <AlertTriangle size={14} style={{ color: accentColor, flexShrink: 0 }} />
+        }
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -202,8 +414,8 @@ function BlockedJobCard({ job, onResolved }: BlockedJobCardProps) {
           </div>
           <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{
-              background: '#2d1515', border: '1px solid #e06c7544',
-              color: '#e06c75', borderRadius: 3,
+              background: chipBg, border: `1px solid ${chipBorder}`,
+              color: accentColor, borderRadius: 3,
               padding: '1px 7px', fontFamily: MONO, fontSize: 10, fontWeight: 700,
             }}>
               {reasonShort}
@@ -226,152 +438,160 @@ function BlockedJobCard({ job, onResolved }: BlockedJobCardProps) {
 
       {/* Expanded body */}
       {expanded && (
-        <div style={{ borderTop: '1px solid #2d1515', padding: '14px 16px' }}>
-          {/* Block reason explanation */}
-          <div style={{
-            background: '#1f1212', border: '1px solid #3d1f1f', borderRadius: 4,
-            padding: '10px 12px', marginBottom: 14,
-          }}>
-            <div style={{ color: '#e06c75', fontFamily: MONO, fontSize: 10, fontWeight: 700, marginBottom: 4 }}>
-              WHY THIS JOB IS BLOCKED
-            </div>
-            <div style={{ color: '#cdd9e5', fontFamily: MONO, fontSize: 11, lineHeight: 1.6 }}>
-              {reasonDetail}
-            </div>
-          </div>
+        <div style={{ borderTop: `1px solid ${expandedBorder}`, padding: '14px 16px' }}>
 
-          {/* Enrichment log */}
-          {Array.isArray(job.enrichment_log) && job.enrichment_log.length > 0 && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ color: '#8892b0', fontFamily: MONO, fontSize: 10, fontWeight: 700, marginBottom: 6, letterSpacing: '0.08em' }}>
-                ENRICHMENT STEPS TRIED
+          {/* Conflict resolution UI — replaces generic form for parcel_id_conflict */}
+          {isConflict ? (
+            <ParcelConflictResolver job={job} onResolved={onResolved} />
+          ) : (
+            <>
+              {/* Block reason explanation */}
+              <div style={{
+                background: '#1f1212', border: '1px solid #3d1f1f', borderRadius: 4,
+                padding: '10px 12px', marginBottom: 14,
+              }}>
+                <div style={{ color: '#e06c75', fontFamily: MONO, fontSize: 10, fontWeight: 700, marginBottom: 4 }}>
+                  WHY THIS JOB IS BLOCKED
+                </div>
+                <div style={{ color: '#cdd9e5', fontFamily: MONO, fontSize: 11, lineHeight: 1.6 }}>
+                  {reasonDetail}
+                </div>
               </div>
-              <div style={{ background: '#0d1117', border: '1px solid #21262d', borderRadius: 4, overflow: 'hidden' }}>
-                {job.enrichment_log.map((entry, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      padding: '7px 12px', display: 'flex', alignItems: 'flex-start', gap: 10,
-                      borderBottom: idx < job.enrichment_log.length - 1 ? '1px solid #21262d' : 'none',
-                    }}
-                  >
-                    <span style={{
-                      width: 8, height: 8, borderRadius: '50%', marginTop: 3, flexShrink: 0,
-                      background: LOG_STATUS_COLOR[entry.status] || '#8892b0',
-                    }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ color: '#cdd9e5', fontFamily: MONO, fontSize: 11 }}>{entry.step}</span>
-                        <span style={{
-                          color: LOG_STATUS_COLOR[entry.status] || '#8892b0',
-                          fontFamily: MONO, fontSize: 10, textTransform: 'uppercase',
-                        }}>{entry.status}</span>
-                        <span style={{ color: '#555e6b', fontFamily: MONO, fontSize: 10, marginLeft: 'auto' }}>
-                          {entry.ts ? new Date(entry.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''}
-                        </span>
-                      </div>
-                      {entry.detail && Object.keys(entry.detail).length > 0 && (
-                        <div style={{ color: '#8892b0', fontFamily: MONO, fontSize: 10, marginTop: 2, wordBreak: 'break-all' }}>
-                          {Object.entries(entry.detail).map(([k, v]) => (
-                            <span key={k} style={{ marginRight: 10 }}>
-                              <span style={{ color: '#555e6b' }}>{k}:</span> {String(v)}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+
+              {/* Enrichment log */}
+              {Array.isArray(job.enrichment_log) && job.enrichment_log.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ color: '#8892b0', fontFamily: MONO, fontSize: 10, fontWeight: 700, marginBottom: 6, letterSpacing: '0.08em' }}>
+                    ENRICHMENT STEPS TRIED
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Resolution form */}
-          <div style={{ borderTop: '1px solid #2d1515', paddingTop: 14 }}>
-            <div style={{ color: '#8892b0', fontFamily: MONO, fontSize: 10, fontWeight: 700, marginBottom: 10, letterSpacing: '0.08em' }}>
-              SUBMIT CORRECTION — fill in what you know
-            </div>
-            <form onSubmit={handleSubmit}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
-                <div>
-                  <label style={{ display: 'block', color: '#8892b0', fontFamily: MONO, fontSize: 10, marginBottom: 4 }}>
-                    PARCEL ID
-                  </label>
-                  <input
-                    type="text"
-                    value={formParcelId}
-                    onChange={e => setFormParcelId(e.target.value)}
-                    placeholder="e.g. 18-200-01-023"
-                    style={{
-                      width: '100%', boxSizing: 'border-box',
-                      background: '#0d1117', border: '1px solid #30363d', borderRadius: 4,
-                      color: '#cdd9e5', fontFamily: MONO, fontSize: 11,
-                      padding: '7px 10px', outline: 'none',
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#8892b0', fontFamily: MONO, fontSize: 10, marginBottom: 4 }}>
-                    ADDRESS
-                  </label>
-                  <input
-                    type="text"
-                    value={formAddress}
-                    onChange={e => setFormAddress(e.target.value)}
-                    placeholder="e.g. 123 Main St, Atlanta, GA"
-                    style={{
-                      width: '100%', boxSizing: 'border-box',
-                      background: '#0d1117', border: '1px solid #30363d', borderRadius: 4,
-                      color: '#cdd9e5', fontFamily: MONO, fontSize: 11,
-                      padding: '7px 10px', outline: 'none',
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#8892b0', fontFamily: MONO, fontSize: 10, marginBottom: 4 }}>
-                    PROPERTY NAME
-                  </label>
-                  <input
-                    type="text"
-                    value={formPropertyName}
-                    onChange={e => setFormPropertyName(e.target.value)}
-                    placeholder="e.g. Highlands at Sweetwater"
-                    style={{
-                      width: '100%', boxSizing: 'border-box',
-                      background: '#0d1117', border: '1px solid #30363d', borderRadius: 4,
-                      color: '#cdd9e5', fontFamily: MONO, fontSize: 11,
-                      padding: '7px 10px', outline: 'none',
-                    }}
-                  />
-                </div>
-              </div>
-
-              {submitError && (
-                <div style={{ color: '#e06c75', fontFamily: MONO, fontSize: 11, marginBottom: 10 }}>
-                  {submitError}
+                  <div style={{ background: '#0d1117', border: '1px solid #21262d', borderRadius: 4, overflow: 'hidden' }}>
+                    {job.enrichment_log.map((entry, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '7px 12px', display: 'flex', alignItems: 'flex-start', gap: 10,
+                          borderBottom: idx < job.enrichment_log.length - 1 ? '1px solid #21262d' : 'none',
+                        }}
+                      >
+                        <span style={{
+                          width: 8, height: 8, borderRadius: '50%', marginTop: 3, flexShrink: 0,
+                          background: LOG_STATUS_COLOR[entry.status] || '#8892b0',
+                        }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ color: '#cdd9e5', fontFamily: MONO, fontSize: 11 }}>{entry.step}</span>
+                            <span style={{
+                              color: LOG_STATUS_COLOR[entry.status] || '#8892b0',
+                              fontFamily: MONO, fontSize: 10, textTransform: 'uppercase',
+                            }}>{entry.status}</span>
+                            <span style={{ color: '#555e6b', fontFamily: MONO, fontSize: 10, marginLeft: 'auto' }}>
+                              {entry.ts ? new Date(entry.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''}
+                            </span>
+                          </div>
+                          {entry.detail && Object.keys(entry.detail).length > 0 && (
+                            <div style={{ color: '#8892b0', fontFamily: MONO, fontSize: 10, marginTop: 2, wordBreak: 'break-all' }}>
+                              {Object.entries(entry.detail).map(([k, v]) => (
+                                <span key={k} style={{ marginRight: 10 }}>
+                                  <span style={{ color: '#555e6b' }}>{k}:</span> {String(v)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={submitting || !hasAnyInput}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  background: hasAnyInput && !submitting ? '#1a3a1f' : '#161b22',
-                  border: `1px solid ${hasAnyInput && !submitting ? '#4ade8066' : '#30363d'}`,
-                  color: hasAnyInput && !submitting ? '#4ade80' : '#555e6b',
-                  borderRadius: 4, padding: '7px 14px', cursor: hasAnyInput && !submitting ? 'pointer' : 'default',
-                  fontFamily: MONO, fontSize: 11, fontWeight: 700,
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {submitting
-                  ? <><RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Requeueing…</>
-                  : <><Send size={12} /> Requeue Job</>
-                }
-              </button>
-            </form>
-          </div>
+              {/* Resolution form */}
+              <div style={{ borderTop: '1px solid #2d1515', paddingTop: 14 }}>
+                <div style={{ color: '#8892b0', fontFamily: MONO, fontSize: 10, fontWeight: 700, marginBottom: 10, letterSpacing: '0.08em' }}>
+                  SUBMIT CORRECTION — fill in what you know
+                </div>
+                <form onSubmit={handleSubmit}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
+                    <div>
+                      <label style={{ display: 'block', color: '#8892b0', fontFamily: MONO, fontSize: 10, marginBottom: 4 }}>
+                        PARCEL ID
+                      </label>
+                      <input
+                        type="text"
+                        value={formParcelId}
+                        onChange={e => setFormParcelId(e.target.value)}
+                        placeholder="e.g. 18-200-01-023"
+                        style={{
+                          width: '100%', boxSizing: 'border-box',
+                          background: '#0d1117', border: '1px solid #30363d', borderRadius: 4,
+                          color: '#cdd9e5', fontFamily: MONO, fontSize: 11,
+                          padding: '7px 10px', outline: 'none',
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', color: '#8892b0', fontFamily: MONO, fontSize: 10, marginBottom: 4 }}>
+                        ADDRESS
+                      </label>
+                      <input
+                        type="text"
+                        value={formAddress}
+                        onChange={e => setFormAddress(e.target.value)}
+                        placeholder="e.g. 123 Main St, Atlanta, GA"
+                        style={{
+                          width: '100%', boxSizing: 'border-box',
+                          background: '#0d1117', border: '1px solid #30363d', borderRadius: 4,
+                          color: '#cdd9e5', fontFamily: MONO, fontSize: 11,
+                          padding: '7px 10px', outline: 'none',
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', color: '#8892b0', fontFamily: MONO, fontSize: 10, marginBottom: 4 }}>
+                        PROPERTY NAME
+                      </label>
+                      <input
+                        type="text"
+                        value={formPropertyName}
+                        onChange={e => setFormPropertyName(e.target.value)}
+                        placeholder="e.g. Highlands at Sweetwater"
+                        style={{
+                          width: '100%', boxSizing: 'border-box',
+                          background: '#0d1117', border: '1px solid #30363d', borderRadius: 4,
+                          color: '#cdd9e5', fontFamily: MONO, fontSize: 11,
+                          padding: '7px 10px', outline: 'none',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {submitError && (
+                    <div style={{ color: '#e06c75', fontFamily: MONO, fontSize: 11, marginBottom: 10 }}>
+                      {submitError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={submitting || !hasAnyInput}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      background: hasAnyInput && !submitting ? '#1a3a1f' : '#161b22',
+                      border: `1px solid ${hasAnyInput && !submitting ? '#4ade8066' : '#30363d'}`,
+                      color: hasAnyInput && !submitting ? '#4ade80' : '#555e6b',
+                      borderRadius: 4, padding: '7px 14px', cursor: hasAnyInput && !submitting ? 'pointer' : 'default',
+                      fontFamily: MONO, fontSize: 11, fontWeight: 700,
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {submitting
+                      ? <><RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Requeueing…</>
+                      : <><Send size={12} /> Requeue Job</>
+                    }
+                  </button>
+                </form>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
