@@ -926,6 +926,7 @@ export default function PropertyDetailsPage() {
   const [storiesSaving, setStoriesSaving] = useState(false);
   const [storiesOverride, setStoriesOverride] = useState<number | null>(null);
   const [storiesSaveError, setStoriesSaveError] = useState<string | null>(null);
+  const [storiesSavedToast, setStoriesSavedToast] = useState(false);
   const [unitsEditing, setUnitsEditing] = useState(false);
   const [unitsInputVal, setUnitsInputVal] = useState('');
   const [unitsSaving, setUnitsSaving] = useState(false);
@@ -1156,6 +1157,8 @@ export default function PropertyDetailsPage() {
       }
       setStoriesOverride(val);
       setStoriesEditing(false);
+      setStoriesSavedToast(true);
+      setTimeout(() => setStoriesSavedToast(false), 2000);
     } catch (err: any) {
       setStoriesSaveError(err?.response?.data?.error ?? err?.message ?? 'Save failed');
     } finally {
@@ -1266,6 +1269,9 @@ export default function PropertyDetailsPage() {
             >
               <span style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.secondary }}>Stories</span>
               <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                {storiesSavedToast && (
+                  <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.green, fontWeight: 700 }}>Saved ✓</span>
+                )}
                 <span style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 600, color: (storiesOverride ?? p.stories) ? T.text.primary : T.text.muted }}>
                   {storiesOverride ?? p.stories ?? <span style={{ fontStyle: "italic", fontSize: 8 }}>enter…</span>}
                 </span>
