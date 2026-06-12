@@ -46,7 +46,11 @@ export type LayeredValueSource =
   | 'agent'
   | 'broker'
   | 'user'
-  | 'computed';
+  | 'computed'
+  | 'vault:municipal'
+  | 'vault:places'
+  | 'vault:web_search'
+  | 'vault:zoning';
 
 interface BadgeConfig {
   label: string;
@@ -85,6 +89,11 @@ const BADGE_CONFIG: Partial<Record<LayeredValueSource | string, BadgeConfig>> = 
   // User overrides
   'override':         { label: 'EDITED', color: BT.accent.user,  tooltip: 'User override — highest priority' },
   'user':             { label: 'EDITED', color: BT.accent.user,  tooltip: 'User override' },
+  // Vault — property profile enrichment data
+  'vault:municipal':   { label: 'VAULT·MUN', color: '#00B4D8', tooltip: 'Vault · County assessor / ArcGIS municipal data' },
+  'vault:places':      { label: 'VAULT·PLC', color: '#00D26A', tooltip: 'Vault · Google Places amenity signals & reviews' },
+  'vault:web_search':  { label: 'VAULT·WEB', color: '#B794F4', tooltip: 'Vault · Web search enrichment narrative' },
+  'vault:zoning':      { label: 'VAULT·ZON', color: '#F6A623', tooltip: 'Vault · M02 zoning / regulatory constraints' },
   // Silent — no badge
   'platform':         undefined,
   'computed':         undefined,
@@ -96,9 +105,10 @@ interface SourceBadgeProps {
   agentId?: string;
   runAt?: string;
   style?: React.CSSProperties;
+  href?: string;
 }
 
-export function SourceBadge({ source, agentRunId, agentId, runAt, style }: SourceBadgeProps) {
+export function SourceBadge({ source, agentRunId, agentId, runAt, style, href }: SourceBadgeProps) {
   const config = BADGE_CONFIG[source as LayeredValueSource];
   if (!config) return null;
 
@@ -106,29 +116,48 @@ export function SourceBadge({ source, agentRunId, agentId, runAt, style }: Sourc
   if (agentId) tooltip += ` (${agentId})`;
   if (runAt) tooltip += ` at ${new Date(runAt).toLocaleString()}`;
   if (agentRunId) tooltip += ` · run ${agentRunId.slice(0, 8)}`;
+  if (href) tooltip += ' · click to view source';
+
+  const badgeStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '0 3px',
+    fontFamily: BT.font.mono,
+    fontSize: '7px',
+    fontWeight: 700,
+    letterSpacing: '0.04em',
+    color: config.color,
+    background: `${config.color}18`,
+    border: `1px solid ${config.color}44`,
+    borderRadius: 2,
+    lineHeight: '12px',
+    height: 12,
+    flexShrink: 0,
+    cursor: href ? 'pointer' : agentRunId ? 'help' : 'default',
+    userSelect: 'none',
+    textDecoration: 'none',
+    ...style,
+  };
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={tooltip}
+        style={badgeStyle}
+        onClick={e => e.stopPropagation()}
+      >
+        {config.label} ↗
+      </a>
+    );
+  }
 
   return (
     <span
       title={tooltip}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        padding: '0 3px',
-        fontFamily: BT.font.mono,
-        fontSize: '7px',
-        fontWeight: 700,
-        letterSpacing: '0.04em',
-        color: config.color,
-        background: `${config.color}18`,
-        border: `1px solid ${config.color}44`,
-        borderRadius: 2,
-        lineHeight: '12px',
-        height: 12,
-        flexShrink: 0,
-        cursor: agentRunId ? 'help' : 'default',
-        userSelect: 'none',
-        ...style,
-      }}
+      style={badgeStyle}
     >
       {config.label}
     </span>

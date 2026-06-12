@@ -204,6 +204,11 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
 
   const mono = BT.font.mono;
 
+  const vaultHref = (source: string): string | undefined => {
+    if (!source.startsWith('vault:')) return undefined;
+    return `/deals/${dealId}/detail`;
+  };
+
   return (
     <>
       <style>{BT_CSS}</style>
@@ -314,7 +319,7 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
                             background: BT.bg.header, borderRadius: 3, marginBottom: 4,
                           }}>
                             <div>
-                              <SourceBadge source={dp.source} />
+                              <SourceBadge source={dp.source} href={vaultHref(dp.source)} />
                               <span style={{ fontFamily: mono, fontSize: 8, color: BT.text.secondary, marginLeft: 4 }}>
                                 {dp.label}
                               </span>
@@ -628,7 +633,7 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
                       }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-                            <SourceBadge source={dp.source} />
+                            <SourceBadge source={dp.source} href={vaultHref(dp.source)} />
                             <span style={{ fontFamily: mono, fontSize: 8, color: BT.text.secondary }}>
                               {dp.label}
                             </span>
@@ -669,7 +674,7 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <SourceBadge source={alt.source} />
+                            <SourceBadge source={alt.source} href={vaultHref(alt.source)} />
                             <span style={{ fontFamily: mono, fontSize: 8, color: BT.text.secondary }}>{alt.label}</span>
                           </div>
                           <span style={{ fontFamily: mono, fontSize: 9, color: BT.text.muted }}>{alt.value ?? '—'}</span>
