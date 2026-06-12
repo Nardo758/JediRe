@@ -77,10 +77,15 @@ async function assertDealAccess(dealId: string, userId: string): Promise<void> {
 // ── POST /api/v1/agents/cashflow/underwrite ───────────────────────
 router.post('/cashflow/underwrite', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
-    const { deal_id, trigger = 'manual' } = req.body;
+    const { deal_id, trigger = 'manual', scenario_target = 'create_new' } = req.body;
 
     if (!deal_id || !UUID_RE.test(deal_id)) {
       throw new AppError(400, 'deal_id must be a valid UUID');
+    }
+
+    // Validate scenario_target if provided
+    if (scenario_target && !['create_new', 'active'].includes(scenario_target) && !UUID_RE.test(scenario_target)) {
+      throw new AppError(400, 'scenario_target must be "create_new", "active", or a valid scenario UUID');
     }
 
     await assertDealAccess(deal_id, req.user!.userId);
@@ -131,6 +136,7 @@ router.post('/cashflow/underwrite', requireAuth, async (req: AuthenticatedReques
       },
       systemPromptOverride,
       platformRole: requestingUserRole,
+      scenarioTarget: scenario_target,
     };
 
     const { runId, done } = await cashflowRuntime.startAsync({ deal_id }, ctx);

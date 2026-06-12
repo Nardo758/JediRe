@@ -355,6 +355,7 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
         },
         systemPromptOverride,
         platformRole: requestingUserRole,
+        scenarioTarget: 'create_new',
       };
 
       const output = await cashflowRuntime.run(

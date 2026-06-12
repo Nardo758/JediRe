@@ -434,6 +434,38 @@ export class UWScenarioService {
     );
     return (r.rowCount ?? 0) > 0;
   }
+
+  /**
+   * M40 Phase 3 — Create an agent-attributed scenario from an active scenario.
+   * Used by cashflow.postprocess when scenarioTarget === 'create_new'.
+   * The new scenario is NOT activated automatically.
+   */
+  async createAgentScenario(
+    dealId: string,
+    runId: string,
+    name: string
+  ): Promise<UWScenario> {
+    // Fork from the active scenario's year1
+    const active = await this.getActiveScenario(dealId);
+    const sourceYear1 = active?.year1 ?? {};
+
+    const r = await this.pool.query<UWScenario>(
+      `INSERT INTO deal_underwriting_scenarios
+         (deal_id, name, description, created_by, created_by_user_id,
+          created_by_agent_run_id, is_active, parent_id, year1, tags)
+       VALUES ($1, $2, $3, 'agent', NULL, $4, FALSE, $5, $6::jsonb, NULL)
+       RETURNING *`,
+      [
+        dealId,
+        name,
+        active ? `Agent run forked from "${active.name}"` : 'Initial agent scenario',
+        runId,
+        active?.id ?? null,
+        JSON.stringify(sourceYear1),
+      ]
+    );
+    return r.rows[0];
+  }
 }
 
 // ── Pure diff computation (exported for testing) ───────────────────────────

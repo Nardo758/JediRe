@@ -1631,7 +1631,8 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
       // Step 3: CashFlow agent — pro forma + underwriting
       try {
         logger.info(`[Pipeline] Starting CashFlow for ${dealId}`);
-        results.cashflow = await cashflowRuntime.run(enrichedDealInput, ctxBase);
+        const cashflowCtx = { ...ctxBase, scenarioTarget: 'create_new' as const };
+        results.cashflow = await cashflowRuntime.run(enrichedDealInput, cashflowCtx);
         logger.info(`[Pipeline] CashFlow complete for ${dealId}`);
       } catch (err: any) {
         logger.error(`[Pipeline] CashFlow failed for ${dealId}: ${err.message}`);

@@ -10,6 +10,7 @@
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import type { RunContext } from './runtime/types';
+import { uwScenarioService } from '../services/underwriting-scenarios.service';
 import { VARIABLE_META } from '../services/sigma/sigma-engine';
 import { getStanceForDeal, applyStanceToProformaFields, applyStanceReblend, suggestAgentInferredStance } from '../services/operatorStance.service';
 import type { OperatorStancePatch } from '../types/operator-stance';
@@ -33,12 +34,67 @@ interface CollisionCounts {
 
 const DEFAULT_SUMMARY = 'Underwriting analysis completed';
 
+// ── M40 Phase 3 — Scenario-target helper ─────────────────────────────────────
+// When scenarioTarget === 'create_new', every cashflow agent run produces a new
+// agent-attributed scenario.  All write-back operations target the new scenario
+// instead of the active one.  The new scenario is NOT activated automatically.
+
+interface TargetScenario {
+  id: string | null;          // null → fall back to active scenario
+  createdByAgent: boolean;    // true if this is a newly-created agent scenario
+}
+
+async function resolveTargetScenario(
+  dealId: string | undefined,
+  runId: string,
+  scenarioTarget: string | undefined
+): Promise<TargetScenario> {
+  if (!dealId) return { id: null, createdByAgent: false };
+
+  // Default for cashflow agent: create a new scenario
+  const target = scenarioTarget ?? 'create_new';
+
+  if (target === 'create_new') {
+    const name = `Agent Run ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
+    try {
+      const scenario = await uwScenarioService.createAgentScenario(dealId, runId, name);
+      logger.info('[CashflowPostProcess] Created agent scenario', {
+        dealId, runId, scenarioId: scenario.id, name: scenario.name,
+      });
+      return { id: scenario.id, createdByAgent: true };
+    } catch (err: any) {
+      logger.warn('[CashflowPostProcess] Failed to create agent scenario (non-fatal, falling back to active)', {
+        dealId, runId, err: err?.message ?? String(err),
+      });
+      return { id: null, createdByAgent: false };
+    }
+  }
+
+  if (target === 'active') {
+    return { id: null, createdByAgent: false };
+  }
+
+  // target is a specific scenario ID
+  return { id: target, createdByAgent: false };
+}
+
 export async function cashflowPostProcess(
   rawOutput: Record<string, unknown>,
   ctx: RunContext,
   runId: string,
 ): Promise<Record<string, unknown>> {
   const output = { ...rawOutput };
+
+  // M40 Phase 3: resolve target scenario for all write-back operations
+  const targetScenario = await resolveTargetScenario(
+    ctx.dealId,
+    runId,
+    ctx.scenarioTarget,
+  );
+  if (targetScenario.createdByAgent) {
+    output['_scenario_id'] = targetScenario.id;
+    output['_scenario_created_by_agent'] = true;
+  }
 
   try {
     // ── Detect inline JSON mode ──────────────────────────────────
@@ -277,20 +333,34 @@ export async function cashflowPostProcess(
                 // jsonb_set(COALESCE(year1,'{}'), ARRAY[key,'resolved'], to_jsonb(value), create_missing=true)
                 // Updates only the 'resolved' slot within the existing LayeredValue
                 // envelope, preserving t12/broker/platform layers untouched.
-                // M40: write corrected subtotal to the active underwriting scenario.
+                // M40: write corrected subtotal to the target underwriting scenario.
+                // When scenarioTarget='create_new', this writes to a new agent scenario.
                 // Trigger syncs deal_assumptions.year1; fallback for pre-migration deals.
                 const subWriteRes = await query(
-                  `UPDATE deal_underwriting_scenarios
-                   SET year1 = jsonb_set(
-                     COALESCE(year1, '{}'),
-                     ARRAY[$2::text, 'resolved'],
-                     to_jsonb($3::numeric),
-                     true
-                   ),
-                   updated_at = NOW()
-                   WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
-                   RETURNING id`,
-                  [ctx.dealId, year1Key, correctedValue],
+                  targetScenario.id
+                    ? `UPDATE deal_underwriting_scenarios
+                       SET year1 = jsonb_set(
+                         COALESCE(year1, '{}'),
+                         ARRAY[$1::text, 'resolved'],
+                         to_jsonb($2::numeric),
+                         true
+                       ),
+                       updated_at = NOW()
+                       WHERE id = '${targetScenario.id}'
+                       RETURNING id`
+                    : `UPDATE deal_underwriting_scenarios
+                       SET year1 = jsonb_set(
+                         COALESCE(year1, '{}'),
+                         ARRAY[$2::text, 'resolved'],
+                         to_jsonb($3::numeric),
+                         true
+                       ),
+                       updated_at = NOW()
+                       WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
+                       RETURNING id`,
+                  targetScenario.id
+                    ? [year1Key, correctedValue]
+                    : [ctx.dealId, year1Key, correctedValue],
                 );
                 if ((subWriteRes.rowCount ?? 0) === 0) {
                   await query(
@@ -550,25 +620,43 @@ export async function cashflowPostProcess(
           // slots (t12, om, override, platform) while adding/updating agent,
           // resolved, and resolution sub-keys.
           try {
-            // M40: write agent value to the active underwriting scenario.
+            // M40: write agent value to the target underwriting scenario.
+            // When scenarioTarget='create_new', this writes to a new agent scenario.
             // The DB trigger mirrors the change to deal_assumptions.year1.
             // Falls back to deal_assumptions for deals without a scenario.
             const agentScenarioRes = await query(
-              `UPDATE deal_underwriting_scenarios
-               SET year1 = jsonb_set(
-                 COALESCE(year1, '{}'),
-                 ARRAY[$2::text],
-                 COALESCE(year1->$2::text, '{}') || jsonb_build_object(
-                   'agent',      $3::numeric,
-                   'resolved',   $3::numeric,
-                   'resolution', $4::text
-                 ),
-                 true
-               ),
-               updated_at = NOW()
-               WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
-               RETURNING id`,
-              [ctx.dealId, year1Key, agentValue, 'agent']
+              targetScenario.id
+                ? `UPDATE deal_underwriting_scenarios
+                   SET year1 = jsonb_set(
+                     COALESCE(year1, '{}'),
+                     ARRAY[$1::text],
+                     COALESCE(year1->$1::text, '{}') || jsonb_build_object(
+                       'agent',      $2::numeric,
+                       'resolved',   $2::numeric,
+                       'resolution', $3::text
+                     ),
+                     true
+                   ),
+                   updated_at = NOW()
+                   WHERE id = '${targetScenario.id}'
+                   RETURNING id`
+                : `UPDATE deal_underwriting_scenarios
+                   SET year1 = jsonb_set(
+                     COALESCE(year1, '{}'),
+                     ARRAY[$2::text],
+                     COALESCE(year1->$2::text, '{}') || jsonb_build_object(
+                       'agent',      $3::numeric,
+                       'resolved',   $3::numeric,
+                       'resolution', $4::text
+                     ),
+                     true
+                   ),
+                   updated_at = NOW()
+                   WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
+                   RETURNING id`,
+              targetScenario.id
+                ? [year1Key, agentValue, 'agent']
+                : [ctx.dealId, year1Key, agentValue, 'agent']
             );
             if ((agentScenarioRes.rowCount ?? 0) === 0) {
               await query(
@@ -637,21 +725,38 @@ export async function cashflowPostProcess(
               if (!operatorHasOverride) {
                 try {
                   const pctScenRes = await query(
-                    `UPDATE deal_underwriting_scenarios
-                     SET year1 = jsonb_set(
-                       COALESCE(year1, '{}'),
-                       ARRAY[$2::text],
-                       COALESCE(year1->$2::text, '{}') || jsonb_build_object(
-                         'agent',      $3::numeric,
-                         'resolved',   $3::numeric,
-                         'resolution', $4::text
-                       ),
-                       true
-                     ),
-                     updated_at = NOW()
-                     WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
-                     RETURNING id`,
-                    [ctx.dealId, 'management_fee_pct', derivedPct, 'agent']
+                    targetScenario.id
+                      ? `UPDATE deal_underwriting_scenarios
+                         SET year1 = jsonb_set(
+                           COALESCE(year1, '{}'),
+                           ARRAY[$1::text],
+                           COALESCE(year1->$1::text, '{}') || jsonb_build_object(
+                             'agent',      $2::numeric,
+                             'resolved',   $2::numeric,
+                             'resolution', $3::text
+                           ),
+                           true
+                         ),
+                         updated_at = NOW()
+                         WHERE id = '${targetScenario.id}'
+                         RETURNING id`
+                      : `UPDATE deal_underwriting_scenarios
+                         SET year1 = jsonb_set(
+                           COALESCE(year1, '{}'),
+                           ARRAY[$2::text],
+                           COALESCE(year1->$2::text, '{}') || jsonb_build_object(
+                             'agent',      $3::numeric,
+                             'resolved',   $3::numeric,
+                             'resolution', $4::text
+                           ),
+                           true
+                         ),
+                         updated_at = NOW()
+                         WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
+                         RETURNING id`,
+                    targetScenario.id
+                      ? ['management_fee_pct', derivedPct, 'agent']
+                      : [ctx.dealId, 'management_fee_pct', derivedPct, 'agent']
                   );
                   if ((pctScenRes.rowCount ?? 0) === 0) {
                     await query(
@@ -774,12 +879,20 @@ export async function cashflowPostProcess(
 
               try {
                 const subScenarioRes = await query(
-                  `UPDATE deal_underwriting_scenarios
-                   SET year1 = jsonb_set(COALESCE(year1, '{}'), ARRAY[$2::text], $3::jsonb, true),
-                       updated_at = NOW()
-                   WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
-                   RETURNING id`,
-                  [ctx.dealId, subKey, subPayload]
+                  targetScenario.id
+                    ? `UPDATE deal_underwriting_scenarios
+                       SET year1 = jsonb_set(COALESCE(year1, '{}'), ARRAY[$1::text], $2::jsonb, true),
+                           updated_at = NOW()
+                       WHERE id = '${targetScenario.id}'
+                       RETURNING id`
+                    : `UPDATE deal_underwriting_scenarios
+                       SET year1 = jsonb_set(COALESCE(year1, '{}'), ARRAY[$2::text], $3::jsonb, true),
+                           updated_at = NOW()
+                       WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL
+                       RETURNING id`,
+                  targetScenario.id
+                    ? [subKey, subPayload]
+                    : [ctx.dealId, subKey, subPayload]
                 );
                 if ((subScenarioRes.rowCount ?? 0) === 0) {
                   await query(

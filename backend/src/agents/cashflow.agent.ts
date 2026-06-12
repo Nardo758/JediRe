@@ -138,6 +138,7 @@ export class CashFlowAgent {
         purchase_price: params.purchasePrice,
         monthly_rent: params.monthlyRent,
       },
+      scenarioTarget: 'create_new',
     };
 
     try {

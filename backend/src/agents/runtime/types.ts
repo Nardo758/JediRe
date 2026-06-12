@@ -95,6 +95,17 @@ export interface RunContext {
    * Defaults to 'sponsor' when not set.
    */
   platformRole?: string;
+
+  /**
+   * M40 Phase 3 — Scenario target for agent write-back.
+   * 'create_new' (default for cashflow agent): creates a new agent-attributed scenario
+   *   from the active scenario's year1, writes the agent's output to it, and stores
+   *   the new scenario ID in the agent run output. The new scenario is NOT activated
+   *   automatically — the user reviews and activates via the UI.
+   * 'active': writes to the currently active scenario in place (legacy behavior).
+   * string (scenario ID): writes to a specific existing scenario.
+   */
+  scenarioTarget?: 'create_new' | 'active' | string;
 }
 
 // ── Tool definitions ──────────────────────────────────────────────────────────
