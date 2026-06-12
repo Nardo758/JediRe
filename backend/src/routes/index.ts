@@ -172,3 +172,74 @@ export function mountDealRoutes(app: Express) {
   // Deal strategy
   app.use('/api/v1/deals', requireAuth, dealStrategyRouter);
 }
+
+// ─── Property & Data Library Routes ─────────────────────────────────────────
+//
+// Consolidates property CRUD, types, metrics, discovery, archive, data library,
+// uploads, and comp query. Ordering matters for Express first-match on
+// /api/v1/properties (unified before CRUD so /unified isn't shadowed by /:id).
+
+import propertyTypesRouter from '../api/rest/property-types.routes';
+import propertyTypeStrategiesRouter from '../api/rest/property-type-strategies.routes';
+import propertyProxyRoutes from '../api/rest/property-proxy.routes';
+import propertyRoutes from '../api/rest/property.routes';
+import { createPropertyMetricsRouter } from '../api/rest/property-metrics.routes';
+import { createPropertyScoringRouter } from '../api/rest/property-scoring.routes';
+import propertyAnalyticsRouter from '../api/rest/property-analytics.routes';
+import propertyDiscoveryRouter from '../api/rest/property-discovery.routes';
+import { createArchivePropertiesRouter } from '../api/rest/archive-properties.routes';
+import createUnifiedPropertiesRoutes from '../api/rest/unified-properties.routes';
+import buildingEnvelopeRoutes from '../api/rest/building-envelope.routes';
+import moduleLibrariesRouter from '../api/rest/module-libraries.routes';
+import { createDataLibraryRoutes } from '../api/rest/data-library.routes';
+import { createDataLibraryAssetsRoutes } from '../api/rest/data-library-assets.routes';
+import { createDataLibraryFilesRoutes } from '../api/rest/data-library-files.routes';
+import { createIntakeJobsRoutes } from '../api/rest/intake-jobs.routes';
+import dataMatrixRoutes from '../api/rest/data-matrix.routes';
+import dataUploadRouter from '../api/rest/data-upload.routes';
+import pstUploadRouter from '../api/rest/pst-upload.routes';
+import uploadTemplatesRouter from '../api/rest/upload-templates.routes';
+import uploadRouter from '../api/rest/upload.routes';
+import compQueryRouter from '../api/rest/comp-query.routes';
+import proformaGeneratorRouter from '../api/rest/proforma-generator.routes';
+
+export function mountPropertyRoutes(app: Express, pool: any) {
+  // Unified properties (mounted BEFORE CRUD so /unified isn't shadowed by /:id)
+  app.use('/api/v1/properties', createUnifiedPropertiesRoutes(pool));
+
+  // Property CRUD
+  app.use('/api/v1/properties', propertyRoutes);
+
+  // Property types & strategies
+  app.use('/api/v1/property-types', requireAuth, propertyTypesRouter);
+  app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesRouter);
+  app.use('/api/v1/property-metrics', requireAuth, createPropertyMetricsRouter(pool));
+  app.use('/api/v1/property-scoring', requireAuth, createPropertyScoringRouter(pool));
+  app.use('/api/v1/property-analytics', requireAuth, propertyAnalyticsRouter);
+  app.use('/api/v1/property-discovery', propertyDiscoveryRouter);
+
+  // Archive & building envelope
+  app.use('/api/v1/properties', requireAuth, createArchivePropertiesRouter(pool));
+  app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
+
+  // Data Library
+  app.use('/api/v1/module-libraries', requireAuth, moduleLibrariesRouter);
+  app.use('/api/v1/data-library', requireAuth, createDataLibraryRoutes(pool));
+  app.use('/api/v1/data-library-assets', requireAuth, createDataLibraryAssetsRoutes(pool));
+  app.use('/api/v1/data-library-files', requireAuth, createDataLibraryFilesRoutes(pool));
+  app.use('/api/v1/intake-jobs', requireAuth, createIntakeJobsRoutes(pool));
+  app.use('/api/v1/data-matrix', dataMatrixRoutes);
+
+  // Uploads & ingestion
+  app.use('/api/v1/properties', requireAuth, dataUploadRouter);
+  app.use('/api/v1/data-upload/pst', requireAuth, pstUploadRouter);
+  app.use('/api/v1/upload-templates', requireAuth, uploadTemplatesRouter);
+  app.use('/api/v1/uploads', requireAuth, uploadRouter);
+  app.use('/api/v1/comps', requireAuth, compQueryRouter);
+
+  // Proforma generator (property-scoped)
+  app.use('/api/v1/properties', requireAuth, proformaGeneratorRouter);
+
+  // Property proxy (must be after specific property sub-routes)
+  app.use('/api/v1', requireAuth, propertyProxyRoutes);
+}

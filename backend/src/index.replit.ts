@@ -26,8 +26,6 @@ import { createDealCapsuleBridge } from './api/rest/capsule-bridge.routes';
 import { createRenovationRoutes } from './api/rest/renovation.routes';
 import zoningTriangulationRouter from './api/rest/zoning-triangulation.routes';
 import preferencesRouter from './api/rest/preferences.routes';
-import propertyTypesRouter from './api/rest/property-types.routes';
-import propertyTypeStrategiesRouter from './api/rest/property-type-strategies.routes';
 import customStrategiesRouter from './api/rest/custom-strategies.routes';
 import strategiesRouter from './api/rest/strategies.routes';
 import strategyDefinitionsRouter from './api/rest/strategy-definitions.routes';
@@ -38,7 +36,7 @@ import opportunityEngineRoutes from './api/rest/opportunity-engine.routes';
 import settingsAiRouter from './api/rest/settings-ai.routes';
 import settingsBrandingRouter from './api/rest/settings-branding.routes';
 import billingRouter from './api/rest/billing.routes';
-import { mountAdminRoutes, mountDealRoutes } from './routes';
+import { mountAdminRoutes, mountDealRoutes, mountZoningRoutes, mountM35Routes, mountPropertyRoutes } from './routes';
 
 import healthRouter from './api/rest/inline-health.routes';
 import authRouter from './api/rest/inline-auth.routes';
@@ -66,16 +64,10 @@ import marketResearchRoutes from './api/rest/marketResearch.routes';
 import supplyRoutes, { supplyExtraRouter } from './api/rest/supply.routes';
 import demandRoutes from './api/rest/demand.routes';
 import trafficPredictionRoutes from './api/rest/trafficPrediction.routes';
-import propertyProxyRoutes from './api/rest/property-proxy.routes';
 import leasingTrafficRoutes from './api/rest/leasing-traffic.routes';
-import moduleLibrariesRouter from './api/rest/module-libraries.routes';
 import marketIntelligenceRouter from './api/rest/market-intelligence.routes';
 import { createEnhancedMarketIntelligenceRoutes } from './api/rest/market-intelligence-enhanced.routes';
-import { createPropertyMetricsRouter } from './api/rest/property-metrics.routes';
-import { createPropertyScoringRouter } from './api/rest/property-scoring.routes';
 import { createOpusRoutes } from './api/rest/opus.routes';
-import { createDataLibraryRoutes } from './api/rest/data-library.routes';
-import { createDataLibraryAssetsRoutes } from './api/rest/data-library-assets.routes';
 import { createReplacementCostRoutes } from './api/rest/replacement-cost.routes';
 import { createBrokerNarrativesRoutes } from './api/rest/broker-narratives.routes';
 import { createIntelligenceRefreshRoutes } from './api/rest/intelligence-refresh.routes';
@@ -84,18 +76,10 @@ import { createKGDealIngestionRoutes } from './services/knowledge-graph/kg-deal-
 import { createKGDealContextRoutes } from './services/knowledge-graph/kg-deal-context.routes';
 import { createContextAwarenessRoutes } from './api/rest/context-awareness.routes';
 import scheduledRefreshRoutes from './api/rest/scheduled-refresh.routes';
-import dataMatrixRoutes from './api/rest/data-matrix.routes';
-import developmentScenariosRouter from './api/rest/development-scenarios.routes';
 import moduleWiringRouter from './api/rest/module-wiring.routes';
 import taskCompletionRouter from './api/rest/task-completion.routes';
 import capitalStructureRouter from './api/rest/capital-structure.routes';
 import debtAdvisorRouter from './api/rest/debt-advisor.routes';
-import dataUploadRouter from './api/rest/data-upload.routes';
-import pstUploadRouter from './api/rest/pst-upload.routes';
-import uploadTemplatesRouter from './api/rest/upload-templates.routes';
-import uploadRouter from './api/rest/upload.routes';
-import compQueryRouter from './api/rest/comp-query.routes';
-import proformaGeneratorRouter from './api/rest/proforma-generator.routes';
 import benchmarkTimelineRouter from './api/rest/benchmark-timeline.routes';
 import entitlementRouter from './api/rest/entitlement.routes';
 import regulatoryAlertRouter from './api/rest/regulatory-alert.routes';
@@ -108,7 +92,6 @@ import designReferencesRouter from './api/rest/design-references.routes';
 import financialModelRouter from './api/rest/financial-model.routes';
 import financialDashboardRouter from './api/rest/financial-dashboard.routes';
 import visibilityRouter from './api/rest/visibility.routes';
-import propertyAnalyticsRouter from './api/rest/property-analytics.routes';
 import trafficDataRouter from './api/rest/traffic-data.routes';
 import trafficCompsRouter from './api/rest/traffic-comps.routes';
 import m07CalibrationRouter from './api/rest/m07-calibration.routes';
@@ -129,11 +112,6 @@ import m28CycleIntelligenceRoutes from './api/rest/m28-cycle-intelligence.routes
 import { createUnitMixRoutes } from './api/rest/unitMix.routes';
 import workspaceRouter from './api/rest/workspace.routes';
 import agentChatRouter from './routes/agent-chat.routes';
-import m35ConnectorsRouter from './routes/m35-connectors.routes';
-import m35EventsRouter from './routes/m35-events.routes';
-import m35PlaybooksRouter from './routes/m35-playbooks.routes';
-import m35ForecastsRouter from './routes/m35-forecasts.routes';
-import m35BacktestRouter from './routes/m35-backtest.routes';
 import corporateHealthRouter from './api/rest/corporate-health.routes';
 import mediaRouter from './api/rest/media.routes';
 import orgRouter from './api/rest/org.routes';
@@ -290,15 +268,7 @@ app.use('/api/v1/grid-templates', optionalAuth, gridTemplatesRoutes);
 app.use('/api/v1/markets', optionalAuth, marketIntelligenceRouter(pool));
 app.use('/api/v1/markets', optionalAuth, createEnhancedMarketIntelligenceRoutes(pool));
 
-import createUnifiedPropertiesRoutes from './api/rest/unified-properties.routes';
-app.use('/api/v1/properties', createUnifiedPropertiesRoutes(pool));
-
-// Property CRUD routes (mounted AFTER unified so /unified isn't shadowed by
-// /:id). Provides the GET /properties/:id, POST /properties, PUT /:id, etc.
-// endpoints that agent tools (e.g. fetch_parcel, fetch_ownership) call via
-// PlatformClient.
-import propertyRoutes from './api/rest/property.routes';
-app.use('/api/v1/properties', propertyRoutes);
+mountPropertyRoutes(app, pool);
 
 app.use('/api/v1/grid', optionalAuth, gridRouter);
 app.use('/api/v1/rankings', optionalAuth, rankingsRouter);
@@ -447,13 +417,6 @@ app.use('/api/v1/archive', archiveRouter);
 
 // Per-Property Visibility Substrate — unified summary + file-list endpoints.
 // Mounted before requireAuth catch-alls; each route guards itself.
-import { createArchivePropertiesRouter } from './api/rest/archive-properties.routes';
-app.use('/api/v1/properties', requireAuth, createArchivePropertiesRouter(pool));
-
-// Building Envelope - requires auth
-import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
-app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
-
 app.use('/api/v1/dashboard', requireAuth, dashboardRouter);
 app.use('/api/v1/gmail', requireAuth, gmailRouter);
 app.use('/api/v1/news', requireAuth, newsRouter);
@@ -483,28 +446,16 @@ import { sentimentRouter } from './api/rest/sentiment.routes';
 app.use('/api/v1/sentiment', requireAuth, sentimentRouter);
 app.use('/api/v1', requireAuth, demandRoutes);
 app.use('/api/v1/traffic', requireAuth, trafficPredictionRoutes);
-app.use('/api/v1', requireAuth, propertyProxyRoutes);
 app.use('/api/v1/leasing-traffic', requireAuth, leasingTrafficRoutes);
 app.use('/api/v1/preferences', requireAuth, preferencesRouter);
 app.use('/api/v1/settings/ai-preferences', settingsAiRouter);
 app.use('/api/v1/settings/branding', settingsBrandingRouter);
-app.use('/api/v1/property-types', requireAuth, propertyTypesRouter);
-app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesRouter);
 app.use('/api/v1/custom-strategies', requireAuth, customStrategiesRouter);
 app.use('/api/v1/strategies', requireAuth, strategiesRouter);
 app.use('/api/v1/strategy-definitions', requireAuth, strategyDefinitionsRouter);
 app.use('/api/v1/metrics', requireAuth, metricsCatalogRouter);
 app.use('/api/v1/market-metrics', requireAuth, marketMetricsRouter);
-app.use('/api/v1/module-libraries', requireAuth, moduleLibrariesRouter);
-app.use('/api/v1/property-metrics', requireAuth, createPropertyMetricsRouter(pool));
-app.use('/api/v1/property-scoring', requireAuth, createPropertyScoringRouter(pool));
 app.use('/api/v1/opus', requireAuth, createOpusRoutes(pool));
-app.use('/api/v1/data-library', requireAuth, createDataLibraryRoutes(pool));
-app.use('/api/v1/data-library-assets', requireAuth, createDataLibraryAssetsRoutes(pool));
-import { createDataLibraryFilesRoutes } from './api/rest/data-library-files.routes';
-app.use('/api/v1/data-library-files', requireAuth, createDataLibraryFilesRoutes(pool));
-import { createIntakeJobsRoutes } from './api/rest/intake-jobs.routes';
-app.use('/api/v1/intake-jobs', requireAuth, createIntakeJobsRoutes(pool));
 app.use('/api/v1/replacement-cost', createReplacementCostRoutes(pool));
 app.use('/api/v1/broker-narratives', createBrokerNarrativesRoutes(pool));
 app.use('/api/v1/intelligence', createIntelligenceRefreshRoutes());
@@ -532,15 +483,9 @@ app.use('/api', createKgAliasRoutes(pool));
 // above is reordered in the future.
 app.use('/api/v1/context', requireAuth, createContextAwarenessRoutes(pool));
 app.use('/api/v1/scheduled-refresh', scheduledRefreshRoutes);
-app.use('/api/v1/data-matrix', dataMatrixRoutes);
-app.use('/api/v1', requireAuth, propertyBoundaryRouter);
-app.use('/api/v1', requireAuth, siteIntelligenceRouter);
-app.use('/api/v1', requireAuth, zoningCapacityRouter);
-app.use('/api/v1/zoning-intelligence', requireAuth, createZoningIntelligenceRoutes(pool));
-app.use('/api/v1/zoning-learning', requireAuth, createZoningLearningRoutes(pool));
-app.use('/api/v1/zoning-verification', requireAuth, zoningVerificationRouter);
-app.use('/api/v1', requireAuth, zoningProfileRouter);
-app.use('/api/v1', requireAuth, developmentScenariosRouter);
+
+mountZoningRoutes(app, pool);
+
 app.use('/api/v1', requireAuth, teamManagementRouter);
 app.use('/api/v1', requireAuth, collaborationRouter);
 app.use('/api/v1/emails', emailRouter);
@@ -552,12 +497,6 @@ app.use('/api/v1/module-wiring', requireAuth, moduleWiringRouter);
 app.use('/api/v1/task-completion', requireAuth, taskCompletionRouter);
 app.use('/api/v1/capital-structure', requireAuth, capitalStructureRouter);
 app.use('/api/v1/deals', debtAdvisorRouter);
-app.use('/api/v1/properties', requireAuth, dataUploadRouter);
-app.use('/api/v1/data-upload/pst', requireAuth, pstUploadRouter);
-app.use('/api/v1/upload-templates', requireAuth, uploadTemplatesRouter);
-app.use('/api/v1/uploads', requireAuth, uploadRouter);
-app.use('/api/v1/comps', requireAuth, compQueryRouter);
-app.use('/api/v1/properties', requireAuth, proformaGeneratorRouter);
 app.use('/api/v1/benchmark-timeline', requireAuth, benchmarkTimelineRouter);
 app.use('/api/v1/entitlements', requireAuth, entitlementRouter);
 app.use('/api/v1/regulatory-alerts', requireAuth, regulatoryAlertRouter);
@@ -565,11 +504,9 @@ app.use('/api/v1/scenarios', requireAuth, scenariosRouter);
 app.use('/api/v1/deals', requireAuth, underwritingScenariosRouter);
 app.use('/api/v1/risk', requireAuth, riskRouter);
 app.use('/api/v1/events', requireAuth, kafkaEventsRouter);
-app.use('/api/v1/m35/connectors', requireAuth, m35ConnectorsRouter);
-app.use('/api/v1/m35', requireAuth, m35PlaybooksRouter);
-app.use('/api/v1/m35', requireAuth, m35ForecastsRouter);
-app.use('/api/v1/m35', requireAuth, m35BacktestRouter);
-app.use('/api/v1/m35', requireAuth, m35EventsRouter);
+
+mountM35Routes(app);
+
 app.use('/api/v1/municode', requireAuth, municodeRouter);
 app.use('/api/v1/scrape', requireAuth, scrapeRouter);
 app.use('/api/v1/design-references', requireAuth, designReferencesRouter);
@@ -577,7 +514,6 @@ app.use('/api/v1/financial-model', requireAuth, financialModelRouter);
 app.use('/api/v1/deterministic', deterministicModelRouter);
 app.use('/api/v1/financial-dashboard', requireAuth, financialDashboardRouter);
 app.use('/api/v1/visibility', requireAuth, visibilityRouter);
-app.use('/api/v1/property-analytics', requireAuth, propertyAnalyticsRouter);
 app.use('/api/v1/traffic-data', requireAuth, trafficDataRouter);
 app.use('/api/v1/traffic-comps', requireAuth, trafficCompsRouter);
 app.use('/api/v1/calibration', requireAuth, m07CalibrationRouter);
@@ -592,9 +528,6 @@ app.use('/api/v1/cloud-storage', cloudStorageRouter);
 // Bulk upload routes
 import bulkUploadRouter from './api/rest/bulk-upload.routes';
 app.use('/api/v1/bulk-upload', bulkUploadRouter);
-
-import propertyDiscoveryRouter from './api/rest/property-discovery.routes';
-app.use('/api/v1/property-discovery', propertyDiscoveryRouter);
 
 import apartmentLocatorRouter from './api/rest/apartment-locator.routes';
 app.use('/api/v1/apartment-locator', apartmentLocatorRouter);
