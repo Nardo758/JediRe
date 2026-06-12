@@ -402,3 +402,47 @@ export function mountKnowledgeGraphRoutes(app: Express, pool: any) {
   app.use('/api/v1/context', requireAuth, createContextAwarenessRoutes(pool));
   app.use('/api/v1/scheduled-refresh', scheduledRefreshRoutes);
 }
+
+// ─── Operations & Utility Routes ──────────────────────────────────────────────
+//
+// Cloud storage, bulk upload, apartment locator, Georgia ingestion, learning,
+// operations, lifecycle, revenue, investor capital, organization, design,
+// sigma, lease velocity, historical observations, vendor registry, and unit mix.
+
+import cloudStorageRouter from '../api/rest/cloud-storage.routes';
+import bulkUploadRouter from '../api/rest/bulk-upload.routes';
+import apartmentLocatorRouter from '../api/rest/apartment-locator.routes';
+import georgiaIngestionRouter from '../api/rest/georgia-ingestion.routes';
+import learningRouter from '../api/rest/learning.routes';
+import operationsRouter from '../api/rest/operations.routes';
+import lifecycleRouter from '../api/rest/lifecycle.routes';
+import revenueRouter from '../api/rest/revenue.routes';
+import investorCapitalRoutes from '../api/rest/investor-capital.routes';
+import organizationRouter from '../api/rest/organization.routes';
+import sigmaRouter from '../api/rest/sigma.routes';
+import sigmaFullRouter from '../api/rest/sigma-full.routes';
+import { designMassingRouter } from '../services/design/design-massing.service';
+import leaseVelocityRouter from '../api/rest/lease-velocity.routes';
+import historicalObservationsRoutes from '../api/rest/historical-observations.routes';
+import vendorRegistryRoutes from '../api/rest/vendor-registry.routes';
+
+export function mountOperationsRoutes(app: Express, pool: any) {
+  app.use('/api/v1/cloud-storage', cloudStorageRouter);
+  app.use('/api/v1/bulk-upload', bulkUploadRouter);
+  app.use('/api/v1/apartment-locator', apartmentLocatorRouter);
+  app.use('/api/v1/georgia', georgiaIngestionRouter);
+  app.use('/api/v1/learning', learningRouter);
+  app.use('/api/v1/operations', operationsRouter);
+  app.use('/api/v1/lifecycle', lifecycleRouter);
+  app.use('/api/v1/revenue', revenueRouter);
+  app.use('/api/v1/capital', requireAuth, investorCapitalRoutes);
+  app.use('/api/v1/organization', organizationRouter);
+  app.use('/api/v1/design', requireAuth, designMassingRouter);
+  app.use('/api/v1/sigma', requireAuth, sigmaRouter);
+  app.use('/api/v2/sigma', requireAuth, sigmaFullRouter);
+  app.use('/api/v1/analogs', analogRouter);
+  app.use('/api/v1/lease-velocity', leaseVelocityRouter);
+  app.use('/api/v1/historical-observations', requireAuth, historicalObservationsRoutes);
+  app.use('/api/v1/vendor-registry', requireAuth, vendorRegistryRoutes);
+  app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
+}

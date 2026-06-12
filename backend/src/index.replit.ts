@@ -41,7 +41,7 @@ import collaborationRouter from './api/rest/collaboration.routes';
 import contactsSyncRouter from './api/rest/contacts-sync.routes';
 import notarizeRouter from './api/rest/notarize.routes';
 import contextTrackerRouter from './api/rest/context-tracker.routes';
-import { mountAdminRoutes, mountDealRoutes, mountZoningRoutes, mountM35Routes, mountPropertyRoutes, mountGridPortfolioRoutes, mountEmailRoutes, mountFinancialRoutes, mountKnowledgeGraphRoutes } from './routes';
+import { mountAdminRoutes, mountDealRoutes, mountZoningRoutes, mountM35Routes, mountPropertyRoutes, mountGridPortfolioRoutes, mountEmailRoutes, mountFinancialRoutes, mountKnowledgeGraphRoutes, mountOperationsRoutes } from './routes';
 
 import healthRouter from './api/rest/inline-health.routes';
 import authRouter from './api/rest/inline-auth.routes';
@@ -419,67 +419,7 @@ mountM35Routes(app);
 
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
-// Cloud storage integration routes
-import cloudStorageRouter from './api/rest/cloud-storage.routes';
-app.use('/api/v1/cloud-storage', cloudStorageRouter);
-
-// Bulk upload routes
-import bulkUploadRouter from './api/rest/bulk-upload.routes';
-app.use('/api/v1/bulk-upload', bulkUploadRouter);
-
-import apartmentLocatorRouter from './api/rest/apartment-locator.routes';
-app.use('/api/v1/apartment-locator', apartmentLocatorRouter);
-
-// Georgia Metro data ingestion + market intelligence routes (auth enforced per-route internally)
-import georgiaIngestionRouter from './api/rest/georgia-ingestion.routes';
-app.use('/api/v1/georgia', georgiaIngestionRouter);
-
-// Learning feedback system routes
-import learningRouter from './api/rest/learning.routes';
-app.use('/api/v1/learning', learningRouter);
-
-// Operations intelligence routes (revenue management)
-import operationsRouter from './api/rest/operations.routes';
-app.use('/api/v1/operations', operationsRouter);
-
-// Full lifecycle routes (disposition, reforecast, debt, comp sets, capex)
-import lifecycleRouter from './api/rest/lifecycle.routes';
-app.use('/api/v1/lifecycle', lifecycleRouter);
-
-// Revenue management — repricing synthesizer (JEDI SIGNAL + REPRICING COURSE)
-import revenueRouter from './api/rest/revenue.routes';
-app.use('/api/v1/revenue', revenueRouter);
-
-// Investor & capital tracking routes (F8 — LP/GP, capital calls, distributions, waterfall)
-import investorCapitalRoutes from './api/rest/investor-capital.routes';
-app.use('/api/v1/capital', requireAuth, investorCapitalRoutes);
-
-// organization.routes.ts: deal team assignments, phase handoffs, context tracker, DocuSign/Notarize/Plaid credentials (/api/v1/organization/...)
-import organizationRouter from './api/rest/organization.routes';
-import sigmaRouter from './api/rest/sigma.routes';
-import sigmaFullRouter from './api/rest/sigma-full.routes';
-import { designMassingRouter } from './services/design/design-massing.service';
-import leaseVelocityRouter from './api/rest/lease-velocity.routes';
-import historicalObservationsRoutes from './api/rest/historical-observations.routes';
-app.use('/api/v1/organization', organizationRouter);
-
-// Design 3D â€” AI massing generation
-app.use('/api/v1/design', requireAuth, designMassingRouter);
-
-// M36 Joint Distribution Engine â€” plausibility scoring + goal-seeking
-app.use('/api/v1/sigma', requireAuth, sigmaRouter);
-app.use('/api/v2/sigma', requireAuth, sigmaFullRouter);
-app.use('/api/v1/analogs', analogRouter);
-app.use('/api/v1/lease-velocity', leaseVelocityRouter);
-
-// Historical Observations — empirical calibration substrate
-app.use('/api/v1/historical-observations', requireAuth, historicalObservationsRoutes);
-
-// Vendor Registry — file-type catalogue + filename classifier for Market Data UI
-import vendorRegistryRoutes from './api/rest/vendor-registry.routes';
-app.use('/api/v1/vendor-registry', requireAuth, vendorRegistryRoutes);
-
-app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
+mountOperationsRoutes(app, pool);
 
 app.get('/api/v1/apartment-sync/trends', requireAuth, async (req: any, res) => {
   try {
