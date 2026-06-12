@@ -287,3 +287,100 @@ export function mountEmailRoutes(app: Express) {
   app.use('/api/v1', notarizeRouter);
   app.use('/api/v1/context', requireAuth, contextTrackerRouter);
 }
+
+// ─── Financial & Strategy Routes ────────────────────────────────────────────
+//
+// Consolidates financial models, strategy analysis, market research, supply,
+// demand, traffic, preferences, settings, metrics, and financial operations.
+
+import financialModelsRouter from '../api/rest/financial-models.routes';
+import strategyAnalysesRouter from '../api/rest/strategy-analyses.routes';
+import marketResearchRoutes from '../api/rest/marketResearch.routes';
+import supplyRoutes, { supplyExtraRouter } from '../api/rest/supply.routes';
+import demandRoutes from '../api/rest/demand.routes';
+import trafficPredictionRoutes from '../api/rest/trafficPrediction.routes';
+import leasingTrafficRoutes from '../api/rest/leasing-traffic.routes';
+import preferencesRouter from '../api/rest/preferences.routes';
+import settingsAiRouter from '../api/rest/settings-ai.routes';
+import settingsBrandingRouter from '../api/rest/settings-branding.routes';
+import customStrategiesRouter from '../api/rest/custom-strategies.routes';
+import strategiesRouter from '../api/rest/strategies.routes';
+import strategyDefinitionsRouter from '../api/rest/strategy-definitions.routes';
+import metricsCatalogRouter from '../api/rest/metrics-catalog.routes';
+import marketMetricsRouter from '../api/rest/market-metrics.routes';
+import { createOpusRoutes } from '../api/rest/opus.routes';
+import { createReplacementCostRoutes } from '../api/rest/replacement-cost.routes';
+import { createBrokerNarrativesRoutes } from '../api/rest/broker-narratives.routes';
+import { createIntelligenceRefreshRoutes } from '../api/rest/intelligence-refresh.routes';
+import moduleWiringRouter from '../api/rest/module-wiring.routes';
+import taskCompletionRouter from '../api/rest/task-completion.routes';
+import capitalStructureRouter from '../api/rest/capital-structure.routes';
+import debtAdvisorRouter from '../api/rest/debt-advisor.routes';
+import benchmarkTimelineRouter from '../api/rest/benchmark-timeline.routes';
+import entitlementRouter from '../api/rest/entitlement.routes';
+import regulatoryAlertRouter from '../api/rest/regulatory-alert.routes';
+import scenariosRouter from '../api/rest/scenarios.routes';
+import riskRouter from '../api/rest/risk.routes';
+import kafkaEventsRouter from '../api/rest/kafka-events.routes';
+import municodeRouter from '../api/rest/municode.routes';
+import scrapeRouter from '../api/rest/scrape.routes';
+import designReferencesRouter from '../api/rest/design-references.routes';
+import financialModelRouter from '../api/rest/financial-model.routes';
+import financialDashboardRouter from '../api/rest/financial-dashboard.routes';
+import visibilityRouter from '../api/rest/visibility.routes';
+import trafficDataRouter from '../api/rest/traffic-data.routes';
+import trafficCompsRouter from '../api/rest/traffic-comps.routes';
+import m07CalibrationRouter from '../api/rest/m07-calibration.routes';
+import macroIndicatorsRouter from '../api/rest/macro-indicators.routes';
+import { sentimentRouter } from '../api/rest/sentiment.routes';
+
+export function mountFinancialRoutes(app: Express, pool: any) {
+  // Strategy & Research
+  app.use('/api/v1/modules', requireAuth, modulesRouter);
+  app.use('/api/v1/financial-models', requireAuth, financialModelsRouter);
+  app.use('/api/v1/strategy-analyses', requireAuth, strategyAnalysesRouter);
+  app.use('/api/v1/market-research', requireAuth, marketResearchRoutes);
+  app.use('/api/v1/market', requireAuth, marketRouter);
+  app.use('/api/v1', requireAuth, supplyRoutes);
+  app.use('/api/v1/supply', requireAuth, supplyExtraRouter);
+  app.use('/api/v1/sentiment', requireAuth, sentimentRouter);
+  app.use('/api/v1', requireAuth, demandRoutes);
+  app.use('/api/v1/traffic', requireAuth, trafficPredictionRoutes);
+  app.use('/api/v1/leasing-traffic', requireAuth, leasingTrafficRoutes);
+  app.use('/api/v1/preferences', requireAuth, preferencesRouter);
+  app.use('/api/v1/settings/ai-preferences', settingsAiRouter);
+  app.use('/api/v1/settings/branding', settingsBrandingRouter);
+  app.use('/api/v1/custom-strategies', requireAuth, customStrategiesRouter);
+  app.use('/api/v1/strategies', requireAuth, strategiesRouter);
+  app.use('/api/v1/strategy-definitions', requireAuth, strategyDefinitionsRouter);
+  app.use('/api/v1/metrics', requireAuth, metricsCatalogRouter);
+  app.use('/api/v1/market-metrics', requireAuth, marketMetricsRouter);
+  app.use('/api/v1/opus', requireAuth, createOpusRoutes(pool));
+  app.use('/api/v1/replacement-cost', createReplacementCostRoutes(pool));
+  app.use('/api/v1/broker-narratives', createBrokerNarrativesRoutes(pool));
+  app.use('/api/v1/intelligence', createIntelligenceRefreshRoutes());
+
+  // Financial Operations
+  app.use('/api/v1/module-wiring', requireAuth, moduleWiringRouter);
+  app.use('/api/v1/task-completion', requireAuth, taskCompletionRouter);
+  app.use('/api/v1/capital-structure', requireAuth, capitalStructureRouter);
+  app.use('/api/v1/deals', debtAdvisorRouter);
+  app.use('/api/v1/benchmark-timeline', requireAuth, benchmarkTimelineRouter);
+  app.use('/api/v1/entitlements', requireAuth, entitlementRouter);
+  app.use('/api/v1/regulatory-alerts', requireAuth, regulatoryAlertRouter);
+  app.use('/api/v1/scenarios', requireAuth, scenariosRouter);
+  app.use('/api/v1/deals', requireAuth, underwritingScenariosRouter);
+  app.use('/api/v1/risk', requireAuth, riskRouter);
+  app.use('/api/v1/events', requireAuth, kafkaEventsRouter);
+  app.use('/api/v1/municode', requireAuth, municodeRouter);
+  app.use('/api/v1/scrape', requireAuth, scrapeRouter);
+  app.use('/api/v1/design-references', requireAuth, designReferencesRouter);
+  app.use('/api/v1/financial-model', requireAuth, financialModelRouter);
+  app.use('/api/v1/deterministic', deterministicModelRouter);
+  app.use('/api/v1/financial-dashboard', requireAuth, financialDashboardRouter);
+  app.use('/api/v1/visibility', requireAuth, visibilityRouter);
+  app.use('/api/v1/traffic-data', requireAuth, trafficDataRouter);
+  app.use('/api/v1/traffic-comps', requireAuth, trafficCompsRouter);
+  app.use('/api/v1/calibration', requireAuth, m07CalibrationRouter);
+  app.use('/api/v1/macro', requireAuth, macroIndicatorsRouter);
+}
