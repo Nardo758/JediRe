@@ -446,3 +446,31 @@ export function mountOperationsRoutes(app: Express, pool: any) {
   app.use('/api/v1/vendor-registry', requireAuth, vendorRegistryRoutes);
   app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
 }
+
+// ─── Analytics & Dashboard Routes ────────────────────────────────────────────
+//
+// Dashboard, news, intelligence, trade areas, geographic context, and
+// corporate health routes.
+
+import dashboardRouter from '../api/rest/dashboard.routes';
+import newsRouter from '../api/rest/news.routes';
+import intelligenceRouter from '../api/rest/intelligence.routes';
+import tradeAreasRoutes from '../api/rest/trade-areas.routes';
+import isochroneRoutes from '../api/rest/isochrone.routes';
+import trafficAiRoutes from '../api/rest/traffic-ai.routes';
+import geographicContextRoutes from '../api/rest/geographic-context.routes';
+import corporateHealthRouter from '../api/rest/corporate-health.routes';
+import orgRouter from '../api/rest/org.routes';
+
+export function mountAnalyticsRoutes(app: Express) {
+  app.use('/api/v1/dashboard', requireAuth, dashboardRouter);
+  app.use('/api/v1/news', requireAuth, newsRouter);
+  app.use('/api/v1/intelligence', requireAuth, intelligenceRouter);
+  app.use('/api/v1/trade-areas', requireAuth, tradeAreasRoutes);
+  app.use('/api/v1/isochrone', requireAuth, isochroneRoutes);
+  app.use('/api/v1/traffic-ai', requireAuth, trafficAiRoutes);
+  app.use('/api/v1', requireAuth, geographicContextRoutes);
+  app.use('/api/v1/deals', requireAuth, geographicContextRoutes);
+  app.use('/api/v1/corporate-health', requireAuth, corporateHealthRouter);
+  app.use('/api/v1/orgs', requireAuth, orgRouter);
+}

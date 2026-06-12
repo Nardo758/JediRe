@@ -41,7 +41,7 @@ import collaborationRouter from './api/rest/collaboration.routes';
 import contactsSyncRouter from './api/rest/contacts-sync.routes';
 import notarizeRouter from './api/rest/notarize.routes';
 import contextTrackerRouter from './api/rest/context-tracker.routes';
-import { mountAdminRoutes, mountDealRoutes, mountZoningRoutes, mountM35Routes, mountPropertyRoutes, mountGridPortfolioRoutes, mountEmailRoutes, mountFinancialRoutes, mountKnowledgeGraphRoutes, mountOperationsRoutes } from './routes';
+import { mountAdminRoutes, mountDealRoutes, mountZoningRoutes, mountM35Routes, mountPropertyRoutes, mountGridPortfolioRoutes, mountEmailRoutes, mountFinancialRoutes, mountKnowledgeGraphRoutes, mountOperationsRoutes, mountAnalyticsRoutes } from './routes';
 
 import healthRouter from './api/rest/inline-health.routes';
 import authRouter from './api/rest/inline-auth.routes';
@@ -49,13 +49,8 @@ import dataRouter from './api/rest/inline-data.routes';
 import zoningAnalyzeRouter from './api/rest/inline-zoning-analyze.routes';
 import { createMicrosoftInlineRoutes } from './api/rest/inline-microsoft.routes';
 import microsoftRouter from './api/rest/microsoft.routes';
+import dashboardRouter from './api/rest/dashboard.routes';
 
-import newsRouter from './api/rest/news.routes';
-import tradeAreasRoutes from './api/rest/trade-areas.routes';
-import intelligenceRouter from './api/rest/intelligence.routes';
-import geographicContextRoutes from './api/rest/geographic-context.routes';
-import isochroneRoutes from './api/rest/isochrone.routes';
-import trafficAiRoutes from './api/rest/traffic-ai.routes';
 import mapConfigsRouter from './api/rest/map-configs.routes';
 import correlationRouter from './api/rest/correlation.routes';
 import { createCoStarUploadRoutes } from './api/rest/costar-upload.routes';
@@ -70,9 +65,7 @@ import m28CycleIntelligenceRoutes from './api/rest/m28-cycle-intelligence.routes
 import { createUnitMixRoutes } from './api/rest/unitMix.routes';
 import workspaceRouter from './api/rest/workspace.routes';
 import agentChatRouter from './routes/agent-chat.routes';
-import corporateHealthRouter from './api/rest/corporate-health.routes';
 import mediaRouter from './api/rest/media.routes';
-import orgRouter from './api/rest/org.routes';
 import underwritingScenariosRouter from './api/rest/underwriting-scenarios.routes';
 import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
 import { startM28Scheduler } from './services/m28-scheduler.service';
@@ -369,14 +362,7 @@ app.use('/api/v1/archive', archiveRouter);
 
 // Per-Property Visibility Substrate — unified summary + file-list endpoints.
 // Mounted before requireAuth catch-alls; each route guards itself.
-app.use('/api/v1/dashboard', requireAuth, dashboardRouter);
-app.use('/api/v1/news', requireAuth, newsRouter);
-app.use('/api/v1/intelligence', requireAuth, intelligenceRouter);
-app.use('/api/v1/trade-areas', requireAuth, tradeAreasRoutes);
-app.use('/api/v1/isochrone', requireAuth, isochroneRoutes);
-app.use('/api/v1/traffic-ai', requireAuth, trafficAiRoutes);
-app.use('/api/v1', requireAuth, geographicContextRoutes);
-app.use('/api/v1/deals', requireAuth, geographicContextRoutes);
+mountAnalyticsRoutes(app);
 
 mountEmailRoutes(app);
 
