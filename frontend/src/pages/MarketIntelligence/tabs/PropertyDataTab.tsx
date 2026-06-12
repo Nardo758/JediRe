@@ -14,7 +14,7 @@ interface PropertyDataTabProps { marketId: string; }
 interface PropertyRow {
   id: number; property: string; submarket: string; units: number; year: number;
   class: string; rent: string; occ: string; jedi: number; address: string;
-  stories: number; acres: number; owner: string; purchaseDate: string;
+  stories: number | null; acres: number; owner: string; purchaseDate: string;
   purchasePrice: string; pricePerUnit: string; holdPeriod: string;
   sellerMotivation: number; taxAssessed: string; stepUpRisk: string;
   zoning: string; zoningCapacity: string; askingRent: string; marketRent: string;
@@ -120,7 +120,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
       submarket: p.submarket_name || NEIGHBORHOOD_NAMES[p.neighborhood_code] || p.neighborhood_code || '—',
       units: p.units || 0, year: p.year_built || 0, class: p.building_class || '—',
       rent: rentFmt, occ: `${occValue}%`, jedi: jediValue, address: p.address || '—',
-      stories: p.stories || 0,
+      stories: p.stories != null && Number(p.stories) > 0 ? Number(p.stories) : null,
       acres: p.lot_size_sqft ? +(p.lot_size_sqft / 43560).toFixed(1) : 0,
       owner: p.owner_name || '—', purchaseDate: p.sale_date || '—',
       purchasePrice: p.sale_price ? `$${(p.sale_price / 1000000).toFixed(1)}M` : '—',
@@ -279,6 +279,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
                   { key: 'submarket', label: 'SUBMARKET' },
                   { key: 'units',     label: 'UNITS'     },
                   { key: 'year',      label: 'YEAR'      },
+                  { key: 'stories',   label: 'STORIES'   },
                   { key: 'class',     label: 'CLS'       },
                   { key: 'rent',      label: 'RENT'      },
                   { key: 'occ',       label: 'OCC'       },
@@ -296,7 +297,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: '32px 16px', textAlign: 'center' }}>
+                  <td colSpan={10} style={{ padding: '32px 16px', textAlign: 'center' }}>
                     <div style={{ width: 20, height: 20, border: `2px solid ${T.amber}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 8px' }} />
                     <span style={{ fontSize: 10, color: T.secondary, ...mono }}>LOADING PROPERTIES…</span>
                   </td>
@@ -319,6 +320,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
                   <td style={{ padding: '6px 10px', fontSize: 10, color: T.secondary, ...mono }}>{row.submarket}</td>
                   <td style={{ padding: '6px 10px', fontSize: 11, color: T.text, ...mono }}>{row.units.toLocaleString()}</td>
                   <td style={{ padding: '6px 10px', fontSize: 11, color: T.secondary, ...mono }}>{row.year || '—'}</td>
+                  <td style={{ padding: '6px 10px', fontSize: 11, color: T.secondary, ...mono }}>{row.stories != null ? row.stories : '—'}</td>
                   <td style={{ padding: '6px 10px', textAlign: 'center' }}>
                     <span style={{ fontSize: 9, fontWeight: 700, color: classColor(row.class), background: classColor(row.class) + '18', padding: '1px 5px', borderRadius: 2, ...mono }}>{row.class}</span>
                   </td>
@@ -330,7 +332,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={9} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 10, color: T.muted, ...mono }}>
+                  <td colSpan={10} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 10, color: T.muted, ...mono }}>
                     NO PROPERTY DATA AVAILABLE FOR THIS MARKET · SELECT ATLANTA FOR SAMPLE DATA
                   </td>
                 </tr>
