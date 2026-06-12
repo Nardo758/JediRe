@@ -76,6 +76,7 @@ import { fetchSourceDocumentsTool } from './tools/fetch_source_documents';
 import { fetchMarketRentBenchmarkTool } from './tools/fetch_market_rent_benchmark';
 import { fetchAssumptionModuleMapTool } from './tools/fetch_assumption_module_map';
 import { fetchSupplyAnalysisTool } from './tools/fetch_supply_analysis';
+import { fetchPropertyVaultIntelTool } from './tools/fetch_property_vault_intel';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -674,8 +675,11 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchOperatorStanceTool,
     // D-MOD-1 — Assumption → Module Mapping (read-only; call before deriving key assumptions)
     fetchAssumptionModuleMapTool,
-    // Supply pipeline context — call early, before compute_proforma (Task #1777)
+    // Supply pipeline context — call early, before compute_proforma
     fetchSupplyAnalysisTool,
+    // Property vault intel — enriched physical profile from property_descriptions
+    // (municipal, web search, Places, regulatory). Call in Phase 2 when parcel_id is known.
+    fetchPropertyVaultIntelTool,
     // read_gmail_thread is intentionally NOT registered here — it belongs to the deal-intake
     // pipeline (email-intake.function.ts / Inngest), not the underwriting agent. Registering
     // it in the cashflow config would expose Gmail credentials to an unintended call surface.

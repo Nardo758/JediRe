@@ -1361,6 +1361,27 @@ before market intel, sizing debt before NOI is known).
 8.  \`fetch_backtest_context\` — historical model performance for this deal type × submarket
 9.  \`fetch_line_item_benchmarks\` — per-line-item P10-P90 distributions
 10. \`fetch_market_trends\` — submarket-level historical trajectory
+10b. \`fetch_property_vault_intel\` — **Call when deal.parcel_id is present** (check
+    context.dealRow.parcel_id or context.dealRow.linkedParcelId from the fetch_data_matrix
+    response). The vault assembles municipal assessor data, web search narratives, Google
+    Places signals, and M02 regulatory outputs for the subject property.
+
+    **How to use vault intel in your underwriting:**
+    - \`amenity_flags\` (has_pool, has_fitness, parking_type, etc.) → cite as Tier 3 evidence
+      for physical quality and comparability adjustments. Example data_point:
+        { tier: 3, source: "vault:municipal", label: "vault:has_pool = true",
+          value: 1, weight: 0.10, notes: "Pool confirmed via vault enrichment" }
+    - \`web_search.narrative\` + \`recent_events\` → incorporate into market context block of
+      the underwriting summary and evidence reasoning for revenue.rent_growth.
+    - \`places.rating\` → cite as a comparability signal (higher-rated assets command a
+      marginal rent premium; use conservatively: +0 to +1% GPR adjustment if rating ≥ 4.0).
+    - \`regulatory.zone_code\` / \`max_height\` → note in entitlement risk commentary.
+    - \`municipal.year_built\` / \`total_units\` → reconcile against deal documents (T-12 unit
+      count, broker OM). Flag discrepancies > 5 units as data-quality gaps.
+
+    If found=false (no vault record), note "property vault absent" in the underwriting
+    summary and continue with deal document data only. Do NOT penalise confidence score
+    solely because vault is absent — vault enrichment is best-effort.
 
 At this point, you have the analog cohort baseline. Capture: P50 + P25-P75 + sample size per
 major assumption (rent growth Y1, rent growth long-run, exit cap, NOI growth, expense growth,

@@ -7,6 +7,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import api from '@/services/api';
+import { PropertyVaultProfileCard } from '../PropertyVaultProfileCard';
 
 // ============================================================================
 // TYPES
@@ -420,6 +421,11 @@ export function SkillsChatSection({ dealId }: SkillsChatSectionProps) {
           </div>
         </div>
       )}
+
+      {/* Property Profile Card */}
+      <div style={{ padding: '8px 12px 0', background: T.bg.panel, borderBottom: `1px solid ${T.border.subtle}` }}>
+        <PropertyVaultProfileCard dealId={dealId} />
+      </div>
 
       {/* Messages */}
       <div style={{

@@ -486,4 +486,174 @@ router.get('/by-parcel/:parcelId/summary', requireAuth, async (req: Authenticate
   }
 });
 
+/**
+ * GET /api/v1/properties/vault-intel/:dealId
+ *
+ * Returns the enriched property profile (vault data) for the deal's subject
+ * property — municipal attributes, web search narrative, Places amenity flags,
+ * regulatory constraints, and enrichment step outcomes.
+ *
+ * Used by the Property Profile card in the Deal Intelligence Skills panel.
+ */
+router.get('/vault-intel/:dealId', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { dealId } = req.params;
+
+    if (!dealId || !dealId.trim()) {
+      res.status(400).json({ error: 'dealId is required' });
+      return;
+    }
+
+    // Look up linked parcel from deal properties
+    const parcelRes = await query(
+      `SELECT p.parcel_id
+       FROM properties p
+       WHERE p.deal_id = $1
+         AND p.parcel_id IS NOT NULL
+       LIMIT 1`,
+      [dealId.trim()],
+    );
+
+    if (parcelRes.rows.length === 0) {
+      res.json({ found: false, parcel_id: null, message: 'No parcel linked to this deal' });
+      return;
+    }
+
+    const parcelId: string = parcelRes.rows[0].parcel_id;
+
+    const pdRes = await query(
+      `SELECT pd.*,
+              p.county, p.city, p.zip_code, p.parking_type,
+              p.year_built AS prop_year_built,
+              p.units      AS prop_units
+       FROM property_descriptions pd
+       LEFT JOIN properties p ON p.parcel_id = pd.parcel_id
+       WHERE pd.parcel_id = $1
+       LIMIT 1`,
+      [parcelId],
+    );
+
+    if (pdRes.rows.length === 0) {
+      res.json({ found: false, parcel_id: parcelId, message: 'No vault record for this parcel' });
+      return;
+    }
+
+    const pd = pdRes.rows[0];
+
+    const intakeRes = await query(
+      `SELECT enrichment_log, updated_at
+       FROM intake_jobs
+       WHERE parcel_id = $1
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [parcelId],
+    );
+
+    const resolvedLV = (lv: any): any => {
+      if (lv == null) return null;
+      if (typeof lv === 'object' && 'value' in lv) return lv.value ?? null;
+      if (typeof lv === 'object' && 'resolved' in lv) return lv.resolved ?? null;
+      return lv;
+    };
+
+    const resolvedSource = (lv: any): string => {
+      if (lv == null) return 'municipal';
+      if (typeof lv === 'object' && 'source' in lv) return String(lv.source);
+      return 'municipal';
+    };
+
+    const resolveBoolean = (lv: any): boolean | null => {
+      if (lv == null) return null;
+      if (typeof lv === 'boolean') return lv;
+      if (typeof lv === 'object' && 'value' in lv) return lv.value === true || lv.value === 'true';
+      if (typeof lv === 'object' && 'resolved' in lv) return lv.resolved === true || lv.resolved === 'true';
+      return null;
+    };
+
+    const reviews   = pd.reviews   ?? null;
+    const photos    = pd.photos    ?? null;
+    const sentiment = pd.sentiment_summary ?? null;
+    const recentRaw = pd.recent_events ?? null;
+
+    const placesRating = Array.isArray(reviews) && reviews.length > 0
+      ? parseFloat(
+          (reviews.map((r: any) => r.rating ?? r.stars).filter((r: any) => r != null && !isNaN(Number(r)))
+            .reduce((a: number, b: any, _i: number, arr: any[]) => a + Number(b) / arr.length, 0)).toFixed(1),
+        )
+      : (typeof reviews === 'object' && reviews !== null && 'rating' in (reviews as object))
+        ? parseFloat(String((reviews as any).rating)) ?? null
+        : null;
+
+    const rc = pd.regulatory_constraints ?? null;
+
+    const rawLog: any[] = intakeRes.rows[0]?.enrichment_log ?? [];
+    const enrichmentSteps = Array.isArray(rawLog)
+      ? rawLog.map((s: any) => ({
+          step:    String(s.step ?? s.name ?? 'unknown'),
+          status:  s.status ?? 'pending',
+          message: s.message ?? s.error ?? null,
+          ran_at:  s.ran_at ?? s.runAt ?? null,
+        }))
+      : [];
+
+    res.json({
+      found: true,
+      parcel_id: parcelId,
+      vault_updated_at: pd.updated_at ? new Date(pd.updated_at).toISOString() : null,
+      municipal: {
+        owner:           resolvedLV(pd.owner),
+        owner_source:    resolvedSource(pd.owner),
+        year_built:      resolvedLV(pd.year_built) ?? pd.prop_year_built ?? null,
+        total_units:     resolvedLV(pd.unit_count) ?? pd.prop_units ?? null,
+        assessed_value:  resolvedLV(pd.assessed_value) != null ? parseFloat(resolvedLV(pd.assessed_value)) : null,
+        appraised_value: resolvedLV(pd.appraised_value) != null ? parseFloat(resolvedLV(pd.appraised_value)) : null,
+        land_area_acres: resolvedLV(pd.lot_size_acres) != null ? parseFloat(resolvedLV(pd.lot_size_acres)) : null,
+        county:   pd.county   ?? null,
+        city:     pd.city     ?? null,
+        zip_code: pd.zip_code ?? null,
+      },
+      amenity_flags: {
+        has_pool:              resolveBoolean(pd.has_pool),
+        has_fitness:           resolveBoolean(pd.has_fitness),
+        has_clubhouse:         resolveBoolean(pd.has_clubhouse),
+        has_concierge:         resolveBoolean(pd.has_concierge),
+        has_business_center:   resolveBoolean(pd.has_business_center),
+        has_dog_park:          resolveBoolean(pd.has_dog_park),
+        is_master_metered:     resolveBoolean(pd.is_master_metered),
+        is_individual_metered: resolveBoolean(pd.is_individual_metered),
+        parking_type:          pd.parking_type ?? null,
+      },
+      web_search: (pd.narrative || (Array.isArray(recentRaw) && recentRaw.length > 0)) ? {
+        narrative:     pd.narrative ?? null,
+        citations:     Array.isArray(pd.citations) ? pd.citations : [],
+        recent_events: Array.isArray(recentRaw)
+          ? recentRaw.slice(0, 10).map((e: any) => ({
+              title:   String(e.title ?? e.headline ?? 'Untitled'),
+              summary: e.summary ?? e.description ?? null,
+              date:    e.date ?? e.published_at ?? null,
+            }))
+          : [],
+      } : null,
+      places: (placesRating != null || photos != null || sentiment != null) ? {
+        rating:       placesRating,
+        review_count: Array.isArray(reviews) ? reviews.length : null,
+        photo_count:  Array.isArray(photos)  ? photos.length  : null,
+        sentiment_summary: typeof sentiment === 'string' ? sentiment
+          : (typeof sentiment === 'object' && sentiment !== null)
+            ? String((sentiment as any).summary ?? '') : null,
+      } : null,
+      regulatory: rc ? {
+        zone_code:    resolvedLV(rc.zone_code)    ?? null,
+        jurisdiction: resolvedLV(rc.jurisdiction) ?? null,
+        max_height:   resolvedLV(rc.max_height) != null ? parseFloat(String(resolvedLV(rc.max_height))) : null,
+        max_fsr:      resolvedLV(rc.max_fsr ?? rc.far) != null ? parseFloat(String(resolvedLV(rc.max_fsr ?? rc.far))) : null,
+        source:       rc.source_chain ? String(rc.source_chain[0] ?? 'municipal:m02') : 'municipal:m02',
+      } : null,
+      enrichment_steps: enrichmentSteps,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

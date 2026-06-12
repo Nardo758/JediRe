@@ -423,7 +423,9 @@ export class JEDIScoreService {
 
   /**
    * Calculate Position Signal Score (0-100)
-   * Enriched with commute_preferences from demand intelligence.
+   * Enriched with commute_preferences from demand intelligence and vault amenity
+   * flags (has_pool, has_fitness, parking_type) when present in property_descriptions.
+   * Each vault-confirmed amenity above the submarket median adds +2 points (capped at +6).
    */
   private async calculatePositionScore(dealId: string, tradeAreaId?: string, demandIntel?: DemandIntelligence | null): Promise<number> {
     const positionResult = await query(
@@ -442,6 +444,52 @@ export class JEDIScoreService {
     const amenityCount = parseInt(positionResult.rows[0].amenity_count) || 0;
 
     let baseScore = 50.0 + (amenityCount * 2);
+
+    // ── Vault amenity enrichment ──────────────────────────────────────────────
+    // Pull confirmed amenity flags from property_descriptions when the deal has a
+    // linked parcel.  Each confirmed amenity (pool, fitness centre, covered parking)
+    // adds +2 points vs. the implicit submarket median, capped at +6.
+    try {
+      const vaultRes = await query(
+        `SELECT pd.has_pool, pd.has_fitness, pd.has_clubhouse,
+                p.parking_type
+         FROM properties p
+         JOIN property_descriptions pd ON pd.parcel_id = p.parcel_id
+         WHERE p.deal_id = $1
+           AND p.parcel_id IS NOT NULL
+         LIMIT 1`,
+        [dealId],
+      );
+
+      if (vaultRes.rows.length > 0) {
+        const pd = vaultRes.rows[0];
+
+        const resolveBoolean = (lv: any): boolean | null => {
+          if (lv == null) return null;
+          if (typeof lv === 'boolean') return lv;
+          if (typeof lv === 'object' && 'value' in lv) {
+            return lv.value === true || lv.value === 'true';
+          }
+          if (typeof lv === 'object' && 'resolved' in lv) {
+            return lv.resolved === true || lv.resolved === 'true';
+          }
+          return null;
+        };
+
+        let vaultBoost = 0;
+        if (resolveBoolean(pd.has_pool) === true)    vaultBoost += 2;
+        if (resolveBoolean(pd.has_fitness) === true)  vaultBoost += 2;
+
+        const parkingType = typeof pd.parking_type === 'string' ? pd.parking_type.toLowerCase() : null;
+        if (parkingType && (parkingType.includes('covered') || parkingType.includes('garage') || parkingType.includes('structured'))) {
+          vaultBoost += 2;
+        }
+
+        baseScore += Math.min(6, vaultBoost);
+      }
+    } catch {
+      // Vault lookup is best-effort — never block position scoring on vault failure
+    }
 
     if (demandIntel?.commutePreferences) {
       const cp = demandIntel.commutePreferences;
