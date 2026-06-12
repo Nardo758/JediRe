@@ -42,6 +42,13 @@ function pcComputeOutlierIds(comps: any[]): Set<string> {
   );
 }
 
+function getBuildingType(stories: number | null | undefined): string {
+  if (stories == null) return '—';
+  if (stories <= 3) return 'Garden';
+  if (stories <= 6) return 'Mid-rise';
+  return 'High-rise';
+}
+
 function mapRealProperty(real: any, navName?: string) {
   if (!real) return null;
   const className = real.building_class || classFromCode(real.class_code);
@@ -1375,7 +1382,7 @@ export default function PropertyDetailsPage() {
               <span style={{ color: T.text.amber, fontWeight: 700 }}>${p.avgEffectiveRent.toLocaleString()}</span>
               <span style={{ color: T.text.amber }}>{pct(p.currentOccupancy)}</span>
               <span style={{ color: T.text.amber }}>{p.yearBuilt}</span>
-              <span style={{ color: T.text.amber }}>{p.stories}</span>
+              <span style={{ color: T.text.amber }}>{p.stories != null ? `${p.stories} (${getBuildingType(p.stories)})` : '—'}</span>
               <span style={{ color: T.text.amber }}>{pct(p.concessionValue)}</span>
               <span style={{ color: T.text.amber }}>{(p.monthlyTraffic/1000).toFixed(1)}k</span>
             </div>
@@ -1386,7 +1393,7 @@ export default function PropertyDetailsPage() {
                 <span style={{ color: c.rent > p.avgEffectiveRent ? T.text.green : T.text.red, fontWeight: 600 }}>${c.rent.toLocaleString()}</span>
                 <span style={{ color: T.text.secondary }}>{pct(c.occ)}</span>
                 <span style={{ color: T.text.secondary }}>{c.yearBuilt}</span>
-                <span style={{ color: T.text.secondary }}>{c.stories}</span>
+                <span style={{ color: T.text.secondary }}>{c.stories != null ? `${c.stories} (${getBuildingType(c.stories)})` : '—'}</span>
                 <span style={{ color: c.concessions > p.concessionValue ? T.text.red : T.text.green }}>{pct(c.concessions)}</span>
                 <span style={{ color: T.text.secondary }}>{(c.monthlyTraffic/1000).toFixed(1)}k</span>
               </div>
@@ -2313,7 +2320,7 @@ export default function PropertyDetailsPage() {
             <span style={{ color: T.text.amber }}>{pct(p.currentOccupancy)}</span>
             <span style={{ color: T.text.amber }}>{p.class}</span>
             <span style={{ color: T.text.amber }}>{p.yearBuilt}</span>
-            <span style={{ color: T.text.amber }}>{p.stories}</span>
+            <span style={{ color: T.text.amber }}>{p.stories != null ? `${p.stories} (${getBuildingType(p.stories)})` : '—'}</span>
             <span style={{ color: T.text.amber }}>{pct(p.concessionValue)}</span>
             <span style={{ color: T.text.amber }}>{(p.monthlyTraffic/1000).toFixed(1)}k</span>
             <span style={{ color: T.text.amber }}>—</span>
@@ -2327,7 +2334,7 @@ export default function PropertyDetailsPage() {
               <span style={{ color: T.text.secondary }}>{c.occ ? pct(c.occ) : '—'}</span>
               <span style={{ color: T.text.secondary }}>{c.class || '—'}</span>
               <span style={{ color: T.text.secondary }}>{c.yearBuilt || '—'}</span>
-              <span style={{ color: T.text.secondary }}>{c.stories || '—'}</span>
+              <span style={{ color: T.text.secondary }}>{c.stories != null ? `${c.stories} (${getBuildingType(c.stories)})` : '—'}</span>
               <span style={{ color: c.concessions > p.concessionValue ? T.text.red : T.text.green }}>{c.concessions ? pct(c.concessions) : '—'}</span>
               <span style={{ color: T.text.secondary }}>{c.monthlyTraffic ? `${(c.monthlyTraffic/1000).toFixed(1)}k` : '—'}</span>
               <span style={{ color: T.text.muted }}>{c.dist}</span>
