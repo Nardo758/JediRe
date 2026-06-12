@@ -44,7 +44,7 @@ export type IntakeJobState =
 
 interface LogEntry {
   step: string;
-  status: 'ok' | 'not_implemented' | 'blocked' | 'error';
+  status: 'ok' | 'not_implemented' | 'blocked' | 'error' | 'skipped';
   ts: string;
   detail?: Record<string, unknown>;
 }
@@ -138,6 +138,18 @@ async function stepOtherDocs(
 interface MunicipalStepResult {
   resolved: boolean;
   parcel_id: string | null;
+  /**
+   * True when the municipal lookup resolved a parcel_id AND returned all key
+   * attributes (county + at least one valuation field). Used as a cost guard
+   * to skip Tavily web search for properties already fully characterised.
+   */
+  hasFullAttributes: boolean;
+  /**
+   * True when the Census geocoder (or equivalent) resolved lat/lng for this
+   * address. Used as a cost guard to skip Google Places when address + geo
+   * are already confirmed by the municipal chain.
+   */
+  hasLatLng: boolean;
 }
 
 async function stepMunicipalLookup(
@@ -154,8 +166,12 @@ async function stepMunicipalLookup(
       ts: ts(),
       detail: { reason: 'missing_state', address, state },
     });
-    return { resolved: false, parcel_id: null };
+    return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false };
   }
+
+  // Tracks whether the Census geocoder resolved lat/lng for this address.
+  // Set inside the GA geocoder block; used for the Places cost guard.
+  let resolvedLatLng = false;
 
   // ── Primary path: address lookup ─────────────────────────────────────────
   if (address) {
@@ -211,17 +227,19 @@ async function stepMunicipalLookup(
             lat:               cached.lat  ?? undefined,
             lng:               cached.lng  ?? undefined,
           };
+          resolvedLatLng = !!(cached.lat && cached.lng);
         }
 
         await appendLog(jobId, {
           step:   'census_geocoder',
-          status: cached.geocodeFailed ? 'no_match' : (cached.countyFips ? 'ok' : 'no_fips'),
+          status: cached.geocodeFailed ? 'blocked' : (cached.countyFips ? 'ok' : 'blocked'),
           ts:     ts(),
           detail: {
             address,
             matched_address: cached.matchedAddress,
             county_fips:     cached.countyFips,
             cache_hit:       cacheHit,
+            geocode_result:  cached.geocodeFailed ? 'no_match' : (cached.countyFips ? 'ok' : 'no_fips'),
           },
         });
       } catch (geoErr: any) {
@@ -248,7 +266,7 @@ async function stepMunicipalLookup(
         ts: ts(),
         detail: { lookup_mode: 'address', error: err?.message ?? String(err), address, state },
       });
-      return { resolved: false, parcel_id: null };
+      return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false };
     }
 
     if (result.status === 'ok' && result.parcel_id) {
@@ -275,7 +293,11 @@ async function stepMunicipalLookup(
           candidates:     result.candidates ?? null,
         },
       });
-      return { resolved: true, parcel_id: result.parcel_id };
+      const hasFullAttributes = !!(
+        result.county &&
+        (result.assessed_value != null || result.appraised_value != null)
+      );
+      return { resolved: true, parcel_id: result.parcel_id, hasFullAttributes, hasLatLng: resolvedLatLng };
     }
 
     // Address lookup returned not_found / not_implemented / error — fall through
@@ -305,7 +327,7 @@ async function stepMunicipalLookup(
         ts: ts(),
         detail: { lookup_mode: 'address', status: result.status, state, source: result.source ?? null },
       });
-      return { resolved: false, parcel_id: null };
+      return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false };
     }
   }
 
@@ -330,7 +352,7 @@ async function stepMunicipalLookup(
         ts: ts(),
         detail: { lookup_mode: 'parcel_id', error: err?.message ?? String(err), parcel_id: sourceParcelId, state },
       });
-      return { resolved: false, parcel_id: null };
+      return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false };
     }
 
     const fallbackLogStatus =
@@ -361,7 +383,11 @@ async function stepMunicipalLookup(
     });
 
     if (fallbackResult.status === 'ok' && fallbackResult.parcel_id) {
-      return { resolved: true, parcel_id: fallbackResult.parcel_id };
+      const hasFullAttributes = !!(
+        fallbackResult.county &&
+        (fallbackResult.assessed_value != null || fallbackResult.appraised_value != null)
+      );
+      return { resolved: true, parcel_id: fallbackResult.parcel_id, hasFullAttributes, hasLatLng: false };
     }
   } else if (!address) {
     // No address and parcel_id doesn't look like a county ID — nothing to try
@@ -373,7 +399,7 @@ async function stepMunicipalLookup(
     });
   }
 
-  return { resolved: false, parcel_id: null };
+  return { resolved: false, parcel_id: null, hasFullAttributes: false, hasLatLng: false };
 }
 
 // ── Step (c): web search ─────────────────────────────────────────────────────
@@ -652,12 +678,34 @@ async function processJob(job: {
         const dlaAssetId = dlaLookup.rows[0]?.id ?? undefined;
 
         const { runResearchEnrichment } = await import('../research/research-enrichment.service');
+
+        // Cost guard: skip web search if municipal lookup already returned a
+        // complete characterisation (county + valuation present). The municipal
+        // chain gives assessment data; web search adds news/narrative, which
+        // is only needed when the property couldn't be fully resolved locally.
+        const skipWebSearch = municipal.resolved && municipal.hasFullAttributes;
+
+        // Cost guard: skip Places if municipal returned confirmed address + lat/lng
+        // AND the source data provided a real property name (not just falling back
+        // to parcel_id). Places resolves amenity flags and reviews — only skip
+        // when property identity (confirmed name + address + geo) is already
+        // established by the municipal chain.
+        const hasConfirmedPropertyName =
+          !!propertyNameForSearch && propertyNameForSearch !== parcel_id;
+        const skipPlaces =
+          municipal.resolved &&
+          municipal.hasLatLng &&
+          !!lookupAddress &&
+          hasConfirmedPropertyName;
+
         const enrichResult = await runResearchEnrichment({
           parcelId: parcel_id,
           propertyName: propertyNameForSearch ?? parcel_id,
           address: lookupAddress,
           city: lookupCity,
           state: lookupState,
+          skipWebSearch,
+          skipPlaces,
           assetId: dlaAssetId,
         });
         const webEntry = enrichResult.log_entries.find(
@@ -666,7 +714,9 @@ async function processJob(job: {
         const webDetail = (webEntry?.detail ?? {}) as { articles_found?: number; events_found?: number };
         await appendLog(id, {
           step: 'web_search',
-          status: enrichResult.web_status === 'error' ? 'error' : 'ok',
+          status: enrichResult.web_status === 'error' ? 'error'
+            : enrichResult.web_status === 'skipped' ? 'skipped'
+            : 'ok',
           ts: ts(),
           detail: {
             narrative_words: enrichResult.narrative_words,
@@ -678,7 +728,7 @@ async function processJob(job: {
         await appendLog(id, {
           step: 'google_places',
           status: enrichResult.places_status === 'error' ? 'error'
-            : enrichResult.places_status === 'skipped' ? 'not_implemented'
+            : enrichResult.places_status === 'skipped' ? 'skipped'
             : 'ok',
           ts: ts(),
           detail: {

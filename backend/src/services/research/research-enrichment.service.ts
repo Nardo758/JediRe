@@ -18,7 +18,7 @@ import { enrichWithWebSearch } from './web-search/web-search.adapter';
 
 export interface LogEntry {
   step: string;
-  status: 'ok' | 'not_implemented' | 'blocked' | 'error';
+  status: 'ok' | 'not_implemented' | 'blocked' | 'error' | 'skipped';
   ts: string;
   detail?: Record<string, unknown>;
 }
@@ -60,9 +60,16 @@ export async function runResearchEnrichment(opts: {
   city: string | null;
   state: string | null;
   skipPlaces?: boolean;
+  /**
+   * When true, skip the Tavily web-search step entirely and log status
+   * 'skipped'. Set by the intake worker when the municipal lookup already
+   * returned a fully-characterised parcel (county + valuation fields present)
+   * to avoid unnecessary API spend.
+   */
+  skipWebSearch?: boolean;
   assetId?: string;
 }): Promise<ResearchEnrichmentResult> {
-  const { parcelId, propertyName, address, city, state, skipPlaces = false, assetId } = opts;
+  const { parcelId, propertyName, address, city, state, skipPlaces = false, skipWebSearch = false, assetId } = opts;
   const logEntries: LogEntry[] = [];
   const fieldsWritten: string[] = [];
   const now = () => new Date().toISOString();
@@ -115,37 +122,46 @@ export async function runResearchEnrichment(opts: {
   let webResult: Awaited<ReturnType<typeof enrichWithWebSearch>> | null = null;
   let webStatus: ResearchEnrichmentResult['web_status'] = 'skipped';
 
-  try {
-    webResult = await enrichWithWebSearch({
-      propertyName,
-      address,
-      city,
-      state,
-      placesRating: placesResult?.sentiment_summary?.rating ?? null,
-      placesAmenityFlags: Object.keys(placesResult?.amenity_flags ?? {}),
-    });
-    webStatus = 'ok';
+  if (skipWebSearch) {
     logEntries.push({
       step: 'web_search',
-      status: 'ok',
+      status: 'skipped',
       ts: now(),
-      detail: {
-        queries_run: 4,
-        articles_found: webResult.news_articles.length,
-        events_found: webResult.recent_events.length,
-        narrative_words: webResult.narrative ? webResult.narrative.split(/\s+/).length : 0,
-        citations: webResult.narrative_citations.length,
-      },
+      detail: { note: 'skipped — municipal lookup provided complete resolution (county + valuation present)' },
     });
-  } catch (err) {
-    logger.error('[research-enrichment] Web search failed', { parcelId, err });
-    webStatus = 'error';
-    logEntries.push({
-      step: 'web_search',
-      status: 'error',
-      ts: now(),
-      detail: { error: (err as Error).message },
-    });
+  } else {
+    try {
+      webResult = await enrichWithWebSearch({
+        propertyName,
+        address,
+        city,
+        state,
+        placesRating: placesResult?.sentiment_summary?.rating ?? null,
+        placesAmenityFlags: Object.keys(placesResult?.amenity_flags ?? {}),
+      });
+      webStatus = 'ok';
+      logEntries.push({
+        step: 'web_search',
+        status: 'ok',
+        ts: now(),
+        detail: {
+          queries_run: 4,
+          articles_found: webResult.news_articles.length,
+          events_found: webResult.recent_events.length,
+          narrative_words: webResult.narrative ? webResult.narrative.split(/\s+/).length : 0,
+          citations: webResult.narrative_citations.length,
+        },
+      });
+    } catch (err) {
+      logger.error('[research-enrichment] Web search failed', { parcelId, err });
+      webStatus = 'error';
+      logEntries.push({
+        step: 'web_search',
+        status: 'error',
+        ts: now(),
+        detail: { error: (err as Error).message },
+      });
+    }
   }
 
   // ── Step 3: Write to property_descriptions ────────────────────────────────────
