@@ -253,6 +253,8 @@ interface SaleCompRow {
   cap_rate: number | null;
   noi: number | null;
   noi_per_unit: number | null;
+  gross_rent_annual: number | null;
+  gross_income_annual: number | null;
   buyer: string | null;
   seller: string | null;
   latitude: number | null;
@@ -290,6 +292,19 @@ function mapSaleRow(row: ParsedRow, fileId: number | null, dataAsOf?: string): {
   const noi = parseNum(noiRaw);
   const noiPerUnit = noi != null && units && units > 0 ? Math.round((noi / units) * 100) / 100 : null;
 
+  // gross_rent_annual — CoStar "Gross Revenue" or "Gross Rent" column
+  // gross_income_annual — CoStar "Effective Revenue" or "EGI" column
+  const grossRentRaw = colVal(
+    row,
+    'Gross Revenue', 'Gross Rent', 'Annual Gross Revenue', 'Gross Rental Revenue',
+    'Gross Rent Annual', 'Total Gross Revenue', 'GPR',
+  );
+  const grossIncomeRaw = colVal(
+    row,
+    'Effective Revenue', 'Effective Gross Income', 'EGI', 'Annual EGI',
+    'Effective Gross Revenue', 'Gross Income Annual', 'Total Revenue',
+  );
+
   return {
     comp: {
       id: randomUUID(),
@@ -314,6 +329,8 @@ function mapSaleRow(row: ParsedRow, fileId: number | null, dataAsOf?: string): {
       cap_rate: capRate != null && capRate > 1 ? capRate : capRate != null ? capRate * 100 : null,
       noi,
       noi_per_unit: noiPerUnit,
+      gross_rent_annual: parseNum(grossRentRaw),
+      gross_income_annual: parseNum(grossIncomeRaw),
       buyer: colVal(row, 'Buyer', 'Buyer Name'),
       seller: colVal(row, 'Seller', 'Seller Name'),
       latitude: parseNum(colVal(row, 'Latitude', 'Lat')),
@@ -718,6 +735,7 @@ export async function processCoStarUpload(
              (id, property_name, address, city, state, zip, county, msa, submarket,
               property_type, units, sqft, year_built, asset_class, stories,
               sale_date, sale_price, price_per_unit, price_per_sqft, cap_rate, noi, noi_per_unit,
+              gross_rent_annual, gross_income_annual,
               buyer, seller,
               latitude, longitude, source, source_id, qualified, file_id, deal_id, data_as_of, created_at)
            VALUES
@@ -725,11 +743,13 @@ export async function processCoStarUpload(
               $10,$11,$12,$13,$14,$15,
               $16,$17,$18,$19,$20,$21,$22,
               $23,$24,
-              $25,$26,$27,$28,$29,$30,$31,$32,NOW())`,
+              $25,$26,
+              $27,$28,$29,$30,$31,$32,$33,$34,NOW())`,
           [
             sc.id, sc.property_name, sc.address, sc.city, sc.state, sc.zip, sc.county, sc.msa, sc.submarket,
             sc.property_type, sc.units, sc.sqft, sc.year_built, sc.asset_class, sc.stories,
             sc.sale_date, sc.sale_price, sc.price_per_unit, sc.price_per_sqft, sc.cap_rate, sc.noi, sc.noi_per_unit,
+            sc.gross_rent_annual, sc.gross_income_annual,
             sc.buyer, sc.seller,
             sc.latitude, sc.longitude, sc.source, sc.source_id, sc.qualified, sc.file_id, dealId, sc.data_as_of,
           ]
@@ -1249,6 +1269,7 @@ export async function commitCoStarUpload(
              (id, property_name, address, city, state, zip, county, msa, submarket,
               property_type, units, sqft, year_built, asset_class, stories,
               sale_date, sale_price, price_per_unit, price_per_sqft, cap_rate, noi, noi_per_unit,
+              gross_rent_annual, gross_income_annual,
               buyer, seller,
               latitude, longitude, source, source_id, qualified, file_id, deal_id, data_as_of, created_at)
            VALUES
@@ -1256,11 +1277,13 @@ export async function commitCoStarUpload(
               $10,$11,$12,$13,$14,$15,
               $16,$17,$18,$19,$20,$21,$22,
               $23,$24,
-              $25,$26,$27,$28,$29,$30,$31,$32,NOW())`,
+              $25,$26,
+              $27,$28,$29,$30,$31,$32,$33,$34,NOW())`,
           [
             comp.id, comp.property_name, comp.address, comp.city, comp.state, comp.zip, comp.county, comp.msa, comp.submarket,
             comp.property_type, comp.units, comp.sqft, comp.year_built, comp.asset_class, comp.stories,
             comp.sale_date, comp.sale_price, comp.price_per_unit, comp.price_per_sqft, comp.cap_rate, comp.noi, comp.noi_per_unit,
+            comp.gross_rent_annual, comp.gross_income_annual,
             comp.buyer, comp.seller,
             comp.latitude, comp.longitude, comp.source, comp.source_id, comp.qualified, comp.file_id, dealId, comp.data_as_of,
           ]
