@@ -367,10 +367,7 @@ mountAnalyticsRoutes(app);
 mountEmailRoutes(app);
 
 app.use('/api/v1/agents', agentChatRouter);
-app.use('/api/v1/corporate-health', requireAuth, corporateHealthRouter);
 app.use('/api/media', mediaRouter);
-// org.routes.ts: role-gated org CRUD, member management, invitations (/api/v1/orgs/:orgId/...)
-app.use('/api/v1/orgs', requireAuth, orgRouter);
 
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
 
