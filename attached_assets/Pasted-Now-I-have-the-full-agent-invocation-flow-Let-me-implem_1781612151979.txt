@@ -1,0 +1,102 @@
+Now I have the full agent invocation flow. Let me implement Model X: every cashflow agent run creates a new agent-attributed scenario.
+
+Used 36 tools · ran 8 commands
+M40 Phase 3 — Agent Runtime: COMPLETE
+Pushed to master at 93bfc61d4. Here's the implementation:
+Table
+Component	Change
+RunContext	Added scenarioTarget?: 'create_new' | 'active' | string
+UWScenarioService	Added createAgentScenario() — creates created_by='agent' scenario forked from active
+cashflow.postprocess	resolveTargetScenario() helper + all 4 write locations updated
+Event-driven	cashflow.inngest.ts — scenarioTarget: 'create_new'
+Manual REST	cashflow-underwriting.routes.ts — accepts scenario_target param
+Legacy adapter	cashflow.agent.ts — scenarioTarget: 'create_new'
+Inline pipeline	inline-deals.routes.ts — cashflow step uses create_new
+Behavior:
+Default (create_new): Every agent run creates a new scenario named "Agent Run YYYY-MM-DD HH:MM", copies the active scenario's year1, writes all agent output to it. The new scenario is not activated — the user reviews and switches via the UI. The scenario ID is returned in output._scenario_id.
+active: Writes to the active scenario in place (legacy behavior).
+Specific UUID: Writes to that scenario.
+Commit: 93bfc61d4 — pushed to GitHub.
+Remaining M40 phases:
+Table
+Phase	Status	Blocker
+Phase 4 — CIE per scenario	Pending	CIE Phase 1 must ship first (per spec)
+Phase 5 — Archival	Pending	Backend-only, can do anytime
+What do you want to do next?
+Phase 4 (CIE) — Check if CIE Phase 1 is ready, then implement
+Phase 5 (Archival) — Auto-archive old agent scenarios, compression policy
+Skip M40 — Move to a different task batch
+Something else — Your call
+Copy
+phase 4
+
+Used 46 tools · ran 14 commands
+M40 Phase 5 — Archival and Storage Management: COMPLETE
+Pushed to master at 88c6700a8. Here's the full implementation:
+Table
+Component	Change
+ScenarioArchivalService	Three policies: autoArchive() (30d), compress() (90d), hardDelete() (90d)
+Inngest cron	scenarioArchivalCron.ts — daily at 03:00 UTC
+Admin routes	POST /admin/scenario-archival/run (manual), GET /admin/scenario-archival/status (monitoring)
+Policies:
+Auto-archive: Agent scenarios >30 days, not active, not parent, no accepted CIE findings
+Compress: Agent scenarios >90 days, keep only first per month per deal (hard-delete rest)
+Hard-delete: Soft-deleted scenarios >90 days (snapshots preserved as audit trail)
+🎯 M40 Scenario Management Module — ALL 5 PHASES COMPLETE
+Table
+Phase	What was built	Commits
+Phase 1 (pre-existing)	DB table, trigger, API, service — already live	20260520 migration
+Phase 2	UI: picker, indicator, management tab, compare pane	fd1cacab8
+Phase 3	Agent runtime: new scenario per run (scenarioTarget)	93bfc61d4
+Phase 4	CIE findings per scenario (ci_findings column + UI)	fc8254747
+Phase 5	Archival: auto-archive, compression, hard-delete	88c6700a8
+Files created/modified across all phases: 20+ files, ~2,500 lines
+What do you want to do next?
+Copy
+Attachments:
+C:\Users\Leons' Computer 2\Downloads\UNDERWRITING_ENGINE_RECLASSIFICATION_SPEC.md
+
+Read file
+This is a major architectural spec — reclassifying the CashFlow agent from a full LLM agent into:
+Deterministic Underwriting Engine (server-side, no credits)
+Single-shot reasoning tool (only for ambiguous residue)
+Narrative (Commentary agent, unchanged)
+Key implications: M40 Phase 3 is conceptually wrong — the spec says deterministic engine output should NOT create a new agent-attributed scenario, and fields should NOT be tagged agent:cashflow unless they were actually reasoned.
+Let me start implementing the concrete changes.
+
+Used 113 tools · ran 10 commands
+Copy
+whats the update?
+Source-Tag Taxonomy Implementation — Complete
+All changes for the §5 Reclassification Spec are implemented and ready to commit. Here's the summary:
+What changed (9 files)
+Table
+File	Change
+cashflow.postprocess.ts	Added resolveSourceTag() mapping function. Main write-back loop uses dynamic source tags instead of hardcoded 'agent'. Derived management_fee_pct → engine:cashflow. T2 fallback checks startsWith('agent') instead of === 'agent'.
+get-field-value.service.ts	resolveLayeredValue() preserves source-tags (e.g., agent:cashflow) instead of collapsing to 'agent'. Engine A computed → engine:cashflow. Override source → 'override'.
+proforma-seeder.service.ts	Re-seed agent preservation now checks startsWith('agent') and preserves the original tag.
+financials-composer.service.ts	Fallback source for other_income_dollars → agent:cashflow.
+underwriting-scenarios.service.ts	Default resolution → agent:cashflow.
+layered-value.ts / dealContext.ts	Added 'engine:cashflow' to LayeredValueSource union.
+SourceBadge.tsx	Added engine:cashflow to type + badge config (silent — no badge).
+ProFormaSummaryTab.tsx	sourceToTier() recognizes engine:cashflow and startsWith('agent:').
+dealStore.ts	Edit log actor detection recognizes startsWith('agent:').
+ValidationGridTab.tsx	Added all agent:* qualified sources to SOURCE_MAP; fixed rent growth source check.
+Result
+Deterministic engine fields (math engine, goal seek, compute) → engine:cashflow (no badge)
+Agent-reasoned fields → agent:cashflow (shows AGENT badge)
+Tier 1/2/3/4 inputs → properly prefixed with provenance
+Operator overrides → override (EDITED badge)
+The AGENT badge now means something: it only appears where the LLM actually reasoned, not on deterministic arithmetic
+Status
+All changes are uncommitted in the working tree. Want me to commit and push?
+Copy
+yes
+
+Ran 8 commands
+Pushed successfully. Commit 6aadf7f00 is now on GitHub.
+Summary:
+11 files changed, 108 insertions, 33 deletions
+Commit hash: 6aadf7f00
+Message: feat: implement source-tag taxonomy (Reclassification Spec §5)
+The source-tag taxonomy is now live. The AGENT badge will only appear on fields where the LLM actually reasoned (agent:cashflow), while deterministic math-engine output is silent 
