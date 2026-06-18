@@ -2432,12 +2432,11 @@ router.patch('/:dealId/financials/override', requireAuth, requireCapability('edi
     }
 
     // Recalculate and return the updated deal financials
-    const { composeDealFinancials } = await import('../../services/financials-composer.service');
-    const result = await composeDealFinancials(pool, dealId, userId);
+    const data = await getDealFinancials(pool, dealId, 10);
 
     res.json({
       success: true,
-      data: result.data,
+      data,
       message: `${cellField === 'inPlace' ? 'In-place rent' : 'Market rent'} updated for ${rowType}`,
     });
   } catch (error: any) {

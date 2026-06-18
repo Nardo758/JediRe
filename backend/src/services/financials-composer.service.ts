@@ -451,79 +451,8 @@ export async function composeDealFinancials(
   // 12. Build capital stack
   const capitalStack = buildCapitalStack(purchasePrice, year1Data);
 
-  // 13. Load M07 subject traffic history (non-fatal â€” null when no rent roll uploaded)
-  let subjectHistory: SubjectHistoryRecord | null = null;
-  try {
-    const sthRes = await pool.query<{
-      tier: string;
-      snapshot_count: number;
-      coverage_months: string | null;
-      current_state: Record<string, unknown> | null;
-      observed_dynamics: Record<string, unknown> | null;
-      confidence_weights: Record<string, unknown>;
-      peer_collisions: Array<Record<string, unknown>>;
-      updated_at: string;
-    }>(
-      `SELECT tier, snapshot_count, coverage_months, current_state, observed_dynamics,
-              confidence_weights, peer_collisions, updated_at
-       FROM subject_traffic_history WHERE deal_id = $1`,
-      [dealId],
-    );
-    if (sthRes.rows.length > 0) {
-      const row = sthRes.rows[0];
-      // Load deal-scoped platform peer-set posteriors using scope degradation
-      // identical to CoefficientResolverService.loadPlatformCoefficients().
-      // This ensures the Peer SET column in the UI reflects the same peer
-      // context the resolver used when computing the blended effective value.
-      let peerSetValues: Record<string, number> = {};
-      try {
-        peerSetValues = await loadDealScopedPeerPosteriors(pool, deal);
-      } catch {
-        // Platform posteriors not available — peer column stays empty for non-collision rows
-      }
-      // M39: enrich peer_set_values with top-peer traffic/leasing metrics from
-      // the peer intelligence engine. Writes to canonical F9 keys consumed by
-      // ProjectionsTab and InlineAssumptionBlock:
-      //   renewal_rate, turnover_rate, days_vacant_median, rent_growth_yr1.
-      // Uses competitor recentMetrics as primary source, falls back to analog.
-      // recentMetrics are populated from the candidate's registered character.
-      // Non-fatal — engine may have no registered characters.
-      if (deal.submarket_id) {
-        try {
-          const m39AssetClass = deal.property_class ?? 'multifamily';
-          const m39Ranking = peerIntelligenceService.computeDualRanking(
-            deal.submarket_id, m39AssetClass, 1,
-          );
-          const topPeerMetrics =
-            m39Ranking.competitors[0]?.recentMetrics ??
-            m39Ranking.analogs[0]?.recentMetrics ??
-            null;
-          if (topPeerMetrics) {
-            if (topPeerMetrics.rentGrowth != null)        peerSetValues['rent_growth_yr1']   = topPeerMetrics.rentGrowth;
-            if (topPeerMetrics.renewalRate != null)       peerSetValues['renewal_rate']       = topPeerMetrics.renewalRate;
-            if (topPeerMetrics.turnoverRate != null)      peerSetValues['turnover_rate']      = topPeerMetrics.turnoverRate;
-            if (topPeerMetrics.daysVacantMedian != null)  peerSetValues['days_vacant_median'] = topPeerMetrics.daysVacantMedian;
-          }
-        } catch {
-          // M39 enrichment non-fatal
-        }
-      }
-      subjectHistory = {
-        tier:               row.tier as SubjectHistoryRecord['tier'],
-        snapshot_count:     row.snapshot_count,
-        coverage_months:    row.coverage_months != null ? parseFloat(row.coverage_months) : null,
-        current_state:      row.current_state ?? null,
-        observed_dynamics:  row.observed_dynamics ?? null,
-        confidence_weights: (row.confidence_weights ?? {}) as SubjectHistoryRecord['confidence_weights'],
-        peer_collisions:    (row.peer_collisions ?? []) as SubjectHistoryRecord['peer_collisions'],
-        peer_set_values:    peerSetValues,
-        updated_at:         row.updated_at,
-      };
-    }
-  } catch {
-    // subject_traffic_history table may not exist in older envs â€” graceful fallback
-    subjectHistory = null;
-  }
+  // 13. Load M07 subject traffic history (non-fatal — null when no rent roll uploaded)
+  let subjectHistory: SubjectHistoryRecord | null = await loadSubjectHistory(pool, dealId, dealData);
 
   const concessionRecognition = await computeConcessionRecognition(pool, dealId, dealData);
 
@@ -816,7 +745,7 @@ function computeMonthlyDetail(
   return result;
 }
 
-async function computeConcessionRecognition(
+export async function computeConcessionRecognition(
   pool: Pool,
   dealId: string,
   dealData: Record<string, any>,
@@ -1076,6 +1005,85 @@ async function loadDealScopedPeerPosteriors(
     }
   }
   return {};
+}
+
+export async function loadSubjectHistory(
+  pool: Pool,
+  dealId: string,
+  dealData: Record<string, any>,
+): Promise<SubjectHistoryRecord | null> {
+  let subjectHistory: SubjectHistoryRecord | null = null;
+  try {
+    const sthRes = await pool.query<{
+      tier: string;
+      snapshot_count: number;
+      coverage_months: string | null;
+      current_state: Record<string, unknown> | null;
+      observed_dynamics: Record<string, unknown> | null;
+      confidence_weights: Record<string, unknown>;
+      peer_collisions: Array<Record<string, unknown>>;
+      updated_at: string;
+    }>(
+      `SELECT tier, snapshot_count, coverage_months, current_state, observed_dynamics,
+              confidence_weights, peer_collisions, updated_at
+       FROM subject_traffic_history WHERE deal_id = $1`,
+      [dealId],
+    );
+    if (sthRes.rows.length > 0) {
+      const row = sthRes.rows[0];
+      let peerSetValues: Record<string, number> = {};
+      try {
+        const deal = {
+          submarket_id: dealData?.submarketId ?? null,
+          property_class: dealData?.property_class ?? null,
+          year_built: dealData?.year_built != null ? parseInt(dealData.year_built) : null,
+          msa_id: dealData?.msaId ?? null,
+        };
+        peerSetValues = await loadDealScopedPeerPosteriors(pool, deal);
+      } catch {
+        // Platform posteriors not available — peer column stays empty for non-collision rows
+      }
+      // M39: enrich peer_set_values with top-peer traffic/leasing metrics from
+      // the peer intelligence engine. Writes to canonical F9 keys consumed by
+      // ProjectionsTab and InlineAssumptionBlock.
+      const submarketId = dealData?.submarketId ?? null;
+      if (submarketId) {
+        try {
+          const m39AssetClass = dealData?.property_class ?? 'multifamily';
+          const m39Ranking = peerIntelligenceService.computeDualRanking(
+            submarketId, m39AssetClass, 1,
+          );
+          const topPeerMetrics =
+            m39Ranking.competitors[0]?.recentMetrics ??
+            m39Ranking.analogs[0]?.recentMetrics ??
+            null;
+          if (topPeerMetrics) {
+            if (topPeerMetrics.rentGrowth != null)        peerSetValues['rent_growth_yr1']   = topPeerMetrics.rentGrowth;
+            if (topPeerMetrics.renewalRate != null)       peerSetValues['renewal_rate']       = topPeerMetrics.renewalRate;
+            if (topPeerMetrics.turnoverRate != null)      peerSetValues['turnover_rate']      = topPeerMetrics.turnoverRate;
+            if (topPeerMetrics.daysVacantMedian != null)  peerSetValues['days_vacant_median'] = topPeerMetrics.daysVacantMedian;
+          }
+        } catch {
+          // M39 enrichment non-fatal
+        }
+      }
+      subjectHistory = {
+        tier:               row.tier as SubjectHistoryRecord['tier'],
+        snapshot_count:     row.snapshot_count,
+        coverage_months:    row.coverage_months != null ? parseFloat(row.coverage_months) : null,
+        current_state:      row.current_state ?? null,
+        observed_dynamics:  row.observed_dynamics ?? null,
+        confidence_weights: (row.confidence_weights ?? {}) as SubjectHistoryRecord['confidence_weights'],
+        peer_collisions:    (row.peer_collisions ?? []) as SubjectHistoryRecord['peer_collisions'],
+        peer_set_values:    peerSetValues,
+        updated_at:         row.updated_at,
+      };
+    }
+  } catch {
+    // subject_traffic_history table may not exist in older envs — graceful fallback
+    subjectHistory = null;
+  }
+  return subjectHistory;
 }
 
 export function composeOtherIncomeBreakdown(

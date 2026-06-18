@@ -21,7 +21,7 @@ import { deriveCounty } from './tax/resolver';
 import { kafkaProducer } from './kafka/kafka-producer.service';
 import { KAFKA_TOPICS } from './kafka/event-schemas';
 import { buildTaxContext } from './tax/compositeResolver';
-import { composeOtherIncomeBreakdown, loadTrailingActualsMap } from './financials-composer.service';
+import { composeOtherIncomeBreakdown, loadTrailingActualsMap, computeConcessionRecognition, loadExtractionRentRoll, loadSubjectHistory } from './financials-composer.service';
 import { projectProforma, type ProjectionYearResult } from './proforma/proforma-projection.service';
 import { provenanced } from '../types/provenanced-value';
 import { pickTemplateForStrategy, defaultTemplateForDealType } from './proforma/blueprint/index';
@@ -2028,6 +2028,14 @@ export interface DealFinancials {
    * Index 0 = Year 1, length = holdYears.
    */
   ltlSignals?: LTLSignals;
+  /** Concession recognition — migrated from composeDealFinancials (Engine B convergence) */
+  concessionRecognition?: import('../types/concessions').DealConcessionRecognition | null;
+  /** Year 1 concessions absolute value — derived from proforma.year1 concessions row. */
+  year1Concessions?: number | null;
+  /** Extraction rent roll payload — populated from deals.deal_data.extraction_rent_roll. */
+  extractionRentRoll?: import('./financials-composer.service').ExtractionRentRollPayload | null;
+  /** M07 subject traffic history — null until first rent roll uploaded for this deal. */
+  subjectHistory?: import('./financials-composer.service').SubjectHistoryRecord | null;
 }
 
 /**
@@ -5141,6 +5149,16 @@ export async function getDealFinancials(
     })(),
   } : null;
 
+  // ── Compute unique fields from financials-composer (Engine B convergence) ──
+  // Ensure dealData carries the resolved leasingCostTreatment so
+  // computeConcessionRecognition reads the correct source.
+  (dealData as any).leasing_cost_treatment = effectiveLct;
+  const concessionRecognition = await computeConcessionRecognition(pool, dealId, dealData);
+  const extractionRentRoll = await loadExtractionRentRoll(pool, dealId);
+  const subjectHistory = await loadSubjectHistory(pool, dealId, dealData);
+  const concRowResolved = year1Rows.find((r: { field: string }) => r.field === 'concessions')?.resolved ?? null;
+  const year1Concessions = concRowResolved != null ? Math.abs(concRowResolved) : null;
+
   return {
     dealId,
     dealName: deal.name,
@@ -5546,6 +5564,11 @@ export async function getDealFinancials(
     projections,
     capitalStructureDefaults,
     capitalStructureOptimization,
+    // Fields migrated from composeDealFinancials (Engine B convergence)
+    concessionRecognition,
+    year1Concessions,
+    extractionRentRoll,
+    subjectHistory,
   };
 }
 
