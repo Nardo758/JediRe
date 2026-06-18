@@ -1,2 +1,3 @@
 - [Highlands p2122 DB write patterns](highlands-p2122-db.md) — constraint gotchas for investors/capital_calls/deal_waterfalls when populating deal financials from source docs
 - [deal_files local path convention](deal-files-path.md) — file_path column is relative to backend/ (process.cwd()), not workspace root; files are in backend/uploads/deals/{dealId}/
+- [Scenario sync trigger wipe pattern](scenario-sync-trigger.md) — trg_sync_underwriting_scenario fully overwrites deal_assumptions.year1; any deal_assumptions write must also write to the active scenario or it will be erased on the next GET /financials

@@ -1737,6 +1737,25 @@ async function mutateUserLines(
     const next = mutator(current);
     year1.other_income_user_lines = next;
     recomputeDerived(year1);
+
+    // Write user lines into the active scenario first (non-destructive jsonb_set).
+    // The trg_sync_underwriting_scenario trigger does a FULL OVERWRITE of
+    // deal_assumptions.year1 with NEW.year1 every time a scenario row is touched
+    // (e.g. by seedCapitalStructureDefaults on every GET /financials). Without this
+    // write, the trigger would erase other_income_user_lines on the next GET.
+    // jsonb_set leaves all other scenario fields intact; the trigger then syncs
+    // the scenario's year1 (now including user lines) to deal_assumptions.
+    await client.query(
+      `UPDATE deal_underwriting_scenarios
+          SET year1      = jsonb_set(COALESCE(year1, '{}'), '{other_income_user_lines}', $1::jsonb),
+              updated_at = NOW()
+        WHERE deal_id = $2 AND is_active = TRUE AND deleted_at IS NULL`,
+      [JSON.stringify(next), dealId]
+    );
+
+    // Explicit deal_assumptions write follows the scenario update (and the
+    // trigger it fires) so this becomes the last write within the transaction —
+    // guaranteeing deal_assumptions.year1 is always the full year1 with user lines.
     await client.query(
       `UPDATE deal_assumptions SET year1 = $1::jsonb, updated_at = NOW() WHERE deal_id = $2`,
       [JSON.stringify(year1), dealId]

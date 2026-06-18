@@ -2223,10 +2223,14 @@ function recomputeDerived(seed: ProFormaYear1Seed): void {
     r(seed.landscaping) + customOpex;
 
   const ts = new Date().toISOString();
-  seed.net_rental_income.resolved = nri;
-  seed.net_rental_income.updated_at = ts;
-  seed.egi.resolved = egi;
-  seed.egi.updated_at = ts;
+  if (seed.net_rental_income) {
+    seed.net_rental_income.resolved = nri;
+    seed.net_rental_income.updated_at = ts;
+  }
+  if (seed.egi) {
+    seed.egi.resolved = egi;
+    seed.egi.updated_at = ts;
+  }
   // Re-sync per-unit display value from the breakdown sum so the input field
   // visible in the UI stays consistent with the per-category source of truth.
   // Skip if the user has an explicit override on `other_income_per_unit` —
@@ -2236,16 +2240,29 @@ function recomputeDerived(seed: ProFormaYear1Seed): void {
     seed.other_income_per_unit.resolved = otherIncome / unitCount;
     seed.other_income_per_unit.updated_at = ts;
   }
-  seed.total_opex.resolved = opex;
-  seed.total_opex.updated_at = ts;
+  // Sync other_income_dollars when the agent has previously written it.
+  // toDollarRow prefers other_income_dollars.resolved over the per-unit
+  // fallback, so without this sync user-line contributions are invisible
+  // in the GET /financials proforma rows (0 ?? fallback = 0).
+  if ((seed as any).other_income_dollars) {
+    (seed as any).other_income_dollars.resolved = otherIncome;
+    (seed as any).other_income_dollars.updated_at = ts;
+    (seed as any).other_income_dollars.resolution = 'computed';
+  }
+  if (seed.total_opex) {
+    seed.total_opex.resolved = opex;
+    seed.total_opex.updated_at = ts;
+  }
   const noi = egi - opex;
-  seed.noi.resolved = noi;
-  seed.noi.updated_at = ts;
+  if (seed.noi) {
+    seed.noi.resolved = noi;
+    seed.noi.updated_at = ts;
+  }
   // recomputeDerived is called after a user override, meaning at least one
   // leaf item has real data.  NOI is a computed field — update its resolution
   // label to 'computed' so downstream consumers (integrity checks, proforma
   // display) see the correct provenance and don't treat it as platform_fallback.
-  seed.noi.resolution = 'computed' as any;
+  if (seed.noi) seed.noi.resolution = 'computed' as any;
   // Re-sync derived per-unit NOI so the F11 panel + downstream consumers
   // stay consistent after user-line CRUD or any other layered override that
   // shifts the EGI / opex total.

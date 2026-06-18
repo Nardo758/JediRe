@@ -2189,7 +2189,7 @@ export async function getDealFinancials(
   holdYears = 10
 ): Promise<DealFinancials> {
   const { getTrafficProjection, fetchPeerBenchmark } = await import('./trafficToProFormaService');
-  const { ensureDealAssumptionsSeeded } = await import('./proforma-seeder.service');
+  const { ensureDealAssumptionsSeeded, computeUserLineAnnual } = await import('./proforma-seeder.service');
 
   // Auto-seed if year1 is missing — guarantees non-null data for deals with extraction capsules
   // No-op when year1 already exists; safe to call on every request
@@ -2532,6 +2532,31 @@ export async function getDealFinancials(
       if (_oiRow.rentRoll != null) _oiRow.rentRoll = Math.round(_oiRow.rentRoll / 12);
       // perUnit is derived from resolved (monthly/unit × units × 12 = annual).
       // The per-unit display stays based on resolved, which is already correct.
+    }
+  }
+
+  // ── Fold other_income_user_lines into other_income.resolved ───────────────
+  // User-added monthly lines (stored in year1.other_income_user_lines) must
+  // flow through to the displayed other_income row and therefore into EGI/NOI.
+  // We cannot rely on other_income_dollars.resolved because cashflow-agent runs
+  // overwrite it with their own computed value (agent: 0 / resolved: 0 when no
+  // AI-detected other income), erasing any user-line contributions. Instead we
+  // sum user lines here in the read path and add them on top of whatever
+  // other_income_dollars / other_income_per_unit already resolved.
+  {
+    const _rawUserLines = (year1Seed as Record<string, unknown>).other_income_user_lines;
+    if (Array.isArray(_rawUserLines) && _rawUserLines.length > 0) {
+      const _ulAnnual = (_rawUserLines as Array<{ monthly: number; adoption?: unknown }>)
+        .reduce((s, l) => s + computeUserLineAnnual(l as any, 0), 0);
+      if (_ulAnnual > 0) {
+        const _oiRow = year1Rows.find(r => r.field === 'other_income');
+        if (_oiRow) {
+          _oiRow.resolved = Math.round((_oiRow.resolved ?? 0) + _ulAnnual);
+          _oiRow.resolution = 'computed';
+          _oiRow.source     = 'computed';
+          if (totalUnits > 0) _oiRow.perUnit = Math.round(_oiRow.resolved / totalUnits);
+        }
+      }
     }
   }
 

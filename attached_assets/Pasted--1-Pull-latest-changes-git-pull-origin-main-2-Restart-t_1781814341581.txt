@@ -1,3 +1,11 @@
+# 1. Pull latest changes
+git pull origin main
+
+# 2. Restart the backend (so TypeScript changes are picked up)
+# (If using ts-node or nodemon, it should auto-reload. Otherwise restart manually.)
+
+# 3. Run the updated verification script
+cat > verify.sh << 'EOF'
 #!/bin/bash
 set -e
 BASE_URL="http://localhost:3000/api/v1"
@@ -29,3 +37,6 @@ POST2=$(curl -s -H "$AUTH_HEADER" "$BASE_URL/deals/$DEAL_ID/financials")
 node -e "const d=JSON.parse(process.argv[1]); const y1=d.proforma?.year1||[]; const g=f=>y1.find(r=>r.field===f)?.resolved??'NULL'; console.log({oi:g('other_income'), egi:g('egi'), noi:g('noi')});" "$POST2"
 
 echo "=== Done ==="
+EOF
+chmod +x verify.sh
+bash verify.sh
