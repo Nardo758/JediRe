@@ -4,7 +4,7 @@
 
 **Status:** Living document. Update protocol: append corrections to §6 as they're identified; update commitment status in §3 as work lands; update document index in §2 when new docs are added or commitments retire prior docs.
 
-**Last updated:** 2026-05-31
+**Last updated:** 2026-06-18
 
 ---
 
@@ -32,15 +32,27 @@ This document addresses all three. It's the answer to "where are we on the plan?
 | Piece C — Agent Synthesis Interface | `docs/architecture/vendor-market-data/piece-c-agent-synthesis.md` | Agent authorship, deal completeness framework | 2026-05-30 |
 | Piece D — Divergence as Quality Signal | `docs/architecture/vendor-market-data/piece-d-divergence-as-quality-signal.md` | Source reliability profiles, anomaly detection | 2026-05-30 |
 | Revised Calc-vs-Assumption | `docs/architecture/calculations-vs-assumptions.md` | F9 ProForma calculation vs assumption distinction; LayeredValue framing; required Layer 1 override wiring | 2026-05-31 (NOI bug diagnosis corrected) |
-| Property Plumbing Refactor | `docs/architecture/property-plumbing/refactor.md` | Property identity unification | (verify path) |
-| Property Plumbing Phases | `docs/architecture/property-plumbing/phases.md` | Phased migration | (verify path) |
-| Deal Capsule Vision | `docs/architecture/deal-capsule-vision.md` | Deal capsule structure, six stations | (verify path) |
-| Strategy-Aware Modules | `docs/architecture/strategy-aware-modules.md` | Strategy-aware framing across modules | (verify path) |
-| F-Key Triage | `docs/architecture/fkey-triage.md` | F-key surface prioritization and Wave A freshness pattern | (verify path) |
-| Master Plan for Replit | `docs/architecture/master-plan.md` | Workstream coordination | (verify path) |
-| Verification Protocol | `docs/architecture/verification-protocol.md` | P8 state-verification discipline | (verify path) |
-| Backtest Harness Spec | `docs/architecture/backtest-harness-spec.md` | Reasoning validation | (verify path) |
+| Property Plumbing — Field Mapping | `docs/architecture/property-plumbing-field-mapping.md` | Property identity field mapping | 2026-05-30 |
+| Property Plumbing — Implementation Map | `docs/architecture/property-plumbing-implementation-map.md` | Property plumbing implementation | 2026-05-30 |
+| Property Plumbing — Phase 1 Scope | `docs/architecture/property-plumbing-phase1-scope.md` | Property plumbing Phase 1 scope | 2026-05-30 |
+| Property Plumbing — Phase 1 Dispositions | `docs/architecture/property-plumbing-phase1-dispositions.md` | Property plumbing Phase 1 dispositions | 2026-05-30 |
+| Property Plumbing — Phase 2 Write Path | `docs/architecture/property-plumbing-phase2-write-path-inventory.md` | Property plumbing Phase 2 write paths | 2026-05-30 |
+| Property Plumbing — Reality Check | `docs/architecture/property-plumbing-reality-check.md` | Property plumbing reality check | 2026-05-30 |
+| Deal Capsule Blueprint | `docs/architecture/deal-capsule-blueprint.md` | Deal capsule structure, typed field inventory | 2026-04-29 |
+| Deal Capsule Table Analysis | `docs/architecture/deal-capsules-table-analysis.md` | Deal capsules table analysis | 2026-05-30 |
+| F9 Module Map | `docs/architecture/F9_MODULE_MAP.md` | Module inventory, storage architecture, gap inventory | 2026-05-30 |
+| Cross-Surface Read Consistency | `docs/architecture/cross-surface-read-consistency.md` | Canonical read paths, cross-surface convention | 2026-05-30 |
+| M09 ProForma Spec | `docs/architecture/M09_PROFORMA_SPEC.md` | Stabilized-bridge-aware Pro Forma | 2026-06-18 |
+| Corpus Evaluation Report | `docs/architecture/EVALUATION_REPORT.md` | Structured evaluation of architecture docs corpus | 2026-06-18 |
 | AI Compute Derivation Audit | `docs/architecture/ai-compute-derivation-audit.md` | Audit instrument for agent vs engine boundary | (note: framing should be re-evaluated against revised calc-vs-assumption doc) |
+| ~~Property Plumbing Refactor~~ | ~~`docs/architecture/property-plumbing/refactor.md`~~ | ~~(phantom — does not exist)~~ | — |
+| ~~Property Plumbing Phases~~ | ~~`docs/architecture/property-plumbing/phases.md`~~ | ~~(phantom — does not exist)~~ | — |
+| ~~Deal Capsule Vision~~ | ~~`docs/architecture/deal-capsule-vision.md`~~ | ~~(phantom — does not exist)~~ | — |
+| ~~Strategy-Aware Modules~~ | ~~`docs/architecture/strategy-aware-modules.md`~~ | ~~(phantom — does not exist)~~ | — |
+| ~~F-Key Triage~~ | ~~`docs/architecture/fkey-triage.md`~~ | ~~(phantom — does not exist)~~ | — |
+| ~~Master Plan for Replit~~ | ~~`docs/architecture/master-plan.md`~~ | ~~(phantom — does not exist)~~ | — |
+| ~~Verification Protocol~~ | ~~`docs/architecture/verification-protocol.md`~~ | ~~(phantom — does not exist)~~ | — |
+| ~~Backtest Harness Spec~~ | ~~`docs/architecture/backtest-harness-spec.md`~~ | ~~(phantom — does not exist)~~ | — |
 
 ### Audit artifacts (informational, not architectural)
 
@@ -72,7 +84,7 @@ Corpus-sweep audit (2026-05-31) confirmed these six documents existed only in co
 | `docs/architecture/vendor-market-data/piece-d-divergence-as-quality-signal.md` | Written 2026-05-31 |
 | `docs/architecture/calculations-vs-assumptions.md` | Written 2026-05-31 (NOI bug diagnosis corrected; agent layer framing updated) |
 
-Additionally, seven entries in "Active canonical documents" have "(verify path)" status. Corpus-sweep confirmed most do not exist at stated paths. Actual confirmed paths for surviving docs: `docs/architecture/deal-capsule-blueprint.md` (Deal Capsule), `docs/architecture/property-plumbing-*.md` (Property Plumbing, multiple files — not the single refactor.md/phases.md structure shown above).
+Additionally, seven entries in "Active canonical documents" had "(verify path)" status. Corpus-sweep confirmed most did not exist at stated paths. Actual confirmed paths for surviving docs: `docs/architecture/deal-capsule-blueprint.md` (Deal Capsule), `docs/architecture/property-plumbing-*.md` (Property Plumbing, multiple files — not the single refactor.md/phases.md structure shown above). **Resolved 2026-06-18:** All phantom entries removed from §2; replaced with verified existing documents. See §6 entry for date.
 
 ---
 
@@ -328,6 +340,13 @@ Tracking when documents have been corrected against audit findings or operator c
 - **§3 Piece B `getFieldValue()` status corrected** from Aspirational to Operational — service verified operational in corpus-sweep audit.
 - **§3 inferred claims tagged** — override field counts (~7/~3/~5), 38 EMPTY fields, 10+ surfaces silently degrade, backend→badge API path all tagged **[inferred from prior audit]**.
 - **#1607 (T-CONF-1) status updated** to Merged in §5.
+
+### 2026-06-18 (documentation cleanup — dead code deletion + corpus entry point)
+
+- **Three confirmed dead files deleted.** `frontend/src/pages/DealPage.tsx`, `DealPageEnhanced.tsx`, and `DealView.tsx` removed. F5-dead-code-delete-list.md (Task #1332) had verified zero live imports and zero route renders for all three. Files imported deleted StrategySection (already deleted in Task #1331) and were fully tree-shaken out of the bundle. Commit: `44756a73f`.
+- **Phantom document entries removed from §2 Active canonical documents.** Seven entries with "(verify path)" status (`property-plumbing/refactor.md`, `property-plumbing/phases.md`, `deal-capsule-vision.md`, `strategy-aware-modules.md`, `fkey-triage.md`, `master-plan.md`, `verification-protocol.md`, `backtest-harness-spec.md`) confirmed non-existent in repo. Replaced with actual existing documents: `property-plumbing-*.md` (6 files), `deal-capsule-blueprint.md`, `deal-capsules-table-analysis.md`, `F9_MODULE_MAP.md`, `cross-surface-read-consistency.md`, `M09_PROFORMA_SPEC.md`, and `EVALUATION_REPORT.md`.
+- **Architecture documentation entry point created.** `docs/architecture/README.md` added as single entry point for the 60-document corpus. Categorizes all docs into ADRs, Core Architecture, Audit Artifacts, Specifications, Vendor Market Data, Property Plumbing, and Other Reference. Includes "How to Find What You Need" lookup table and maintenance protocol.
+- **Corpus evaluation report created.** `docs/architecture/EVALUATION_REPORT.md` — structured evaluation of all 60 documents with health scores, critical gaps, implementation drift inventory, and prioritized recommendations.
 
 ### 2026-05-31 (Pro Forma Window architecture corrections)
 
