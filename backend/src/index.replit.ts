@@ -11,6 +11,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
 import { requireAuth, optionalAuth } from './middleware/auth';
+import { rateLimiter } from './middleware/rateLimiter';
 import { getPool } from './database/connection';
 import { logger } from './utils/logger';
 import { emailSyncScheduler } from './services/email-sync-scheduler';
@@ -76,7 +77,10 @@ function isOriginAllowed(origin: string | undefined): boolean {
 
 const io = new Server(httpServer, {
   cors: {
-    origin: true,
+    origin: (origin, callback) => {
+      if (isOriginAllowed(origin)) return callback(null, true);
+      return callback(new Error('Origin not allowed by CORS'));
+    },
     methods: ['GET', 'POST'],
     credentials: true,
   }
@@ -94,7 +98,10 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    if (isOriginAllowed(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 }));
@@ -126,6 +133,10 @@ app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
+
+// P0 Security: Rate limiting — prevents brute-force and API abuse.
+// Mounted after body parsers but before all protected routes.
+app.use(rateLimiter);
 
 app.use('/health', healthRouter);
 app.use('/api/v1/auth', authRouter);

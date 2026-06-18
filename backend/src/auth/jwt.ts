@@ -31,13 +31,29 @@ export interface TokenPair {
 }
 
 function getJwtSecret(): string {
-  return process.env.JWT_SECRET || 'your-secret-key-change-this';
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET is required in production. Set it in your environment.');
+    }
+    logger.warn('JWT_SECRET not set in environment. Using a non-secure fallback for development only. NEVER deploy without JWT_SECRET.');
+    return 'dev-insecure-fallback-never-deploy';
+  }
+  return secret;
 }
 function getJwtExpiresIn(): string {
   return process.env.JWT_EXPIRES_IN || '7d';
 }
 function getRefreshSecret(): string {
-  return process.env.JWT_REFRESH_SECRET || 'refresh-secret';
+  const secret = process.env.JWT_REFRESH_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_REFRESH_SECRET is required in production. Set it in your environment.');
+    }
+    logger.warn('JWT_REFRESH_SECRET not set in environment. Using a non-secure fallback for development only.');
+    return 'dev-insecure-refresh-never-deploy';
+  }
+  return secret;
 }
 function getRefreshExpiresIn(): string {
   return process.env.JWT_REFRESH_EXPIRES_IN || '30d';
