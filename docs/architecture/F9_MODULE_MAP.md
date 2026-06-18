@@ -22,16 +22,16 @@ F9_DATA_FLOW_AUDIT_PHASE1.md, F9_TIER1_BLOCKERS_AUDIT.md, M09_PROFORMA_SPEC.md)
 | Taxes | `financial-engine/TaxesTab.tsx` | Engine A |
 | Sources & Uses | `financial-engine/SourcesUsesTab.tsx` | Engine A |
 | Unit Mix | `financial-engine/UnitMixTab.tsx` | Engine A |
-| Property Card (legacy) | `components/deal/sections/ProFormaTab.tsx` | Engine B |
+| Property Card (legacy) | `components/deal/sections/ProFormaTab.tsx` | ~~Engine B~~ — deprecated; surface should migrate to Engine A or be removed |
 
 ### 1.2 Backend computation engines
 
-| ID | Entry point | Route | Reads from |
-|---|---|---|---|
-| **Engine A** (F9 primary) | `getDealFinancials()` in `proforma-adjustment.service.ts` | `GET /api/v1/deal-assumptions/:dealId` | `deal_assumptions.year1` JSONB + `proforma_assumptions` scalars |
-| **Engine B** (financials / property card) | `composeDealFinancials()` in `financials-composer.service.ts` | `GET /api/v1/deals/:dealId/financials` | `deal_assumptions.year1` JSONB only |
-| **Engine C** (LLM / deterministic) | `financialModelEngine.buildModel()` | `POST /api/v1/financial-model` | LLM ProFormaAssumptions envelope |
-| **Engine D** (orphaned Tier 1–3) | `projectProforma()` in `proforma-projection.service.ts` | **none** — test-only | ProjectionInputs struct |
+| ID | Entry point | Route | Reads from | Status |
+|---|---|---|---|---|
+| **Engine A** (F9 primary — canonical) | `getDealFinancials()` in `proforma-adjustment.service.ts` | `GET /api/v1/deals/:dealId/financials` | `deal_assumptions.year1` JSONB + `proforma_assumptions` scalars + traffic projections | **Active** — sole production engine |
+| **Engine B** (financials / property card) | `composeDealFinancials()` in `financials-composer.service.ts` | ~~`GET /api/v1/deals/:dealId/financials`~~ | `deal_assumptions.year1` JSONB only | **Deprecated 2026-06-18** — no production callers; unique fields (`concessionRecognition`, `extractionRentRoll`, `subjectHistory`) migrated to Engine A; body retained as reference |
+| **Engine C** (LLM / deterministic) | `financialModelEngine.buildModel()` | `POST /api/v1/financial-model` | LLM ProFormaAssumptions envelope | Active — agent pipeline |
+| **Engine D** (orphaned Tier 1–3) | `projectProforma()` in `proforma-projection.service.ts` | **none** — test-only | ProjectionInputs struct | Orphaned — no production callers |
 
 ### 1.3 Backend seeder / writer services
 
@@ -264,7 +264,7 @@ assumption on the same deal.
 > - Engine D (Tier 1–3 projection service) is the Phase 2 growth wiring target
 >   (see GAP-06); Phase 2 wires it INTO Engine A.
 
-**Status:** RESOLVED — architectural decision documented.
+**Status:** ✅ FULLY RESOLVED 2026-06-18 — Engine B deprecated. Unique fields (`concessionRecognition`, `extractionRentRoll`, `subjectHistory`) migrated to Engine A. `PATCH /financials/override` now calls `getDealFinancials` directly. `composeDealFinancials` has no production callers; body retained as reference.
 
 ---
 
@@ -543,20 +543,20 @@ DebtTab rate-strategy surface. Defer to an M11 completion task.
 
 | Gap | Prior ID | Classification | Resolution |
 |---|---|---|---|
-| GAP-01 Dual-engine write target | PF-01 | **PHASE 1 BLOCKER** | ✅ RESOLVED — Engine A is the exclusive Phase 2 target |
+| GAP-01 Dual-engine write target | PF-01 | **PHASE 1 BLOCKER** | ✅ FULLY RESOLVED 2026-06-18 — Engine B deprecated; unique fields migrated to Engine A; PATCH endpoint now calls Engine A |
 | GAP-02 Bad debt formula (GPR vs EGI) | PF-03 | **PHASE 1 BLOCKER** | ✅ RESOLVED — EGI-based is canonical; display fix tagged for Phase 2 |
 | GAP-03 No transaction boundary | PF-04 | PHASE 2 CONCERN | Mitigate via advisory locks in Phase 2 implementation |
 | GAP-04 `landscaping` phantom row | PF-10 | EXPLICITLY DEFERRED | Display-only; no derivation impact |
 | GAP-05 LIUS fully orphaned | PF-06 | PHASE 2 CONCERN | Wire `runLIUSEngine` from Engine A (Phase 2 core deliverable) |
 | GAP-06 Tier 1–3 growth engine not wired | PF-07 | PHASE 2 CONCERN | Wire Engine D into Engine A; run calibration backtests first |
 | GAP-07 Dev dealMode bridge default | PF-D1 | PHASE 2 CONCERN | Phase 2 derivation must handle `project_type` branching |
-| GAP-08 OperatorStance only in Engine B | PF-16 | PHASE 2 CONCERN | Apply stance concession modulation in Engine A post-derivation |
+| GAP-08 OperatorStance only in Engine B | PF-16 | PHASE 2 CONCERN | ✅ RESOLVED — Stance concession modulation (effectiveLct) already in Engine A; verified 2026-06-18 |
 | GAP-09 Templates never applied | PF-12 | EXPLICITLY DEFERRED | Product feature; no derivation dependency |
 | GAP-10 Concessions = 0 in Engine C | PF-13 | EXPLICITLY DEFERRED | Engine C only; no Phase 2 Engine A impact |
 | GAP-11 DebtTab mock data | PF-MD-1 | EXPLICITLY DEFERRED | M11 / DebtTab surface; no Phase 2 Engine A impact |
 
 **Phase 1 blockers:** 2 — both RESOLVED  
-**Phase 2 concerns:** 5 — all acknowledged; addressed during derivation work  
+**Phase 2 concerns:** 4 — all acknowledged; 1 resolved (GAP-08)  
 **Explicitly deferred:** 4 — no Phase 2 dependency confirmed
 
 ---
