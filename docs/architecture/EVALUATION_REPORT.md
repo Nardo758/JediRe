@@ -197,11 +197,7 @@ The file is named `ADR-004-authoritative-signal-fallback.md` but the ADR refers 
    - Which findings are superseded by newer docs
    This prevents the "archaeology" problem described in `ARCHITECTURE_RECONCILIATION.md` §1.
 
-5. **Resolve the Engine A / Engine B divergence.** This is the most significant architectural debt. Options:
-   - Option A: Merge Engine B into Engine A (make `composeDealFinancials` a thin wrapper around `getDealFinancials`)
-   - Option B: Define a shared response contract and enforce it with a test
-   - Option C: Deprecate Engine B and migrate all consumers to Engine A
-   The right choice depends on consumer inventory, but **documented indecision is still debt**.
+5. **~~Resolve the Engine A / Engine B divergence.~~** ✅ **RESOLVED 2026-06-18.** Implemented Option C (deprecate Engine B, migrate all consumers to Engine A). `composeDealFinancials` unique fields (`concessionRecognition`, `extractionRentRoll`, `subjectHistory`) migrated to `getDealFinancials`. `PATCH /financials/override` now calls `getDealFinancials` directly. `composeDealFinancials` has no production callers; body retained as reference. See commit `68f0ab411`.
 
 6. **Create a "Documented vs Implemented" tracking section** in `ARCHITECTURE_RECONCILIATION.md`. List:
    - LIUS engine (documented: yes, implemented: no, callers: 0)
@@ -233,14 +229,14 @@ The file is named `ADR-004-authoritative-signal-fallback.md` but the ADR refers 
 | **Classification consistency** | A | Shared taxonomies (SINGLE_WRITER, LAYERED, WIRED, etc.) |
 | **ADR quality** | A | Real incidents, clear decisions, explicit consequences |
 | **Coverage completeness** | B+ | Most subsystems are documented; some gaps in M06, M12, M22 |
-| **Implementation fidelity** | C+ | Docs often describe systems that are not fully implemented |
-| **Corpus maintenance** | C | Stale links, unverified paths, audit docs not retired |
-| **Entry point clarity** | C- | 60 files, no clear "start here" document |
-| **Dead code tracking** | B | Good at identifying dead code, not good at removing it |
-| **Fix backlog hygiene** | C+ | Large backlogs (EVENT_WIRING, DORMANT) with slow progress |
+| **Implementation fidelity** | B- | Docs often describe systems that are not fully implemented; **Engine A/B divergence resolved 2026-06-18** |
+| **Corpus maintenance** | B- | Stale links fixed, unverified paths resolved, audit docs still need retirement pass |
+| **Entry point clarity** | B | README.md created 2026-06-18 as single entry point |
+| **Dead code tracking** | B+ | 3 dead files deleted 2026-06-18; good at identifying and now removing |
+| **Fix backlog hygiene** | B- | Large backlogs remain (EVENT_WIRING, DORMANT) but Engine A/B resolved |
 | **Cross-reference accuracy** | B | Some stale cross-references (ADR-003 missing ADR-004, f9 vs M09) |
 
-**Overall: B+** — The documentation is genuinely good forensics. The risk is that it becomes a museum of unimplemented architecture.
+**Overall: B+** — The documentation is genuinely good forensics. The risk of "museum of unimplemented architecture" is receding: Engine A/B divergence resolved, dead code deleted, README entry point created, stale paths reconciled.
 
 ---
 
@@ -248,7 +244,7 @@ The file is named `ADR-004-authoritative-signal-fallback.md` but the ADR refers 
 
 For a new developer or a future audit session, read in this order:
 
-1. **`docs/architecture/README.md`** (doesn't exist yet — create it)
+1. **`docs/architecture/README.md`** — single entry point for the 60-document corpus (created 2026-06-18)
 2. **`docs/architecture/ADR-001-layered-value.md`** — the core pattern of the platform
 3. **`docs/architecture/F9_MODULE_MAP.md`** — the system overview (617 lines, worth it)
 4. **`docs/architecture/cross-surface-read-consistency.md`** — the canonical read convention
