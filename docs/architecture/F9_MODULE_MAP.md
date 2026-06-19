@@ -238,19 +238,18 @@ These gaps were open in prior audits and have since been closed:
 Two independent production engines serve Pro Forma data on different routes
 with different response shapes and different business logic:
 - Engine A: `GET /api/v1/deal-assumptions/:dealId` (F9 tabs)
-- Engine B: `GET /api/v1/deals/:dealId/financials` (property card / legacy)
+- ~~Engine B: `GET /api/v1/deals/:dealId/financials` (property card / legacy)~~ — **deleted 2026-06-18**
 
 A fix or derivation applied to Engine A's data contract is not visible to
-Engine B consumers, and vice versa. Phase 2 derivation writes LayeredValue
-results to `deal_assumptions.year1` — but there is no documented decision
-about which engine is the authoritative Phase 2 target, or how Engine B
+~~Engine B consumers, and vice versa.~~ Phase 2 derivation writes LayeredValue
+results to `deal_assumptions.year1` — Engine A is the sole authoritative Phase 2 target.
 consumers receive derived values.
 
-**Phase 2 risk:**
-If Phase 2 derivation writes to Engine A's storage but doesn't account for
+**Phase 2 risk (historical — resolved 2026-06-18):**
+~~If Phase 2 derivation writes to Engine A's storage but doesn't account for
 Engine B, the property card and any Engine B surface will show stale
-pre-derivation values. This creates two divergent displays of the same
-assumption on the same deal.
+pre-derivation values.~~ Engine B has been deleted. All surfaces now read from
+Engine A. Phase 2 derivation targets `deal_assumptions.year1` exclusively.
 
 **RESOLUTION (Phase 1 decision — documented here):**
 
@@ -258,8 +257,9 @@ assumption on the same deal.
 >
 > - Phase 2 derivation writes results to `deal_assumptions.year1` LayeredValue
 >   JSONB via the seeder / override path. This is Engine A's authoritative source.
-> - Engine B reads the same `deal_assumptions.year1` JSONB, so derived values
->   propagate to Engine B automatically on the next `/financials` fetch.
+> - ~~Engine B reads the same `deal_assumptions.year1` JSONB, so derived values
+>   propagate to Engine B automatically on the next `/financials` fetch.~~
+>   Engine B deleted 2026-06-18. All surfaces now read from Engine A.
 > - Engine C (LLM path) operates independently; Phase 2 does not target Engine C.
 > - Engine D (Tier 1–3 projection service) is the Phase 2 growth wiring target
 >   (see GAP-06); Phase 2 wires it INTO Engine A.
@@ -433,7 +433,7 @@ INV-7 as hard errors instead of warnings). A development deal with negative
 Y1 NOI can fail Engine C with a hard error when a warning is the correct
 response.
 
-Engine A and Engine B do not branch on deal type at all — OSRow assembly
+Engine A does not branch on deal type at all — OSRow assembly
 is identical for acquisition, development, and redevelopment.
 
 **Phase 2 concern:** Phase 2 derivation must produce deal-type-specific
@@ -454,8 +454,7 @@ logic. Engine C bridge fix is a separate S-size task.
 **Audit source:** `PROFORMA_SUBSYSTEM_AUDIT.md` §PF-16, §6.2
 
 **Finding:**
-OperatorStance `leasingCostTreatment` modulates concessions in Engine B only
-(`composeDealFinancials` applies CAPITALIZED → 0, HYBRID → partial reduction).
+OperatorStance `leasingCostTreatment` modulates concessions in Engine A via `applyStanceToFinancials` (`CAPITALIZED` → 0, `HYBRID` → partial reduction). Previously Engine B only; resolved 2026-06-18.
 Engine A (`getDealFinancials`) always returns raw seeded `concessions_pct`
 regardless of stance. The 15 OperatorStance modulation rules write to
 `proforma_assumptions.*_current` via `reblend()` — those flow into Engine A's
@@ -500,7 +499,7 @@ a derivation prerequisite. Defer to a product feature task after Phase 2.
 **Finding:**
 `proforma-assumptions-bridge.ts:241`: `const concessions = 0`. The Engine C
 (LLM / deterministic) path always models zero concessions regardless of seed
-data. Engine A and Engine B correctly resolve `concessions_pct` from the
+data. Engine A correctly resolves `concessions_pct` from the
 LayeredValue seed.
 
 **Deferral rationale:** Engine C is the LLM path, not the F9 primary path.
@@ -531,8 +530,8 @@ fictional values from this import:
 Lock vs float recommendation, NPV figures, spread analysis, and rate forecast
 shown to the operator are not computed from any deal's actual financing terms.
 
-**Deferral rationale:** DebtTab is served by Engine B / M11 Capital Structure
-Engine. Phase 2 derivation targets Engine A's LayeredValue fields, not the
+**Deferral rationale:** DebtTab is served by the M11 Capital Structure
+Engine, not Engine A. Phase 2 derivation targets Engine A's LayeredValue fields, not the
 DebtTab rate-strategy surface. Defer to an M11 completion task.
 
 **Status:** DEFERRED — M11 / DebtTab UX gap; no Phase 2 Engine A impact.
@@ -571,8 +570,10 @@ PROFORMA_MATH_AUDIT.md, F9_DATA_FLOW_AUDIT_PHASE1.md, F9_TIER1_BLOCKERS_AUDIT.md
 
 Both Phase 1 blockers are resolved as architectural decisions with no code change required:
 
-1. **GAP-01** (dual-engine): Engine A is the Phase 2 write target. Engine B reads the same
-   `deal_assumptions.year1` JSONB and receives derived values automatically.
+1. **GAP-01** (dual-engine): ~~Engine A is the Phase 2 write target. Engine B reads the same
+   `deal_assumptions.year1` JSONB and receives derived values automatically.~~
+   **Resolved 2026-06-18.** Engine B deleted. Engine A is the sole Phase 2 write
+   target. All surfaces read from `deal_assumptions.year1` exclusively.
 
 2. **GAP-02** (bad debt formula): EGI-based formula is canonical. Phase 2 derivation targets
    EGI-based `bad_debt_pct`. The display fix in `ProFormaSummaryTab` (change multiplier from
