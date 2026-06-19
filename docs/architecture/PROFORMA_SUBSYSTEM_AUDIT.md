@@ -52,7 +52,7 @@ These four findings have the highest consequence for deal accuracy and trust:
 | Table | Convention | Live readers |
 |---|---|---|
 | `proforma_assumptions` (5 scalar pairs) | **Whole-pct** (3.0 = 3 %) | `getDealFinancials` (÷ 100 at read) |
-| `deal_assumptions.year1` JSONB | **Decimal** (0.03 = 3 %) LayeredValue tree | Both live engines |
+| `deal_assumptions.year1` JSONB | **Decimal** (0.03 = 3 %) LayeredValue tree | Engine A only |
 | `deal_assumptions` scalar cols | **Whole-pct** (5.00 = 5 %) | **Neither engine** — DISPLAY_ONLY |
 | `proforma_templates` | **Decimal** (0.03 = 3 %) | **Neither engine** — never applied to deals |
 | `deal_versions` | n/a — blob snapshot | LLM path (`financial-model.routes.ts`) only |
@@ -89,7 +89,7 @@ These four findings have the highest consequence for deal accuracy and trust:
 
 ### 1.1 `financials-composer.service.ts` (deleted Engine B — reference only)
 
-**File:** `backend/src/services/financials-composer.service.ts` (850 lines after deletion)  
+**File:** `backend/src/services/financials-composer.service.ts` (843 lines after deletion)  
 **Route:** ~~`GET /api/v1/deals/:dealId/financials`~~ — deleted 2026-06-18  
 **Unit tests:** None found in test scan  
 
@@ -478,7 +478,7 @@ All 21 LIUS line schemas have `applicableDealTypes` that include acquisition, de
 | TaxesTab | `financial-engine/TaxesTab.tsx` | Engine A: `data.taxes` | WIRED |
 | S&U Tab | `financial-engine/SourcesUsesTab.tsx` | Engine A: `data.sourcesUses` | WIRED |
 | UnitMixTab | `financial-engine/UnitMixTab.tsx` | Engine A: `data.rentRollSummary` | WIRED (GPR flag gap — PF-08) |
-| `ProFormaTab.tsx` (legacy) | `components/deal/sections/ProFormaTab.tsx` | ~~Engine B: `GET /api/v1/deals/:dealId/financials`~~ | ~~WIRED (Engine B)~~ — **Deleted 2026-06-18** |
+| `ProFormaTab.tsx` (legacy) | `components/deal/sections/ProFormaTab.tsx` | ~~Engine B: `GET /api/v1/deals/:dealId/financials`~~ | ORPHANED — file exists but no live render caller (2026-06-18) |
 | `FinancialSection.tsx` (active) | `components/deal/sections/FinancialSection.tsx` | Engine A (confirmed at ProFormaSummaryTab) | WIRED |
 | `FinancialSection.tsx.backup` | `.backup` — NOT compiled | `financialMockData` import in backup | N/A — inactive |
 
@@ -695,23 +695,25 @@ In `CTRL_ORDER` display list but absent from seeder `OPEX_FIELDS`. T12 landscapi
 
 | ID | Description | Priority | Effort | Phase | Engine(s) |
 |---|---|---|---|---|---|
-| PF-01 | Dual-engine — no shared contract | P0 | L | A | A, B |
+| PF-01 | ~~Dual-engine — no shared contract~~ | P0 | L | A | ~~A, B~~ | **Resolved 2026-06-18** — Engine B deleted |
+| PF-02 | Per-year overrides never consumed | P0 | M | A | A |
 | PF-02 | Per-year overrides never consumed | P0 | M | A | A |
 | PF-03 | Bad debt display uses GPR not EGI | P0 | S | A | A |
-| PF-04 | No transaction boundary between tables | P1 | M | A | A, B |
+| PF-04 | No transaction boundary between tables | P1 | M | A | A |
 | PF-05 | Whole-pct / decimal split in proforma_assumptions | P1 | S | A | A |
-| PF-06 | All 21 LIUS lines bypassed — silent | P1 | L | A | A, B, C |
-| PF-07 | Tier 1–3 layered growth engine never wired | P1 | L | A | A, B |
-| PF-08 | Unit mix GPR flag has no UI toggle | P1 | S | A | A, B |
-| PF-09 | Other income stale-cache 12× inflation | P1 | S | A | A, B |
+| PF-06 | All 21 LIUS lines bypassed — silent | P1 | L | A | A, C |
+| PF-07 | Tier 1–3 layered growth engine never wired | P1 | L | A | A |
+| PF-08 | Unit mix GPR flag has no UI toggle | P1 | S | A | A |
+| PF-09 | Other income stale-cache 12× inflation | P1 | S | A | A |
 | PF-D1 | Development dealMode defaults to 'existing' | P2 | S | A | C |
-| PF-10 | `landscaping` phantom row | P2 | S | A | A, B |
+| PF-10 | `landscaping` phantom row | P2 | S | A | A |
 | PF-11 | No UI for LP/GP split (90/10 hardcoded) | P2 | S | A | A |
-| PF-12 | ProForma templates never applied to deals | P2 | M | A | A, B |
+| PF-12 | ProForma templates never applied to deals | P2 | M | A | A |
 | PF-13 | Concessions hardcoded 0 in LLM bridge | P2 | S | A | C |
-| PF-MD-1 | capitalStructureMockData active import in DebtTab | P3 | S | A | B |
+| PF-MD-1 | capitalStructureMockData active import in DebtTab | P3 | S | A | — |
 | PF-14 | deal_assumptions scalar cols are dead weight | P3 | S | A | — |
-| PF-15 | Traffic projection all-null stub | P3 | L | B | B |
+| PF-15 | Traffic projection all-null stub | P3 | L | B | — | **Resolved 2026-06-18** — Engine B deleted |
+| PF-16 | ~~OperatorStance concession modulation missing in Engine A~~ | P3 | S | A | A | **Resolved 2026-06-18** — now runs via `applyStanceToFinancials` |
 | PF-16 | OperatorStance concession modulation missing in Engine A | P3 | S | A | A |
 
 ---
