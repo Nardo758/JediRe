@@ -197,7 +197,7 @@ The file is named `ADR-004-authoritative-signal-fallback.md` but the ADR refers 
    - Which findings are superseded by newer docs
    This prevents the "archaeology" problem described in `ARCHITECTURE_RECONCILIATION.md` §1.
 
-5. **~~Resolve the Engine A / Engine B divergence.~~** ✅ **RESOLVED 2026-06-18.** Implemented Option C (deprecate Engine B, migrate all consumers to Engine A). `composeDealFinancials` unique fields (`concessionRecognition`, `extractionRentRoll`, `subjectHistory`) migrated to `getDealFinancials`. `PATCH /financials/override` now calls `getDealFinancials` directly. `composeDealFinancials` has no production callers; body retained as reference. See commit `68f0ab411`.
+5. **~~Resolve the Engine A / Engine B divergence.~~** ✅ **RESOLVED 2026-06-18.** Implemented Option C (deprecate Engine B, migrate all consumers to Engine A). `composeDealFinancials` unique fields (`concessionRecognition`, `extractionRentRoll`, `subjectHistory`) migrated to `getDealFinancials`. `PATCH /financials/override` now calls `getDealFinancials` directly. `composeDealFinancials` and all internal helpers deleted from `financials-composer.service.ts` (commit `d1bbf23a7`).
 
 6. **Create a "Documented vs Implemented" tracking section** in `ARCHITECTURE_RECONCILIATION.md`. List:
    - LIUS engine (documented: yes, implemented: no, callers: 0)

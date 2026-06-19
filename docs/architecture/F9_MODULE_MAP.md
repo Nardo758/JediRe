@@ -29,7 +29,7 @@ F9_DATA_FLOW_AUDIT_PHASE1.md, F9_TIER1_BLOCKERS_AUDIT.md, M09_PROFORMA_SPEC.md)
 | ID | Entry point | Route | Reads from | Status |
 |---|---|---|---|---|
 | **Engine A** (F9 primary — canonical) | `getDealFinancials()` in `proforma-adjustment.service.ts` | `GET /api/v1/deals/:dealId/financials` | `deal_assumptions.year1` JSONB + `proforma_assumptions` scalars + traffic projections | **Active** — sole production engine |
-| **Engine B** (financials / property card) | `composeDealFinancials()` in `financials-composer.service.ts` | ~~`GET /api/v1/deals/:dealId/financials`~~ | `deal_assumptions.year1` JSONB only | **Deprecated 2026-06-18** — no production callers; unique fields (`concessionRecognition`, `extractionRentRoll`, `subjectHistory`) migrated to Engine A; body retained as reference |
+| **Engine B** (financials / property card) | ~~`composeDealFinancials()`~~ deleted from `financials-composer.service.ts` | ~~`GET /api/v1/deals/:dealId/financials`~~ | — | **Deleted 2026-06-18** — unique fields migrated to Engine A; body and all helpers removed (commit `d1bbf23a7`) |
 | **Engine C** (LLM / deterministic) | `financialModelEngine.buildModel()` | `POST /api/v1/financial-model` | LLM ProFormaAssumptions envelope | Active — agent pipeline |
 | **Engine D** (orphaned Tier 1–3) | `projectProforma()` in `proforma-projection.service.ts` | **none** — test-only | ProjectionInputs struct | Orphaned — no production callers |
 
@@ -264,7 +264,7 @@ assumption on the same deal.
 > - Engine D (Tier 1–3 projection service) is the Phase 2 growth wiring target
 >   (see GAP-06); Phase 2 wires it INTO Engine A.
 
-**Status:** ✅ FULLY RESOLVED 2026-06-18 — Engine B deprecated. Unique fields (`concessionRecognition`, `extractionRentRoll`, `subjectHistory`) migrated to Engine A. `PATCH /financials/override` now calls `getDealFinancials` directly. `composeDealFinancials` has no production callers; body retained as reference.
+**Status:** ✅ FULLY RESOLVED 2026-06-18 — Engine B deleted. Unique fields (`concessionRecognition`, `extractionRentRoll`, `subjectHistory`) migrated to Engine A. `PATCH /financials/override` now calls `getDealFinancials` directly. `composeDealFinancials` and all internal helpers removed from `financials-composer.service.ts` (commit `d1bbf23a7`).
 
 ---
 

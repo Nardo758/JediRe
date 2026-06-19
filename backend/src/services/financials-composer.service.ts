@@ -786,13 +786,6 @@ export async function loadTrailingActualsMap(
 // (sourced from OM extraction) so the synthesized Default unit-mix row carries
 // real units / avg rent / occupancy / avg SF instead of all-null cells.
 
-export interface CapsuleAggregates {
-  units: number | null;
-  avgRent: number | null;
-  occupancyPct: number | null;
-  avgSf: number | null;
-}
-
 /**
  * Load the `extraction_rent_roll` capsule payload (parsed rent-roll output).
  * This is the real per-floorplan mix + per-unit detail produced by the rent-

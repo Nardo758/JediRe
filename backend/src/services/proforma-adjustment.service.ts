@@ -2028,7 +2028,7 @@ export interface DealFinancials {
    * Index 0 = Year 1, length = holdYears.
    */
   ltlSignals?: LTLSignals;
-  /** Concession recognition — migrated from composeDealFinancials (Engine B convergence) */
+  /** Concession recognition — Engine B convergence */
   concessionRecognition?: import('../types/concessions').DealConcessionRecognition | null;
   /** Year 1 concessions absolute value — derived from proforma.year1 concessions row. */
   year1Concessions?: number | null;
@@ -2911,7 +2911,7 @@ export async function getDealFinancials(
   }
 
   // ── Populate T-6 / T-3 / T-1 trailing actuals ─────────────────────────────
-  // Mirrors composeDealFinancials lines 363–373. Subtotal rows (egi,
+  // Subtotal rows (egi,
   // net_rental_income, total_opex, noi) are mapped directly to their own DB
   // columns in deal_monthly_actuals, so they get actuals without any component
   // aggregation. Falls back gracefully (rows unchanged) when no actuals exist.
@@ -3288,7 +3288,7 @@ export async function getDealFinancials(
         : 'OPERATING';
   const _cachedConcRec = (dealData.concession_recognition ?? {}) as Record<string, unknown>;
   // Cache-stamp pattern (Task #641): PUT /stance fires applyStanceReblend (underwriting
-  // snapshot path) but does NOT call composeDealFinancials.  That means
+  // snapshot path) but does NOT call the legacy composer.  That means
   // deal_data.concession_recognition can carry a capitalized_lease_up_total computed under
   // a different leasingCostTreatment.  computeConcessionRecognition stamps _treatment into
   // the cache payload precisely so we can detect this here without re-parsing the fingerprint.
@@ -5174,7 +5174,7 @@ export async function getDealFinancials(
     userOverrides,
     userOverrideRationales,
     // Ancillary income breakdown — sourced from the same composer helper used by
-    // composeDealFinancials so the live route (UnitMixTab AncillaryPanel + EGI
+    // the legacy composer so the live route (UnitMixTab AncillaryPanel + EGI
     // Waterfall) stays in parity with the inline-deals path. Without this the
     // assembler's response was missing the keys entirely, which left
     // `data?.otherIncomeBreakdown` null on the frontend and hid the panel /
@@ -5564,7 +5564,7 @@ export async function getDealFinancials(
     projections,
     capitalStructureDefaults,
     capitalStructureOptimization,
-    // Fields migrated from composeDealFinancials (Engine B convergence)
+    // Fields migrated from legacy composer (Engine B convergence)
     concessionRecognition,
     year1Concessions,
     extractionRentRoll,
