@@ -35,7 +35,9 @@ These four findings have the highest consequence for deal accuracy and trust:
 
 **1. LIUS is 100% orphaned — 21 line schemas are fully written but no production route calls `runLIUSEngine`.** Every LIUS line (all 7 OpEx, 7 Capital, 6 Exit, 1 Reserves) is bypassed. The Pro Forma never receives validated, tier-resolved line-item values. The seeder uses static NMHC norms and T12 extraction instead. See **PF-06** / **LIU-ALL**.
 
-**2. Two parallel live engines serve the same deal.** `getDealFinancials` (`/deal-assumptions/:id`) and `composeDealFinancials` (`/deals/:id/financials`) assemble the same underlying data via different code paths, returning different response shapes. No shared contract. A fix to one is invisible to the other. See **PF-01**.
+**2. Two parallel live engines serve the same deal.** `getDealFinancials` (`/deal-assumptions/:id`) ~~and `composeDealFinancials` (`/deals/:id/financials`)~~ assemble the same underlying data via different code paths, returning different response shapes. No shared contract. A fix to one is invisible to the other. See **PF-01**.
+
+> **Status update (2026-06-18):** Engine B (`composeDealFinancials`) has been deleted (commit `d1bbf23a7`). The `getDealFinancials` route is now the sole production engine.
 
 **3. Per-year projection overrides silently revert.** When an operator edits Year 3 payroll or Year 2 GPR in the Projections Tab, the value saves to the DB but `getDealFinancials` re-derives every year from `Y1 × compoundGrowth` on the next fetch, discarding all per-year overrides. See **PF-02**.
 
@@ -60,7 +62,7 @@ These four findings have the highest consequence for deal accuracy and trust:
 | Engine | Entry point | Route | Reads |
 |---|---|---|---|
 | **Engine A** (F9 main) | `getDealFinancials()` | `GET /api/v1/deal-assumptions/:dealId` | `deal_assumptions.year1` + `proforma_assumptions` growth scalars |
-| **Engine B** (financials) | `composeDealFinancials()` | `GET /api/v1/deals/:dealId/financials` | `deal_assumptions.year1` only |
+| ~~**Engine B** (financials)~~ | ~~`composeDealFinancials()`~~ | ~~`GET /api/v1/deals/:dealId/financials`~~ | ~~`deal_assumptions.year1` only~~ | **Deleted 2026-06-18** — unique fields migrated to Engine A; body removed |
 | **Engine C** (LLM / deterministic) | `financialModelEngine.buildModel()` | `POST /api/v1/financial-model` | LLM `ProFormaAssumptions` envelope → bridge → runner |
 | **Engine D** (orphaned Tier 1–3) | `projectProforma()` | **none** — test-only | `ProjectionInputs` struct |
 
@@ -85,25 +87,13 @@ These four findings have the highest consequence for deal accuracy and trust:
 
 ## Part 1 — Module Inventory
 
-### 1.1 `financials-composer.service.ts` (Engine B)
+### 1.1 `financials-composer.service.ts` (deleted Engine B — reference only)
 
-**File:** `backend/src/services/financials-composer.service.ts` (2544 lines)  
-**Route:** `GET /api/v1/deals/:dealId/financials` (via `inline-deals.routes.ts:2101`)  
+**File:** `backend/src/services/financials-composer.service.ts` (850 lines after deletion)  
+**Route:** ~~`GET /api/v1/deals/:dealId/financials`~~ — deleted 2026-06-18  
 **Unit tests:** None found in test scan  
 
-| Capability | Status |
-|---|---|
-| Lazy-seeds `deal_assumptions.year1` via `seedProFormaYear1` if missing | LIVE |
-| Reads `deals.operator_stance` for `leasingCostTreatment` modulation | LIVE |
-| Builds OSRows from `year1` JSONB | LIVE |
-| Enriches with trailing actuals (T-6, T-3, T-1) from `deal_monthly_actuals` | LIVE |
-| Builds rent roll summary (extraction / SQL rows / OM fallback) | LIVE |
-| `buildTrafficProjection()` — returns hardcoded stub (all nulls, `yearly: []`) | ON_MOCK_DATA |
-| Concession recognition (`computeConcessionRecognition`) | NOT_WIRED (null until Task #573) |
-| M39 peer intelligence enrichment for `subjectHistory.peer_set_values` | LIVE |
-| M38 non-blocking calibration predictions | LIVE (fire-and-forget) |
-
-**Development / Redevelopment handling:** Engine B reads `deals.project_type` but does not branch on model type for any Pro Forma computation. The OSRow assembly is identical for all deal types. Development deals with negative Year-1 NOI receive the same display as acquisitions.
+> **Status:** Engine B deleted. Shared helpers (`computeConcessionRecognition`, `loadSubjectHistory`, `composeOtherIncomeBreakdown`, `loadTrailingActualsMap`, `loadExtractionRentRoll`) retained in `financials-composer.service.ts` and called directly by Engine A (`getDealFinancials`).
 
 ---
 
@@ -131,7 +121,7 @@ These four findings have the highest consequence for deal accuracy and trust:
 ### 1.3 `proforma-seeder.service.ts`
 
 **File:** `backend/src/services/proforma-seeder.service.ts` (1514 lines)  
-**Called by:** `composeDealFinancials` (lazy seed), also callable directly  
+**Called by:** `getDealFinancials` (lazy seed via `ensureDealAssumptionsSeeded`), also callable directly  
 
 | Capability | Status |
 |---|---|
@@ -248,7 +238,7 @@ The Pro Forma subsystem exposes three logical deal model types that correspond t
 
 ### 2.1 Acquisition (Existing / Stabilized)
 
-**Primary path:** Engine A (`getDealFinancials`) + Engine B (`composeDealFinancials`)  
+**Primary path:** Engine A (`getDealFinancials`)  
 **Model entry:** `dealType = 'existing'` or `'acquisition'`; `dealMode = 'existing'` (default when `modelType` not set in ProFormaAssumptions)
 
 **Year 1 inputs:**
@@ -310,7 +300,7 @@ The Pro Forma subsystem exposes three logical deal model types that correspond t
 
 **Engine C mode detection:** `resolvedMode` (bridge:387 / runner:977) — `'redevelopment'` and `'value_add'` are in `isNonStabilizedMode` set. Vacancy/NOI integrity checks use warn (not error) for negative Y1 NOI.
 
-**Engine A/B distinction:** **None.** The OSRow assembly is identical for redevelopment and acquisition. No "lease-up ramp" or "renovation period" branching exists in `getDealFinancials` or `composeDealFinancials`. The operator must manually set a high Year-1 vacancy to approximate the renovation period — no automated ramp.
+**Engine A distinction:** **None.** The OSRow assembly is identical for redevelopment and acquisition. No "lease-up ramp" or "renovation period" branching exists in `getDealFinancials`. The operator must manually set a high Year-1 vacancy to approximate the renovation period — no automated ramp.
 
 **Vacancy ramp for value-add:** `buildVacancySchedule` creates a two-year ramp (Y1 = max(vacancyY1, vacancyStab); Y2 = midpoint; Y3+ = stabilized). This is the only mechanism available, and it only applies when `vacancyY1 > vacancyStab`. There is no renovation CAPEX period, no income void modeling, and no "dark" year treatment.
 
@@ -372,9 +362,9 @@ The Pro Forma subsystem exposes three logical deal model types that correspond t
 
 All values use **decimal** convention. Format per key: `{ platform, t12, rent_roll, tax_bill, om, override, resolved, resolution, updated_at }`.
 
-| Field key | FIELD_PRIORITIES (seeder) | Seeder writer | Override writer | Engine A reader (file:line) | Engine B reader |
+| Field key | FIELD_PRIORITIES (seeder) | Seeder writer | Override writer | Engine A reader (file:line) |
 |---|---|---|---|---|---|
-| `gpr` | t12 → rent_roll (om via bp capsule) | proforma-seeder.ts:496 | applyFinancialsOverride | getDealFinancials:ry1('gpr') | buildOSRows |
+| `gpr` | t12 → rent_roll (om via bp capsule) | proforma-seeder.ts:496 | applyFinancialsOverride | getDealFinancials:ry1('gpr') |
 | `loss_to_lease_pct` | t12 → rent_roll | seeder | applyFinancialsOverride | ry1('loss_to_lease_pct') | buildOSRows |
 | `vacancy_pct` | rent_roll → t12 | seeder | applyFinancialsOverride | ry1('vacancy_pct') | buildOSRows |
 | `concessions_pct` | t12 → rent_roll | seeder | applyFinancialsOverride | ry1('concessions_pct') | buildOSRows (+ stance mod in B) |
@@ -402,7 +392,7 @@ All values use **decimal** convention. Format per key: `{ platform, t12, rent_ro
 
 ### 3.3 `deal_assumptions` scalar columns (legacy — DISPLAY_ONLY)
 
-All of the following columns are written at deal creation and **never read by Engine A or Engine B**. Both live engines read `year1` JSONB instead. These columns exist only for potential direct SQL queries or legacy tooling.
+All of the following columns are written at deal creation and **never read by Engine A**. Engine A reads `year1` JSONB instead. These columns exist only for potential direct SQL queries or legacy tooling.
 
 | Column | Default | Convention | Status |
 |---|---|---|---|
@@ -488,7 +478,7 @@ All 21 LIUS line schemas have `applicableDealTypes` that include acquisition, de
 | TaxesTab | `financial-engine/TaxesTab.tsx` | Engine A: `data.taxes` | WIRED |
 | S&U Tab | `financial-engine/SourcesUsesTab.tsx` | Engine A: `data.sourcesUses` | WIRED |
 | UnitMixTab | `financial-engine/UnitMixTab.tsx` | Engine A: `data.rentRollSummary` | WIRED (GPR flag gap — PF-08) |
-| `ProFormaTab.tsx` (legacy) | `components/deal/sections/ProFormaTab.tsx` | Engine B: `GET /api/v1/deals/:dealId/financials` | WIRED (Engine B) |
+| `ProFormaTab.tsx` (legacy) | `components/deal/sections/ProFormaTab.tsx` | ~~Engine B: `GET /api/v1/deals/:dealId/financials`~~ | ~~WIRED (Engine B)~~ — **Deleted 2026-06-18** |
 | `FinancialSection.tsx` (active) | `components/deal/sections/FinancialSection.tsx` | Engine A (confirmed at ProFormaSummaryTab) | WIRED |
 | `FinancialSection.tsx.backup` | `.backup` — NOT compiled | `financialMockData` import in backup | N/A — inactive |
 
@@ -536,15 +526,15 @@ Checked for CE-04 pattern (hardcoded arrays inlined in Pro Forma UI files rather
 
 ### 6.1 M07 Traffic → Pro Forma
 
-- `subject_traffic_history` is read for `subjectHistory` field in Engine B. Values include `current_state.vacancyPct` and `current_state.rentGrowthPct`.
+- `subject_traffic_history` is read for `subjectHistory` field in Engine A. Values include `current_state.vacancyPct` and `current_state.rentGrowthPct`.
 - These calibrated values do **NOT** feed into the OSRow vacancy or rent growth used for projection. `buildTrafficProjection()` returns all-null stub.
 - `getDealFinancials:2545` reads `proforma_assumptions.vacancy_current` (which can be set by M07 calibration via `calculateVacancyAdjustment`) → this IS the M07→Pro Forma path for vacancy, but it bypasses the LayeredValue resolution in `deal_assumptions.year1.vacancy_pct`.
 - **Net result:** M07 vacancy signal reaches the projection loop via `proforma_assumptions.vacancy_current ÷ 100`, but the OSRow display (Year 1) uses `deal_assumptions.year1.vacancy_pct.resolved`, creating a split display where the Year-1 summary and the projection years may disagree.
 
 ### 6.2 Rate Environment / OperatorStance → Pro Forma
 
-- OperatorStance `leasingCostTreatment` modulates concessions in Engine B only (PF-16).
-- OperatorStance `underwritingPosture`, `rateEnvironment`, `cyclePosition` define 15 modulation rules but none of these rules are applied in either Engine A or Engine B. The modulation rules exist in `backend/src/types/operator-stance.ts` and `backend/src/services/operatorStance.service.ts` — they are applied when `operatorStanceService.reblend()` is called, which writes to `proforma_assumptions.*_current`. This is the only channel from OperatorStance to the Pro Forma numbers.
+- OperatorStance `leasingCostTreatment` modulates concessions in Engine A (via `applyStanceToFinancials`).
+- OperatorStance `underwritingPosture`, `rateEnvironment`, `cyclePosition` define 15 modulation rules but none of these rules are applied in Engine A. The modulation rules exist in `backend/src/types/operator-stance.ts` and `backend/src/services/operatorStance.service.ts` — they are applied when `operatorStanceService.reblend()` is called, which writes to `proforma_assumptions.*_current`. This is the only channel from OperatorStance to the Pro Forma numbers.
 - **Net result:** OperatorStance modulates `proforma_assumptions.*_current` fields (via `reblend()`), which flow into Engine A's growth rate reads. This IS wired for growth rates. Not wired for Year-1 OSRows (seeder LayeredValues are not modulated).
 
 ### 6.3 LIUS → Pro Forma
@@ -562,7 +552,7 @@ The Cashflow Agent (`backend/src/agents/cashflow/cashflow.agent.ts`) receives Pr
 ### PF-01 — Dual-Engine Architecture
 
 **Priority:** P0 · **Effort:** L · **Phase:** A  
-Two independent production engines serve Pro Forma data on different routes with different shapes and different business logic. A concession modulation fix in Engine B is invisible to Engine A. See Architecture Map for full details.
+**Status:** Resolved 2026-06-18. Engine B deleted. Engine A (`getDealFinancials`) is the sole production engine.
 
 ---
 
@@ -671,7 +661,7 @@ In `CTRL_ORDER` display list but absent from seeder `OPEX_FIELDS`. T12 landscapi
 ### PF-16 — OperatorStance Missing in Engine A
 
 **Priority:** P3 · **Effort:** S · **Phase:** A  
-Concession modulation (CAPITALIZED → 0, HYBRID → partial) in Engine B only. Engine A always returns raw seeded concessions.
+**Status:** Resolved 2026-06-18. Concession modulation (CAPITALIZED → 0, HYBRID → partial) now runs in Engine A via `applyStanceToFinancials`.
 
 ---
 
