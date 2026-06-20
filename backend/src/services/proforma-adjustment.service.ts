@@ -2125,6 +2125,8 @@ export function projectProformaForDeal(
     position?: import('../types/provenanced-value').ProvenancedValue<number> | null;
     /** M18 property tax anchor from real millage (decimal growth rate). */
     propertyTaxAnchor?: import('../types/provenanced-value').ProvenancedValue<number> | null;
+    /** M22 CPI-anchored OPEX anchors per line (overrides DEFAULT_LINE_ANCHORS). */
+    opexAnchors?: Record<import('../blueprint/proforma-blueprint').OpexLineKey, import('../types/provenanced-value').ProvenancedValue<number>>;
   }
 ): ProjectionYearResult[] {
   const normalizedAssetClass = opts.assetClass.toLowerCase().trim() || 'multifamily';
@@ -2161,13 +2163,34 @@ export function projectProformaForDeal(
       ..._minOpexLine,
       anchor: opts.propertyTaxAnchor ?? null,
     },
-    insurance:          _minOpexLine,
-    utilities:          _minOpexLine,
-    repairsMaintenance: _minOpexLine,
-    payroll:            _minOpexLine,
-    marketingAdmin:     _minOpexLine,
-    replacementReserves: _minOpexLine,
-    other:              _minOpexLine,
+    insurance: {
+      ..._minOpexLine,
+      anchor: opts.opexAnchors?.insurance ?? null,
+    },
+    utilities: {
+      ..._minOpexLine,
+      anchor: opts.opexAnchors?.utilities ?? null,
+    },
+    repairsMaintenance: {
+      ..._minOpexLine,
+      anchor: opts.opexAnchors?.repairsMaintenance ?? null,
+    },
+    payroll: {
+      ..._minOpexLine,
+      anchor: opts.opexAnchors?.payroll ?? null,
+    },
+    marketingAdmin: {
+      ..._minOpexLine,
+      anchor: opts.opexAnchors?.marketingAdmin ?? null,
+    },
+    replacementReserves: {
+      ..._minOpexLine,
+      anchor: opts.opexAnchors?.replacementReserves ?? null,
+    },
+    other: {
+      ..._minOpexLine,
+      anchor: opts.opexAnchors?.other ?? null,
+    },
     // managementFee is handled separately by the engine (auto-couples to revenue growth)
   };
 
@@ -3167,6 +3190,13 @@ export async function getDealFinancials(
     _propertyTaxAnchor = computePropertyTaxAnchor(deal.state_code ?? null, resolvedCounty);
   } catch (_taxErr) { /* non-fatal: falls back to 4% placeholder */ }
 
+  // ── Medium #22: CPI-anchored OPEX line anchors ──────────────────────────────
+  let _opexAnchors: Record<import('../blueprint/proforma-blueprint').OpexLineKey, import('../types/provenanced-value').ProvenancedValue<number>> | undefined;
+  try {
+    const { computeOpexAnchors } = await import('./proforma/opex-anchors.service');
+    _opexAnchors = await computeOpexAnchors(pool);
+  } catch (_oaErr) { /* non-fatal: falls back to DEFAULT_LINE_ANCHORS */ }
+
   const _layeredResults = projectProformaForDeal({
     assetClass: _layeredAssetClass,
     holdYears,
@@ -3178,6 +3208,7 @@ export async function getDealFinancials(
     eventDeltas: _eventDeltas,
     position: _position,
     propertyTaxAnchor: _propertyTaxAnchor,
+    opexAnchors: _opexAnchors,
   });
   const _layeredByYear = new Map(_layeredResults.map(r => [r.year, r]));
 
