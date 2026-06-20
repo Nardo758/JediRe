@@ -266,6 +266,7 @@ import { georgiaCompEnrichmentWeekly } from './inngest/functions/georgia-comp-en
 import { georgiaArcGisIngestCron } from './inngest/functions/georgia-arcgis-ingest.cron';
 import { propertyReconciliationNightly } from './inngest/functions/property-reconciliation-nightly';
 import { outcomePanelForwardFillCron } from './inngest/functions/outcome-panel-forward-fill';
+import { blsQcewMonthlyCron } from './inngest/functions/bls-qcew-monthly';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -312,6 +313,9 @@ app.use(
       calibrationRealizationCron,
       // Task #1050: monthly FRED + BLS macro signals → historical_observations (2nd of month, 09:00 UTC)
       macroSignalsMonthly,
+      // BLS QCEW: monthly wage + employment refresh (3rd of month, 06:00 UTC)
+      // Populates metric_time_series for COR-04 (wage growth → rent growth)
+      blsQcewMonthlyCron,
       // Outcome Panel: monthly forward-fill (1st of month, 05:00 UTC)
       // Populates paired (leading, realized) observations for correlation fitting.
       outcomePanelForwardFillCron,
