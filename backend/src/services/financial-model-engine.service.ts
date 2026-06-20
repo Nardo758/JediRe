@@ -593,6 +593,19 @@ export class FinancialModelEngineService {
         } catch (_snapErr) { /* non-fatal */ }
       }
 
+      // ── Batch-4: M04/M05/M06 cycle pressure index ────────────────────────────
+      let cyclePressureIndex: ProvenancedValue<number> | null = null;
+      try {
+        const { computeCyclePressureIndex } = await import('./proforma/cycle-pressure-index.service');
+        cyclePressureIndex = await computeCyclePressureIndex(pool, city, state, totalUnits);
+        if (cyclePressureIndex) {
+          logger.info(
+            `[Batch4-Cycle] cyclePressureIndex for ${dealId}: ${cyclePressureIndex.value.toFixed(2)} ` +
+            `(${cyclePressureIndex.rationale})`
+          );
+        }
+      } catch (_cycleErr) { /* non-fatal */ }
+
       const growthSeries = projectRentGrowthSeries(
         {
           horizonYears: holdYears,
@@ -601,7 +614,7 @@ export class FinancialModelEngineService {
             ? provenanced(momentumVal, 'platform', 0.75, 'derived',
                 `submarket 12-mo rent trend ${city} ${state}`)
             : null,
-          cyclePressureIndex: null,
+          cyclePressureIndex,
           cpiShelterYoY: cpiShelterYoY != null
             ? provenanced(cpiShelterYoY, 'platform', 0.90, 'derived',
                 `CPI proxy for shelter sub-index (${cpiResult!.periodDate})`)

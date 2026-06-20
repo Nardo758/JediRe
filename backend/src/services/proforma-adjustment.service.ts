@@ -2117,6 +2117,8 @@ export function projectProformaForDeal(
      * Only affects the rent-growth computation path; OPEX growth is formula-agnostic.
      */
     strategySlug?: string | null;
+    /** M04/M05/M06 cycle pressure index (-1 to +1). */
+    cyclePressureIndex?: import('../types/provenanced-value').ProvenancedValue<number> | null;
   }
 ): ProjectionYearResult[] {
   const normalizedAssetClass = opts.assetClass.toLowerCase().trim() || 'multifamily';
@@ -2177,7 +2179,7 @@ export function projectProformaForDeal(
       horizonYears: opts.holdYears,
       assetClass: normalizedAssetClass,
       momentum,
-      cyclePressureIndex: null,
+      cyclePressureIndex: opts.cyclePressureIndex ?? null,
       cpiShelterYoY: null,
       eventDeltas: [],
     },
@@ -3120,6 +3122,16 @@ export async function getDealFinancials(
     { detected?: { value?: string } | null; override?: string | null } | null;
   const _strategySlug: string | null =
     _stratLvRaw?.override ?? _stratLvRaw?.detected?.value ?? null;
+
+  // ── Medium #14: compute cycle pressure index from M04/M05/M06 data ───────────
+  let _cyclePressureIndex: import('../types/provenanced-value').ProvenancedValue<number> | null = null;
+  try {
+    const { computeCyclePressureIndex } = await import('./proforma/cycle-pressure-index.service');
+    const _city = (deal.city ?? '') as string | null;
+    const _state = (deal.state_code ?? '') as string | null;
+    _cyclePressureIndex = await computeCyclePressureIndex(pool, _city, _state, totalUnits);
+  } catch (_cpeErr) { /* non-fatal: cycle component falls back to anchor-only */ }
+
   const _layeredResults = projectProformaForDeal({
     assetClass: _layeredAssetClass,
     holdYears,
@@ -3127,6 +3139,7 @@ export async function getDealFinancials(
     rentGrowthYr1,
     calibRentGrowth,
     strategySlug: _strategySlug,
+    cyclePressureIndex: _cyclePressureIndex,
   });
   const _layeredByYear = new Map(_layeredResults.map(r => [r.year, r]));
 
