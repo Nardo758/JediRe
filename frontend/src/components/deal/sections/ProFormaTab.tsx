@@ -221,6 +221,13 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [t06WeeklyLeases, setT06WeeklyLeases] = useState<number | null>(null);
   const [otherIncome, setOtherIncome] = useState<Record<string, OtherIncomeItem>>({ ...DEFAULT_OTHER_INCOME });
 
+  // ── High #3: one-time auto-populate guards ────────────────────────────────────
+  // Traffic output should apply as resolved values on first load, but never
+  // clobber a user's manual edit. These refs track whether the user has
+  // explicitly changed the field. Once set, traffic data reverts to hint-only.
+  const userTouchedOccupancyRef = useRef(false);
+  const userTouchedRentGrowthRef  = useRef(false);
+
   const [expenseGrowth, setExpenseGrowth] = useState(0.03);
   const [managementFeePct, setManagementFeePct] = useState(0.04);
   const [preferredReturnPct, setPreferredReturnPct] = useState(0.08);
@@ -615,6 +622,21 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     fetchData();
     return () => { cancelled = true; };
   }, [id]);
+
+  // ── High #3: one-time auto-populate guards ──────────────────────────────
+  const userTouchedOccupancyRef = useRef(false);
+  const userTouchedRentGrowthRef  = useRef(false);
+
+  // Populate F9 fields from F6 traffic data once, unless user already edited them
+  useEffect(() => {
+    if (!platformData) return;
+    if (platformData.occupancy?.[0] != null && !userTouchedOccupancyRef.current) {
+      setStabilizedOccupancy(platformData.occupancy[0]);
+    }
+    if (platformData.rentGrowth && !userTouchedRentGrowthRef.current) {
+      setRentGrowth(platformData.rentGrowth);
+    }
+  }, [platformData]);
 
   // Populate custom (unrecognized) GL line items from T12 into the expenses state
   useEffect(() => {
@@ -1785,7 +1807,7 @@ const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease,
   <div className="mt-3 space-y-4">
     <div className="grid grid-cols-3 gap-4">
       <InputField label="Loss-to-Lease" value={lossToLease} onChange={setLossToLease} type="percent" suffix="(decimal)" />
-      <InputField label="Stabilized Occupancy" value={stabilizedOccupancy} onChange={setStabilizedOccupancy} type="percent"
+      <InputField label="Stabilized Occupancy" value={stabilizedOccupancy} onChange={(v: number) => { userTouchedOccupancyRef.current = true; setStabilizedOccupancy(v); }} type="percent"
         platformValue={platformData?.occupancy?.[0]} platformSource="Traffic Module" suffix="(decimal)" />
       <InputField label="Collection Loss" value={collectionLoss} onChange={setCollectionLoss} type="percent" suffix="(decimal)" />
       <InputField label="Preferred Return (LP)" value={preferredReturnPct} onChange={setPreferredReturnPct} type="percent" suffix="(decimal)" />
@@ -1832,6 +1854,7 @@ const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease,
             <input type="number" value={val} onChange={(e) => {
               const updated = [...rentGrowth];
               updated[i] = parseFloat(e.target.value) || 0;
+              userTouchedRentGrowthRef.current = true;
               setRentGrowth(updated);
             }}
               className="w-16 text-xs text-center font-mono border border-teal-400 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none"
