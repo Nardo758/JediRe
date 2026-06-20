@@ -2123,6 +2123,8 @@ export function projectProformaForDeal(
     eventDeltas?: import('../types/provenanced-value').ProvenancedValue<number>[];
     /** M15 position adjustment from comp set rank (decimal, additive to growth). */
     position?: import('../types/provenanced-value').ProvenancedValue<number> | null;
+    /** M18 property tax anchor from real millage (decimal growth rate). */
+    propertyTaxAnchor?: import('../types/provenanced-value').ProvenancedValue<number> | null;
   }
 ): ProjectionYearResult[] {
   const normalizedAssetClass = opts.assetClass.toLowerCase().trim() || 'multifamily';
@@ -2155,7 +2157,10 @@ export function projectProformaForDeal(
     structuralOverride: _noOverride,
   };
   const opexBase = {
-    propertyTax:        _minOpexLine,
+    propertyTax: {
+      ..._minOpexLine,
+      anchor: opts.propertyTaxAnchor ?? null,
+    },
     insurance:          _minOpexLine,
     utilities:          _minOpexLine,
     repairsMaintenance: _minOpexLine,
@@ -3155,6 +3160,13 @@ export async function getDealFinancials(
     _position = await computePositionAdjustment(pool, dealId, _city, _state);
   } catch (_posErr) { /* non-fatal: position component falls back to zero */ }
 
+  // ── Medium #18: property tax anchor from real millage ───────────────────────
+  let _propertyTaxAnchor: import('../types/provenanced-value').ProvenancedValue<number> | null = null;
+  try {
+    const { computePropertyTaxAnchor } = await import('./proforma/property-tax-anchor.service');
+    _propertyTaxAnchor = computePropertyTaxAnchor(deal.state_code ?? null, resolvedCounty);
+  } catch (_taxErr) { /* non-fatal: falls back to 4% placeholder */ }
+
   const _layeredResults = projectProformaForDeal({
     assetClass: _layeredAssetClass,
     holdYears,
@@ -3165,6 +3177,7 @@ export async function getDealFinancials(
     cyclePressureIndex: _cyclePressureIndex,
     eventDeltas: _eventDeltas,
     position: _position,
+    propertyTaxAnchor: _propertyTaxAnchor,
   });
   const _layeredByYear = new Map(_layeredResults.map(r => [r.year, r]));
 
