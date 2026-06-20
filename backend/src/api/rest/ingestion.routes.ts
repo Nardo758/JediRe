@@ -393,4 +393,43 @@ router.post('/census-permits', async (req: Request, res: Response) => {
   }
 });
 
+// ─── Concession / Effective Rent Time Series ───────────────────────────
+// Extracts concessions from existing market_snapshots and rent rolls
+
+import { extractConcessionsFromSnapshots, importConcessionsFromCSV } from '../../services/ingestion/concession-time-series.service';
+
+router.post('/concessions/extract', async (req: Request, res: Response) => {
+  try {
+    const { submarketIds, startDate, endDate, dryRun = false } = req.body;
+
+    logger.info('Concessions: extract request', { submarketIds: submarketIds?.length || 'all', startDate, endDate, dryRun });
+
+    const result = await extractConcessionsFromSnapshots({ submarketIds, startDate, endDate, dryRun });
+
+    res.json({ success: true, dryRun, ...result });
+  } catch (error) {
+    logger.error('Concession extraction error:', error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+router.post('/concessions/import', async (req: Request, res: Response) => {
+  try {
+    const { rows } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      res.status(400).json({ success: false, error: 'Expected rows array' });
+      return;
+    }
+
+    logger.info('Concessions: CSV import request', { rowCount: rows.length });
+
+    const result = await importConcessionsFromCSV(rows);
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error('Concession CSV import error:', error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
 export default router;
