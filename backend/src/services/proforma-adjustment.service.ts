@@ -2117,6 +2117,16 @@ export function projectProformaForDeal(
      * Only affects the rent-growth computation path; OPEX growth is formula-agnostic.
      */
     strategySlug?: string | null;
+    /** M04/M05/M06 cycle pressure index (-1 to +1). */
+    cyclePressureIndex?: import('../types/provenanced-value').ProvenancedValue<number> | null;
+    /** Market event deltas from correlation engine. */
+    eventDeltas?: import('../types/provenanced-value').ProvenancedValue<number>[];
+    /** M15 position adjustment from comp set rank (decimal, additive to growth). */
+    position?: import('../types/provenanced-value').ProvenancedValue<number> | null;
+    /** M18 property tax anchor from real millage (decimal growth rate). */
+    propertyTaxAnchor?: import('../types/provenanced-value').ProvenancedValue<number> | null;
+    /** M22 CPI-anchored OPEX anchors per line (overrides DEFAULT_LINE_ANCHORS). */
+    opexAnchors?: Record<import('../blueprint/proforma-blueprint').OpexLineKey, import('../types/provenanced-value').ProvenancedValue<number>>;
   }
 ): ProjectionYearResult[] {
   const normalizedAssetClass = opts.assetClass.toLowerCase().trim() || 'multifamily';
@@ -2149,14 +2159,38 @@ export function projectProformaForDeal(
     structuralOverride: _noOverride,
   };
   const opexBase = {
-    propertyTax:        _minOpexLine,
-    insurance:          _minOpexLine,
-    utilities:          _minOpexLine,
-    repairsMaintenance: _minOpexLine,
-    payroll:            _minOpexLine,
-    marketingAdmin:     _minOpexLine,
-    replacementReserves: _minOpexLine,
-    other:              _minOpexLine,
+    propertyTax: {
+      ..._minOpexLine,
+      anchor: opts.propertyTaxAnchor ?? null,
+    },
+    insurance: {
+      ..._minOpexLine,
+      anchor: opts.opexAnchors?.insurance ?? null,
+    },
+    utilities: {
+      ..._minOpexLine,
+      anchor: opts.opexAnchors?.utilities ?? null,
+    },
+    repairsMaintenance: {
+      ..._minOpexLine,
+      anchor: opts.opexAnchors?.repairsMaintenance ?? null,
+    },
+    payroll: {
+      ..._minOpexLine,
+      anchor: opts.opexAnchors?.payroll ?? null,
+    },
+    marketingAdmin: {
+      ..._minOpexLine,
+      anchor: opts.opexAnchors?.marketingAdmin ?? null,
+    },
+    replacementReserves: {
+      ..._minOpexLine,
+      anchor: opts.opexAnchors?.replacementReserves ?? null,
+    },
+    other: {
+      ..._minOpexLine,
+      anchor: opts.opexAnchors?.other ?? null,
+    },
     // managementFee is handled separately by the engine (auto-couples to revenue growth)
   };
 
@@ -2177,9 +2211,10 @@ export function projectProformaForDeal(
       horizonYears: opts.holdYears,
       assetClass: normalizedAssetClass,
       momentum,
-      cyclePressureIndex: null,
+      cyclePressureIndex: opts.cyclePressureIndex ?? null,
       cpiShelterYoY: null,
-      eventDeltas: [],
+      eventDeltas: opts.eventDeltas ?? [],
+      position: opts.position ?? null,
     },
     opexBase,
     revenueParams: {
@@ -3120,6 +3155,48 @@ export async function getDealFinancials(
     { detected?: { value?: string } | null; override?: string | null } | null;
   const _strategySlug: string | null =
     _stratLvRaw?.override ?? _stratLvRaw?.detected?.value ?? null;
+
+  // ── Medium #14: compute cycle pressure index from M04/M05/M06 data ───────────
+  let _cyclePressureIndex: import('../types/provenanced-value').ProvenancedValue<number> | null = null;
+  try {
+    const { computeCyclePressureIndex } = await import('./proforma/cycle-pressure-index.service');
+    const _city = (deal.city ?? '') as string | null;
+    const _state = (deal.state_code ?? '') as string | null;
+    _cyclePressureIndex = await computeCyclePressureIndex(pool, _city, _state, totalUnits);
+  } catch (_cpeErr) { /* non-fatal: cycle component falls back to anchor-only */ }
+
+  // ── Medium #15: event deltas from market_events ─────────────────────────────
+  let _eventDeltas: import('../types/provenanced-value').ProvenancedValue<number>[] = [];
+  try {
+    const { computeEventDeltas } = await import('./proforma/event-deltas.service');
+    const _city = (deal.city ?? '') as string | null;
+    const _state = (deal.state_code ?? '') as string | null;
+    _eventDeltas = await computeEventDeltas(pool, _city, _state);
+  } catch (_evtErr) { /* non-fatal: event component falls back to empty */ }
+
+  // ── Medium #16: M15 position adjustment from comp set rank ──────────────────
+  let _position: import('../types/provenanced-value').ProvenancedValue<number> | null = null;
+  try {
+    const { computePositionAdjustment } = await import('./proforma/position-adjustment.service');
+    const _city = (deal.city ?? '') as string | null;
+    const _state = (deal.state_code ?? '') as string | null;
+    _position = await computePositionAdjustment(pool, dealId, _city, _state);
+  } catch (_posErr) { /* non-fatal: position component falls back to zero */ }
+
+  // ── Medium #18: property tax anchor from real millage ───────────────────────
+  let _propertyTaxAnchor: import('../types/provenanced-value').ProvenancedValue<number> | null = null;
+  try {
+    const { computePropertyTaxAnchor } = await import('./proforma/property-tax-anchor.service');
+    _propertyTaxAnchor = computePropertyTaxAnchor(deal.state_code ?? null, resolvedCounty);
+  } catch (_taxErr) { /* non-fatal: falls back to 4% placeholder */ }
+
+  // ── Medium #22: CPI-anchored OPEX line anchors ──────────────────────────────
+  let _opexAnchors: Record<import('../blueprint/proforma-blueprint').OpexLineKey, import('../types/provenanced-value').ProvenancedValue<number>> | undefined;
+  try {
+    const { computeOpexAnchors } = await import('./proforma/opex-anchors.service');
+    _opexAnchors = await computeOpexAnchors(pool);
+  } catch (_oaErr) { /* non-fatal: falls back to DEFAULT_LINE_ANCHORS */ }
+
   const _layeredResults = projectProformaForDeal({
     assetClass: _layeredAssetClass,
     holdYears,
@@ -3127,6 +3204,11 @@ export async function getDealFinancials(
     rentGrowthYr1,
     calibRentGrowth,
     strategySlug: _strategySlug,
+    cyclePressureIndex: _cyclePressureIndex,
+    eventDeltas: _eventDeltas,
+    position: _position,
+    propertyTaxAnchor: _propertyTaxAnchor,
+    opexAnchors: _opexAnchors,
   });
   const _layeredByYear = new Map(_layeredResults.map(r => [r.year, r]));
 
@@ -5609,6 +5691,7 @@ const SCALAR_FIELD_MAP: Record<string, string> = {
   interestRate: 'interest_rate',
   ltcPct: 'ltc',
   ioPeriodMonths: 'io_period_months',
+  totalUnits: 'total_units',
 };
 
 /** Handle unit_mix:{index}:{field} overrides by patching the JSONB array in deal_assumptions */

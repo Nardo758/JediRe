@@ -265,6 +265,10 @@ import { syncMiamiDadePlanningCron } from './inngest/functions/sync-miami-dade-p
 import { georgiaCompEnrichmentWeekly } from './inngest/functions/georgia-comp-enrichment-weekly';
 import { georgiaArcGisIngestCron } from './inngest/functions/georgia-arcgis-ingest.cron';
 import { propertyReconciliationNightly } from './inngest/functions/property-reconciliation-nightly';
+import { outcomePanelForwardFillCron } from './inngest/functions/outcome-panel-forward-fill';
+import { blsQcewMonthlyCron } from './inngest/functions/bls-qcew-monthly';
+import { censusPermitsMonthlyCron } from './inngest/functions/census-permits-monthly';
+import { concessionExtractionCron } from './inngest/functions/concession-extraction-cron';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -311,6 +315,18 @@ app.use(
       calibrationRealizationCron,
       // Task #1050: monthly FRED + BLS macro signals → historical_observations (2nd of month, 09:00 UTC)
       macroSignalsMonthly,
+      // BLS QCEW: monthly wage + employment refresh (3rd of month, 06:00 UTC)
+      // Populates metric_time_series for COR-04 (wage growth → rent growth)
+      blsQcewMonthlyCron,
+      // Census Building Permits: monthly refresh (5th of month, 04:00 UTC)
+      // Populates metric_time_series for COR-08 (permits → cap rate)
+      censusPermitsMonthlyCron,
+      // Concession Time Series: monthly extraction from market_snapshots (7th of month, 03:00 UTC)
+      // Populates metric_time_series for COR-09 (deliveries → concessions)
+      concessionExtractionCron,
+      // Outcome Panel: monthly forward-fill (1st of month, 05:00 UTC)
+      // Populates paired (leading, realized) observations for correlation fitting.
+      outcomePanelForwardFillCron,
       // Task #1075: nightly Atlanta DPCD + Fulton County planning application ingest (01:00 UTC)
       syncPlanningApplicationsCron,
       // Task #1076: nightly Gwinnett + DeKalb + Cobb Accela planning ingest (02:00 UTC)

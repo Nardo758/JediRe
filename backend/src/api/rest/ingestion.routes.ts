@@ -7,9 +7,13 @@ import { ingestZillowZORI } from '../../services/ingestion/zillow-zori-ingest.se
 import { ingestFRED } from '../../services/ingestion/fred-ingest.service';
 import { ingestCensusACS } from '../../services/ingestion/census-acs-ingest.service';
 import { ingestAllLeaseFiles } from '../../services/ingestion/lease-rent-ingest.service';
+import { ingestBLSQCEW } from '../../services/ingestion/bls-qcew-ingest.service';
+import { ingestCensusPermits } from '../../services/ingestion/census-permits-ingest.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import axios from 'axios';
+
+import { outcomePanelService } from '../../services/ingestion/outcome-panel.service';
 
 const router = Router();
 
@@ -257,6 +261,173 @@ router.post('/lease-rents', async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('Lease rent ingestion error:', error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+// ─── Outcome Panel Backfill ───────────────────────────────────────────
+// The #1 missing data structure for correlation fitting.
+// Populates paired (leading, realized) observations from existing data.
+
+router.post('/outcome-panel/backfill', async (req: Request, res: Response) => {
+  try {
+    const {
+      submarketIds,
+      startDate,
+      endDate,
+      dryRun = false,
+    } = req.body;
+
+    logger.info('OutcomePanel: backfill request', {
+      submarketIds: submarketIds?.length || 'all',
+      startDate,
+      endDate,
+      dryRun,
+    });
+
+    const result = await outcomePanelService.backfill({
+      submarketIds,
+      startDate,
+      endDate,
+      dryRun,
+    });
+
+    res.json({
+      success: true,
+      dryRun,
+      ...result,
+    });
+  } catch (error) {
+    logger.error('Outcome panel backfill error:', error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+// ─── Outcome Panel Status ───────────────────────────────────────────
+// Check how much data is in the outcome panel and what's fittable.
+
+router.get('/outcome-panel/status', async (_req: Request, res: Response) => {
+  try {
+    const totalRows = await query('SELECT COUNT(*) FROM outcome_panel');
+    const currentRows = await query('SELECT COUNT(*) FROM outcome_panel_current');
+    const submarkets = await query('SELECT COUNT(DISTINCT submarket_id) FROM outcome_panel_current');
+    const dateRange = await query(`
+      SELECT MIN(period_date) AS earliest, MAX(period_date) AS latest
+      FROM outcome_panel_current
+    `);
+
+    res.json({
+      success: true,
+      totalRows: parseInt(totalRows.rows[0].count),
+      currentRows: parseInt(currentRows.rows[0].count),
+      submarkets: parseInt(submarkets.rows[0].count),
+      dateRange: {
+        earliest: dateRange.rows[0].earliest?.toISOString().slice(0, 10) || null,
+        latest: dateRange.rows[0].latest?.toISOString().slice(0, 10) || null,
+      },
+    });
+  } catch (error) {
+    logger.error('Outcome panel status error:', error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+// ─── BLS QCEW Ingestion ───────────────────────────────────────────────
+// Quarterly Census of Employment and Wages
+// Fetches employment + wage data by geography for COR-04 (wage→rent)
+
+router.post('/bls-qcew', async (req: Request, res: Response) => {
+  try {
+    const {
+      startYear,
+      endYear,
+      dryRun = false,
+    } = req.body;
+
+    logger.info('BLS QCEW: ingestion request', { startYear, endYear, dryRun });
+
+    const result = await ingestBLSQCEW(undefined, {
+      yearRange: startYear && endYear ? { startYear, endYear } : undefined,
+      dryRun,
+    });
+
+    res.json({
+      success: true,
+      dryRun,
+      ...result,
+      elapsed: `${((result.endTime.getTime() - result.startTime.getTime()) / 1000).toFixed(1)}s`,
+    });
+  } catch (error) {
+    logger.error('BLS QCEW ingestion error:', error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+// ─── Census Building Permits Ingestion ──────────────────────────────────
+// Building Permits Survey (BPS) — unblocks COR-08 (permits → cap rate)
+
+router.post('/census-permits', async (req: Request, res: Response) => {
+  try {
+    const {
+      startYear,
+      endYear,
+      dryRun = false,
+    } = req.body;
+
+    logger.info('Census Permits: ingestion request', { startYear, endYear, dryRun });
+
+    const result = await ingestCensusPermits(undefined, {
+      yearRange: startYear && endYear ? { startYear, endYear } : undefined,
+      dryRun,
+    });
+
+    res.json({
+      success: true,
+      dryRun,
+      ...result,
+      elapsed: `${((result.endTime.getTime() - result.startTime.getTime()) / 1000).toFixed(1)}s`,
+    });
+  } catch (error) {
+    logger.error('Census Permits ingestion error:', error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+// ─── Concession / Effective Rent Time Series ───────────────────────────
+// Extracts concessions from existing market_snapshots and rent rolls
+
+import { extractConcessionsFromSnapshots, importConcessionsFromCSV } from '../../services/ingestion/concession-time-series.service';
+
+router.post('/concessions/extract', async (req: Request, res: Response) => {
+  try {
+    const { submarketIds, startDate, endDate, dryRun = false } = req.body;
+
+    logger.info('Concessions: extract request', { submarketIds: submarketIds?.length || 'all', startDate, endDate, dryRun });
+
+    const result = await extractConcessionsFromSnapshots({ submarketIds, startDate, endDate, dryRun });
+
+    res.json({ success: true, dryRun, ...result });
+  } catch (error) {
+    logger.error('Concession extraction error:', error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+router.post('/concessions/import', async (req: Request, res: Response) => {
+  try {
+    const { rows } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      res.status(400).json({ success: false, error: 'Expected rows array' });
+      return;
+    }
+
+    logger.info('Concessions: CSV import request', { rowCount: rows.length });
+
+    const result = await importConcessionsFromCSV(rows);
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error('Concession CSV import error:', error);
     res.status(500).json({ success: false, error: String(error) });
   }
 });

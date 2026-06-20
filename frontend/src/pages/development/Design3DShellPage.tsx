@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   BT, BT_CSS,
@@ -8,6 +8,8 @@ import { Building3DEditor } from '../../components/design/Building3DEditor';
 import { ThreeDErrorBoundary } from '../../components/3DErrorBoundary';
 import { geoJsonToParcelBoundary } from '../../utils/geoJsonToParcel';
 import { useDesignTargets, useDesignProgramStore } from '../../stores/designProgram.store';
+import { dispatchModuleApplied } from '../../utils/moduleEvents';
+import { apiClient } from '../../services/api.client';
 
 interface Design3DShellPageProps {
   dealId?: string;
@@ -35,6 +37,27 @@ export function Design3DShellPage({ dealId: propDealId, deal }: Design3DShellPag
   const designTargets = useDesignTargets();
   const hydrateStatus = useDesignProgramStore((s) => s.hydrateStatus);
   const isLoading = hydrateStatus === 'loading' || hydrateStatus === null;
+
+  // ── Push to F9 ──
+  const [pushStatus, setPushStatus] = useState<'idle' | 'pushing' | 'pushed'>('idle');
+  const handlePushToF9 = async () => {
+    if (!resolvedDealId || pushStatus === 'pushing') return;
+    const units = designTargets.program.targetUnits;
+    if (units <= 0) return;
+    setPushStatus('pushing');
+    try {
+      await apiClient.patch(`/api/v1/deals/${resolvedDealId}/financials/override`, {
+        field: 'totalUnits',
+        value: units,
+      });
+      dispatchModuleApplied('design:3d', ['totalUnits']);
+      setPushStatus('pushed');
+      setTimeout(() => setPushStatus('idle'), 3000);
+    } catch (err) {
+      console.error('[Design3D] Push to F9 failed:', err);
+      setPushStatus('idle');
+    }
+  };
 
   // Derive metrics from design targets for the header panel
   const headerMetrics = useMemo(() => {
@@ -81,6 +104,30 @@ export function Design3DShellPage({ dealId: propDealId, deal }: Design3DShellPag
         subtitle={headerSubtitle}
         borderColor={BT.text.purple}
         metrics={headerMetrics}
+        right={
+          <button
+            onClick={handlePushToF9}
+            disabled={isLoading || designTargets.program.targetUnits <= 0 || pushStatus === 'pushing'}
+            style={{
+              padding: '4px 12px',
+              fontSize: 10,
+              fontWeight: 700,
+              fontFamily: 'monospace',
+              letterSpacing: 0.5,
+              color: pushStatus === 'pushed' ? BT.text.green : BT.text.purple,
+              background: pushStatus === 'pushed' ? '#0f2e1f' : '#1a0a2e',
+              border: `1px solid ${pushStatus === 'pushed' ? BT.text.green : BT.text.purple}`,
+              borderRadius: 3,
+              cursor: pushStatus === 'pushing' ? 'wait' : 'pointer',
+              opacity: isLoading || designTargets.program.targetUnits <= 0 ? 0.4 : 1,
+              transition: 'all 0.2s',
+            }}
+          >
+            {pushStatus === 'idle' && 'PUSH TO F9'}
+            {pushStatus === 'pushing' && 'PUSHING...'}
+            {pushStatus === 'pushed' && 'PUSHED ✓'}
+          </button>
+        }
       />
 
       <BtTabWrapper>

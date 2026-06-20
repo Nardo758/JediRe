@@ -9,6 +9,7 @@
  */
 
 import { pool } from '../database';
+import { logger } from '../utils/logger';
 import marketResearchEngine from './marketResearchEngine';
 import { trafficLearning } from './trafficLearningService';
 import type { LearnedRates } from './trafficLearningService';
@@ -24,6 +25,7 @@ import { StartingStateService } from './starting-state.service';
 import { CatalogMetricsWiringService } from './catalog-metrics-wiring.service';
 import type { CalibrationMeta, StartingState, LeaseUpState, RedevelopmentState } from '../types/traffic-calibration.types';
 import { m35TrafficApiService } from './m35-traffic-api.service';
+import { eventImpactModifierService, type DemandEvent } from './traffic/event-impact-modifier.service';
 
 export interface DataSourceSignals {
   visibility?: {
@@ -225,6 +227,10 @@ interface TrafficPrediction {
     market_demand_factors: number;
     supply_demand_adjustment: number;
     base_before_adjustment: number;
+    event_multiplier?: number;
+    event_modifier_confidence?: 'high' | 'medium' | 'low';
+    event_modifier_sources?: string[];
+    event_modifier_missing?: string[];
     effective_base_adt?: number;
     distance_decay?: number;
     road_class_weight?: number;
@@ -1113,6 +1119,32 @@ export class TrafficPredictionEngine {
       const digitalDemandMultiplier = 1.0 + (signals.web_traffic.score / 100) * 0.15 + domainBoost;
       baseTraffic *= digitalDemandMultiplier;
     }
+
+    // ─── Event Impact Modifier (Medium #11/#12) ────────────────────────────
+    // Blends forward-looking M06 demand events with backward-looking correlation
+    // engine feedback (backtest calibration, causality direction, learning adjustments)
+    let eventMultiplier = 1.0;
+    let eventModifierResult: import('./traffic/event-impact-modifier.service').EventModifierResult | null = null;
+    try {
+      const demandEvents = await this.fetchClassifiedDemandEvents(property, dealId);
+      if (demandEvents.length > 0) {
+        eventModifierResult = await eventImpactModifierService.computeEventModifier({
+          events: demandEvents,
+          propertyState: property.state,
+          propertyMsa: property.msa_id,
+          propertySubmarket: property.submarket_id,
+          assetClass: property.property_class,
+          propertyId,
+          dealId,
+        });
+        eventMultiplier = eventModifierResult.multiplier;
+        baseTraffic *= eventMultiplier;
+      }
+    } catch (err) {
+      // Non-blocking — engine falls through to 1.0 multiplier
+      logger.warn('TrafficPredictionEngine: event modifier failed', { propertyId, error: (err as Error).message });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
     
     const adjusted = this.applySupplyDemandAdjustment(
       baseTraffic,
@@ -1303,6 +1335,10 @@ export class TrafficPredictionEngine {
         market_demand_factors: Math.round(demandTraffic),
         supply_demand_adjustment: adjusted.multiplier,
         base_before_adjustment: Math.round(baseTraffic),
+        event_multiplier: eventMultiplier,
+        event_modifier_confidence: eventModifierResult?.confidence ?? 'low',
+        event_modifier_sources: eventModifierResult?.dataSources ?? [],
+        event_modifier_missing: eventModifierResult?.missingSources ?? [],
         effective_base_adt: signals.traffic_context?.effective_base_adt,
         distance_decay: signals.traffic_context?.distance_decay_primary,
         road_class_weight: signals.traffic_context?.road_class_weight_primary,
@@ -1936,6 +1972,56 @@ export class TrafficPredictionEngine {
     };
   }
   
+  /**
+   * Fetch classified demand events for the property's geography.
+   * Queries market_events table for demand-classified events within
+   * a 15-mile radius of the property, ordered by announced_date desc.
+   */
+  private async fetchClassifiedDemandEvents(
+    property: Property,
+    dealId?: string
+  ): Promise<DemandEvent[]> {
+    try {
+      const geographyId = property.submarket_id || property.msa_id;
+      if (!geographyId) {
+        return [];
+      }
+
+      const result = await pool.query(
+        `SELECT
+           event_type,
+           expected_impact_magnitude AS impact,
+           confidence,
+           distance_miles,
+           announced_date,
+           materialization_date
+         FROM market_events
+         WHERE event_category = 'demand'
+           AND (submarket_id = $1 OR msa_id = $2)
+           AND status IN ('active', 'confirmed', 'upcoming')
+           AND announced_date >= NOW() - INTERVAL '365 days'
+         ORDER BY announced_date DESC
+         LIMIT 50`,
+        [geographyId, property.msa_id || geographyId]
+      );
+
+      return result.rows.map((row) => ({
+        event_type: row.event_type || 'unknown',
+        impact: parseFloat(row.impact) || 0,
+        confidence: (row.confidence || 'medium').toLowerCase(),
+        distance_miles: parseFloat(row.distance_miles) || 0,
+        announced_date: row.announced_date,
+        materialization_date: row.materialization_date,
+      }));
+    } catch (err) {
+      logger.warn('TrafficPredictionEngine: fetchClassifiedDemandEvents failed', {
+        propertyId: property.id,
+        error: (err as Error).message,
+      });
+      return [];
+    }
+  }
+
   /**
    * Save prediction to database
    */
