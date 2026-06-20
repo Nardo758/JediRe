@@ -132,7 +132,7 @@ const DATA_FLOW_CONNECTIONS: DataFlowConnection[] = [
   // Demand Intelligence (apartment_user_analytics) enrichment flows
   { from: 'M06', to: 'M14', dataKeys: ['deal_breakers'], strength: 'optional', description: 'Preference-based deal breakers for risk flags' },
   { from: 'M06', to: 'M08', dataKeys: ['budget_distribution', 'bedroom_demand'], strength: 'optional', description: 'Budget and bedroom demand for strategy rent assumptions' },
-  { from: 'M06', to: 'M07', dataKeys: ['commute_preferences'], strength: 'optional', description: 'Commute preferences for traffic intelligence enrichment' },
+  { from: 'M06', to: 'M07', dataKeys: ['commute_preferences', 'classified_demand_events'], strength: 'optional', description: 'Commute preferences and classified demand events for traffic intelligence enrichment' },
   { from: 'M06', to: 'M25', dataKeys: ['apartment_features_demand', 'move_in_timeline', 'deal_breakers', 'bedroom_demand', 'budget_distribution', 'commute_preferences'], strength: 'optional', description: 'Full demand intelligence signals for JEDI score enrichment' },
 
   // M19 News Intel outputs
