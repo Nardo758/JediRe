@@ -570,6 +570,12 @@ export interface LayeredValue<T = number> {
   scenarios?: Record<string, T>;
   updated_at: string;
   updated_by?: string;
+  /**
+   * Provenance label indicating which source layer won the resolution.
+   * Used by the frontend to color-code the source badge (broker=amber,
+   * platform=green, user=purple).
+   */
+  resolvedFrom?: 'broker' | 'platform' | 'user' | 't12' | 'rent_roll' | 'tax_bill' | 'om' | 'agent' | 'computed' | string;
 }
 
 export interface ProFormaYear1Seed {

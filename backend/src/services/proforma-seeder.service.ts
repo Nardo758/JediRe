@@ -386,11 +386,13 @@ export function reResolveClearedLayeredValue(
   const shouldSkipZero = SKIP_ZERO_FIELDS.has(fieldName);
   field.resolution = 'platform_fallback';
   field.resolved = field.platform ?? null;
+  field.resolvedFrom = 'platform';
   for (const src of priorityOrder) {
     const srcVal = (field as unknown as Record<string, number | null>)[src];
     if (srcVal != null && (!shouldSkipZero || srcVal !== 0)) {
       field.resolved = srcVal;
       field.resolution = src as LayeredValue<number>['resolution'];
+      field.resolvedFrom = src as LayeredValue<number>['resolvedFrom'];
       break;
     }
   }
@@ -1978,6 +1980,9 @@ export async function applyUserOverride(
     // Auto-wrap a bare scalar into a LayeredValue on first override.
     // Prevents pre-existing fields seeded as a raw number from rejecting
     // with a 400 when the user pencils an override in the Pro Forma tab.
+  // Auto-wrap path for bare scalars: first user override on a field that was
+  // never seeded as LayeredValue gets the full structure.
+  if (!lv || typeof lv !== 'object' || Array.isArray(lv)) {
     target[lastKey] = {
       broker: (typeof lv === 'number' ? lv : null),
       t12: null,
@@ -1986,6 +1991,7 @@ export async function applyUserOverride(
       override: value,
       resolved: value,
       resolution: 'override',
+      resolvedFrom: 'user',
       updated_at: new Date().toISOString(),
       updated_by: userId,
     };
@@ -2007,6 +2013,7 @@ export async function applyUserOverride(
   if (value != null) {
     field.resolved = value;
     field.resolution = 'override';
+    field.resolvedFrom = 'user';   // ← ADD THIS: stamp who made the change
   } else {
     // Re-resolve using the same priority + skip-zero rules the initial seed uses,
     // so clearing an override on (e.g.) GPR falls back to T-12 instead of a
