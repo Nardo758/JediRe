@@ -199,6 +199,9 @@ app.use('/api/v1/ticker', tickerRoutes);
 import timeSeriesRoutes from './api/rest/time-series.routes';
 app.use('/api/v1/time-series', timeSeriesRoutes);
 
+import dataMacroRoutes from './api/rest/data-macro.routes';
+app.use('/api/v1/data-macro', dataMacroRoutes);
+
 import driverAnalysisRoutes from './api/rest/driver-analysis.routes';
 app.use('/api/v1/driver-analysis', driverAnalysisRoutes);
 

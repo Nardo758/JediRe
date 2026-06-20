@@ -249,6 +249,15 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   // metaKeys written by apply-from-module. Only module source literals shown as badges.
   const [moduleBadges, setModuleBadges] = useState<Record<string, { source: string; appliedAt: string }>>({});
 
+  // ── Lower #20: CPI anchor staleness ───────────────────────────────────────
+  const [cpiFreshness, setCpiFreshness] = useState<{
+    isStale: boolean;
+    daysOld: number;
+    currentValue: number | null;
+    warning: string | null;
+    confidence: 'high' | 'medium' | 'low';
+  } | null>(null);
+
   // Incremented by the assumptions.module-applied listener to trigger a model rebuild
   // after the patched state values have settled into the next render.
   const [rebuildAfterModuleApply, setRebuildAfterModuleApply] = useState(0);
@@ -620,6 +629,29 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     };
 
     fetchData();
+    return () => { cancelled = true; };
+  }, [id]);
+
+  // ── Lower #20: fetch CPI freshness on load ────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    const fetchCpiFreshness = async () => {
+      try {
+        const res: any = await apiClient.get('/api/v1/data-macro/freshness');
+        const metrics = res?.data?.metrics || [];
+        const cpi = metrics.find((m: any) => m.metricId === 'MACRO_CPI_OFFICIAL');
+        if (cpi && !cancelled) {
+          setCpiFreshness({
+            isStale: cpi.isStale,
+            daysOld: cpi.daysOld,
+            currentValue: cpi.currentValue,
+            warning: cpi.warning,
+            confidence: cpi.confidence,
+          });
+        }
+      } catch (_err) { /* non-fatal: badge silently hides on error */ }
+    };
+    fetchCpiFreshness();
     return () => { cancelled = true; };
   }, [id]);
 
@@ -1095,6 +1127,23 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
           <div className="flex items-center gap-2 mb-1">
             <Zap size={16} className="text-blue-600" />
             <span className="text-sm font-semibold text-blue-900">Financial Model Engine</span>
+            {/* Lower #20: CPI staleness badge */}
+            {cpiFreshness?.isStale && (
+              <span
+                className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200 cursor-help"
+                title={cpiFreshness.warning || 'CPI data may be stale'}
+              >
+                ⚠️ CPI {cpiFreshness.daysOld}d old
+              </span>
+            )}
+            {cpiFreshness && !cpiFreshness.isStale && cpiFreshness.confidence === 'medium' && (
+              <span
+                className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-600 border border-blue-200 cursor-help"
+                title={`CPI last updated ${cpiFreshness.daysOld} days ago (${cpiFreshness.currentValue}%)`}
+              >
+                CPI {cpiFreshness.currentValue}%
+              </span>
+            )}
           </div>
           <p className="text-xs text-blue-700">
             Claude AI will build a complete {holdPeriod}-year financial model from your assumptions below
