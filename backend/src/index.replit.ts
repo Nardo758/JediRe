@@ -265,6 +265,7 @@ import { syncMiamiDadePlanningCron } from './inngest/functions/sync-miami-dade-p
 import { georgiaCompEnrichmentWeekly } from './inngest/functions/georgia-comp-enrichment-weekly';
 import { georgiaArcGisIngestCron } from './inngest/functions/georgia-arcgis-ingest.cron';
 import { propertyReconciliationNightly } from './inngest/functions/property-reconciliation-nightly';
+import { outcomePanelForwardFillCron } from './inngest/functions/outcome-panel-forward-fill';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -311,6 +312,9 @@ app.use(
       calibrationRealizationCron,
       // Task #1050: monthly FRED + BLS macro signals → historical_observations (2nd of month, 09:00 UTC)
       macroSignalsMonthly,
+      // Outcome Panel: monthly forward-fill (1st of month, 05:00 UTC)
+      // Populates paired (leading, realized) observations for correlation fitting.
+      outcomePanelForwardFillCron,
       // Task #1075: nightly Atlanta DPCD + Fulton County planning application ingest (01:00 UTC)
       syncPlanningApplicationsCron,
       // Task #1076: nightly Gwinnett + DeKalb + Cobb Accela planning ingest (02:00 UTC)

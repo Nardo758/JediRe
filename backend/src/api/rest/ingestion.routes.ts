@@ -11,6 +11,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import axios from 'axios';
 
+import { outcomePanelService } from '../../services/ingestion/outcome-panel.service';
+
 const router = Router();
 
 router.use(requireAuth);
@@ -257,6 +259,73 @@ router.post('/lease-rents', async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('Lease rent ingestion error:', error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+// ─── Outcome Panel Backfill ───────────────────────────────────────────
+// The #1 missing data structure for correlation fitting.
+// Populates paired (leading, realized) observations from existing data.
+
+router.post('/outcome-panel/backfill', async (req: Request, res: Response) => {
+  try {
+    const {
+      submarketIds,
+      startDate,
+      endDate,
+      dryRun = false,
+    } = req.body;
+
+    logger.info('OutcomePanel: backfill request', {
+      submarketIds: submarketIds?.length || 'all',
+      startDate,
+      endDate,
+      dryRun,
+    });
+
+    const result = await outcomePanelService.backfill({
+      submarketIds,
+      startDate,
+      endDate,
+      dryRun,
+    });
+
+    res.json({
+      success: true,
+      dryRun,
+      ...result,
+    });
+  } catch (error) {
+    logger.error('Outcome panel backfill error:', error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+// ─── Outcome Panel Status ───────────────────────────────────────────
+// Check how much data is in the outcome panel and what's fittable.
+
+router.get('/outcome-panel/status', async (_req: Request, res: Response) => {
+  try {
+    const totalRows = await query('SELECT COUNT(*) FROM outcome_panel');
+    const currentRows = await query('SELECT COUNT(*) FROM outcome_panel_current');
+    const submarkets = await query('SELECT COUNT(DISTINCT submarket_id) FROM outcome_panel_current');
+    const dateRange = await query(`
+      SELECT MIN(period_date) AS earliest, MAX(period_date) AS latest
+      FROM outcome_panel_current
+    `);
+
+    res.json({
+      success: true,
+      totalRows: parseInt(totalRows.rows[0].count),
+      currentRows: parseInt(currentRows.rows[0].count),
+      submarkets: parseInt(submarkets.rows[0].count),
+      dateRange: {
+        earliest: dateRange.rows[0].earliest?.toISOString().slice(0, 10) || null,
+        latest: dateRange.rows[0].latest?.toISOString().slice(0, 10) || null,
+      },
+    });
+  } catch (error) {
+    logger.error('Outcome panel status error:', error);
     res.status(500).json({ success: false, error: String(error) });
   }
 });
