@@ -663,4 +663,70 @@ export class TrafficDataSourcesService {
     logger.info(`[TrafficDataSources] Bulk link complete: ${linked} linked, ${failed} failed`);
     return { linked, failed };
   }
+
+  /**
+   * Refresh google_realtime_factor for all properties whose factor is stale.
+   *
+   * @param minHoursStale Only refresh properties last updated > N hours ago (default 12)
+   * @param batchSize Max properties to refresh per call (default 100, for Google API quota safety)
+   * @returns Summary of refreshed / skipped / failed
+   */
+  async refreshStaleRealtimeFactors(
+    minHoursStale: number = 12,
+    batchSize: number = 100,
+  ): Promise<{ refreshed: number; skipped: number; failed: number; elapsedMs: number }> {
+    const start = Date.now();
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      logger.warn('[TrafficDataSources] No GOOGLE_MAPS_API_KEY — skipping realtime factor refresh');
+      return { refreshed: 0, skipped: 0, failed: 0, elapsedMs: 0 };
+    }
+
+    const result = await this.pool.query(
+      `SELECT ptc.property_id, p.latitude, p.longitude
+       FROM property_traffic_context ptc
+       JOIN properties p ON p.id = ptc.property_id
+       WHERE ptc.last_updated < NOW() - INTERVAL '${minHoursStale} hours'
+         AND p.latitude IS NOT NULL AND p.longitude IS NOT NULL
+       ORDER BY ptc.last_updated ASC
+       LIMIT $1`,
+      [batchSize]
+    );
+
+    let refreshed = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const row of result.rows) {
+      try {
+        const lat = parseFloat(row.latitude);
+        const lng = parseFloat(row.longitude);
+        const rt = await this.getRealTimeTrafficFactor(lat, lng);
+
+        if (rt.factor !== 1.0 || rt.congestion_level !== 'unknown') {
+          await this.pool.query(
+            `UPDATE property_traffic_context
+             SET google_realtime_factor = $1, last_updated = NOW()
+             WHERE property_id = $2`,
+            [rt.factor, row.property_id]
+          );
+          refreshed++;
+        } else {
+          skipped++;
+        }
+
+        // 200ms delay between requests to respect Google rate limits
+        await new Promise(resolve => setTimeout(resolve, 200));
+      } catch (e) {
+        failed++;
+        logger.debug(`[TrafficDataSources] Failed to refresh realtime factor for ${row.property_id}`);
+      }
+    }
+
+    const elapsed = Date.now() - start;
+    logger.info('[TrafficDataSources] Realtime factor refresh complete', {
+      refreshed, skipped, failed, elapsedMs: elapsed, batchSize, minHoursStale,
+    });
+    return { refreshed, skipped, failed, elapsedMs: elapsed };
+  }
 }

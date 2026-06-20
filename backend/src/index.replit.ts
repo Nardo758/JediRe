@@ -273,6 +273,7 @@ import { blsQcewMonthlyCron } from './inngest/functions/bls-qcew-monthly';
 import { censusPermitsMonthlyCron } from './inngest/functions/census-permits-monthly';
 import { concessionExtractionCron } from './inngest/functions/concession-extraction-cron';
 import { assetClassSpreadBacktestCron } from './inngest/functions/asset-class-spread-backtest';
+import { googleRealtimeRefreshCron } from './inngest/functions/google-realtime-refresh-cron';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -346,6 +347,9 @@ app.use(
       // Asset Class Spread Backtest: monthly calibration (10th of month, 04:00 UTC)
       // Validates ASSET_CLASS_SPREAD_BPS against realized rent growth from owned properties.
       assetClassSpreadBacktestCron,
+      // Lower #7: Daily Google realtime traffic factor refresh (07:00 UTC)
+      // Keeps google_realtime_factor current for all properties with traffic context.
+      googleRealtimeRefreshCron,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,
