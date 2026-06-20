@@ -274,6 +274,7 @@ import { censusPermitsMonthlyCron } from './inngest/functions/census-permits-mon
 import { concessionExtractionCron } from './inngest/functions/concession-extraction-cron';
 import { assetClassSpreadBacktestCron } from './inngest/functions/asset-class-spread-backtest';
 import { googleRealtimeRefreshCron } from './inngest/functions/google-realtime-refresh-cron';
+import { spyfuMissingDataCron } from './inngest/functions/spyfu-missing-data-cron';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -350,6 +351,9 @@ app.use(
       // Lower #7: Daily Google realtime traffic factor refresh (07:00 UTC)
       // Keeps google_realtime_factor current for all properties with traffic context.
       googleRealtimeRefreshCron,
+      // Lower #8: Weekly SpyFu missing-data health check (Mon 08:00 UTC)
+      // Surfaces domains with stale, missing, or errored SpyFu data.
+      spyfuMissingDataCron,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,

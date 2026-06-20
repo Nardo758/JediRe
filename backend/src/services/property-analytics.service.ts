@@ -120,96 +120,102 @@ export class PropertyAnalyticsService {
     const start = dateRange?.start || thirtyDaysAgo.toISOString().split('T')[0];
     const end = dateRange?.end || now.toISOString().split('T')[0];
 
+    let spyFuData: SpyFuDomainStats | null = null;
+    let fetchError: string | null = null;
+
     try {
-      const spyFuData = await this._fetchLatestDomainStats(domain);
+      spyFuData = await this._fetchLatestDomainStats(domain);
+    } catch (err: any) {
+      fetchError = err.message || 'SpyFu fetch error';
+      logger.warn(`[PropertyAnalytics] SpyFu fetch failed for ${domain}: ${fetchError}`);
+    }
 
-      if (!spyFuData) {
-        logger.warn(`[PropertyAnalytics] SpyFu returned no data for domain ${domain}`);
-        return this._getCachedAnalytics(propertyId, start, end);
-      }
-
-      const totalSessions = (spyFuData.monthlyOrganicClicks || 0) + (spyFuData.monthlyPaidClicks || 0);
-
+    if (!spyFuData) {
+      // Update connection with error so warnings can be surfaced
       await this.pool.query(
-        `INSERT INTO property_website_analytics
-         (property_id, ga_property_id, period_start, period_end,
-          sessions, users, new_users, pageviews, avg_session_duration, bounce_rate,
-          organic_sessions, paid_sessions, direct_sessions, referral_sessions, social_sessions,
-          top_landing_pages, device_breakdown, is_comp_proxy, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, false, NOW())
-         ON CONFLICT (property_id, period_start, period_end)
-         DO UPDATE SET
-           sessions = EXCLUDED.sessions,
-           users = EXCLUDED.users,
-           new_users = EXCLUDED.new_users,
-           pageviews = EXCLUDED.pageviews,
-           avg_session_duration = EXCLUDED.avg_session_duration,
-           bounce_rate = EXCLUDED.bounce_rate,
-           organic_sessions = EXCLUDED.organic_sessions,
-           paid_sessions = EXCLUDED.paid_sessions,
-           direct_sessions = EXCLUDED.direct_sessions,
-           referral_sessions = EXCLUDED.referral_sessions,
-           social_sessions = EXCLUDED.social_sessions,
-           top_landing_pages = EXCLUDED.top_landing_pages,
-           device_breakdown = EXCLUDED.device_breakdown`,
-        [
-          propertyId, domain, start, end,
-          totalSessions, totalSessions, 0, 0,
-          0, 0,
-          spyFuData.monthlyOrganicClicks || 0,
-          spyFuData.monthlyPaidClicks || 0,
-          0, 0, 0,
-          JSON.stringify([]),
-          JSON.stringify({
-            organic_value: spyFuData.monthlyOrganicValue || 0,
-            organic_keywords: spyFuData.totalOrganicResults || 0,
-            paid_keywords: spyFuData.totalAdsPurchased || 0,
-            domain_strength: spyFuData.strength || 0,
-            avg_organic_rank: spyFuData.averageOrganicRank || 0,
-          }),
-        ]
+        `UPDATE property_ga_connections
+         SET sync_error = $1, last_synced = COALESCE(last_synced, NOW()), updated_at = NOW()
+         WHERE property_id = $2 AND ga_property_id = $3`,
+        [fetchError || 'SpyFu returned no data for domain', propertyId, domain]
       );
-
-      await this.pool.query(
-        `UPDATE property_ga_connections SET last_synced = NOW(), sync_error = NULL, updated_at = NOW()
-         WHERE property_id = $1 AND ga_property_id = $2`,
-        [propertyId, domain]
-      );
-
-      return {
-        sessions: totalSessions,
-        users: totalSessions,
-        new_users: 0,
-        pageviews: 0,
-        avg_session_duration: 0,
-        bounce_rate: 0,
-        traffic_sources: {
-          organic: spyFuData.monthlyOrganicClicks || 0,
-          paid: spyFuData.monthlyPaidClicks || 0,
-          direct: 0,
-          referral: 0,
-          social: 0,
-        },
-        device_breakdown: {},
-        top_landing_pages: [],
-        period_start: start,
-        period_end: end,
-        is_comp_proxy: false,
-        organic_value: spyFuData.monthlyOrganicValue || 0,
-        organic_keywords: spyFuData.totalOrganicResults || 0,
-        paid_keywords: spyFuData.totalAdsPurchased || 0,
-        domain_strength: spyFuData.strength || 0,
-      };
-    } catch (error: any) {
-      logger.error(`[PropertyAnalytics] SpyFu fetch failed for ${domain}`, { error: error.message });
-      await this.pool.query(
-        `UPDATE property_ga_connections SET sync_error = $3, updated_at = NOW()
-         WHERE property_id = $1 AND ga_property_id = $2`,
-        [propertyId, domain, error.message]
-      );
-
+      logger.warn(`[PropertyAnalytics] SpyFu returned no data for domain ${domain}`);
       return this._getCachedAnalytics(propertyId, start, end);
     }
+
+    // Clear any previous error on successful fetch
+    await this.pool.query(
+      `UPDATE property_ga_connections
+       SET sync_error = NULL, last_synced = NOW(), updated_at = NOW()
+       WHERE property_id = $1 AND ga_property_id = $2`,
+      [propertyId, domain]
+    );
+
+    const totalSessions = (spyFuData.monthlyOrganicClicks || 0) + (spyFuData.monthlyPaidClicks || 0);
+
+    await this.pool.query(
+      `INSERT INTO property_website_analytics
+       (property_id, ga_property_id, period_start, period_end,
+        sessions, users, new_users, pageviews, avg_session_duration, bounce_rate,
+        organic_sessions, paid_sessions, direct_sessions, referral_sessions, social_sessions,
+        top_landing_pages, device_breakdown, is_comp_proxy, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, false, NOW())
+       ON CONFLICT (property_id, period_start, period_end)
+       DO UPDATE SET
+         sessions = EXCLUDED.sessions,
+         users = EXCLUDED.users,
+         new_users = EXCLUDED.new_users,
+         pageviews = EXCLUDED.pageviews,
+         avg_session_duration = EXCLUDED.avg_session_duration,
+         bounce_rate = EXCLUDED.bounce_rate,
+         organic_sessions = EXCLUDED.organic_sessions,
+         paid_sessions = EXCLUDED.paid_sessions,
+         direct_sessions = EXCLUDED.direct_sessions,
+         referral_sessions = EXCLUDED.referral_sessions,
+         social_sessions = EXCLUDED.social_sessions,
+         top_landing_pages = EXCLUDED.top_landing_pages,
+         device_breakdown = EXCLUDED.device_breakdown`,
+      [
+        propertyId, domain, start, end,
+        totalSessions, totalSessions, 0, 0,
+        0, 0,
+        spyFuData.monthlyOrganicClicks || 0,
+        spyFuData.monthlyPaidClicks || 0,
+        0, 0, 0,
+        JSON.stringify([]),
+        JSON.stringify({
+          organic_value: spyFuData.monthlyOrganicValue || 0,
+          organic_keywords: spyFuData.totalOrganicResults || 0,
+          paid_keywords: spyFuData.totalAdsPurchased || 0,
+          domain_strength: spyFuData.strength || 0,
+          avg_organic_rank: spyFuData.averageOrganicRank || 0,
+        }),
+      ]
+    );
+
+    return {
+      sessions: totalSessions,
+      users: totalSessions,
+      new_users: 0,
+      pageviews: 0,
+      avg_session_duration: 0,
+      bounce_rate: 0,
+      traffic_sources: {
+        organic: spyFuData.monthlyOrganicClicks || 0,
+        paid: spyFuData.monthlyPaidClicks || 0,
+        direct: 0,
+        referral: 0,
+        social: 0,
+      },
+      device_breakdown: {},
+      top_landing_pages: [],
+      period_start: start,
+      period_end: end,
+      is_comp_proxy: false,
+      organic_value: spyFuData.monthlyOrganicValue || 0,
+      organic_keywords: spyFuData.totalOrganicResults || 0,
+      paid_keywords: spyFuData.totalAdsPurchased || 0,
+      domain_strength: spyFuData.strength || 0,
+    };
   }
 
   async getCompProxyTraffic(
@@ -776,5 +782,89 @@ export class PropertyAnalyticsService {
       paid_keywords: db.paid_keywords || 0,
       domain_strength: db.domain_strength || 0,
     };
+  }
+
+  /**
+   * Return structured warnings for all properties with active domain
+   * connections where SpyFu data is missing, stale, or errored.
+   *
+   * Stale = last_synced > 14 days ago with no error
+   * Missing = last_synced is NULL
+   * Error = sync_error is not NULL
+   */
+  async getSpyFuMissingDataWarnings(
+    staleDays: number = 14
+  ): Promise<Array<{
+    property_id: string;
+    domain: string;
+    status: 'missing' | 'stale' | 'error' | 'ok';
+    last_synced: string | null;
+    sync_error: string | null;
+    warning: string;
+    days_since_sync: number | null;
+  }>> {
+    const result = await this.pool.query(
+      `SELECT
+        property_id,
+        ga_property_id AS domain,
+        last_synced,
+        sync_error,
+        COALESCE(EXTRACT(EPOCH FROM (NOW() - last_synced)) / 86400, NULL) AS days_since_sync
+      FROM property_ga_connections
+      WHERE connection_status = 'active'
+      ORDER BY last_synced ASC NULLS FIRST`,
+    );
+
+    const warnings = result.rows.map((row: any) => {
+      const daysSince = row.days_since_sync != null ? Math.round(parseFloat(row.days_since_sync)) : null;
+
+      if (row.sync_error) {
+        return {
+          property_id: row.property_id,
+          domain: row.domain,
+          status: 'error' as const,
+          last_synced: row.last_synced ? new Date(row.last_synced).toISOString() : null,
+          sync_error: row.sync_error,
+          warning: `SpyFu sync error: ${row.sync_error}`,
+          days_since_sync: daysSince,
+        };
+      }
+
+      if (!row.last_synced) {
+        return {
+          property_id: row.property_id,
+          domain: row.domain,
+          status: 'missing' as const,
+          last_synced: null,
+          sync_error: null,
+          warning: 'Domain connected but never synced with SpyFu',
+          days_since_sync: null,
+        };
+      }
+
+      if (daysSince != null && daysSince > staleDays) {
+        return {
+          property_id: row.property_id,
+          domain: row.domain,
+          status: 'stale' as const,
+          last_synced: new Date(row.last_synced).toISOString(),
+          sync_error: null,
+          warning: `SpyFu data is ${daysSince} days old (stale threshold: ${staleDays})`,
+          days_since_sync: daysSince,
+        };
+      }
+
+      return {
+        property_id: row.property_id,
+        domain: row.domain,
+        status: 'ok' as const,
+        last_synced: new Date(row.last_synced).toISOString(),
+        sync_error: null,
+        warning: 'SpyFu data is current',
+        days_since_sync: daysSince,
+      };
+    });
+
+    return warnings.filter(w => w.status !== 'ok');
   }
 }
