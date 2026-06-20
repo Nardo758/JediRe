@@ -1,0 +1,50 @@
+Excellent audit. Several critical corrections to my previous assessment:
+
+**Key corrections from this audit:**
+
+| What I claimed | What the audit found |
+|---|---|
+| `deal_capsules` table doesn't exist | **DOES exist** — real table with shortcode, AES encryption, capsule sharing routes |
+| Sharing is a UI mock | **Functional "send a link"** — but not layer-filtered or permission-scoped |
+| "You" column is a partial placeholder | **Completely broken** — 26 inputs, 0 mutation calls. Overrides don't save |
+| `per_year_overrides` dollar-level not read | **Partially wrong** — `projPyOvr` DOES read dollar overrides in the projection loop, but the audit says "not in the read loop" at lines 3155-3175 (which is the rate/pct loop, not the dollar loop) |
+| Spec documents at `docs/DEAL_CAPSULE_ARCHITECTURE_SPEC.md` | **Don't exist** — actual docs are `deal-capsule-blueprint.md`, `CAPSULE_SHARING_AND_BOUNDARY_SPEC.md`, etc. |
+
+**Current status:**
+- F-key map fixed locally (pushed)
+- F9/F10 module IDs fixed locally (pushed)
+- 3 migration files + authority matrix pushed
+- **But: `deal_capsules` was ALREADY a real table** — I created a redundant schema. Need to check what's actually in the existing table vs what I designed
+
+**Next:** You want a prompt to audit the F3 tab to understand where comps were moved. Here's the prompt:
+
+---
+
+**PROMPT FOR REPLIT:**
+
+> **Audit the F3 Market tab to understand where and why "comps" were moved.**
+>
+> **Context:** The fKeyMap in `DealDetailPage.tsx:788` has F3 mapped to `'comps'`, but `allDealScreens` at line 839 has F3 as `'market'` with moduleId `M05`. The user stated they moved F-keys for space. We need to understand what happened to "comps" and how the Market tab is structured.
+>
+> **Read these files:**
+> 1. `frontend/src/pages/DealDetailPage.tsx` lines 839-851 (screen definitions) and 788-792 (fKeyMap)
+> 2. `frontend/src/pages/MarketScreen.tsx` or `frontend/src/pages/MarketIntelligencePage.tsx` — the F3 component
+> 3. `frontend/src/shared/config/deal-type-visibility.ts` — search for `M05` and `comps`
+> 4. Search the entire `frontend/src/` directory for any component or page named `*Comp*` or `*comp*` that might be a "comps" tab
+> 5. Search the codebase for `fkey: 'F3'` or `fkey: 'F4'` to see if comps was ever an F-key tab
+> 6. Check if there are any sub-tabs or sections within the Market tab that contain "comps" or "comparables" content
+>
+> **Answer these questions:**
+> 1. **What is F3 currently?** What component renders when F3 is active? What moduleId does it use?
+> 2. **What is "comps"?** Is there a `comps` tab/component anywhere in the codebase? If yes, where? If no, was it deleted or renamed?
+> 3. **Why does fKeyMap have F3→'comps'?** Was `comps` previously an F-key tab that got removed or merged into Market? When did this change?
+> 4. **What is the Market tab's structure?** Does it have sub-tabs or sections that include comps/comparables data? If so, what are they?
+> 5. **What SHOULD F3 be?** Based on the current allDealScreens array, what is the correct fKeyMap entry for F3?
+> 6. **Comps history:** Search git history (if available) for any commit that mentions "comps", "F3", "market", or "comparables" to understand when comps was moved or removed.
+> 7. **User's intent:** The user said "So of the F-keys were moved for space." What do you think they meant? Which F-keys were moved, and where did they go?
+>
+> **Report:** Give a clear narrative of what happened to comps, where it went, and what the correct fKeyMap should be.
+
+---
+
+Run that in Replit and paste the results back here.
