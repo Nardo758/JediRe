@@ -1,0 +1,626 @@
+ give feed back on the next set of fixes: Fix 2 complete and pushed. resolvedFrom: 'user' is now stamped on every LayeredValue override write. The frontend's existing source badge logic (OverviewRouter, AssumptionsPanel, DealJourneyOverlay) will automatically show "User" in purple when an operator overrides a field.
+Now moving to Fix 3: Cross-tab data flow. Based on the audits:
+Table
+Direction What's Missing
+F2 Zoning → F1 No signal. Zoning max-units constraint doesn't appear on Overview.
+F3 Market → F9 No market rent growth feed into proforma projections.
+F6 Traffic → F9 ProFormaWithTrafficSection has feedsFinancial annotations but wiring is unconfirmed.
+F7 Design-3D → F9 No unit count from massing drives revenue.
+Existing working flow: F5 Strategy → F9 (via dispatchModuleApplied), F8 Debt → F9 (via dispatchModuleApplied), F11 Events → F9 (via dispatchModuleApplied).
+Fix 3 approach: Extend the dispatchModuleApplied pattern to the missing tabs. Each tab that produces data needs to:
+Compute its output (zoning max units, market rent growth, traffic lease velocity, 3D unit count)
+Fire dispatchModuleApplied(source, fields[]) with the computed values
+ProFormaTab already listens and rebuilds
+This is mostly backend wiring + event dispatching — minimal UI changes. Do you want me to proceed with Fix 3, or do you want to see the specific gaps first?
+
+
+Show less
+51 minutes ago
+
+Show less
+
+Auditing current data flow logic (4 seconds)
+Let me audit the actual state of each gap before commenting on the approach — per P11, need to grep before claiming any wiring exists or doesn't:
+
+
+6 actions
+Need to check what ProFormaWithTrafficSection actually does before I can give accurate feedback:
+
+
+4 actions
+Here's the verdict on all four gaps — with actual code evidence, not just the gap table:
+
+F2: Zoning → F1 Overview — GAP DOESN'T EXIST
+OverviewSection.tsx already reads and displays it:
+
+// line 845
+const zoningMaxUnits = activeScenario?.maxUnits
+  || unitMixZoning?.maxUnits
+  || zoningStore.selected_path_data?.maxUnits
+  || null;
+// line 1047
+<KVCard label="Max Units (Zoned)" value={maxUnits > 0 ? `${maxUnits}u` : '—'} valueColor="text-cyan-600" />
+
+Three-source fallback chain, rendered as a KV card on Overview. Remove F2 from Fix 3 entirely — it was already wired.
+
+F6: Traffic → F9 — Not "unconfirmed wiring." It's a parallel proforma.
+ProFormaWithTrafficSection.tsx is 1,027 lines. Its own header comment says:
+
+4 tabs: Traffic → ProForma | 3-Layer Assumptions | 10-Year Income Statement | Returns
+
+This is a self-contained traffic+proforma hybrid — it runs its own occupancy trajectory, rent trajectory, and 10-year income statement. It is not a feed into the standard ProFormaTab. There is no dispatchModuleApplied call anywhere in it. Connecting it to F9 would require deciding what it hands off (which 4 numbers?), adding a "Push to F9" action button, and wiring a PATCH for each of the 4 fields before dispatching. That's scope, not a "confirm wiring" task.
+
+Fix 3 should state this explicitly: F6 requires a new "Push to F9" action surface, not just event wiring.
+
+F3: Market → F9 — Gap is real, but the backend field is unresolved
+MarketIntelligencePage.tsx displays rent growth from submarket.rentGrowth / eco.metrics.rentGrowth.value in multiple places. Zero dispatchModuleApplied calls anywhere in it. The gap is confirmed.
+
+But: applyFinancialsOverride's GROWTH_FIELD_TO_PY_KEY currently maps:
+
+growthOpexPct, growthInsurancePct, growthTaxPct,
+growthUtilitiesPct, growthReservesPct, growthAncillaryPct, concessionBurnOffPct
+
+There is no rentGrowthPct / growthRentPct key. Before building, you need to decide: does market rent growth push into the year-1 LayeredValue seed (standard PATCH path) or into the section-10 growth rate map (GROWTH_FIELD_TO_PY_KEY, which would need a new entry)? These are two different backend writes with different F9 effects. Clarify before wiring.
+
+F7: Design-3D → F9 — Gap is real and the approach is correct
+Design3DPage.tsx saves unit count to localStorage only — no backend write, no dispatchModuleApplied. OverviewSection.tsx:860 reads design3D?.totalUnits for display, but that doesn't flow into proforma assumptions.
+
+The dispatchModuleApplied pattern will work here, but it needs:
+
+A PATCH to /financials/override first — field totalUnits must exist in FIELD_MAP or SCALAR_FIELD_MAP in proforma-adjustment.service.ts
+Then dispatchModuleApplied('design:3d', ['totalUnits']) — ProFormaTab already listens
+Check before building: does totalUnits have an existing year-1 FIELD_MAP entry? If not, add it; otherwise the PATCH will 400.
+
+Summary
+Gap	Actual State	Fix 3 Action
+F2 Zoning → F1	✅ Already wired (3-source KV card)	Remove from scope
+F3 Market → F9	❌ Real gap — no dispatch	Clarify field name first (growthRentPct or year-1 LV?)
+F6 Traffic → F9	⚠️ Parallel proforma, not a feed	Rescope: needs "Push to F9" button + 4-field PATCH
+F7 Design-3D → F9	❌ Real gap — localStorage only	Ready to build after confirming totalUnits in FIELD_MAP
+The dispatchModuleApplied pattern is the right approach for F3 and F7. F6 is the bigger lift — worth a separate fix with explicit scope.
+
+
+Worked for 1 minute
+Give me feed back on this, keep in mind each module serves a different purpose: some modules like F3 Market are suppose to provide infomaton that help the user an agent make beeter assumptions while the Traffice Module makes calsulations that need to be pushed to F9 proforma: Corrected Fix 3 — What the Code Actually Shows
+The Replit audit changed the picture significantly. Here's the corrected Fix 3 scope:
+Table
+Gap Original Claim Actual State Fix 3 Action
+F2 Zoning → F1 Missing Already wired — 3-source KV card on Overview Remove from scope
+F6 Traffic → F9 Unconfirmed wiring Parallel proforma, not a feed — needs "Push to F9" button + 4-field PATCH Rescope as separate fix
+F3 Market → F9 Missing Real gap — no dispatchModuleApplied calls. But need to clarify: does market rent growth push to year1 LayeredValue or per_year_overrides growth rate map? Clarify field name, then build
+F7 Design-3D → F9 Missing Real gap — totalUnits saved to localStorage only, no backend write. Need to check if totalUnits has a FIELD_MAP entry Build after confirming FIELD_MAP
+Fix 3 is now: Build F3 Market → F9 and F7 Design-3D → F9, after checking two preconditions.
+Before I start, I need to verify:
+Does totalUnits have a FIELD_MAP entry in proforma-adjustment.service.ts?
+Does rentGrowthPct have a backend path (GROWTH_FIELD_TO_PY_KEY or FIELD_MAP)?
+
+
+Show less
+44 minutes ago
+
+Show less
+
+Verifying precondition data mapping
+The approach is right — let me verify both preconditions in parallel right now:
+
+
+3 actions
+Neither answer is clear yet — need to read the actual FIELD_MAP and SCALAR_FIELD_MAP definitions, and verify whether the rent_growth references belong to the F9 system or a separate table:
+
+
+5 actions
+Both preconditions answer clearly now. Here's the complete verdict:
+
+Precondition 1: totalUnits — No FIELD_MAP entry, but the DB column is there
+Neither FIELD_MAP nor SCALAR_FIELD_MAP contains totalUnits. But line 2249 confirms deal_assumptions.total_units is a real column that the financial engine already reads:
+
+const totalUnits: number = assumptionsRes.rows[0]?.total_units
+  ?? (rrCapsule?.total_units != null ? +rrCapsule.total_units : 0)
+
+Fix: Add one entry to SCALAR_FIELD_MAP:
+
+totalUnits: 'total_units',
+
+That's all. The PATCH route already handles SCALAR_FIELD_MAP fields with a direct column UPDATE — no new backend logic required.
+
+Precondition 2: rentGrowthPct — No backend path exists anywhere in the F9 system
+The rent_growth hits in the grep are from a completely separate system: proforma_assumptions table, keyed by proformaId, updated via UPDATE proforma_assumptions SET rent_growth_current. That is not F9. It's a legacy/parallel assumptions table that predates the deal_assumptions.year1 JSONB architecture.
+
+In the F9 system:
+
+FIELD_MAP — no rent growth entry
+SCALAR_FIELD_MAP — no rent growth entry
+GROWTH_FIELD_TO_PY_KEY — has opex/insurance/tax/utilities/reserves/ancillary/concessionBurnOff — no rent growth
+The field simply doesn't exist as a writable override path in F9 yet. Before building, you need to decide which path it belongs in:
+
+Option	Where it goes	What it means
+A — GROWTH_FIELD_TO_PY_KEY with key growth:rent	per_year_overrides['growth:rent']	A scalar annual rent growth rate the proforma applies across all years. Matches how opex growth works.
+B — FIELD_MAP year-1 LayeredValue	year1.rent_growth_pct.override	Year-1 point value with a full LayeredValue (broker/platform/user layers). Better if you want source badges and audit trail.
+Option A is correct here. Market rent growth is a projection rate, not a year-1 point value — exactly the same shape as growthOpexPct. The implementation is:
+
+Add growthRentPct: 'growth:rent' to GROWTH_FIELD_TO_PY_KEY in proforma-adjustment.service.ts
+Ensure the proforma engine reads per_year_overrides['growth:rent'] when projecting years 2–10 (needs a quick grep to confirm it already respects the growth:* keys, or whether that's another wire)
+Net status before building
+Item	Status
+totalUnits → SCALAR_FIELD_MAP	✅ One-line add, safe to build
+F7 dispatch from Design3DPage	✅ Ready after above add
+growthRentPct → GROWTH_FIELD_TO_PY_KEY	✅ One-line add, right approach
+Proforma engine reads growth:rent from per_year_overrides	❓ Needs one grep before building
+F3 dispatch from MarketIntelligencePage	✅ Ready after above confirmed
+One more check needed before F3: does the proforma projection engine actually read per_year_overrides['growth:rent'], or does it only read the existing growth keys? If it doesn't, F3 needs a backend read-side change too — not just the write path. Want me to grep that now?
+
+
+Worked for 1 minute
+The Rent growth is applied to each unit not each financial year
+
+31 minutes ago
+
+Show less
+
+Planning rent growth calculation logic (23 seconds)
+That clarification changes the F3 approach meaningfully. Let me quickly verify where per-unit rent growth actually lives in the data model:
+
+
+4 actions
+That's the key clarification. The leasing-fields config gives the exact picture:
+
+id: 'c_rent_growth'
+path: 'traffic.coefficients.blended_rent_growth'
+tooltip: 'Year-over-year rent growth applied to all unit types. Platform calibrates from subject S2+ rent history → submarket peer set → MSA trend.'
+
+This changes the F3 analysis significantly. Let me verify whether this path already exists in the year-1 seed and is reachable via the PATCH route's dot-traversal:
+
+
+3 actions
+Good — blended_rent_growth has zero entries in the year-1 seed and only appears as a comment header in coefficient-resolver.service.ts. It's a Traffic Engine coefficient path, not a field in deal_assumptions.year1. Let me check where per-unit rent actually lives to close the loop:
+
+
+3 actions
+Now the picture is complete. Here's the accurate feedback:
+
+The clarification resolves the F3 architecture question entirely
+The unit_mix in deal_assumptions stores in_place_rent per unit type. GPR = Σ(count × in_place_rent × 12). "Rent growth applied to each unit" means the compounding rate is applied to each unit type's in_place_rent individually over the hold period — not to a top-level financial line item.
+
+This means F3's submarket rentGrowth value is reference data, not an input. It tells the user "the market is growing at X%" — which informs what they should set for each unit's in_place_rent and the growth coefficient. There is no single field to push into F9 from F3 via dispatchModuleApplied because there's no scalar "rent growth rate" slot in the F9 year-1 seed.
+
+Revised module taxonomy — as the user described
+Module	Role	F9 relationship
+F3 Market	Advisory — benchmarks that help user/agent set better assumptions	Informs, doesn't push. Agent reads F3 market rents to recommend per-unit rent and growth rate overrides
+F5 Strategy	Advisory + executor — produces entry/exit plan, pushes exit cap	dispatchModuleApplied on confirmed plan
+F6 Traffic	Calculator — produces 4 concrete numbers (vacancy %, rent trajectory, absorption, lease-up)	Needs "Push to F9" button → 4-field PATCH
+F7 Design-3D	Calculator — produces unit count, FAR, parking from massing	Needs dispatchModuleApplied → totalUnits PATCH
+F8 Debt	Calculator — produces loan terms	dispatchModuleApplied ✅ already wired
+F11 Events	Executor — event timeline pushes hold-period assumptions	dispatchModuleApplied ✅ already wired
+What this means for Fix 3
+Remove F3 entirely from Fix 3. F3 is not a push module — its rent growth data is already displayed in OverviewTab.tsx (marketSignals.rent_growth_yoy) and available for the agent to read. The gap, if any, is an agent tool gap: no skill currently reads F3 market rents and proposes per-unit in_place_rent overrides to the user. That is a different and larger scope than Fix 3.
+
+Fix 3 is now just F7: Design-3D → F9, one concrete wire:
+
+Add totalUnits: 'total_units' to SCALAR_FIELD_MAP in proforma-adjustment.service.ts
+Add a "Push to F9" action in Design3DPage.tsx that PATCHes totalUnits and calls dispatchModuleApplied('design:3d', ['totalUnits'])
+ProFormaTab already listens and rebuilds
+F6 stays as its own separate fix — a Push to F9 button in ProFormaWithTrafficSection.tsx that PATCHes 4 fields (vacancyPct, marketRentPerUnit, absorption, lease-up timeline) then dispatches.
+
+Shall I proceed to build Fix 3 (F7 only) now?
+
+
+Worked for 2 minutes
+There is also a CPI fall back in the event the user or the agent is unsure of the correct growth number for income and expenses
+
+24 minutes ago
+
+Show less
+
+Analyzing CPI fallback implementation
+Good detail — let me find where the CPI fallback is implemented:
+
+
+3 actions
+Rich picture here. Let me read the two key pieces — the proforma anchors hook and the AssumptionsTab CPI section:
+
+
+3 actions
+Now the complete picture is clear. Here's what the code shows:
+
+The CPI fallback system is fully implemented
+It has three layers working together:
+
+Layer 1 — cpiAssumption scalar (Section 10, AssumptionsTab)
+A dedicated patachable field. Platform default: 2.5%/yr from FRED 10-yr TIPS breakeven (T10YIE). OperatorStance modulates it: INFLATION stance = CPI-tracked (platform default), CONTAINED stance = CPI −50bps.
+
+Layer 2 — Per-line-item anchors (useProformaAnchors)
+Every income and expense line is independently anchored to a macro series + structural premium:
+
+Line item	Anchor	Premium
+Gross rent income	CPI-OER (CUSR0000SEHC)	+0.8%
+Utilities	CPI-OER	+0.5%
+Insurance	PPI Residential (WPSFD49207)	+1.0%
+Repairs & Maint	PPI Residential	+0.5%
+Reserves	PPI Residential	+2.5%
+Mgmt fees / payroll	ECI Wages (ECIWAG)	+0.5%
+Property taxes	County growth (no series)	+3.0% trigger-on-sale
+Layer 3 — Live FRED data
+fred-ingest.service.ts ingests CPIAUCSL, CORESTICKM159SFRBATL, CUUR0000SEHC (rent CPI), and CRE_RENT_CPI_SA on a schedule. The anchors use live values when available.
+
+How this changes the Fix 3 picture for F3
+F3's submarket rentGrowth is now clearly positioned as a market signal that validates or overrides the CPI-OER + 0.8% default for rent income — not a raw number to push blindly. The correct F3 → F9 flow is advisory:
+
+"Market shows 4.2% rent growth vs. your CPI-OER + 0.8% anchor of 3.3%. Consider overriding."
+
+That's an agent recommendation, not a dispatchModuleApplied event. F3 stays informational. The agent reads F3 market data alongside the active CPI anchor and proposes a per-unit rent or cpiAssumption override if warranted.
+
+Fix 3 final scope — confirmed
+Item	Action
+F3 Market → F9	No dispatchModuleApplied needed. CPI fallback already covers the default. Agent uses F3 data to recommend overrides when market diverges from anchor.
+F7 Design-3D → F9	Build: add totalUnits: 'total_units' to SCALAR_FIELD_MAP, add "Push to F9" in Design3DPage
+F6 Traffic → F9	Separate fix: "Push to F9" button → 4-field PATCH + dispatch
+Fix 3 is just F7. Want me to build it now?
+
+
+Worked for 1 minute
+F6 doesnt need a Push button, it needs to feed F9 by default but allow for user overide or to edit the traffic assumptions
+
+20 minutes ago
+
+Show less
+
+Planning F6 Traffic to F9 integration (7 seconds)
+That's a different architecture — Traffic becomes a source layer in the LayeredValue system, not a push action. Same pattern as broker/platform/t12. Let me read how ProFormaWithTrafficSection currently computes its outputs and what it hands off:
+
+
+4 actions
+This is a much better finding than expected. Let me check what pd.occupancy / pd.rentGrowth actually feeds into the model, and whether T-01/T-05/T-06 edits cascade:
+
+
+4 actions
+Now I have the complete picture. Here is an accurate status:
+
+
+2 actions
+Now I have the complete picture. Here's the honest gap assessment:
+
+What's already there
+The auto-feed partially exists but only as visual hints, not as applied values:
+
+// ProFormaTab.tsx:560–566 — traffic IS fetched automatically
+pd.occupancy = traffic.occupancyTrajectory.map(p => p.occ / 100);
+pd.rentGrowth = traffic.rentTrajectory.map(p => p.growth / 100);
+// ProFormaTab.tsx:1758–1770 — shown as a hint next to an editable input
+<InputField label="Stabilized Occupancy"
+  platformValue={platformData?.occupancy?.[0]}
+  platformSource="Traffic Module" />  // ← hint badge only
+// Annual Rent Growth — "Platform data available" badge, but inputs are manual
+
+Traffic data arrives and is displayed as a suggestion alongside manual inputs. It is not automatically applied as the resolved value — the user still has to manually match what traffic says.
+
+The three actual gaps
+Gap 1 — Traffic is a hint, not a source layer
+Traffic outputs should resolve vacancyPct and per-year rentGrowth by default (like broker/platform/t12), with resolvedFrom: 'traffic'. Currently they just decorate the UI next to a manually-editable field. If the user doesn't notice the badge, traffic has zero effect on F9.
+
+Gap 2 — No T-01/T-05/T-06 edit surface in ProFormaTab
+The backend PATCH route already accepts t01WeeklyTours, t05ClosingRatio, t06WeeklyLeases via TRAFFIC_SIGNAL_FIELDS. These are persisted to per_year_overrides and the proforma-seeder reads them back. But ProFormaTab has no input fields for them — there is nowhere in F9 for the user to edit traffic assumptions and see the cascade.
+
+Gap 3 — ProFormaWithTrafficSection is a parallel universe
+It runs a full internal proforma computation (1,027 lines) disconnected from the LayeredValue system. Its vacancy and rent trajectories never touch deal_assumptions.year1.
+
+What the correct architecture looks like
+T-01 / T-05 / T-06 (editable in F9)
+        ↓ PATCH per_year_overrides
+Traffic Intelligence API re-fetches with new signals
+        ↓
+occupancyTrajectory → vacancyPct[yr1–yr10]  resolvedFrom: 'traffic'
+rentTrajectory      → rentGrowth[yr1–yr10]  resolvedFrom: 'traffic'
+        ↓ (user can override any year)
+F9 LayeredValue — traffic layer sits between platform and user
+        ↓
+ProFormaTab reads it on next load / module-applied event
+
+The seeder already has the T-01/T-05/T-06 read path (TRAFFIC_SIGNAL_FIELDS in per_year_overrides). The backend is ready. What's missing is:
+
+Missing piece	Location	Work
+T-01/T-05/T-06 edit inputs	ProFormaTab revenue/leasing section	3 new InputField rows with PATCH on change
+Traffic layer auto-applied (not just hint)	ProFormaTab data load	On fetch, write pd.occupancy[0] into stabilizedOccupancy state if no user override exists
+Per-year vacancy and rentGrowth from traffic	ProFormaTab	Initialize rentGrowth[] and vacancyPct from pd.* when no per_year_overrides key conflicts
+This is more than Fix 3 — it's a proper F6→F9 integration task. Want this scoped as its own Fix 4, separate from F7 (totalUnits)?
+
+
+Worked for 1 minute
+Audit the traffic module for its inputs also i need to know if the starting occupancy will match that of the rent roll
+
+14 minutes ago
+
+Show less
+
+Analyzing traffic module inputs
+Running a parallel audit across the traffic module — inputs, starting state, and rent roll occupancy alignment:
+
+
+4 actions
+Found key files — reading the traffic-to-proforma bridge, the v2 intelligence route, and the rent roll starting state all in parallel:
+
+
+15 actions
+Reading the buildHandoff method and the v2 intelligence endpoint in parallel — those are the two critical paths:
+
+
+4 actions
+Need to find the actual v2/intelligence endpoint and check the prediction engine's starting occupancy source:
+
+
+8 actions
+Now reading the actual v2/intelligence endpoint ProFormaTab calls, and checking whether properties.current_occupancy gets updated from rent roll upload:
+
+
+4 actions
+Reading the prediction engine's occupancy averaging section and the v2 intelligence endpoint search:
+
+
+4 actions
+I have everything needed for a complete audit. Here is the full findings:
+
+Traffic Module — Complete Input Audit
+Inputs the engine actually reads
+Input	Source	Notes
+Tour rate	traffic_learned_rates.tour_rate	Bayesian-learned from weekly report uploads
+App rate	traffic_learned_rates.app_rate	Learned from weekly uploads
+Lease rate	traffic_learned_rates.lease_rate	Learned from weekly uploads
+Renewal rate	traffic_learned_rates.renewal_rate	Nullable — not always available
+Seasonal indices	traffic_learned_rates.tour/app/lease_rate_seasonal	52-week arrays
+Effective rent growth	traffic_learned_rates.effective_rent_growth_rate	Learned from actuals
+Stabilized occupancy	traffic_learned_rates.stabilized_occupancy	Learned equilibrium, NOT current snapshot
+Rent growth trend	traffic_learned_rates.effective_rent_growth_rate	From trafficPredictionEngine:2104
+T-01/T-05/T-06 overrides	deal_assumptions.per_year_overrides	Backend-ready, zero UI in F9
+Starting rent	traffic_predictions.effective_rent (latest) → fallback $1,808	From trafficToProFormaService:309
+Unit count	properties.total_units	Standard property column
+Trade area / submarket	deal_market_data → apartment_market_snapshots	Used for peer benchmark
+Starting Occupancy — Does it Match the Rent Roll?
+Short answer: No. Three separate numbers, none guaranteed to match.
+
+The traffic engine has a 3-tier fallback chain for starting occupancy:
+
+Tier 1: options?.currentOccupancy          ← passed by caller (often null)
+Tier 2: rates.stabilized_occupancy         ← learned equilibrium from historical weekly data
+Tier 3: 95.0 (hardcoded)                   ← trafficPredictionEngine.ts:2087
+
+The actuals anchor (loadActualsAnchor) reads a 6-month average from deal_monthly_actuals.occupancy_rate — which is the owned-portfolio actuals table (BPI Accrual/GAAP rows). For non-owned deals this returns null and the engine falls through to tier 2 or 3.
+
+Meanwhile the rent roll S1 computes exact physical occupancy:
+
+// subject-history-s1.service.ts:91
+const occupancyRate = occupiedCount / unitCount;  // from actual unit statuses
+
+This value is written to subject_current_state.occupancy_rate in the subject history, where it's used by coefficient-resolver.service.ts to weight the Bayesian coefficient blend — but it is never written back to the traffic engine's starting occupancy.
+
+The divergence scenario
+User uploads rent roll showing 88% occupancy. S1 correctly computes 0.88. The coefficient resolver uses this for blending confidence weights. But the traffic engine's next weekly prediction still starts from:
+
+rates.stabilized_occupancy (e.g. 94% — the long-run learned rate), or
+95% fallback
+The traffic module predicts from 94%+ while the rent roll says 88%. The F9 vacancyPct fed from traffic will be wrong by ~600bps at Year 1.
+
+Full Input/Output Flow Diagram
+Weekly report uploads
+        ↓
+traffic_learned_rates
+  tour_rate, app_rate, lease_rate
+  stabilized_occupancy           ← learned equilibrium
+  seasonal_index[52]
+  effective_rent_growth_rate
+        ↓
+trafficPredictionEngine
+  starting occ = stabilized_occupancy OR 95%  ← ⚠️ NOT from rent roll
+  starting rent = latest traffic_prediction OR $1,808
+        ↓
+traffic_projections (cached)
+  occupancy_trajectory[120 months]
+  rent_trajectory[120 months]
+  lease_up_weeks_to_90/93/95
+        ↓
+trafficToProFormaService.buildHandoff()
+  annual averages from monthly slices
+        ↓
+F9 ProFormaTab (pd.occupancy, pd.rentGrowth)   ← hint badge only, not applied
+
+Rent roll upload
+        ↓
+subject-history-s1.service
+  occupancy_rate = occupiedCount / unitCount    ← actual physical occupancy
+        ↓
+coefficient-resolver.service
+  (used for Bayesian weighting of tour/app/lease rates)
+        ↓
+✗ Never reaches traffic engine starting occupancy
+
+Three Gaps to Fix for F6
+Gap	Severity	Fix
+Starting occupancy not sourced from rent roll	High — Y1 vacancy wrong by up to 800bps	On rent roll upload, write S1 occupancy_rate → traffic_learned_rates.stabilized_occupancy (or pass it as options.currentOccupancy when running next prediction)
+Traffic output is a hint, not a resolved value in F9	Medium — user must manually match badge	Apply pd.occupancy[0] as default vacancyPct when no user override exists on F9 load
+No T-01/T-05/T-06 edit surface in F9	Medium — can't adjust traffic assumptions from F9	Add 3 InputField rows (weekly tours, closing ratio, weekly leases) with PATCH on change, triggering traffic re-prediction cascade
+The first gap is the most important — fixing it ensures the traffic engine always starts from the same occupancy the rent roll shows, so F6 and F9 tell a consistent story from day one.
+
+
+Worked for 3 minutes
+Audit its data sources aswell
+
+9 minutes ago
+Audit the traffic modules data sources aswell
+
+8 minutes ago
+
+Show less
+
+6 actions
+Good starting data. Now reading the deeper data source layers in parallel:
+
+
+5 actions
+Reading the four data source layers in parallel — DOT/ADT, web analytics, submarket calibration, and comp traffic:
+
+
+6 actions
+I have enough across all the reads. Let me check one more piece — the weekly report upload pipeline and the digital score service — then compile the full audit:
+
+
+4 actions
+Now I have the complete picture across all files. Here is the full data source audit:
+
+Traffic Module — Complete Data Source Audit
+The 4-Source Fusion Architecture
+p2-service-adapters.ts explicitly names the architecture — 4 sources fused into one prediction:
+
+Source 1: Physical street traffic  (DOT ADT + Google real-time)
+Source 2: Website/digital traffic  (SpyFu domain analytics)
+Source 3: Digital demand score     (Apartment Locator AI / visibility)
+Source 4: Location visibility      (property_visibility scoring)
+
+Each source is wrapped in try/catch — any source that fails is skipped and connectedSources is decremented. The model degrades gracefully but silently.
+
+Source 1 — Physical Street Traffic (DOT / ADT)
+What	Detail
+Primary data	adt_counts table — Annual Average Daily Traffic counts
+Station mapping	property_traffic_context — maps each property to a primary + secondary ADT station
+Temporal distribution	dot-temporal-profiles.service.ts — FDOT profiles: hourly (24-slot), seasonal (12-month), day-of-week (7-slot) factors
+Profile source	FDOT published traffic count databases by road functional class (Interstate, Arterial, Collector, Local)
+Real-time adjustment	property_traffic_context.google_realtime_factor — a stored multiplier, applied when ≠ 1.0
+Priority chain	FDOT profile → Google real-time factor → hardcoded default arrays
+Default fallback	Hardcoded hourly/seasonal/DoW factors baked into the service (lines 26–67)
+Coverage risk	FDOT profiles are Florida-specific by name. Non-FL properties fall back to defaults unless other state DOT profiles have been ingested. adt_counts coverage outside FL is unconfirmed.
+Source 2 — Website Traffic (SpyFu)
+What	Detail
+Provider	SpyFu API (https://www.spyfu.com/apis) — SEO domain analytics
+Connection	property_ga_connections table — maps property_id → domain (stored in ga_property_id field)
+Metrics pulled	monthlyOrganicClicks, monthlyPaidClicks, totalOrganicResults, totalAdsPurchased, averageOrganicRank, domain strength
+Stored in	property_website_analytics — upserted on each fetch
+Fallback	Comp proxy — trade area average from comps that DO have SpyFu data (getCompProxyTraffic)
+Activation	Property must have a domain mapped in property_ga_connections. No domain = null, comp proxy tried if trade area set.
+Coverage risk	SpyFu has no data for properties without a web presence or newly built properties. Comp proxy substitutes but introduces noise.
+Source 3 — Digital Demand Score
+What	Detail
+Provider	getDigitalTrafficService().calculateDigitalScore(propertyId)
+Output	search_volume_index — contributes to digitalScore?.score in the wired intelligence payload
+Data source	Implementation is behind a service getter — actual underlying source (ILS feeds, Apartments.com, etc.) not confirmed from code read
+No ILS confirmed	No Zillow, Apartments.com, CoStar demand signal, or RentCast integration found in any traffic service file
+Source 4 — Location Visibility Scoring
+What	Detail
+Table	property_visibility
+Service	getVisibilityScoringService().getVisibilityScore(propertyId)
+What it scores	Road exposure, signage visibility — feeds the ADT-to-walk-in conversion as a modifier
+Internal Learning Sources (the self-calibration loop)
+Source	Table	What it provides
+Weekly leasing reports	weekly_traffic_snapshots	Actual tours, leases, closing ratios per week — uploaded by user (Salesforce, property management software)
+Learned conversion rates	traffic_learned_rates	Per-property tour_rate, app_rate, lease_rate — updated via EMA (recalibrateRates) on each weekly upload
+Submarket calibration	traffic_submarket_calibration	Cross-property anonymized averages: avg_traffic_per_unit, avg_closing_ratio, avg_tour_conversion, seasonal factors, sample_count
+Owned portfolio actuals	deal_monthly_actuals	6-month rolling avg occupancy — used as actuals anchor for owned assets only
+Rent roll snapshots	rent_roll_snapshots (via S1)	Feeds Bayesian confidence weights for coefficient blending — not starting occupancy
+Market comps	deal_market_data → apartment_market_snapshots	Peer rent P50, peer occupancy P50 — used by fetchPeerBenchmark
+Market research	apartment_market_data	Submarket vacancy/rent — read by prediction engine for market context
+Confidence Tier Progression
+cold_start
+  └─ No weekly uploads. Uses traffic_submarket_calibration averages only.
+submarket_calibrated
+  └─ Some cross-property data available. Still no own weekly history.
+property_learned  (implied by data_weeks count)
+  └─ ≥N weeks of weekly_traffic_snapshots. EMA recalibration active.
+     Bayesian blend from S1/S2 rent roll adds coefficient confidence weight.
+
+Data Source Gaps and Risks
+Gap	Impact
+FDOT profiles are Florida-centric	Georgia, Texas, NC, and other states fall back to hardcoded default hourly/seasonal/DoW arrays — not calibrated to local traffic patterns
+SpyFu requires domain mapping	Properties without property_ga_connections entry produce null; comp proxy is used but can misrepresent a property with strong/weak web presence
+Digital demand source is opaque	No ILS (Apartments.com, Zillow, CoStar demand signals) confirmed. calculateDigitalScore internals not transparent from route/service layer
+google_realtime_factor is stored, not live	It's a column in property_traffic_context — not fetched from Google Maps API at prediction time. Whoever last wrote it may be stale
+Starting occupancy not from rent roll	Confirmed from earlier audit — traffic uses 6-month actuals average or stabilized_occupancy from learned rates, not the S1 physical count from the latest rent roll snapshot
+proforma_assumptions (legacy table)	Still joined in some traffic queries — parallel to deal_assumptions.year1 JSONB. No confirmed sync between them
+No CoStar/vendor market data feed	historical_observations / vendor registry (CoStar) not connected to traffic. Traffic reads apartment_market_data and apartment_market_snapshots — sources of that data not audited
+Optimized Agent memory
+
+Worked for 2 minutes
+I dont see Cell phone data in the formula and also, We need to add in how Events will impact the traffic numbers which we should have once Events are ran throw the correlation engine
+
+4 minutes ago
+
+5 actions
+Good leads. Reading the mobility data types, the correlation engine event flow, and the formula engine event formulas in parallel:
+
+
+5 actions
+Reading correlation engine events output and the data-flow router's M19→M06→traffic connection:
+
+
+9 actions
+I have everything. Here is the complete picture for both gaps:
+
+Cell Phone / Mobility Data — Status
+The schema already anticipates mobility data. These three fields exist in historical-observations/types.ts:
+
+mobilityVisitsMonthly: number | null;    // monthly visit count
+mobilityUniqueVisitors: number | null;   // unique devices
+mobilityVisitsPsf: number | null;        // visits per sq ft
+
+The named provider is Veraset — a cell-phone mobility data feed. But this is what the data quality report explicitly says today:
+
+{ name: 'Veraset mobility', status: 'pending', note: 'Awaiting subscription' }
+
+The subscription is not active. The fields exist in the type and the observation schema, but there is no ingest pipeline, and zero references to mobilityVisitsMonthly anywhere in the traffic engine. Veraset data would need to:
+
+A paid Veraset subscription activated
+An ingest script that writes mobility_visits_monthly / unique_visitors / visits_psf into historical_observations
+A new read inside trafficPredictionEngine — likely as a cross-validation layer on top of the DOT ADT baseline (mobility visits are a direct foot-traffic count, which is a much better ground truth than ADT × estimated walk-in rate)
+Right now the traffic engine's physical baseline is: DOT ADT count × road-class-based walk-in rate. Veraset would replace or calibrate that walk-in rate with real observed device visits to the property.
+
+Events → Traffic — The Gap
+Here is the full chain as it exists today:
+
+market_events table
+  (employer_move, grocery_opening, etc.)
+        ↓
+correlationEngine.service.ts
+  reads market_events by city/MSA
+  produces: jobs_affected, impact_direction, net_job_impact
+        ↓
+M19 (News Intel) → classified_demand_events
+        ↓
+M06 (Demand module) receives classified_demand_events [REQUIRED]
+  formula-engine F02: impact × confidence × distance_decay → demand_score
+        ↓
+M06 output routes:
+  → M05  demand_score
+  → M08  demand_score, demand_units_total
+  → M09  demand_units_phased (ProForma)
+  → M14  employer_concentration_risk
+  → M25  demand_score (JEDI)
+  → M07  commute_preferences ONLY  ← ⚠️ events never arrive
+
+The traffic engine (M07) receives nothing from this event chain. The data-flow-router entry for M06 → M07 carries only commute_preferences — which is a rider preference signal from the demand survey module, not the classified_demand_events / demand_score output that M06 computes from correlation engine events.
+
+Inside the traffic prediction engine itself — confirmed by grep — there is zero read of market_events, and no event modifier step in the prediction pipeline. The 11-step prediction chain goes: base walk-ins → ADT scaling → temporal multiplier → digital adjustment → visibility modifier → seasonal factor → occupancy feedback → funnel (tours/apps/leases) → occupancy projection → rent projection → closing ratio. No event step exists anywhere in that chain.
+
+What Needs to Be Built
+Fix 1 — Event modifier step in the traffic engine
+The correlation engine already has everything needed. The bridge is:
+
+Extend the M06 → M07 route in data-flow-router.ts to also carry demand_events (or a pre-computed event_traffic_modifier)
+
+Add a new Step 5b to trafficPredictionEngine.ts between seasonal factor and occupancy feedback:
+
+event_modifier = 1.0
+for each nearby market_event (within configurable radius, e.g. 10 miles):
+  if employer_move + positive: modifier += jobs_affected / submarket_total_workforce × sensitivity
+  if employer_move + negative: modifier -= ...
+  if grocery_opening/amenity: modifier += small fixed boost (e.g. +2%)
+  distance_decay: 1 / (1 + distance_miles / 5)
+event_modifier = clamp(event_modifier, 0.70, 1.40)
+adjusted_walk_ins = seasonal_adjusted_traffic × event_modifier
+
+The market_events table already has geography_id, geography_type, jobs_affected, expected_impact_direction — the raw material is there
+Fix 2 — Veraset (cell phone) layer
+Once the subscription is active:
+
+Ingest pipeline: Veraset API → historical_observations.mobility_visits_monthly etc.
+In trafficPredictionEngine, add Veraset as a calibration check on the DOT ADT baseline: if Veraset visits data is available for the property, use it to back-solve the actual walk-in conversion rate instead of using the road-class default
+Summary table
+Missing layer	Data exists?	Pipeline exists?	In traffic engine?	Blocker
+Veraset mobility	Schema typed, table fields exist	❌ No ingest	❌ Zero reads	Subscription not active
+Event modifier (employer moves)	market_events populated	Correlation engine reads it	❌ M06→M07 route missing events	Build the modifier step
+Event modifier (M35 events)	Pending Phase 4	❌	❌	Ingestion not done
+The employer move events are the quickest win — the data is already in market_events, the correlation engine already scores it, and the formula engine already has the distance-decay math. It just needs the M06→M07 route extended and the modifier step added to the prediction engine.

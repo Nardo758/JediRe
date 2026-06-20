@@ -5609,6 +5609,7 @@ const SCALAR_FIELD_MAP: Record<string, string> = {
   interestRate: 'interest_rate',
   ltcPct: 'ltc',
   ioPeriodMonths: 'io_period_months',
+  totalUnits: 'total_units',
 };
 
 /** Handle unit_mix:{index}:{field} overrides by patching the JSONB array in deal_assumptions */
