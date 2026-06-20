@@ -1,0 +1,29 @@
+Yes — we should audit the strategy component before touching anything. The two audits revealed **StrategyCompsPanel.tsx:131** dispatches `deal-tab-change` to `'comps'`, but if you don't want to change that, I need to understand why it references `'comps'` and what the strategy architecture expects.
+
+Let me give you a prompt for Replit to audit the strategy module so we understand the full picture before any fixes:
+
+---
+
+**PROMPT FOR REPLIT:**
+
+> **Audit the Strategy module (F5) to understand its architecture and how it relates to comps, market, and the rest of the capsule.**
+>
+> **Read these files:**
+> 1. `frontend/src/pages/StrategyArbitragePage.tsx` or `frontend/src/pages/StrategyScreen.tsx` — the F5 component
+> 2. `frontend/src/components/strategy/StrategyCompsPanel.tsx` — the component that dispatches `deal-tab-change` to `'comps'`
+> 3. `frontend/src/shared/config/deal-type-visibility.ts` — search for `M08` and strategy variants
+> 4. `backend/src/services/strategy/` or any strategy-related service files
+> 5. Search for `dispatchModuleApplied` and `deal-tab-change` events in the strategy components
+> 6. Search for `useStrategyAnalysis` or `useStrategyAnalysisV2` hooks
+>
+> **Answer these questions:**
+> 1. **What is the Strategy module (M08)?** What does it do? What is its purpose in the capsule?
+> 2. **What is StrategyCompsPanel?** What does it show? Why does it dispatch to `'comps'`?
+> 3. **What does the strategy module need from Market/Comps data?** Does it consume rent comps, sale comps, or both?
+> 4. **What are the strategy columns?** BTS / Flip / Rental / STR — how are they computed and displayed?
+> 5. **How does strategy interact with the Pro Forma (F9)?** Does it dispatch `moduleApplied` events? What fields does it pass?
+> 6. **What is the intended user flow?** Does the user click on a strategy and then want to see comps? Is the `'comps'` dispatch meant to navigate to a standalone tab or to the Market tab's sub-tabs?
+> 7. **Should the strategy panel dispatch to `'market'` or `'comps'`?** Given that comps lives inside Market now, what's the correct navigation target?
+> 8. **What are the strategy sub-tabs?** Signal Stability, Custom Screens, etc. — what do they do?
+>
+> **Report:** Give a clear narrative of how the strategy module works, what it expects, and whether the `'comps'` dispatch is correct or should be changed to something else.This will give us the full picture of the strategy module before any changes. Want me to run this audit?
