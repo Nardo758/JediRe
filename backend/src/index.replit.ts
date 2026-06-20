@@ -267,6 +267,7 @@ import { georgiaArcGisIngestCron } from './inngest/functions/georgia-arcgis-inge
 import { propertyReconciliationNightly } from './inngest/functions/property-reconciliation-nightly';
 import { outcomePanelForwardFillCron } from './inngest/functions/outcome-panel-forward-fill';
 import { blsQcewMonthlyCron } from './inngest/functions/bls-qcew-monthly';
+import { censusPermitsMonthlyCron } from './inngest/functions/census-permits-monthly';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -316,6 +317,9 @@ app.use(
       // BLS QCEW: monthly wage + employment refresh (3rd of month, 06:00 UTC)
       // Populates metric_time_series for COR-04 (wage growth → rent growth)
       blsQcewMonthlyCron,
+      // Census Building Permits: monthly refresh (5th of month, 04:00 UTC)
+      // Populates metric_time_series for COR-08 (permits → cap rate)
+      censusPermitsMonthlyCron,
       // Outcome Panel: monthly forward-fill (1st of month, 05:00 UTC)
       // Populates paired (leading, realized) observations for correlation fitting.
       outcomePanelForwardFillCron,

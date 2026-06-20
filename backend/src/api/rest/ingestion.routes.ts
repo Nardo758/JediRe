@@ -8,6 +8,7 @@ import { ingestFRED } from '../../services/ingestion/fred-ingest.service';
 import { ingestCensusACS } from '../../services/ingestion/census-acs-ingest.service';
 import { ingestAllLeaseFiles } from '../../services/ingestion/lease-rent-ingest.service';
 import { ingestBLSQCEW } from '../../services/ingestion/bls-qcew-ingest.service';
+import { ingestCensusPermits } from '../../services/ingestion/census-permits-ingest.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import axios from 'axios';
@@ -358,6 +359,36 @@ router.post('/bls-qcew', async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('BLS QCEW ingestion error:', error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+// ─── Census Building Permits Ingestion ──────────────────────────────────
+// Building Permits Survey (BPS) — unblocks COR-08 (permits → cap rate)
+
+router.post('/census-permits', async (req: Request, res: Response) => {
+  try {
+    const {
+      startYear,
+      endYear,
+      dryRun = false,
+    } = req.body;
+
+    logger.info('Census Permits: ingestion request', { startYear, endYear, dryRun });
+
+    const result = await ingestCensusPermits(undefined, {
+      yearRange: startYear && endYear ? { startYear, endYear } : undefined,
+      dryRun,
+    });
+
+    res.json({
+      success: true,
+      dryRun,
+      ...result,
+      elapsed: `${((result.endTime.getTime() - result.startTime.getTime()) / 1000).toFixed(1)}s`,
+    });
+  } catch (error) {
+    logger.error('Census Permits ingestion error:', error);
     res.status(500).json({ success: false, error: String(error) });
   }
 });
