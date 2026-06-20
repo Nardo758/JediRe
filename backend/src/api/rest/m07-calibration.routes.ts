@@ -169,6 +169,44 @@ router.post('/rent-roll/upload', rentRollMiddleware, async (req, res) => {
     try {
       await subjectHistoryS1.aggregateS1(parseResult.snapshot_id, dealId);
       s1Result = { ran: true, tier: 'S1' };
+
+      // ── Step 3b: Write S1 occupancy_rate to properties.current_occupancy ──
+      // This is the critical fix for High #5: the traffic engine's starting
+      // occupancy must match the rent roll's physical count. Without this,
+      // the engine falls back to stabilized_occupancy (learned equilibrium)
+      // or 95% — both of which can diverge 600–800bps from the actual rent
+      // roll snapshot. The traffic prediction engine reads properties.current_occupancy
+      // when generating predictions, so this write ensures alignment.
+      try {
+        const s1Row = await pool.query<{ current_state: any }>(`
+          SELECT current_state
+          FROM subject_traffic_history
+          WHERE deal_id = $1
+          ORDER BY updated_at DESC
+          LIMIT 1
+        `, [dealId]);
+        if (s1Row.rows.length > 0) {
+          const occRate = s1Row.rows[0].current_state?.occupancy_rate;
+          if (occRate != null && !isNaN(occRate)) {
+            const occPct = Math.round(parseFloat(occRate) * 100); // 0.88 → 88
+            await pool.query(`
+              UPDATE properties
+              SET current_occupancy = $1,
+                  updated_at = NOW()
+              WHERE id = (
+                SELECT property_id FROM deals WHERE id = $2 LIMIT 1
+              )
+            `, [occPct, dealId]);
+            logger.info('[M07] S1 occupancy synced to properties.current_occupancy', {
+              dealId, occupancyRate: occRate, currentOccupancy: occPct,
+            });
+          }
+        }
+      } catch (occSyncErr) {
+        logger.warn('[M07] S1 occupancy sync failed (non-fatal)', {
+          dealId, error: occSyncErr instanceof Error ? occSyncErr.message : String(occSyncErr),
+        });
+      }
     } catch (s1Err) {
       logger.warn('[M07] S1 aggregation failed (non-fatal)', {
         dealId,
