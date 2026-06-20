@@ -272,6 +272,7 @@ import { outcomePanelForwardFillCron } from './inngest/functions/outcome-panel-f
 import { blsQcewMonthlyCron } from './inngest/functions/bls-qcew-monthly';
 import { censusPermitsMonthlyCron } from './inngest/functions/census-permits-monthly';
 import { concessionExtractionCron } from './inngest/functions/concession-extraction-cron';
+import { assetClassSpreadBacktestCron } from './inngest/functions/asset-class-spread-backtest';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -342,6 +343,9 @@ app.use(
       georgiaArcGisIngestCron,
       // Task #1488: nightly property dual-write reconciliation — row-count parity + sample audit (03:00 UTC)
       propertyReconciliationNightly,
+      // Asset Class Spread Backtest: monthly calibration (10th of month, 04:00 UTC)
+      // Validates ASSET_CLASS_SPREAD_BPS against realized rent growth from owned properties.
+      assetClassSpreadBacktestCron,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,
