@@ -606,6 +606,19 @@ export class FinancialModelEngineService {
         }
       } catch (_cycleErr) { /* non-fatal */ }
 
+      // ── Batch-4b: event deltas from market_events ─────────────────────────────
+      let eventDeltas: ProvenancedValue<number>[] = [];
+      try {
+        const { computeEventDeltas } = await import('./proforma/event-deltas.service');
+        eventDeltas = await computeEventDeltas(pool, city, state);
+        if (eventDeltas.length > 0) {
+          logger.info(
+            `[Batch4-Events] ${eventDeltas.length} event deltas for ${dealId}: ` +
+            eventDeltas.map(d => `${(d.value * 10000).toFixed(0)}bps`).join(', ')
+          );
+        }
+      } catch (_eventErr) { /* non-fatal */ }
+
       const growthSeries = projectRentGrowthSeries(
         {
           horizonYears: holdYears,
@@ -619,7 +632,7 @@ export class FinancialModelEngineService {
             ? provenanced(cpiShelterYoY, 'platform', 0.90, 'derived',
                 `CPI proxy for shelter sub-index (${cpiResult!.periodDate})`)
             : null,
-          eventDeltas: [],
+          eventDeltas,
           position: null,
         },
         holdYears,

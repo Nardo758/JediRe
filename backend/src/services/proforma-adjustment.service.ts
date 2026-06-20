@@ -2119,6 +2119,8 @@ export function projectProformaForDeal(
     strategySlug?: string | null;
     /** M04/M05/M06 cycle pressure index (-1 to +1). */
     cyclePressureIndex?: import('../types/provenanced-value').ProvenancedValue<number> | null;
+    /** Market event deltas from correlation engine. */
+    eventDeltas?: import('../types/provenanced-value').ProvenancedValue<number>[];
   }
 ): ProjectionYearResult[] {
   const normalizedAssetClass = opts.assetClass.toLowerCase().trim() || 'multifamily';
@@ -2181,7 +2183,7 @@ export function projectProformaForDeal(
       momentum,
       cyclePressureIndex: opts.cyclePressureIndex ?? null,
       cpiShelterYoY: null,
-      eventDeltas: [],
+      eventDeltas: opts.eventDeltas ?? [],
     },
     opexBase,
     revenueParams: {
@@ -3132,6 +3134,15 @@ export async function getDealFinancials(
     _cyclePressureIndex = await computeCyclePressureIndex(pool, _city, _state, totalUnits);
   } catch (_cpeErr) { /* non-fatal: cycle component falls back to anchor-only */ }
 
+  // ── Medium #15: event deltas from market_events ─────────────────────────────
+  let _eventDeltas: import('../types/provenanced-value').ProvenancedValue<number>[] = [];
+  try {
+    const { computeEventDeltas } = await import('./proforma/event-deltas.service');
+    const _city = (deal.city ?? '') as string | null;
+    const _state = (deal.state_code ?? '') as string | null;
+    _eventDeltas = await computeEventDeltas(pool, _city, _state);
+  } catch (_evtErr) { /* non-fatal: event component falls back to empty */ }
+
   const _layeredResults = projectProformaForDeal({
     assetClass: _layeredAssetClass,
     holdYears,
@@ -3140,6 +3151,7 @@ export async function getDealFinancials(
     calibRentGrowth,
     strategySlug: _strategySlug,
     cyclePressureIndex: _cyclePressureIndex,
+    eventDeltas: _eventDeltas,
   });
   const _layeredByYear = new Map(_layeredResults.map(r => [r.year, r]));
 
