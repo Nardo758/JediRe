@@ -215,6 +215,10 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [lossToLease, setLossToLease] = useState(0.03);
   const [stabilizedOccupancy, setStabilizedOccupancy] = useState(0.94);
   const [collectionLoss, setCollectionLoss] = useState(0.015);
+  // T-01/T-05/T-06 traffic signals — editable leasing funnel inputs
+  const [t01WeeklyTours, setT01WeeklyTours] = useState<number | null>(null);
+  const [t05ClosingRatio, setT05ClosingRatio] = useState<number | null>(null);
+  const [t06WeeklyLeases, setT06WeeklyLeases] = useState<number | null>(null);
   const [otherIncome, setOtherIncome] = useState<Record<string, OtherIncomeItem>>({ ...DEFAULT_OTHER_INCOME });
 
   const [expenseGrowth, setExpenseGrowth] = useState(0.03);
@@ -565,6 +569,13 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
           if (traffic?.rentTrajectory) {
             pd.rentGrowth = traffic.rentTrajectory.map((p: any) => p.growth / 100);
           }
+          // Initialize T-01/T-05/T-06 from traffic intelligence leasing signals
+          if (traffic?.leasingSignals) {
+            const ls = traffic.leasingSignals;
+            if (ls.t01WeeklyTours != null) setT01WeeklyTours(ls.t01WeeklyTours);
+            if (ls.t05ClosingRatio != null) setT05ClosingRatio(ls.t05ClosingRatio);
+            if (ls.t06WeeklyLeases != null) setT06WeeklyLeases(ls.t06WeeklyLeases);
+          }
         }
 
         if (strategyRes.status === 'fulfilled' && strategyRes.value?.data) {
@@ -639,6 +650,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
         stabilizedOccupancy,
         collectionLoss,
         otherIncome,
+        trafficSignals: { t01WeeklyTours, t05ClosingRatio, t06WeeklyLeases },
       },
       expenseGrowth,
       managementFeePct,
@@ -672,6 +684,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     originationFee, rateCapCost, prepayPenalty, expenseGrowth, managementFeePct, preferredReturnPct, capexItems, contingencyPct, reservesPerUnit,
     lpShare, gpShare, hurdles, equityContribution, landCost, hardCostPerSF, hardCostContingency,
     softCostPct, developerFee, constructionPeriod, leaseUpVelocity, constructionLoanLTC, constructionLoanRate,
+    t01WeeklyTours, t05ClosingRatio, t06WeeklyLeases,
   ]);
 
   const handleBuildModel = async () => {
@@ -890,6 +903,19 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const handleResetOverrides = () => {
     setSensitivityOverrides({});
   };
+
+  // PATCH T-01/T-05/T-06 traffic signals to backend when user edits them
+  const patchTrafficSignal = useCallback(async (field: string, value: number | null) => {
+    if (!id) return;
+    try {
+      await apiClient.patch(`/api/v1/deals/${id}/financials/override`, {
+        field,
+        value,
+      });
+    } catch (err) {
+      console.warn(`[ProFormaTab] PATCH ${field} failed:`, err);
+    }
+  }, [id]);
 
   const overriddenCount = Object.values(sensitivityOverrides).filter(v => v != null).length;
   const totalAnchored = anchors.length;
@@ -1367,6 +1393,10 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                       preferredReturnPct={preferredReturnPct} setPreferredReturnPct={setPreferredReturnPct}
                       platformData={platformData}
                       moduleBadges={moduleBadges}
+                      t01WeeklyTours={t01WeeklyTours} setT01WeeklyTours={setT01WeeklyTours}
+                      t05ClosingRatio={t05ClosingRatio} setT05ClosingRatio={setT05ClosingRatio}
+                      t06WeeklyLeases={t06WeeklyLeases} setT06WeeklyLeases={setT06WeeklyLeases}
+                      onPatchTrafficSignal={patchTrafficSignal}
                     />
                   )}
                   {section.id === 'otherIncome' && (
@@ -1751,7 +1781,7 @@ const DispositionSection: React.FC<any> = ({ exitCapRate, setExitCapRate, sellin
   </div>
 );
 
-const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease, setLossToLease, stabilizedOccupancy, setStabilizedOccupancy, collectionLoss, setCollectionLoss, holdPeriod, platformData, preferredReturnPct, setPreferredReturnPct, moduleBadges }) => (
+const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease, setLossToLease, stabilizedOccupancy, setStabilizedOccupancy, collectionLoss, setCollectionLoss, holdPeriod, platformData, preferredReturnPct, setPreferredReturnPct, moduleBadges, t01WeeklyTours, setT01WeeklyTours, t05ClosingRatio, setT05ClosingRatio, t06WeeklyLeases, setT06WeeklyLeases, onPatchTrafficSignal }) => (
   <div className="mt-3 space-y-4">
     <div className="grid grid-cols-3 gap-4">
       <InputField label="Loss-to-Lease" value={lossToLease} onChange={setLossToLease} type="percent" suffix="(decimal)" />
@@ -1759,6 +1789,27 @@ const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease,
         platformValue={platformData?.occupancy?.[0]} platformSource="Traffic Module" suffix="(decimal)" />
       <InputField label="Collection Loss" value={collectionLoss} onChange={setCollectionLoss} type="percent" suffix="(decimal)" />
       <InputField label="Preferred Return (LP)" value={preferredReturnPct} onChange={setPreferredReturnPct} type="percent" suffix="(decimal)" />
+      <InputField
+        label="T-01 Weekly Tours"
+        value={t01WeeklyTours ?? ''}
+        onChange={(v: number) => { setT01WeeklyTours(v); onPatchTrafficSignal?.('t01WeeklyTours', v); }}
+        type="number"
+        step={1}
+      />
+      <InputField
+        label="T-05 Closing Ratio"
+        value={t05ClosingRatio ?? ''}
+        onChange={(v: number) => { setT05ClosingRatio(v); onPatchTrafficSignal?.('t05ClosingRatio', v); }}
+        type="percent"
+        suffix="(decimal)"
+      />
+      <InputField
+        label="T-06 Weekly Leases"
+        value={t06WeeklyLeases ?? ''}
+        onChange={(v: number) => { setT06WeeklyLeases(v); onPatchTrafficSignal?.('t06WeeklyLeases', v); }}
+        type="number"
+        step={1}
+      />
     </div>
     <div>
       <label className="text-[11px] font-medium text-stone-600 mb-2 block">
