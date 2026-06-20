@@ -2121,6 +2121,8 @@ export function projectProformaForDeal(
     cyclePressureIndex?: import('../types/provenanced-value').ProvenancedValue<number> | null;
     /** Market event deltas from correlation engine. */
     eventDeltas?: import('../types/provenanced-value').ProvenancedValue<number>[];
+    /** M15 position adjustment from comp set rank (decimal, additive to growth). */
+    position?: import('../types/provenanced-value').ProvenancedValue<number> | null;
   }
 ): ProjectionYearResult[] {
   const normalizedAssetClass = opts.assetClass.toLowerCase().trim() || 'multifamily';
@@ -2184,6 +2186,7 @@ export function projectProformaForDeal(
       cyclePressureIndex: opts.cyclePressureIndex ?? null,
       cpiShelterYoY: null,
       eventDeltas: opts.eventDeltas ?? [],
+      position: opts.position ?? null,
     },
     opexBase,
     revenueParams: {
@@ -3143,6 +3146,15 @@ export async function getDealFinancials(
     _eventDeltas = await computeEventDeltas(pool, _city, _state);
   } catch (_evtErr) { /* non-fatal: event component falls back to empty */ }
 
+  // ── Medium #16: M15 position adjustment from comp set rank ──────────────────
+  let _position: import('../types/provenanced-value').ProvenancedValue<number> | null = null;
+  try {
+    const { computePositionAdjustment } = await import('./proforma/position-adjustment.service');
+    const _city = (deal.city ?? '') as string | null;
+    const _state = (deal.state_code ?? '') as string | null;
+    _position = await computePositionAdjustment(pool, dealId, _city, _state);
+  } catch (_posErr) { /* non-fatal: position component falls back to zero */ }
+
   const _layeredResults = projectProformaForDeal({
     assetClass: _layeredAssetClass,
     holdYears,
@@ -3152,6 +3164,7 @@ export async function getDealFinancials(
     strategySlug: _strategySlug,
     cyclePressureIndex: _cyclePressureIndex,
     eventDeltas: _eventDeltas,
+    position: _position,
   });
   const _layeredByYear = new Map(_layeredResults.map(r => [r.year, r]));
 

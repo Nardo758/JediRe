@@ -619,6 +619,19 @@ export class FinancialModelEngineService {
         }
       } catch (_eventErr) { /* non-fatal */ }
 
+      // ── Batch-4c: M15 position adjustment from comp set rank ────────────────────
+      let position: ProvenancedValue<number> | null = null;
+      try {
+        const { computePositionAdjustment } = await import('./proforma/position-adjustment.service');
+        position = await computePositionAdjustment(pool, dealId, city, state);
+        if (position) {
+          logger.info(
+            `[Batch4-Position] position adjustment for ${dealId}: ${(position.value * 10000).toFixed(0)}bps ` +
+            `(${position.rationale})`
+          );
+        }
+      } catch (_posErr) { /* non-fatal */ }
+
       const growthSeries = projectRentGrowthSeries(
         {
           horizonYears: holdYears,
@@ -633,7 +646,7 @@ export class FinancialModelEngineService {
                 `CPI proxy for shelter sub-index (${cpiResult!.periodDate})`)
             : null,
           eventDeltas,
-          position: null,
+          position,
         },
         holdYears,
       );
