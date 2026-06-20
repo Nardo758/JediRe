@@ -697,7 +697,6 @@ In `CTRL_ORDER` display list but absent from seeder `OPEX_FIELDS`. T12 landscapi
 |---|---|---|---|---|---|
 | PF-01 | ~~Dual-engine — no shared contract~~ | P0 | L | A | ~~A, B~~ | **Resolved 2026-06-18** — Engine B deleted |
 | PF-02 | Per-year overrides never consumed | P0 | M | A | A |
-| PF-02 | Per-year overrides never consumed | P0 | M | A | A |
 | PF-03 | Bad debt display uses GPR not EGI | P0 | S | A | A |
 | PF-04 | No transaction boundary between tables | P1 | M | A | A |
 | PF-05 | Whole-pct / decimal split in proforma_assumptions | P1 | S | A | A |
@@ -712,9 +711,8 @@ In `CTRL_ORDER` display list but absent from seeder `OPEX_FIELDS`. T12 landscapi
 | PF-13 | Concessions hardcoded 0 in LLM bridge | P2 | S | A | C |
 | PF-MD-1 | capitalStructureMockData active import in DebtTab | P3 | S | A | — |
 | PF-14 | deal_assumptions scalar cols are dead weight | P3 | S | A | — |
-| PF-15 | Traffic projection all-null stub | P3 | L | B | — | **Resolved 2026-06-18** — Engine B deleted |
+| PF-15 | Traffic projection all-null stub | P3 | L | B | — |
 | PF-16 | ~~OperatorStance concession modulation missing in Engine A~~ | P3 | S | A | A | **Resolved 2026-06-18** — now runs via `applyStanceToFinancials` |
-| PF-16 | OperatorStance concession modulation missing in Engine A | P3 | S | A | A |
 
 ---
 

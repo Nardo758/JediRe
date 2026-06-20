@@ -162,7 +162,9 @@ This 1013-line document uses `\r\n` line endings (mixed carriage returns visible
 `cross-surface-read-consistency.md` Rule 1 says `getFieldValue` is the single access point. But `YEAR1_CONSUMERS_AUDIT.md` found that many consumers still read `deal_assumptions.year1[field].resolved` directly. The recent M09 work (Tasks #1541, #1563, #1569) has been migrating consumers one by one. The Valuation Grid is now canonical. Other surfaces may still have direct readers.
 
 ### 5.2 Engine A vs Engine B divergence
-`F9_MODULE_MAP.md` identifies two parallel live engines with no shared contract. `getDealFinancials` (Engine A, `/deal-assumptions/:id`) and `composeDealFinancials` (Engine B, `/deals/:id/financials`) assemble the same data via different paths. A fix to one is invisible to the other. This is a **major architectural debt** that is documented but not resolved.
+`F9_MODULE_MAP.md` identifies two parallel live engines with no shared contract. `getDealFinancials` (Engine A, `/deal-assumptions/:id`) and `composeDealFinancials` (Engine B, `/deals/:id/financials`) assemble the same data via different paths. A fix to one is invisible to the other. This is a **major architectural debt**.
+
+> **Status update (2026-06-18):** RESOLVED. Engine B (`composeDealFinancials`) has been deleted. All consumers migrated to Engine A. `PATCH /financials/override` now calls `getDealFinancials` directly. See commit `d1bbf23a7`.
 
 ### 5.3 Dead code still exists
 `F5-dead-code-delete-list.md` confirmed 3 files as dead (`DealPage.tsx`, `DealPageEnhanced.tsx`, `DealView.tsx`). They are still in the repo. The doc says "safe to delete" but they haven't been deleted. This is a 2-minute cleanup task that hasn't been done.
