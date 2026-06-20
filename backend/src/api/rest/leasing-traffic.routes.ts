@@ -952,11 +952,41 @@ const weeklyUpload = multer({
         region,
         seeded: result.seeded,
         skipped: result.skipped,
-        message: `Seeded ${result.seeded} default FDOT profiles for ${state}/${region}`,
+        message: `Seeded ${result.seeded} default state DOT profiles for ${state}/${region}`,
       });
     } catch (error: any) {
       logger.error('[LeasingTraffic] DOT profile seeding failed', { error: error.message });
       res.status(500).json({ error: 'Failed to seed DOT profiles', message: error.message });
+    }
+  });
+
+  router.post('/dot-profiles/seed-all', async (_req: Request, res: Response) => {
+    try {
+      const states = (_req.body.states as string[]) || ['FL', 'GA', 'TX', 'NC'];
+      const region = (_req.body.region as string) || 'statewide';
+
+      const service = getDotTemporalProfilesService(pool);
+      const results: Array<{ state: string; seeded: number; skipped: number }> = [];
+
+      for (const state of states) {
+        const result = await service.seedDefaultProfiles(state, region);
+        results.push({ state, seeded: result.seeded, skipped: result.skipped });
+      }
+
+      const totalSeeded = results.reduce((s, r) => s + r.seeded, 0);
+      const totalSkipped = results.reduce((s, r) => s + r.skipped, 0);
+
+      res.json({
+        success: true,
+        region,
+        results,
+        totalSeeded,
+        totalSkipped,
+        message: `Seeded ${totalSeeded} default state DOT profiles across ${states.length} state(s)`,
+      });
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] DOT profile seed-all failed', { error: error.message });
+      res.status(500).json({ error: 'Failed to seed all DOT profiles', message: error.message });
     }
   });
 

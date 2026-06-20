@@ -47,6 +47,7 @@ export interface PropertyTrafficContext {
   trend_direction: string | null;
   trend_pct: number | null;
   adt_measurement_year: number | null;
+  state: string | null;
   last_updated: string;
 }
 
@@ -254,7 +255,58 @@ export class TrafficDataSourcesService {
     return result;
   }
 
-  async findNearestADT(lat: number, lng: number, limit: number = 2): Promise<NearestADTResult[]> {
+  async findNearestADT(lat: number, lng: number, limit: number = 2, state?: string): Promise<NearestADTResult[]> {
+    // If state is provided, prefer same-state stations within 50km first.
+    // If no same-state stations found, fall back to nearest regardless of state.
+    const sameStateRadiusM = 50000; // 50 km
+
+    if (state) {
+      const sameStateResult = await this.pool.query(
+        `SELECT
+          station_id,
+          road_name,
+          adt,
+          measurement_year,
+          road_classification,
+          latitude,
+          longitude,
+          (
+            6371000 * acos(
+              cos(radians($1)) * cos(radians(latitude)) *
+              cos(radians(longitude) - radians($2)) +
+              sin(radians($1)) * sin(radians(latitude))
+            )
+          ) AS distance_meters
+        FROM adt_counts
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+          AND adt IS NOT NULL
+          AND state = $4
+          AND (
+            6371000 * acos(
+              cos(radians($1)) * cos(radians(latitude)) *
+              cos(radians(longitude) - radians($2)) +
+              sin(radians($1)) * sin(radians(latitude))
+            )
+          ) <= $5
+        ORDER BY distance_meters ASC
+        LIMIT $3`,
+        [lat, lng, limit, state, sameStateRadiusM]
+      );
+
+      if (sameStateResult.rows.length > 0) {
+        return sameStateResult.rows.map(r => ({
+          station_id: r.station_id,
+          road_name: r.road_name,
+          adt: r.adt,
+          measurement_year: r.measurement_year,
+          road_classification: r.road_classification,
+          distance_meters: Math.round(r.distance_meters),
+          latitude: parseFloat(r.latitude),
+          longitude: parseFloat(r.longitude),
+        }));
+      }
+    }
+
     const result = await this.pool.query(
       `SELECT
         station_id,
@@ -293,7 +345,7 @@ export class TrafficDataSourcesService {
 
   async linkPropertyToADT(propertyId: string): Promise<PropertyTrafficContext | null> {
     const propResult = await this.pool.query(
-      `SELECT id, latitude, longitude FROM properties WHERE id = $1`,
+      `SELECT id, latitude, longitude, state_code FROM properties WHERE id = $1`,
       [propertyId]
     );
 
@@ -305,13 +357,14 @@ export class TrafficDataSourcesService {
     const property = propResult.rows[0];
     const lat = parseFloat(property.latitude);
     const lng = parseFloat(property.longitude);
+    const propertyState = property.state_code || null;
 
     if (isNaN(lat) || isNaN(lng)) {
       logger.warn(`[TrafficDataSources] Property ${propertyId} missing coordinates`);
       return null;
     }
 
-    const nearest = await this.findNearestADT(lat, lng, 2);
+    const nearest = await this.findNearestADT(lat, lng, 2, propertyState);
 
     if (nearest.length === 0) {
       logger.info(`[TrafficDataSources] No ADT stations found near property ${propertyId}`);
@@ -344,6 +397,7 @@ export class TrafficDataSourcesService {
       trend_direction: null,
       trend_pct: null,
       adt_measurement_year: primary.measurement_year,
+      state: propertyState,
       last_updated: new Date().toISOString().split('T')[0],
     };
 
@@ -353,8 +407,8 @@ export class TrafficDataSourcesService {
         primary_road_name, primary_road_classification,
         secondary_adt_station_id, secondary_adt, secondary_adt_distance_m,
         secondary_road_name, google_realtime_factor,
-        trend_direction, trend_pct, adt_measurement_year, last_updated
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        trend_direction, trend_pct, adt_measurement_year, state, last_updated
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
       ON CONFLICT (property_id) DO UPDATE SET
         primary_adt_station_id = EXCLUDED.primary_adt_station_id,
         primary_adt = EXCLUDED.primary_adt,
@@ -367,6 +421,7 @@ export class TrafficDataSourcesService {
         secondary_road_name = EXCLUDED.secondary_road_name,
         google_realtime_factor = EXCLUDED.google_realtime_factor,
         adt_measurement_year = EXCLUDED.adt_measurement_year,
+        state = EXCLUDED.state,
         last_updated = EXCLUDED.last_updated`,
       [
         context.property_id,
@@ -383,6 +438,7 @@ export class TrafficDataSourcesService {
         context.trend_direction,
         context.trend_pct,
         context.adt_measurement_year,
+        context.state,
         context.last_updated,
       ]
     );
