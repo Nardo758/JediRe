@@ -2,11 +2,14 @@ import { Router, Request, Response } from 'express';
 import { pool } from '../../database';
 import { BacktestEngineService } from '../../services/backtestEngine.service';
 import { StrategyBacktestService } from '../../services/strategyBacktest.service';
+import { AssetClassSpreadBacktestService } from '../../services/proforma/asset-class-spread-backtest.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
 const engine = new BacktestEngineService(pool);
 const strategyBacktest = new StrategyBacktestService(pool);
+
+const assetClassBacktestService = new AssetClassSpreadBacktestService(pool);
 
 router.post('/run', async (req: Request, res: Response) => {
   try {
@@ -149,5 +152,18 @@ router.get('/strategy/:strategyId/summary', summaryHandler);
 router.post('/run/strategy/:strategyId', runHandler);
 router.get('/results/strategy/:strategyId', resultsHandler);
 router.get('/summary/strategy/:strategyId', summaryHandler);
+
+router.get('/asset-class-spread', async (req: Request, res: Response) => {
+  try {
+    const lookbackYears = parseInt(req.query.lookbackYears as string) || 5;
+    const minObservations = parseInt(req.query.minObservations as string) || 10;
+
+    const report = await assetClassBacktestService.runBacktest(lookbackYears, minObservations);
+    res.json({ success: true, data: report });
+  } catch (error) {
+    logger.error('Asset class spread backtest error:', error);
+    res.status(500).json({ error: 'Asset class spread backtest failed' });
+  }
+});
 
 export default router;

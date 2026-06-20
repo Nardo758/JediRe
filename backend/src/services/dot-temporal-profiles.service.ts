@@ -207,7 +207,7 @@ export class DotTemporalProfilesService {
       seasonal_factor: seasonalFactor,
       dow_factor: dowFactor,
       combined: hourlyFactor * seasonalFactor * dowFactor,
-      source: hasProfile ? 'fdot_profile' : 'default',
+      source: hasProfile ? 'state_profile' : 'default',
     };
   }
 
@@ -259,7 +259,7 @@ export class DotTemporalProfilesService {
             p.profileType,
             JSON.stringify(p.factors),
             2024,
-            'https://tdaappsprod.dot.state.fl.us/fto/',
+            `https://dot.${state.toLowerCase()}.gov/traffic-data/`,
           ]
         );
         if (result.rowCount && result.rowCount > 0) {

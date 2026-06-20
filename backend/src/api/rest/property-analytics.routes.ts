@@ -139,11 +139,28 @@ router.get('/:propertyId', async (req: Request, res: Response) => {
 
     const score = await analyticsService.getWebTrafficScore(propertyId);
 
+    // Check for SpyFu sync warning
+    const connection = await analyticsService.getDomainConnection(propertyId);
+    let warning: { level: 'none' | 'stale' | 'error'; message: string } | null = null;
+    if (connection) {
+      if (connection.sync_error) {
+        warning = { level: 'error', message: connection.sync_error };
+      } else if (!connection.last_synced) {
+        warning = { level: 'stale', message: 'Domain connected but never synced with SpyFu' };
+      } else {
+        const daysSince = Math.floor((Date.now() - new Date(connection.last_synced).getTime()) / (1000 * 60 * 60 * 24));
+        if (daysSince > 14) {
+          warning = { level: 'stale', message: `SpyFu data is ${daysSince} days old` };
+        }
+      }
+    }
+
     res.json({
       property_id: propertyId,
       metrics,
       score,
       has_data: !!metrics,
+      warning,
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
@@ -233,6 +250,27 @@ router.post('/sync', async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('[PropertyAnalytics] Sync failed', { error: error.message });
     res.status(500).json({ error: 'Failed to sync analytics', message: error.message });
+  }
+});
+
+router.get('/warnings', async (req: Request, res: Response) => {
+  try {
+    const staleDays = parseInt(req.query.staleDays as string) || 14;
+    const warnings = await analyticsService.getSpyFuMissingDataWarnings(staleDays);
+    res.json({
+      success: true,
+      count: warnings.length,
+      stale_threshold_days: staleDays,
+      warnings,
+      summary: {
+        missing: warnings.filter(w => w.status === 'missing').length,
+        stale: warnings.filter(w => w.status === 'stale').length,
+        error: warnings.filter(w => w.status === 'error').length,
+      },
+    });
+  } catch (error: any) {
+    logger.error('[PropertyAnalytics] Warnings fetch failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to fetch SpyFu warnings', message: error.message });
   }
 });
 
