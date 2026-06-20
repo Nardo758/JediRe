@@ -3194,7 +3194,7 @@ export async function getDealFinancials(
   let _opexAnchors: Record<import('../blueprint/proforma-blueprint').OpexLineKey, import('../types/provenanced-value').ProvenancedValue<number>> | undefined;
   try {
     const { computeOpexAnchors } = await import('./proforma/opex-anchors.service');
-    _opexAnchors = await computeOpexAnchors(pool);
+    _opexAnchors = await computeOpexAnchors(pool, deal.state_code ?? undefined);
   } catch (_oaErr) { /* non-fatal: falls back to DEFAULT_LINE_ANCHORS */ }
 
   const _layeredResults = projectProformaForDeal({
