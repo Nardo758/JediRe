@@ -275,6 +275,8 @@ import { concessionExtractionCron } from './inngest/functions/concession-extract
 import { assetClassSpreadBacktestCron } from './inngest/functions/asset-class-spread-backtest';
 import { googleRealtimeRefreshCron } from './inngest/functions/google-realtime-refresh-cron';
 import { spyfuMissingDataCron } from './inngest/functions/spyfu-missing-data-cron';
+import { m35ConnectorsNightlyCron } from './inngest/functions/m35-connectors-nightly';
+import { verasetNightlyIngest } from './inngest/functions/veraset-nightly';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -354,6 +356,16 @@ app.use(
       // Lower #8: Weekly SpyFu missing-data health check (Mon 08:00 UTC)
       // Surfaces domains with stale, missing, or errored SpyFu data.
       spyfuMissingDataCron,
+      // #13: Nightly M35 Atlanta data connectors (02:00 UTC)
+      // Runs Atlanta permits + rezoning connectors, surfacing draft events
+      // for analyst review. Downstream Kafka consumer handles cache bust
+      // and JEDI recompute when drafts are promoted to live events.
+      m35ConnectorsNightlyCron,
+      // #10: Veraset mobility nightly ingest (03:00 UTC)
+      // Gated by subscription.is_active — stub until paid deal is active.
+      // When active, ingests foot-traffic data into historical_observations
+      // mobility_* columns. See veraset-mobility.service.ts for API wiring.
+      verasetNightlyIngest,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,

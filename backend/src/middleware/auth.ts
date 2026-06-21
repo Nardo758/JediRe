@@ -250,6 +250,14 @@ export function requireApiKey(
     };
   }
 
+  if (process.env.API_KEY_ADMIN) {
+    keyIdentities[process.env.API_KEY_ADMIN] = {
+      userId: 'api-key-admin',
+      email: 'admin-api@jedire.system',
+      role: 'admin',
+    };
+  }
+
   const identity = keyIdentities[apiKey];
   if (!identity) {
     res.status(403).json({

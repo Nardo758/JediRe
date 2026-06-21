@@ -11,6 +11,7 @@ import { registerDemandConsumer } from './demand-consumer';
 import { registerJEDIScoreConsumer } from './jedi-score-consumer';
 import { registerAlertConsumer } from './alert-consumer';
 import { registerM35ForecastConsumer } from './m35-forecast-consumer';
+import { registerM35EventIngestedConsumer } from './m35-event-ingested-consumer';
 import { registerTaxBillUploadedConsumer } from './tax-bill-uploaded-consumer';
 import { registerM14MacroConsumer } from './m14-macro-consumer';
 import { consumerManager } from '../kafka-consumer-manager.service';
@@ -36,6 +37,8 @@ export async function initializeConsumers(): Promise<void> {
       registerJEDIScoreConsumer(),
       registerAlertConsumer(),
       registerM35ForecastConsumer(),
+      // M35 Event Impact Engine: downstream processing when events are ingested
+      registerM35EventIngestedConsumer(),
       // Tax Service Phase 4 (Task #592): parcel cache invalidation on tax bill upload
       registerTaxBillUploadedConsumer(),
       // W-07 (Task #729): M14 macro wiring — rate_move / recession_indicator events

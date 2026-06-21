@@ -11,6 +11,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { AuthenticatedRequest } from '../middleware/auth';
 import { getPool } from '../database/connection';
 import { logger } from '../utils/logger';
 import {
@@ -247,6 +248,74 @@ router.post('/draft-events/:id/reject', async (req: Request, res: Response) => {
     res.json({ ok: true });
   } catch (err: any) {
     logger.error('[M35 Connectors] reject error', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /ingest (external webhook) ─────────────────────────────────────────
+//
+// External systems (e.g., third-party data providers, municipal APIs, news
+// aggregators) can push validated M35 events directly. The createEvent service
+// publishes to Kafka (event.ingested), and the M35 Event Ingested consumer
+// processes downstream effects (M08 cache bust, JEDI recompute, pipeline signal).
+//
+// Authentication: X-API-Key header (validated against process.env.API_KEY_ADMIN).
+// Events bypass the draft queue and go straight to key_events + Kafka.
+
+import { createEvent } from '../services/m35-events.service';
+
+router.post('/ingest', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    // Auth handled centrally by requireAuth middleware (JWT or API_KEY_ADMIN)
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    // Validate event payload
+    const payload = req.body;
+    const required = ['category', 'scope', 'name', 'msaId'];
+    const missing = required.filter(f => !payload[f]);
+    if (missing.length > 0) {
+      res.status(400).json({ error: `Missing required fields: ${missing.join(', ')}` });
+      return;
+    }
+
+    // Create the event in key_events (which also publishes to Kafka)
+    const event = await createEvent({
+      category: payload.category,
+      subtype: payload.subtype,
+      name: payload.name,
+      description: payload.description ?? payload.name,
+      scope: payload.scope,
+      msaId: payload.msaId,
+      submarketId: payload.submarketId,
+      submarketName: payload.submarketName,
+      msaName: payload.msaName,
+      lat: payload.lat,
+      lng: payload.lng,
+      magnitudeScore: payload.magnitudeScore ?? 2,
+      magnitudeValue: payload.magnitudeValue,
+      magnitudeUnit: payload.magnitudeUnit,
+      announcedDate: payload.announcedDate ? new Date(payload.announcedDate) : undefined,
+      materializationDate: payload.materializationDate ? new Date(payload.materializationDate) : undefined,
+      completionDate: payload.completionDate ? new Date(payload.completionDate) : undefined,
+      status: payload.status ?? 'announced',
+      confidence: payload.confidence ?? 0.75,
+      sourceUrl: payload.sourceUrl,
+      sourceRecordId: payload.sourceRecordId,
+      rawPayload: payload.rawPayload ?? payload,
+      ingestionSource: 'api_submission',
+      createdBy: payload.createdBy ?? req.user?.userId ?? 'external-api',
+    });
+
+    res.status(201).json({
+      success: true,
+      eventId: event.id,
+      message: 'Event ingested and queued for downstream processing',
+    });
+  } catch (err: any) {
+    logger.error('[M35 Connectors] external ingest error', err);
     res.status(500).json({ error: err.message });
   }
 });

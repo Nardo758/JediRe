@@ -270,6 +270,27 @@ export class CorpusQueryService {
       );
     }
 
+    // Check Veraset subscription status from veraset_subscriptions table
+    let verasetStatus: 'available' | 'partial' | 'pending' = 'pending';
+    let verasetNote = 'Awaiting subscription';
+    try {
+      const verasetResult = await query(
+        'SELECT is_active FROM veraset_subscriptions WHERE msa_id = $1',
+        [msaId],
+      );
+      if (verasetResult.rows.length > 0) {
+        if (verasetResult.rows[0].is_active === true) {
+          verasetStatus = 'available';
+          verasetNote = 'Subscription active — ingest running';
+        } else {
+          verasetStatus = 'pending';
+          verasetNote = 'Subscription inactive — activate when deal is signed';
+        }
+      }
+    } catch {
+      // Table may not exist yet — fall through to default pending
+    }
+
     // If we have real data, probe macro signal columns and build actual status
     if (totalMonths > 0) {
       // Check which macro signal columns are populated for this geography
@@ -286,8 +307,10 @@ export class CorpusQueryService {
             `SELECT
                COUNT(msa_treasury_10y)   AS has_rates,
                COUNT(msa_employment_total) AS has_emp,
+               COUNT(mobility_visits_monthly) AS has_mobility,
                MAX(observation_date) FILTER (WHERE msa_treasury_10y IS NOT NULL)   AS rates_through,
-               MAX(observation_date) FILTER (WHERE msa_employment_total IS NOT NULL) AS emp_through
+               MAX(observation_date) FILTER (WHERE msa_employment_total IS NOT NULL) AS emp_through,
+               MAX(observation_date) FILTER (WHERE mobility_visits_monthly IS NOT NULL) AS mobility_through
              FROM historical_observations
              WHERE ${geoWhere}`,
             params,
@@ -295,6 +318,7 @@ export class CorpusQueryService {
           const sig = sigResult.rows[0] || {};
           const hasRates = Number(sig.has_rates) || 0;
           const hasEmp = Number(sig.has_emp) || 0;
+          const hasMobility = Number(sig.has_mobility) || 0;
 
           if (hasRates > 0) {
             fredStatus = hasRates >= 6 ? 'available' : 'partial';
@@ -304,12 +328,16 @@ export class CorpusQueryService {
             blsStatus = hasEmp >= 6 ? 'available' : 'partial';
             blsThrough = sig.emp_through ? new Date(sig.emp_through) : null;
           }
+          if (hasMobility > 0) {
+            verasetStatus = hasMobility >= 6 ? 'available' : 'partial';
+            verasetNote = 'Mobility data present in corpus';
+          }
         }
       } catch {
         // Non-fatal: fall back to 'pending' already set above
       }
 
-      const hasMacro = fredStatus !== 'pending' || blsStatus !== 'pending';
+      const hasMacro = fredStatus !== 'pending' || blsStatus !== 'pending' || verasetStatus !== 'pending';
       const confidence = totalMonths >= 36 && hasMacro
         ? 'high'
         : totalMonths >= 12 || hasMacro
@@ -336,13 +364,31 @@ export class CorpusQueryService {
           { name: 'BLS CES (employment)', status: blsStatus, throughDate: blsThrough, note: blsStatus === 'pending' ? 'Run seed-macro-signals.ts to populate' : undefined },
           { name: 'FRED (rates)', status: fredStatus, throughDate: fredThrough, note: fredStatus === 'pending' ? 'Run seed-macro-signals.ts to populate' : undefined },
           { name: 'M35 events', status: 'pending' as const, throughDate: null, note: 'Awaiting ingestion Phase 4' },
-          { name: 'Veraset mobility', status: 'pending' as const, throughDate: null, note: 'Awaiting subscription' },
+          { name: 'Veraset mobility', status: verasetStatus, throughDate: null, note: verasetNote },
         ],
         confidence,
       };
     }
 
     // Stub report — table exists but is empty
+    // Still check Veraset subscription for accurate coverage panel
+    let stubVerasetStatus: 'available' | 'partial' | 'pending' = 'pending';
+    let stubVerasetNote = 'Awaiting subscription';
+    try {
+      const verasetResult = await query(
+        'SELECT is_active FROM veraset_subscriptions WHERE msa_id = $1',
+        [msaId],
+      );
+      if (verasetResult.rows.length > 0) {
+        stubVerasetStatus = verasetResult.rows[0].is_active === true ? 'available' : 'pending';
+        stubVerasetNote = verasetResult.rows[0].is_active === true
+          ? 'Subscription active — ingest running'
+          : 'Subscription inactive — activate when deal is signed';
+      }
+    } catch {
+      // Table may not exist yet
+    }
+
     return {
       msaId,
       submarketId,
@@ -363,7 +409,7 @@ export class CorpusQueryService {
         { name: 'QCEW (employment)', status: 'pending', throughDate: null, note: 'Awaiting ingestion Phase 4' },
         { name: 'FRED (rates)', status: 'pending', throughDate: null, note: 'Awaiting ingestion Phase 4' },
         { name: 'M35 events', status: 'pending', throughDate: null, note: 'Awaiting ingestion Phase 4' },
-        { name: 'Veraset mobility', status: 'pending', throughDate: null, note: 'Awaiting subscription' },
+        { name: 'Veraset mobility', status: stubVerasetStatus, throughDate: null, note: stubVerasetNote },
       ],
       confidence: 'low',
     };
