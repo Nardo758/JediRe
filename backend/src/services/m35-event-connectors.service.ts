@@ -97,6 +97,7 @@ export interface ConnectorRunStats {
   connector: string;
   recordsScanned: number;
   draftEventsCreated: number;
+  draftEventsMerged: number;
   draftEventsSkipped: number;
   duplicatesIgnored: number;
   errors: string[];
@@ -139,8 +140,55 @@ async function ensureStagingTable(): Promise<void> {
   `);
 }
 
-async function upsertDraftEvent(draft: M35DraftEvent): Promise<'created' | 'duplicate'> {
+async function upsertDraftEvent(draft: M35DraftEvent): Promise<'created' | 'duplicate' | 'merged'> {
   const pool = getPool();
+
+  // ── Entity resolution: check for existing events with same name + category + date window
+  const existing = await pool.query(
+    `SELECT id, source_connector, raw_payload, lat, lng, submarket_hint
+     FROM m35_draft_events
+     WHERE category = $1
+       AND msa_id = $2
+       AND signal_date BETWEEN $3::DATE - INTERVAL '30 days' AND $3::DATE + INTERVAL '30 days'
+       AND status = 'DRAFT'
+       AND (name ILIKE $4 OR $5 ILIKE '%' || name || '%')
+     LIMIT 1`,
+    [draft.category, draft.msa_id, draft.signal_date, draft.name, draft.name]
+  );
+
+  if (existing.rows.length > 0) {
+    const existingRow = existing.rows[0];
+    const mergedPayload = {
+      ...(existingRow.raw_payload || {}),
+      ...(draft.raw_payload || {}),
+      merged_sources: [
+        ...(existingRow.raw_payload?.merged_sources || [existingRow.source_connector]),
+        draft.source_connector,
+      ],
+    };
+    const mergedLat = existingRow.lat ?? draft.lat ?? null;
+    const mergedLng = existingRow.lng ?? draft.lng ?? null;
+    const mergedSubmarket = existingRow.submarket_hint ?? draft.submarket_hint ?? null;
+
+    await pool.query(
+      `UPDATE m35_draft_events
+       SET raw_payload = $2,
+           lat = COALESCE(lat, $3),
+           lng = COALESCE(lng, $4),
+           submarket_hint = COALESCE(submarket_hint, $5),
+           updated_at = NOW()
+       WHERE id = $1`,
+      [existingRow.id, JSON.stringify(mergedPayload), mergedLat, mergedLng, mergedSubmarket]
+    );
+
+    logger.info('[M35 Connector] Merged duplicate draft event', {
+      existingId: existingRow.id,
+      newSource: draft.source_connector,
+      name: draft.name,
+    });
+    return 'merged';
+  }
+
   const result = await pool.query(
     `INSERT INTO m35_draft_events
        (source_connector, source_record_id, msa_id, submarket_hint, lat, lng,
@@ -216,6 +264,7 @@ export async function runAtlantaPermitsConnector(
     connector: 'atlanta-permits',
     recordsScanned: 0,
     draftEventsCreated: 0,
+    draftEventsMerged: 0,
     draftEventsSkipped: 0,
     duplicatesIgnored: 0,
     errors: [],
@@ -297,6 +346,7 @@ export async function runAtlantaPermitsConnector(
 
       const outcome = await upsertDraftEvent(draft);
       if (outcome === 'created') stats.draftEventsCreated++;
+      else if (outcome === 'merged') stats.draftEventsMerged++;
       else stats.duplicatesIgnored++;
     } catch (err: any) {
       stats.errors.push(`Permit ${permit.permit_number}: ${err.message}`);
@@ -343,6 +393,7 @@ export async function runAtlantaRezoningConnector(
     connector: 'atlanta-rezoning',
     recordsScanned: 0,
     draftEventsCreated: 0,
+    draftEventsMerged: 0,
     draftEventsSkipped: 0,
     duplicatesIgnored: 0,
     errors: [],
@@ -401,6 +452,7 @@ export async function runAtlantaRezoningConnector(
 
     const outcome = await upsertDraftEvent(draft);
     if (outcome === 'created') stats.draftEventsCreated++;
+    else if (outcome === 'merged') stats.draftEventsMerged++;
     else stats.duplicatesIgnored++;
   }
 
@@ -444,6 +496,7 @@ export async function runAtlantaRezoningConnector(
 
     const outcome = await upsertDraftEvent(draft);
     if (outcome === 'created') stats.draftEventsCreated++;
+    else if (outcome === 'merged') stats.draftEventsMerged++;
     else stats.duplicatesIgnored++;
   }
 
@@ -483,6 +536,7 @@ export async function runGdeltBacktestConnector(options: {
     connector: 'gdelt-backtest',
     recordsScanned: 0,
     draftEventsCreated: 0,
+    draftEventsMerged: 0,
     draftEventsSkipped: 0,
     duplicatesIgnored: 0,
     errors: [],
@@ -567,6 +621,7 @@ export async function runGdeltBacktestConnector(options: {
 
       const outcome = await upsertDraftEvent(draft);
       if (outcome === 'created') stats.draftEventsCreated++;
+      else if (outcome === 'merged') stats.draftEventsMerged++;
       else stats.duplicatesIgnored++;
     }
   }
@@ -576,7 +631,145 @@ export async function runGdeltBacktestConnector(options: {
   return stats;
 }
 
-// ─── Orchestrator: run all connectors ─────────────────────────────────────────
+// ─── Connector stubs: FL and Dallas (infrastructure ready, activate when data sources available) ─────────────────────────────────────────────
+
+export async function runFloridaPermitsConnector(
+  options: { sinceDate?: Date; limit?: number } = {}
+): Promise<ConnectorRunStats> {
+  const start = Date.now();
+  const stats: ConnectorRunStats = {
+    connector: 'florida-permits',
+    recordsScanned: 0,
+    draftEventsCreated: 0,
+    draftEventsMerged: 0,
+    draftEventsSkipped: 0,
+    duplicatesIgnored: 0,
+    errors: [],
+    durationMs: 0,
+  };
+
+  await ensureStagingTable();
+
+  // TODO: Wire Florida Socrata / county permit feeds (Tampa, Orlando, Miami, Jacksonville)
+  // Data sources to integrate:
+  //   - Tampa: Hillsborough County permit API
+  //   - Orlando: Orange County permit search
+  //   - Miami: Miami-Dade Building Permits
+  //   - Jacksonville: Duval County permits
+  // Blocker: county API keys + data format mapping
+
+  stats.durationMs = Date.now() - start;
+  logger.info('[M35 Connector] florida-permits stub — no data source wired yet', stats);
+  return stats;
+}
+
+export async function runDallasPermitsConnector(
+  options: { sinceDate?: Date; limit?: number } = {}
+): Promise<ConnectorRunStats> {
+  const start = Date.now();
+  const stats: ConnectorRunStats = {
+    connector: 'dallas-permits',
+    recordsScanned: 0,
+    draftEventsCreated: 0,
+    draftEventsMerged: 0,
+    draftEventsSkipped: 0,
+    duplicatesIgnored: 0,
+    errors: [],
+    durationMs: 0,
+  };
+
+  await ensureStagingTable();
+
+  // TODO: Wire Dallas Open Data (Socrata: https://www.dallasopendata.com/)
+  // Blocker: dataset ID discovery + API key
+
+  stats.durationMs = Date.now() - start;
+  logger.info('[M35 Connector] dallas-permits stub — no data source wired yet', stats);
+  return stats;
+}
+
+export async function runFloridaRezoningConnector(
+  options: { sinceDate?: Date } = {}
+): Promise<ConnectorRunStats> {
+  const start = Date.now();
+  const stats: ConnectorRunStats = {
+    connector: 'florida-rezoning',
+    recordsScanned: 0,
+    draftEventsCreated: 0,
+    draftEventsMerged: 0,
+    draftEventsSkipped: 0,
+    duplicatesIgnored: 0,
+    errors: [],
+    durationMs: 0,
+  };
+
+  await ensureStagingTable();
+
+  // TODO: Wire Florida planning/zoning APIs (municipal-level, varied by county)
+  // Blocker: per-municipality API discovery + ArcGIS layer IDs
+
+  stats.durationMs = Date.now() - start;
+  logger.info('[M35 Connector] florida-rezoning stub — no data source wired yet', stats);
+  return stats;
+}
+
+// ─── Orchestrator: run all connectors by MSA ──────────────────────────────────
+
+export type MsaConnectorId =
+  | 'atlanta-sandy-springs-roswell-ga'
+  | 'MSA_12060'
+  | 'florida'
+  | 'MSA_45300'   // Tampa
+  | 'MSA_36740'   // Orlando
+  | 'MSA_33100'   // Miami
+  | 'MSA_27260'   // Jacksonville
+  | 'dallas'
+  | 'MSA_19100'   // Dallas-Fort Worth
+  | 'MSA_19124'   // Dallas
+  | string;
+
+export async function runConnectorsForMsa(
+  msaId: MsaConnectorId,
+  options: { sinceDate?: Date } = {}
+): Promise<ConnectorRunStats[]> {
+  const normalized = msaId.toLowerCase().trim();
+  const isAtlanta = normalized.includes('atlanta') || normalized === 'MSA_12060'.toLowerCase();
+  const isFlorida = normalized.includes('florida') || normalized.includes('tampa') || normalized.includes('orlando') || normalized.includes('miami') || normalized.includes('jacksonville') || normalized.startsWith('MSA_45300') || normalized.startsWith('MSA_36740') || normalized.startsWith('MSA_33100') || normalized.startsWith('MSA_27260');
+  const isDallas = normalized.includes('dallas') || normalized.includes('fort worth') || normalized.startsWith('MSA_19100') || normalized.startsWith('MSA_19124');
+
+  const results: ConnectorRunStats[] = [];
+
+  if (isAtlanta) {
+    const atlantaResults = await runAllAtlantaConnectors(options);
+    results.push(...atlantaResults);
+  } else if (isFlorida) {
+    const [permits, rezoning] = await Promise.all([
+      runFloridaPermitsConnector(options),
+      runFloridaRezoningConnector(options),
+    ]);
+    results.push(permits, rezoning);
+  } else if (isDallas) {
+    const [permits] = await Promise.all([
+      runDallasPermitsConnector(options),
+    ]);
+    results.push(permits);
+  } else {
+    logger.info('[M35 Connector] No connectors registered for MSA', { msaId });
+    results.push({
+      connector: 'unknown',
+      recordsScanned: 0,
+      draftEventsCreated: 0,
+      draftEventsSkipped: 0,
+      duplicatesIgnored: 0,
+      errors: [`No connectors available for MSA: ${msaId}`],
+      durationMs: 0,
+    });
+  }
+
+  return results;
+}
+
+// ─── Legacy orchestrator (kept for backward compatibility) ─────────────────────
 
 export async function runAllAtlantaConnectors(options: {
   sinceDate?: Date;

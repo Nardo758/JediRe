@@ -49,6 +49,11 @@ import {
 } from '../services/m35-impact.service';
 import { m35CausalityService } from '../services/m35-causality.service';
 import { m35TrafficApiService } from '../services/m35-traffic-api.service';
+import {
+  getPlaybook,
+  classifyMsaTier,
+  type PlaybookStratum,
+} from '../services/m35-playbook.service';
 
 const router = Router();
 
@@ -603,65 +608,265 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
   try {
     const pool = getPool();
 
-    // Resolve deal's MSA — prefer explicit msaId on deal_data, fall back to city
+    // Resolve deal's location: MSA, submarket, lat/lng
+    // Prefer properties table (canonical), fall back to deal_data, then city
     const dealRes = await pool.query(`
-      SELECT d.id, d.name,
-        COALESCE(d.deal_data->>'msaId', lower(trim(d.city))) AS msa_id
-      FROM deals d WHERE d.id = $1 LIMIT 1
+      SELECT
+        d.id,
+        d.name,
+        COALESCE(p.msa_id, d.deal_data->>'msaId', lower(trim(d.city))) AS msa_id,
+        p.submarket_id,
+        p.latitude,
+        p.longitude
+      FROM deals d
+      LEFT JOIN deal_properties dp ON dp.deal_id = d.id
+      LEFT JOIN properties p     ON p.id = dp.property_id
+      WHERE d.id = $1
+      ORDER BY dp.created_at ASC NULLS LAST
+      LIMIT 1
     `, [req.params.dealId]);
 
     const deal = dealRes.rows[0];
     const msaId = deal?.msa_id ?? null;
+    const submarketId = deal?.submarket_id ?? null;
+    const dealLat = deal?.latitude ? parseFloat(deal.latitude) : null;
+    const dealLng = deal?.longitude ? parseFloat(deal.longitude) : null;
 
     let events: any[] = [];
     if (msaId) {
+      // Scope-cascade: query events at MSA + submarket + property level,
+      // deduplicate, compute proximity, filter by threshold
       const evRes = await pool.query(`
-        SELECT ke.* FROM key_events ke
-        WHERE ke.msa_id = $1
-          AND ke.status NOT IN ('cancelled','reversed')
-        ORDER BY ke.magnitude_score DESC, ke.announced_date DESC NULLS LAST
-        LIMIT 20
-      `, [msaId]);
+        SELECT DISTINCT ON (ke.id) ke.* FROM key_events ke
+        WHERE (
+          ke.msa_id = $1
+          OR ($2::text IS NOT NULL AND ke.submarket_id = $2)
+          OR ($3::text IS NOT NULL AND ke.property_id = $3)
+        )
+        AND ke.status NOT IN ('cancelled','reversed')
+        ORDER BY ke.id, ke.magnitude_score DESC
+      `, [msaId, submarketId, req.params.dealId]);
       events = evRes.rows;
     }
 
-    // Compute sensitivity from avg magnitude_score
+    // Compute proximity for each event and filter by threshold
+    const PROXIMITY_THRESHOLD = 0.1; // ~1.5× cascade radius (5mi)
+    const eventsWithProximity = events.map((ev: any) => {
+      const proximity = m35TrafficApiService.proximityFactor(
+        {
+          id: ev.id,
+          name: ev.name,
+          category: ev.category,
+          subtype: ev.subtype,
+          status: ev.status,
+          lat: ev.lat ? parseFloat(ev.lat) : null,
+          lng: ev.lng ? parseFloat(ev.lng) : null,
+          msaId: ev.msa_id,
+          submarketId: ev.submarket_id,
+          magnitudeScore: parseFloat(ev.magnitude_score ?? '2'),
+          defaultMagnitude: parseFloat(ev.magnitude_value ?? '0'),
+          confidence: parseFloat(ev.confidence ?? '0.5'),
+          materializationDate: ev.materialization_date ? new Date(ev.materialization_date) : null,
+          announcedDate: ev.announced_date ? new Date(ev.announced_date) : null,
+          decayShape: ev.decay_shape || 'linear',
+          typicalDecayMonths: parseInt(ev.typical_decay_months ?? '12', 10),
+        },
+        { lat: dealLat ?? undefined, lng: dealLng ?? undefined, submarket: submarketId ?? undefined, msaId: msaId ?? undefined }
+      );
+      return { ...ev, proximityScore: proximity };
+    }).filter((ev: any) => (ev.proximityScore ?? 0) >= PROXIMITY_THRESHOLD);
+
+    events = eventsWithProximity;
+
+    // Compute sensitivity from total projected rent-growth delta (not naive magnitude avg)
     let sensitivityScore = 0;
     let sensitivity = 'LOW';
+    const totalProjectedDelta = rentGrowthAttributions.reduce((s, a) => s + (a.delta / 100), 0); // delta is in pp
     if (events.length > 0) {
-      const avgMag = events.reduce((s, e) => s + Number(e.magnitude_score || 2), 0) / events.length;
-      sensitivityScore = Math.min(1, avgMag / 5);
-      sensitivity = avgMag >= 3.5 ? 'HIGH' : avgMag >= 2.5 ? 'MEDIUM' : 'LOW';
+      sensitivityScore = Math.min(1, Math.abs(totalProjectedDelta) / 0.05); // 5pp = max sensitivity
+      sensitivity = Math.abs(totalProjectedDelta) >= 0.035 ? 'HIGH' : Math.abs(totalProjectedDelta) >= 0.015 ? 'MEDIUM' : 'LOW';
     }
 
-    // Compute concentration (top event share of total magnitude)
+    // Compute concentration (top event share of total projected delta)
     let concentration = null;
-    if (events.length > 0) {
-      const totalMag = events.reduce((s, e) => s + Number(e.magnitude_score || 1), 0);
-      const top = events[0];
-      const topShare = Number(top.magnitude_score || 1) / totalMag;
+    if (rentGrowthAttributions.length > 0) {
+      const totalDelta = rentGrowthAttributions.reduce((s, a) => s + Math.abs(a.delta / 100), 0);
+      const top = rentGrowthAttributions[0];
+      const topShare = totalDelta > 0 ? Math.abs(top.delta / 100) / totalDelta : 0;
       concentration = {
-        topEventName:  top.name,
-        irrShare:      topShare,
+        topEventName:  top.eventName,
+        irrShare:      topShare, // still named irrShare for API compat, but it's delta share until IRR is wired
         isConcentrated: topShare > 0.30,
       };
     }
 
-    // Inline attributions: generate synthetic attribution from magnitude + default metrics
-    const ATTRIBUTION_METRICS = ['rent_growth_yoy', 'cap_rate', 'absorption', 'permits'];
+    // projectedIrrImpact: stub — requires pro forma counterfactual API (P1 remaining)
+    const projectedIrrImpact = {
+      status: 'not_computed',
+      note: 'Requires pro forma counterfactual run (baseline + all-events vs baseline-only). See P1 projectedIrrImpact.',
+      allEvents: null,
+      baselineOnly: null,
+      perEvent: rentGrowthAttributions.map(a => ({
+        eventId: a.eventId,
+        eventName: a.eventName,
+        assumptionDelta: a.delta / 100, // decimal pp
+      })),
+    };
+
+    // Inline attributions: playbook-driven assumption deltas (P0.1)
+    // Replaces the legacy synthetic attribution (magnitude * 0.5) with real
+    // playbook lookup + proximity + temporal scaling.
     const inlineAttributions: Record<string, any[]> = {};
-    ATTRIBUTION_METRICS.forEach(metric => {
-      inlineAttributions[metric] = events.slice(0, 2).map(ev => ({
-        eventId:    ev.id,
-        eventName:  ev.name,
-        metricKey:  metric,
-        delta:      Number((Number(ev.magnitude_score || 2) * 0.5 * (ev.scope === 'msa' ? 0.8 : 1.0)).toFixed(2)),
-        unit:       metric.endsWith('rate') || metric.endsWith('yoy') ? 'pp' : '',
-        baseline:   3.2,
-        total:      3.2 + Number((Number(ev.magnitude_score || 2) * 0.5).toFixed(2)),
-        confidence: Number(ev.confidence || 0.55),
-      }));
-    });
+    const msaTier = classifyMsaTier(msaId);
+    const now = new Date();
+
+    // ── rent_growth_yoy: real playbook-driven attribution ────────────────────────
+    const rentGrowthAttributions: any[] = [];
+    let baselineRentGrowth: number | null = null;
+
+    // Query metric_time_series for DiD control-group secular trend
+    // First try: direct rent_growth_yoy metric for the deal's geography
+    try {
+      const baselineRes = await pool.query(
+        `SELECT value, period_date
+         FROM metric_time_series
+         WHERE geography_id = $1
+           AND metric_id IN ('rent_growth_yoy', 'rent_growth', 'avg_rent_growth')
+           AND value IS NOT NULL
+         ORDER BY period_date DESC
+         LIMIT 1`,
+        [submarketId ?? msaId]
+      );
+
+      if (baselineRes.rows.length > 0 && baselineRes.rows[0].value != null) {
+        const rawVal = parseFloat(baselineRes.rows[0].value);
+        // metric_time_series stores rent_growth_yoy as decimal (e.g., 0.032 = 3.2%)
+        // or sometimes as percentage (3.2). Normalize to decimal.
+        baselineRentGrowth = rawVal > 0.5 ? rawVal / 100 : rawVal;
+      }
+    } catch (baselineErr) {
+      logger.debug('[M35 Events] Baseline query failed, falling back to placeholder', {
+        dealId: req.params.dealId, geography: submarketId ?? msaId, error: baselineErr,
+      });
+    }
+
+    // Fallback: compute from effective_rent YoY change
+    if (baselineRentGrowth == null) {
+      try {
+        const rentRes = await pool.query(
+          `SELECT
+             (SELECT value FROM metric_time_series
+              WHERE geography_id = $1 AND metric_id = 'effective_rent'
+                AND value IS NOT NULL
+              ORDER BY period_date DESC LIMIT 1) AS latest_rent,
+             (SELECT value FROM metric_time_series
+              WHERE geography_id = $1 AND metric_id = 'effective_rent'
+                AND value IS NOT NULL
+              ORDER BY period_date DESC OFFSET 12 LIMIT 1) AS rent_12mo_ago,
+             (SELECT period_date FROM metric_time_series
+              WHERE geography_id = $1 AND metric_id = 'effective_rent'
+                AND value IS NOT NULL
+              ORDER BY period_date DESC LIMIT 1) AS latest_date`,
+          [submarketId ?? msaId]
+        );
+
+        const latest = rentRes.rows[0]?.latest_rent;
+        const past = rentRes.rows[0]?.rent_12mo_ago;
+        if (latest != null && past != null && parseFloat(past) > 0) {
+          baselineRentGrowth = (parseFloat(latest) - parseFloat(past)) / parseFloat(past);
+          logger.info('[M35 Events] Computed rent growth baseline from effective_rent YoY', {
+            dealId: req.params.dealId,
+            baseline: baselineRentGrowth,
+            latest: parseFloat(latest),
+            past: parseFloat(past),
+          });
+        }
+      } catch (rentErr) {
+        logger.debug('[M35 Events] Effective rent baseline query failed', {
+          dealId: req.params.dealId, error: rentErr,
+        });
+      }
+    }
+
+    // Final fallback: hardcoded placeholder (to be removed when data is populated)
+    if (baselineRentGrowth == null) {
+      baselineRentGrowth = 0.032; // 3.2% placeholder
+      logger.info('[M35 Events] Using placeholder rent growth baseline', {
+        dealId: req.params.dealId, baseline: baselineRentGrowth,
+      });
+    }
+
+    for (const ev of events) {
+      const subtype = ev.subtype as string | null;
+      if (!subtype) continue;
+
+      const magnitudeStratum = classifyMagnitudeStratum(parseFloat(ev.magnitude_score ?? '2'));
+      const regime = classifyRegime(ev.announced_date ? new Date(ev.announced_date) : null);
+      const stratum: PlaybookStratum = { msaTier, magnitude: magnitudeStratum, regime };
+
+      const playbook = await getPlaybook(subtype, stratum);
+      if (!playbook) continue;
+
+      const metric = playbook.metrics.find(
+        m => m.metricKey === 'rent_growth_yoy' && m.windowMonths === 12
+      );
+      if (!metric || metric.median === null) continue;
+
+      const proximity = ev.proximityScore ?? 0;
+      if (proximity < 0.1) continue;
+
+      const temporal = m35TrafficApiService.temporalFactor(
+        {
+          id: ev.id, name: ev.name, category: ev.category, subtype: ev.subtype,
+          status: ev.status, lat: ev.lat, lng: ev.lng, msaId: ev.msa_id,
+          submarketId: ev.submarket_id, magnitudeScore: parseFloat(ev.magnitude_score ?? '2'),
+          magnitudeValue: ev.magnitude_value ? parseFloat(ev.magnitude_value) : null,
+          confidence: parseFloat(ev.confidence ?? '0.5'),
+          announcedDate: ev.announced_date ? new Date(ev.announced_date) : null,
+          materializationDate: ev.materialization_date ? new Date(ev.materialization_date) : null,
+          completionDate: ev.completion_date ? new Date(ev.completion_date) : null,
+          baselineTreatment: ev.baseline_treatment || 'PASS_THROUGH',
+          defaultMagnitude: parseFloat(ev.default_magnitude ?? '0'),
+          decayShape: ev.decay_shape || 'linear',
+          typicalDecayMonths: parseInt(ev.typical_decay_months ?? '12', 10),
+        },
+        now
+      );
+
+      const delta = metric.median * proximity * temporal;
+      if (Math.abs(delta) < 0.0001) continue;
+
+      const confidence = metric.confidence * proximity * temporal;
+
+      rentGrowthAttributions.push({
+        eventId: ev.id,
+        eventName: ev.name,
+        metricKey: 'rent_growth_yoy',
+        delta: Number((delta * 100).toFixed(2)), // convert to pp for display
+        unit: 'pp',
+        baseline: baselineRentGrowth ? Number((baselineRentGrowth * 100).toFixed(2)) : null,
+        total: baselineRentGrowth
+          ? Number(((baselineRentGrowth + delta) * 100).toFixed(2))
+          : Number((delta * 100).toFixed(2)),
+        confidence: Number(confidence.toFixed(3)),
+        playbookId: playbook.subtype,
+        playbookSubtype: subtype,
+        stratum,
+        instanceCount: playbook.instanceCount,
+        playbookConfidence: metric.confidence,
+        proximity: Number(proximity.toFixed(3)),
+        temporal: Number(temporal.toFixed(3)),
+      });
+    }
+
+    inlineAttributions['rent_growth_yoy'] = rentGrowthAttributions;
+
+    // ── Other metrics: stubs (no playbooks yet) ─────────────────────────────────
+    // When playbooks for cap_rate, absorption, permits are built, wire them here
+    // using the same pattern as rent_growth_yoy above.
+    inlineAttributions['cap_rate'] = [];
+    inlineAttributions['absorption'] = [];
+    inlineAttributions['permits'] = [];
 
     // Fetch news items linked to these events via news_item_ids
     const allNewsIds: string[] = [];
@@ -778,6 +983,7 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
         magnitudeScore:     parseFloat(ev.magnitude_score ?? '2'),
         confidence:         parseFloat(ev.confidence ?? '0.5'),
         isVerified:         Boolean(ev.is_verified),
+        proximityScore:     ev.proximityScore ?? 0,
         announcedDate:      ev.announced_date ? new Date(ev.announced_date as string).toISOString() : undefined,
         materializationDate: ev.materialization_date ? new Date(ev.materialization_date as string).toISOString() : undefined,
         ingestionSource:    ev.ingestion_source as string | undefined,
@@ -790,11 +996,26 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
     res.json({
       dealId: req.params.dealId,
       msaId,
+      submarketId,
+      dealLocation: (dealLat && dealLng)
+        ? { lat: dealLat, lng: dealLng }
+        : null,
       events: enrichedEvents,
       sensitivity,
       sensitivityScore,
       concentration,
+      projectedIrrImpact,
       inlineAttributions,
+      baseline: {
+        rent_growth_yoy: baselineRentGrowth ? Number((baselineRentGrowth * 100).toFixed(2)) : null,
+        source: baselineRentGrowth ? 'metric_time_series' : 'placeholder',
+      },
+      secular: {
+        rent_growth_yoy: 0, // TODO: compute secular migration component
+      },
+      residual: {
+        rent_growth_yoy: 0, // TODO: observed - baseline - sum(deltas) - secular
+      },
       totalActiveEvents: enrichedEvents.length,
     });
   } catch (err: any) {
@@ -943,5 +1164,17 @@ router.get('/playbook/:eventType', async (req: Request, res: Response) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+function classifyMagnitudeStratum(magnitudeScore: number): 'small' | 'medium' | 'large' | 'transformative' {
+  if (magnitudeScore <= 1) return 'small';
+  if (magnitudeScore <= 2) return 'medium';
+  if (magnitudeScore <= 4) return 'large';
+  return 'transformative';
+}
+
+function classifyRegime(announcedDate: Date | null): 'pre_covid' | 'post_covid' {
+  if (!announcedDate) return 'post_covid';
+  return announcedDate < new Date('2020-03-01') ? 'pre_covid' : 'post_covid';
+}
 
 export default router;

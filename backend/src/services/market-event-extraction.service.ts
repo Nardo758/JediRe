@@ -61,6 +61,54 @@ const SUBMARKET_GEOGRAPHY_MAP: Record<string, string> = {
   'sandy springs':   'north_fulton',
 };
 
+// ── M35 event category mapping from market_events event_type ───────────────
+
+const M35_CATEGORY_MAP: Record<string, string> = {
+  'employer_move':         'MAJOR_EMPLOYER_ARRIVAL',
+  'employer_expansion':    'MAJOR_EMPLOYER_ARRIVAL',
+  'employer_layoff':       'MAJOR_EMPLOYER_DEPARTURE',
+  'employer_closure':      'MAJOR_EMPLOYER_DEPARTURE',
+  'supply_delivery':       'MAJOR_DEVELOPMENT_STARTED',
+  'supply_announced':      'MAJOR_DEVELOPMENT_STARTED',
+  'supply_groundbreaking': 'MAJOR_DEVELOPMENT_STARTED',
+  'transit_opening':       'TRANSIT_INFRASTRUCTURE',
+  'transit_expansion':     'TRANSIT_INFRASTRUCTURE',
+  'transit_planned':       'TRANSIT_INFRASTRUCTURE',
+  'infrastructure':        'TRANSIT_INFRASTRUCTURE',
+  'rezoning':              'REGULATORY_CHANGE',
+  'policy_change':         'REGULATORY_CHANGE',
+  'economic_shock':        'NATURAL_DISASTER',
+  'natural_disaster':      'NATURAL_DISASTER',
+  'retail_opening':        'COMMERCIAL_DEVELOPMENT',
+  'retail_closure':        'COMMERCIAL_DEVELOPMENT',
+  'grocery_opening':       'COMMERCIAL_DEVELOPMENT',
+  'acquisition':           'MARKET_TRANSACTION',
+  'disposition':           'MARKET_TRANSACTION',
+};
+
+const M35_SCOPE_MAP: Record<string, string> = {
+  'submarket': 'SUBMARKET',
+  'msa':       'MSA',
+  'city':      'MSA',
+  'county':    'MSA',
+};
+
+const M35_MAGNITUDE_MAP: Record<string, number> = {
+  'minor':         1,
+  'moderate':      2,
+  'major':         4,
+  'transformative': 5,
+};
+
+const M35_MSA_MAP: Record<string, string> = {
+  'atlanta': 'atlanta-sandy-springs-roswell-ga',
+  'tampa':   'tampa-st-petersburg-clearwater-fl',
+  'orlando': 'orlando-kissimmee-sanford-fl',
+  'miami':   'miami-fort-lauderdale-west-palm-beach-fl',
+  'jacksonville': 'jacksonville-fl',
+  'dallas':  'dallas-fort-worth-arlington-tx',
+};
+
 // ── Zod schemas ──────────────────────────────────────────────────────────────
 
 const ExtractedEventSchema = z.object({
@@ -431,8 +479,138 @@ export async function insertExtractedEvents(
   return { inserted, skipped, events: persisted };
 }
 
+// ── M35 draft event insertion ───────────────────────────────────────────────
+
 /**
- * Full pipeline: extract from article + insert to DB.
+ * Insert extracted events into m35_draft_events for analyst review.
+ * Maps market_events fields to M35 taxonomy (category, scope, magnitude_score).
+ * Skips events that already exist (source_connector + source_record_id unique).
+ *
+ * This is the forward-sight pipeline: live news → NLP → M35 draft queue.
+ */
+export async function insertM35DraftEvents(
+  events: ExtractedEvent[],
+  sourceUrl?: string | null,
+  sourceDate?: Date | null,
+): Promise<{ inserted: number; skipped: number }> {
+  let inserted = 0;
+  let skipped = 0;
+
+  for (const evt of events) {
+    const m35Category = M35_CATEGORY_MAP[evt.event_type] ?? 'MAJOR_DEVELOPMENT_STARTED';
+    const m35Scope = M35_SCOPE_MAP[evt.geography_type] ?? 'MSA';
+    const m35Magnitude = M35_MAGNITUDE_MAP[evt.expected_impact_magnitude] ?? 2;
+    const m35MsaId = M35_MSA_MAP[resolveGeographyId(evt.geography_id)] ??
+                     resolveGeographyId(evt.geography_id);
+    const submarketHint = evt.geography_type === 'submarket'
+      ? resolveGeographyId(evt.geography_id)
+      : undefined;
+
+    // Build a source_record_id from article URL + event name hash
+    const sourceRecordId = `${evt.event_name.slice(0, 60)}|${evt.effective_date}`;
+
+    try {
+      // Entity resolution: check if a similar event already exists (cross-source dedup)
+      const existing = await dbQuery(
+        `SELECT id, raw_payload
+         FROM m35_draft_events
+         WHERE category = $1
+           AND msa_id = $2
+           AND signal_date BETWEEN $3::DATE - INTERVAL '30 days' AND $3::DATE + INTERVAL '30 days'
+           AND status = 'DRAFT'
+           AND (name ILIKE $4 OR $5 ILIKE '%' || name || '%')
+         LIMIT 1`,
+        [m35Category, m35MsaId, evt.announced_date ?? evt.effective_date, evt.event_name, evt.event_name]
+      );
+
+      if (existing.rows.length > 0) {
+        const existingRow = existing.rows[0];
+        const mergedPayload = {
+          ...(existingRow.raw_payload || {}),
+          merged_sources: [
+            ...(existingRow.raw_payload?.merged_sources || []),
+            'news_nlp',
+          ],
+        };
+        await dbQuery(
+          `UPDATE m35_draft_events
+           SET raw_payload = $2, updated_at = NOW()
+           WHERE id = $1`,
+          [existingRow.id, JSON.stringify(mergedPayload)]
+        );
+        logger.info('[EventExtraction] Merged news NLP into existing draft', {
+          existingId: existingRow.id,
+          event_name: evt.event_name,
+        });
+        inserted++; // Count as inserted for reporting (it was merged)
+        continue;
+      }
+
+      const result = await dbQuery(`
+        INSERT INTO m35_draft_events (
+          source_connector, source_record_id, msa_id, submarket_hint,
+          category, scope, name, description, signal_date,
+          est_materialization, estimated_magnitude, confidence,
+          source_url, raw_payload
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+        )
+        ON CONFLICT (source_connector, source_record_id) DO NOTHING
+        RETURNING id
+      `, [
+        'news_nlp',
+        sourceRecordId,
+        m35MsaId,
+        submarketHint ?? null,
+        m35Category,
+        m35Scope,
+        evt.event_name,
+        evt.event_description ?? evt.event_name,
+        evt.announced_date ?? evt.effective_date,
+        evt.effective_date,
+        m35Magnitude,
+        evt.confidence_score,
+        sourceUrl ?? null,
+        JSON.stringify({
+          event_type: evt.event_type,
+          impact_direction: evt.expected_impact_direction,
+          impact_magnitude: evt.expected_impact_magnitude,
+          jobs_affected: evt.jobs_affected,
+          units_affected: evt.units_affected,
+          investment_amount: evt.investment_amount,
+          geography_type: evt.geography_type,
+          geography_id: evt.geography_id,
+          entity_name: evt.entity_name,
+          entity_type: evt.entity_type,
+          tags: evt.tags,
+        }),
+      ]);
+
+      if (result.rows.length > 0) {
+        inserted++;
+        logger.info('[EventExtraction] Inserted M35 draft event', {
+          event_name: evt.event_name,
+          category: m35Category,
+          msa_id: m35MsaId,
+        });
+      } else {
+        skipped++;
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('[EventExtraction] M35 draft insert error', {
+        event_name: evt.event_name,
+        error: msg,
+      });
+      skipped++;
+    }
+  }
+
+  return { inserted, skipped };
+}
+
+/**
+ * Full pipeline: extract from article + insert to DB (both market_events and m35_draft_events).
  * Intended for fire-and-forget use inside news ingestion.
  *
  * @param article     Article content to extract events from.
@@ -444,13 +622,24 @@ export async function insertExtractedEvents(
 export async function extractAndPersistEvents(
   article: ArticleInput,
   articleId?: string
-): Promise<ExtractionResult> {
+): Promise<ExtractionResult & { m35Inserted: number; m35Skipped: number }> {
   const candidates = await extractMarketEvents(article);
 
   const sourceDate = article.publishedAt ? new Date(article.publishedAt) : null;
   const result = candidates.length === 0
     ? { inserted: 0, skipped: 0, events: [] }
     : await insertExtractedEvents(candidates, article.url, sourceDate);
+
+  // Parallel: also insert into M35 draft queue
+  let m35Result = { inserted: 0, skipped: 0 };
+  if (candidates.length > 0) {
+    try {
+      m35Result = await insertM35DraftEvents(candidates, article.url, sourceDate);
+    } catch (m35Err: unknown) {
+      const msg = m35Err instanceof Error ? m35Err.message : String(m35Err);
+      logger.warn('[EventExtraction] M35 draft insert failed (non-fatal)', { error: msg });
+    }
+  }
 
   // Stamp extracted_at so this article is never re-sent to the LLM.
   // Fire-and-forget — a stamp failure must never surface to the caller.
@@ -464,5 +653,9 @@ export async function extractAndPersistEvents(
     });
   }
 
-  return result;
+  return {
+    ...result,
+    m35Inserted: m35Result.inserted,
+    m35Skipped: m35Result.skipped,
+  };
 }

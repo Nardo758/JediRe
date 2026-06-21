@@ -3175,13 +3175,11 @@ export async function getDealFinancials(
     _cyclePressureIndex = await computeCyclePressureIndex(pool, _city, _state, totalUnits);
   } catch (_cpeErr) { /* non-fatal: cycle component falls back to anchor-only */ }
 
-  // ── Medium #15: event deltas from market_events ─────────────────────────────
+  >// ── Medium #15: event deltas from M35 playbooks ─────────────────────────────
   let _eventDeltas: import('../types/provenanced-value').ProvenancedValue<number>[] = [];
   try {
     const { computeEventDeltas } = await import('./proforma/event-deltas.service');
-    const _city = (deal.city ?? '') as string | null;
-    const _state = (deal.state_code ?? '') as string | null;
-    _eventDeltas = await computeEventDeltas(pool, _city, _state);
+    _eventDeltas = await computeEventDeltas(pool, dealId);
   } catch (_evtErr) { /* non-fatal: event component falls back to empty */ }
 
   // ── Medium #16: M15 position adjustment from comp set rank ──────────────────
