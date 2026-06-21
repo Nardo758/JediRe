@@ -576,7 +576,142 @@ export async function runGdeltBacktestConnector(options: {
   return stats;
 }
 
-// ─── Orchestrator: run all connectors ─────────────────────────────────────────
+// ─── Connector stubs: FL and Dallas (infrastructure ready, activate when data sources available) ─────────────────────────────────────────────
+
+export async function runFloridaPermitsConnector(
+  options: { sinceDate?: Date; limit?: number } = {}
+): Promise<ConnectorRunStats> {
+  const start = Date.now();
+  const stats: ConnectorRunStats = {
+    connector: 'florida-permits',
+    recordsScanned: 0,
+    draftEventsCreated: 0,
+    draftEventsSkipped: 0,
+    duplicatesIgnored: 0,
+    errors: [],
+    durationMs: 0,
+  };
+
+  await ensureStagingTable();
+
+  // TODO: Wire Florida Socrata / county permit feeds (Tampa, Orlando, Miami, Jacksonville)
+  // Data sources to integrate:
+  //   - Tampa: Hillsborough County permit API
+  //   - Orlando: Orange County permit search
+  //   - Miami: Miami-Dade Building Permits
+  //   - Jacksonville: Duval County permits
+  // Blocker: county API keys + data format mapping
+
+  stats.durationMs = Date.now() - start;
+  logger.info('[M35 Connector] florida-permits stub — no data source wired yet', stats);
+  return stats;
+}
+
+export async function runDallasPermitsConnector(
+  options: { sinceDate?: Date; limit?: number } = {}
+): Promise<ConnectorRunStats> {
+  const start = Date.now();
+  const stats: ConnectorRunStats = {
+    connector: 'dallas-permits',
+    recordsScanned: 0,
+    draftEventsCreated: 0,
+    draftEventsSkipped: 0,
+    duplicatesIgnored: 0,
+    errors: [],
+    durationMs: 0,
+  };
+
+  await ensureStagingTable();
+
+  // TODO: Wire Dallas Open Data (Socrata: https://www.dallasopendata.com/)
+  // Blocker: dataset ID discovery + API key
+
+  stats.durationMs = Date.now() - start;
+  logger.info('[M35 Connector] dallas-permits stub — no data source wired yet', stats);
+  return stats;
+}
+
+export async function runFloridaRezoningConnector(
+  options: { sinceDate?: Date } = {}
+): Promise<ConnectorRunStats> {
+  const start = Date.now();
+  const stats: ConnectorRunStats = {
+    connector: 'florida-rezoning',
+    recordsScanned: 0,
+    draftEventsCreated: 0,
+    draftEventsSkipped: 0,
+    duplicatesIgnored: 0,
+    errors: [],
+    durationMs: 0,
+  };
+
+  await ensureStagingTable();
+
+  // TODO: Wire Florida planning/zoning APIs (municipal-level, varied by county)
+  // Blocker: per-municipality API discovery + ArcGIS layer IDs
+
+  stats.durationMs = Date.now() - start;
+  logger.info('[M35 Connector] florida-rezoning stub — no data source wired yet', stats);
+  return stats;
+}
+
+// ─── Orchestrator: run all connectors by MSA ──────────────────────────────────
+
+export type MsaConnectorId =
+  | 'atlanta-sandy-springs-roswell-ga'
+  | 'MSA_12060'
+  | 'florida'
+  | 'MSA_45300'   // Tampa
+  | 'MSA_36740'   // Orlando
+  | 'MSA_33100'   // Miami
+  | 'MSA_27260'   // Jacksonville
+  | 'dallas'
+  | 'MSA_19100'   // Dallas-Fort Worth
+  | 'MSA_19124'   // Dallas
+  | string;
+
+export async function runConnectorsForMsa(
+  msaId: MsaConnectorId,
+  options: { sinceDate?: Date } = {}
+): Promise<ConnectorRunStats[]> {
+  const normalized = msaId.toLowerCase().trim();
+  const isAtlanta = normalized.includes('atlanta') || normalized === 'MSA_12060'.toLowerCase();
+  const isFlorida = normalized.includes('florida') || normalized.includes('tampa') || normalized.includes('orlando') || normalized.includes('miami') || normalized.includes('jacksonville') || normalized.startsWith('MSA_45300') || normalized.startsWith('MSA_36740') || normalized.startsWith('MSA_33100') || normalized.startsWith('MSA_27260');
+  const isDallas = normalized.includes('dallas') || normalized.includes('fort worth') || normalized.startsWith('MSA_19100') || normalized.startsWith('MSA_19124');
+
+  const results: ConnectorRunStats[] = [];
+
+  if (isAtlanta) {
+    const atlantaResults = await runAllAtlantaConnectors(options);
+    results.push(...atlantaResults);
+  } else if (isFlorida) {
+    const [permits, rezoning] = await Promise.all([
+      runFloridaPermitsConnector(options),
+      runFloridaRezoningConnector(options),
+    ]);
+    results.push(permits, rezoning);
+  } else if (isDallas) {
+    const [permits] = await Promise.all([
+      runDallasPermitsConnector(options),
+    ]);
+    results.push(permits);
+  } else {
+    logger.info('[M35 Connector] No connectors registered for MSA', { msaId });
+    results.push({
+      connector: 'unknown',
+      recordsScanned: 0,
+      draftEventsCreated: 0,
+      draftEventsSkipped: 0,
+      duplicatesIgnored: 0,
+      errors: [`No connectors available for MSA: ${msaId}`],
+      durationMs: 0,
+    });
+  }
+
+  return results;
+}
+
+// ─── Legacy orchestrator (kept for backward compatibility) ─────────────────────
 
 export async function runAllAtlantaConnectors(options: {
   sinceDate?: Date;

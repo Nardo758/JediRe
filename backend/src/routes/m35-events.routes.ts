@@ -603,15 +603,29 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
   try {
     const pool = getPool();
 
-    // Resolve deal's MSA — prefer explicit msaId on deal_data, fall back to city
+    // Resolve deal's location: MSA, submarket, lat/lng
+    // Prefer properties table (canonical), fall back to deal_data, then city
     const dealRes = await pool.query(`
-      SELECT d.id, d.name,
-        COALESCE(d.deal_data->>'msaId', lower(trim(d.city))) AS msa_id
-      FROM deals d WHERE d.id = $1 LIMIT 1
+      SELECT
+        d.id,
+        d.name,
+        COALESCE(p.msa_id, d.deal_data->>'msaId', lower(trim(d.city))) AS msa_id,
+        p.submarket_id,
+        p.latitude,
+        p.longitude
+      FROM deals d
+      LEFT JOIN deal_properties dp ON dp.deal_id = d.id
+      LEFT JOIN properties p     ON p.id = dp.property_id
+      WHERE d.id = $1
+      ORDER BY dp.created_at ASC NULLS LAST
+      LIMIT 1
     `, [req.params.dealId]);
 
     const deal = dealRes.rows[0];
     const msaId = deal?.msa_id ?? null;
+    const submarketId = deal?.submarket_id ?? null;
+    const dealLat = deal?.latitude ? parseFloat(deal.latitude) : null;
+    const dealLng = deal?.longitude ? parseFloat(deal.longitude) : null;
 
     let events: any[] = [];
     if (msaId) {
@@ -790,6 +804,10 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
     res.json({
       dealId: req.params.dealId,
       msaId,
+      submarketId,
+      dealLocation: (dealLat && dealLng)
+        ? { lat: dealLat, lng: dealLng }
+        : null,
       events: enrichedEvents,
       sensitivity,
       sensitivityScore,

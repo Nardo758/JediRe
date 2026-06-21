@@ -27,30 +27,44 @@ import { inngest } from '../../lib/inngest';
 import { logger } from '../../utils/logger';
 import {
   runAllAtlantaConnectors,
+  runConnectorsForMsa,
   type ConnectorRunStats,
+  type MsaConnectorId,
 } from '../../services/m35-event-connectors.service';
 
 export const m35ConnectorsNightlyCron = inngest.createFunction(
   {
     id: 'm35-connectors-nightly',
-    name: 'M35: Nightly Atlanta data connectors',
+    name: 'M35: Nightly data connectors (multi-MSA)',
     triggers: [{ cron: '0 2 * * *' }], // Daily 02:00 UTC
     retries: 2,
   },
   async ({ step }) => {
+    // Supported MSAs — expand this list as new connectors are wired
+    const activeMsas: MsaConnectorId[] = [
+      'atlanta-sandy-springs-roswell-ga',
+      'florida',
+      'dallas',
+    ];
 
-    // Step 1 — Run all Atlanta connectors
-    const results: ConnectorRunStats[] = await step.run('run-connectors', async () => {
-      return runAllAtlantaConnectors();
+    // Step 1 — Run connectors per MSA in parallel
+    const allResults: ConnectorRunStats[][] = await step.run('run-connectors', async () => {
+      const msaResults = await Promise.all(
+        activeMsas.map(async (msaId) => runConnectorsForMsa(msaId))
+      );
+      return msaResults;
     });
+
+    // Flatten for logging
+    const flatResults = allResults.flat();
 
     // Step 2 — Log summary
     await step.run('log-summary', async () => {
-      const totalCreated = results.reduce((s, r) => s + r.draftEventsCreated, 0);
-      const totalSkipped = results.reduce((s, r) => s + r.draftEventsSkipped, 0);
-      const totalErrors = results.reduce((s, r) => s + r.errors.length, 0);
+      const totalCreated = flatResults.reduce((s, r) => s + r.draftEventsCreated, 0);
+      const totalSkipped = flatResults.reduce((s, r) => s + r.draftEventsSkipped, 0);
+      const totalErrors = flatResults.reduce((s, r) => s + r.errors.length, 0);
 
-      for (const r of results) {
+      for (const r of flatResults) {
         logger.info(`[M35 Connectors] ${r.connector} complete`, {
           scanned: r.recordsScanned,
           created: r.draftEventsCreated,
@@ -62,7 +76,8 @@ export const m35ConnectorsNightlyCron = inngest.createFunction(
       }
 
       logger.info('[M35 Connectors] Nightly run complete', {
-        connectors: results.length,
+        msas: activeMsas.length,
+        connectors: flatResults.length,
         totalCreated,
         totalSkipped,
         totalErrors,
@@ -70,7 +85,8 @@ export const m35ConnectorsNightlyCron = inngest.createFunction(
     });
 
     return {
-      connectors: results.map(r => ({
+      msas: activeMsas,
+      connectors: flatResults.map(r => ({
         connector: r.connector,
         scanned: r.recordsScanned,
         created: r.draftEventsCreated,
