@@ -660,14 +660,14 @@ export class FinancialModelEngineService {
         }
       } catch (_cycleErr) { /* non-fatal */ }
 
-      // ── Batch-4b: event deltas from market_events ─────────────────────────────
+      // ── Batch-4b: event deltas from M35 playbooks ─────────────────────────────
       let eventDeltas: ProvenancedValue<number>[] = [];
       try {
         const { computeEventDeltas } = await import('./proforma/event-deltas.service');
-        eventDeltas = await computeEventDeltas(pool, city, state);
+        eventDeltas = await computeEventDeltas(pool, dealId);
         if (eventDeltas.length > 0) {
           logger.info(
-            `[Batch4-Events] ${eventDeltas.length} event deltas for ${dealId}: ` +
+            `[Batch4-Events] ${eventDeltas.length} M35 playbook deltas for ${dealId}: ` +
             eventDeltas.map(d => `${(d.value * 10000).toFixed(0)}bps`).join(', ')
           );
         }

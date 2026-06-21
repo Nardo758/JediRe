@@ -49,6 +49,11 @@ import {
 } from '../services/m35-impact.service';
 import { m35CausalityService } from '../services/m35-causality.service';
 import { m35TrafficApiService } from '../services/m35-traffic-api.service';
+import {
+  getPlaybook,
+  classifyMsaTier,
+  type PlaybookStratum,
+} from '../services/m35-playbook.service';
 
 const router = Router();
 
@@ -695,21 +700,93 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
       };
     }
 
-    // Inline attributions: generate synthetic attribution from magnitude + default metrics
-    const ATTRIBUTION_METRICS = ['rent_growth_yoy', 'cap_rate', 'absorption', 'permits'];
+    // Inline attributions: playbook-driven assumption deltas (P0.1)
+    // Replaces the legacy synthetic attribution (magnitude * 0.5) with real
+    // playbook lookup + proximity + temporal scaling.
     const inlineAttributions: Record<string, any[]> = {};
-    ATTRIBUTION_METRICS.forEach(metric => {
-      inlineAttributions[metric] = events.slice(0, 2).map(ev => ({
-        eventId:    ev.id,
-        eventName:  ev.name,
-        metricKey:  metric,
-        delta:      Number((Number(ev.magnitude_score || 2) * 0.5 * (ev.scope === 'msa' ? 0.8 : 1.0)).toFixed(2)),
-        unit:       metric.endsWith('rate') || metric.endsWith('yoy') ? 'pp' : '',
-        baseline:   3.2,
-        total:      3.2 + Number((Number(ev.magnitude_score || 2) * 0.5).toFixed(2)),
-        confidence: Number(ev.confidence || 0.55),
-      }));
-    });
+    const msaTier = classifyMsaTier(msaId);
+    const now = new Date();
+
+    // ── rent_growth_yoy: real playbook-driven attribution ────────────────────────
+    const rentGrowthAttributions: any[] = [];
+    let baselineRentGrowth: number | null = null;
+
+    // TODO: Query metric_time_series for DiD control-group secular trend
+    // For now, use a placeholder baseline that the pro forma engine will override
+    // with the actual control trend from its own calibration.
+    baselineRentGrowth = 0.032; // 3.2% placeholder
+
+    for (const ev of events) {
+      const subtype = ev.subtype as string | null;
+      if (!subtype) continue;
+
+      const magnitudeStratum = classifyMagnitudeStratum(parseFloat(ev.magnitude_score ?? '2'));
+      const regime = classifyRegime(ev.announced_date ? new Date(ev.announced_date) : null);
+      const stratum: PlaybookStratum = { msaTier, magnitude: magnitudeStratum, regime };
+
+      const playbook = await getPlaybook(subtype, stratum);
+      if (!playbook) continue;
+
+      const metric = playbook.metrics.find(
+        m => m.metricKey === 'rent_growth_yoy' && m.windowMonths === 12
+      );
+      if (!metric || metric.median === null) continue;
+
+      const proximity = ev.proximityScore ?? 0;
+      if (proximity < 0.1) continue;
+
+      const temporal = m35TrafficApiService.temporalFactor(
+        {
+          id: ev.id, name: ev.name, category: ev.category, subtype: ev.subtype,
+          status: ev.status, lat: ev.lat, lng: ev.lng, msaId: ev.msa_id,
+          submarketId: ev.submarket_id, magnitudeScore: parseFloat(ev.magnitude_score ?? '2'),
+          magnitudeValue: ev.magnitude_value ? parseFloat(ev.magnitude_value) : null,
+          confidence: parseFloat(ev.confidence ?? '0.5'),
+          announcedDate: ev.announced_date ? new Date(ev.announced_date) : null,
+          materializationDate: ev.materialization_date ? new Date(ev.materialization_date) : null,
+          completionDate: ev.completion_date ? new Date(ev.completion_date) : null,
+          baselineTreatment: ev.baseline_treatment || 'PASS_THROUGH',
+          defaultMagnitude: parseFloat(ev.default_magnitude ?? '0'),
+          decayShape: ev.decay_shape || 'linear',
+          typicalDecayMonths: parseInt(ev.typical_decay_months ?? '12', 10),
+        },
+        now
+      );
+
+      const delta = metric.median * proximity * temporal;
+      if (Math.abs(delta) < 0.0001) continue;
+
+      const confidence = metric.confidence * proximity * temporal;
+
+      rentGrowthAttributions.push({
+        eventId: ev.id,
+        eventName: ev.name,
+        metricKey: 'rent_growth_yoy',
+        delta: Number((delta * 100).toFixed(2)), // convert to pp for display
+        unit: 'pp',
+        baseline: baselineRentGrowth ? Number((baselineRentGrowth * 100).toFixed(2)) : null,
+        total: baselineRentGrowth
+          ? Number(((baselineRentGrowth + delta) * 100).toFixed(2))
+          : Number((delta * 100).toFixed(2)),
+        confidence: Number(confidence.toFixed(3)),
+        playbookId: playbook.subtype,
+        playbookSubtype: subtype,
+        stratum,
+        instanceCount: playbook.instanceCount,
+        playbookConfidence: metric.confidence,
+        proximity: Number(proximity.toFixed(3)),
+        temporal: Number(temporal.toFixed(3)),
+      });
+    }
+
+    inlineAttributions['rent_growth_yoy'] = rentGrowthAttributions;
+
+    // ── Other metrics: stubs (no playbooks yet) ─────────────────────────────────
+    // When playbooks for cap_rate, absorption, permits are built, wire them here
+    // using the same pattern as rent_growth_yoy above.
+    inlineAttributions['cap_rate'] = [];
+    inlineAttributions['absorption'] = [];
+    inlineAttributions['permits'] = [];
 
     // Fetch news items linked to these events via news_item_ids
     const allNewsIds: string[] = [];
@@ -996,5 +1073,17 @@ router.get('/playbook/:eventType', async (req: Request, res: Response) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+function classifyMagnitudeStratum(magnitudeScore: number): 'small' | 'medium' | 'large' | 'transformative' {
+  if (magnitudeScore <= 1) return 'small';
+  if (magnitudeScore <= 2) return 'medium';
+  if (magnitudeScore <= 4) return 'large';
+  return 'transformative';
+}
+
+function classifyRegime(announcedDate: Date | null): 'pre_covid' | 'post_covid' {
+  if (!announcedDate) return 'post_covid';
+  return announcedDate < new Date('2020-03-01') ? 'pre_covid' : 'post_covid';
+}
 
 export default router;
