@@ -2127,6 +2127,8 @@ export function projectProformaForDeal(
     propertyTaxAnchor?: import('../types/provenanced-value').ProvenancedValue<number> | null;
     /** M22 CPI-anchored OPEX anchors per line (overrides DEFAULT_LINE_ANCHORS). */
     opexAnchors?: Record<import('../blueprint/proforma-blueprint').OpexLineKey, import('../types/provenanced-value').ProvenancedValue<number>>;
+    /** State code for state-specific OPEX line shares (e.g., 'FL', 'CA'). */
+    state?: string | null;
   }
 ): ProjectionYearResult[] {
   const normalizedAssetClass = opts.assetClass.toLowerCase().trim() || 'multifamily';
@@ -2217,6 +2219,14 @@ export function projectProformaForDeal(
       position: opts.position ?? null,
     },
     opexBase,
+    lineShares: (() => {
+      try {
+        const { getStateLineShares } = require('./proforma/opex-anchors.service');
+        return getStateLineShares(opts.state ?? undefined);
+      } catch {
+        return undefined;
+      }
+    })(),
     revenueParams: {
       units: Math.max(1, opts.totalUnits),
       inPlaceRent: 1000,          // placeholder — only growth rates consumed from result
@@ -3209,6 +3219,7 @@ export async function getDealFinancials(
     position: _position,
     propertyTaxAnchor: _propertyTaxAnchor,
     opexAnchors: _opexAnchors,
+    state: deal.state_code ?? null,
   });
   const _layeredByYear = new Map(_layeredResults.map(r => [r.year, r]));
 
