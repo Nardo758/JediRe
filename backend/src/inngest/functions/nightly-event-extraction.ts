@@ -81,6 +81,8 @@ export const nightlyEventExtractionCron = inngest.createFunction(
     const summary = await step.run('extract-and-persist-events', async () => {
       let totalInserted = 0;
       let totalSkipped = 0;
+      let totalM35Inserted = 0;
+      let totalM35Skipped = 0;
       let totalErrors = 0;
 
       for (const article of articles) {
@@ -97,6 +99,8 @@ export const nightlyEventExtractionCron = inngest.createFunction(
           );
           totalInserted += result.inserted;
           totalSkipped += result.skipped;
+          totalM35Inserted += result.m35Inserted;
+          totalM35Skipped += result.m35Skipped;
         } catch (err: unknown) {
           totalErrors++;
           const msg = err instanceof Error ? err.message : String(err);
@@ -120,6 +124,8 @@ export const nightlyEventExtractionCron = inngest.createFunction(
         already_extracted,
         events_inserted: totalInserted,
         events_skipped_dedup: totalSkipped,
+        m35_inserted: totalM35Inserted,
+        m35_skipped: totalM35Skipped,
         errors: totalErrors,
         status,
         capped,
@@ -132,6 +138,8 @@ export const nightlyEventExtractionCron = inngest.createFunction(
         already_extracted: summary.already_extracted,
         events_inserted: summary.events_inserted,
         events_skipped_dedup: summary.events_skipped_dedup,
+        m35_inserted: summary.m35_inserted,
+        m35_skipped: summary.m35_skipped,
         errors: summary.errors,
         status: summary.status,
         lookback_days: LOOKBACK_DAYS,
