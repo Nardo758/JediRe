@@ -2170,7 +2170,12 @@ export class TrafficPredictionEngine {
     const adjustedTraffic = Math.max(1, Math.round(v1.weekly_walk_ins * seasonalFactor));
 
     // Step 6: Occupancy feedback loop
-    const currentOcc = options?.currentOccupancy || rates.stabilized_occupancy || 95.0;
+    // Load property to get current_occupancy from rent roll S1 calibration (M07).
+    const property = await this.loadProperty(propertyId);
+    const currentOcc = options?.currentOccupancy
+      ?? property.current_occupancy
+      ?? rates.stabilized_occupancy
+      ?? 95.0;
     const occModifier = currentOcc < 90 ? 1.3 : currentOcc > 96 ? 0.7 : 1.0;
 
     // Step 7: Full funnel prediction
