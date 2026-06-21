@@ -2001,7 +2001,7 @@ router.patch('/:dealId/proforma/year1/override', requireAuth, async (req: Authen
     }
 
     const { applyUserOverride } = await import('../../services/proforma-seeder.service');
-    await applyUserOverride(pool, dealId, fieldPath, value, req.user!.userId);
+    await applyUserOverride(pool, dealId, fieldPath, value, req.user!.userId, req.body.reason);
     res.json({ success: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

@@ -2,6 +2,11 @@ import { Pool } from 'pg';
 import type { LayeredValue, ProFormaYear1Seed } from './document-extraction/types';
 import { logger } from '../utils/logger';
 import { computeLeaseRollVelocityFromDates } from './proforma/ltl-trajectory';
+import {
+  logOverrideTrainingSignal,
+  isPlaybookRelevantField,
+  assumptionTypeFromFieldPath,
+} from './m35-playbook-training.service';
 
 /**
  * Computes the annual income for a single user-added income line for a given
@@ -1939,7 +1944,8 @@ export async function applyUserOverride(
   dealId: string,
   fieldPath: string,
   value: number | null,
-  userId: string
+  userId: string,
+  reason?: string | null,
 ): Promise<void> {
   // M40: prefer the active underwriting scenario as the source of year1.
   // Falls back to deal_assumptions for deals not yet bootstrapped by the migration.
@@ -1998,6 +2004,13 @@ export async function applyUserOverride(
     lv = target[lastKey];
   }
   const field = lv as LayeredValue<number>;
+
+  // ── Capture pre-override state for M35 training signal (before mutation) ──
+  const previousResolved = field.resolved;
+  const previousResolution = field.resolution ?? null;
+  const previousResolvedFrom = (field as any).resolvedFrom ?? null;
+  const previousPlatform = field.platform ?? null;
+  const baselineForDelta = (field as any).platform ?? (field as any).broker ?? null;
 
   field.override = value;
   field.updated_at = new Date().toISOString();
@@ -2129,6 +2142,37 @@ export async function applyUserOverride(
        WHERE deal_id = $1`,
       [dealId, parts, JSON.stringify(derivedUpdate), JSON.stringify(fieldForDb)]
     );
+  }
+
+  // ── M35 Training Signal ───────────────────────────────────────────────────
+  // Log platform-derived overrides as training signals for playbook improvement.
+  // Fire-and-catch: training signal failures must not roll back the operator's
+  // override. Only log for playbook-relevant fields (rent growth, vacancy, etc.).
+  if (isPlaybookRelevantField(fieldPath) && value != null) {
+    setImmediate(async () => {
+      try {
+        await logOverrideTrainingSignal(pool, {
+          dealId,
+          userId,
+          fieldPath,
+          assumptionType: assumptionTypeFromFieldPath(fieldPath),
+          previousValue: previousResolved != null ? Number(previousResolved) : null,
+          overrideValue: value,
+          baselineValue: baselineForDelta != null ? Number(baselineForDelta) : null,
+          previousResolution,
+          previousSource: previousResolvedFrom,
+          overrideReason: reason ?? null,
+          computedDelta: previousResolved != null && baselineForDelta != null
+            ? Number(previousResolved) - Number(baselineForDelta)
+            : null,
+        });
+      } catch (tErr) {
+        logger.warn('applyUserOverride: training signal failed (non-fatal)', {
+          dealId, fieldPath,
+          error: tErr instanceof Error ? tErr.message : String(tErr),
+        });
+      }
+    });
   }
 
   // ── Version snapshot ──────────────────────────────────────────────────────
