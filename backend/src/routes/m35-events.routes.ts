@@ -711,10 +711,77 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
     const rentGrowthAttributions: any[] = [];
     let baselineRentGrowth: number | null = null;
 
-    // TODO: Query metric_time_series for DiD control-group secular trend
-    // For now, use a placeholder baseline that the pro forma engine will override
-    // with the actual control trend from its own calibration.
-    baselineRentGrowth = 0.032; // 3.2% placeholder
+    // Query metric_time_series for DiD control-group secular trend
+    // First try: direct rent_growth_yoy metric for the deal's geography
+    try {
+      const baselineRes = await pool.query(
+        `SELECT value, period_date
+         FROM metric_time_series
+         WHERE geography_id = $1
+           AND metric_id IN ('rent_growth_yoy', 'rent_growth', 'avg_rent_growth')
+           AND value IS NOT NULL
+         ORDER BY period_date DESC
+         LIMIT 1`,
+        [submarketId ?? msaId]
+      );
+
+      if (baselineRes.rows.length > 0 && baselineRes.rows[0].value != null) {
+        const rawVal = parseFloat(baselineRes.rows[0].value);
+        // metric_time_series stores rent_growth_yoy as decimal (e.g., 0.032 = 3.2%)
+        // or sometimes as percentage (3.2). Normalize to decimal.
+        baselineRentGrowth = rawVal > 0.5 ? rawVal / 100 : rawVal;
+      }
+    } catch (baselineErr) {
+      logger.debug('[M35 Events] Baseline query failed, falling back to placeholder', {
+        dealId: req.params.dealId, geography: submarketId ?? msaId, error: baselineErr,
+      });
+    }
+
+    // Fallback: compute from effective_rent YoY change
+    if (baselineRentGrowth == null) {
+      try {
+        const rentRes = await pool.query(
+          `SELECT
+             (SELECT value FROM metric_time_series
+              WHERE geography_id = $1 AND metric_id = 'effective_rent'
+                AND value IS NOT NULL
+              ORDER BY period_date DESC LIMIT 1) AS latest_rent,
+             (SELECT value FROM metric_time_series
+              WHERE geography_id = $1 AND metric_id = 'effective_rent'
+                AND value IS NOT NULL
+              ORDER BY period_date DESC OFFSET 12 LIMIT 1) AS rent_12mo_ago,
+             (SELECT period_date FROM metric_time_series
+              WHERE geography_id = $1 AND metric_id = 'effective_rent'
+                AND value IS NOT NULL
+              ORDER BY period_date DESC LIMIT 1) AS latest_date`,
+          [submarketId ?? msaId]
+        );
+
+        const latest = rentRes.rows[0]?.latest_rent;
+        const past = rentRes.rows[0]?.rent_12mo_ago;
+        if (latest != null && past != null && parseFloat(past) > 0) {
+          baselineRentGrowth = (parseFloat(latest) - parseFloat(past)) / parseFloat(past);
+          logger.info('[M35 Events] Computed rent growth baseline from effective_rent YoY', {
+            dealId: req.params.dealId,
+            baseline: baselineRentGrowth,
+            latest: parseFloat(latest),
+            past: parseFloat(past),
+          });
+        }
+      } catch (rentErr) {
+        logger.debug('[M35 Events] Effective rent baseline query failed', {
+          dealId: req.params.dealId, error: rentErr,
+        });
+      }
+    }
+
+    // Final fallback: hardcoded placeholder (to be removed when data is populated)
+    if (baselineRentGrowth == null) {
+      baselineRentGrowth = 0.032; // 3.2% placeholder
+      logger.info('[M35 Events] Using placeholder rent growth baseline', {
+        dealId: req.params.dealId, baseline: baselineRentGrowth,
+      });
+    }
 
     for (const ev of events) {
       const subtype = ev.subtype as string | null;
@@ -925,6 +992,16 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
       sensitivityScore,
       concentration,
       inlineAttributions,
+      baseline: {
+        rent_growth_yoy: baselineRentGrowth ? Number((baselineRentGrowth * 100).toFixed(2)) : null,
+        source: baselineRentGrowth ? 'metric_time_series' : 'placeholder',
+      },
+      secular: {
+        rent_growth_yoy: 0, // TODO: compute secular migration component
+      },
+      residual: {
+        rent_growth_yoy: 0, // TODO: observed - baseline - sum(deltas) - secular
+      },
       totalActiveEvents: enrichedEvents.length,
     });
   } catch (err: any) {
