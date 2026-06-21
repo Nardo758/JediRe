@@ -241,14 +241,112 @@ export async function computeEventDeltas(
     deltas.push(pv);
   }
 
+  // ── Multi-event composition: additive when uncorrelated, dampening on overlap ──
+  const composedDeltas = composeEventDeltas(deltas, events);
+
   logger.info('[EventDeltas] Computed deltas for deal', {
     dealId,
     eventCount: events.length,
-    deltaCount: deltas.length,
-    totalDelta: deltas.reduce((s, d) => s + (d.value ?? 0), 0),
+    rawDeltaCount: deltas.length,
+    composedDeltaCount: composedDeltas.length,
+    totalRawDelta: deltas.reduce((s, d) => s + (d.value ?? 0), 0),
+    totalComposedDelta: composedDeltas.reduce((s, d) => s + (d.value ?? 0), 0),
   });
 
-  return deltas;
+  return composedDeltas;
+}
+
+// ─── Multi-event composition ─────────────────────────────────────────────────
+
+interface EventDeltaWithMeta {
+  pv: ProvenancedValue<number>;
+  eventId: string;
+  eventName: string;
+  announcedDate: Date | null;
+  materializationDate: Date | null;
+  submarketId: string | null;
+  msaId: string | null;
+  rawDelta: number;
+}
+
+const CUMULATIVE_CAP = 0.05; // ±5pp max total rent-growth delta
+const CORRELATION_DAMPENING = 0.70; // overlapping events get 70% of their delta
+
+function composeEventDeltas(
+  rawDeltas: ProvenancedValue<number>[],
+  rawEvents: any[]
+): ProvenancedValue<number>[] {
+  if (rawDeltas.length <= 1) return rawDeltas;
+
+  const withMeta: EventDeltaWithMeta[] = rawDeltas.map((pv, i) => {
+    const ev = rawEvents[i];
+    return {
+      pv,
+      eventId: ev.id as string,
+      eventName: ev.name as string,
+      announcedDate: ev.announced_date ? new Date(ev.announced_date) : null,
+      materializationDate: ev.materialization_date ? new Date(ev.materialization_date) : null,
+      submarketId: ev.submarket_id as string | null,
+      msaId: ev.msa_id as string | null,
+      rawDelta: pv.value ?? 0,
+    };
+  });
+
+  // Check overlap: same geography + time windows overlap
+  const overlapMatrix: boolean[][] = withMeta.map((a, i) =>
+    withMeta.map((b, j) => {
+      if (i === j) return false;
+      const sameGeo = (a.submarketId && a.submarketId === b.submarketId) ||
+                       (a.msaId && a.msaId === b.msaId);
+      if (!sameGeo) return false;
+      const aStart = a.announcedDate ?? new Date('2000-01-01');
+      const aEnd = a.materializationDate ?? new Date('2100-01-01');
+      const bStart = b.announcedDate ?? new Date('2000-01-01');
+      const bEnd = b.materializationDate ?? new Date('2100-01-01');
+      return aStart <= bEnd && bStart <= aEnd;
+    })
+  );
+
+  // Compute adjusted deltas: sort by magnitude, apply dampening for overlaps
+  const sorted = [...withMeta].sort((a, b) => Math.abs(b.rawDelta) - Math.abs(a.rawDelta));
+  const adjusted = new Map<string, number>();
+
+  for (let i = 0; i < sorted.length; i++) {
+    const item = sorted[i];
+    let delta = item.rawDelta;
+    for (let j = 0; j < i; j++) {
+      const other = sorted[j];
+      const idxA = withMeta.findIndex(m => m.eventId === item.eventId);
+      const idxB = withMeta.findIndex(m => m.eventId === other.eventId);
+      if (overlapMatrix[idxA][idxB]) {
+        delta *= CORRELATION_DAMPENING;
+      }
+    }
+    adjusted.set(item.eventId, delta);
+  }
+
+  // Apply cumulative cap
+  let totalAdjusted = 0;
+  for (const d of adjusted.values()) { totalAdjusted += d; }
+  const capRatio = Math.abs(totalAdjusted) > CUMULATIVE_CAP
+    ? CUMULATIVE_CAP / Math.abs(totalAdjusted) : 1.0;
+
+  const composed: ProvenancedValue<number>[] = [];
+  for (const item of withMeta) {
+    const adjustedDelta = (adjusted.get(item.eventId) ?? item.rawDelta) * capRatio;
+    const rationale = (
+      item.pv.rationale +
+      ` | composed: raw=${(item.rawDelta * 100).toFixed(2)}pp` +
+      ` adjusted=${(adjustedDelta * 100).toFixed(2)}pp` +
+      ` capRatio=${capRatio.toFixed(3)}` +
+      ` totalComposed=${(totalAdjusted * capRatio * 100).toFixed(2)}pp`
+    );
+    const pv = provenanced(adjustedDelta, item.pv.source, item.pv.confidence, item.pv.origin, rationale);
+    pv.sourceRefs = item.pv.sourceRefs;
+    composed.push(pv);
+  }
+
+  return composed;
 }
 
 // ─── Helper: classify magnitude into stratum bucket ───────────────────────────
