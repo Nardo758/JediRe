@@ -510,6 +510,42 @@ export async function insertM35DraftEvents(
     const sourceRecordId = `${evt.event_name.slice(0, 60)}|${evt.effective_date}`;
 
     try {
+      // Entity resolution: check if a similar event already exists (cross-source dedup)
+      const existing = await dbQuery(
+        `SELECT id, raw_payload
+         FROM m35_draft_events
+         WHERE category = $1
+           AND msa_id = $2
+           AND signal_date BETWEEN $3::DATE - INTERVAL '30 days' AND $3::DATE + INTERVAL '30 days'
+           AND status = 'DRAFT'
+           AND (name ILIKE $4 OR $5 ILIKE '%' || name || '%')
+         LIMIT 1`,
+        [m35Category, m35MsaId, evt.announced_date ?? evt.effective_date, evt.event_name, evt.event_name]
+      );
+
+      if (existing.rows.length > 0) {
+        const existingRow = existing.rows[0];
+        const mergedPayload = {
+          ...(existingRow.raw_payload || {}),
+          merged_sources: [
+            ...(existingRow.raw_payload?.merged_sources || []),
+            'news_nlp',
+          ],
+        };
+        await dbQuery(
+          `UPDATE m35_draft_events
+           SET raw_payload = $2, updated_at = NOW()
+           WHERE id = $1`,
+          [existingRow.id, JSON.stringify(mergedPayload)]
+        );
+        logger.info('[EventExtraction] Merged news NLP into existing draft', {
+          existingId: existingRow.id,
+          event_name: evt.event_name,
+        });
+        inserted++; // Count as inserted for reporting (it was merged)
+        continue;
+      }
+
       const result = await dbQuery(`
         INSERT INTO m35_draft_events (
           source_connector, source_record_id, msa_id, submarket_hint,

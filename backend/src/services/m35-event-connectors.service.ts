@@ -97,6 +97,7 @@ export interface ConnectorRunStats {
   connector: string;
   recordsScanned: number;
   draftEventsCreated: number;
+  draftEventsMerged: number;
   draftEventsSkipped: number;
   duplicatesIgnored: number;
   errors: string[];
@@ -139,8 +140,55 @@ async function ensureStagingTable(): Promise<void> {
   `);
 }
 
-async function upsertDraftEvent(draft: M35DraftEvent): Promise<'created' | 'duplicate'> {
+async function upsertDraftEvent(draft: M35DraftEvent): Promise<'created' | 'duplicate' | 'merged'> {
   const pool = getPool();
+
+  // ── Entity resolution: check for existing events with same name + category + date window
+  const existing = await pool.query(
+    `SELECT id, source_connector, raw_payload, lat, lng, submarket_hint
+     FROM m35_draft_events
+     WHERE category = $1
+       AND msa_id = $2
+       AND signal_date BETWEEN $3::DATE - INTERVAL '30 days' AND $3::DATE + INTERVAL '30 days'
+       AND status = 'DRAFT'
+       AND (name ILIKE $4 OR $5 ILIKE '%' || name || '%')
+     LIMIT 1`,
+    [draft.category, draft.msa_id, draft.signal_date, draft.name, draft.name]
+  );
+
+  if (existing.rows.length > 0) {
+    const existingRow = existing.rows[0];
+    const mergedPayload = {
+      ...(existingRow.raw_payload || {}),
+      ...(draft.raw_payload || {}),
+      merged_sources: [
+        ...(existingRow.raw_payload?.merged_sources || [existingRow.source_connector]),
+        draft.source_connector,
+      ],
+    };
+    const mergedLat = existingRow.lat ?? draft.lat ?? null;
+    const mergedLng = existingRow.lng ?? draft.lng ?? null;
+    const mergedSubmarket = existingRow.submarket_hint ?? draft.submarket_hint ?? null;
+
+    await pool.query(
+      `UPDATE m35_draft_events
+       SET raw_payload = $2,
+           lat = COALESCE(lat, $3),
+           lng = COALESCE(lng, $4),
+           submarket_hint = COALESCE(submarket_hint, $5),
+           updated_at = NOW()
+       WHERE id = $1`,
+      [existingRow.id, JSON.stringify(mergedPayload), mergedLat, mergedLng, mergedSubmarket]
+    );
+
+    logger.info('[M35 Connector] Merged duplicate draft event', {
+      existingId: existingRow.id,
+      newSource: draft.source_connector,
+      name: draft.name,
+    });
+    return 'merged';
+  }
+
   const result = await pool.query(
     `INSERT INTO m35_draft_events
        (source_connector, source_record_id, msa_id, submarket_hint, lat, lng,
@@ -216,6 +264,7 @@ export async function runAtlantaPermitsConnector(
     connector: 'atlanta-permits',
     recordsScanned: 0,
     draftEventsCreated: 0,
+    draftEventsMerged: 0,
     draftEventsSkipped: 0,
     duplicatesIgnored: 0,
     errors: [],
@@ -297,6 +346,7 @@ export async function runAtlantaPermitsConnector(
 
       const outcome = await upsertDraftEvent(draft);
       if (outcome === 'created') stats.draftEventsCreated++;
+      else if (outcome === 'merged') stats.draftEventsMerged++;
       else stats.duplicatesIgnored++;
     } catch (err: any) {
       stats.errors.push(`Permit ${permit.permit_number}: ${err.message}`);
@@ -343,6 +393,7 @@ export async function runAtlantaRezoningConnector(
     connector: 'atlanta-rezoning',
     recordsScanned: 0,
     draftEventsCreated: 0,
+    draftEventsMerged: 0,
     draftEventsSkipped: 0,
     duplicatesIgnored: 0,
     errors: [],
@@ -401,6 +452,7 @@ export async function runAtlantaRezoningConnector(
 
     const outcome = await upsertDraftEvent(draft);
     if (outcome === 'created') stats.draftEventsCreated++;
+    else if (outcome === 'merged') stats.draftEventsMerged++;
     else stats.duplicatesIgnored++;
   }
 
@@ -444,6 +496,7 @@ export async function runAtlantaRezoningConnector(
 
     const outcome = await upsertDraftEvent(draft);
     if (outcome === 'created') stats.draftEventsCreated++;
+    else if (outcome === 'merged') stats.draftEventsMerged++;
     else stats.duplicatesIgnored++;
   }
 
@@ -483,6 +536,7 @@ export async function runGdeltBacktestConnector(options: {
     connector: 'gdelt-backtest',
     recordsScanned: 0,
     draftEventsCreated: 0,
+    draftEventsMerged: 0,
     draftEventsSkipped: 0,
     duplicatesIgnored: 0,
     errors: [],
@@ -567,6 +621,7 @@ export async function runGdeltBacktestConnector(options: {
 
       const outcome = await upsertDraftEvent(draft);
       if (outcome === 'created') stats.draftEventsCreated++;
+      else if (outcome === 'merged') stats.draftEventsMerged++;
       else stats.duplicatesIgnored++;
     }
   }
@@ -586,6 +641,7 @@ export async function runFloridaPermitsConnector(
     connector: 'florida-permits',
     recordsScanned: 0,
     draftEventsCreated: 0,
+    draftEventsMerged: 0,
     draftEventsSkipped: 0,
     duplicatesIgnored: 0,
     errors: [],
@@ -615,6 +671,7 @@ export async function runDallasPermitsConnector(
     connector: 'dallas-permits',
     recordsScanned: 0,
     draftEventsCreated: 0,
+    draftEventsMerged: 0,
     draftEventsSkipped: 0,
     duplicatesIgnored: 0,
     errors: [],
@@ -639,6 +696,7 @@ export async function runFloridaRezoningConnector(
     connector: 'florida-rezoning',
     recordsScanned: 0,
     draftEventsCreated: 0,
+    draftEventsMerged: 0,
     draftEventsSkipped: 0,
     duplicatesIgnored: 0,
     errors: [],
