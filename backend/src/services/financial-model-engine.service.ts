@@ -552,6 +552,48 @@ export class FinancialModelEngineService {
       logger.warn(`[Anchor-Interceptor] Skipped for ${dealId}: ${err?.message}`);
     }
 
+    // Phase B2b: Override OPEX line growth rates with live CPI anchors from computeOpexAnchors.
+    // This replaces the hardcoded macro-anchored rates from applyFullAnchorInterceptor with
+    // dynamic CPI + state-specific spreads, ensuring the financial model engine path uses
+    // the same live anchors as the getDealFinancials / projectProformaForDeal path.
+    try {
+      const stateCode = enhancedAssumptions.dealInfo?.state ?? null;
+      if (stateCode) {
+        const { computeOpexAnchors } = await import('./proforma/opex-anchors.service');
+        const liveAnchors = await computeOpexAnchors(pool, stateCode);
+
+        // Mapping from OpexLineKey (camelCase) → snake_case keys used in enhancedAssumptions.expenses
+        const keyMap: Record<string, string[]> = {
+          insurance: ['insurance'],
+          utilities: ['utilities'],
+          repairsMaintenance: ['repairs_maintenance'],
+          payroll: ['payroll'],
+          marketingAdmin: ['marketing', 'g_and_a'],
+          replacementReserves: ['replacement_reserves'],
+          other: ['other'],
+        };
+
+        let overriddenCount = 0;
+        for (const [camelKey, anchorPV] of Object.entries(liveAnchors)) {
+          const snakeKeys = keyMap[camelKey];
+          if (!snakeKeys) continue;
+          for (const sk of snakeKeys) {
+            const expenseLine = (enhancedAssumptions.expenses as Record<string, { growthRate?: number }>)[sk];
+            if (expenseLine && typeof expenseLine.growthRate === 'number') {
+              expenseLine.growthRate = anchorPV.value;
+              overriddenCount++;
+            }
+          }
+        }
+
+        if (overriddenCount > 0) {
+          logger.info(`[LiveCPI-Anchors] Overrode ${overriddenCount} expense line growth rates with live CPI anchors for ${dealId} in ${stateCode}`);
+        }
+      }
+    } catch (err: any) {
+      logger.warn(`[LiveCPI-Anchors] Skipped for ${dealId}: ${err?.message}`);
+    }
+
     // Phase Batch-4: Layered rent growth from CPI macro anchor + submarket momentum
     try {
       const { projectRentGrowthSeries } = await import('./proforma/layered-growth/rent-growth');
