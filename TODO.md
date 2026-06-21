@@ -225,6 +225,112 @@ file and update `dealContext.types.ts` to re-export from it (single source of tr
 
 ---
 
+## S1 Chat Launch Chain (Audit 2026-06-21)
+
+### S1-01 — LAUNCH BLOCKER: Research runtime Zod crash (0 tokens / 4 ms)
+**Area:** `AgentRuntime` · **Effort:** S · **Severity:** P0 — blocks the entire chat surface
+
+All user-triggered Research Agent runs fail immediately before any LLM call:
+```
+Error: "Cannot use 'in' operator to search for '_idmap' in undefined"
+duration_ms: 4–7 · tokens_in: 0 · cost_usd: 0.0000
+```
+861 failures / 159 successes in `agent_runs`; all recent runs (May–Jun 2026) are failures.
+Last succeeded run: 2026-04-30. The crash is a Zod schema marshaling error inside
+`AgentRuntime` that fires before the first tool invocation.
+
+Fix:
+1. Reproduce: `POST /api/v1/agents/tasks` with a research payload and inspect the error stack
+2. Locate where `_idmap` is expected — likely a Zod `.parse()` call on an undefined `input`
+   or `ctx` field in `AgentRuntime.ts` or `research.config.ts`
+3. Add a null-guard or correct the input shape before schema validation
+
+---
+
+### S1-02 — Pre-assembled DealContext not passed to ZONING/SUPPLY/CASH in live path
+**Area:** `agent-delegator.ts` · **Effort:** M · **Severity:** P1 — defeats the 24h cache design
+
+`AgentDelegator.buildRuntimeInput()` constructs agent inputs from intent fields +
+`getDealFinancialContext()`. It does NOT read from `deal_context_fields`. Each analytical
+agent (ZONING, SUPPLY, CASH) independently re-queries its own data; no pre-assembled
+DealContext is forwarded.
+
+The documented 24h cache short-circuit ("60-70% credit-saving path") exists only in
+`research.inngest.ts:121-146` (Inngest step idempotency). It is **absent** from the
+`unified-orchestrator` → `AgentDelegator` chat path.
+
+Fix: after ResearchAgent completes, read the assembled `deal_context_fields` rows for the
+deal and inject them into `buildRuntimeInput()` for ZONING/SUPPLY/CASH. Add a cache-hit
+check: if `deal_context_fields` rows for this deal are all `< 24h` old, skip the research
+step and forward the cached context directly.
+
+---
+
+### S1-03 — AICoordinator (`coordinator.ts`) orphaned; DealContext handoff design lost
+**Area:** `backend/src/services/ai/coordinator.ts` · **Effort:** M · **Severity:** P1
+
+`AICoordinator` correctly piped `dealContext` from ResearchAgent into
+`runZoningAgent / runSupplyAgent / runCashflowAgent` (coordinator.ts:327-338).
+`unified-orchestrator.ts` replaced it (line 5: "Replaces both AICoordinator…") but did not
+port this handoff. `AICoordinator` now has zero inbound imports from the live path.
+
+Fix: either (a) resurrect the DealContext handoff in `AgentDelegator` (preferred — see S1-02),
+or (b) reintegrate `AICoordinator` as an inner service called by `unified-orchestrator`.
+Option (a) is cleaner and avoids re-adding the old orchestrator's other coupling.
+
+---
+
+### S1-04 — Four spec'd Research tools absent from `research.config.ts` registry
+**Area:** `backend/src/agents/research.config.ts` · **Effort:** S · **Severity:** P2
+
+Tools listed in the Agent Platform Spec as Research tools, not registered in the runtime:
+
+| Tool | Status |
+|------|--------|
+| `fetch_county_records` | File exists in `agents/tools/`, not imported in `research.config.ts` |
+| `fetch_rentcast_comps` | File exists in `agents/tools/`, not imported in `research.config.ts` |
+| `fetch_google_places_reviews` | File does not exist anywhere in `agents/tools/` — ABSENT |
+| `fetch_fred_indicators` | Name doesn't exist; closest is `fetch_market_trends.ts`, also not in registry |
+
+Fix: for each tool that should be in the Research registry, add the import and push to the
+`tools: [...]` array in `research.config.ts`. For `fetch_google_places_reviews`, create the
+tool file first (wraps the Google Places API already used elsewhere in the codebase).
+
+---
+
+### S1-05 — 24h DealContext cache absent from unified-orchestrator chat path
+**Area:** `unified-orchestrator.ts` / `agent-delegator.ts` · **Effort:** M · **See S1-02**
+
+Tracked under S1-02. Logging separately for visibility — this is the credit-saving path
+cited in platform docs. Without it every chat message fires a full Claude research run.
+
+---
+
+### S1-06 — Inngest function path is wrong in both spec docs
+**Area:** Docs · **Effort:** XS (doc fix only)
+
+Both spec documents reference non-existent paths for the Research Inngest function:
+- `AGENT_PLATFORM_SPEC.md` → `src/agents/inngest/research.function.ts` — **ABSENT**
+- `REPLIT_AGENT_IMPLEMENTATION_PROMPT.md` → `src/inngest/functions/research.function.ts` — **ABSENT**
+
+Actual path: `backend/src/agents/research.inngest.ts` (registered at `index.replit.ts:237`)
+
+Fix: update both spec docs to reference the real path.
+
+---
+
+### S1-07 — Agent trigger route mismatch between spec and code
+**Area:** Docs / `agent.routes.ts` · **Effort:** XS (doc fix only)
+
+Spec cites `/api/agents/research/run` as the manual trigger route. Actual route is
+`POST /api/v1/agents/tasks` (`agent.routes.ts:21`). No `/api/agents/research/run` endpoint
+exists anywhere in the route tree.
+
+Fix: correct the spec reference and confirm `POST /api/v1/agents/tasks` is the canonical
+manual trigger surface.
+
+---
+
 ## Deal Journey (F9 Header)
 
 ### J-01 — Deal Journey pending phases (M36, M07, M35, M38)
