@@ -36,6 +36,27 @@ export interface TrendingVelocityResult {
   previous_week_events: number;
 }
 
+export interface ScoreBreakdown {
+  components: {
+    views: { raw_value: number; points: number; max_points: number; formula: string };
+    engagement: { raw_saves: number; raw_shares: number; points: number; max_points: number; formula: string };
+    analysis_runs: { raw_value: number; points: number; max_points: number; formula: string };
+    velocity: { raw_value: number; points: number; max_points: number; formula: string };
+  };
+  total_score: number;
+  data_sources: {
+    property_engagement_daily: { views: number; saves: number; shares: number; analysis_runs: number; unique_users: number };
+    property_events_current_week: number;
+    property_events_previous_week: number;
+  };
+  institutional_interest: {
+    detected: boolean;
+    unique_users_7d: number;
+    analysis_runs_distinct_users: number;
+    thresholds: { unique_users: number; analysis_users: number };
+  };
+}
+
 export class DigitalTrafficService {
   constructor(private pool: Pool) {}
 
@@ -119,6 +140,162 @@ export class DigitalTrafficService {
       console.error('[DigitalTrafficService] Error calculating score:', error);
       throw error;
     }
+  }
+
+  /**
+   * Get a full breakdown of how the digital score was computed.
+   *
+   * Returns raw data sources, per-component scoring, and the formulas
+   * applied so consumers can audit the calculation. This "opens" the
+   * previously opaque service so data-quality teams can verify inputs
+   * and weights.
+   */
+  async getScoreBreakdown(propertyId: string): Promise<ScoreBreakdown> {
+    // Re-fetch the same raw data calculateDigitalScore uses
+    const weeklyMetrics = await this.pool.query(
+      `SELECT
+        COALESCE(SUM(views), 0) as weekly_views,
+        COALESCE(SUM(saves), 0) as weekly_saves,
+        COALESCE(SUM(shares), 0) as weekly_shares,
+        COALESCE(SUM(analysis_runs), 0) as weekly_analysis_runs,
+        COALESCE(MAX(unique_users), 0) as unique_users_7d
+       FROM property_engagement_daily
+       WHERE property_id = $1
+         AND date >= CURRENT_DATE - INTERVAL '7 days'`,
+      [propertyId]
+    );
+    const m = weeklyMetrics.rows[0];
+
+    const velocityData = await this.calculateTrendingVelocity(propertyId);
+    const institutionalInterest = await this.detectInstitutionalInterest(propertyId);
+
+    // Re-calculate component scores (must match calculateDigitalScore exactly)
+    const viewsScore = this.calculateViewsScore(m.weekly_views);
+    const engagementScore = this.calculateEngagementScore(m.weekly_saves, m.weekly_shares);
+    const analysisScore = this.calculateAnalysisScore(m.weekly_analysis_runs);
+    const velocityScore = this.calculateVelocityScore(velocityData.velocity);
+
+    // Raw events counts for provenance
+    const currentWeek = await this.pool.query(
+      `SELECT COUNT(*) as cnt FROM property_events
+       WHERE property_id = $1 AND timestamp >= NOW() - INTERVAL '7 days'`,
+      [propertyId]
+    );
+    const previousWeek = await this.pool.query(
+      `SELECT COUNT(*) as cnt FROM property_events
+       WHERE property_id = $1 AND timestamp >= NOW() - INTERVAL '14 days'
+         AND timestamp < NOW() - INTERVAL '7 days'`,
+      [propertyId]
+    );
+
+    // Institutional-interest raw inputs
+    const uniqueUsersResult = await this.pool.query(
+      `SELECT COUNT(DISTINCT user_id) as unique_users
+       FROM property_events
+       WHERE property_id = $1 AND timestamp >= NOW() - INTERVAL '7 days'`,
+      [propertyId]
+    );
+    const analysisUsersResult = await this.pool.query(
+      `SELECT COUNT(DISTINCT user_id) as analysis_users
+       FROM property_events
+       WHERE property_id = $1 AND event_type = 'analysis_run'
+         AND timestamp >= NOW() - INTERVAL '7 days'`,
+      [propertyId]
+    );
+
+    return {
+      components: {
+        views: {
+          raw_value: m.weekly_views,
+          points: viewsScore,
+          max_points: 40,
+          formula: 'tiered: 0-10 views → 0-10 pts, 11-50 → 10-25, 51-100 → 25-35, 100+ → 35-40 (capped)',
+        },
+        engagement: {
+          raw_saves: m.weekly_saves,
+          raw_shares: m.weekly_shares,
+          points: engagementScore,
+          max_points: 30,
+          formula: 'saves × 3 (capped 20) + shares × 1.5 (capped 10), total capped at 30',
+        },
+        analysis_runs: {
+          raw_value: m.weekly_analysis_runs,
+          points: analysisScore,
+          max_points: 20,
+          formula: 'analysis_runs × 5 (capped at 20)',
+        },
+        velocity: {
+          raw_value: velocityData.velocity,
+          points: velocityScore,
+          max_points: 10,
+          formula: '0-20% growth → 0-3 pts, 20-50% → 3-6, 50-100% → 6-8, 100%+ → 8-10 (capped)',
+        },
+      },
+      total_score: Math.min(100, Math.round(viewsScore + engagementScore + analysisScore + velocityScore)),
+      data_sources: {
+        property_engagement_daily: {
+          views: m.weekly_views,
+          saves: m.weekly_saves,
+          shares: m.weekly_shares,
+          analysis_runs: m.weekly_analysis_runs,
+          unique_users: m.unique_users_7d,
+        },
+        property_events_current_week: parseInt(currentWeek.rows[0].cnt),
+        property_events_previous_week: parseInt(previousWeek.rows[0].cnt),
+      },
+      institutional_interest: {
+        detected: institutionalInterest,
+        unique_users_7d: parseInt(uniqueUsersResult.rows[0].unique_users),
+        analysis_runs_distinct_users: parseInt(analysisUsersResult.rows[0].analysis_users),
+        thresholds: { unique_users: 5, analysis_users: 3 },
+      },
+    };
+  }
+
+  /**
+   * Get raw input data without computing the score.
+   * Useful for data-quality audits and debugging.
+   */
+  async getRawInputs(propertyId: string): Promise<Record<string, any>> {
+    const engagement = await this.pool.query(
+      `SELECT
+        COALESCE(SUM(views), 0) as weekly_views,
+        COALESCE(SUM(saves), 0) as weekly_saves,
+        COALESCE(SUM(shares), 0) as weekly_shares,
+        COALESCE(SUM(analysis_runs), 0) as weekly_analysis_runs,
+        COALESCE(MAX(unique_users), 0) as unique_users_7d
+       FROM property_engagement_daily
+       WHERE property_id = $1
+         AND date >= CURRENT_DATE - INTERVAL '7 days'`,
+      [propertyId]
+    );
+
+    const eventsCurrent = await this.pool.query(
+      `SELECT COUNT(*) as cnt FROM property_events
+       WHERE property_id = $1 AND timestamp >= NOW() - INTERVAL '7 days'`,
+      [propertyId]
+    );
+
+    const eventsPrevious = await this.pool.query(
+      `SELECT COUNT(*) as cnt FROM property_events
+       WHERE property_id = $1 AND timestamp >= NOW() - INTERVAL '14 days'
+         AND timestamp < NOW() - INTERVAL '7 days'`,
+      [propertyId]
+    );
+
+    return {
+      property_id: propertyId,
+      window: '7 days',
+      property_engagement_daily: engagement.rows[0],
+      property_events: {
+        current_week: parseInt(eventsCurrent.rows[0].cnt),
+        previous_week: parseInt(eventsPrevious.rows[0].cnt),
+      },
+      tables_used: [
+        'property_engagement_daily (views, saves, shares, analysis_runs, unique_users)',
+        'property_events (event_type, user_id, timestamp)',
+      ],
+    };
   }
 
   /**

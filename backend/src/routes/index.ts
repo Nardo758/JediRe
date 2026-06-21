@@ -186,6 +186,7 @@ import propertyRoutes from '../api/rest/property.routes';
 import { createPropertyMetricsRouter } from '../api/rest/property-metrics.routes';
 import { createPropertyScoringRouter } from '../api/rest/property-scoring.routes';
 import propertyAnalyticsRouter from '../api/rest/property-analytics.routes';
+import { createEventsRoutes } from '../api/rest/events.routes';
 import propertyDiscoveryRouter from '../api/rest/property-discovery.routes';
 import { createArchivePropertiesRouter } from '../api/rest/archive-properties.routes';
 import createUnifiedPropertiesRoutes from '../api/rest/unified-properties.routes';
@@ -216,6 +217,8 @@ export function mountPropertyRoutes(app: Express, pool: any) {
   app.use('/api/v1/property-metrics', requireAuth, createPropertyMetricsRouter(pool));
   app.use('/api/v1/property-scoring', requireAuth, createPropertyScoringRouter(pool));
   app.use('/api/v1/property-analytics', requireAuth, propertyAnalyticsRouter);
+  app.use('/api/v1/events', requireAuth, createEventsRoutes(pool));
+  app.use('/api/events', requireAuth, createEventsRoutes(pool));
   app.use('/api/v1/property-discovery', propertyDiscoveryRouter);
 
   // Archive & building envelope
