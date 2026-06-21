@@ -502,6 +502,7 @@ import { createCapsuleRoutes } from '../api/rest/capsule.routes';
 import { createDealCapsuleBridge } from '../api/rest/capsule-bridge.routes';
 import { createRenovationRoutes } from '../api/rest/renovation.routes';
 import { createCoStarUploadRoutes } from '../api/rest/costar-upload.routes';
+import verasetRouter from '../api/rest/veraset.routes';
 import exitTrajectoryRouter from '../api/rest/exit-trajectory.routes';
 import forwardSupplyRouter from '../api/rest/forward-supply.routes';
 
@@ -526,4 +527,5 @@ export function mountMiscRoutes(app: Express, pool: any) {
   app.use('/api/v1/deals/:dealId/renovation', requireAuth, createRenovationRoutes(pool));
   app.use('/api/v1/deals', requireAuth, exitTrajectoryRouter);
   app.use('/api/v1/deals', requireAuth, forwardSupplyRouter);
+  app.use('/api/v1/veraset', verasetRouter);
 }
