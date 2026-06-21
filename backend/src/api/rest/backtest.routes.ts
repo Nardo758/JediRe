@@ -153,6 +153,23 @@ router.post('/run/strategy/:strategyId', runHandler);
 router.get('/results/strategy/:strategyId', resultsHandler);
 router.get('/summary/strategy/:strategyId', summaryHandler);
 
+router.get('/asset-class-spread/assumptions', (_req: Request, res: Response) => {
+  try {
+    const assumptions = assetClassBacktestService.getCurrentAssumptions();
+    res.json({
+      success: true,
+      data: assumptions,
+      _meta: {
+        calibrationStatus: 'pending_data',
+        note: 'Seed values from industry sources. Run GET /asset-class-spread to generate backtest report when actual_performance has data.',
+      },
+    });
+  } catch (error) {
+    logger.error('Asset class spread assumptions error:', error);
+    res.status(500).json({ error: 'Failed to fetch assumptions' });
+  }
+});
+
 router.get('/asset-class-spread', async (req: Request, res: Response) => {
   try {
     const lookbackYears = parseInt(req.query.lookbackYears as string) || 5;
