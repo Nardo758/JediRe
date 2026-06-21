@@ -629,15 +629,49 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
 
     let events: any[] = [];
     if (msaId) {
+      // Scope-cascade: query events at MSA + submarket + property level,
+      // deduplicate, compute proximity, filter by threshold
       const evRes = await pool.query(`
-        SELECT ke.* FROM key_events ke
-        WHERE ke.msa_id = $1
-          AND ke.status NOT IN ('cancelled','reversed')
-        ORDER BY ke.magnitude_score DESC, ke.announced_date DESC NULLS LAST
-        LIMIT 20
-      `, [msaId]);
+        SELECT DISTINCT ON (ke.id) ke.* FROM key_events ke
+        WHERE (
+          ke.msa_id = $1
+          OR ($2::text IS NOT NULL AND ke.submarket_id = $2)
+          OR ($3::text IS NOT NULL AND ke.property_id = $3)
+        )
+        AND ke.status NOT IN ('cancelled','reversed')
+        ORDER BY ke.id, ke.magnitude_score DESC
+      `, [msaId, submarketId, req.params.dealId]);
       events = evRes.rows;
     }
+
+    // Compute proximity for each event and filter by threshold
+    const PROXIMITY_THRESHOLD = 0.1; // ~1.5× cascade radius (5mi)
+    const eventsWithProximity = events.map((ev: any) => {
+      const proximity = m35TrafficApiService.proximityFactor(
+        {
+          id: ev.id,
+          name: ev.name,
+          category: ev.category,
+          subtype: ev.subtype,
+          status: ev.status,
+          lat: ev.lat ? parseFloat(ev.lat) : null,
+          lng: ev.lng ? parseFloat(ev.lng) : null,
+          msaId: ev.msa_id,
+          submarketId: ev.submarket_id,
+          magnitudeScore: parseFloat(ev.magnitude_score ?? '2'),
+          defaultMagnitude: parseFloat(ev.magnitude_value ?? '0'),
+          confidence: parseFloat(ev.confidence ?? '0.5'),
+          materializationDate: ev.materialization_date ? new Date(ev.materialization_date) : null,
+          announcedDate: ev.announced_date ? new Date(ev.announced_date) : null,
+          decayShape: ev.decay_shape || 'linear',
+          typicalDecayMonths: parseInt(ev.typical_decay_months ?? '12', 10),
+        },
+        { lat: dealLat ?? undefined, lng: dealLng ?? undefined, submarket: submarketId ?? undefined, msaId: msaId ?? undefined }
+      );
+      return { ...ev, proximityScore: proximity };
+    }).filter((ev: any) => (ev.proximityScore ?? 0) >= PROXIMITY_THRESHOLD);
+
+    events = eventsWithProximity;
 
     // Compute sensitivity from avg magnitude_score
     let sensitivityScore = 0;
@@ -792,6 +826,7 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
         magnitudeScore:     parseFloat(ev.magnitude_score ?? '2'),
         confidence:         parseFloat(ev.confidence ?? '0.5'),
         isVerified:         Boolean(ev.is_verified),
+        proximityScore:     ev.proximityScore ?? 0,
         announcedDate:      ev.announced_date ? new Date(ev.announced_date as string).toISOString() : undefined,
         materializationDate: ev.materialization_date ? new Date(ev.materialization_date as string).toISOString() : undefined,
         ingestionSource:    ev.ingestion_source as string | undefined,
