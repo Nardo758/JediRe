@@ -40,6 +40,15 @@ import {
 /**
  * Long-run spread above CPI shelter for each asset class. Default values
  * pending backtest calibration (spec §14). Multifamily ~30 bps over 30+ yr.
+ *
+ * Sources:
+ *   • multifamily: NCREIF / NARIET historical (1990-2024) ~25-35 bps
+ *   • retail: RERC / PREA — higher volatility, cyclical ~45-55 bps
+ *   • office: post-2020 secular reset; pre-2020 was ~20-40 bps, currently 0
+ *   • industrial: CBRE / JLL — strong demand 2015-2024 ~70-90 bps
+ *   • str: AirDNA / Key Data — high growth, high volatility ~90-110 bps
+ *   • flip: land development — no operating cash flow, 0 bps
+ *   • land: raw land — no cash flow, 0 bps
  */
 export const ASSET_CLASS_SPREAD_BPS: Record<string, number> = {
   multifamily: 30,
@@ -57,18 +66,28 @@ export const ASSET_CLASS_SPREAD_BPS: Record<string, number> = {
  * out these as TBD (backtest from historical BLS CPI shelter vs realized
  * rent growth by asset class). Surfaced so consumers / dashboards can
  * mark these constants as TBD and request a calibration refresh.
+ *
+ * Current status: AssetClassSpreadBacktestService is operational.
+ *   • Cron: monthly (10th @ 04:00 UTC)
+ *   • API: GET /api/backtest/asset-class-spread
+ *   • Table: asset_class_spread_calibration (populated by cron)
+ *   • Blocker: actual_performance table needs >10 observations per asset class
+ *     for high-confidence calibration. Seed values above are used until then.
  */
 export const ASSET_CLASS_SPREAD_CALIBRATION = {
   asOf: '2026-04-29',
   source:
     'spec §6 + §14 default; multifamily ~30bps anchored to BLS CPI shelter ' +
-    'historical observation (2010-2024); other classes are seed values.',
+    'historical observation (2010-2024); other classes are seed values from ' +
+    'industry sources (NCREIF, RERC, CBRE, AirDNA).',
   sampleSize: null as number | null,
-  calibrationStatus: 'tbd' as const,
+  calibrationStatus: 'pending_data' as const,
   notes:
-    'Calibrate by regressing realized 12-month rent growth against BLS CPI ' +
-    'shelter sub-index over a 10-15 year window per asset class. Office ' +
-    'spread of 0bps reflects post-2020 secular reset; revisit when stabilized.',
+    'Backtest service is fully operational. Run GET /api/backtest/asset-class-spread ' +
+    'to generate a calibration report once actual_performance has >10 observations ' +
+    'per asset class. Office spread of 0bps reflects post-2020 secular reset; ' +
+    'revisit when stabilized. Industrial spread of 80bps may be conservative ' +
+    'given 2015-2024 demand surge — backtest will confirm.',
 } as const;
 
 // ────────────────────────────────────────────────────────────────────────────

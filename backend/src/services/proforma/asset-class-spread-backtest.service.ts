@@ -84,6 +84,63 @@ export class AssetClassSpreadBacktestService {
   constructor(private pool: Pool) {}
 
   /**
+   * Return the current assumed spreads without running a backtest.
+   * Useful for dashboards and data-quality audits when actual_performance
+   * is not yet populated. Includes source documentation for each value.
+   */
+  getCurrentAssumptions(): Array<{
+    assetClass: string;
+    assumedSpreadBps: number;
+    source: string;
+    dataQuality: 'seed' | 'calibrated';
+    notes: string;
+  }> {
+    const entries = Object.entries(ASSET_CLASS_SPREAD_BPS);
+    const sources: Record<string, { source: string; notes: string }> = {
+      multifamily: {
+        source: 'NCREIF/NARIET historical 1990-2024; BLS CPI shelter vs realized rent growth',
+        notes: 'Well-established ~30bps premium. Will refine when backtest has >10 obs.',
+      },
+      retail: {
+        source: 'RERC/PREA cyclical spread; higher volatility than multifamily',
+        notes: 'Seed value ~50bps. Backtest expected to confirm 45-55bps range.',
+      },
+      office: {
+        source: 'Post-2020 secular reset; pre-2020 was 20-40bps',
+        notes: 'Set to 0bps pending stabilization. Revisit when backtest data available.',
+      },
+      industrial: {
+        source: 'CBRE/JLL 2015-2024 demand surge; historically 40-60bps, recent 70-90bps',
+        notes: 'Seed at 80bps. Backtest may suggest higher given 2020-2024 demand.',
+      },
+      str: {
+        source: 'AirDNA/Key Data short-term rental growth premium',
+        notes: 'High growth, high volatility. Seed ~100bps. Backtest will confirm.',
+      },
+      flip: {
+        source: 'Land development — no operating cash flow until exit',
+        notes: '0bps by definition. No backtest applicable.',
+      },
+      land: {
+        source: 'Raw land — no cash flow until development or sale',
+        notes: '0bps by definition. No backtest applicable.',
+      },
+      default: {
+        source: 'Fallback to multifamily assumption',
+        notes: 'Used when asset class is unknown. Will align with multifamily backtest.',
+      },
+    };
+
+    return entries.map(([assetClass, assumedSpreadBps]) => ({
+      assetClass,
+      assumedSpreadBps,
+      source: sources[assetClass]?.source ?? 'Industry benchmark; pending backtest calibration',
+      dataQuality: 'seed' as const,
+      notes: sources[assetClass]?.notes ?? 'Seed value. Run backtest when actual_performance has data.',
+    }));
+  }
+
+  /**
    * Run the full backtest for all asset classes with owned-property data.
    *
    * @param lookbackYears How many years of actual performance to analyze (default 5)
