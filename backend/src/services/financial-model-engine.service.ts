@@ -586,9 +586,21 @@ export class FinancialModelEngineService {
           }
         }
 
-        if (overriddenCount > 0) {
-          logger.info(`[LiveCPI-Anchors] Overrode ${overriddenCount} expense line growth rates with live CPI anchors for ${dealId} in ${stateCode}`);
-        }
+        // Also override property tax with state-specific anchor from computePropertyTaxAnchor.
+        // This replaces the interceptor's ~4.5% flat (DEFAULT_COUNTY_GROWTH_RATE + premium)
+        // with state-specific trends (e.g., CA 2%, TX 3%, GA 4%, FL 10%).
+        try {
+          const { computePropertyTaxAnchor } = await import('./proforma/property-tax-anchor.service');
+          const ptAnchor = computePropertyTaxAnchor(stateCode, null);
+          for (const ptKey of ['real_estate_tax', 'personal_property_tax']) {
+            const expenseLine = (enhancedAssumptions.expenses as Record<string, { growthRate?: number }>)[ptKey];
+            if (expenseLine && typeof expenseLine.growthRate === 'number') {
+              expenseLine.growthRate = ptAnchor.value;
+              overriddenCount++;
+            }
+          }
+          logger.info(`[LiveCPI-Anchors] Property tax override for ${dealId} in ${stateCode}: ${(ptAnchor.value * 100).toFixed(2)}% (${ptAnchor.rationale})`);
+        } catch (_ptErr) { /* non-fatal: keep interceptor default */ }
       }
     } catch (err: any) {
       logger.warn(`[LiveCPI-Anchors] Skipped for ${dealId}: ${err?.message}`);
