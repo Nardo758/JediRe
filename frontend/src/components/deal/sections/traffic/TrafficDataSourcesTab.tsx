@@ -330,6 +330,14 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility, 
           </div>
           {ds?.web_traffic ? (
             <div className="space-y-3">
+              {(ds.data_quality?.sources_connected ?? 0) < 2 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 flex items-center gap-2">
+                  <AlertCircle size={12} className="text-amber-600 flex-shrink-0" />
+                  <p className="text-[10px] text-amber-700">
+                    Web analytics unavailable — only {ds.data_quality?.sources_connected ?? 0} of {ds.data_quality?.total_sources ?? 2} data sources connected. Connect a domain or Google Analytics for accurate digital scoring.
+                  </p>
+                </div>
+              )}
               <div className="flex items-center gap-2 mb-1">
                 <TrendingUp size={12} className="text-stone-400" />
                 <span className="text-[10px] text-stone-400 uppercase font-mono">Layer 3: SpyFu Digital Intelligence</span>
@@ -389,6 +397,14 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility, 
             </div>
           ) : (
             <div className="text-center py-4">
+              {(ds?.data_quality?.sources_connected ?? 0) < 2 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 flex items-center gap-2 mb-3">
+                  <AlertCircle size={12} className="text-amber-600 flex-shrink-0" />
+                  <p className="text-[10px] text-amber-700 text-left">
+                    Web analytics unavailable — only {ds.data_quality?.sources_connected ?? 0} of {ds.data_quality?.total_sources ?? 2} data sources connected. Connect a domain or Google Analytics for accurate digital scoring.
+                  </p>
+                </div>
+              )}
               {showDomainForm ? (
                 <div className="space-y-2">
                   <input
