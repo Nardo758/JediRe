@@ -297,3 +297,91 @@ export async function computeOpexAnchors(
 
   return anchors;
 }
+
+// ─── State-specific line shares (dollar share of total OPEX) ─────────────
+
+const NATIONAL_LINE_SHARES: Record<string, number> = {
+  propertyTax: 0.25,
+  insurance: 0.12,
+  utilities: 0.10,
+  repairsMaintenance: 0.08,
+  payroll: 0.20,
+  marketingAdmin: 0.05,
+  replacementReserves: 0.08,
+  other: 0.12,
+};
+
+const STATE_LINE_SHARES: Record<string, Partial<Record<string, number>>> = {
+  FL: {
+    insurance: 0.18,      // high hurricane / reinsurance costs
+    utilities: 0.09,        // regulated, moderate
+    repairsMaintenance: 0.09, // coastal labor + moisture damage
+  },
+  CA: {
+    insurance: 0.10,      // low hurricane, but earthquake/wildfire riders
+    utilities: 0.14,      // PG&E, water scarcity
+    repairsMaintenance: 0.12, // prevailing wage, high labor
+    payroll: 0.25,        // high minimum wage, tight labor
+    marketingAdmin: 0.06, // competitive coastal markets
+  },
+  TX: {
+    propertyTax: 0.18,    // low property tax (no state income tax)
+    insurance: 0.15,      // hail / tornado / Gulf exposure
+    utilities: 0.08,      // deregulated, cheap natural gas
+    repairsMaintenance: 0.06, // lower labor costs
+    payroll: 0.15,        // lower minimum wage
+    marketingAdmin: 0.04, // less competitive outside major metros
+  },
+  GA: {
+    insurance: 0.13,      // moderate weather
+    utilities: 0.10,      // regulated, moderate
+    repairsMaintenance: 0.08, // Atlanta labor costs rising
+  },
+  NY: {
+    insurance: 0.10,      // low hurricane, but high liability
+    utilities: 0.14,      // ConEd rates very high
+    repairsMaintenance: 0.12, // NYC labor costs
+    payroll: 0.25,        // high wages, unions
+    marketingAdmin: 0.06, // very competitive
+  },
+  NC: {
+    insurance: 0.14,      // hurricane exposure (coastal / inland flooding)
+    utilities: 0.09,      // Duke Energy, moderate rates
+    repairsMaintenance: 0.07, // moderate labor
+  },
+  CO: {
+    insurance: 0.10,      // hail, wildfire risk
+    utilities: 0.09,      // Xcel, moderate
+    repairsMaintenance: 0.09, // Denver labor costs rising
+  },
+  AZ: {
+    insurance: 0.10,      // low hurricane, monsoon / dust
+    utilities: 0.13,      // extreme AC load, water scarcity
+    repairsMaintenance: 0.08, // Phoenix labor costs
+  },
+  WA: {
+    insurance: 0.10,      // low weather risk
+    utilities: 0.08,      // cheap hydro, but rising
+    repairsMaintenance: 0.10, // Seattle labor costs
+    payroll: 0.22,        // high minimum wage, tech competition
+  },
+  TN: {
+    insurance: 0.13,      // moderate weather, some tornado
+    utilities: 0.09,      // TVA rates low
+    repairsMaintenance: 0.06, // lower labor costs
+    payroll: 0.17,        // lower wage pressure
+  },
+};
+
+/**
+ * Return state-specific OPEX line shares (dollar share of total OPEX).
+ * Falls back to national averages when state is not in the registry.
+ * Shares are normalised by callers (computeTotalOpexGrowth / projectProforma).
+ */
+export function getStateLineShares(
+  state?: string,
+): Partial<Record<string, number>> {
+  const stateShares = state ? STATE_LINE_SHARES[state] : undefined;
+  if (!stateShares) return {};
+  return { ...stateShares };
+}

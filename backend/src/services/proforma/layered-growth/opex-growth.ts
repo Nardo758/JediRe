@@ -48,7 +48,7 @@ import {
 
 /** Default decimal anchor growth for each OPEX line when feed unavailable. */
 export const DEFAULT_LINE_ANCHORS: Record<OpexLineKey, number> = {
-  propertyTax: 0.04,         // county millage projections (placeholder)
+  propertyTax: 0.04,         // fallback for unmapped states — see computePropertyTaxAnchor for state-specific values (FL 10%, CA 2%, TX 3%, GA 4%, etc.)
   insurance: 0.07,           // NAIC regional + reinsurance hardening
   utilities: 0.03,           // EIA AEO baseline
   repairsMaintenance: 0.035, // BLS PPI construction

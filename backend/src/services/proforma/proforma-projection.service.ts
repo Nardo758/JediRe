@@ -106,6 +106,11 @@ export interface ProjectionInputs {
     marketType?: MarketType;
   };
 
+  /** Dollar share by OPEX line. Sums need not equal 1 — normalised internally.
+   *  When omitted, falls back to DEFAULT_LINE_SHARES (FL-calibrated national
+   *  averages). Pass state-specific shares when available. */
+  lineShares?: Partial<Record<OpexLineKey, number>>;
+
   /** NOI margin (year-1) used in the noiGrowthIdentity emission. */
   noiMargin: number;
 }
@@ -248,11 +253,11 @@ export function projectProforma(inputs: ProjectionInputs): ProjectionYearResult[
         rawOpexG,
       );
 
-      // Share-weighted aggregation using DEFAULT_LINE_SHARES so the NOI
-      // identity cross-check reflects each line's typical dollar share of
-      // total OPEX (e.g. propertyTax ~25%, payroll ~20%) instead of an
-      // equal 1/N split. Shares sum to 1.0 across OPEX_LINE_KEYS.
-      const share = DEFAULT_LINE_SHARES[lineKey] ?? 0;
+      // Share-weighted aggregation using inputs.lineShares (or DEFAULT_LINE_SHARES
+      // fallback) so the NOI identity cross-check reflects each line's dollar
+      // share of total OPEX. Pass state-specific shares when available.
+      const shares = inputs.lineShares ?? DEFAULT_LINE_SHARES;
+      const share = shares[lineKey] ?? 0;
       dollarWeightedOpexGrowth += tunedOpexG * share;
       totalOpexShare += share;
 

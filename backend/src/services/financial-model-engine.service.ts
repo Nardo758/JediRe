@@ -552,6 +552,60 @@ export class FinancialModelEngineService {
       logger.warn(`[Anchor-Interceptor] Skipped for ${dealId}: ${err?.message}`);
     }
 
+    // Phase B2b: Override OPEX line growth rates with live CPI anchors from computeOpexAnchors.
+    // This replaces the hardcoded macro-anchored rates from applyFullAnchorInterceptor with
+    // dynamic CPI + state-specific spreads, ensuring the financial model engine path uses
+    // the same live anchors as the getDealFinancials / projectProformaForDeal path.
+    try {
+      const stateCode = enhancedAssumptions.dealInfo?.state ?? null;
+      if (stateCode) {
+        const { computeOpexAnchors } = await import('./proforma/opex-anchors.service');
+        const liveAnchors = await computeOpexAnchors(pool, stateCode);
+
+        // Mapping from OpexLineKey (camelCase) → snake_case keys used in enhancedAssumptions.expenses
+        const keyMap: Record<string, string[]> = {
+          insurance: ['insurance'],
+          utilities: ['utilities'],
+          repairsMaintenance: ['repairs_maintenance'],
+          payroll: ['payroll'],
+          marketingAdmin: ['marketing', 'g_and_a'],
+          replacementReserves: ['replacement_reserves'],
+          other: ['other'],
+        };
+
+        let overriddenCount = 0;
+        for (const [camelKey, anchorPV] of Object.entries(liveAnchors)) {
+          const snakeKeys = keyMap[camelKey];
+          if (!snakeKeys) continue;
+          for (const sk of snakeKeys) {
+            const expenseLine = (enhancedAssumptions.expenses as Record<string, { growthRate?: number }>)[sk];
+            if (expenseLine && typeof expenseLine.growthRate === 'number') {
+              expenseLine.growthRate = anchorPV.value;
+              overriddenCount++;
+            }
+          }
+        }
+
+        // Also override property tax with state-specific anchor from computePropertyTaxAnchor.
+        // This replaces the interceptor's ~4.5% flat (DEFAULT_COUNTY_GROWTH_RATE + premium)
+        // with state-specific trends (e.g., CA 2%, TX 3%, GA 4%, FL 10%).
+        try {
+          const { computePropertyTaxAnchor } = await import('./proforma/property-tax-anchor.service');
+          const ptAnchor = computePropertyTaxAnchor(stateCode, null);
+          for (const ptKey of ['real_estate_tax', 'personal_property_tax']) {
+            const expenseLine = (enhancedAssumptions.expenses as Record<string, { growthRate?: number }>)[ptKey];
+            if (expenseLine && typeof expenseLine.growthRate === 'number') {
+              expenseLine.growthRate = ptAnchor.value;
+              overriddenCount++;
+            }
+          }
+          logger.info(`[LiveCPI-Anchors] Property tax override for ${dealId} in ${stateCode}: ${(ptAnchor.value * 100).toFixed(2)}% (${ptAnchor.rationale})`);
+        } catch (_ptErr) { /* non-fatal: keep interceptor default */ }
+      }
+    } catch (err: any) {
+      logger.warn(`[LiveCPI-Anchors] Skipped for ${dealId}: ${err?.message}`);
+    }
+
     // Phase Batch-4: Layered rent growth from CPI macro anchor + submarket momentum
     try {
       const { projectRentGrowthSeries } = await import('./proforma/layered-growth/rent-growth');
@@ -1859,6 +1913,101 @@ export class FinancialModelEngineService {
         `UPDATE deal_financial_models SET results = $1, status = 'complete', updated_at = NOW() WHERE id = $2`,
         [JSON.stringify(result), modelId]
       );
+
+      // ── Batch 4/5 → deal_assumptions sync (Lower #23) ───────────────────────
+      // The model engine computes rent growth (Batch 4) and exit cap (Batch 5)
+      // but previously only wrote them to deal_financial_models. The F9 UI reads
+      // from deal_assumptions, so these computed values were invisible to the user.
+      //
+      // We now write them back to deal_assumptions top-level columns so the
+      // F9 assumption surface shows the model engine's outputs, not stale
+      // seed values.  We also write them to the active scenario's year1 so
+      // the trigger keeps deal_assumptions.year1 in sync.
+      try {
+        const computedRentGrowth = enhancedAssumptions.revenue?.rentGrowth as number[] | undefined;
+        const computedExitCap = enhancedAssumptions.disposition?.exitCapRate as number | undefined;
+        const computedHoldPeriod = enhancedAssumptions.holdPeriod as number | undefined;
+        const computedSellingCosts = enhancedAssumptions.disposition?.sellingCosts as number | undefined;
+
+        const updates: Array<{ col: string; val: any }> = [];
+        if (computedRentGrowth && computedRentGrowth.length > 0) {
+          updates.push({ col: 'rent_growth_yr1', val: computedRentGrowth[0] });
+          updates.push({ col: 'rent_growth_stabilized', val: computedRentGrowth[computedRentGrowth.length - 1] });
+        }
+        if (computedExitCap != null && computedExitCap > 0) {
+          updates.push({ col: 'exit_cap', val: computedExitCap });
+        }
+        if (computedHoldPeriod != null && computedHoldPeriod > 0) {
+          updates.push({ col: 'hold_period_years', val: computedHoldPeriod });
+        }
+        if (computedSellingCosts != null && computedSellingCosts >= 0) {
+          updates.push({ col: 'selling_costs_pct', val: computedSellingCosts });
+        }
+
+        if (updates.length > 0) {
+          const setClause = updates.map((u, i) => `${u.col} = $${i + 2}`).join(', ');
+          const values = [dealId, ...updates.map(u => u.val)];
+          await pool.query(
+            `UPDATE deal_assumptions SET ${setClause}, updated_at = NOW() WHERE deal_id = $1`,
+            values
+          );
+          logger.info(
+            `[Batch4/5-Sync] Wrote ${updates.length} computed field(s) to deal_assumptions for ${dealId}: ` +
+            updates.map(u => `${u.col}=${typeof u.val === 'number' ? u.val.toFixed(4) : u.val}`).join(', ')
+          );
+        }
+
+        // Also write to the active scenario's year1 so the trigger keeps
+        // deal_assumptions.year1 in sync.  We merge agent sub-keys into the
+        // existing year1 JSON, preserving all other fields (user overrides,
+        // extraction layers, etc.).
+        const activeScen = await pool.query(
+          `SELECT id, year1 FROM deal_underwriting_scenarios
+           WHERE deal_id = $1 AND is_active = TRUE AND deleted_at IS NULL LIMIT 1`,
+          [dealId]
+        );
+        if (activeScen.rows.length > 0) {
+          const scenId = activeScen.rows[0].id;
+          const scenYear1 = typeof activeScen.rows[0].year1 === 'string'
+            ? JSON.parse(activeScen.rows[0].year1)
+            : (activeScen.rows[0].year1 ?? {});
+
+          const modelFields: Record<string, number> = {};
+          if (computedRentGrowth && computedRentGrowth.length > 0) {
+            modelFields.rent_growth_yr1 = computedRentGrowth[0];
+            modelFields.rent_growth_stabilized = computedRentGrowth[computedRentGrowth.length - 1];
+          }
+          if (computedExitCap != null && computedExitCap > 0) modelFields.exit_cap = computedExitCap;
+          if (computedHoldPeriod != null && computedHoldPeriod > 0) modelFields.hold_period_years = computedHoldPeriod;
+          if (computedSellingCosts != null && computedSellingCosts >= 0) modelFields.selling_costs_pct = computedSellingCosts;
+
+          for (const [key, val] of Object.entries(modelFields)) {
+            const existing = scenYear1[key] ?? {};
+            const hasOverride = existing.override != null && typeof existing.override === 'number' && isFinite(existing.override);
+            scenYear1[key] = {
+              ...existing,
+              agent: val,
+              resolved: hasOverride ? existing.override : val,
+              resolution: hasOverride ? 'override' : 'agent:financial_model',
+              updated_at: new Date().toISOString(),
+            };
+          }
+
+          await pool.query(
+            `UPDATE deal_underwriting_scenarios
+             SET year1 = $1::jsonb, updated_at = NOW()
+             WHERE id = $2`,
+            [JSON.stringify(scenYear1), scenId]
+          );
+          // Trigger trg_sync_underwriting_scenario fires here and syncs
+          // year1 to deal_assumptions.year1 automatically.
+          logger.info(
+            `[Batch4/5-Sync] Wrote ${Object.keys(modelFields).length} computed field(s) to active scenario ${scenId} for ${dealId}`
+          );
+        }
+      } catch (syncErr: any) {
+        logger.warn(`[Batch4/5-Sync] Failed to sync computed values to deal_assumptions for ${dealId}: ${syncErr.message}`);
+      }
 
       return { result, assumptionsHash };
     } catch (error: any) {
