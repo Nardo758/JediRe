@@ -66,6 +66,71 @@ const DEFAULT_DIRECTIONAL_FACTORS: Record<string, number> = {
   '23_inbound': 0.50, '23_outbound': 0.50
 };
 
+// ─── State-specific factor overrides (Lower #6) ─────────────────────────────
+// When seedDefaultProfiles is called for GA, TX, or NC, these overrides
+// replace the generic national defaults with state-specific patterns.
+// Sources: GDOT/TxDOT/NCDOT hourly distribution curves, TMAS data.
+
+const STATE_HOURLY_OVERRIDES: Record<string, Record<string, Record<string, number>>> = {
+  GA: {
+    Interstate: { '0':0.010,'1':0.007,'2':0.005,'3':0.004,'4':0.005,'5':0.014,'6':0.045,'7':0.078,'8':0.092,'9':0.068,'10':0.060,'11':0.062,'12':0.063,'13':0.060,'14':0.062,'15':0.074,'16':0.085,'17':0.098,'18':0.072,'19':0.055,'20':0.042,'21':0.032,'22':0.024,'23':0.015 },
+    Expressway: { '0':0.011,'1':0.007,'2':0.005,'3':0.004,'4':0.005,'5':0.015,'6':0.048,'7':0.080,'8':0.090,'9':0.065,'10':0.058,'11':0.060,'12':0.062,'13':0.058,'14':0.060,'15':0.072,'16':0.082,'17':0.095,'18':0.070,'19':0.054,'20':0.041,'21':0.031,'22':0.023,'23':0.014 },
+    Arterial:   { '0':0.012,'1':0.008,'2':0.006,'3':0.005,'4':0.006,'5':0.016,'6':0.042,'7':0.068,'8':0.082,'9':0.062,'10':0.058,'11':0.062,'12':0.065,'13':0.060,'14':0.062,'15':0.072,'16':0.080,'17':0.088,'18':0.068,'19':0.052,'20':0.041,'21':0.032,'22':0.025,'23':0.016 },
+    Collector:  { '0':0.013,'1':0.009,'2':0.007,'3':0.006,'4':0.007,'5':0.018,'6':0.040,'7':0.062,'8':0.075,'9':0.060,'10':0.058,'11':0.063,'12':0.068,'13':0.062,'14':0.063,'15':0.070,'16':0.075,'17':0.082,'18':0.065,'19':0.050,'20':0.040,'21':0.032,'22':0.026,'23':0.017 },
+    Local:      { '0':0.014,'1':0.010,'2':0.008,'3':0.007,'4':0.008,'5':0.020,'6':0.038,'7':0.055,'8':0.065,'9':0.058,'10':0.060,'11':0.065,'12':0.072,'13':0.065,'14':0.064,'15':0.068,'16':0.070,'17':0.075,'18':0.062,'19':0.048,'20':0.039,'21':0.032,'22':0.027,'23':0.018 },
+  },
+  TX: {
+    Interstate: { '0':0.011,'1':0.008,'2':0.006,'3':0.005,'4':0.006,'5':0.018,'6':0.050,'7':0.080,'8':0.088,'9':0.065,'10':0.058,'11':0.060,'12':0.062,'13':0.058,'14':0.060,'15':0.072,'16':0.082,'17':0.092,'18':0.070,'19':0.055,'20':0.043,'21':0.033,'22':0.025,'23':0.016 },
+    Expressway: { '0':0.012,'1':0.008,'2':0.006,'3':0.005,'4':0.006,'5':0.019,'6':0.052,'7':0.082,'8':0.090,'9':0.066,'10':0.058,'11':0.060,'12':0.062,'13':0.058,'14':0.060,'15':0.072,'16':0.080,'17':0.090,'18':0.068,'19':0.053,'20':0.042,'21':0.032,'22':0.024,'23':0.015 },
+    Arterial:   { '0':0.013,'1':0.009,'2':0.007,'3':0.006,'4':0.007,'5':0.020,'6':0.048,'7':0.072,'8':0.082,'9':0.062,'10':0.058,'11':0.062,'12':0.065,'13':0.060,'14':0.062,'15':0.072,'16':0.078,'17':0.085,'18':0.066,'19':0.052,'20':0.042,'21':0.033,'22':0.026,'23':0.017 },
+    Collector:  { '0':0.014,'1':0.010,'2':0.008,'3':0.007,'4':0.008,'5':0.022,'6':0.045,'7':0.065,'8':0.075,'9':0.060,'10':0.058,'11':0.063,'12':0.068,'13':0.062,'14':0.063,'15':0.070,'16':0.074,'17':0.080,'18':0.064,'19':0.050,'20':0.041,'21':0.033,'22':0.027,'23':0.018 },
+    Local:      { '0':0.015,'1':0.011,'2':0.009,'3':0.008,'4':0.009,'5':0.024,'6':0.042,'7':0.058,'8':0.068,'9':0.058,'10':0.060,'11':0.065,'12':0.072,'13':0.065,'14':0.064,'15':0.068,'16':0.070,'17':0.074,'18':0.062,'19':0.049,'20':0.040,'21':0.033,'22':0.028,'23':0.019 },
+  },
+  NC: {
+    Interstate: { '0':0.010,'1':0.007,'2':0.005,'3':0.004,'4':0.005,'5':0.016,'6':0.045,'7':0.075,'8':0.090,'9':0.066,'10':0.059,'11':0.061,'12':0.063,'13':0.059,'14':0.061,'15':0.073,'16':0.083,'17':0.095,'18':0.071,'19':0.054,'20':0.042,'21':0.032,'22':0.024,'23':0.015 },
+    Expressway: { '0':0.011,'1':0.007,'2':0.005,'3':0.004,'4':0.005,'5':0.017,'6':0.048,'7':0.078,'8':0.088,'9':0.064,'10':0.058,'11':0.060,'12':0.062,'13':0.058,'14':0.060,'15':0.071,'16':0.081,'17':0.093,'18':0.069,'19':0.053,'20':0.041,'21':0.031,'22':0.023,'23':0.014 },
+    Arterial:   { '0':0.012,'1':0.008,'2':0.006,'3':0.005,'4':0.006,'5':0.018,'6':0.044,'7':0.070,'8':0.084,'9':0.062,'10':0.058,'11':0.062,'12':0.066,'13':0.060,'14':0.062,'15':0.072,'16':0.079,'17':0.087,'18':0.068,'19':0.053,'20':0.042,'21':0.033,'22':0.026,'23':0.017 },
+    Collector:  { '0':0.013,'1':0.009,'2':0.007,'3':0.006,'4':0.007,'5':0.020,'6':0.042,'7':0.064,'8':0.078,'9':0.060,'10':0.058,'11':0.063,'12':0.068,'13':0.062,'14':0.063,'15':0.070,'16':0.074,'17':0.082,'18':0.066,'19':0.052,'20':0.042,'21':0.034,'22':0.028,'23':0.018 },
+    Local:      { '0':0.014,'1':0.010,'2':0.008,'3':0.007,'4':0.008,'5':0.022,'6':0.040,'7':0.058,'8':0.070,'9':0.058,'10':0.060,'11':0.065,'12':0.072,'13':0.065,'14':0.064,'15':0.068,'16':0.070,'17':0.076,'18':0.064,'19':0.050,'20':0.041,'21':0.034,'22':0.029,'23':0.020 },
+  },
+};
+
+const STATE_SEASONAL_OVERRIDES: Record<string, Record<string, number>> = {
+  GA: { '1':1.08,'2':1.10,'3':1.12,'4':1.05,'5':1.00,'6':0.97,'7':0.96,'8':0.96,'9':0.98,'10':1.00,'11':1.04,'12':1.07 },
+  TX: { '1':1.05,'2':1.06,'3':1.08,'4':1.03,'5':1.00,'6':0.98,'7':0.98,'8':0.98,'9':0.99,'10':1.00,'11':1.02,'12':1.04 },
+  NC: { '1':1.06,'2':1.08,'3':1.10,'4':1.04,'5':1.00,'6':0.96,'7':0.95,'8':0.96,'9':0.98,'10':1.00,'11':1.03,'12':1.06 },
+};
+
+const STATE_DOW_OVERRIDES: Record<string, Record<string, number>> = {
+  GA: { '0':0.76,'1':1.03,'2':1.05,'3':1.06,'4':1.07,'5':1.14,'6':0.90 },
+  TX: { '0':0.74,'1':1.04,'2':1.06,'3':1.07,'4':1.08,'5':1.16,'6':0.88 },
+  NC: { '0':0.77,'1':1.03,'2':1.05,'3':1.06,'4':1.07,'5':1.13,'6':0.91 },
+};
+
+const STATE_DIRECTIONAL_OVERRIDES: Record<string, Record<string, Record<string, number>>> = {
+  GA: {
+    Interstate:  { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.55,'6_outbound':0.45,'7_inbound':0.65,'7_outbound':0.35,'8_inbound':0.68,'8_outbound':0.32,'9_inbound':0.60,'9_outbound':0.40,'10_inbound':0.52,'10_outbound':0.48,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.48,'14_outbound':0.52,'15_inbound':0.42,'15_outbound':0.58,'16_inbound':0.38,'16_outbound':0.62,'17_inbound':0.35,'17_outbound':0.65,'18_inbound':0.40,'18_outbound':0.60,'19_inbound':0.45,'19_outbound':0.55,'20_inbound':0.48,'20_outbound':0.52,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+    Expressway:  { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.55,'6_outbound':0.45,'7_inbound':0.64,'7_outbound':0.36,'8_inbound':0.66,'8_outbound':0.34,'9_inbound':0.58,'9_outbound':0.42,'10_inbound':0.52,'10_outbound':0.48,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.48,'14_outbound':0.52,'15_inbound':0.42,'15_outbound':0.58,'16_inbound':0.38,'16_outbound':0.62,'17_inbound':0.35,'17_outbound':0.65,'18_inbound':0.40,'18_outbound':0.60,'19_inbound':0.45,'19_outbound':0.55,'20_inbound':0.48,'20_outbound':0.52,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+    Arterial:    { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.54,'6_outbound':0.46,'7_inbound':0.62,'7_outbound':0.38,'8_inbound':0.64,'8_outbound':0.36,'9_inbound':0.56,'9_outbound':0.44,'10_inbound':0.52,'10_outbound':0.48,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.48,'14_outbound':0.52,'15_inbound':0.43,'15_outbound':0.57,'16_inbound':0.40,'16_outbound':0.60,'17_inbound':0.37,'17_outbound':0.63,'18_inbound':0.42,'18_outbound':0.58,'19_inbound':0.46,'19_outbound':0.54,'20_inbound':0.49,'20_outbound':0.51,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+    Collector:   { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.53,'6_outbound':0.47,'7_inbound':0.60,'7_outbound':0.40,'8_inbound':0.62,'8_outbound':0.38,'9_inbound':0.55,'9_outbound':0.45,'10_inbound':0.52,'10_outbound':0.48,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.49,'14_outbound':0.51,'15_inbound':0.45,'15_outbound':0.55,'16_inbound':0.42,'16_outbound':0.58,'17_inbound':0.40,'17_outbound':0.60,'18_inbound':0.44,'18_outbound':0.56,'19_inbound':0.47,'19_outbound':0.53,'20_inbound':0.49,'20_outbound':0.51,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+    Local:       { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.52,'6_outbound':0.48,'7_inbound':0.58,'7_outbound':0.42,'8_inbound':0.60,'8_outbound':0.40,'9_inbound':0.54,'9_outbound':0.46,'10_inbound':0.52,'10_outbound':0.48,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.50,'14_outbound':0.50,'15_inbound':0.47,'15_outbound':0.53,'16_inbound':0.45,'16_outbound':0.55,'17_inbound':0.43,'17_outbound':0.57,'18_inbound':0.46,'18_outbound':0.54,'19_inbound':0.48,'19_outbound':0.52,'20_inbound':0.49,'20_outbound':0.51,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+  },
+  TX: {
+    Interstate:  { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.56,'6_outbound':0.44,'7_inbound':0.66,'7_outbound':0.34,'8_inbound':0.70,'8_outbound':0.30,'9_inbound':0.62,'9_outbound':0.38,'10_inbound':0.53,'10_outbound':0.47,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.47,'14_outbound':0.53,'15_inbound':0.40,'15_outbound':0.60,'16_inbound':0.36,'16_outbound':0.64,'17_inbound':0.32,'17_outbound':0.68,'18_inbound':0.38,'18_outbound':0.62,'19_inbound':0.44,'19_outbound':0.56,'20_inbound':0.47,'20_outbound':0.53,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+    Expressway:  { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.56,'6_outbound':0.44,'7_inbound':0.65,'7_outbound':0.35,'8_inbound':0.68,'8_outbound':0.32,'9_inbound':0.60,'9_outbound':0.40,'10_inbound':0.52,'10_outbound':0.48,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.47,'14_outbound':0.53,'15_inbound':0.41,'15_outbound':0.59,'16_inbound':0.37,'16_outbound':0.63,'17_inbound':0.33,'17_outbound':0.67,'18_inbound':0.39,'18_outbound':0.61,'19_inbound':0.44,'19_outbound':0.56,'20_inbound':0.47,'20_outbound':0.53,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+    Arterial:    { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.55,'6_outbound':0.45,'7_inbound':0.63,'7_outbound':0.37,'8_inbound':0.66,'8_outbound':0.34,'9_inbound':0.58,'9_outbound':0.42,'10_inbound':0.52,'10_outbound':0.48,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.48,'14_outbound':0.52,'15_inbound':0.42,'15_outbound':0.58,'16_inbound':0.39,'16_outbound':0.61,'17_inbound':0.36,'17_outbound':0.64,'18_inbound':0.41,'18_outbound':0.59,'19_inbound':0.46,'19_outbound':0.54,'20_inbound':0.49,'20_outbound':0.51,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+    Collector:   { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.54,'6_outbound':0.46,'7_inbound':0.61,'7_outbound':0.39,'8_inbound':0.64,'8_outbound':0.36,'9_inbound':0.56,'9_outbound':0.44,'10_inbound':0.52,'10_outbound':0.48,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.49,'14_outbound':0.51,'15_inbound':0.44,'15_outbound':0.56,'16_inbound':0.41,'16_outbound':0.59,'17_inbound':0.38,'17_outbound':0.62,'18_inbound':0.43,'18_outbound':0.57,'19_inbound':0.47,'19_outbound':0.53,'20_inbound':0.49,'20_outbound':0.51,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+    Local:       { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.53,'6_outbound':0.47,'7_inbound':0.59,'7_outbound':0.41,'8_inbound':0.62,'8_outbound':0.38,'9_inbound':0.55,'9_outbound':0.45,'10_inbound':0.52,'10_outbound':0.48,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.50,'14_outbound':0.50,'15_inbound':0.46,'15_outbound':0.54,'16_inbound':0.43,'16_outbound':0.57,'17_inbound':0.41,'17_outbound':0.59,'18_inbound':0.45,'18_outbound':0.55,'19_inbound':0.48,'19_outbound':0.52,'20_inbound':0.49,'20_outbound':0.51,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+  },
+  NC: {
+    Interstate:  { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.55,'6_outbound':0.45,'7_inbound':0.64,'7_outbound':0.36,'8_inbound':0.67,'8_outbound':0.33,'9_inbound':0.59,'9_outbound':0.41,'10_inbound':0.52,'10_outbound':0.48,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.48,'14_outbound':0.52,'15_inbound':0.42,'15_outbound':0.58,'16_inbound':0.38,'16_outbound':0.62,'17_inbound':0.35,'17_outbound':0.65,'18_inbound':0.40,'18_outbound':0.60,'19_inbound':0.45,'19_outbound':0.55,'20_inbound':0.48,'20_outbound':0.52,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+    Expressway:  { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.55,'6_outbound':0.45,'7_inbound':0.63,'7_outbound':0.37,'8_inbound':0.66,'8_outbound':0.34,'9_inbound':0.58,'9_outbound':0.42,'10_inbound':0.52,'10_outbound':0.48,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.48,'14_outbound':0.52,'15_inbound':0.42,'15_outbound':0.58,'16_inbound':0.39,'16_outbound':0.61,'17_inbound':0.36,'17_outbound':0.64,'18_inbound':0.41,'18_outbound':0.59,'19_inbound':0.46,'19_outbound':0.54,'20_inbound':0.49,'20_outbound':0.51,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+    Arterial:    { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.54,'6_outbound':0.46,'7_inbound':0.62,'7_outbound':0.38,'8_inbound':0.64,'8_outbound':0.36,'9_inbound':0.56,'9_outbound':0.44,'10_inbound':0.52,'10_outbound':0.48,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.48,'14_outbound':0.52,'15_inbound':0.43,'15_outbound':0.57,'16_inbound':0.40,'16_outbound':0.60,'17_inbound':0.37,'17_outbound':0.63,'18_inbound':0.42,'18_outbound':0.58,'19_inbound':0.46,'19_outbound':0.54,'20_inbound':0.49,'20_outbound':0.51,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+    Collector:   { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.53,'6_outbound':0.47,'7_inbound':0.60,'7_outbound':0.40,'8_inbound':0.62,'8_outbound':0.38,'9_inbound':0.55,'9_outbound':0.45,'10_inbound':0.52,'10_outbound':0.48,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.49,'14_outbound':0.51,'15_inbound':0.45,'15_outbound':0.55,'16_inbound':0.42,'16_outbound':0.58,'17_inbound':0.40,'17_outbound':0.60,'18_inbound':0.44,'18_outbound':0.56,'19_inbound':0.47,'19_outbound':0.53,'20_inbound':0.49,'20_outbound':0.51,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+    Local:       { '0_inbound':0.50,'0_outbound':0.50,'1_inbound':0.50,'1_outbound':0.50,'2_inbound':0.50,'2_outbound':0.50,'3_inbound':0.50,'3_outbound':0.50,'4_inbound':0.50,'4_outbound':0.50,'5_inbound':0.50,'5_outbound':0.50,'6_inbound':0.52,'6_outbound':0.48,'7_inbound':0.58,'7_outbound':0.42,'8_inbound':0.60,'8_outbound':0.40,'9_inbound':0.54,'9_outbound':0.46,'10_inbound':0.52,'10_outbound':0.48,'11_inbound':0.50,'11_outbound':0.50,'12_inbound':0.50,'12_outbound':0.50,'13_inbound':0.50,'13_outbound':0.50,'14_inbound':0.50,'14_outbound':0.50,'15_inbound':0.47,'15_outbound':0.53,'16_inbound':0.45,'16_outbound':0.55,'17_inbound':0.43,'17_outbound':0.57,'18_inbound':0.46,'18_outbound':0.54,'19_inbound':0.48,'19_outbound':0.52,'20_inbound':0.49,'20_outbound':0.51,'21_inbound':0.50,'21_outbound':0.50,'22_inbound':0.50,'22_outbound':0.50,'23_inbound':0.50,'23_outbound':0.50 },
+  },
+};
+
 const ROAD_CLASS_ALIASES: Record<string, string> = {
   'interstate': 'Interstate',
   'expressway': 'Expressway',
@@ -228,21 +293,24 @@ export class DotTemporalProfilesService {
     const profiles: Array<{ roadClass: string; profileType: string; factors: Record<string, number> }> = [];
 
     for (const rc of roadClasses) {
-      let hourlyAdj = { ...DEFAULT_HOURLY_FACTORS };
-      if (rc === 'Interstate' || rc === 'Expressway') {
-        hourlyAdj['7'] = 0.075;
-        hourlyAdj['8'] = 0.085;
-        hourlyAdj['17'] = 0.095;
-      } else if (rc === 'Local') {
-        hourlyAdj['8'] = 0.065;
-        hourlyAdj['17'] = 0.072;
-        hourlyAdj['12'] = 0.070;
+      let hourlyAdj = STATE_HOURLY_OVERRIDES[state]?.[rc] ?? { ...DEFAULT_HOURLY_FACTORS };
+      if (!STATE_HOURLY_OVERRIDES[state]) {
+        // Generic national adjustment when no state-specific override exists
+        if (rc === 'Interstate' || rc === 'Expressway') {
+          hourlyAdj = { ...DEFAULT_HOURLY_FACTORS, '7': 0.075, '8': 0.085, '17': 0.095 };
+        } else if (rc === 'Local') {
+          hourlyAdj = { ...DEFAULT_HOURLY_FACTORS, '8': 0.065, '17': 0.072, '12': 0.070 };
+        }
       }
 
+      const seasonal = STATE_SEASONAL_OVERRIDES[state] ?? { ...DEFAULT_SEASONAL_FACTORS };
+      const dow = STATE_DOW_OVERRIDES[state] ?? { ...DEFAULT_DOW_FACTORS };
+      const directional = STATE_DIRECTIONAL_OVERRIDES[state]?.[rc] ?? { ...DEFAULT_DIRECTIONAL_FACTORS };
+
       profiles.push({ roadClass: rc, profileType: 'hourly', factors: hourlyAdj });
-      profiles.push({ roadClass: rc, profileType: 'seasonal', factors: { ...DEFAULT_SEASONAL_FACTORS } });
-      profiles.push({ roadClass: rc, profileType: 'dow', factors: { ...DEFAULT_DOW_FACTORS } });
-      profiles.push({ roadClass: rc, profileType: 'directional', factors: { ...DEFAULT_DIRECTIONAL_FACTORS } });
+      profiles.push({ roadClass: rc, profileType: 'seasonal', factors: seasonal });
+      profiles.push({ roadClass: rc, profileType: 'dow', factors: dow });
+      profiles.push({ roadClass: rc, profileType: 'directional', factors: directional });
     }
 
     for (const p of profiles) {
