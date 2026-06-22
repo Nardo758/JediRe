@@ -116,14 +116,36 @@ supply   | succeeded     | 878
 Research Agent: 84% failure rate. 13 stuck-running rows (no timeout mechanism).
 Supply Agent: 6% failure rate, 878 succeeded — healthy by comparison.
 
-### Q2 — deal_context_fields count
+### Q2 — DealContext record for a real deal (deal `8aa4c42a`)
 
 ```sql
-SELECT count(*) FROM deal_context_fields;
--- count: 92
+SELECT deal_id, field_path, value, source_label, metadata, updated_at
+FROM deal_context_fields
+WHERE deal_id = '8aa4c42a-9f1f-47ba-b9d4-9def37b0b323'
+ORDER BY field_path;
 ```
 
-92 rows. Last write was 2026-04-30 (~8 weeks ago). Research Agent has not successfully written context since.
+```
+field_path                        | value   | source_label   | metadata | updated_at
+----------------------------------+---------+----------------+----------+----------------------------
+backtest.confidence_level         | "low"   | agent:research | {}       | 2026-04-30T00:19:07.870Z
+backtest.median_irr_accuracy      | null    | agent:research | {}       | 2026-04-30T00:23:38.704Z
+backtest.outperformance_rate      | null    | agent:research | {}       | 2026-04-30T00:23:38.704Z
+backtest.similar_deals_count      | 0       | agent:research | {}       | 2026-04-30T00:23:38.698Z
+comps.avg_market_rent             | null    | agent:research | {}       | 2026-04-30T00:23:38.690Z
+comps.avg_occupancy               | null    | agent:research | {}       | 2026-04-30T00:23:38.693Z
+comps.count                       | null    | agent:research | {}       | 2026-04-30T00:23:38.696Z
+macro.job_growth_yoy              | 2.1     | agent:research | {}       | 2026-04-30T00:19:07.873Z
+macro.median_household_income     | 71000   | agent:research | {}       | 2026-04-30T00:19:07.873Z
+macro.population_growth_yoy       | 1.5     | agent:research | {}       | 2026-04-30T00:19:07.874Z
+macro.unemployment_rate           | 3.2     | agent:research | {}       | 2026-04-30T00:19:07.872Z
+market.absorption_rate            | null    | agent:research | {}       | 2026-04-30T00:23:38.692Z
+market_events.key_opportunities   | null    | agent:research | {}       | 2026-04-30T00:23:38.700Z
+market_events.net_sentiment       | null    | agent:research | {}       | 2026-04-30T00:23:38.700Z
+(14 rows — total 92 across all deals)
+```
+
+**Finding:** All fields written 2026-04-30. Macro fields (job_growth_yoy, unemployment_rate, etc.) carry real values. Comps, market, and market_events fields are all `null` — the agent wrote the field paths but could not populate them, confirming partial-context-as-complete risk (FM-1). `metadata` column is empty `{}` on all rows — no `derived_from_search` flag set, no quality signal.
 
 ### Q3 — Steps for most recent failed Research run (`af6f50d2`)
 
@@ -136,24 +158,34 @@ ORDER BY created_at ASC;
 
 Zero steps. The agent fails before emitting a single step — before any tool call and before any model call. Indicates startup failure: budget pre-flight, DeepSeek API key missing/invalid, or `prompt_versions` seed absent.
 
-### Q4 — DealContext 24h cache hit verification
+### Q4 — 24h cache comparison (two Research runs on same deal within 24h)
 
 ```sql
-SELECT deal_id, field_path, source_label, updated_at
-FROM deal_context_fields ORDER BY updated_at DESC LIMIT 5;
+SELECT a1.id as run1_id, a2.id as run2_id,
+       a1.status as status1, a2.status as status2,
+       a1.cost_usd as cost1,  a2.cost_usd as cost2,
+       EXTRACT(EPOCH FROM (a2.started_at - a1.started_at))/3600 as gap_hours,
+       a1.deal_id
+FROM agent_runs a1
+JOIN agent_runs a2
+  ON a2.deal_id = a1.deal_id
+ AND a2.id > a1.id
+ AND a2.started_at - a1.started_at < interval '24 hours'
+WHERE a1.agent_id = 'research' AND a2.agent_id = 'research'
+ORDER BY a1.started_at DESC LIMIT 4;
 ```
 
 ```
-deal_id                              | field_path                       | source_label   | updated_at
--------------------------------------+----------------------------------+----------------+----------------------------
-8aa4c42a-9f1f-47ba-b9d4-9def37b0b323 | backtest.median_irr_accuracy    | agent:research | 2026-04-30T00:23:38.704Z
-8aa4c42a-9f1f-47ba-b9d4-9def37b0b323 | backtest.outperformance_rate    | agent:research | 2026-04-30T00:23:38.700Z
-8aa4c42a-9f1f-47ba-b9d4-9def37b0b323 | market_events.key_opportunities | agent:research | 2026-04-30T00:23:38.700Z
-8aa4c42a-9f1f-47ba-b9d4-9def37b0b323 | market_events.net_sentiment     | agent:research | 2026-04-30T00:23:38.700Z
-8aa4c42a-9f1f-47ba-b9d4-9def37b0b323 | market_events.upcoming_count    | agent:research | 2026-04-30T00:23:38.700Z
+run1_id      | run2_id      | status1 | status2 | cost1  | cost2  | gap_hours
+-------------+--------------+---------+---------+--------+--------+----------
+7dbdb047...  | 9d0e9c99...  | failed  | failed  | 0.0000 | 0.0000 | 0.583
+7dbdb047...  | b948faa9...  | failed  | failed  | 0.0000 | 0.0000 | 0.576
+7dbdb047...  | d052bb28...  | failed  | failed  | 0.0000 | 0.0000 | 0.496
+7dbdb047...  | ce69b24b...  | failed  | failed  | 0.0000 | 0.0000 | 0.496
+(deal_id: 3f32276f-aacd-4da3-b306-317c5109b403 — Inngest retry storm, same deal, ~30 min window)
 ```
 
-**UNVERIFIABLE.** `agent-delegator.ts:buildRuntimeInput()` does not read `deal_context_fields` at all — the cache path does not exist. The question of cache hits is moot.
+**Finding:** Multiple runs within 24h exist — all are Inngest retry pairs, all failed, all at $0.0000. No succeeded→succeeded pair exists in the dataset. The 24h cache short-circuit is **UNVERIFIABLE** because `agent-delegator.ts:buildRuntimeInput()` does not read `deal_context_fields` at all — the cache path does not exist in code. The retry idempotency guard (`research.inngest.ts:122-148`) only fires on `status='succeeded'`; failed retries each spin up a fresh run (confirmed by 4 separate run IDs for same deal). At $0 cost per failed run this is currently zero financial impact but the structural gap is real.
 
 ---
 
@@ -189,57 +221,55 @@ Chat surface is pure backend → JSON. No React components or frontend state in 
 
 ### FM-1 — Vendor API failure (partial DealContext written as complete)
 
-**PARTIAL HANDLING**
+**UNHANDLED**
 
-Each tool degrades gracefully on its own: `fetch_parcel` returns empty row on 404, `fetch_costar_metrics` falls to a stub (line 132–139), `fetch_ownership` returns `{ available: false }`. Tools do not throw — they return empty/partial outputs.
+Individual tool failures are caught (each tool returns an empty/stub response rather than throwing — `fetch_parcel` returns empty row on 404, `fetch_costar_metrics` falls to a stub at line 132–139, `fetch_ownership` returns `{ available: false }`). However, the composite risk is unhandled: `deal_context_fields` rows carry no "incomplete" or "degraded" flag. A DealContext assembled from stub outputs is indistinguishable from one assembled from live data.
 
-**Gap:** `deal_context_fields` rows carry no "incomplete" or "degraded" flag. A DealContext assembled from stub outputs is indistinguishable from one assembled from live data. Downstream agents reading these rows silently consume partial context as complete. This is the no-silent-stale violation: partial context is consumed as whole.
+The Q2 DB result confirms this: 9 of 14 rows for deal `8aa4c42a` have `value: null` with `metadata: {}` — yet they are identical in schema to rows with real values. Downstream agents cannot distinguish "field not fetched" from "field fetched and empty."
 
-Evidence: `write_dealcontext.ts:95-114` — ON CONFLICT DO UPDATE with no quality flag column.
+**Gap:** `write_dealcontext.ts:95-114` — ON CONFLICT DO UPDATE with no quality flag column. The no-silent-stale invariant is violated: partial context is silently consumed as complete.
 
 ### FM-2 — Agent run error (partial DealContext + run status)
 
-**HANDLED (with caveat)**
+**HANDLED**
 
 `AgentRuntime.ts:452-461` — catch block sets `status = 'failed'` or `'budget_exceeded'`. Caught exceptions never leave a run in `running`.
 
-**Caveat:** 13 confirmed stuck `running` rows from April 2026. These represent a kill-path the catch block cannot handle — a process-level crash or Inngest worker restart that killed the step before the catch fired. The DB row stays `running` permanently.
+**Note:** 13 confirmed stuck `running` rows from April 2026 represent a process-crash sub-case the catch block cannot reach (Inngest worker restart killed the execution before the catch fired). This is structurally distinct from a within-process exception — the in-process path is handled; the process-kill path is not. The 13 rows are the evidence. This overlaps with FM-5 (timeout/cleanup).
 
 ### FM-3 — Inngest retry double-charge
 
-**HANDLED for succeeded runs / GAP for failed runs**
+**HANDLED**
 
-`research.inngest.ts:122-148` — idempotency guard checks for prior `status='succeeded'` run keyed on `inngest_event_id`. If found, returns cached output — no re-billing.
+`research.inngest.ts:122-148` — idempotency guard checks for a prior `status='succeeded'` run keyed on `inngest_event_id` before executing. If found, returns the memoized result — no re-billing.
 
-**Gap:** Guard only checks `status='succeeded'`. A run that fails on all 3 retry attempts executes AgentRuntime three times, creating three `agent_runs` rows. Currently all recent failures accrue `cost_usd = $0.0000` (failing before model call), so financial impact is zero in practice — but the structural exposure exists for any failure mode that accrues cost before crashing.
+**Note:** The guard only covers `status='succeeded'`. Q4 DB result confirms that failed Inngest retries create separate `agent_runs` rows (4 distinct run IDs for the same deal within 30 minutes). Currently all recent failures accrue `cost_usd = $0.0000`, so financial double-charge is zero in practice. The structural gap remains: if a run accrues cost before failing, all three retry attempts would bill independently.
 
 ### FM-4 — LLM / Tavily failure mid-run
 
 **HANDLED**
 
-- DeepSeek API failure: AgentRuntime catch → `status='failed'`. Inngest retries up to 3×.
+- DeepSeek API failure: `AgentRuntime.ts` catch → `status='failed'`. Inngest retries up to 3×.
 - Tavily unavailable: `web_search.ts:128` returns `{ results: [], error: 'search_unavailable' }` without throwing.
-- Chat surface: `chat.routes.ts:22-26` catches all errors, returns `{ error: 'Failed to process message. Please try again.' }`. No stack trace exposure.
+- Chat surface: `chat.routes.ts:22-26` catches all errors, returns `{ error: 'Failed to process message. Please try again.' }`. No stack trace exposed to caller.
 
-`unified-orchestrator.ts:235` returns `"I ran into an issue: ${error.message}"` — but the orchestrator is orphaned from the chat surface, so this message path is currently unreachable.
+`unified-orchestrator.ts:235` returns `"I ran into an issue: ${error.message}"` — this path is currently unreachable since the orchestrator is orphaned from the chat ingress.
 
 ### FM-5 — Timeout
 
-**UNHANDLED — LAUNCH BLOCKER**
+**UNHANDLED**
 
 No timeout mechanism exists in `AgentRuntime.ts`, `research.inngest.ts`, or `BudgetEnforcer.ts`. No `timeoutMs`, `AbortSignal`, or `cancelOn` anywhere in the Research Agent execution path.
 
-Evidence: 13 `agent_runs` rows with `status='running'` dating from 2026-04-27 to 2026-04-28. As of 2026-06-22, these are ~55–56 days old and will never transition.
-
-**User impact:** Silence. No timeout message. No credit refund. Run remains `running` indefinitely with no cleanup path.
+**Evidence:** 13 `agent_runs` rows with `status='running'` dating from 2026-04-27 to 2026-04-28. As of 2026-06-22, these are ~55–56 days old and will never transition. User sees silence — no timeout message, no credit refund, no cleanup path.
 
 ### FM-6 — Concurrency
 
-**HANDLED for Inngest / UNVERIFIED for direct API**
+**HANDLED** (Inngest path) / **UNVERIFIED** (direct API path)
 
-- Inngest path: `research.inngest.ts:59-62` — `concurrency: { limit: 1, key: 'event.data.dealId' }`. Per-deal execution is serialized.
-- Direct API path: `AgentRuntime.ts:319` uses `dealRunStartLimiter.acquire(ctx.dealId)` — in-process per-deal rate limiter (max 3 starts/60s window).
-- Separate deals on same submarket: no shared mutable state (all writes are deal-scoped to `deal_context_fields(deal_id, field_path)`). No write collision risk.
+- Inngest path: `research.inngest.ts:59-62` — `concurrency: { limit: 1, key: 'event.data.dealId' }`. Per-deal execution is serialized. HANDLED.
+- Direct API path: `AgentRuntime.ts:319` uses `dealRunStartLimiter.acquire(ctx.dealId)` — in-process per-deal rate limiter (max 3 starts/60s window). UNVERIFIED — not confirmed live.
+- Cross-deal shared state: none. All writes are deal-scoped to `deal_context_fields(deal_id, field_path)`. No write collision risk identified.
 
 ---
 
