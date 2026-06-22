@@ -57,16 +57,20 @@ Of the 1,020 Research Agent runs recorded (all via Inngest), **861 failed (84%)*
 | 12 | `fetch_proximity_context` | WIRED | `fetch_proximity_context.ts:189` → `execute: async (input, _ctx) => fetchProximityContext(input, getPool())`. |
 | 13 | `fetch_market_events` | WIRED | `fetch_market_events.ts:221` → `execute: async (input, _ctx) => fetchMarketEvents(input, getPool())`. |
 | 14 | `fetch_backtest_context` | WIRED | `fetch_backtest_context.ts:260` → `execute: async (input, _ctx) => fetchBacktestContext(input, getPool())`. |
-| 15 | `fetch_data_library_comps` | WIRED | `fetch_data_library_comps.ts` → `execute:` function delegation (confirmed by grep). |
+| 15 | `fetch_data_library_comps` | WIRED | `fetch_data_library_comps.ts:78` → `execute: async (input) => { ... }` (inline). |
 | 16 | `fetch_inflation_context` | WIRED | `fetch_inflation_context.ts:232` → `execute: fetchInflationContext`. |
 | 17 | `classify_as_deal_opportunity` | WIRED | `classify_as_deal_opportunity.ts:110` → `execute: classifyAsDealOpportunity`. |
 | 18 | `create_deal_draft` | WIRED | `create_deal_draft.ts:182` → `execute: createDealDraft`. |
-| 19 | `extract_deal_fields` | WIRED | `extract_deal_fields.ts` → `execute:` function delegation (confirmed by grep). |
-| 20 | `score_fit_against_profile` | WIRED | `score_fit_against_profile.ts` → `execute:` function delegation (confirmed by grep). |
+| 19 | `extract_deal_fields` | WIRED | `extract_deal_fields.ts:148` → `execute: extractDealFields`. |
+| 20 | `score_fit_against_profile` | WIRED | `score_fit_against_profile.ts:157` → `execute: scoreFitAgainstProfile`. |
 | 21 | `ocr_document` | WIRED | `ocr_document.ts:150` → `execute: ocrDocument`. |
 | 22 | `compute_envelope` | WIRED | `compute_envelope.ts:52` → inline `execute: async (input) => { ... }`. |
-| 23 | `generate_design_massing` | PARTIAL | `generate_design_massing.ts:224` → inline execute with 8+ return branches (lines 123, 163, 174, 185, 199, 274, 320). Several branches appear to return stub/empty massing shapes. Full branch trace not complete. |
+| 23 | `generate_design_massing` | PARTIAL | `generate_design_massing.ts:224` → inline execute with 8+ return branches (lines 123, 163, 174, 185, 199, 274, 320). Several branches return stub/empty massing shapes. Full branch trace not complete. |
 | 24 | `fetch_municipal_sale_comps` | WIRED | `fetch_municipal_sale_comps.ts:107` → inline execute. FL county property appraiser APIs (D-COSTAR-4). |
+| — | `fetch_county_records` | ABSENT | No file at `backend/src/agents/tools/fetch_county_records.ts`; not in `research.config.ts` registry. Named in dispatch code anchors; never implemented. |
+| — | `fetch_rentcast_comps` | ABSENT | No file at `backend/src/agents/tools/fetch_rentcast_comps.ts`; not in `research.config.ts` registry. Named in dispatch code anchors; never implemented. |
+| — | `fetch_fred_indicators` | ABSENT | No file at `backend/src/agents/tools/fetch_fred_indicators.ts`; not in `research.config.ts` registry. Named in dispatch code anchors; never implemented. |
+| — | `fetch_google_places_reviews` | ABSENT | No file at `backend/src/agents/tools/fetch_google_places_reviews.ts`; not in `research.config.ts` registry. Named in dispatch code anchors; never implemented. |
 
 ---
 
