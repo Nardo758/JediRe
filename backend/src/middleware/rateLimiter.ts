@@ -30,13 +30,25 @@ setInterval(() => {
   }
 }, 300000);
 
+const LOCALHOST_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
 export function rateLimiter(
   req: Request,
   res: Response,
   next: NextFunction
 ): void {
+  // Skip rate limiting for localhost — dev tooling (Inngest 5-second polling,
+  // BottomPanel 30-second polling, ingest scripts) all share 127.0.0.1 and
+  // exhaust the 100-req/15-min budget within minutes in development.
+  // In production, 127.0.0.1 never appears as a client IP.
+  const ip = req.ip || '';
+  if (LOCALHOST_IPS.has(ip)) {
+    next();
+    return;
+  }
+
   // Get client identifier (IP or user ID)
-  const identifier = req.ip || 'unknown';
+  const identifier = ip || 'unknown';
   const now = Date.now();
 
   // Initialize or get existing record

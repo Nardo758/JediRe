@@ -1,0 +1,212 @@
+Here is a comprehensive architectural audit prompt for Replit:
+
+---
+
+**PROMPT TO COPY:**
+
+> **Audit the Deal Capsule architecture: How is it currently constructed vs. how is it supposed to work?**
+>
+> **Read these documents first:**
+> 1. `docs/DEAL_CAPSULE_ARCHITECTURE_SPEC.md` (or `DEAL_CAPSULE_ARCHITECTURE_SPEC.md` anywhere in the repo)
+> 2. `docs/CAPSULE_SYSTEM_CONTRACT.md` (or `CAPSULE_SYSTEM_CONTRACT.md`)
+> 3. `docs/audits/DEAL_CAPSULE_TAB_ALIGNMENT_AUDIT_2026-06-18.md`
+> 4. `docs/audits/DEAL_CAPSULE_SPEC_AUDIT_2026-06-18.md`
+>
+> **Then read the core implementation files:**
+> 5. `frontend/src/pages/DealDetailPage.tsx` — the main shell
+> 6. `frontend/src/shared/config/deal-type-visibility.ts` — tab visibility rules
+> 7. `backend/src/models/deal-capsule-updated.ts` — data model interfaces
+> 8. `backend/src/services/proforma-adjustment.service.ts` — the financial engine
+> 9. `backend/src/services/field-access/get-field-value.service.ts` — field resolution
+> 10. `backend/src/services/financials-composer.service.ts` — shared utilities
+>
+> **Answer the following questions in detail:**
+>
+> ---
+>
+> **PART 1: SHELL CONSTRUCTION**
+>
+> **A. How is the capsule currently built?**
+> - How does `DealDetailPage.tsx` construct the 11 F-key tabs? Walk through the `allDealScreens` array, the `fKeyMap`, and the `isModuleVisible` logic.
+> - How does keyboard navigation work? What are the event handlers?
+> - How are tabs rendered? What is the `DealScreenWrapper` and how does it decide what to show?
+> - How does the context bar (with `pipeline_stage`, `right_side`, `page_size`, `cycle_count`) work? Is it wired to real data or static?
+>
+> **B. How is it supposed to work per spec?**
+> - What does the spec say about the F-key mapping? (§4.1)
+> - What does the spec say about the module code system (M01–M35)?
+> - What does the spec say about the two-axis visibility model (archetype × use)?
+> - What does the spec say about role-based views (GP analyst vs LP investor vs lender)?
+> - What does the spec say about the "live model data room" concept?
+>
+> **C. What is the gap?**
+> - Is the F-key mapping correct per spec?
+> - Are the module IDs correct?
+> - Is the visibility model 1D or 2D?
+> - Are role-based views implemented?
+> - Is the "live model data room" implemented or just a concept?
+>
+> ---
+>
+> **PART 2: DATA MODEL & FINANCIAL ENGINE**
+>
+> **A. How does data currently flow?**
+> - Trace the data flow from `getDealFinancials` in `proforma-adjustment.service.ts`:
+>   - What does it return? What are the `Year1` and `Projections` objects?
+>   - How does `per_year_overrides` flow into the calculation?
+>   - How does `LayeredValue` resolution work? Walk through the priority: `override > agent > platform > extraction > broker`
+>   - How does `getFieldValues` resolve each field? What is `COMPUTED_AGGREGATES`?
+>   - How does the `stabilization_marker` get computed?
+>   - What is the `ComposeDealFinancials` wrapper and how does it differ from the raw `getDealFinancials`?
+>
+> **B. How is it supposed to work per spec?**
+> - What does the spec say about the LayeredValue architecture?
+> - What does the spec say about `per_year_overrides`?
+> - What does the spec say about `stabilization_marker` governance?
+> - What does the spec say about the `NOI` formula?
+> - What does the spec say about the `Compose` function vs `get` function?
+> - What does the spec say about the `ProForma` object structure?
+>
+> **C. What is the gap?**
+> - Is `per_year_overrides` read or only written?
+> - Does the `NOI` formula respect `year1.noi.om` or force `egi - total_opex`?
+> - Is `stabilization_marker` exposed in the UI?
+> - Is the `Compose` vs `get` distinction clear in the code?
+> - Does the financial engine support use-specific schemas (Retail, Office, Industrial, Land)?
+>
+> ---
+>
+> **PART 3: ASSUMPTION SYSTEM & PEDIGREE**
+>
+> **A. How do assumptions currently work?**
+> - How does the 3-layer assumption system work in the UI? (Broker / Platform / You)
+> - Is the "You" column functional? Can a user override an assumption and have it persist?
+> - How are assumption overrides saved? Where do they go in the database?
+> - Is there any UI that shows the source/provenance of an assumption?
+> - What happens when an override is set? Does it update the financial model in real-time?
+>
+> **B. How is it supposed to work per spec?**
+> - What does the spec say about the 4-layer assumption system? (Broker / Extracted / Platform / Override + Agent)
+> - What does the spec say about assumption pedigree badges?
+> - What does the spec say about the "source inspector" panel?
+> - What does the spec say about the `LayeredValue` divergence signature?
+> - What does the spec say about assumption transparency?
+>
+> **C. What is the gap?**
+> - Is the assumption system 3-layer or 4-layer?
+> - Is the "You" column functional or a placeholder?
+> - Is assumption pedigree visible anywhere in the UI?
+> - Can a user see the full priority walk for a field?
+> - Is there a divergence/collision indicator?
+>
+> ---
+>
+> **PART 4: SHARING & CAPSULES**
+>
+> **A. How does sharing currently work?**
+> - Is there a `deal_capsules` table in the database?
+> - Is there any backend service that mints a shareable capsule?
+> - What does the "Mint Share" button do in the UI? Is it functional?
+> - How are permissions controlled for a shared capsule?
+> - Is there any concept of layer-filtered sharing (evidence without thesis)?
+>
+> **B. How is it supposed to work per spec?**
+> - What does the spec say about `deal_capsules`?
+> - What does the spec say about AES encryption and shortcodes?
+> - What does the spec say about layer-filtered permissions?
+> - What does the spec say about recipient tiers (free / professional / team / enterprise)?
+> - What does the spec say about share metering (Stripe integration)?
+> - What does the spec say about the "live model data room"?
+>
+> **C. What is the gap?**
+> - Is `deal_capsules` a real table or just a TypeScript interface?
+> - Is the "Mint Share" button wired to anything?
+> - Is there any layer-filtered permission model?
+> - Is there any encryption or shortcode system?
+> - Is sharing a real feature or a UI mock?
+>
+> ---
+>
+> **PART 5: GOVERNANCE & COMPLIANCE**
+>
+> **A. How does governance currently work?**
+> - Is there an `audit_log` table?
+> - Is there an authority matrix?
+> - Is there any human-in-the-loop (HITL) architecture?
+> - Is there any role-based access control?
+> - Is there any concept of approval chains (assumption override → GP director → IC chair)?
+> - Is there any auto-escalation based on deal size or risk score?
+>
+> **B. How is it supposed to work per spec?**
+> - What does the spec say about the audit trail?
+> - What does the spec say about the authority matrix?
+> - What does the spec say about HITL requirements?
+> - What does the spec say about auto-escalation?
+> - What does the spec say about FINRA/SEC/EU AI Act compliance?
+>
+> **C. What is the gap?**
+> - Is there an audit trail or is it missing?
+> - Is there an authority matrix or is it missing?
+> - Is there any HITL enforcement?
+> - Is there any compliance architecture?
+> - Can the platform currently be deployed to an institutional LP?
+>
+> ---
+>
+> **PART 6: AI & AGENT INTEGRATION**
+>
+> **A. How do AI agents currently work?**
+> - Is there an MCP server?
+> - Is there an A2A agent card?
+> - How does the Opus AI chat panel work in F9?
+> - How does the Research Agent feed data into the capsule?
+> - Is there any standard protocol for agent-to-agent communication?
+>
+> **B. How is it supposed to work per spec?**
+> - What does the spec say about MCP server exposure?
+> - What does the spec say about A2A agent cards?
+> - What does the spec say about the Research Agent → DealContext pattern?
+> - What does the spec say about AI-native architecture?
+>
+> **C. What is the gap?**
+> - Is the platform MCP-native or ad-hoc AI?
+> - Are agents connected via standard protocols or custom wiring?
+> - Is the AI architecture extensible or monolithic?
+>
+> ---
+>
+> **PART 7: CROSS-TAB DATA FLOW**
+>
+> **A. How does data flow between tabs currently?**
+> - Does F2 Zoning signal back to F1 Overview? (e.g., "zoning constrains max units to 120")
+> - Does F3 Market signal forward to F9 Pro Forma? (e.g., market rent growth feeds into projections)
+> - Does F5 Strategy inform F9 Pro Forma? (e.g., strategy type drives the model template)
+> - Does F6 Traffic feed into F9 Pro Forma? (e.g., lease velocity drives absorption)
+> - Does F7 Design-3D feed into F9 Pro Forma? (e.g., unit count from massing drives revenue)
+> - Is there any bidirectional data flow or are tabs isolated?
+>
+> **B. How is it supposed to work per spec?**
+> - What does the spec say about cross-tab data flow?
+> - What does the spec say about the "single source of truth"?
+> - What does the spec say about the `stabilization_marker` as a binding constraint?
+>
+> **C. What is the gap?**
+> - Are tabs isolated silos or an integrated model?
+> - Is there any automatic propagation of data between tabs?
+> - Does changing an assumption in one tab update the others?
+>
+> ---
+>
+> **SUMMARY: DELIVERABLE**
+>
+> Provide a structured report with:
+> 1. **Current Architecture** — a concise description of how the Deal Capsule is actually built
+> 2. **Intended Architecture** — a concise description of how it's supposed to work per spec
+> 3. **Gap Analysis** — a prioritized list of architectural divergences, ordered by severity
+> 4. **Verdict** — Is the capsule a "live model data room" or a collection of independent tabs? Is it ready for institutional sharing? What is the minimum work needed to bridge the gap?
+>
+> Be specific. Cite line numbers, file paths, and spec section numbers. Do not summarize — show the evidence.
+
+---
+
+This prompt will produce a comprehensive architectural audit that explains the current construction vs. the intended design, with evidence from both the spec documents and the actual code.

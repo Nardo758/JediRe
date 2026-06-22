@@ -1,0 +1,41 @@
+Starting Fix 1: NOI formula (CF-01). This is a pure backend change — no UI impact. Let me read the exact code section to make the precise edit.
+
+Used 4 tools · ran 2 commands
+Fix 1 complete and pushed. Now moving to Fix 2: ProFormaTab "You" column.
+This is a UI bug fix — the "You" column has 26 inputs that render but none of them call setOverride/patchDeal. User overrides don't persist. Before I touch any UI code, let me read the exact state to understand the scope and get your approval.
+
+Used 10 tools
+I've completed the investigation on Fix 2: ProFormaTab "You" column. Here's what I found:
+The Problem
+F1 Overview shows a "3-Layer Assumptions" table (Broker | Platform | You). The "You" column is always '—' because no user overrides are ever saved.
+F9 ProFormaTab has 26+ inputs (purchase price, cap rate, exit cap, rent growth, etc.) but all of them only call local setState (setPurchasePrice, setCapRate, etc.). None call any API to persist the override to the backend.
+The backend already has the API:
+deal-assumptions.routes.ts has PATCH endpoints
+applyFinancialsOverride in proforma-adjustment.service.ts handles override writes
+The year1 JSONB supports override layer
+So the "You" column is a broken feature — the UI renders inputs but they don't save.
+What Fix 2 Requires
+This is not a layout/design change — it's wiring existing inputs to the existing API:
+Add a saveOverride function in ProFormaTab that calls POST /api/v1/deals/:id/assumptions/apply-from-module or the PATCH endpoint
+Wire the 26 input onChange handlers to call saveOverride(field, value) instead of just setState(value)
+Update F1 Overview to read the override layer from deal_assumptions.year1 instead of showing '—'
+Effort: ~1–2 days. Scope: UI bug fix, no layout changes.
+My Recommendation
+This is a critical bug — the "You" column is a core feature of the capsule's assumption transparency model. Without it, the platform can't demonstrate its core moat (field-level assumption pedigree).
+Do you want me to proceed with Fix 2, or skip to Fix 3 (cross-tab data flow — mostly backend)?
+Copy
+The profoma already has a save feature and UI.  It saves different versions of F9 profoma
+
+Thinking completed
+Correct. You're right — the ProForma has a "Save Version" flow that saves the entire model. My audit mischaracterized Fix 2 as "26 inputs, 0 mutation calls" when those inputs likely feed into the model state that gets saved on version commit.
+The real issue is simpler: F1 Overview's "You" column shows '—' because it reads the raw deal_assumptions.year1 fields (which only have Broker/Platform layers) instead of reading the latest saved user model version from the proforma versioning system.
+So Fix 2 is actually: Wire F1 Overview to read the latest saved user model version to populate the "You" column, not fix individual input mutations.
+What does the F1 Overview need to read?
+Where are the saved model versions stored? (Probably deal_versions or deal_assumptions with a version flag?)
+What's the latest version for this deal?
+What fields are in the saved model? (purchase price, cap rate, rent growth, etc.)
+Do you want me to:
+Audit the proforma versioning system to understand how saved models are stored, then wire F1 Overview to read them?
+Skip to Fix 3 (cross-tab data flow) since the versioning system exists and works?
+Something else?
+What's the priority?

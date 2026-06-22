@@ -1,0 +1,76 @@
+Here is a structured verification prompt you can paste into Replit (or send to your Replit assistant) to confirm every finding:
+
+---
+
+**PROMPT TO COPY:**
+
+> **Verify the Deal Capsule audit findings in the JediRe repository. Check each item below and report CONFIRMED or NOT FOUND with the actual line number/content.**
+>
+> **1. F-Key Keyboard Bug (P0)**
+> - Open `frontend/src/pages/DealDetailPage.tsx` around line 788
+> - Find the `fKeyMap` object
+> - Confirm whether the mapping is shifted: F3→`comps` (non-existent tab), F4→`market`, F5→`supply`, F6→`strategy`, F7→`traffic`, F8→`design-3d`, F9→`capital`, F10→`proforma`, F11→`risk`, F12→`deal-tools`
+> - Report: Is F3 mapped to `comps`? Does F12 exist (spec only defines F1–F11)?
+>
+> **2. F9 Module ID (P0)**
+> - Open `frontend/src/pages/DealDetailPage.tsx` around line 848
+> - Find the `proforma` screen definition
+> - Report: Is `moduleId` still `M08` or has it been changed to `M09`? Is `code` still `M08` or `M09`?
+>
+> **3. F10 Module ID (P0)**
+> - Open `frontend/src/pages/DealDetailPage.tsx` around line 849
+> - Find the `risk` screen definition
+> - Report: Is `moduleId` still `M13` or has it been changed to `M14`? Is `code` still `M13` or `M14`?
+>
+> **4. Visibility Model Dimensionality (P0)**
+> - Open `frontend/src/shared/config/deal-type-visibility.ts`
+> - Find the `DealType` enum/union
+> - Report: Is `DealType` a 1D enum (`existing | development | redevelopment`) or does it have a 2D `(use × archetype)` model?
+> - Check if there are any references to `assetUseType` or `dealArchetype` in the codebase
+> - Report: Are there any invalid pair checks (e.g., `land` + `stabilized`) blocked at deal creation?
+>
+> **5. F6 Land-Use Guard (P0)**
+> - Search `frontend/src/pages/DealDetailPage.tsx` and `deal-type-visibility.ts` for any check that hides F6 (Traffic) when `use === 'land'` or `use === 'Land'`
+> - Report: Does any such guard exist? If yes, where? If no, confirm it's missing.
+>
+> **6. Tab-by-Tab Content Verification (P1)**
+> For each tab, verify the gap exists by checking the component:
+> - **F1 Overview (`BloombergOverviewSection`):** Is there an "Investment Thesis" or executive narrative card? Is there a deal timeline/milestone tracker? Is the "You" column functional (does it capture edited proforma) or is it a placeholder?
+> - **F2 Zoning (`ZoningModuleSection`):** Is there a top-level "zoning verdict" card before the 6 sub-tabs? Is there a zoning risk score or entitlement timeline estimate?
+> - **F3 Market (`MarketIntelligencePage`):** Is there a "BUY/HOLD/CAUTION" market signal? Are program/amenity panels hardcoded (`AMENITIES_DEV`, `REDEV_SF_SEED`) or live?
+> - **F4 Supply (`SupplyPipelinePage`):** Are project names real or renamed submarket entries? Are developer names always "Market Segment"? Is geospatial proximity always 0 miles?
+> - **F5 Strategy (`StrategyArbitragePage`):** Are there comparable strategy overlays? Exit strategy timeline by hold period?
+> - **F6 Traffic (`TrafficModule`):** Is Review Sentiment all "—"? Are FDOT traffic counts real DOT data or from projection labels? Is there a lease expiration schedule?
+> - **F7 Design-3D (`Design3DShellPage`):** Is there any financial tie-in (TDC, equity, returns)? Is there a zoning detail panel?
+> - **F8 Capital (`ExitCapitalModule`):** Is the 21-year convergence chart empty? Are market momentum labels static? Are lender quotes hardcoded? Is there a capital stack designer or equity/waterfall?
+> - **F9 Pro Forma (`FinancialEnginePage`):** Are there use-specific schemas for Retail (NNN), Office (MG), Industrial, Land? Are `perUnit`, `perSF`, `multiples` null? Are returns/debt metrics null?
+> - **F10 Risk (`RiskDDPage`):** Are risk weights hardcoded or from M14 config? Are there financial stress tests (DSCR, debt yield)? Is there a DD checklist?
+> - **F11 Deal Tools (`DealToolsSection`):** Is there a deal stage tracker (LOI→DD→Closing)? Task assignments? Document preview? Site-visit log? IC memo?
+>
+> **7. Backend Migration Files**
+> - Check if these files exist in `backend/src/database/migrations/`:
+>   - `20260619_deal_assumptions_scope_and_type.sql`
+>   - `20260619_audit_log.sql`
+>   - `20260619_deal_capsules.sql`
+> - Check if `backend/src/types/authority-matrix.types.ts` exists
+> - Report: Do they exist? What do they contain?
+>
+> **8. `per_year_overrides` Read Path**
+> - Open `backend/src/services/proforma-adjustment.service.ts`
+> - Search for `per_year_overrides` inside the `getDealFinancials` function (around line 2194)
+> - Report: Is `per_year_overrides` actually read and used in the projections loop, debt stack, tax, S&U, or waterfall? Or is it only written and never read?
+>
+> **9. NOI Formula**
+> - Open `backend/src/services/field-access/get-field-value.service.ts`
+> - Find `COMPUTED_AGGREGATES`
+> - Report: Does `noi` compute as `egi - total_opex`? Does it read `year1.noi.om` when available, or always override?
+>
+> **10. Overall Status**
+> - Report: How many of the 50 gaps from `docs/audits/DEAL_CAPSULE_TAB_ALIGNMENT_AUDIT_2026-06-18.md` are confirmed as present in the code?
+> - Report: Are F9 and F10 moduleId fixes already applied in your local branch?
+>
+> **Please provide a concise checklist with CONFIRMED / NOT FOUND / ALREADY FIXED for each item.**
+
+---
+
+Paste that into Replit and have them run through it. They'll be able to verify every finding independently by reading the actual source code.
