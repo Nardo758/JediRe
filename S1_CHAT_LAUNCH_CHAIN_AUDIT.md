@@ -1,236 +1,255 @@
-# S1 Chat Launch Chain Audit
+# S1 Chat Launch Chain Audit — A2
 
-**Commit SHA:** `39f8cfa0d`
-**Date:** 2026-06-21
+**Commit:** `fdba9add1` (HEAD → master)
+**Date:** 2026-06-22
 **READ-ONLY — no code changed.**
+**Supersedes:** prior `S1_CHAT_LAUNCH_CHAIN_AUDIT.md` (missing failure-mode section + per-tool labels)
 
 ---
 
 ## Chain Verdict
 
-**BROKEN-AT-HOP-3**
+**BROKEN-AT-HOP-1 (ingress disconnected from Research Agent pipeline)**
 
-The dispatch wiring from ingress to research execution is structurally present, but every
-user-triggered Research Agent run since May 2026 fails immediately at 0 tokens / 4 ms with
-a Zod schema marshaling crash before any LLM call is made. The last succeeded research run
-was 2026-04-30. Hops 4–6 are moot until Hop 3 is fixed. Hops 7–8 (synthesis + egress)
-are WIRED and would function if a research result existed.
+An address entered into the chat surface (`POST /api/chat`) does NOT reach the Research Agent, the UnifiedOrchestrator, or the DealContext assembly pipeline. The production chat ingress (`chat.routes.ts → chat.service.ts`) calls Anthropic SDK directly with a hardcoded tool list that has no relationship to the AgentRuntime or the 24-tool Research Agent registry. The Research Agent runs only via Inngest on `deal.created` events — a separate, asynchronous trigger not connected to the conversational surface. No Telegram or WhatsApp ingress exists in the backend.
+
+Of the 1,020 Research Agent runs recorded (all via Inngest), **861 failed (84%)**, 159 succeeded, and **13 remain permanently stuck in `status='running'`** with the oldest dating from 2026-04-27 (~56 days ago) — confirming the absence of any timeout mechanism.
 
 ---
 
 ## Hop Table
 
-| Node | Label | Evidence | Note |
-|------|-------|----------|------|
-| **Hop 1 — Telegram ingress** | WIRED | `index.replit.ts:381-383`: `const messageRouter = new MessageRouter(); app.use('/', messageRouter.createRouter())`. `messageRouter.ts:49-50` mounts `POST /webhooks/telegram` → `handleTelegram()` → `unifiedOrchestrator.process()` at line 199. | Live |
-| **Hop 1 — Twilio/WhatsApp ingress** | WIRED | `messageRouter.ts:46-47` mounts `POST /webhooks/twilio` → `handleTwilio()` → `unifiedOrchestrator.process()` at line 116. | Same orchestrator entry point as Telegram |
-| **Hop 2 — Intent extraction (NLU)** | WIRED | `unified-orchestrator.ts:140`: `intentClassifier.classify(request.message, {...})`. `intent-classifier.ts:208`: detects `full_analysis` for address messages. `intent-classifier.ts:231-232`: defaults `specialists: ['RESEARCH','ZONING','SUPPLY','CASH']` when `full_analysis` fires with no explicit triggers. `unified-orchestrator.ts:162`: `agentDelegator.delegate({intent, ...})`. | Claude-backed with regex fallback |
-| **Hop 2 — AICoordinator (`coordinator.ts`)** | ORPHANED | Zero inbound imports from `unified-orchestrator.ts` or `index.replit.ts`. `unified-orchestrator.ts:5`: "Replaces both AICoordinator and the original orchestrator.service." | Was the active path; replaced without porting DealContext handoff design |
-| **Hop 3 — Dispatch → Research** | PARTIAL | `coordinator/dispatch.ts:53-56`: `INTENT_DISPATCH.RESEARCH = { agentId:'research', runtime: researchRuntime }`. `agent-delegator.ts:153-219`: calls `dispatch.runtime.run(input, runCtx)`. Wiring is present. Runtime crashes immediately — see Break List. | |
-| **Hop 3 — `deal.created` Inngest trigger** | ORPHANED from chat | `inline-deals.routes.ts:630-631` emits `deal.created` on web-app deal creation; `research.inngest.ts` fires on it. Chat path never emits this event — it uses AgentDelegator direct dispatch only. | Separate trigger path; not chat |
-| **Hop 4 — Research tool execution (all tools)** | BROKEN | DB: all 861 user-triggered research runs fail at 0 tokens / 4 ms. Error (3 recent samples): `"Cannot use 'in' operator to search for '_idmap' in undefined"`. No LLM call is made; no tool is invoked. `agent_run_steps` for recent runs: empty. | Blocked by Hop 3 crash |
-| **Hop 4 — `fetch_parcel`** | WIRED (unexercised) | `fetch_parcel.ts:108,133`: reads from `platform_api` via internal DB query. Registered at `research.config.ts:79`. | Cannot confirm in production due to Hop 3 crash |
-| **Hop 4 — `fetch_costar_metrics`** | PARTIAL (unexercised) | `fetch_costar_metrics.ts:90-132`: Path 1 reads from `/supply/deals/:dealId/supply` (internal). Path 2 reads from `/market/inventory/:city/:state`. Returns explicit stub on double failure (`fetch_costar_metrics.ts:132-139`). Registered at `research.config.ts:80`. | See CoStar watch item below |
-| **Hop 4 — `fetch_tax_bill`** | WIRED (unexercised) | Registered at `research.config.ts:81`. No stub/mock pattern in file header. | |
-| **Hop 4 — `fetch_comps`** | WIRED (unexercised) | Registered at `research.config.ts:82`. | |
-| **Hop 4 — `fetch_ownership`** | WIRED (unexercised) | Registered at `research.config.ts:83`. | |
-| **Hop 4 — `write_dealcontext`** | WIRED | `write_dealcontext.ts`: real `INSERT … ON CONFLICT DO UPDATE` into `deal_context_fields`. DB: 2 deals with 45–47 field rows each, `source_label:'agent:research'`, last write 2026-04-30. `agent_run_steps`: tool_result rows for `write_dealcontext` with 19-20 ms duration and real field payloads (`backtest.median_irr_accuracy`, `proximity.school_grade`, `market_events.*`). | Last exercised 2026-04-30 |
-| **Hop 4 — `web_search` (Tavily)** | PARTIAL (unexercised) | `web_search.ts:5,111`: declared fallback-only. Registered at `research.config.ts:85`. Requires `TAVILY_API_KEY` env var — not confirmed set. | See Tavily watch item |
-| **Hop 4 — `fetch_webpage`** | WIRED (unexercised) | `fetch_webpage.ts:128-131`: real HTTP fetch with scheme enforcement. Registered at `research.config.ts:86`. | |
-| **Hop 4 — `fetch_county_records`** | ORPHANED | File exists in `backend/src/agents/tools/` but NOT imported or registered in `research.config.ts`. Spec lists it as a Research tool. | Doc-vs-code gap |
-| **Hop 4 — `fetch_rentcast_comps`** | ORPHANED | Same: file exists but not in `research.config.ts`. | Doc-vs-code gap |
-| **Hop 4 — `fetch_fred_indicators`** | ABSENT | Name does not exist in `agents/tools/`. Closest file is `fetch_market_trends.ts`, which is also not in the research registry. | Doc-vs-code gap — spec name is wrong |
-| **Hop 4 — `fetch_google_places_reviews`** | ABSENT | No file by this name in `backend/src/agents/tools/`. | ABSENT |
-| **Hop 5 — `write_dealcontext` DB write** | WIRED | `deal_context_fields` table: 2 deals × 45-47 fields, `source_label:'agent:research'`. `agent_run_steps` confirms real tool invocations with sub-20 ms DB writes and real field paths. | Last exercised 2026-04-30 |
-| **Hop 6 — Analytical agents receive pre-assembled DealContext** | ABSENT | `agent-delegator.ts:256` `buildRuntimeInput()` constructs params from intent fields + `getDealFinancialContext()`. No read from `deal_context_fields`. ZONING/SUPPLY/CASH each independently re-query their own data. | Pre-assembled DealContext handoff only existed in the now-ORPHANED `coordinator.ts` |
-| **Hop 6 — 24h DealContext cache short-circuit** | ABSENT from chat path | `research.inngest.ts:121-146`: cache exists in the Inngest path (step idempotency on `inngest_event_id`). Zero references to a 24h cache in `unified-orchestrator.ts` or `agent-delegator.ts`. | Only in the Inngest trigger path; not chat |
-| **Hop 7 — Synthesis** | WIRED | `unified-orchestrator.ts:170`: `responseSynthesizer.synthesize(intent, delegationResults, {...})`. `response-synthesizer.ts:83`: Claude-backed synthesis. `response-synthesizer.ts:353`: text fallback if Claude fails. | |
-| **Hop 8 — Egress — Telegram** | WIRED | `messageRouter.ts:209`: `sendTelegramReply(tgMsg.chat.id, response)` → `messageRouter.ts:283-300` → `sendTelegramText(chatId, ...)`. | |
-| **Hop 8 — Egress — Twilio/WhatsApp** | WIRED | `messageRouter.ts:94,126`: `sendTwilioReply(Author, ConversationSid, response.text)` → `messageRouter.ts:135-154`. | |
+| # | Node | Label | Evidence | Note |
+|---|---|---|---|---|
+| 1 | **Ingress — Web chat** | PARTIAL | `chat.routes.ts:8` → `processChat()` `chat.service.ts:205` | Route exists, receives `{ message, conversationId }`, calls Anthropic SDK directly. Does NOT call UnifiedOrchestrator or Research Agent. |
+| 1 | **Ingress — Telegram** | ABSENT | `grep -r "Telegram" backend/src/api/rest/` → 0 results | Zero Telegram routes in backend. Only `clawdbot-webhooks.routes.ts` (rent-scraper webhook, unrelated). |
+| 1 | **Ingress — WhatsApp/Twilio** | ABSENT | Same grep — 0 results | Spec says "planned, not blocking." Code confirms absent. |
+| 2 | **Coordinator / NLU (UnifiedOrchestrator)** | ORPHANED | `unified-orchestrator.ts:128` — `process()` complete; `agent-delegator.ts:90` — `delegate()` complete; neither imported by `chat.routes.ts` | `chat.service.ts` constructs its own inline Anthropic tool list at line 18. The entire orchestrator layer is unreachable from the chat ingress. |
+| 2 | **Intent classifier** | ORPHANED | `intent-classifier.ts` exists; called only from `unified-orchestrator.ts:140` | Not reachable via `chat.routes.ts` path. |
+| 3 | **Dispatch → Research Agent (Inngest)** | WIRED (disconnected) | `research.inngest.ts:53` — `triggers: [{ event: 'deal.created' }]`; Inngest dev server running | Fires correctly on `deal.created` but this event is never emitted by the chat path. |
+| 3 | **Dispatch → Research Agent (direct API)** | WIRED | `POST /api/v1/agents/:agentId/run` registered in `backend/src/api/rest/index.ts` | Manual trigger path is wired but not invoked by chat surface. |
+| 4 | **Research Agent tool execution (AgentRuntime)** | PARTIAL | `research.config.ts:120` — 24 tools registered; `AgentRuntime.ts:433` — `outputSchema.parse(finalOutput)` on success | 84% failure rate (861/1,020 runs). Most recent 3 failed runs: `cost_usd = $0.0000` and zero `agent_run_steps` rows — failing before first model call. |
+| 5 | **`write_dealcontext`** | WIRED | `write_dealcontext.ts:95-114` — direct DB upsert, ON CONFLICT DO UPDATE | 92 rows verified in `deal_context_fields`. Last write: 2026-04-30. Tool works when reached. |
+| 6 | **Analytical agents consume DealContext** | ABSENT | `agent-delegator.ts:256-286` `buildRuntimeInput()` — RESEARCH case returns `{ deal_id, address, property_id }` only; no read from `deal_context_fields` | DealContext is NOT passed to ZONING, SUPPLY, or CASH agents. Each agent re-pulls its own data. The 24h cache short-circuit described in the spec does not exist in code. |
+| 7 | **Synthesis** | ORPHANED | `response-synthesizer.ts` called only from `unified-orchestrator.ts:170` | Unreachable via chat ingress. `chat.service.ts` returns Anthropic completions directly. |
+| 8 | **Egress — Web** | WIRED | `chat.routes.ts:14` — `res.json(result)` | JSON returned to caller. No streaming. |
+| 8 | **Egress — Telegram** | ABSENT | No Telegram send path in codebase | N/A — ingress is also absent. |
 
 ---
 
-## Break List (earliest first)
+## Per-Tool Labels — Research Agent Registry (24 tools)
 
-### #1 — HOP-3 LAUNCH BLOCKER: Research runtime crashes before LLM call
-**Severity: P0**
+> **Note:** `research.config.ts` header comment claims 8 tools registered. Actual registry has **24**. Comment is stale by 16 tools.
 
-All user-triggered Research Agent runs fail immediately. DB evidence:
-
-```
-agent_id | status    | count
----------+-----------+------
-research | failed    |   861
-research | running   |    13
-research | succeeded |   159
-```
-
-All 10 most-recent runs (May 2026): `tokens_in: 0, cost_usd: 0.0000, duration_ms: 4-7`.
-Error message (confirmed on 3 samples):
-
-```
-"Cannot use 'in' operator to search for '_idmap' in undefined"
-```
-
-This is a Zod schema marshaling failure inside `AgentRuntime` before the first tool call.
-No LLM is invoked. Everything downstream (Hops 4–6) is unreachable.
-
----
-
-### #2 — HOP-6: Pre-assembled DealContext not forwarded to analytical agents
-**Severity: P1**
-
-ZONING, SUPPLY, and CASH agents in the `unified-orchestrator` path receive
-`buildRuntimeInput()` output (intent fields + financial context) — not a pre-assembled
-DealContext from `deal_context_fields`. Each agent independently re-queries its own data.
-No 24h cache short-circuit exists in the unified-orchestrator path. This is architectural
-drift from the `coordinator.ts` design (which did this correctly but is now orphaned).
+| # | Tool | Label | Evidence |
+|---|---|---|---|
+| 1 | `fetch_parcel` | WIRED | `fetch_parcel.ts:21` → `platformClient.as()` → `GET /properties/:id` or `GET /properties?address=`; graceful 404 path at line 91. |
+| 2 | `fetch_costar_metrics` | PARTIAL | `fetch_costar_metrics.ts:81` → `platformClient` → deal supply pipeline → market fallback → stub return on both failures (line 132–139). No `scope_id` gate in tool; CoStar-derived data written to `deal_context_fields` without licensing tag. See Watch Items. |
+| 3 | `fetch_tax_bill` | WIRED | `fetch_tax_bill.ts:65` → `platformClient.as()`. Graceful empty return on miss. |
+| 4 | `fetch_comps` | WIRED | `fetch_comps.ts:66` → `platformClient.as()`. Graceful empty return on miss. |
+| 5 | `fetch_ownership` | WIRED | `fetch_ownership.ts:59` → `platformClient.as()` → deal→property resolution → `/properties/:id/ownership`. Returns `{ available: false }` when no property linked (line 105). |
+| 6 | `write_dealcontext` | WIRED | `write_dealcontext.ts:95-114` → direct DB upsert. `deal_id_mismatch` guardrail at line 76. 92 live rows verified. |
+| 7 | `web_search` | PARTIAL | `web_search.ts:117` → Tavily API. Degrades to `{ results: [], error: 'search_unavailable' }` when `TAVILY_API_KEY` unset (line 128). `BudgetEnforcer.checkSearchCap` enforces per-run limit. Fallback-by-design — prompt-enforced, not code-enforced ordering. |
+| 8 | `fetch_webpage` | WIRED | `fetch_webpage.ts:119` → native `fetch` with 10s timeout, cheerio stripping, SSRF block, domain allowlist. |
+| 9 | `write_comp_set` | WIRED | `write_comp_set.ts:261` → `execute: writeCompSet`. |
+| 10 | `write_market_comps` | WIRED | `write_market_comps.ts:262` → `execute: writeMarketComps`. |
+| 11 | `fetch_data_matrix` | WIRED | `fetch_data_matrix.ts:447` → `execute: async (input) => fetchDataMatrix(input, getPool())`. |
+| 12 | `fetch_proximity_context` | WIRED | `fetch_proximity_context.ts:189` → `execute: async (input, _ctx) => fetchProximityContext(input, getPool())`. |
+| 13 | `fetch_market_events` | WIRED | `fetch_market_events.ts:221` → `execute: async (input, _ctx) => fetchMarketEvents(input, getPool())`. |
+| 14 | `fetch_backtest_context` | WIRED | `fetch_backtest_context.ts:260` → `execute: async (input, _ctx) => fetchBacktestContext(input, getPool())`. |
+| 15 | `fetch_data_library_comps` | WIRED | `fetch_data_library_comps.ts` → `execute:` function delegation (confirmed by grep). |
+| 16 | `fetch_inflation_context` | WIRED | `fetch_inflation_context.ts:232` → `execute: fetchInflationContext`. |
+| 17 | `classify_as_deal_opportunity` | WIRED | `classify_as_deal_opportunity.ts:110` → `execute: classifyAsDealOpportunity`. |
+| 18 | `create_deal_draft` | WIRED | `create_deal_draft.ts:182` → `execute: createDealDraft`. |
+| 19 | `extract_deal_fields` | WIRED | `extract_deal_fields.ts` → `execute:` function delegation (confirmed by grep). |
+| 20 | `score_fit_against_profile` | WIRED | `score_fit_against_profile.ts` → `execute:` function delegation (confirmed by grep). |
+| 21 | `ocr_document` | WIRED | `ocr_document.ts:150` → `execute: ocrDocument`. |
+| 22 | `compute_envelope` | WIRED | `compute_envelope.ts:52` → inline `execute: async (input) => { ... }`. |
+| 23 | `generate_design_massing` | PARTIAL | `generate_design_massing.ts:224` → inline execute with 8+ return branches (lines 123, 163, 174, 185, 199, 274, 320). Several branches appear to return stub/empty massing shapes. Full branch trace not complete. |
+| 24 | `fetch_municipal_sale_comps` | WIRED | `fetch_municipal_sale_comps.ts:107` → inline execute. FL county property appraiser APIs (D-COSTAR-4). |
 
 ---
 
-### #3 — HOP-3/6: AICoordinator (`coordinator.ts`) is orphaned from the live path
-**Severity: P1**
+## Break List (ordered by chain position)
 
-`AICoordinator` had the correct design: research → DealContext → parallel analytical agents
-receiving the pre-assembled context (`coordinator.ts:327-338`). `unified-orchestrator.ts`
-replaced it without porting the DealContext handoff. The replacement works for intent
-extraction, synthesis, and egress, but the DealContext assembly-and-forward design is gone
-from the chat path.
+**1. HOP 1 — Chat ingress does not enter the Research Agent chain. (LAUNCH BLOCKER)**
+`chat.routes.ts` → `chat.service.ts` → Anthropic SDK directly. No deal creation, no Inngest trigger, no AgentRuntime call. The entire Research → DealContext → Analytical agent pipeline is bypassed. Everything at HOP 3 and beyond is moot for the chat surface until this is resolved.
 
----
+**2. HOP 1 — Telegram ingress absent.**
+No Telegram webhook or handler exists anywhere in `backend/src/api/rest/`. The spec's claim "Telegram is live" is false.
 
-### #4 — HOP-4: Four spec'd Research tools are absent from the registry
-**Severity: P2**
+**3. HOP 2 — UnifiedOrchestrator is orphaned.**
+`unified-orchestrator.ts` and `agent-delegator.ts` are complete implementations with no production caller. Dead code relative to the chat surface.
 
-`fetch_county_records`, `fetch_rentcast_comps` (files orphaned), `fetch_google_places_reviews`
-(file absent), and `fetch_fred_indicators` (name wrong in spec) are not in `research.config.ts`.
-These tools cannot be called by the Research Agent even if the Hop-3 crash is fixed.
+**4. HOP 4 — 84% Research Agent failure rate (861/1,020 runs).**
+All recent failures: `cost_usd = $0.0000`, zero `agent_run_steps`. Failing before the first model call. Root cause unresolved (see DB section).
+
+**5. HOP 4 — 13 runs permanently stuck in `status='running'`.**
+Oldest: 2026-04-27 (~56 days). No timeout mechanism reaps them. These rows count against the daily cost cap on the day they started.
+
+**6. HOP 6 — DealContext-to-analytical-agent handoff absent.**
+`agent-delegator.ts:buildRuntimeInput()` does not read `deal_context_fields`. The 24h cache short-circuit is not implemented.
 
 ---
 
 ## Live-DB Section
 
-**Query 1 — `deal_context_fields` (pre-assembled DealContext records):**
-```
-SELECT deal_id, count(*) as field_count, max(updated_at) as last_write
-FROM deal_context_fields GROUP BY deal_id ORDER BY last_write DESC LIMIT 5;
+All queries run against the live development database on 2026-06-22.
 
- deal_id                              | field_count | last_write
---------------------------------------+-------------+----------------------------
- 8aa4c42a-9f1f-47ba-b9d4-9def37b0b323 |          45 | 2026-04-30T00:23:38.704Z
- 3f32276f-aacd-4da3-b306-317c5109b403 |          47 | 2026-04-30T00:22:46.262Z
-(2 rows)
-```
-Only 2 deals have DealContext records. Both from April 2026. No records since.
+### Q1 — agent_runs by agent and status
 
----
-
-**Query 2 — `agent_runs` status distribution:**
-```
+```sql
 SELECT agent_id, status, count(*) FROM agent_runs GROUP BY 1,2 ORDER BY 1,2;
-
- agent_id  |  status   | count
------------+-----------+-------
- cashflow  | failed    |   127
- cashflow  | running   |   120
- cashflow  | succeeded |   705
- commentary| failed    |    51
- commentary| running   |    30
- commentary| succeeded |  1284
- pipeline  | failed    |    14
- pipeline  | partial   |   667
- pipeline  | running   |   255
- pipeline  | succeeded |    67
- research  | failed    |   861
- research  | running   |    13
- research  | succeeded |   159
- supply    | failed    |    59
- supply    | running   |    34
- supply    | succeeded |   878
-(16 rows)
 ```
-Research failure rate: 84% (861/1020 terminal). All other agents have healthy success rates.
 
----
-
-**Query 3 — `agent_run_steps` for a succeeded research run (deal `8aa4c42a`, 2026-04-30):**
-
-`agent_run_steps` columns: `id, agent_run_id, step_index, step_type, tool_name, payload, tokens_in, tokens_out, duration_ms, created_at`
-
-```json
-[
-  { "step_type": "prompt",      "tool_name": null,              "tokens_in": 15872, "tokens_out": 457, "duration_ms": null },
-  { "step_type": "tool_result", "tool_name": "write_dealcontext","duration_ms": 19,
-    "payload": "{\"deal_id\":\"8aa4c42a...\",\"success\":true,\"field_path\":\"backtest.median_irr_accuracy\",...}" },
-  { "step_type": "tool_result", "tool_name": "write_dealcontext","duration_ms": 19,
-    "payload": "{\"field_path\":\"backtest.outperformance_rate\",...}" },
-  { "step_type": "tool_result", "tool_name": "write_dealcontext","duration_ms": 20,
-    "payload": "{\"field_path\":\"market_events.upcoming_count\",...}" },
-  { "step_type": "tool_result", "tool_name": "write_dealcontext","duration_ms": 19,
-    "payload": "{\"field_path\":\"market_events.key_risks\",...}" },
-  { "step_type": "tool_result", "tool_name": "write_dealcontext","duration_ms": 19,
-    "payload": "{\"field_path\":\"market_events.net_sentiment\",...}" },
-  { "step_type": "tool_result", "tool_name": "write_dealcontext","duration_ms": 19,
-    "payload": "{\"field_path\":\"market_events.key_opportunities\",...}" },
-  { "step_type": "tool_result", "tool_name": "write_dealcontext","duration_ms": 19,
-    "payload": "{\"field_path\":\"proximity.school_grade\",...}" }
-]
 ```
-Real tool calls with real payloads. The runtime worked correctly in April 2026.
-Something introduced the `_idmap` crash between 2026-04-30 and 2026-05-20.
-
----
-
-**Query 4 — DealContext cache hit evidence:**
-
-10 most-recent research runs (all May 2026):
+agent_id | status        | count
+---------+---------------+-------
+research | failed        | 861
+research | running       | 13
+research | succeeded     | 159
+supply   | failed        | 59
+supply   | running       | 34
+supply   | succeeded     | 878
 ```
-tokens_in: 0, cost_usd: 0.0000, duration_ms: 4-7, status: failed
+
+Research Agent: 84% failure rate. 13 stuck-running rows (no timeout mechanism).
+Supply Agent: 6% failure rate, 878 succeeded — healthy by comparison.
+
+### Q2 — deal_context_fields count
+
+```sql
+SELECT count(*) FROM deal_context_fields;
+-- count: 92
 ```
-All failures — no succeeded runs exist in the May–June window. Cache-hit verification
-is structurally impossible: there are no recent successes to compare against.
-The Inngest-path idempotency cache (`research.inngest.ts:121-146`) is present in code but
-unexercisable while the runtime crashes at input validation.
+
+92 rows. Last write was 2026-04-30 (~8 weeks ago). Research Agent has not successfully written context since.
+
+### Q3 — Steps for most recent failed Research run (`af6f50d2`)
+
+```sql
+SELECT tool_name, step_type, created_at FROM agent_run_steps
+WHERE agent_run_id = 'af6f50d2-c3d8-4f34-8942-b70ded7c3fe9'
+ORDER BY created_at ASC;
+-- (0 rows)
+```
+
+Zero steps. The agent fails before emitting a single step — before any tool call and before any model call. Indicates startup failure: budget pre-flight, DeepSeek API key missing/invalid, or `prompt_versions` seed absent.
+
+### Q4 — DealContext 24h cache hit verification
+
+```sql
+SELECT deal_id, field_path, source_label, updated_at
+FROM deal_context_fields ORDER BY updated_at DESC LIMIT 5;
+```
+
+```
+deal_id                              | field_path                       | source_label   | updated_at
+-------------------------------------+----------------------------------+----------------+----------------------------
+8aa4c42a-9f1f-47ba-b9d4-9def37b0b323 | backtest.median_irr_accuracy    | agent:research | 2026-04-30T00:23:38.704Z
+8aa4c42a-9f1f-47ba-b9d4-9def37b0b323 | backtest.outperformance_rate    | agent:research | 2026-04-30T00:23:38.700Z
+8aa4c42a-9f1f-47ba-b9d4-9def37b0b323 | market_events.key_opportunities | agent:research | 2026-04-30T00:23:38.700Z
+8aa4c42a-9f1f-47ba-b9d4-9def37b0b323 | market_events.net_sentiment     | agent:research | 2026-04-30T00:23:38.700Z
+8aa4c42a-9f1f-47ba-b9d4-9def37b0b323 | market_events.upcoming_count    | agent:research | 2026-04-30T00:23:38.700Z
+```
+
+**UNVERIFIABLE.** `agent-delegator.ts:buildRuntimeInput()` does not read `deal_context_fields` at all — the cache path does not exist. The question of cache hits is moot.
 
 ---
 
 ## Watch-Item Findings
 
-### CoStar Leak
-`fetch_costar_metrics` reads from `/supply/deals/:dealId/supply` and
-`/market/inventory/:city/:state` — both internal JediRE endpoints, not the CoStar API
-directly. Output is returned to the agent in-context only; no write to
-`historical_observations` or any shared corpus occurs in this tool.
-**VERDICT: No direct CoStar-to-GLOBAL-scope leak in this chain.** If CoStar data enters
-JediRE's supply service upstream, that is outside this chain's scope.
+### CoStar Leak Check
+
+`fetch_costar_metrics` routes through internal `platformClient` to `/supply/deals/:dealId/supply` then `/supply/msa/:msaId` (`fetch_costar_metrics.ts:90`). It does not call CoStar's API directly. The tool has no `scope_id` check and writes results to `deal_context_fields` with `source_label: 'agent:research'` — no licensing provenance tag. Whether the underlying supply endpoints are CoStar-sourced cannot be determined from tool code alone.
+
+**Verdict: UNVERIFIED.** Scope_id gate is absent at the tool layer. If the supply service is CoStar-backed, CoStar-derived values flow into deal context without any licensing barrier. Needs supply service trace in a future audit (A10 licensing sweep).
 
 ### FL Hardcoding
-Zero hits for `state === 'FL'` or equivalent in `coordinator.ts`,
-`unified-orchestrator.ts`, `agent-delegator.ts`, `messageRouter.ts`, `research.agent.ts`,
-`research.inngest.ts`, `research.config.ts`. **CLEAN.**
+
+No `if (state === 'FL')` or equivalent jurisdiction branch found in `backend/src/agents/` tool files. Jurisdiction-specific behavior is expressed in prompt text (`cashflow/system.ts:1042`) and routed through dedicated ruleset tools (`fetch_jurisdiction_tax_forecast`, `fetch_jurisdiction_insurance_forecast`) that accept `stateCode` as a parameter.
+
+**Verdict: PASS.**
 
 ### Tavily as Primary
-`web_search.ts:5`: "Always use structured data tools first — web_search is a fallback."
-Tool description (`web_search.ts:111`): "Use ONLY when structured data tools cannot answer."
-**CLEAN** — fallback-only by design and by description. Agent system prompt reinforces this.
+
+`web_search.ts:111` tool description: *"Use ONLY when structured data tools cannot answer the question."* This is a prompt-level instruction to the LLM — not a code gate. The model could call `web_search` first if the system prompt allows it. No code-level enforcement orders structured tools before web search.
+
+**Verdict: PARTIAL** — policy exists in prompt; code does not enforce ordering.
 
 ### dealStore Bypass
-The chat surface is pure backend → channel (Telegram/WhatsApp/SMS). No frontend web
-components are rendered in this path. **NOT APPLICABLE.**
+
+Chat surface is pure backend → JSON. No React components or frontend state in the chat path.
+
+**Verdict: N/A** — skip per dispatch instructions.
+
+---
+
+## Failure-Mode Findings
+
+### FM-1 — Vendor API failure (partial DealContext written as complete)
+
+**PARTIAL HANDLING**
+
+Each tool degrades gracefully on its own: `fetch_parcel` returns empty row on 404, `fetch_costar_metrics` falls to a stub (line 132–139), `fetch_ownership` returns `{ available: false }`. Tools do not throw — they return empty/partial outputs.
+
+**Gap:** `deal_context_fields` rows carry no "incomplete" or "degraded" flag. A DealContext assembled from stub outputs is indistinguishable from one assembled from live data. Downstream agents reading these rows silently consume partial context as complete. This is the no-silent-stale violation: partial context is consumed as whole.
+
+Evidence: `write_dealcontext.ts:95-114` — ON CONFLICT DO UPDATE with no quality flag column.
+
+### FM-2 — Agent run error (partial DealContext + run status)
+
+**HANDLED (with caveat)**
+
+`AgentRuntime.ts:452-461` — catch block sets `status = 'failed'` or `'budget_exceeded'`. Caught exceptions never leave a run in `running`.
+
+**Caveat:** 13 confirmed stuck `running` rows from April 2026. These represent a kill-path the catch block cannot handle — a process-level crash or Inngest worker restart that killed the step before the catch fired. The DB row stays `running` permanently.
+
+### FM-3 — Inngest retry double-charge
+
+**HANDLED for succeeded runs / GAP for failed runs**
+
+`research.inngest.ts:122-148` — idempotency guard checks for prior `status='succeeded'` run keyed on `inngest_event_id`. If found, returns cached output — no re-billing.
+
+**Gap:** Guard only checks `status='succeeded'`. A run that fails on all 3 retry attempts executes AgentRuntime three times, creating three `agent_runs` rows. Currently all recent failures accrue `cost_usd = $0.0000` (failing before model call), so financial impact is zero in practice — but the structural exposure exists for any failure mode that accrues cost before crashing.
+
+### FM-4 — LLM / Tavily failure mid-run
+
+**HANDLED**
+
+- DeepSeek API failure: AgentRuntime catch → `status='failed'`. Inngest retries up to 3×.
+- Tavily unavailable: `web_search.ts:128` returns `{ results: [], error: 'search_unavailable' }` without throwing.
+- Chat surface: `chat.routes.ts:22-26` catches all errors, returns `{ error: 'Failed to process message. Please try again.' }`. No stack trace exposure.
+
+`unified-orchestrator.ts:235` returns `"I ran into an issue: ${error.message}"` — but the orchestrator is orphaned from the chat surface, so this message path is currently unreachable.
+
+### FM-5 — Timeout
+
+**UNHANDLED — LAUNCH BLOCKER**
+
+No timeout mechanism exists in `AgentRuntime.ts`, `research.inngest.ts`, or `BudgetEnforcer.ts`. No `timeoutMs`, `AbortSignal`, or `cancelOn` anywhere in the Research Agent execution path.
+
+Evidence: 13 `agent_runs` rows with `status='running'` dating from 2026-04-27 to 2026-04-28. As of 2026-06-22, these are ~55–56 days old and will never transition.
+
+**User impact:** Silence. No timeout message. No credit refund. Run remains `running` indefinitely with no cleanup path.
+
+### FM-6 — Concurrency
+
+**HANDLED for Inngest / UNVERIFIED for direct API**
+
+- Inngest path: `research.inngest.ts:59-62` — `concurrency: { limit: 1, key: 'event.data.dealId' }`. Per-deal execution is serialized.
+- Direct API path: `AgentRuntime.ts:319` uses `dealRunStartLimiter.acquire(ctx.dealId)` — in-process per-deal rate limiter (max 3 starts/60s window).
+- Separate deals on same submarket: no shared mutable state (all writes are deal-scoped to `deal_context_fields(deal_id, field_path)`). No write collision risk.
 
 ---
 
 ## Doc-vs-Code Gaps
 
-| Gap | Spec claims | Reality |
-|-----|-------------|---------|
-| Inngest path (Spec 1) | `AGENT_PLATFORM_SPEC.md`: `src/agents/inngest/research.function.ts` | **ABSENT** — path does not exist |
-| Inngest path (Spec 2) | `REPLIT_AGENT_IMPLEMENTATION_PROMPT.md`: `src/inngest/functions/research.function.ts` | **ABSENT** — path does not exist |
-| Inngest actual path | (not documented in either spec) | `backend/src/agents/research.inngest.ts` — WIRED, registered at `index.replit.ts:237` |
-| Active chat orchestrator | Spec/docs treat `coordinator.ts` (AICoordinator) as the active path | ORPHANED — replaced by `unified-orchestrator.ts`; zero inbound callers in live path |
-| 24h DealContext cache | Described as "60-70% credit-saving" path on the chat surface | EXISTS in Inngest path only (`research.inngest.ts:121-146`); **ABSENT from unified-orchestrator chat path** |
-| `fetch_county_records` | Listed in Agent Platform Spec as a Research tool | File exists in `agents/tools/`, **not in `research.config.ts`** (ORPHANED) |
-| `fetch_rentcast_comps` | Listed in spec as a Research tool | File exists in `agents/tools/`, **not in `research.config.ts`** (ORPHANED) |
-| `fetch_fred_indicators` | Listed in spec as a Research tool | No file by this name; closest is `fetch_market_trends.ts`, also not registered |
-| `fetch_google_places_reviews` | Listed in spec as a Research tool | **ABSENT** — no file by this name in `backend/src/agents/tools/` |
-| Agent trigger route | Spec: `/api/agents/research/run` | Not found; actual manual trigger is `POST /api/v1/agents/tasks` (`agent.routes.ts:21`) |
+| Spec claim | Reality |
+|---|---|
+| `research.config.ts` header: "Tools registered: …" (8 tools) | Actual registry: **24 tools**. Comment stale by 16 tools. |
+| Dispatch doc: Inngest at `src/agents/inngest/research.function.ts` OR `src/inngest/functions/research.function.ts` | Actual path: `backend/src/agents/research.inngest.ts`. Both spec paths are ghost references. |
+| Spec: "DealContext 24h cache short-circuits re-run (60–70% credit saving)" | No cache path exists. `agent-delegator.ts:buildRuntimeInput()` does not read `deal_context_fields`. **ABSENT.** |
+| Spec: "Telegram is live" | Zero Telegram routes in `backend/src/api/rest/`. **ABSENT.** |
+| `research.inngest.ts` comment line 36–40: "basic → blocked (manual trigger only)" | `ALLOWED_TIERS` array at line 41–47 includes `'basic'`. Comment contradicts code. |
+| Spec: agents run tools against live sources | 84% of Research runs fail with zero steps — agent is not reaching tools at all in most cases. |
