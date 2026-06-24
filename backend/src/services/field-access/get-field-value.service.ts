@@ -147,7 +147,7 @@ export interface DivergenceSignature {
 export interface LayeredFieldValue {
   /** Field key as it appears in deal_assumptions.year1 JSONB. */
   fieldName: string;
-  /** Year index (1 = year 1). Year-N fields not yet supported. */
+  /** Year index (1 = year 1). */
   year: number;
   /**
    * The canonical value every surface MUST display.
@@ -156,6 +156,8 @@ export interface LayeredFieldValue {
   resolved: number | null;
   /** Layer 1: operator override (highest priority). */
   override: number | null;
+  /** Layer 1b: per-year override from deal_assumptions.per_year_overrides. */
+  perYearOverride: number | null;
   /** Layer 2 (Engine A): computed aggregate value (noi, noi_after_reserves). */
   computedValue: number | null;
   /** Layer 3: agent-written value. */
@@ -336,6 +338,7 @@ function buildDivergenceSignature(
   fieldName: string,
   layers: {
     override: number | null;
+    perYearOverride: number | null;
     computedValue: number | null;
     agent: number | null;
     t12: number | null;
@@ -428,6 +431,7 @@ function resolveLayeredValue(
   lv: Record<string, unknown>,
   computedValue: number | null,
   computedFormula: string | undefined,
+  perYearOverride: number | null,
 ): Pick<LayeredFieldValue, 'resolved' | 'resolution' | 'source'> {
   const override      = extractNum(lv.override);
   const agent         = extractNum(lv.agent);
@@ -443,8 +447,6 @@ function resolveLayeredValue(
   // Agent layer overrides seeder's stored value
   if (agent != null) {
     resolved   = agent;
-    // Preserve the stored source-tag (e.g. 'agent:cashflow') if present;
-    // fall back to the coarse 'agent:cashflow' label for legacy entries.
     resolution = storedRes && storedRes.startsWith('agent') ? storedRes : 'agent:cashflow';
     source     = storedSource && storedSource.startsWith('agent') ? storedSource : 'agent:cashflow';
   }
@@ -454,6 +456,13 @@ function resolveLayeredValue(
     resolved   = computedValue;
     resolution = 'engine:cashflow';
     source     = 'engine:cashflow';
+  }
+
+  // Per-year override from deal_assumptions.per_year_overrides overrides computed/agent
+  if (perYearOverride != null && override == null) {
+    resolved   = perYearOverride;
+    resolution = 'per_year_override';
+    source     = 'per_year_override';
   }
 
   // Operator override is always final winner
@@ -489,9 +498,6 @@ export async function getFieldValue(
   options?: { raw?: boolean },
 ): Promise<LayeredFieldValue | null> {
   if (!ALLOWED_FIELDS.has(fieldName)) return null;
-  // Year-N fields are not yet supported — deal_assumptions stores only year1.
-  // Return null rather than silently returning year1 data for a different year.
-  if (year !== 1) return null;
 
   const aggDef: AggDef | undefined = !options?.raw ? COMPUTED_AGGREGATES[fieldName] : undefined;
   const aliases: string[] = FIELD_LEGACY_ALIASES[fieldName] ?? [];
@@ -506,7 +512,8 @@ export async function getFieldValue(
     .join(',\n      ');
 
   const sql = `
-    SELECT ${colExpressions}
+    SELECT ${colExpressions},
+           da.per_year_overrides
     FROM deal_assumptions da
     WHERE da.deal_id = $1::uuid
     LIMIT 1
@@ -516,6 +523,11 @@ export async function getFieldValue(
   if (res.rows.length === 0) return null;
 
   const row = res.rows[0];
+
+  // Extract per-year override for this field + year (e.g. "payroll:yr2")
+  const pyKey = `${fieldName}:yr${year}`;
+  const rawPy = row.per_year_overrides as Record<string, { value?: number | null } | null> | null;
+  const perYearOverride = rawPy?.[pyKey]?.value != null ? Number(rawPy[pyKey].value) : null;
 
   // Primary field may be absent entirely — try legacy aliases as last resort
   const primaryKey = `lv_${fieldName.replace(/-/g, '_')}`;
@@ -527,7 +539,12 @@ export async function getFieldValue(
       if (aliasLv) { lv = aliasLv; usingAlias = true; break; }
     }
   }
-  if (!lv) return null;
+  if (!lv) {
+    // No year1 data, but we might have a per-year override
+    if (perYearOverride == null) return null;
+    // Fabricate a minimal LV so the per-year override can resolve
+    lv = { resolved: perYearOverride };
+  }
 
   const override       = extractNum(lv.override);
   const agent          = extractNum(lv.agent);
@@ -561,7 +578,7 @@ export async function getFieldValue(
       // Resolve dep through its own layered chain — NOT just raw .resolved.
       // depLv deps (egi, total_opex, etc.) are not computed aggregates themselves,
       // so we pass computedValue=null (no formula to apply).
-      const { resolved: depCanonical } = resolveLayeredValue(depLv, null, undefined);
+      const { resolved: depCanonical } = resolveLayeredValue(depLv, null, undefined, null);
       if (depCanonical == null) { allDepsPresent = false; break; }
       depVals[dep] = depCanonical;
     }
@@ -571,10 +588,10 @@ export async function getFieldValue(
     }
   }
 
-  const { resolved, resolution, source } = resolveLayeredValue(lv, computedValue, computedAs);
+  const { resolved, resolution, source } = resolveLayeredValue(lv, computedValue, computedAs, perYearOverride);
 
   const divergenceSignature = buildDivergenceSignature(fieldName, {
-    override, computedValue, agent, t12, om, broker, storedResolved,
+    override, perYearOverride, computedValue, agent, t12, om, broker, storedResolved,
   }, resolved);
 
   return {
@@ -582,6 +599,7 @@ export async function getFieldValue(
     year,
     resolved,
     override,
+    perYearOverride,
     computedValue,
     agent,
     t12,
@@ -609,9 +627,6 @@ export async function getFieldValues(
   year: number = 1,
   options?: { raw?: boolean },
 ): Promise<Record<string, LayeredFieldValue | null>> {
-  // Year-N not yet supported — caller must pass year=1.
-  if (year !== 1) return Object.fromEntries(fieldNames.map(f => [f, null]));
-
   // Filter to allowed fields only
   const safeNames = fieldNames.filter(f => ALLOWED_FIELDS.has(f));
   const unsafeNames = fieldNames.filter(f => !ALLOWED_FIELDS.has(f));
@@ -636,7 +651,8 @@ export async function getFieldValues(
     .join(',\n      ');
 
   const sql = `
-    SELECT ${colExpressions}
+    SELECT ${colExpressions},
+           da.per_year_overrides
     FROM deal_assumptions da
     WHERE da.deal_id = $1::uuid
     LIMIT 1
@@ -649,6 +665,9 @@ export async function getFieldValues(
   }
 
   const row = res.rows[0];
+
+  // Extract per-year overrides for all requested fields
+  const rawPy = row.per_year_overrides as Record<string, { value?: number | null } | null> | null;
 
   // ── deal_context_fields override layer ────────────────────────────────────
   // The POST /assumptions/:fieldPath/override endpoint writes user-pinned
@@ -680,6 +699,9 @@ export async function getFieldValues(
     parseLv(row[`lv_${f.replace(/-/g, '_')}`]);
 
   for (const fieldName of safeNames) {
+    const pyKey = `${fieldName}:yr${year}`;
+    const perYearOverride = rawPy?.[pyKey]?.value != null ? Number(rawPy[pyKey].value) : null;
+
     // Primary key — fall back to legacy aliases if absent
     let lv = getLv(fieldName);
     let usingAlias = false;
@@ -689,7 +711,10 @@ export async function getFieldValues(
         if (aliasLv) { lv = aliasLv; usingAlias = true; break; }
       }
     }
-    if (!lv) { result[fieldName] = null; continue; }
+    if (!lv) {
+      if (perYearOverride == null) { result[fieldName] = null; continue; }
+      lv = { resolved: perYearOverride };
+    }
 
     // Inject context override (from deal_context_fields) if the proforma LV
     // has no override already set.  This makes POST /assumptions/:fieldPath/override
@@ -719,7 +744,7 @@ export async function getFieldValues(
         if (!depLv) { allDepsPresent = false; break; }
         // Resolve dep through its own layered chain (not just raw .resolved)
         // so operator overrides on egi/total_opex propagate into the formula.
-        const { resolved: depCanonical } = resolveLayeredValue(depLv, null, undefined);
+        const { resolved: depCanonical } = resolveLayeredValue(depLv, null, undefined, null);
         if (depCanonical == null) { allDepsPresent = false; break; }
         depVals[dep] = depCanonical;
       }
@@ -736,10 +761,11 @@ export async function getFieldValues(
       lv,
       overrideFromCtx ? null : computedValue,
       overrideFromCtx ? undefined : computedAs,
+      perYearOverride,
     );
 
     const divergenceSignature = buildDivergenceSignature(fieldName, {
-      override, computedValue, agent, t12, om, broker, storedResolved,
+      override, perYearOverride, computedValue, agent, t12, om, broker, storedResolved,
     }, resolved);
 
     // Piece D: emit ledger observation at divergence-detection time so any
@@ -758,7 +784,7 @@ export async function getFieldValues(
     }
 
     result[fieldName] = {
-      fieldName, year, resolved, override, computedValue, agent,
+      fieldName, year, resolved, override, perYearOverride, computedValue, agent,
       t12, om, broker, storedResolved, resolution, source, computedAs,
       divergenceSignature,
     };
