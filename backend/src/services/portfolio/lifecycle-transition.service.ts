@@ -181,12 +181,14 @@ async function bootstrapCorpusRow(
        parcel_id, observation_date, geography_level, observation_window,
        is_subject_property, source_signals, data_quality_tier,
        property_unit_count, property_occupancy, property_avg_rent,
-       capital_event_type, capital_event_metadata
+       capital_event_type, capital_event_metadata,
+       scope_id, redistribution_restricted
      ) VALUES (
        $1, $2::DATE, 'parcel', 'monthly',
        TRUE, ARRAY['lifecycle_transition'], 'S4',
        $3, $4, $5,
-       'status_transition', $6::jsonb
+       'status_transition', $6::jsonb,
+       'GLOBAL', FALSE
      )
      RETURNING id`,
     [

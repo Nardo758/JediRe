@@ -69,8 +69,8 @@ export async function registerUploadedFile(
     `INSERT INTO data_library_files
        (original_filename, sha256, mime_type, size_bytes,
         storage_provider, storage_bucket, storage_key,
-        document_type, parser_status, parcel_id, uploaded_by)
-     VALUES ($1, $2, $3, $4, 'r2', $5, $6, $7, 'unparsed', $8, $9)
+        document_type, parser_status, parcel_id, uploaded_by, scope_id, redistribution_restricted)
+     VALUES ($1, $2, $3, $4, 'r2', $5, $6, $7, 'unparsed', $8, $9, $10, FALSE)
      ON CONFLICT (sha256) DO NOTHING
      RETURNING id, true AS inserted`,
     [
@@ -83,6 +83,7 @@ export async function registerUploadedFile(
       docType,
       parcelId,
       meta.uploaded_by ?? null,
+      meta.uploaded_by ? 'user:' + meta.uploaded_by : 'GLOBAL',
     ],
   );
 

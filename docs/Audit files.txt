@@ -1,0 +1,56 @@
+Audit files
+
+Done. Here's what was written:
+
+S1_CHAT_LAUNCH_CHAIN_AUDIT.md — full report at HEAD 39f8cfa0d:
+
+Chain verdict: BROKEN-AT-HOP-3 (research runtime Zod crash, _idmap undefined, 0 tokens/4ms, all runs since April 2026)
+23-row hop table with file:line evidence for every node
+4 live DB queries pasted raw (agent_runs, deal_context_fields, agent_run_steps, cache check)
+All 4 watch items answered (CoStar = clean, FL = clean, Tavily = clean, dealStore = N/A)
+9 doc-vs-code gaps documented
+TODO.md — new section added: S1 Chat Launch Chain (Audit 2026-06-21) with 7 items:
+
+ID	What	Severity
+S1-01	Research runtime Zod _idmap crash — fix before anything in this chain can work	P0
+S1-02	Pre-assembled DealContext not passed to ZONING/SUPPLY/CASH in live path	P1
+S1-03	AICoordinator orphaned — DealContext handoff design was not ported to unified-orchestrator	P1
+S1-04	4 spec'd Research tools absent from research.config.ts registry	P2
+S1-05	24h cache short-circuit absent from chat path (tracks with S1-02)	P1
+S1-06	Both spec docs reference wrong Inngest function path	XS doc fix
+S1-07	Agent trigger route mismatch between spec and code	XS doc fix
+S1-01 is the one to fix first — everything downstream is blocked by it.
+
+PLUMBING_AND_INVARIANTS_AUDIT.md is written. Here's the summary:
+
+Verdict: FRAGILE-AT S2, S5, S7, S9
+
+Subsystem sweep (12 checked)
+Label	Subsystems
+WIRED	S10 (Data Library licensing primitive)
+PARTIAL	S1 (runtime), S3 (LayeredValue), S4 (DealStore bus), S5 (cache), S6 (auth-signal fallback), S8 (vendor data), S11 (Correlation Engine)
+ABSENT	S9 (scope_id — licensing gate)
+UNVERIFIED	S12 (cross-surface field read)
+Invariant conformance (13 checked)
+Result	Invariants
+PASS	I5 (compute_proforma does real math, not LLM), I7 (Tavily fallback-only)
+VIOLATED	I1 jedi_score persisted + re-read as truth · I3 liveMlillageService silent stale · I6 FL hardcoding in 4 non-ruleset files · I11 agent re-run mints version on any field write
+UNENFORCEABLE	I10 — no scope_id means Lane-B can reach shared corpus with zero mechanical resistance
+UNVERIFIED	I2, I4, I8, I9 (partial), I12, I13
+Launch-blocking shortlist (for Leon's triage)
+P0 — S9/I10: scope_id absent from all three corpus tables — no licensing barrier today
+P1 — S2: zoning.completed, supply.completed, cashflow.completed, commentary.completed all fire into void — no Inngest consumers
+P1 — S1: 1272 of 1273 agent audit rows have agent_run_id = NULL (walkthrough path never writes the run_id)
+P2 — I3: liveMlillageService.ts:190 serves stale millage silently
+P2 — I11: every cashflow agent field write mints a version snapshot
+P3 — I1: jedi_score stored and re-read as truth; I6: FL branches in 4 wrong files
+
+All four completed audits drop their reports at the repo root (/). Here's the full picture:
+
+Audit	Status	Report location
+A1 — Plumbing & Invariants	● complete	PLUMBING_AND_INVARIANTS_AUDIT.md
+A2 — S1 Chat Launch Chain	● complete	S1_CHAT_LAUNCH_CHAIN_AUDIT.md
+A3 — Unit Economics & Credit-Cost	● complete	UNIT_ECONOMICS_AUDIT.md
+A4 — Public-Ingress Security	● complete	PUBLIC_INGRESS_SECURITY_AUDIT.md
+A5–A10	○ not yet run	—
+The canonical index tracking all of these (including links to each dispatch file and report) lives at docs/audits/AUDIT_PROGRAM_INDEX.md.

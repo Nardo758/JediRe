@@ -686,8 +686,8 @@ router.post('/ingest-rows', async (req: Request, res: Response) => {
         const existingSignals: string[] = (existing.rows[0].source_signals as string[]) ?? [];
         const mergedSignals = Array.from(new Set([...existingSignals, ...newSignals]));
 
-        const assignments: string[] = ['source_signals = $1', 'updated_at = NOW()'];
-        const params: unknown[] = [mergedSignals];
+        const assignments: string[] = ['source_signals = $1', 'scope_id = $2', 'redistribution_restricted = $3', 'updated_at = NOW()'];
+        const params: unknown[] = [mergedSignals, 'GLOBAL', false];
         let idx = params.length;
 
         for (const [col, val] of Object.entries(row)) {
@@ -711,6 +711,8 @@ router.post('/ingest-rows', async (req: Request, res: Response) => {
           geography_level: geographyLevel,
           observation_window: 'monthly',
           is_subject_property: false,
+          scope_id: 'GLOBAL',
+          redistribution_restricted: false,
         };
 
         for (const [col, val] of Object.entries(row)) {
@@ -823,6 +825,8 @@ router.post('/parse-om', memUpload.single('file'), async (req: Request, res: Res
           `UPDATE historical_observations
            SET property_year_built = $1,
                source_signals = array(SELECT DISTINCT unnest(source_signals || ARRAY['om'])),
+               scope_id = 'GLOBAL',
+               redistribution_restricted = FALSE,
                updated_at = NOW()
            WHERE id = $2`,
           [yearBuilt, existing.rows[0].id],
@@ -832,8 +836,9 @@ router.post('/parse-om', memUpload.single('file'), async (req: Request, res: Res
         await pool.query(
           `INSERT INTO historical_observations
              (parcel_id, observation_date, geography_level, observation_window,
-              is_subject_property, source_signals, data_quality_tier, property_year_built)
-           VALUES ($1, $2::DATE, 'parcel', 'monthly', false, ARRAY['om'], 'C2', $3)`,
+              is_subject_property, source_signals, data_quality_tier, property_year_built,
+              scope_id, redistribution_restricted)
+           VALUES ($1, $2::DATE, 'parcel', 'monthly', false, ARRAY['om'], 'C2', $3, 'GLOBAL', FALSE)`,
           [parcelId, observationDate, yearBuilt],
         );
         logger.info('[archive/parse-om] Inserted new row with property_year_built', { parcelId, yearBuilt });
@@ -1455,8 +1460,8 @@ router.post('/upload', requireAuth, memUpload.single('file'), async (req: Reques
       `INSERT INTO data_library_files
          (original_filename, sha256, mime_type, size_bytes,
           storage_provider, storage_key,
-          document_type, parser_status, parcel_id, uploaded_by)
-       VALUES ($1, $2, $3, $4, 'local', $5, $6, 'unparsed', $7, $8)
+          document_type, parser_status, parcel_id, uploaded_by, scope_id, redistribution_restricted)
+       VALUES ($1, $2, $3, $4, 'local', $5, $6, 'unparsed', $7, $8, $9, FALSE)
        RETURNING id`,
       [
         file.originalname,
@@ -1467,6 +1472,7 @@ router.post('/upload', requireAuth, memUpload.single('file'), async (req: Reques
         docType,
         parcelId,
         userId,
+        userId ? 'user:' + userId : 'GLOBAL',
       ],
     );
     const fileId = fileRes.rows[0].id as string;

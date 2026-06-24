@@ -174,12 +174,12 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
       const sha256 = await computeFileSha256(f.path);
       return dbQuery(
         `INSERT INTO data_library_files
-           (original_filename, sha256, mime_type, size_bytes, asset_id, uploaded_by, parser_status)
-         VALUES ($1, $2, $3, $4, $5, $6, 'unparsed')
+           (original_filename, sha256, mime_type, size_bytes, asset_id, uploaded_by, parser_status, scope_id, redistribution_restricted)
+         VALUES ($1, $2, $3, $4, $5, $6, 'unparsed', $7, FALSE)
          ON CONFLICT (sha256) DO UPDATE
            SET asset_id = COALESCE(data_library_files.asset_id, EXCLUDED.asset_id)
          RETURNING id`,
-        [f.originalname, sha256, f.mimetype || 'application/octet-stream', f.size || 0, assetId ?? null, req.user!.userId],
+        [f.originalname, sha256, f.mimetype || 'application/octet-stream', f.size || 0, assetId ?? null, req.user!.userId, req.user!.userId ? 'user:' + req.user!.userId : 'GLOBAL'],
       );
     })
   ).then(results => {
@@ -256,10 +256,10 @@ router.post('/zip', requireAuth, upload.single('file'), async (req: Authenticate
     computeFileSha256(file.path).then(sha256 =>
       dbQuery(
         `INSERT INTO data_library_files
-           (original_filename, sha256, mime_type, size_bytes, asset_id, uploaded_by, parser_status)
-         VALUES ($1, $2, $3, $4, $5, $6, 'unparsed')
+           (original_filename, sha256, mime_type, size_bytes, asset_id, uploaded_by, parser_status, scope_id, redistribution_restricted)
+         VALUES ($1, $2, $3, $4, $5, $6, 'unparsed', $7, FALSE)
          ON CONFLICT (sha256) DO NOTHING`,
-        [file.originalname, sha256, file.mimetype || 'application/zip', file.size || 0, assetId, req.user!.userId],
+        [file.originalname, sha256, file.mimetype || 'application/zip', file.size || 0, assetId, req.user!.userId, req.user!.userId ? 'user:' + req.user!.userId : 'GLOBAL'],
       )
     ).catch(err => {
       const code = (err as any)?.code;

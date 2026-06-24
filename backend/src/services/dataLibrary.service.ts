@@ -115,8 +115,8 @@ export class DataLibraryService {
 
     const result = await this.pool.query(
       `INSERT INTO data_library_files
-        (user_id, deal_id, asset_id, file_name, file_path, file_size, mime_type, city, zip_code, property_type, property_height, year_built, unit_count, source_type, tags)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        (user_id, deal_id, asset_id, file_name, file_path, file_size, mime_type, city, zip_code, property_type, property_height, year_built, unit_count, source_type, tags, scope_id, redistribution_restricted)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
        RETURNING *`,
       [
         params.userId || null,
@@ -134,6 +134,8 @@ export class DataLibraryService {
         params.unitCount || null,
         params.sourceType || 'owned',
         JSON.stringify(params.tags || []),
+        params.userId ? 'user:' + params.userId : 'GLOBAL',
+        false,
       ]
     );
 

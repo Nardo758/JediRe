@@ -1372,6 +1372,10 @@ async function mirrorFileIntoDataLibrary(
     [ctx.filePath],
   );
 
+  const isLicensedVendor = result.documentType.startsWith('COSTAR_');
+  const redistributionRestricted = isLicensedVendor;
+  const scopeId = userId ? 'user:' + userId : 'GLOBAL';
+
   if (existing.rows.length > 0) {
     await pool.query(
       `UPDATE data_library_files SET
@@ -1384,7 +1388,9 @@ async function mirrorFileIntoDataLibrary(
          parsed_data = COALESCE(parsed_data, '{}'::jsonb) || $11::jsonb,
          parsing_status = 'complete',
          parsing_stage = 'routed',
-         parsing_errors = NULL
+         parsing_errors = NULL,
+         scope_id = $12,
+         redistribution_restricted = $13
        WHERE id = $1`,
       [
         existing.rows[0].id,
@@ -1396,6 +1402,8 @@ async function mirrorFileIntoDataLibrary(
         JSON.stringify(tags),
         isOm && omData ? JSON.stringify(omData) : null,
         JSON.stringify({ [result.documentType]: { summary, warnings: result.warnings, routed_at: new Date().toISOString() } }),
+        scopeId,
+        redistributionRestricted,
       ],
     );
     return;
@@ -1406,11 +1414,11 @@ async function mirrorFileIntoDataLibrary(
        (user_id, file_name, file_path, file_size, mime_type,
         city, year_built, unit_count, source_type, tags,
         parsed_data, om_extraction,
-        parsing_status, parsing_stage, parsing_errors)
+        parsing_status, parsing_stage, parsing_errors, scope_id, redistribution_restricted)
      VALUES ($1, $2, $3, $4, $5,
              $6, $7, $8, $9, $10::jsonb,
              $11::jsonb, $12::jsonb,
-             'complete', 'routed', NULL)`,
+             'complete', 'routed', NULL, $13, $14)`,
     [
       userId,
       ctx.filename,
@@ -1422,6 +1430,8 @@ async function mirrorFileIntoDataLibrary(
       JSON.stringify(tags),
       JSON.stringify({ [result.documentType]: { summary, warnings: result.warnings, routed_at: new Date().toISOString() } }),
       isOm && omData ? JSON.stringify(omData) : null,
+      scopeId,
+      redistributionRestricted,
     ],
   );
 }

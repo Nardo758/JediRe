@@ -222,14 +222,16 @@ export class CorpusMacroIngestor {
            msa_fed_funds_rate, msa_treasury_10y,
            msa_employment_total, msa_employment_growth_yoy, msa_unemployment_rate,
            source_signals, signal_freshness_days,
-           is_subject_property, realization_complete, data_quality_tier
+           is_subject_property, realization_complete, data_quality_tier,
+           scope_id, redistribution_restricted
          )
          SELECT
            $1, 'msa', $2::date, 'monthly',
            $3::numeric, $4::numeric,
            $5::numeric, $6::numeric, $7::numeric,
            $8::text[], '{}'::jsonb,
-           FALSE, FALSE, 'verified'
+           FALSE, FALSE, 'verified',
+           'GLOBAL', FALSE
          WHERE NOT EXISTS (SELECT 1 FROM updated)`,
         [
           msa.msaId,

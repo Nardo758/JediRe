@@ -196,6 +196,8 @@ async function upsertCorpusRow(
     is_subject_property: isSubjectProperty,
     source_signals: newSignals,
     data_quality_tier: computeTier(newSignals),
+    scope_id: 'GLOBAL',
+    redistribution_restricted: false,
     ...(dealId ? { deal_id: dealId } : {}),
     ...fields,
   };
@@ -402,8 +404,8 @@ async function upsertSubmarketCorpusRow(
     const existingSignals: string[] = (existing.rows[0].source_signals as string[]) ?? [];
     const mergedSignals = Array.from(new Set([...existingSignals, ...newSignals]));
 
-    const assignments: string[] = ['source_signals = $1', 'updated_at = NOW()'];
-    const params: unknown[] = [mergedSignals];
+    const assignments: string[] = ['source_signals = $1', 'scope_id = $2', 'redistribution_restricted = $3', 'updated_at = NOW()'];
+    const params: unknown[] = [mergedSignals, 'GLOBAL', true];
     let idx = params.length;
 
     for (const [key, val] of Object.entries(fields)) {
@@ -439,6 +441,7 @@ async function upsertSubmarketCorpusRow(
     geography_level: 'submarket',
     observation_window: 'quarterly',
     is_subject_property: false,
+    scope_id: 'GLOBAL',
     redistribution_restricted: true,
     source_signals: newSignals,
     data_quality_tier: 'S4',
