@@ -14,6 +14,7 @@
 
 import { z } from 'zod';
 import { Pool } from 'pg';
+import { getPool } from '../../database/connection';
 import { getInflationEngineService, InflationContext } from '../../services/inflation';
 
 export const fetchInflationContextSchema = z.object({
@@ -228,8 +229,8 @@ Use this tool to:
 - Budget construction/CapEx contingencies
 - Identify inflation-related risks`,
   
-  parameters: fetchInflationContextSchema,
-  execute: fetchInflationContext
+  inputSchema: fetchInflationContextSchema,
+  execute: async (input, _ctx) => fetchInflationContext(input, getPool())
 };
 
 
