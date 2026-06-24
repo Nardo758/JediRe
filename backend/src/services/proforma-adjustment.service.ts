@@ -4851,11 +4851,9 @@ export async function getDealFinancials(
       const _ltlPctThisYear = _ltlPyOvr != null ? _ltlPyOvr : (_lossToLeaseByYear[yr - 1] ?? _ltlT12);
       const lossToLease = Math.round(gpr * _ltlPctThisYear);
       const concessions = Math.round(gpr * concPct);
-      // W-04: eviction_moratorium per-year constraint overrides base bad_debt_pct for moratorium years
-      const effectiveBadDebtPct = projPyOvr('bad_debt_pct') ?? badDebtPct;
-      const badDebt     = Math.round(gpr * effectiveBadDebtPct);
       const nru         = Math.round(gpr * nruPct);
-      const nri         = gpr - vacancyLoss - lossToLease - concessions - badDebt - nru;
+
+      // PF-03: Calculate otherIncome before badDebt so badDebt uses EGI base
       const otherIncOvr = projPyOvr('other_income');
       const otherIncome = otherIncOvr != null
         ? Math.round(otherIncOvr)
@@ -4863,6 +4861,15 @@ export async function getDealFinancials(
       runOtherIncPU     = otherIncOvr != null
         ? otherIncOvr / Math.max(1, totalUnits * 12)
         : runOtherIncPU * (1 + rentGrowthStep);
+
+      const preBdNri    = gpr - vacancyLoss - lossToLease - concessions - nru;
+      const preBdEgi    = preBdNri + otherIncome;
+
+      // W-04: eviction_moratorium per-year constraint overrides base bad_debt_pct for moratorium years
+      const effectiveBadDebtPct = projPyOvr('bad_debt_pct') ?? badDebtPct;
+      const badDebt     = Math.round(preBdEgi * effectiveBadDebtPct);
+
+      const nri         = gpr - vacancyLoss - lossToLease - concessions - badDebt - nru;
       const egi         = nri + otherIncome;
 
       // Expenses — override-aware running-base compounding using per-line layered rates.

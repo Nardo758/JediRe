@@ -552,19 +552,22 @@ export async function getFieldValue(
   const om             = extractNum(lv.om);
   const broker         = extractNum(lv.broker);
   const storedResolved = extractNum(lv.resolved);
+  const storedSource   = typeof lv.source === 'string' ? lv.source : null;
+  const omSourced      = storedSource === 'om';
 
   // Compute Engine A formula if applicable.
   // Dependency resolution: each dep is resolved through its own layered chain
   // (override > agent > storedResolved) so operator overrides on egi/total_opex
   // propagate correctly into the NOI computation.
   // Skip formula if using a legacy alias — aliases store scalar resolved only.
-  // CF-01 fix: only compute when (a) no stored resolved value exists, OR
-  // (b) a dependency has been explicitly overridden. This prevents the computed
-  // formula from clobbering a stored OM-extracted value (year1.noi.om) when the
-  // user has not changed any dependency.
+  // DC-30: Preserve OM-extracted values (storedSource === 'om') unless the user
+  // explicitly overrides the field itself. This prevents the computed formula
+  // from clobbering a reference OM value when the user changes dependencies.
+  // CF-01: only compute when (a) no stored resolved value exists, OR
+  // (b) a dependency has been explicitly overridden.
   let computedValue: number | null = null;
   let computedAs: string | undefined;
-  if (aggDef && !usingAlias && override == null) {
+  if (aggDef && !usingAlias && override == null && !omSourced) {
     const depVals: Record<string, number> = {};
     let allDepsPresent = true;
     let hasDepOverride = false;
@@ -731,24 +734,32 @@ export async function getFieldValues(
     const om            = extractNum(lv.om);
     const broker        = extractNum(lv.broker);
     const storedResolved = extractNum(lv.resolved);
+    const storedSource   = typeof lv.source === 'string' ? lv.source : null;
+    const omSourced      = storedSource === 'om';
 
     let computedValue: number | null = null;
     let computedAs: string | undefined;
     const aggDef: AggDef | undefined = !options?.raw ? COMPUTED_AGGREGATES[fieldName] : undefined;
 
-    if (aggDef && !usingAlias && override == null) {
+    // DC-30: Preserve OM-extracted values (storedSource === 'om') unless the user
+    // explicitly overrides the field itself. Also match CF-01: only compute when
+    // (a) no stored resolved value exists, OR (b) a dependency has been overridden.
+    if (aggDef && !usingAlias && override == null && !omSourced) {
       const depVals: Record<string, number> = {};
       let allDepsPresent = true;
+      let hasDepOverride = false;
       for (const dep of aggDef.deps) {
         const depLv = getLv(dep);
         if (!depLv) { allDepsPresent = false; break; }
+        const depOverride = extractNum(depLv.override);
+        if (depOverride != null) hasDepOverride = true;
         // Resolve dep through its own layered chain (not just raw .resolved)
         // so operator overrides on egi/total_opex propagate into the formula.
         const { resolved: depCanonical } = resolveLayeredValue(depLv, null, undefined, null);
         if (depCanonical == null) { allDepsPresent = false; break; }
         depVals[dep] = depCanonical;
       }
-      if (allDepsPresent) {
+      if (allDepsPresent && (hasDepOverride || storedResolved == null)) {
         computedValue = aggDef.compute(depVals);
         computedAs    = aggDef.formula;
       }
