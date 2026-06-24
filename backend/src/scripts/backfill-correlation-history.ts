@@ -54,9 +54,9 @@ async function main() {
     const res = await pool.query(
       `INSERT INTO correlation_history
          (metric_a, metric_b, geography_type, geography_id, window_months,
-          computed_at, computed_date, correlation_r, p_value, sample_size, observation_start, observation_end)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, $9, $10, $11, $12)
-       ON CONFLICT (metric_a, metric_b, geography_type, COALESCE(geography_id, ''), window_months, computed_date)
+          computed_at, computed_date, correlation_r, p_value, sample_size, observation_start, observation_end, scope_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, $9, $10, $11, $12, 'GLOBAL')
+       ON CONFLICT (scope_id, metric_a, metric_b, geography_type, COALESCE(geography_id, ''), window_months, computed_date)
        DO NOTHING`,
       [
         row.metric_a,

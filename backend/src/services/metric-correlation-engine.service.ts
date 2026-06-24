@@ -200,17 +200,17 @@ export class MetricCorrelationEngine {
     const bestEntry = sweep.sweepResults.find(s => s.lagMonths === sweep.bestLag);
 
     await this.pool.query(
+      `DELETE FROM metric_correlations
+       WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id = $4 AND window_months = $5 AND scope_id = 'GLOBAL'`
+      ,
+      [metricA, metricB, geoType, geoId, windowMonths],
+    );
+    await this.pool.query(
       `INSERT INTO metric_correlations
        (metric_a, metric_b, geography_type, geography_id, window_months,
-        correlation_r, lead_lag_months, p_value, sample_size, computed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-       ON CONFLICT (metric_a, metric_b, geography_type, geography_id, window_months)
-       DO UPDATE SET
-         correlation_r = EXCLUDED.correlation_r,
-         lead_lag_months = EXCLUDED.lead_lag_months,
-         p_value = EXCLUDED.p_value,
-         sample_size = EXCLUDED.sample_size,
-         computed_at = NOW()`,
+        correlation_r, lead_lag_months, p_value, sample_size, computed_at, scope_id, redistribution_restricted)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), 'GLOBAL', FALSE)`
+      ,
       [
         metricA, metricB, geoType, geoId, windowMonths,
         sweep.bestR, sweep.bestLag,
@@ -248,17 +248,17 @@ export class MetricCorrelationEngine {
     const pValue = this.approximatePValue(r, n);
 
     await this.pool.query(
+      `DELETE FROM metric_correlations
+       WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id = $4 AND window_months = $5 AND scope_id = 'GLOBAL'`
+      ,
+      [metricA, metricB, geoType, geoId, windowMonths],
+    );
+    await this.pool.query(
       `INSERT INTO metric_correlations
        (metric_a, metric_b, geography_type, geography_id, window_months,
-        correlation_r, lead_lag_months, p_value, sample_size, computed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-       ON CONFLICT (metric_a, metric_b, geography_type, geography_id, window_months)
-       DO UPDATE SET
-         correlation_r = EXCLUDED.correlation_r,
-         lead_lag_months = EXCLUDED.lead_lag_months,
-         p_value = EXCLUDED.p_value,
-         sample_size = EXCLUDED.sample_size,
-         computed_at = NOW()`,
+        correlation_r, lead_lag_months, p_value, sample_size, computed_at, scope_id, redistribution_restricted)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), 'GLOBAL', FALSE)`
+      ,
       [metricA, metricB, geoType, geoId, windowMonths, r, lagMonths, pValue, n],
     );
     return true;
@@ -315,7 +315,7 @@ export class MetricCorrelationEngine {
     geoType?: string,
     geoId?: string,
   ): Promise<any[]> {
-    let query = `SELECT * FROM metric_correlations WHERE 1=1`;
+    let query = `SELECT * FROM metric_correlations WHERE scope_id = 'GLOBAL'`;
     const params: any[] = [];
 
     if (metricA) {

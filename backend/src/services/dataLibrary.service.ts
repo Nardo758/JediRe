@@ -12,6 +12,7 @@ export interface DataLibraryFile {
   id: number;
   user_id: string | null;
   deal_id: string | null;
+  scope_id: string;
   redistribution_restricted: boolean;
   file_name: string;
   file_path: string;

@@ -51,6 +51,8 @@ export interface MetricCorrelation {
   p_value: number | null;
   sample_size: number;
   computed_at: string;
+  scope_id: string;
+  redistribution_restricted: boolean;
 }
 
 interface MarketSnapshot {
@@ -408,20 +410,30 @@ export class CorrelationEngineService {
     }
   }
 
-  async computeTimeSeriesCorrelations(geographyType: string, geographyId: string, windowMonths: number = 36): Promise<void> {
+  async computeTimeSeriesCorrelations(
+    geographyType: string,
+    geographyId: string,
+    windowMonths: number = 36,
+    scope: string = 'GLOBAL'
+  ): Promise<void> {
     try {
+      const scopeClause = scope === 'GLOBAL'
+        ? "AND scope_id = 'GLOBAL'"
+        : "AND scope_id IN ('GLOBAL', $3)";
+      const scopeParam = scope === 'GLOBAL' ? [] : [scope];
+
       // Step 1: Get all metrics with sufficient data for this geography
       const metricsRes = await this.pool.query(
         `SELECT DISTINCT metric_id, COUNT(*) as points
          FROM metric_time_series
-         WHERE geography_type = $1 AND geography_id = $2
+         WHERE geography_type = $1 AND geography_id = $2 ${scopeClause}
          GROUP BY metric_id
          HAVING COUNT(*) >= 12`,
-        [geographyType, geographyId]
+        [geographyType, geographyId, ...scopeParam]
       );
 
       const metrics = metricsRes.rows.map((r: any) => r.metric_id);
-      logger.info(`Found ${metrics.length} metrics with sufficient data for ${geographyType}:${geographyId}`);
+      logger.info(`Found ${metrics.length} metrics with sufficient data for ${geographyType}:${geographyId} (scope=${scope})`);
 
       if (metrics.length < 2) {
         logger.warn(`Insufficient metrics (${metrics.length}) to compute correlations`);
@@ -440,7 +452,8 @@ export class CorrelationEngineService {
             metricB,
             geographyType,
             geographyId,
-            windowMonths
+            windowMonths,
+            scope
           );
 
           if (correlation) {
@@ -452,13 +465,13 @@ export class CorrelationEngineService {
       // Get geography name for logging
       const geoRes = await this.pool.query(
         `SELECT geography_name FROM metric_time_series
-         WHERE geography_type = $1 AND geography_id = $2
+         WHERE geography_type = $1 AND geography_id = $2 ${scopeClause}
          LIMIT 1`,
-        [geographyType, geographyId]
+        [geographyType, geographyId, ...scopeParam]
       );
       const geoName = geoRes.rows[0]?.geography_name || geographyId;
 
-      logger.info(`Computed ${correlationCount} correlations for ${geoName}`);
+      logger.info(`Computed ${correlationCount} correlations for ${geoName} (scope=${scope})`);
     } catch (error) {
       logger.error(`Error in computeTimeSeriesCorrelations: ${String(error)}`);
       throw error;
@@ -470,10 +483,16 @@ export class CorrelationEngineService {
     rawMetricB: string,
     geographyType: string,
     geographyId: string,
-    windowMonths: number
+    windowMonths: number,
+    scope: string = 'GLOBAL'
   ): Promise<boolean> {
     const [metricA, metricB] = [rawMetricA, rawMetricB].sort();
     try {
+      const scopeClause = scope === 'GLOBAL'
+        ? "AND scope_id = 'GLOBAL'"
+        : "AND scope_id IN ('GLOBAL', $5)";
+      const scopeParam = scope === 'GLOBAL' ? [] : [scope];
+
       const windowClause = windowMonths > 0
         ? `AND ts_a.period_date >= (NOW() - INTERVAL '${windowMonths} months')`
         : '';
@@ -481,13 +500,13 @@ export class CorrelationEngineService {
         `WITH ts_a AS (
            SELECT period_date, value as val_a
            FROM metric_time_series
-           WHERE metric_id = $1 AND geography_type = $2 AND geography_id = $3
+           WHERE metric_id = $1 AND geography_type = $2 AND geography_id = $3 ${scopeClause}
            ORDER BY period_date
          ),
          ts_b AS (
            SELECT period_date, value as val_b
            FROM metric_time_series
-           WHERE metric_id = $4 AND geography_type = $2 AND geography_id = $3
+           WHERE metric_id = $4 AND geography_type = $2 AND geography_id = $3 ${scopeClause}
            ORDER BY period_date
          )
          SELECT ts_a.period_date, ts_a.val_a, ts_b.val_b
@@ -496,7 +515,7 @@ export class CorrelationEngineService {
          WHERE ts_a.val_a IS NOT NULL AND ts_b.val_b IS NOT NULL
          ${windowClause}
          ORDER BY ts_a.period_date`,
-        [metricA, geographyType, geographyId, metricB]
+        [metricA, geographyType, geographyId, metricB, ...scopeParam]
       );
 
       const data = dataRes.rows;
@@ -520,26 +539,28 @@ export class CorrelationEngineService {
       const obsStart = data[0]?.period_date || null;
       const obsEnd = data[data.length - 1]?.period_date || null;
 
+      const restricted = scope !== 'GLOBAL';
+
       await this.pool.query(
         `DELETE FROM metric_correlations
-         WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id = $4 AND window_months = $5`,
-        [metricA, metricB, geographyType, geographyId, windowMonths]
+         WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id = $4 AND window_months = $5 AND scope_id = $6`,
+        [metricA, metricB, geographyType, geographyId, windowMonths, scope]
       );
       await this.pool.query(
         `INSERT INTO metric_correlations
-         (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, observation_start, observation_end, computed_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
-        [metricA, metricB, geographyType, geographyId, windowMonths, correlation.r, lagResults.bestLag, pValue, n, obsStart, obsEnd]
+         (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, observation_start, observation_end, computed_at, scope_id, redistribution_restricted)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13)`,
+        [metricA, metricB, geographyType, geographyId, windowMonths, correlation.r, lagResults.bestLag, pValue, n, obsStart, obsEnd, scope, restricted]
       );
 
       // Append to correlation_history (Task #919) — append-only, one row per calendar day per pair
       await this.pool.query(
         `INSERT INTO correlation_history
-         (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, p_value, sample_size, observation_start, observation_end)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         ON CONFLICT (metric_a, metric_b, geography_type, COALESCE(geography_id, ''), window_months, computed_date)
+         (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, p_value, sample_size, observation_start, observation_end, scope_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT (scope_id, metric_a, metric_b, geography_type, COALESCE(geography_id, ''), window_months, computed_date)
          DO NOTHING`,
-        [metricA, metricB, geographyType, geographyId, windowMonths, correlation.r, pValue, n, obsStart, obsEnd]
+        [metricA, metricB, geographyType, geographyId, windowMonths, correlation.r, pValue, n, obsStart, obsEnd, scope]
       ).catch(err => {
         // Non-fatal: table may not exist yet (migration pending)
         logger.warn(`correlation_history insert skipped: ${String(err?.message ?? err)}`);
@@ -641,9 +662,10 @@ export class CorrelationEngineService {
     try {
       const result = await this.pool.query(
         `SELECT id, metric_a, metric_b, geography_type, geography_id, window_months,
-                correlation_r, lead_lag_months, p_value, sample_size, computed_at
+                correlation_r, lead_lag_months, p_value, sample_size, computed_at,
+                scope_id, redistribution_restricted
          FROM metric_correlations
-         WHERE geography_type = $1 AND geography_id = $2
+         WHERE geography_type = $1 AND geography_id = $2 AND scope_id = 'GLOBAL'
          ORDER BY ABS(correlation_r) DESC`,
         [geographyType, geographyId]
       );
@@ -667,9 +689,10 @@ export class CorrelationEngineService {
 
       if (targetMetric) {
         query = `SELECT id, metric_a, metric_b, geography_type, geography_id, window_months,
-                        correlation_r, lead_lag_months, p_value, sample_size, computed_at
+                        correlation_r, lead_lag_months, p_value, sample_size, computed_at,
+                        scope_id, redistribution_restricted
                  FROM metric_correlations
-                 WHERE geography_type = $1 AND geography_id = $2
+                 WHERE geography_type = $1 AND geography_id = $2 AND scope_id = 'GLOBAL'
                    AND (metric_a = $3 OR metric_b = $3)
                    AND ABS(correlation_r) >= $4
                  ORDER BY ABS(correlation_r) DESC
@@ -677,9 +700,10 @@ export class CorrelationEngineService {
         params = [geographyType, geographyId, targetMetric, minAbsR, limit];
       } else {
         query = `SELECT id, metric_a, metric_b, geography_type, geography_id, window_months,
-                        correlation_r, lead_lag_months, p_value, sample_size, computed_at
+                        correlation_r, lead_lag_months, p_value, sample_size, computed_at,
+                        scope_id, redistribution_restricted
                  FROM metric_correlations
-                 WHERE geography_type = $1 AND geography_id = $2
+                 WHERE geography_type = $1 AND geography_id = $2 AND scope_id = 'GLOBAL'
                    AND ABS(correlation_r) >= $3
                  ORDER BY ABS(correlation_r) DESC
                  LIMIT $4`;
@@ -707,11 +731,13 @@ export class CorrelationEngineService {
 
       const result = await this.pool.query(
         `SELECT id, metric_a, metric_b, geography_type, geography_id, window_months,
-                correlation_r, lead_lag_months, p_value, sample_size, computed_at
+                correlation_r, lead_lag_months, p_value, sample_size, computed_at,
+                scope_id, redistribution_restricted
          FROM metric_correlations
          WHERE (geography_type, geography_id) IN (
            SELECT unnest($1::text[]), unnest($2::text[])
          )
+         AND scope_id = 'GLOBAL'
          AND ABS(correlation_r) >= $3
          ORDER BY geography_type, geography_id, ABS(correlation_r) DESC`,
         [geoTypes, geoIds, minAbsR]
@@ -759,6 +785,7 @@ export class CorrelationEngineService {
                 MAX(computed_at) as newest_computed_at,
                 ROUND(AVG(ABS(correlation_r))::numeric, 4) as avg_abs_r
          FROM metric_correlations
+         WHERE scope_id = 'GLOBAL'
          GROUP BY geography_type, geography_id
          ORDER BY MAX(computed_at) ASC`
       );
@@ -867,29 +894,30 @@ export class CorrelationEngineService {
                   COUNT(*) as geo_count
            FROM metric_correlations
            WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3
-             AND geography_id IS NOT NULL AND window_months = $4`,
+             AND geography_id IS NOT NULL AND window_months = $4
+             AND scope_id = 'GLOBAL'`,
           [mA, mB, scope, windowMonths]
         );
         const agg = aggRes.rows[0];
         if (agg && parseInt(agg.geo_count) > 0) {
           await this.pool.query(
             `DELETE FROM metric_correlations
-             WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id IS NULL AND window_months = $4`,
+             WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id IS NULL AND window_months = $4 AND scope_id = 'GLOBAL'`,
             [mA, mB, scope, windowMonths]
           );
           await this.pool.query(
             `INSERT INTO metric_correlations
-             (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, observation_start, observation_end, computed_at)
-             VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9, $10, NOW())`,
+             (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, observation_start, observation_end, computed_at, scope_id, redistribution_restricted)
+             VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9, $10, NOW(), 'GLOBAL', FALSE)`,
             [mA, mB, scope, windowMonths, parseFloat(agg.avg_r), parseInt(agg.avg_lag) || 0, parseFloat(agg.avg_p), parseInt(agg.total_samples), agg.obs_start, agg.obs_end]
           );
 
           // Append aggregated correlation to correlation_history (Task #919)
           await this.pool.query(
             `INSERT INTO correlation_history
-             (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, p_value, sample_size, observation_start, observation_end)
-             VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9)
-             ON CONFLICT (metric_a, metric_b, geography_type, COALESCE(geography_id, ''), window_months, computed_date)
+             (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, p_value, sample_size, observation_start, observation_end, scope_id)
+             VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9, 'GLOBAL')
+             ON CONFLICT (scope_id, metric_a, metric_b, geography_type, COALESCE(geography_id, ''), window_months, computed_date)
              DO NOTHING`,
             [mA, mB, scope, windowMonths, parseFloat(agg.avg_r), parseFloat(agg.avg_p), parseInt(agg.total_samples), agg.obs_start, agg.obs_end]
           ).catch((err: unknown) => {
@@ -916,7 +944,7 @@ export class CorrelationEngineService {
         query = `SELECT metric_a, metric_b, correlation_r, p_value, sample_size, lead_lag_months,
                         observation_start, observation_end
                  FROM metric_correlations
-                 WHERE geography_type = $1 AND geography_id = $2
+                 WHERE geography_type = $1 AND geography_id = $2 AND scope_id = 'GLOBAL'
                    AND ((metric_a = ANY($3) AND metric_b = ANY($3)))
                  ORDER BY ABS(correlation_r) DESC`;
         params = [scope, geographyId, metricIds];
@@ -924,7 +952,7 @@ export class CorrelationEngineService {
         query = `SELECT metric_a, metric_b, correlation_r, p_value, sample_size, lead_lag_months,
                         observation_start, observation_end
                  FROM metric_correlations
-                 WHERE geography_type = $1 AND geography_id IS NULL
+                 WHERE geography_type = $1 AND geography_id IS NULL AND scope_id = 'GLOBAL'
                    AND ((metric_a = ANY($2) AND metric_b = ANY($2)))
                  ORDER BY ABS(correlation_r) DESC`;
         params = [scope, metricIds];
@@ -2953,6 +2981,7 @@ export class CorrelationEngineService {
            WHERE (geography_type, geography_id) IN (
              SELECT unnest($1::text[]), unnest($2::text[])
            )
+           AND scope_id = 'GLOBAL'
            AND ABS(correlation_r) >= 0.4
            AND sample_size >= 12)
           UNION ALL
@@ -2965,7 +2994,9 @@ export class CorrelationEngineService {
              WHERE (geography_type, geography_id) IN (
                SELECT unnest($1::text[]), unnest($2::text[])
              )
+             AND scope_id = 'GLOBAL'
            )
+           AND scope_id = 'GLOBAL'
            AND NOT ((geography_type, geography_id) IN (
              SELECT unnest($1::text[]), unnest($2::text[])
            ))
@@ -3312,7 +3343,8 @@ export class CorrelationEngineService {
          FROM metric_correlations
          WHERE (geography_type, geography_id) IN (
            SELECT unnest($1::text[]), unnest($2::text[])
-         )`,
+         )
+         AND scope_id = 'GLOBAL'`,
         [geoTypes, geoIds]
       );
       if (freshRes.rows[0]?.newest_corr) {
@@ -3407,9 +3439,9 @@ export class CorrelationEngineService {
       await this.pool.query(
         `INSERT INTO correlation_history
          (metric_a, metric_b, geography_type, geography_id, window_months,
-          computed_at, computed_date, correlation_r, p_value, sample_size, observation_start, observation_end)
-         VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $6::date, $7, $8, $9, $10, $11)
-         ON CONFLICT (metric_a, metric_b, geography_type, COALESCE(geography_id, ''), window_months, computed_date)
+          computed_at, computed_date, correlation_r, p_value, sample_size, observation_start, observation_end, scope_id)
+         VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $6::date, $7, $8, $9, $10, $11, 'GLOBAL')
+         ON CONFLICT (scope_id, metric_a, metric_b, geography_type, COALESCE(geography_id, ''), window_months, computed_date)
          DO NOTHING`,
         [metricA, metricB, geographyType, geographyId, windowMonths,
           dateStr, correlation.r, pValue, n, obsStart, obsEnd]

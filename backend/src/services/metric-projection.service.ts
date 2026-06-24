@@ -196,6 +196,7 @@ export class MetricProjectionService {
     const result = await this.pool.query(
       `SELECT correlation_r, lead_lag_months FROM metric_correlations
        WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id = $4
+         AND scope_id = 'GLOBAL'
        ORDER BY ABS(correlation_r) DESC LIMIT 1`,
       [anchorMetricId, metricId, geoType, geoId],
     );

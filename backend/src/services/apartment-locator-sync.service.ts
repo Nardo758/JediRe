@@ -319,8 +319,8 @@ export class ApartmentLocatorSyncService {
           total_properties, total_listings, available_units,
           avg_rent, min_rent, max_rent,
           studio_rent, one_br_rent, two_br_rent, three_br_rent,
-          source
-        ) VALUES ($1, $2, NOW(), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'apartment_locator_ai')
+          source, scope_id, redistribution_restricted
+        ) VALUES ($1, $2, NOW(), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'apartment_locator_ai', 'GLOBAL', FALSE)
         ON CONFLICT (city, state, snapshot_date) DO UPDATE SET
           total_properties = EXCLUDED.total_properties,
           total_listings = EXCLUDED.total_listings,
