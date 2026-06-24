@@ -255,7 +255,11 @@ import { taxBillUploadedHandler } from './inngest/functions/taxBillUploaded.hand
 import { historicalObservationsBackfill } from './inngest/functions/historicalObservationsBackfill';
 import { dataCorpusReminderCron } from './inngest/functions/dataCorpusReminderCron';
 import { weeklyCorpusDigestCron } from './inngest/functions/weeklyCorpusDigestCron';
-import { trafficCalibrationCron } from './inngest/functions/trafficCalibrationCron';
+// SCH-01: DISABLED — import commented out to prevent module loading.
+// The Inngest cron is superseded by node-cron daily M07 calibration in
+// m28-scheduler.service.ts (line 72). The registration was already commented out
+// in the functions array below; this completes the disablement.
+// import { trafficCalibrationCron } from './inngest/functions/trafficCalibrationCron';
 import { correlationRollingComputeCron } from './inngest/functions/correlation-rolling-compute';
 import { scenarioArchivalCron } from './inngest/functions/scenarioArchivalCron';
 import { nightlyEventExtractionCron } from './inngest/functions/nightly-event-extraction';
