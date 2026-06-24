@@ -540,9 +540,15 @@ export function getDealType(deal: { projectType?: string; dealType?: string }): 
  * Filter the full module registry to only tabs visible for a given deal type.
  * Returns modules in station order with their variant configs attached.
  */
-export function getVisibleTabs(dealType: DealType): (ModuleTabDefinition & { variantConfig?: VariantConfig })[] {
+export function getVisibleTabs(dealType: DealType, use?: string): (ModuleTabDefinition & { variantConfig?: VariantConfig })[] {
+  const isLand = use === 'Land';
   return MODULE_TABS
-    .filter((tab) => tab.showFor[dealType] !== 'hidden')
+    .filter((tab) => {
+      if (tab.showFor[dealType] === 'hidden') return false;
+      // DC-05: Land-use guard — F6 (Traffic Intelligence) is irrelevant for raw land
+      if (isLand && tab.fKey === 'F6') return false;
+      return true;
+    })
     .map((tab) => ({
       ...tab,
       variantConfig: tab.showFor[dealType] === 'variant'
@@ -555,16 +561,16 @@ export function getVisibleTabs(dealType: DealType): (ModuleTabDefinition & { var
  * Get ONLY the top-level tabs (exclude sub-tabs that live inside parent modules).
  * These are the tabs that render in the sidebar / F-key navigation.
  */
-export function getNavigationTabs(dealType: DealType): ModuleTabDefinition[] {
-  return getVisibleTabs(dealType).filter((tab) => !tab.parentModule);
+export function getNavigationTabs(dealType: DealType, use?: string): ModuleTabDefinition[] {
+  return getVisibleTabs(dealType, use).filter((tab) => !tab.parentModule);
 }
 
 /**
  * Get the F-key navigation array for the Bloomberg Terminal surface.
  * Maps directly to the DEAL_NAV constant in jedi-bloomberg-integrated.jsx.
  */
-export function getDealNav(dealType: DealType): { key: string; label: string; m: ModuleId }[] {
-  return getNavigationTabs(dealType)
+export function getDealNav(dealType: DealType, use?: string): { key: string; label: string; m: ModuleId }[] {
+  return getNavigationTabs(dealType, use)
     .filter((tab) => tab.fKey !== null)
     .map((tab) => ({
       key: tab.fKey!,
@@ -617,9 +623,13 @@ export function getRiskWeightProfile(dealType: DealType): RiskWeightProfile {
 /**
  * Check if a specific module is visible for a given deal type.
  */
-export function isModuleVisible(moduleId: ModuleId, dealType: DealType): boolean {
+export function isModuleVisible(moduleId: ModuleId, dealType: DealType, use?: string): boolean {
   const tab = MODULE_TABS.find((t) => t.moduleId === moduleId);
-  return tab ? tab.showFor[dealType] !== 'hidden' : false;
+  if (!tab) return false;
+  if (tab.showFor[dealType] === 'hidden') return false;
+  // DC-05: Land-use guard — hide F6 (Traffic Intelligence) for raw land
+  if (use === 'Land' && tab.fKey === 'F6') return false;
+  return true;
 }
 
 /**
@@ -757,14 +767,15 @@ export const PROFORMA_TEMPLATES: Record<ProFormaTemplate, ProFormaSection[]> = {
  *   const config = getDealTypeConfig(deal);
  *   // config.dealType, config.visibleTabs, config.navTabs, config.strategies, etc.
  */
-export function getDealTypeConfig(deal: { projectType?: string; dealType?: string }) {
+export function getDealTypeConfig(deal: { projectType?: string; dealType?: string; use?: string }) {
   const dealType = getDealType(deal);
+  const use = deal.use;
 
   return {
     dealType,
-    visibleTabs: getVisibleTabs(dealType),
-    navTabs: getNavigationTabs(dealType),
-    dealNav: getDealNav(dealType),
+    visibleTabs: getVisibleTabs(dealType, use),
+    navTabs: getNavigationTabs(dealType, use),
+    dealNav: getDealNav(dealType, use),
     strategies: getAvailableStrategies(dealType),
     proformaTemplate: getProFormaTemplate(dealType),
     ddPreset: getDDChecklistPreset(dealType),
@@ -773,6 +784,6 @@ export function getDealTypeConfig(deal: { projectType?: string; dealType?: strin
     zoningDepth: getZoningDepth(dealType),
     ddChecklist: DD_CHECKLISTS[getDDChecklistPreset(dealType)],
     proformaLineItems: PROFORMA_TEMPLATES[getProFormaTemplate(dealType)],
-    isModuleVisible: (moduleId: ModuleId) => isModuleVisible(moduleId, dealType),
+    isModuleVisible: (moduleId: ModuleId) => isModuleVisible(moduleId, dealType, use),
   };
 }
