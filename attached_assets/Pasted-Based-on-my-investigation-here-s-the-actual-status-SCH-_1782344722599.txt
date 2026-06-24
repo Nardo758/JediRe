@@ -1,0 +1,34 @@
+Based on my investigation, here's the actual status:
+SCH-01: Partially disabled — the trafficCalibrationCron is commented out in the Inngest functions array (line 312-313), but the import is still live at line 258. The module gets loaded and parsed even though it's not registered. I need to comment out the import too.
+AH-1A: Already present — GET /:dealId/waterfall is registered at line 629, mounted at /api/v1/capital/:dealId/waterfall. No route conflicts.
+D-01: Already present — budget → deal_data.purchase_price dual-write exists at line 502 (Task #623).
+D-02: Already present — updates.budget → deal_data.purchase_price dual-write exists at line 813 (Task #624).
+The only real fix needed is SCH-01 (comment out the import). Let me apply that and report the others.
+
+Used 3 tools · ran 2 commands
+All 4 items investigated. Here's what I found:
+SCH-01 — Fixed (4ab2c3e0d)
+The Inngest trafficCalibrationCron was partially disabled — the registration was commented out in the functions array (line 317) but the import was still live at line 258, meaning the module got loaded and parsed on every startup even though it was never registered. I commented out the import to complete the disablement.
+The node-cron M07 calibration in m28-scheduler.service.ts (line 72) already covers this on a nightly basis at 2:00 AM ET.
+AH-1A — Already present, no fix needed
+GET /:dealId/waterfall is registered at line 629 on the investor-capital router, mounted at /api/v1/capital/:dealId/waterfall. No route conflicts — checked the full route order in the file. The handler calls handleGetWaterfall which queries deal_waterfalls and returns default tiers when none exist.
+D-01 — Already present, no fix needed
+Dual-write on deal create exists at line 502 (Task #623):
+TypeScript
+Copy
+if (budget) {
+  await client.query(
+    `UPDATE deals SET deal_data = COALESCE(deal_data, '{}') || jsonb_build_object('purchase_price', $1::numeric) WHERE id = $2`,
+    [budget, row.id]
+  );
+}
+D-02 — Already present, no fix needed
+Dual-write on deal update (PATCH) exists at line 813 (Task #624):
+TypeScript
+Copy
+if (updates.budget !== undefined && updates.budget != null) {
+  await client.query(
+    `UPDATE deals SET deal_data = COALESCE(deal_data, '{}') || jsonb_build_object('purchase_price', $1::numeric) WHERE id = $2`,
+    [updates.budget, dealId]
+  );
+}
