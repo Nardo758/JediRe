@@ -501,8 +501,23 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
 /**
  * Determine the deal type from the deal object.
  * This is the single source of truth for deal classification.
+ * DC-04: 2D visibility — uses deal_archetype when available for finer-grained mapping.
  */
-export function getDealType(deal: { projectType?: string; dealType?: string }): DealType {
+export function getDealType(deal: { projectType?: string; dealType?: string; dealArchetype?: string }): DealType {
+  // DC-04: 2D visibility — prefer deal_archetype for finer-grained classification
+  const archetype = (deal.dealArchetype || '').toLowerCase().trim();
+  if (archetype) {
+    if (['stabilized', 'value_add', 'value-add', 'lease_up', 'lease-up'].includes(archetype)) {
+      return 'existing';
+    }
+    if (['development', 'ground_up', 'ground-up', 'new_construction', 'land_hold'].includes(archetype)) {
+      return 'development';
+    }
+    if (['redevelopment', 'redev', 'rehab', 'repositioning', 'adaptive_reuse', 'adaptive-reuse'].includes(archetype)) {
+      return 'redevelopment';
+    }
+  }
+
   const raw = (deal.projectType || deal.dealType || '').toLowerCase().trim();
 
   // Normalize various input strings to canonical types
@@ -539,13 +554,14 @@ export function getDealType(deal: { projectType?: string; dealType?: string }): 
 /**
  * Filter the full module registry to only tabs visible for a given deal type.
  * Returns modules in station order with their variant configs attached.
+ * DC-04: 2D visibility — asset_use_type drives use-axis filtering (land, retail, etc.).
  */
-export function getVisibleTabs(dealType: DealType, use?: string): (ModuleTabDefinition & { variantConfig?: VariantConfig })[] {
-  const isLand = use === 'Land';
+export function getVisibleTabs(dealType: DealType, assetUseType?: string): (ModuleTabDefinition & { variantConfig?: VariantConfig })[] {
+  const isLand = assetUseType === 'land' || assetUseType === 'Land';
   return MODULE_TABS
     .filter((tab) => {
       if (tab.showFor[dealType] === 'hidden') return false;
-      // DC-05: Land-use guard — F6 (Traffic Intelligence) is irrelevant for raw land
+      // DC-04 / DC-05: Land-use guard — hide F6 (Traffic Intelligence) for raw land
       if (isLand && tab.fKey === 'F6') return false;
       return true;
     })
@@ -561,16 +577,16 @@ export function getVisibleTabs(dealType: DealType, use?: string): (ModuleTabDefi
  * Get ONLY the top-level tabs (exclude sub-tabs that live inside parent modules).
  * These are the tabs that render in the sidebar / F-key navigation.
  */
-export function getNavigationTabs(dealType: DealType, use?: string): ModuleTabDefinition[] {
-  return getVisibleTabs(dealType, use).filter((tab) => !tab.parentModule);
+export function getNavigationTabs(dealType: DealType, assetUseType?: string): ModuleTabDefinition[] {
+  return getVisibleTabs(dealType, assetUseType).filter((tab) => !tab.parentModule);
 }
 
 /**
  * Get the F-key navigation array for the Bloomberg Terminal surface.
  * Maps directly to the DEAL_NAV constant in jedi-bloomberg-integrated.jsx.
  */
-export function getDealNav(dealType: DealType, use?: string): { key: string; label: string; m: ModuleId }[] {
-  return getNavigationTabs(dealType, use)
+export function getDealNav(dealType: DealType, assetUseType?: string): { key: string; label: string; m: ModuleId }[] {
+  return getNavigationTabs(dealType, assetUseType)
     .filter((tab) => tab.fKey !== null)
     .map((tab) => ({
       key: tab.fKey!,
@@ -623,12 +639,12 @@ export function getRiskWeightProfile(dealType: DealType): RiskWeightProfile {
 /**
  * Check if a specific module is visible for a given deal type.
  */
-export function isModuleVisible(moduleId: ModuleId, dealType: DealType, use?: string): boolean {
+export function isModuleVisible(moduleId: ModuleId, dealType: DealType, assetUseType?: string): boolean {
   const tab = MODULE_TABS.find((t) => t.moduleId === moduleId);
   if (!tab) return false;
   if (tab.showFor[dealType] === 'hidden') return false;
-  // DC-05: Land-use guard — hide F6 (Traffic Intelligence) for raw land
-  if (use === 'Land' && tab.fKey === 'F6') return false;
+  // DC-04 / DC-05: Land-use guard — hide F6 (Traffic Intelligence) for raw land
+  if ((assetUseType === 'land' || assetUseType === 'Land') && tab.fKey === 'F6') return false;
   return true;
 }
 
@@ -767,15 +783,15 @@ export const PROFORMA_TEMPLATES: Record<ProFormaTemplate, ProFormaSection[]> = {
  *   const config = getDealTypeConfig(deal);
  *   // config.dealType, config.visibleTabs, config.navTabs, config.strategies, etc.
  */
-export function getDealTypeConfig(deal: { projectType?: string; dealType?: string; use?: string }) {
+export function getDealTypeConfig(deal: { projectType?: string; dealType?: string; assetUseType?: string; dealArchetype?: string }) {
   const dealType = getDealType(deal);
-  const use = deal.use;
+  const assetUseType = deal.assetUseType;
 
   return {
     dealType,
-    visibleTabs: getVisibleTabs(dealType, use),
-    navTabs: getNavigationTabs(dealType, use),
-    dealNav: getDealNav(dealType, use),
+    visibleTabs: getVisibleTabs(dealType, assetUseType),
+    navTabs: getNavigationTabs(dealType, assetUseType),
+    dealNav: getDealNav(dealType, assetUseType),
     strategies: getAvailableStrategies(dealType),
     proformaTemplate: getProFormaTemplate(dealType),
     ddPreset: getDDChecklistPreset(dealType),
@@ -784,6 +800,6 @@ export function getDealTypeConfig(deal: { projectType?: string; dealType?: strin
     zoningDepth: getZoningDepth(dealType),
     ddChecklist: DD_CHECKLISTS[getDDChecklistPreset(dealType)],
     proformaLineItems: PROFORMA_TEMPLATES[getProFormaTemplate(dealType)],
-    isModuleVisible: (moduleId: ModuleId) => isModuleVisible(moduleId, dealType, use),
+    isModuleVisible: (moduleId: ModuleId) => isModuleVisible(moduleId, dealType, assetUseType),
   };
 }

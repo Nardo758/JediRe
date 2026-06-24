@@ -301,10 +301,13 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         p_linked.parcel_id as "linkedParcelId",
         p_linked.zoning_code as "linkedZoningCode",
         p_linked.lot_size_acres as "linkedLotSizeAcres",
-        p_linked.land_cost as "linkedLandCost"
+        p_linked.land_cost as "linkedLandCost",
+        da.asset_use_type,
+        da.deal_archetype
       FROM deals d
       LEFT JOIN deal_properties dp_link ON dp_link.deal_id = d.id
       LEFT JOIN properties p_linked ON p_linked.id = dp_link.property_id
+      LEFT JOIN deal_assumptions da ON da.deal_id = d.id
       WHERE d.id = $1 AND ${isAdmin ? 'TRUE' : 'd.user_id = $2'} AND d.archived_at IS NULL
     `, isAdmin ? [req.params.id] : [req.params.id, userId]);
 
@@ -353,6 +356,8 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         zoningCode: row.linkedZoningCode || null,
         lotSizeAcres: parseFloat(row.linkedLotSizeAcres) || null,
         landCost: parseFloat(row.linkedLandCost) || null,
+        assetUseType: row.asset_use_type || row.deal_category || 'multifamily',
+        dealArchetype: row.deal_archetype || 'stabilized',
         property_id: row.property_id ?? null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -462,6 +467,32 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
     ]);
 
     const row = result.rows[0];
+
+    // DC-04: 2D visibility — seed deal_assumptions with asset_use_type and deal_archetype
+    // so the 2D visibility predicates have canonical values from deal creation.
+    const assetUseType = ['multifamily', 'retail', 'office', 'industrial', 'land',
+      'hotel', 'hospitality', 'self_storage', 'self-storage', 'senior_housing',
+      'student_housing', 'single_family', 'single-family', 'sfr'].includes(deal_category || 'pipeline')
+      ? (deal_category || 'multifamily').toLowerCase().replace(/-/g, '_')
+      : 'multifamily';
+    const dealArchetype = resolvedProjectType === 'existing' ? 'stabilized'
+      : resolvedProjectType === 'development' ? 'development'
+      : resolvedProjectType === 'redevelopment' ? 'redevelopment'
+      : resolvedProjectType === 'land' ? 'land_hold'
+      : 'stabilized';
+    try {
+      await client.query(
+        `INSERT INTO deal_assumptions (deal_id, asset_use_type, deal_archetype, created_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
+         ON CONFLICT (deal_id)
+         DO UPDATE SET asset_use_type = COALESCE(deal_assumptions.asset_use_type, EXCLUDED.asset_use_type),
+                       deal_archetype = COALESCE(deal_assumptions.deal_archetype, EXCLUDED.deal_archetype),
+                       updated_at = NOW()`,
+        [row.id, assetUseType, dealArchetype],
+      );
+    } catch (assumErr: any) {
+      logger.warn(`[DealCreate] deal_assumptions seed failed (non-fatal): ${assumErr.message}`, { dealId: row.id });
+    }
 
     // Task #623 — Dual-write purchase_price into deal_data so the proforma
     // fallback chain (deal_data.purchase_price → deal_data.asking_price →
