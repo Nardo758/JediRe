@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # JediRe Comprehensive TODO — Consolidated from All Audits
 
 > **Source audits:** S1 Chat Launch Chain, Plumbing & Invariants, Unit Economics, Public Ingress Security, Asset Hub, Console Wiring, Deal Capsule (Spec + Tab Alignment), ProForma Subsystem, Scheduler, PROJECT_TRACKER
@@ -24,7 +23,8 @@
 
 | ID | What | Severity | Evidence / File |
 |----|------|----------|---------------|
-| S1-01 | **Research runtime Zod `_idmap` crash** — fix before anything in this chain can work | **P0** | `research.config.ts` registry missing tools; Zod schema fails at runtime |
+| S1-01 | **Research runtime Zod `_idmap` crash** — 861 failures / 159 successes; all runs since May 2026 fail immediately (0 tokens / 4–7 ms) | **P0** | `AgentRuntime.ts` or `research.config.ts` — Zod schema marshaling error before first tool invocation |
+| S1-01b | **Root cause:** `fetchInflationContextTool` used `parameters:` instead of `inputSchema:` — **fixed in commit `c4b04adee`** | **P0** | `backend/src/agents/tools/fetch_inflation_context.ts` |
 | S1-02 | Pre-assembled `DealContext` not passed to ZONING/SUPPLY/CASH in live path | **P1** | Chat path skips context handoff to downstream agents |
 | S1-03 | `AICoordinator` orphaned — `DealContext` handoff design was not ported to unified-orchestrator | **P1** | `orchestrator.service.ts` does not wire AICoordinator context bridge |
 | S1-04 | 4 spec'd Research tools absent from `research.config.ts` registry | **P2** | Spec docs list tools not found in registry |
@@ -32,7 +32,7 @@
 | S1-06 | Both spec docs reference wrong Inngest function path | **P3** | Doc fix only — cross-reference mismatch |
 | S1-07 | Agent trigger route mismatch between spec and code | **P3** | Doc fix only — route name drift |
 
-**→ Gating fix:** S1-01 is the one to fix first — everything downstream is blocked by it.
+**→ Gating fix:** S1-01 was the one to fix first — now resolved. Everything downstream is unblocked.
 
 ---
 
@@ -139,13 +139,13 @@
 
 ### Phase 1: Structural Fixes (P0) — Do First
 
-| ID | What | Tab | Severity | Exact Fix | File:line |
-|----|------|-----|----------|-----------|----------|
-| DC-01 | **Keyboard F-key mapping shifted by one** (F3–F12) | ALL | **P0** | Correct `fKeyMap` to match spec §4.1; remove F12 | `DealDetailPage.tsx:788–799` |
-| DC-02 | **F9 Pro Forma has wrong `moduleId`** — `M08` instead of `M09` | F9 | **P0** | Change `moduleId: 'M08'` → `'M09'`, `code: 'M08'` → `'M09'` | `DealDetailPage.tsx:848` |
-| DC-03 | **F10 Risk uses `M13` instead of `M14`** | F10 | **P0** | Change `moduleId: 'M13'` → `'M14'`; update `RiskDDPage` to consume M14 variants | `DealDetailPage.tsx:849` · `deal-type-visibility.ts:344–365` |
-| DC-04 | **Visibility model is 1D** (`DealType` only), spec requires 2D (use × archetype) | ALL | **P0** | Add `assetUseType` to `Deal` type; validate pairs; update `deal-type-visibility.ts` | `deal-type-visibility.ts` · `Deal` type |
-| DC-05 | **Land-use visibility guard missing** — F6 should hide for Land | F6 | **P0** | Add `use === 'Land'` guard to F6 visibility | `deal-type-visibility.ts` · `DealDetailPage.tsx` |
+| ID | What | Tab | Severity | Exact Fix | File:line | Status |
+|----|------|-----|----------|-----------|----------|--------|
+| DC-01 | **Keyboard F-key mapping shifted by one** (F3–F12) | ALL | **P0** | Correct `fKeyMap` to match spec §4.1; remove F12 | `DealDetailPage.tsx:788–799` | **Resolved 2026-06-20** — commit `4fe88cf7d` |
+| DC-02 | **F9 Pro Forma has wrong `moduleId`** — `M08` instead of `M09` | F9 | **P0** | Change `moduleId: 'M08'` → `'M09'`, `code: 'M08'` → `'M09'` | `DealDetailPage.tsx:848` | **Resolved 2026-06-20** — commit `4fe88cf7d` |
+| DC-03 | **F10 Risk uses `M13` instead of `M14`** | F10 | **P0** | Change `moduleId: 'M13'` → `'M14'`; update `RiskDDPage` to consume M14 variants | `DealDetailPage.tsx:849` · `deal-type-visibility.ts:344–365` | **Resolved 2026-06-20** — commit `4fe88cf7d` |
+| DC-04 | **Visibility model is 1D** (`DealType` only), spec requires 2D (use × archetype) | ALL | **P0** | Add `assetUseType` to `Deal` type; validate pairs; update `deal-type-visibility.ts` | `deal-type-visibility.ts` · `Deal` type | **Partially resolved 2026-06-20** — `asset_use_type` + `deal_archetype` columns added to `deal_assumptions` in commit `4fe88cf7d`; two-axis visibility predicates still need wiring |
+| DC-05 | **Land-use visibility guard missing** — F6 should hide for Land | F6 | **P0** | Add `use === 'Land'` guard to F6 visibility | `deal-type-visibility.ts` · `DealDetailPage.tsx` | Open |
 
 ### Phase 2: Content Hardening (P1) — High Impact
 
@@ -180,24 +180,24 @@
 
 ### Deal Capsule Spec Gaps (from SPEC_AUDIT)
 
-| ID | What | Severity | Notes |
-|----|------|----------|-------|
-| DC-27 | **`deal_capsules` table has no CREATE TABLE migration** | **P0** | Sharing layer references non-existent table; FKs will fail |
-| DC-28 | **`scope_id` column does not exist** | **P0** | Lane A/B scope guard cannot be enforced (same as A2-S9/I10) |
-| DC-29 | Extraction pipeline does NOT set `scope_id` or `redistribution_restricted` at ingest | **P0** | Licensed/user data may leak into shared corpus |
-| DC-30 | **NOI formula bug (CF-01):** `getFieldValues` forces `egi - total_opex`, ignores OM-extracted `year1.noi.om` | **P0** | Cascades into IRR, cap rate, S&U, returns, valuation grid, sensitivity |
-| DC-31 | `FIELD_PRIORITIES` is a global constant, not per-field spec-defined walks | **P1** | `agent` layer not in priority map; some fields may resolve incorrectly |
-| DC-32 | Per-year overrides (`per_year_overrides`) never consumed by Projections | **P1** | Year 3 payroll edits save to DB but are discarded on next fetch (same as PF-02) |
-| DC-33 | 4 tabs leak LayeredValue raw layers (`AssumptionsTab`, `OverviewTab`, `DealTermsTab`, `SourcesUsesTab`) | **P1** | UI shows `.platform`/`.broker` instead of `.resolved` |
-| DC-34 | Rent Comp Grid does not union platform + user-uploaded CoStar | **P1** | User CoStar comps invisible in comparison grid |
-| DC-35 | Expense/other-income comps not wired to Pro Forma assumptions | **P1** | Data Library archive mined by agents but not fed into Pro Forma |
-| DC-36 | `stabilization_marker` consumption by Projections not verified | **P1** | If Projections derives its own stabilization, Y_S and terminus diverge |
-| DC-37 | AES-256-GCM encryption not implemented | **P2** | `api_key_encrypted` is TEXT; no encryption algorithm specified |
-| DC-38 | Shortcode URL (`/c/:code`) not implemented | **P2** | `access_token` used instead of dedicated shortcode |
-| DC-39 | Stripe margin not verified | **P2** | `platform_margin_usd` exists but Stripe integration not verified |
-| DC-40 | 13 empty tables on 464 Bishop — silently blank surfaces | **P2** | Add "not configured" UI states or seed defaults |
-| DC-41 | Purchase price in 3 locations with no documented precedence | **P2** | `deals.deal_data`, `deal_assumptions.land_cost`, `deal_context_fields` — same field, no canonical resolution |
-| DC-42 | `proforma_templates` never applied to deals | **P2** | CRUD exists but no route applies template to `deal_assumptions.year1` |
+| ID | What | Severity | Notes | Status |
+|----|------|----------|-------|--------|
+| DC-27 | **`deal_capsules` table has no CREATE TABLE migration** | **P0** | Sharing layer references non-existent table; FKs will fail | **Resolved 2026-06-20** — migration `20260619_deal_capsules.sql` added in commit `4fe88cf7d` |
+| DC-28 | **`scope_id` column does not exist** | **P0** | Lane A/B scope guard cannot be enforced (same as A2-S9/I10) | **Partially resolved 2026-06-20** — `scope_id` added to `deal_assumptions` in commit `4fe88cf7d`; corpus tables still need it |
+| DC-29 | Extraction pipeline does NOT set `scope_id` or `redistribution_restricted` at ingest | **P0** | Licensed/user data may leak into shared corpus | Open |
+| DC-30 | **NOI formula bug (CF-01):** `getFieldValues` forces `egi - total_opex`, ignores OM-extracted `year1.noi.om` | **P0** | Cascades into IRR, cap rate, S&U, returns, valuation grid, sensitivity | Open |
+| DC-31 | `FIELD_PRIORITIES` is a global constant, not per-field spec-defined walks | **P1** | `agent` layer not in priority map; some fields may resolve incorrectly | Open |
+| DC-32 | Per-year overrides (`per_year_overrides`) never consumed by Projections | **P1** | Year 3 payroll edits save to DB but are discarded on next fetch (same as PF-02) | Open |
+| DC-33 | 4 tabs leak LayeredValue raw layers (`AssumptionsTab`, `OverviewTab`, `DealTermsTab`, `SourcesUsesTab`) | **P1** | UI shows `.platform`/`.broker` instead of `.resolved` | Open |
+| DC-34 | Rent Comp Grid does not union platform + user-uploaded CoStar | **P1** | User CoStar comps invisible in comparison grid | Open |
+| DC-35 | Expense/other-income comps not wired to Pro Forma assumptions | **P1** | Data Library archive mined by agents but not fed into Pro Forma | Open |
+| DC-36 | `stabilization_marker` consumption by Projections not verified | **P1** | If Projections derives its own stabilization, Y_S and terminus diverge | Open |
+| DC-37 | AES-256-GCM encryption not implemented | **P2** | `api_key_encrypted` is TEXT; no encryption algorithm specified | Open |
+| DC-38 | Shortcode URL (`/c/:code`) not implemented | **P2** | `access_token` used instead of dedicated shortcode | Open |
+| DC-39 | Stripe margin not verified | **P2** | `platform_margin_usd` exists but Stripe integration not verified | Open |
+| DC-40 | 13 empty tables on 464 Bishop — silently blank surfaces | **P2** | Add "not configured" UI states or seed defaults | Open |
+| DC-41 | Purchase price in 3 locations with no documented precedence | **P2** | `deals.deal_data`, `deal_assumptions.land_cost`, `deal_context_fields` — same field, no canonical resolution | Open |
+| DC-42 | `proforma_templates` never applied to deals | **P2** | CRUD exists but no route applies template to `deal_assumptions.year1` | Open |
 
 ---
 
@@ -302,380 +302,86 @@
 
 ---
 
+## B — EXISTING TODO ITEMS (From Prior TODO.md)
+
+> These items were in the previously committed TODO.md and remain open.
+
+### Traffic / M07
+
+| ID | What | Severity | Notes |
+|----|------|----------|-------|
+| T-01 | **Veraset cell-phone / mobility data activation** — code-complete, blocked by vendor deal | **P2** | Set `VERASET_API_KEY`, `POST /api/v1/veraset/:msaId/activate`, nightly cron begins populating `mobility_visits_monthly` |
+| T-02 | **M07 calibration confidence bands on `trafficProjection.yearly`** — surface P10/P25/P75/P90 on `F9TrafficYear` | **P1** | Schema extension needed on `F9TrafficYear` in `types.ts`; frontend placeholder already in `TrafficFunnelPanel` |
+
+### F9 / Proforma (Additional)
+
+| ID | What | Severity | Notes |
+|----|------|----------|-------|
+| F-01 | **Unit-mix-as-GPR-source feature flag activation** — `da:use_unit_mix_for_gpr` exists but not set on existing deals | **P1** | Reconcile deals where `sum(unit_mix[].count × rent × 12)` diverges from `gprDecomposition.resolvedAnnual`; add UI toggle in `UnitMixTab` |
+| F-02 | **LP-GP split user-facing write path** — no UI dial; defaults 90/10 | **P1** | Decide canonical surface (F9 Capital vs Deal Terms §4); add LP-GP split row wired to `PATCH /financials/override` |
+| F-03 | **Ancillary breakdown → `other_income_per_unit` rollup verification** — unknown whether all ancillary buckets roll up correctly | **P1** | Pick deal with known parking/RUBS data; compare raw extraction vs. `other_income_per_unit × totalUnits × 12`; include `other_income_user_lines` in validation |
+| F-04 | **Post-fix: audit Claude narratives generated pre-pct-unit-break fix** — 861 failed runs may have persisted bad narratives | **P2** | Check if `deals.ai_narrative` is written; if yes, regenerate for deals where `last_viewed_at > 2026-04-01 AND last_ai_narrative_at < fix_deploy_timestamp` |
+| F-05 | **Post-fix: LP deliverable audit — pre-fix Excel exports had 100× understated gross-sale-value** | **P2** | `f9-financial-export.service.ts:220` computed `exitNoi / 5.5` instead of `exitNoi / 0.055`; check export audit log for any LP deliverables sent pre-fix |
+| F-06 | **Post-fix: audit for dormant seeder improvements not propagated to existing deals** | **P2** | Grep `proforma-seeder.service.ts` for write-time logic; cross-reference against task history before `forceReseed` existed |
+
+### Deal Creation / Inline Deals
+
+| ID | What | Severity | Notes |
+|----|------|----------|-------|
+| D-01 | **Deal creation one-sided writer** — `POST /` writes `budget` to `deals.budget` only, not `deal_data.purchase_price` | **P1** | `inline-deals.routes.ts:334-358`; fix: merge `deal_data = deal_data || jsonb_build_object('purchase_price', budget)` when `budget` non-null |
+| D-02 | **Deal update one-sided writer** — `PATCH /:id` writes `budget` to `deals.budget` only, not `deal_data.purchase_price` | **P1** | `inline-deals.routes.ts:510-554`; fix: when `budget` in PATCH body, also merge into `deal_data.purchase_price` |
+
+### Agent Infrastructure
+
+| ID | What | Severity | Notes |
+|----|------|----------|-------|
+| A-01 | **Consolidate agent seeders to shared `upsertAgentPrompt` helper** — all 5 seeders hand-write deactivate-then-insert pattern | **P2** | `backend/src/agents/seeds/`; extract `upsertAgentPrompt` to `_helpers.ts` with correct order (deactivate first, then insert) |
+| A-02 | **Document `idx_prompt_versions_active` as load-bearing in migration** — partial unique index prevents dual-active prompts | **P2** | Add comment to migration explaining load-bearing role; reference in ADR-003 |
+
+### Operator Stance
+
+| ID | What | Severity | Notes |
+|----|------|----------|-------|
+| O-01 | **Frontend types mirror gap** — `frontend/src/types/operator-stance.ts` should exist but doesn't | **P2** | `frontend/src/stores/dealContext.types.ts:751+` has mirror; `StanceTab.tsx` imports from there; low risk today |
+
+### Deal Journey (F9 Header)
+
+| ID | What | Severity | Notes |
+|----|------|----------|-------|
+| J-01 | **Deal Journey pending phases** — M36 aggressiveness dial, M07 confidence bands, M35 event path, M38 calibration | **P2** | Phase 1 LOCKED; Phase 2+ scope per `deal-journey-framework.md` |
+
+---
+
 ## A10 — CROSS-CUTTING INFRASTRUCTURE
 
 | ID | What | Severity | Notes |
 |----|------|----------|-------|
-| INF-01 | Write missing audit reports to repo root: `S1_CHAT_LAUNCH_CHAIN_AUDIT.md`, `PLUMBING_AND_INVARIANTS_AUDIT.md`, `UNIT_ECONOMICS_AUDIT.md`, `PUBLIC_INGRESS_SECURITY_AUDIT.md`, `TODO.md` | **P1** | These were generated but not committed; `Audit files.txt` is the only snapshot |
+| INF-01 | Write missing audit reports to repo root: `S1_CHAT_LAUNCH_CHAIN_AUDIT.md`, `PLUMBING_AND_INVARIANTS_AUDIT.md`, `UNIT_ECONOMICS_AUDIT.md`, `PUBLIC_INGRESS_SECURITY_AUDIT.md` | **P1** | These were generated but not committed; `Audit files.txt` is the only snapshot |
 | INF-02 | Create `docs/audits/AUDIT_PROGRAM_INDEX.md` as canonical index | **P2** | Track all audits (A1–A10) with links to dispatch files and reports |
 | INF-03 | Ensure all commits are pushed to local then to GitHub | **P1** | Per user preference: "i need the updates to be pushed to local then to github" |
 
 ---
 
-## Quick Reference — Top 10 by Severity
+## Quick Reference — Top 15 by Severity
 
-| Rank | ID | What | Domain |
-|------|----|------|--------|
-| 1 | S1-01 | Research runtime Zod `_idmap` crash | S1 Chat Launch |
-| 2 | S9/I10 | `scope_id` absent — no licensing barrier | Plumbing |
-| 3 | DC-01 | Keyboard F-key mapping shifted (F3–F12) | Deal Capsule |
-| 4 | DC-02 | F9 wrong `moduleId` (M08→M09) | Deal Capsule |
-| 5 | DC-03 | F10 wrong module (M13→M14) | Deal Capsule |
-| 6 | DC-04 | Visibility model 1D instead of 2D | Deal Capsule |
-| 7 | DC-27 | `deal_capsules` table missing CREATE TABLE | Deal Capsule |
-| 8 | DC-30 | NOI formula bug (CF-01) — forces `egi - total_opex` | Deal Capsule |
-| 9 | PF-02 | Per-year overrides never consumed | ProForma |
-| 10 | PF-03 | Bad debt display uses GPR not EGI | ProForma |
+| Rank | ID | What | Domain | Status |
+|------|----|------|--------|--------|
+| 1 | S1-01 | Research runtime Zod `_idmap` crash (861 failures, 0 tokens) | S1 Chat Launch | **Fixed 2026-06-21** — commit `c4b04adee` |
+| 2 | S9/I10 | `scope_id` absent — no licensing barrier | Plumbing | Open |
+| 3 | DC-01 | Keyboard F-key mapping shifted (F3–F12) | Deal Capsule | **Fixed 2026-06-20** — commit `4fe88cf7d` |
+| 4 | DC-02 | F9 wrong `moduleId` (M08→M09) | Deal Capsule | **Fixed 2026-06-20** — commit `4fe88cf7d` |
+| 5 | DC-03 | F10 wrong module (M13→M14) | Deal Capsule | **Fixed 2026-06-20** — commit `4fe88cf7d` |
+| 6 | DC-04 | Visibility model 1D instead of 2D (use × archetype) | Deal Capsule | Partially fixed — columns added, predicates unwired |
+| 7 | DC-05 | Land-use visibility guard missing (F6 should hide for Land) | Deal Capsule | Open |
+| 8 | DC-27 | `deal_capsules` table missing CREATE TABLE | Deal Capsule | **Fixed 2026-06-20** — commit `4fe88cf7d` |
+| 9 | DC-28 | `scope_id` missing from corpus tables | Deal Capsule | Partially fixed — added to `deal_assumptions` only |
+| 10 | DC-30 | NOI formula bug (CF-01) — forces `egi - total_opex` | Deal Capsule | Open |
+| 11 | PF-02 | Per-year overrides never consumed | ProForma | Open |
+| 12 | PF-03 | Bad debt display uses GPR not EGI | ProForma | Open |
+| 13 | AH-1A | Waterfall 404 — path mismatch | Asset Hub | Open |
+| 14 | SCH-01 | Inngest `trafficCalibrationCron` redundant with node-cron | Scheduler | Open |
+| 15 | SCH-02 | node-cron apartment locator sync duplicates Inngest | Scheduler | Open |
 
 ---
 
 *End of comprehensive TODO. This file should be updated after each fix session. Mark items done with ✅ and date.*
-=======
-# JEDI RE — Global TODO List
-
-Single source of truth for all open side-debt, deferred work, and vendor-blocked items.
-Consolidated from per-feature TODO files (June 2026). Closed items omitted.
-
----
-
-## Traffic / M07
-
-### T-01 — Veraset cell-phone / mobility data activation
-**Area:** Traffic Engine (M07) · **Effort:** 0 (code-complete) · **Blocked by:** Vendor deal
-
-Infrastructure is 100% built. Nothing left to code.
-
-Steps to activate once the commercial subscription is signed:
-1. Set `VERASET_API_KEY` secret in the environment
-2. `POST /api/v1/veraset/:msaId/activate` for each target MSA (start with Atlanta)
-3. Nightly cron (`veraset-nightly.ts`, 03:00 UTC) begins populating `mobility_visits_monthly`
-
-Relevant files: `veraset-mobility.service.ts`, `veraset.routes.ts`, `veraset-nightly.ts`,
-migration `20260620_veraset_infrastructure.sql`
-
----
-
-### T-02 — M07 calibration confidence bands on `trafficProjection.yearly`
-**Area:** Traffic Engine (M07) · **Effort:** M · **Blocked by:** M07 backend bandwidth
-
-Surface asymmetric percentile bands (P10/P25/P75/P90) on each `F9TrafficYear` entry for
-`vacancyPct`, `effRent`, and `rentGrowthPct`. Frontend placeholder ("Pending M07 backend
-wiring") is already in place in `TrafficFunnelPanel` inside `ProjectionsTab.tsx`.
-
-Schema extension needed on `F9TrafficYear` in `types.ts`:
-```typescript
-bands?: {
-  vacancyPct?:    { p10: number; p25: number; p75: number; p90: number };
-  effRent?:       { p10: number; p25: number; p75: number; p90: number };
-  rentGrowthPct?: { p10: number; p25: number; p75: number; p90: number };
-};
-```
-
-Ref: `docs/architecture/TODO_F9_DATA_FLOW.md` M07 section · Task #633
-
----
-
-## F9 / Proforma
-
-### F-01 — Unit-mix-as-GPR-source feature flag activation
-**Area:** F9 Pro Forma · **Effort:** M · **Blocked by:** Reconciliation audit on existing deals
-
-`da:use_unit_mix_for_gpr` flag exists at `financials-composer.service.ts:286` but is not set
-on existing deals → unit_mix edits are silent no-ops on GPR.
-
-Work needed:
-1. Identify deals where `sum(unit_mix[].count × rent × 12)` diverges from stored
-   `gprDecomposition.resolvedAnnual` — those need reconciliation before the flag is enabled
-2. Decide activation model: per-deal opt-in toggle in UnitMixTab (safest) vs. global default
-   for new deals only
-3. Add UI toggle in `UnitMixTab` that writes `da:use_unit_mix_for_gpr` via
-   `PATCH /financials/override`; show current source as a labeled badge on the GPR row
-
----
-
-### F-02 — LP-GP split user-facing write path
-**Area:** F9 Capital · **Effort:** S (backend) + M (frontend) · **Blocked by:** Surface ownership decision
-
-`wf:lpShare` / `wf:gpShare` are readable at `proforma-adjustment.service.ts:2943` and default
-to 90/10. Write path exists via `PATCH /financials/override` but there is no UI dial.
-
-Work needed:
-1. Decide canonical surface: F9 Capital tab waterfall section vs. Deal Terms §4
-2. Add LP-GP split row wired to `PATCH /financials/override` with `field: 'wf:lpShare'`
-   (auto-compute `gpShare = 1 - lpShare`)
-3. Confirm whether M11 Debt Advisor waterfall tab also needs to respect this value
-
-Cross-ref: `TODO_DEAL_TERMS_FOLLOWUP.md` §4 deferral note
-
----
-
-### F-03 — Ancillary breakdown → `other_income_per_unit` rollup verification
-**Area:** F9 Pro Forma · **Effort:** S (investigation) · **Blocked by:** Nothing — pick a deal and query
-
-Unknown whether the `other_income_per_unit` seed properly sums all ancillary extraction
-buckets (parking + RUBS + pet + fees) or whether those buckets land in the display-only path.
-
-Steps:
-1. Pick a deal with known parking/RUBS extraction data
-2. Compare `sum(parking_income + rubs_income + pet_rent + late_fees + other_income)` from
-   raw extraction vs. `other_income_per_unit × totalUnits × 12`
-3. If diverged: fix seeder (`proforma-seeder.service.ts`) to roll all ancillary categories into
-   `other_income_per_unit`, or fix compositor to sum the breakdown directly
-4. **Note:** validation query must include `other_income_user_lines` — omitting it caused a
-   false mismatch in the May 2026 audit (464 Bishop flagged incorrectly)
-
----
-
-### F-04 — Post-fix: audit Claude narratives generated pre-pct-unit-break fix
-**Area:** AI Narratives · **Effort:** S · **Blocked by:** Need to confirm whether `deals.ai_narrative` is written
-
-Before May 2026 fix (commit b86c537), Cashflow Agent and Coordinator prompts received
-"350% rent growth / 550% exit cap / 500% vacancy" values due to raw-pct pass-through.
-In-memory `narrativeCache` auto-expires on restart (already done). Explicit sweep only needed
-if stale narratives were persisted to `deals.ai_narrative` column.
-
-Steps:
-1. Check whether `deals.ai_narrative` is written post-generation (if not, this is already closed)
-2. If yes: regenerate AI commentary for deals where
-   `last_viewed_at > 2026-04-01 AND last_ai_narrative_at < <fix_deploy_timestamp>`
-
----
-
-### F-05 — Post-fix: LP deliverable audit — pre-fix Excel exports had 100× understated gross-sale-value
-**Area:** Excel Export · **Effort:** XS (audit) · **Blocked by:** Need to check if any LP exports were sent
-
-Before May 2026 fix (commit b86c537), `f9-financial-export.service.ts:220` computed
-`exitNoi / 5.5` instead of `exitNoi / 0.055` → gross sale proceeds were ~1.8% of correct.
-
-Steps:
-1. Check export audit log / sales pipeline for any Excel exports sent pre-fix
-2. If LP deliverables are in circulation: communicate correction and re-send updated workbook
-3. If platform is pre-revenue or no LP exports have been sent: mark closed immediately
-
----
-
-### F-06 — Post-fix: audit for dormant seeder improvements not propagated to existing deals
-**Area:** Proforma Seeder · **Effort:** M (depends on findings)
-
-The seeder is write-once. Any logic improvement shipped before the `forceReseed` mechanism
-existed may not have propagated to pre-existing deals.
-
-Steps:
-1. Grep `proforma-seeder.service.ts` for write-time logic that depends on extraction data
-2. Cross-reference against task history for any "seeder improvement" tasks shipped before
-   the `forceReseed` extraction hook
-3. For each finding: decide backfill needed vs. new-deal-only by design
-
----
-
-## Deal Creation / Inline Deals
-
-### D-01 — Deal creation one-sided writer (Task #623)
-**Area:** `inline-deals.routes.ts` · **Effort:** XS · **File:** `backend/src/api/rest/inline-deals.routes.ts:334-358`
-
-`POST /` writes `budget` to `deals.budget` only. Does NOT merge into
-`deal_data.purchase_price` at creation time. For new deals with no prior DEAL TERMS edit,
-the financial composer falls back to `deals.budget` correctly — but any subsequent targeted
-PATCH to either column alone will cause divergence.
-
-Fix: merge `deal_data = deal_data || jsonb_build_object('purchase_price', budget)` when
-`budget` is non-null in the POST body.
-
----
-
-### D-02 — Deal update one-sided writer (Task #624)
-**Area:** `inline-deals.routes.ts` · **Effort:** XS · **File:** `backend/src/api/rest/inline-deals.routes.ts:510-554`
-
-`PATCH /:id` accepts `budget` in `allowedFields` and writes to `deals.budget` only.
-If an operator edits budget via this path after `deal_data.purchase_price` has been set by
-the DEAL TERMS endpoint, the financial model shows the DEAL TERMS value while the pipeline
-view shows the new budget — visible divergence.
-
-Fix: when `budget` is in the PATCH body, also merge it into `deal_data.purchase_price`.
-
----
-
-## Agent Infrastructure
-
-### A-01 — Consolidate agent seeders to shared `upsertAgentPrompt` helper
-**Area:** Agent Seeds · **Effort:** S · **File:** `backend/src/agents/seeds/`
-
-All 5 agent seeders (cashflow, commentary, research, supply, zoning) hand-write the
-deactivate-then-insert pattern independently. Three of the five historically had the
-operations in the wrong order (INSERT before deactivate), causing the zoning seeder startup
-crash (May 2026).
-
-Fix: extract a single helper at `backend/src/agents/seeds/_helpers.ts`:
-```typescript
-export async function upsertAgentPrompt(params: {
-  id: string; agentId: string; version: string;
-  promptType: string; systemPrompt: string;
-  outputSchema: Record<string, unknown>;
-}): Promise<void> {
-  // 1. Deactivate first (satisfies idx_prompt_versions_active)
-  await query(`UPDATE prompt_versions SET active = false
-               WHERE agent_id = $1 AND prompt_type = $2 AND active = true`,
-    [params.agentId, params.promptType]);
-  // 2. Insert new active row
-  await query(`INSERT INTO prompt_versions (...) VALUES (...)
-               ON CONFLICT (id) DO UPDATE SET active = true, ...`, [...]);
-}
-```
-
-All five seed functions collapse to a single call. Order divergence becomes structurally
-impossible.
-
----
-
-### A-02 — Document `idx_prompt_versions_active` as load-bearing in migration
-**Area:** DB Migrations · **Effort:** XS
-
-`idx_prompt_versions_active` is a partial unique index on `(agent_id, prompt_type) WHERE
-active = true`. It is the enforcement layer preventing two prompts from being simultaneously
-active. Without it, a seeder bug or race condition silently corrupts the active-prompt table.
-
-Fix: add a comment to the migration that created this index explaining its load-bearing role.
-Also reference it in ADR-003 (agent prompt versioning, #638):
-```sql
--- LOAD-BEARING: enforces at-most-one active prompt_versions row per (agent_id, prompt_type).
--- Do not remove. See: zoning seeder crash May 2026, TODO.md A-02.
-```
-
----
-
-## Operator Stance
-
-### O-01 — Frontend types mirror gap (Phase 3)
-**Area:** OperatorStance · **Effort:** XS · **Phase gate:** Phase 3
-
-`frontend/src/stores/dealContext.types.ts` (line 751+) carries the frontend mirror of
-`OperatorStance`. A comment at line 5 says a separate
-`frontend/src/types/operator-stance.ts` file should exist and be kept in sync — it doesn't.
-`StanceTab.tsx` imports from `dealContext.types.ts` so the risk is low today.
-
-Fix (Phase 3): create `frontend/src/types/operator-stance.ts` as the canonical frontend type
-file and update `dealContext.types.ts` to re-export from it (single source of truth).
-
----
-
-## S1 Chat Launch Chain (Audit 2026-06-21)
-
-### S1-01 — LAUNCH BLOCKER: Research runtime Zod crash (0 tokens / 4 ms)
-**Area:** `AgentRuntime` · **Effort:** S · **Severity:** P0 — blocks the entire chat surface
-
-All user-triggered Research Agent runs fail immediately before any LLM call:
-```
-Error: "Cannot use 'in' operator to search for '_idmap' in undefined"
-duration_ms: 4–7 · tokens_in: 0 · cost_usd: 0.0000
-```
-861 failures / 159 successes in `agent_runs`; all recent runs (May–Jun 2026) are failures.
-Last succeeded run: 2026-04-30. The crash is a Zod schema marshaling error inside
-`AgentRuntime` that fires before the first tool invocation.
-
-Fix:
-1. Reproduce: `POST /api/v1/agents/tasks` with a research payload and inspect the error stack
-2. Locate where `_idmap` is expected — likely a Zod `.parse()` call on an undefined `input`
-   or `ctx` field in `AgentRuntime.ts` or `research.config.ts`
-3. Add a null-guard or correct the input shape before schema validation
-
----
-
-### S1-02 — Pre-assembled DealContext not passed to ZONING/SUPPLY/CASH in live path
-**Area:** `agent-delegator.ts` · **Effort:** M · **Severity:** P1 — defeats the 24h cache design
-
-`AgentDelegator.buildRuntimeInput()` constructs agent inputs from intent fields +
-`getDealFinancialContext()`. It does NOT read from `deal_context_fields`. Each analytical
-agent (ZONING, SUPPLY, CASH) independently re-queries its own data; no pre-assembled
-DealContext is forwarded.
-
-The documented 24h cache short-circuit ("60-70% credit-saving path") exists only in
-`research.inngest.ts:121-146` (Inngest step idempotency). It is **absent** from the
-`unified-orchestrator` → `AgentDelegator` chat path.
-
-Fix: after ResearchAgent completes, read the assembled `deal_context_fields` rows for the
-deal and inject them into `buildRuntimeInput()` for ZONING/SUPPLY/CASH. Add a cache-hit
-check: if `deal_context_fields` rows for this deal are all `< 24h` old, skip the research
-step and forward the cached context directly.
-
----
-
-### S1-03 — AICoordinator (`coordinator.ts`) orphaned; DealContext handoff design lost
-**Area:** `backend/src/services/ai/coordinator.ts` · **Effort:** M · **Severity:** P1
-
-`AICoordinator` correctly piped `dealContext` from ResearchAgent into
-`runZoningAgent / runSupplyAgent / runCashflowAgent` (coordinator.ts:327-338).
-`unified-orchestrator.ts` replaced it (line 5: "Replaces both AICoordinator…") but did not
-port this handoff. `AICoordinator` now has zero inbound imports from the live path.
-
-Fix: either (a) resurrect the DealContext handoff in `AgentDelegator` (preferred — see S1-02),
-or (b) reintegrate `AICoordinator` as an inner service called by `unified-orchestrator`.
-Option (a) is cleaner and avoids re-adding the old orchestrator's other coupling.
-
----
-
-### S1-04 — Four spec'd Research tools absent from `research.config.ts` registry
-**Area:** `backend/src/agents/research.config.ts` · **Effort:** S · **Severity:** P2
-
-Tools listed in the Agent Platform Spec as Research tools, not registered in the runtime:
-
-| Tool | Status |
-|------|--------|
-| `fetch_county_records` | File exists in `agents/tools/`, not imported in `research.config.ts` |
-| `fetch_rentcast_comps` | File exists in `agents/tools/`, not imported in `research.config.ts` |
-| `fetch_google_places_reviews` | File does not exist anywhere in `agents/tools/` — ABSENT |
-| `fetch_fred_indicators` | Name doesn't exist; closest is `fetch_market_trends.ts`, also not in registry |
-
-Fix: for each tool that should be in the Research registry, add the import and push to the
-`tools: [...]` array in `research.config.ts`. For `fetch_google_places_reviews`, create the
-tool file first (wraps the Google Places API already used elsewhere in the codebase).
-
----
-
-### S1-05 — 24h DealContext cache absent from unified-orchestrator chat path
-**Area:** `unified-orchestrator.ts` / `agent-delegator.ts` · **Effort:** M · **See S1-02**
-
-Tracked under S1-02. Logging separately for visibility — this is the credit-saving path
-cited in platform docs. Without it every chat message fires a full Claude research run.
-
----
-
-### S1-06 — Inngest function path is wrong in both spec docs
-**Area:** Docs · **Effort:** XS (doc fix only)
-
-Both spec documents reference non-existent paths for the Research Inngest function:
-- `AGENT_PLATFORM_SPEC.md` → `src/agents/inngest/research.function.ts` — **ABSENT**
-- `REPLIT_AGENT_IMPLEMENTATION_PROMPT.md` → `src/inngest/functions/research.function.ts` — **ABSENT**
-
-Actual path: `backend/src/agents/research.inngest.ts` (registered at `index.replit.ts:237`)
-
-Fix: update both spec docs to reference the real path.
-
----
-
-### S1-07 — Agent trigger route mismatch between spec and code
-**Area:** Docs / `agent.routes.ts` · **Effort:** XS (doc fix only)
-
-Spec cites `/api/agents/research/run` as the manual trigger route. Actual route is
-`POST /api/v1/agents/tasks` (`agent.routes.ts:21`). No `/api/agents/research/run` endpoint
-exists anywhere in the route tree.
-
-Fix: correct the spec reference and confirm `POST /api/v1/agents/tasks` is the canonical
-manual trigger surface.
-
----
-
-## Deal Journey (F9 Header)
-
-### J-01 — Deal Journey pending phases (M36, M07, M35, M38)
-**Area:** Deal Journey Overlay · **Effort:** varies · **Phase gate:** Phase 2+
-
-The following Deal Journey items are PENDING per `docs/architecture/deal-journey-framework.md`:
-- **M36** — aggressiveness dial integration
-- **M07** — confidence bands (see T-02 above)
-- **M35** — event path visualization
-- **M38** — calibration integration
-
-Phase 1 is LOCKED. These are Phase 2+ scope.
-
----
->>>>>>> d49a53d117925e3e3c9d07502076ca78ddd171d6
