@@ -92,6 +92,9 @@ export interface LIUSEngineResult {
 
 /**
  * Run the LIUS engine for a full deal.
+ * PF-06 NOTE: This function has zero production callers — only runLIUSForLine
+ * (the single-line helper) calls it internally. The full 21-line engine is
+ * bypassed in production. Exported for potential future use and test coverage.
  */
 export async function runLIUSEngine(
   ctx: LIUSEngineContext,
