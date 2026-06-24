@@ -76,12 +76,13 @@ export const writeDealContextTool: ToolDefinition<
       ctx.dealId !== undefined && input.deal_id !== ctx.dealId;
 
     if (dealIdMismatch) {
-      logger.warn('write_dealcontext: deal_id mismatch — model supplied a different deal than the run context', {
+      logger.error('write_dealcontext: deal_id mismatch — model supplied a different deal than the run context. BLOCKED.', {
         inputDealId: input.deal_id,
         ctxDealId: ctx.dealId,
         fieldPath: input.field_path,
         correlationId: ctx.correlationId,
       });
+      throw new Error(`write_dealcontext blocked: deal_id mismatch. Input deal_id (${input.deal_id}) does not match runtime context (${ctx.dealId}).`);
     }
 
     // Build field metadata. derived_from_search: true marks that this value was

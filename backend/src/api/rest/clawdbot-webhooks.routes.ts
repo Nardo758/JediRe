@@ -23,7 +23,7 @@ function validateSignature(req: Request): boolean {
   const signature = req.headers['x-webhook-signature'] as string;
   const secret = process.env.CLAWDBOT_WEBHOOK_SECRET;
 
-  if (!secret) return true;
+  if (!secret) return false;
   if (!signature) return false;
 
   const payload = JSON.stringify(req.body);
@@ -45,7 +45,7 @@ function validateSignature(req: Request): boolean {
 function validateAuthToken(req: Request): boolean {
   const token = req.headers['authorization']?.replace('Bearer ', '');
   const expectedToken = process.env.CLAWDBOT_AUTH_TOKEN;
-  if (!expectedToken) return true;
+  if (!expectedToken) return false;
   if (!token) return false;
   return token === expectedToken;
 }

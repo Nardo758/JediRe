@@ -96,8 +96,21 @@ export class AgentDelegator {
     let financialContext: DealFinancialContext | null = null;
     if (intent.dealId) {
       try {
-        financialContext = await getDealFinancialContext(intent.dealId);
-        params.financialContext = financialContext;
+        // SEC HIGH-3: ownership check before fetching financial context
+        const ownership = await query<{ user_id: string }>(
+          `SELECT user_id FROM deals WHERE id = $1 LIMIT 1`,
+          [intent.dealId]
+        );
+        if (ownership.rows.length === 0 || ownership.rows[0].user_id !== userId) {
+          logger.warn('AgentDelegator: deal ownership check failed', {
+            dealId: intent.dealId,
+            userId,
+            ownerId: ownership.rows[0]?.user_id,
+          });
+        } else {
+          financialContext = await getDealFinancialContext(intent.dealId);
+          params.financialContext = financialContext;
+        }
       } catch (err) {
         logger.warn('Failed to fetch financial context for delegation:', err);
       }

@@ -8,6 +8,7 @@
 
 import { Express } from 'express';
 import { requireAuth, optionalAuth } from '../middleware/auth';
+import { aiLimiter } from '../middleware/rateLimit';
 
 // ─── Admin Routes ───────────────────────────────────────────────────────────
 // Admin routes MUST be registered before generic /api/v1 routes
@@ -508,7 +509,7 @@ import forwardSupplyRouter from '../api/rest/forward-supply.routes';
 
 export function mountMiscRoutes(app: Express, pool: any) {
   // Chat & communication
-  app.use('/api/v1/chat', chatRouter);
+  app.use('/api/v1/chat', aiLimiter, chatRouter);
   app.use('/api/v1/correlations', correlationRouter);
   app.use('/api/v1/workspaces', workspaceRouter);
   app.use('/api/v1/lead-lag', leadLagRoutes);

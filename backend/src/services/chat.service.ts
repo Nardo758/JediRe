@@ -202,7 +202,7 @@ export interface ChatResult {
 
 const conversationHistory: Map<string, Anthropic.MessageParam[]> = new Map();
 
-export async function processChat(message: string, conversationId?: string): Promise<ChatResult> {
+export async function processChat(message: string, conversationId?: string, userId?: string): Promise<ChatResult> {
   const apiKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error('AI service not configured');
