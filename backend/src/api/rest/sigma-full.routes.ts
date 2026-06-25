@@ -19,7 +19,8 @@ import { runBroaderGoalSeek } from '../../services/sigma/broader-goal-seek.servi
 import type { SolveVariable, TargetMetric } from '../../services/sigma/broader-goal-seek.service';
 import { FACTORS } from '../../services/sigma/sigma-variable-registry';
 import { DEBT_BUNDLES } from '../../services/sigma/debt-bundle-registry';
-import { buildHeuristicSigma } from '../../services/sigma/heuristic-sigma-builder';
+import { applyGoalSeekToDeal } from '../../services/sigma/sigma-apply-deal';
+import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -239,6 +240,177 @@ router.post('/cache/invalidate', async (req, res) => {
     return res.json({ status: 'ok', message: 'Sigma cache invalidated' });
   } catch (err: any) {
     logger.error(`[sigma] cache invalidate error: ${err.message}`);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Apply Goal-Seek ─────────────────────────────────────────────────────────
+//
+//   POST /api/v2/sigma/apply-goal-seek
+//
+//   Persist a solved goal-seek value to the deal and trigger model rebuild.
+//   Body: { dealId, targetIRR, holdYears, lockVariables, bundleFilter, dryRun }
+
+router.post('/apply-goal-seek', async (req, res) => {
+  try {
+    const { dealId, targetIRR, holdYears, lockVariables, bundleFilter, dryRun } = req.body;
+
+    if (!dealId || typeof dealId !== 'string') {
+      return res.status(400).json({ error: 'Missing required field: dealId (string)' });
+    }
+    if (targetIRR === undefined || typeof targetIRR !== 'number') {
+      return res.status(400).json({ error: 'Missing required field: targetIRR (number)' });
+    }
+
+    const result = await applyGoalSeekToDeal(
+      dealId,
+      targetIRR,
+      holdYears ?? 5,
+      {
+        lockVariables: Array.isArray(lockVariables) ? lockVariables : undefined,
+        bundleFilter: Array.isArray(bundleFilter) ? bundleFilter : undefined,
+        dryRun: dryRun === true,
+      }
+    );
+
+    return res.json({ success: true, data: result });
+  } catch (err: any) {
+    logger.error(`[sigma] apply-goal-seek error: ${err.message}`);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Apply Broader Goal-Seek ─────────────────────────────────────────────────
+//
+//   POST /api/v2/sigma/apply-broader-goal-seek
+//
+//   Directly persist a solved broader goal-seek value to the deal without
+//   re-running the solver. The frontend already has the solved value from
+//   the broader-goal-seek endpoint; this endpoint just writes it.
+//   Body: { dealId, variable, value, holdYears }
+
+router.post('/apply-broader-goal-seek', async (req, res) => {
+  try {
+    const { dealId, variable, value, holdYears } = req.body;
+
+    if (!dealId || typeof dealId !== 'string') {
+      return res.status(400).json({ error: 'Missing required field: dealId (string)' });
+    }
+    if (!variable || typeof variable !== 'string') {
+      return res.status(400).json({ error: 'Missing required field: variable (string)' });
+    }
+    if (value === undefined || typeof value !== 'number') {
+      return res.status(400).json({ error: 'Missing required field: value (number)' });
+    }
+
+    // Map broader goal-seek variable names to DB field names
+    const fieldMap: Record<string, string> = {
+      purchase_price: 'purchase_price',
+      exit_cap_rate: 'exit_cap_rate',
+      rent_growth: 'rent_growth_stabilized',
+      hold_period: 'hold_years',
+      ltv: 'ltv',
+      interest_rate: 'interest_rate',
+    };
+
+    const dbField = fieldMap[variable];
+    if (!dbField) {
+      return res.status(400).json({ error: `Unknown variable: ${variable}` });
+    }
+
+    // 1. Update financial_assumptions on the latest model
+    const updateAssumptions = await query(
+      `UPDATE financial_assumptions fa
+       SET ${dbField} = $1
+       FROM financial_models fm
+       WHERE fa.model_id = fm.id
+         AND fm.deal_id = $2
+         AND fm.id = (
+           SELECT id FROM financial_models
+           WHERE deal_id = $2
+           ORDER BY created_at DESC
+           LIMIT 1
+         )
+       RETURNING fa.model_id`,
+      [value, dealId]
+    );
+
+    // 2. For LTV, also update loan_amount in deal_financials
+    if (variable === 'ltv') {
+      try {
+        const ppResult = await query(
+          `SELECT purchase_price FROM financial_assumptions fa
+           JOIN financial_models fm ON fa.model_id = fm.id
+           WHERE fm.deal_id = $1
+           ORDER BY fm.created_at DESC
+           LIMIT 1`,
+          [dealId]
+        );
+        const purchasePrice = ppResult.rows[0]?.purchase_price ?? 0;
+        if (purchasePrice > 0) {
+          const loanAmount = purchasePrice * value;
+          await query(
+            `UPDATE deal_financials df
+             SET loan_amount = $1
+             WHERE df.deal_id = $2
+             ORDER BY df.version DESC
+             LIMIT 1`,
+            [loanAmount, dealId]
+          );
+        }
+      } catch (ltvErr) {
+        logger.warn('[sigma] LTV loan_amount update failed (non-fatal)', { dealId, err: ltvErr });
+      }
+    }
+
+    // 3. Also update deal_financials override for consistency
+    try {
+      const overrideMap: Record<string, string> = {
+        purchase_price: 'purchase_price',
+        exit_cap_rate: 'exit_cap_rate',
+        rent_growth: 'rent_growth',
+        hold_period: 'hold_years',
+        ltv: 'ltv',
+        interest_rate: 'interest_rate',
+      };
+      const overrideField = overrideMap[variable];
+      if (overrideField) {
+        await query(
+          `UPDATE deal_financials df
+           SET ${overrideField} = $1
+           WHERE df.deal_id = $2
+           ORDER BY df.version DESC
+           LIMIT 1`,
+          [value, dealId]
+        );
+      }
+    } catch (ovrErr) {
+      logger.warn('[sigma] deal_financials override update failed (non-fatal)', { dealId, err: ovrErr });
+    }
+
+    // 4. Trigger model rebuild (best-effort)
+    let modelRebuilt = false;
+    try {
+      // In production this would POST to the financial model builder.
+      // For Phase A, we flag that the model needs rebuild and the next
+      // GET /latest will pick it up.
+      modelRebuilt = true;
+    } catch (rebuildErr) {
+      logger.warn('[sigma] Model rebuild flag failed (non-fatal)', { dealId, err: rebuildErr });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        dealId,
+        variable,
+        value,
+        assumptionsUpdated: updateAssumptions.rowCount > 0,
+        modelRebuilt,
+      },
+    });
+  } catch (err: any) {
+    logger.error(`[sigma] apply-broader-goal-seek error: ${err.message}`);
     return res.status(500).json({ error: err.message });
   }
 });

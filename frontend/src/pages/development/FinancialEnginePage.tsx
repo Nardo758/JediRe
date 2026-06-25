@@ -1316,8 +1316,9 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     setStaleModel(prev => prev || modelResults !== null);
   }, [modelResults]);
 
-  const handleApplyGoalSeekSolved = useCallback((variable: SolveVariable, value: number) => {
+  const handleApplyGoalSeekSolved = useCallback(async (variable: SolveVariable, value: number) => {
     if (!assumptions) return;
+    // 1. Immediate local UI feedback
     switch (variable) {
       case 'purchase_price':
         handleAssumptionsChange({ acquisition: { ...assumptions.acquisition, purchasePrice: value } });
@@ -1342,7 +1343,23 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         handleAssumptionsChange({ financing: { ...assumptions.financing, interestRate: value } });
         break;
     }
-  }, [assumptions, handleAssumptionsChange]);
+    // 2. M36-C2: Persist to backend
+    if (resolvedDealId) {
+      try {
+        await apiClient.post('/api/v2/sigma/apply-broader-goal-seek', {
+          dealId: resolvedDealId,
+          variable,
+          value,
+          holdYears: assumptions.holdPeriod ?? 5,
+        });
+        // 3. Refresh model after successful persist
+        // Trigger a fresh model fetch via the existing latest-model effect
+        setLastBuiltHash(null);
+      } catch (err: any) {
+        console.error('[F9] Apply goal-seek to backend failed:', err);
+      }
+    }
+  }, [assumptions, handleAssumptionsChange, resolvedDealId]);
 
   useEffect(() => {
     if (opusScrollRef.current) {
