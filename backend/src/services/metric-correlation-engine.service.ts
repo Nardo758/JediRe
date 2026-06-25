@@ -1,5 +1,7 @@
 import { Pool } from 'pg';
+import { createHash } from 'crypto';
 import { logger } from '../utils/logger';
+import { transaction } from '../database/connection';
 
 export interface CorrelationResult {
   metricA: string;
@@ -21,6 +23,24 @@ export interface CorrelationSweepResult {
 
 export class MetricCorrelationEngine {
   constructor(private pool: Pool) {}
+
+  /**
+   * SCH-04: Generate a 64-bit advisory-lock key from the correlation pair identifiers.
+   * Mirrors CorrelationEngineService.hashLockKey so both services lock on the same key
+   * for the same (metricA, metricB, geographyType, geographyId, windowMonths, scope) tuple.
+   */
+  private hashLockKey(
+    metricA: string,
+    metricB: string,
+    geographyType: string,
+    geographyId: string,
+    windowMonths: number,
+    scope: string
+  ): number {
+    const str = [metricA, metricB, geographyType, geographyId, String(windowMonths), scope].join('::');
+    const hash = createHash('sha256').update(str).digest('hex');
+    return parseInt(hash.slice(0, 15), 16) % 9007199254740991;
+  }
 
   private pearsonR(x: number[], y: number[]): { r: number; n: number } {
     const n = Math.min(x.length, y.length);
@@ -199,24 +219,30 @@ export class MetricCorrelationEngine {
 
     const bestEntry = sweep.sweepResults.find(s => s.lagMonths === sweep.bestLag);
 
-    await this.pool.query(
-      `DELETE FROM metric_correlations
-       WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id = $4 AND window_months = $5 AND scope_id = 'GLOBAL'`
-      ,
-      [metricA, metricB, geoType, geoId, windowMonths],
-    );
-    await this.pool.query(
-      `INSERT INTO metric_correlations
-       (metric_a, metric_b, geography_type, geography_id, window_months,
-        correlation_r, lead_lag_months, p_value, sample_size, computed_at, scope_id, redistribution_restricted)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), 'GLOBAL', FALSE)`
-      ,
-      [
-        metricA, metricB, geoType, geoId, windowMonths,
-        sweep.bestR, sweep.bestLag,
-        pValue, bestEntry?.n || 0,
-      ],
-    );
+    // SCH-04: Wrap DELETE + INSERT in a transaction with an advisory xact lock
+    // so concurrent callers (metrics-catalog API, sweepAllGeographies via
+    // CorrelationEngineService) cannot race on the same correlation pair row.
+    const lockKey = this.hashLockKey(metricA, metricB, geoType, geoId, windowMonths, 'GLOBAL');
+    await transaction(async (client) => {
+      await client.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
+
+      await client.query(
+        `DELETE FROM metric_correlations
+         WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id = $4 AND window_months = $5 AND scope_id = 'GLOBAL'`,
+        [metricA, metricB, geoType, geoId, windowMonths],
+      );
+      await client.query(
+        `INSERT INTO metric_correlations
+         (metric_a, metric_b, geography_type, geography_id, window_months,
+          correlation_r, lead_lag_months, p_value, sample_size, computed_at, scope_id, redistribution_restricted)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), 'GLOBAL', FALSE)`,
+        [
+          metricA, metricB, geoType, geoId, windowMonths,
+          sweep.bestR, sweep.bestLag,
+          pValue, bestEntry?.n || 0,
+        ],
+      );
+    });
 
     return {
       metricA,

@@ -1129,14 +1129,17 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   // AH-1C: Fetch real capital structure for this deal so the Debt & Capital
   // screen shows persisted loanAmount / interestRate / LTV instead of
   // hardcoded STACK_PRESET fiction.  Fires on mount and whenever dealId changes.
+  //
+  // TRACED: apiClient interceptor at frontend/src/api/client.ts:23 returns
+  // response.data directly, so the resolved value is the plain JSON body
+  // {dealId, layers, summary} — NOT an axios response object.  The
+  // res?.data branch that was previously here was dead code.
   useEffect(() => {
     if (!dealId) return;
     setCapitalStructureLoading(true);
     apiClient.get(`/capital-structure/${dealId}`)
       .then((res: any) => {
-        if (res?.data?.summary) {
-          setCapitalStructure(res.data);
-        } else if (res?.summary) {
+        if (res?.summary) {
           setCapitalStructure(res);
         }
       })
