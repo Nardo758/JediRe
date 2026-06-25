@@ -739,6 +739,7 @@ export const useDealStore = create<DealStore>()(
           resolvedUnitMix,
           totalUnits,
           projectType: resolvedType,
+          assetUseType: data.assetUseType ?? data.asset_use_type ?? '',
           editLog: data.editLog ?? [],
           redevelopment: data.redevelopment ?? null,
         });
@@ -1964,7 +1965,8 @@ export const useDealType = (): DealType => {
 /** Get full deal-type configuration (visible tabs, strategies, templates, etc.) */
 export const useDealTypeConfig = () => {
   const projectType = useDealStore((s) => s.projectType);
-  return useMemo(() => getDealTypeConfig({ projectType }), [projectType]);
+  const assetUseType = useDealStore((s) => s.assetUseType);
+  return useMemo(() => getDealTypeConfig({ projectType, assetUseType }), [projectType, assetUseType]);
 };
 
 /** Get strategy availability based on deal type × product type */

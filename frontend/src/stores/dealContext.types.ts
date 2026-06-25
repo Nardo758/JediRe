@@ -767,6 +767,7 @@ export type {
 interface DealContextBase {
   identity: DealIdentity;
   productType: ProductType;
+  assetUseType?: string; // DC-05: Land-use type for visibility guards (e.g., 'land', 'multifamily')
   site: SiteContext;
   zoning: ZoningContext;
   zoningOutput: import('../types/zoning.types').ZoningOutput | null;
