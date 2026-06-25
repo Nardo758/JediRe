@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { createHash } from 'crypto';
 import { logger } from '../utils/logger';
+import { transaction } from '../database/connection';
 import { translateMetricId, OUTCOME_METRICS_DB } from '../utils/metricTranslation';
 
 export interface CorrelationResult {
@@ -541,17 +542,26 @@ export class CorrelationEngineService {
 
       const restricted = scope !== 'GLOBAL';
 
-      await this.pool.query(
-        `DELETE FROM metric_correlations
-         WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id = $4 AND window_months = $5 AND scope_id = $6`,
-        [metricA, metricB, geographyType, geographyId, windowMonths, scope]
-      );
-      await this.pool.query(
-        `INSERT INTO metric_correlations
-         (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, observation_start, observation_end, computed_at, scope_id, redistribution_restricted)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13)`,
-        [metricA, metricB, geographyType, geographyId, windowMonths, correlation.r, lagResults.bestLag, pValue, n, obsStart, obsEnd, scope, restricted]
-      );
+      // SCH-04: Wrap DELETE + INSERT in a transaction with an advisory xact lock
+      // so concurrent callers (sweepAllGeographies, portfolio-correlation.service.ts)
+      // cannot race on the same correlation pair row.  pg_advisory_xact_lock is
+      // released automatically when the transaction ends (COMMIT or ROLLBACK).
+      const lockKey = this.hashLockKey(metricA, metricB, geographyType, geographyId, windowMonths, scope);
+      await transaction(async (client) => {
+        await client.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
+
+        await client.query(
+          `DELETE FROM metric_correlations
+           WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id = $4 AND window_months = $5 AND scope_id = $6`,
+          [metricA, metricB, geographyType, geographyId, windowMonths, scope]
+        );
+        await client.query(
+          `INSERT INTO metric_correlations
+           (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, observation_start, observation_end, computed_at, scope_id, redistribution_restricted)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13)`,
+          [metricA, metricB, geographyType, geographyId, windowMonths, correlation.r, lagResults.bestLag, pValue, n, obsStart, obsEnd, scope, restricted]
+        );
+      });
 
       // Append to correlation_history (Task #919) — append-only, one row per calendar day per pair
       await this.pool.query(
@@ -587,6 +597,28 @@ export class CorrelationEngineService {
     }
 
     return { r: numerator / (denominatorX * denominatorY) };
+  }
+
+  /**
+   * SCH-04: Generate a 64-bit advisory-lock key from the correlation pair identifiers.
+   * Used by pg_advisory_xact_lock to serialize writes for a specific (metricA, metricB,
+   * geographyType, geographyId, windowMonths, scope_id) combination so that concurrent
+   * callers (sweepAllGeographies, portfolio-correlation.service.ts) cannot race on the
+   * same DELETE + INSERT pair.
+   */
+  private hashLockKey(
+    metricA: string,
+    metricB: string,
+    geographyType: string,
+    geographyId: string,
+    windowMonths: number,
+    scope: string
+  ): number {
+    const str = [metricA, metricB, geographyType, geographyId, String(windowMonths), scope].join('::');
+    const hash = createHash('sha256').update(str).digest('hex');
+    // Take the first 15 hex digits (60 bits) and convert to a signed 53-bit integer
+    // so it fits safely in a JavaScript number and PostgreSQL bigint.
+    return parseInt(hash.slice(0, 15), 16) % 9007199254740991;
   }
 
   private computeLagCorrelations(x: number[], y: number[]): { bestLag: number } {
