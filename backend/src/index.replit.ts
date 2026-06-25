@@ -66,7 +66,10 @@ const httpServer = createServer(app);
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',')
   : ['http://localhost:5000', 'http://0.0.0.0:5000', 'http://localhost:4000', 'http://0.0.0.0:4000', 'http://localhost:3000'];
-const allowedOriginPatterns = [/\.replit\.dev(:\d+)?$/, /\.replit\.app(:\d+)?$/, /\.repl\.co(:\d+)?$/];
+const allowedOriginPatterns = [
+  /^https:\/\/[\w-]+\.replit\.dev(:\d+)?$/,
+  /^https:\/\/[\w-]+\.replit\.app(:\d+)?$/,
+];
 
 function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true;
@@ -122,6 +125,56 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 }));
+
+// A4-F4: Input validation middleware for public (unauthenticated) routes.
+// Prevents DoS via oversized query params and blocks suspicious patterns.
+function validatePublicQuery(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+): void {
+  const MAX_LIMIT = 1000;
+  const MAX_STRING_LEN = 200;
+
+  // Validate `limit`
+  if (req.query.limit !== undefined) {
+    const limit = parseInt(req.query.limit as string, 10);
+    if (Number.isNaN(limit) || limit < 1 || limit > MAX_LIMIT) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: `Invalid limit. Must be between 1 and ${MAX_LIMIT}.`,
+      });
+      return;
+    }
+  }
+
+  // Validate `city`
+  if (req.query.city !== undefined) {
+    const city = String(req.query.city);
+    if (city.length > MAX_STRING_LEN || /[<>'";&|]/.test(city)) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'Invalid city parameter.',
+      });
+      return;
+    }
+  }
+
+  // Validate `market`
+  if (req.query.market !== undefined) {
+    const market = String(req.query.market);
+    if (market.length > MAX_STRING_LEN || /[<>'";&|]/.test(market)) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'Invalid market parameter.',
+      });
+      return;
+    }
+  }
+
+  next();
+}
+
 // Stripe webhook MUST be before express.json() for raw body signature verification
 import { WebhookHandlers } from './services/stripe/webhookHandlers';
 app.post(
@@ -143,6 +196,9 @@ app.post(
   }
 );
 
+// A4-F7: Rate limiter BEFORE body parsers — prevents DoS via large JSON payloads
+app.use(rateLimiter);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -150,10 +206,6 @@ app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
-
-// P0 Security: Rate limiting — prevents brute-force and API abuse.
-// Mounted after body parsers but before all protected routes.
-app.use(rateLimiter);
 
 app.use('/health', healthRouter);
 app.use('/api/v1/auth', authLimiter, authRouter);
@@ -210,23 +262,23 @@ app.use('/api/v1', taxCompAnalysisRouter);
 
 // FRED macro ticker â€” public (no auth required) â€” used by TerminalPage ticker bar
 import tickerRoutes from './api/rest/ticker.routes';
-app.use('/api/v1/ticker', tickerRoutes);
+app.use('/api/v1/ticker', validatePublicQuery, tickerRoutes);
 
 // Time Series Explorer â€” public (no auth required) â€” used by TimeSeriesExplorerPage
 import timeSeriesRoutes from './api/rest/time-series.routes';
-app.use('/api/v1/time-series', timeSeriesRoutes);
+app.use('/api/v1/time-series', validatePublicQuery, timeSeriesRoutes);
 
 import dataMacroRoutes from './api/rest/data-macro.routes';
-app.use('/api/v1/data-macro', dataMacroRoutes);
+app.use('/api/v1/data-macro', validatePublicQuery, dataMacroRoutes);
 
 import driverAnalysisRoutes from './api/rest/driver-analysis.routes';
-app.use('/api/v1/driver-analysis', driverAnalysisRoutes);
+app.use('/api/v1/driver-analysis', validatePublicQuery, driverAnalysisRoutes);
 
 import derivedMetricsRoutes from './api/rest/derived-metrics.routes';
-app.use('/api/v1/derived-metrics', derivedMetricsRoutes);
+app.use('/api/v1/derived-metrics', validatePublicQuery, derivedMetricsRoutes);
 
 import columnCatalogRoutes, { catalogHandler, gridDataHandler, insightsHandler } from './api/rest/column-catalog.routes';
-app.use('/api/v1/columns', columnCatalogRoutes);
+app.use('/api/v1/columns', validatePublicQuery, columnCatalogRoutes);
 app.get('/api/v1/column-catalog', catalogHandler);
 app.get('/api/v1/grid-data', gridDataHandler);
 app.get('/api/v1/column-insights', insightsHandler);
@@ -711,20 +763,21 @@ function broadcastDealPresence(dealId: string) {
 
 io.use((socket, next) => {
   const token = socket.handshake.auth?.token;
-  if (token) {
-    try {
-      const { verifyAccessToken } = require('./auth/jwt');
-      const payload = verifyAccessToken(token);
-      if (payload) {
-        (socket as any).userId = payload.userId;
-        (socket as any).email = payload.email;
-        return next();
-      }
-    } catch {}
+  if (!token) {
+    return next(new Error('Authentication required'));
   }
-  (socket as any).userId = socket.id;
-  (socket as any).email = 'anonymous';
-  next();
+  try {
+    const { verifyAccessToken } = require('./auth/jwt');
+    const payload = verifyAccessToken(token);
+    if (!payload) {
+      return next(new Error('Invalid token'));
+    }
+    (socket as any).userId = payload.userId;
+    (socket as any).email = payload.email;
+    next();
+  } catch {
+    next(new Error('Authentication failed'));
+  }
 });
 
 io.on('connection', (socket) => {
