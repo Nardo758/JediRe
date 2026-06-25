@@ -27,6 +27,15 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     maxAutomationLevel: 1,
     surfaces: ['chat'],
   },
+  // A5-F4: 'basic' tier — legacy / pre-launch tier mapped to same config as scout.
+  // getAllowedTriggerModes('basic') returns ['manual', 'event-driven'] (dev/testing).
+  basic: {
+    creditsIncludedMonthly: 100,
+    overageCostPerCredit: 0.25,
+    maxActiveDeals: 5,
+    maxAutomationLevel: 1,
+    surfaces: ['chat'],
+  },
   operator: {
     creditsIncludedMonthly: 500,
     overageCostPerCredit: 0.15,

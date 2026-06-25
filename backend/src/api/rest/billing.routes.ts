@@ -197,10 +197,13 @@ router.get('/subscription', async (req: Request, res: Response) => {
 
     let stripeSubscription: any = null;
 
-    // Dev/test accounts (empty stripe_customer_id) auto-replenish when exhausted
-    // so the banner never gets stuck in a permanently locked state during development.
-    // Real Stripe-backed accounts are unaffected by this check.
-    const isDevAccount = !balance.stripeCustomerId || balance.stripeCustomerId === '' || balance.stripeCustomerId.startsWith('dev_');
+    // Dev/test accounts auto-replenish when exhausted so the banner never gets
+    // stuck in a permanently locked state during development.
+    // A5-F6: Narrowed check — only auto-replenish when NODE_ENV is not 'production'
+    // OR when the stripe_customer_id is explicitly prefixed with 'dev_'.
+    // Real Stripe-backed accounts in production are unaffected.
+    const isDevAccount = process.env.NODE_ENV !== 'production' &&
+      (!balance.stripeCustomerId || balance.stripeCustomerId === '' || balance.stripeCustomerId.startsWith('dev_'));
     if (isDevAccount && balance.creditsRemaining <= 0) {
       try {
         await creditService.resetMonthlyCredits(userId!);

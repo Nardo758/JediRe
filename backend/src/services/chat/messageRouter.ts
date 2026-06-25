@@ -316,10 +316,10 @@ export class MessageRouter {
 
       // Check credits
       const balance = await this.creditService.getBalance(userId);
-      if (balance && (balance as any).remaining <= 0) {
+      if (balance && balance.creditsRemaining <= 0) {
         res.status(402).json({
           error: 'Insufficient credits',
-          remaining: (balance as any).remaining,
+          remaining: balance.creditsRemaining,
           periodEnd: balance.periodEnd,
         });
         return;
@@ -341,7 +341,7 @@ export class MessageRouter {
       // Update credits
       const updatedBalance = await this.creditService.getBalance(userId);
       if (updatedBalance) {
-        response.creditsRemaining = (updatedBalance as any).remaining;
+        response.creditsRemaining = updatedBalance.creditsRemaining;
       }
 
       res.json(response);

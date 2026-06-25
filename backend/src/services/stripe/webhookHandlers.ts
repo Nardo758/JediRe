@@ -67,6 +67,13 @@ export class WebhookHandlers {
           const userId = await findUserByStripeCustomer(customerId);
           if (userId) {
             await creditService.provisionUser(userId, customerId, tier);
+            // A5-F7: Keep users.stripe_customer_id in sync with user_credit_balances
+            // so billing route resolution (which checks users first) is consistent.
+            const { query } = await import('../../database/connection');
+            await query(
+              `UPDATE users SET stripe_customer_id = $1 WHERE id = $2`,
+              [customerId, userId]
+            );
             logger.info('Subscription created — user provisioned', { userId, tier });
           }
           break;

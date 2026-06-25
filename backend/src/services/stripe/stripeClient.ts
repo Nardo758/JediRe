@@ -1,3 +1,13 @@
+/**
+ * Stripe Client & Sync
+ *
+ * A5-F8 NOTE: `stripe-replit-sync` is NOT declared in package.json. The
+ * import is dynamically wrapped so the app won't crash on startup, but
+ * Stripe webhook processing and sync backfill will silently fail until
+ * the package is installed. Add to package.json:
+ *   "stripe-replit-sync": "<version>",
+ */
+
 import Stripe from 'stripe';
 
 function getSecretKey(): string {
