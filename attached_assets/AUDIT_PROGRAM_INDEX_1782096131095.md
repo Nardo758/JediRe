@@ -36,7 +36,7 @@ the way the specs did.
 | A2 | S1 Chat Launch Chain (+ failure-mode) | vertical (revenue path) | **LAUNCH** | ◑ | `AUDIT_DISPATCH_S1_CHAT_LAUNCH_CHAIN.md` |
 | A3 | Unit Economics & Credit-Cost | quantitative (margin) | **LAUNCH** | ◑ | `AUDIT_DISPATCH_UNIT_ECONOMICS.md` |
 | A4 | Public-Ingress Security | adversarial (untrusted input) | **LAUNCH** | ◑ | `AUDIT_DISPATCH_PUBLIC_INGRESS_SECURITY.md` |
-| A5 | Billing / Tier / Automation-Level Gating | wiring (monetization) | **LAUNCH** | ○ | — |
+| A5 | Billing / Tier / Automation-Level Gating | wiring (monetization) | **LAUNCH** | ● | `AUDIT_DISPATCH_A5_BILLING_TIER_AUTOMATION.md` |
 | A6 | Feature ↔ UI ↔ Backend (per surface) | vertical, per-surface | surface-dependent † | ○ | — |
 | A7 | Route Audit (backend reg + FE reachability) | horizontal + per-surface | mostly fast-follow ‡ | ○ | — |
 | A8 | User-Flow Audits (per journey) | vertical, per-journey | core flow gating; rest fast-follow | ○ | — |
