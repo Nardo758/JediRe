@@ -2,7 +2,7 @@
 // JEDI RE — Asset Hub Console  (Phase A: shell, IA & drawers — synthetic data)
 // Replaces AssetOwnedPage.tsx as the primary owned-asset view.
 // ============================================================================
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   LineChart, Line, BarChart, Bar,
@@ -219,10 +219,10 @@ const CAPEX_DATA = [
   { item: 'Roof / Envelope', budget: '$0.18M', spent: '$0.00M', pct: '0%',  flag: true  },
 ];
 
-const CHECKPOINTS = [
-  { note: 'Rent burn-off behind — 3 of 8 Q2 expirations renewed in-place vs market', tone: T.text.amber },
-  { note: 'Insurance +24% vs UW — FL carrier non-renewal, re-bid in progress', tone: T.text.red },
-  { note: 'Reno premium $285/u tracking ABOVE underwriting ($260)', tone: T.text.green },
+const CAPEX_DATA = [
+  { item: 'Interior Reno',   budget: '$1.20M', spent: '$0.98M', pct: '82%', flag: false },
+  { item: 'Amenity Upgrade', budget: '$0.34M', spent: '$0.31M', pct: '91%', flag: false },
+  { item: 'Roof / Envelope', budget: '$0.18M', spent: '$0.00M', pct: '0%',  flag: true  },
 ];
 
 const LIFECYCLE_DATA = [
@@ -1717,11 +1717,11 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
   }, [dealId, activeScreen]);
 
   // ── Commentary agent — thesis checkpoints ─────────────────────
-  useEffect(() => {
+  const fetchCommentary = useCallback((forceRefresh = false) => {
     if (!dealId) return;
     setLiveCheckpoints([]);   // clear stale bullets from any previous deal
     setCheckpointsLoading(true);
-    apiClient.post(`/api/v1/operations/${dealId}/commentary`, {})
+    apiClient.post(`/api/v1/operations/${dealId}/commentary`, { forceRefresh })
       .then(res => {
         const pts = res.data?.checkpoints;
         if (Array.isArray(pts) && pts.length > 0) setLiveCheckpoints(pts);
@@ -1729,6 +1729,10 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
       .catch(() => {})
       .finally(() => setCheckpointsLoading(false));
   }, [dealId]);
+
+  useEffect(() => {
+    fetchCommentary();
+  }, [fetchCommentary]);
 
   // ── Map PVA to chart data ─────────────────────────────────────
   const chartData = useMemo(() => {
@@ -1913,17 +1917,34 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
                     amber: T.text.amber,
                     red:   T.text.red,
                   };
-                  const display = liveCheckpoints.length
-                    ? liveCheckpoints.map(c => ({ note: c.text, tone: colorMap[c.color] ?? T.text.muted }))
-                    : CHECKPOINTS;
-                  return display.map((c, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 8, padding: '8px 12px', borderBottom: i < display.length - 1 ? `1px solid ${T.border.subtle}` : 'none' }}>
-                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.tone, marginTop: 5, flexShrink: 0 }} />
+                  // AH-1B: removed CHECKPOINTS fallback — thesis panel now shows real data or empty state
+                  if (liveCheckpoints.length === 0) {
+                    return (
+                      <div style={{ padding: '16px 12px', textAlign: 'center' }}>
+                        <div style={{ fontFamily: T.font.mono, fontSize: 9, color: T.text.muted, marginBottom: 8 }}>
+                          No commentary generated yet.
+                        </div>
+                        <button
+                          onClick={() => fetchCommentary(true)}
+                          disabled={checkpointsLoading}
+                          style={{
+                            fontFamily: T.font.mono, fontSize: 9, fontWeight: 700,
+                            color: T.text.cyan, background: 'transparent',
+                            border: `1px solid ${T.text.cyan}55`, borderRadius: 2,
+                            padding: '4px 12px', cursor: checkpointsLoading ? 'not-allowed' : 'pointer',
+                            letterSpacing: 0.3,
+                          }}
+                        >
+                          {checkpointsLoading ? 'GENERATING…' : 'GENERATE COMMENTARY'}
+                        </button>
+                      </div>
+                    );
+                  }
+                  return liveCheckpoints.map((c, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8, padding: '8px 12px', borderBottom: i < liveCheckpoints.length - 1 ? `1px solid ${T.border.subtle}` : 'none' }}>
+                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: colorMap[c.color] ?? T.text.muted, marginTop: 5, flexShrink: 0 }} />
                       <div>
-                        <div style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary, lineHeight: 1.45 }}>{c.note}</div>
-                        {!liveCheckpoints.length && (
-                          <div style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted, marginTop: 2 }}>// loading commentary…</div>
-                        )}
+                        <div style={{ fontFamily: T.font.label, fontSize: 10, color: T.text.secondary, lineHeight: 1.45 }}>{c.text}</div>
                       </div>
                     </div>
                   ));
