@@ -276,7 +276,7 @@ const FIELD_META: Record<string, FieldMeta> = {
     description: 'Physical vacancy & credit loss as % of GPR. M07 derives this from T-01×T-05 traffic equilibrium.',
     platformSource: 'M07 — T-01 × T-05 occupancy trajectory per year', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Vacancy & Credit Loss',
-    getYearNPlatform: (f, yr) => tyr(f, yr)?.vacancyPct ?? y1(f,'vacancy_loss')?.platform ?? null,
+    getYearNPlatform: (f, yr) => tyr(f, yr)?.vacancyPct ?? y1(f,'vacancy_loss')?.resolved ?? y1(f,'vacancy_loss')?.platform ?? null,
   },
   concessions: {
     unit: 'dollar', format: fmtDlr, patchField: 'concessionsPct', growthPct: -0.10, assumptionKey: 'concessionBurnOffPct',
@@ -944,22 +944,41 @@ function getDivergenceColor(
 // ─── Layered cell ──────────────────────────────────────────────────────────────
 interface LayerVals { broker: number|null; platform: number|null; user: number|null }
 
-function LayeredCell({ vals, format, onClick, isM07, readonly, divergence, formulaResult, classification }: {
+function LayeredCell({ vals, format, onClick, isM07, readonly, divergence, formulaResult, classification, backendResolved, resolution }: {
   vals: LayerVals; format: (n: number) => string;
   onClick?: () => void; isM07?: boolean; readonly?: boolean;
   divergence: 'red'|'amber'|null; formulaResult?: number|null;
   classification?: 'within' | 'soft_warning' | 'hard_warning' | null;
+  backendResolved?: number | null;
+  resolution?: string | null;
 }) {
   const { broker, platform, user } = vals;
   const bg = divergence === 'red' ? 'bg-red-900/20 border-r-red-500/40' : divergence === 'amber' ? 'bg-amber-900/10 border-r-amber-500/20' : '';
   const hasUser = user != null || formulaResult != null;
-  const resolved = formulaResult ?? user ?? platform ?? broker;
-  const priorVal = hasUser ? (platform ?? broker) : null;
+  // DC-33: prefer backend resolved over naive platform→broker fallback
+  const resolved = formulaResult ?? user ?? backendResolved ?? platform ?? broker;
+  const priorVal = hasUser ? (backendResolved ?? platform ?? broker) : null;
+
+  // Color map: resolution drives the value color so the user sees which layer won
+  const RESOLVED_COLORS: Record<string, string> = {
+    user: '#3b82f6',      // blue-400
+    formula: '#2dd4bf',  // teal-400
+    platform: '#22d3ee', // cyan-400
+    broker: '#f59e0b',   // amber-400
+    t12: '#f59e0b',
+    t6: '#f59e0b',
+    t3: '#f59e0b',
+    t1: '#f59e0b',
+    rentRoll: '#f59e0b',
+    taxBill: '#f59e0b',
+  };
+  const resolvedColor = RESOLVED_COLORS[resolution ?? ''] ?? (platform != null ? '#22d3ee' : broker != null ? '#f59e0b' : '#94a3b8');
+
   const tooltipParts: string[] = [];
   if (user != null) tooltipParts.push(`USR: ${format(user)}`);
   if (platform != null) tooltipParts.push(`PLT: ${format(platform)}`);
   if (broker != null) tooltipParts.push(`BRK: ${format(broker)}`);
-  if (resolved != null) tooltipParts.push(`RES: ${format(resolved)}`);
+  if (backendResolved != null) tooltipParts.push(`RES: ${format(backendResolved)} (${resolution ?? '?'})`);
 
   return (
     <td
@@ -996,23 +1015,23 @@ function LayeredCell({ vals, format, onClick, isM07, readonly, divergence, formu
       {formulaResult == null && user != null && (
         <div className="text-[9px] font-mono font-bold text-blue-400 leading-[1.3]">{format(user)}</div>
       )}
-      {/* Resolved (effective) line — shown faint when overridden by user */}
-      {hasUser && priorVal != null && (
-        <div className="text-[8px] font-mono leading-[1.2] text-slate-700 line-through">
-          {format(priorVal)}
+      {/* DC-33: resolved value — primary display when no user override */}
+      {formulaResult == null && user == null && resolved != null && (
+        <div className="text-[9px] font-mono font-bold leading-[1.3]" style={{ color: resolvedColor }}>
+          {format(resolved)}
         </div>
       )}
-      {!hasUser && platform != null && (
+      {formulaResult == null && user == null && resolved == null && platform != null && (
         <div className="text-[9px] font-mono font-bold text-cyan-400 leading-[1.3]">
           {format(platform)}
         </div>
       )}
-      {!hasUser && platform == null && broker != null && (
+      {formulaResult == null && user == null && resolved == null && platform == null && broker != null && (
         <div className="text-[9px] font-mono font-bold text-amber-400 leading-[1.3]">
           {format(broker)}
         </div>
       )}
-      {resolved == null && (
+      {resolved == null && platform == null && broker == null && (
         <div className="text-[9px] font-mono text-slate-700">—</div>
       )}
     </td>
@@ -1020,7 +1039,7 @@ function LayeredCell({ vals, format, onClick, isM07, readonly, divergence, formu
 }
 
 // ─── Side drawer ───────────────────────────────────────────────────────────────
-interface DrawerTarget { row: RowDef; year: number; vals: LayerVals; formulaExpr: string; }
+interface DrawerTarget { row: RowDef; year: number; vals: LayerVals; backendResolved: number | null; resolution: string | null; formulaExpr: string; }
 
 function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
   target: DrawerTarget|null; allYears: number[];
@@ -1029,7 +1048,7 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
   onFormulaChange: (rowKey: string, expr: string) => void;
 }) {
   const viewMode = useDealStore(s => s.viewMode);
-  const [activeLayer, setActiveLayer] = useState<'broker'|'platform'|'user'|'formula'>('platform');
+  const [activeLayer, setActiveLayer] = useState<'broker'|'platform'|'user'|'formula'|'resolved'>('platform');
   const [draft, setDraft]   = useState('');
   const [formula, setFormula] = useState('');
   const [applyAll, setApplyAll] = useState(false);
@@ -1045,6 +1064,7 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
     const preferBroker   = !brokerHidden && vals.broker != null;
     setActiveLayer(
       vals.user != null    ? 'user'
+      : target.backendResolved != null ? 'resolved'
       : preferPlatform     ? 'platform'
       : preferBroker       ? 'broker'
       : 'user'
@@ -1074,6 +1094,8 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
     } else if (activeLayer === 'user') {
       const n = parseFloat(draft);
       if (!isNaN(n)) onApply(rd, yr, rd.unit === 'pct' ? n / 100 : n, applyAll, 'user');
+    } else if (activeLayer === 'resolved' && target.backendResolved != null) {
+      onApply(rd, yr, target.backendResolved, applyAll, 'user');
     } else if (activeLayer === 'platform' && vals.platform != null) {
       onApply(rd, yr, vals.platform, applyAll, 'platform');
     } else if (activeLayer === 'broker' && vals.broker != null) {
@@ -1083,6 +1105,7 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
   };
 
   const LAYER_CFG = [
+    { id: 'resolved' as const, label: 'RESOLVED', color: '#e2e8f0', val: target.backendResolved, hidden: false },
     { id: 'platform' as const, label: 'PLATFORM', color: '#22d3ee', val: vals.platform, hidden: platHidden },
     { id: 'broker'   as const, label: 'BROKER',   color: '#f59e0b', val: vals.broker,   hidden: brokerHidden },
     { id: 'user'     as const, label: 'USER',      color: '#3b82f6', val: vals.user,     hidden: false },
@@ -1147,6 +1170,17 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
       {rd.description && (
         <div style={{ padding: '6px 12px', borderBottom: '1px solid #1e1e1e', flexShrink: 0 }}>
           <div style={{ fontSize: 9, color: '#94a3b8', lineHeight: 1.5 }}>{rd.description}</div>
+        </div>
+      )}
+
+      {/* DC-33: Backend Resolved value display */}
+      {target.backendResolved != null && (
+        <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e', flexShrink: 0 }}>
+          <div style={{ fontSize: 8, color: '#e2e8f050', letterSpacing: 0.5, marginBottom: 3 }}>BACKEND RESOLVED</div>
+          <div style={{ fontSize: 9, color: '#e2e8f0', fontWeight: 700 }}>
+            {rd.format(target.backendResolved)}
+            <span style={{ fontSize: 7, color: '#64748b', marginLeft: 4 }}>(source: {target.resolution ?? 'unknown'})</span>
+          </div>
         </div>
       )}
 
@@ -2195,7 +2229,8 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     if (!expr || getMode(rd.key) !== 'formula') return null;
     const yearVals: Record<number, number|null> = {};
     for (const y of years) {
-      yearVals[y] = getUser(rd.key, y) ?? (financials ? resolvePlatform(rd, y) ?? rd.getBroker(financials, y) : null);
+      // DC-33: prefer backend resolved over raw platform/broker for formula base
+      yearVals[y] = getUser(rd.key, y) ?? (financials ? rd.getResolved?.(financials, y) ?? resolvePlatform(rd, y) ?? rd.getBroker(financials, y) : null);
     }
     return evalFormula(expr, {
       base:     financials ? rd.getBroker(financials, yr)   : null,
@@ -2328,6 +2363,9 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
         platform: resolvePlatform(rd, yr),
         user:     getUser(rd.key, yr),
       },
+      // DC-33: include backend resolved + resolution in drawer payload
+      backendResolved: rd.getResolved?.(financials, yr) ?? null,
+      resolution: (yr === 1 ? financials.proforma.year1.find(r => r.field === rd.key)?.resolution : null) ?? null,
       formulaExpr: getFormula(rd.key),
     });
     // resolvePlatform in deps so the drawer payload reflects refusal.
@@ -2395,10 +2433,8 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
       if (u != null) return u;
       const row = findRow(key);
       if (!row) return null;
-      // Refusal-aware: skip platform when the row is REFUSED so protector
-      // inputs (Gordon, NOI identity, etc.) don't anchor on a forecast the
-      // platform has explicitly declined to make.
-      return resolvePlatform(row, yr) ?? row.getBroker(financials, yr);
+      // DC-33: prefer backend resolved over raw platform/broker for protector inputs
+      return row.getResolved?.(financials, yr) ?? resolvePlatform(row, yr) ?? row.getBroker(financials, yr);
     };
     const terminalYr = financials.assumptions?.holdYears ?? holdYears;
     // Gordon coupling lives at the terminal year — exit cap & terminal g pair.
@@ -2414,8 +2450,9 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
     const y1 = financials.proforma.year1;
     const noiCell = y1?.find(r => r.field === 'net_operating_income') ?? y1?.find(r => r.field === 'noi');
     const egiCell = y1?.find(r => r.field === 'effective_gross_income') ?? y1?.find(r => r.field === 'egi');
-    const noi = noiCell?.platform ?? noiCell?.broker;
-    const egi = egiCell?.platform ?? egiCell?.broker;
+    // DC-33: use backend resolved instead of raw platform/broker
+    const noi = noiCell?.resolved ?? noiCell?.platform ?? noiCell?.broker;
+    const egi = egiCell?.resolved ?? egiCell?.platform ?? egiCell?.broker;
     const noiMargin = noi != null && egi != null && egi > 0 ? noi / egi : 0.6;
     return {
       exitCap,
@@ -2912,13 +2949,18 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                             const broker   = financials ? rd.getBroker(financials, yr) : null;
                             let platform   = resolvePlatform(rd, yr);
                             const user     = getUser(rd.key, yr);
+                            // DC-33: fetch backend resolved + resolution for authoritative display
+                            const backendResolved = financials ? rd.getResolved?.(financials, yr) ?? null : null;
+                            const y1Row    = yr === 1 && financials
+                              ? financials.proforma.year1.find(r => r.field === rd.key)
+                              : null;
+                            const resolution = y1Row?.resolution ?? null;
 
                             const isBrokerView = viewMode === 'BROKER_VIEW';
 
                             // Y1 source: when yr===1 and no explicit user override, surface
                             // the value from the selected y1Source so every Y1 cell updates live.
                             if (yr === 1 && user == null && financials) {
-                              const y1Row = financials.proforma.year1.find(r => r.field === rd.key);
                               if (y1Source === 'BROKER')        platform = broker;
                               else if (y1Source === 'T12')      platform = y1Row?.t12 ?? broker ?? platform;
                               else if (y1Source === 'T6')       platform = y1Row?.t6  ?? y1Row?.t12 ?? platform;
@@ -2934,8 +2976,10 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                             const displayUser        = isBrokerView ? null : user;
                             const formulaResult      = (!isBrokerView && mode === 'formula') ? computeFormulaResult(rd, yr) : null;
 
+                            // DC-33: divergence should be computed against resolved, not raw platform
+                            const effectiveForDivergence = formulaResult ?? displayUser ?? backendResolved ?? displayPlatform ?? broker;
                             const divergence = getDivergenceColor(
-                              formulaResult ?? displayUser, displayPlatform, broker,
+                              effectiveForDivergence, displayPlatform, broker,
                             );
                             const ovrVal = formulaResult ?? displayUser;
                             const classification = ovrVal != null
@@ -2944,6 +2988,8 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, modelResul
                             return (
                               <LayeredCell key={yr}
                                 vals={{ broker, platform: displayPlatform, user: displayUser }}
+                                backendResolved={isBrokerView ? null : backendResolved}
+                                resolution={isBrokerView ? null : resolution}
                                 format={rd.format}
                                 readonly={rd.readonly || lockedOverrides || isBrokerView}
                                 isM07={!!rd.isM07}

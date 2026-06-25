@@ -1667,7 +1667,8 @@ export function DealTermsTab(props: FinancialEngineTabProps) {
                 : 'Not Provided'}
             />
             <LvRow label="Selling Costs %"
-              broker={undefined} platform="2.00%"
+              broker={undefined}
+              platform={sellingCostsPctResolved != null ? `${(sellingCostsPctResolved * 100).toFixed(2)}%` : undefined}
               override={sellingCosts} setOverride={setSellingCosts}
               overrideKind="pct"
               onCommit={() => void saveSellingCosts()}

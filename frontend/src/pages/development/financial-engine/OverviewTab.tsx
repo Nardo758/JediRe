@@ -156,13 +156,13 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
   const lpEquityDollar = equityAtClose > 0 ? equityAtClose * lpShareOv : null;
   const gpEquityDollar = equityAtClose > 0 ? equityAtClose * gpShareOv : null;
 
-  type ProFormaRow = { label: string; brokerFmt: string; platformFmt: string; brokerRaw: number | null; platformRaw: number | null };
+  type ProFormaRow = { label: string; brokerFmt: string; platformFmt: string; resolvedFmt: string; brokerRaw: number | null; platformRaw: number | null; resolvedRaw: number | null };
   const proFormaRows: ProFormaRow[] = [
-    { label: 'EXIT CAP RATE',      brokerFmt: brokerCapRate != null ? fmtPct(brokerCapRate * 100) : '—', platformFmt: platformExitCap != null ? fmtPct(platformExitCap * 100) : '—', brokerRaw: brokerCapRate, platformRaw: platformExitCap },
-    { label: 'ACQUISITION CAP RATE', brokerFmt: brokerCapRate != null ? fmtPct(brokerCapRate * 100) : '—', platformFmt: platformData.capRate != null ? fmtPct(platformData.capRate * 100) : '—', brokerRaw: brokerCapRate, platformRaw: platformData.capRate ?? null },
-    { label: 'PURCHASE PRICE',    brokerFmt: brokerPurchasePrice != null ? fmt$(brokerPurchasePrice) : '—', platformFmt: f9PurchasePrice != null ? fmt$(f9PurchasePrice) : '—', brokerRaw: brokerPurchasePrice, platformRaw: f9PurchasePrice },
-    { label: 'VACANCY RATE',      brokerFmt: '—', platformFmt: f9VacancyPct != null ? fmtPct(f9VacancyPct * 100) : '—', brokerRaw: null, platformRaw: f9VacancyPct },
-    { label: 'YR-1 NOI (F9)',     brokerFmt: '—', platformFmt: f9Yr1Noi != null ? fmt$(f9Yr1Noi) : '—', brokerRaw: null, platformRaw: f9Yr1Noi },
+    { label: 'EXIT CAP RATE',      brokerFmt: brokerCapRate != null ? fmtPct(brokerCapRate * 100) : '—', platformFmt: platformExitCap != null ? fmtPct(platformExitCap * 100) : '—', resolvedFmt: f9ExitCap != null ? fmtPct(f9ExitCap * 100) : '—', brokerRaw: brokerCapRate, platformRaw: platformExitCap, resolvedRaw: f9ExitCap },
+    { label: 'ACQUISITION CAP RATE', brokerFmt: brokerCapRate != null ? fmtPct(brokerCapRate * 100) : '—', platformFmt: platformData.capRate != null ? fmtPct(platformData.capRate * 100) : '—', resolvedFmt: brokerCapRate != null ? fmtPct(brokerCapRate * 100) : '—', brokerRaw: brokerCapRate, platformRaw: platformData.capRate ?? null, resolvedRaw: brokerCapRate ?? null },
+    { label: 'PURCHASE PRICE',    brokerFmt: brokerPurchasePrice != null ? fmt$(brokerPurchasePrice) : '—', platformFmt: f9PurchasePrice != null ? fmt$(f9PurchasePrice) : '—', resolvedFmt: f9PurchasePrice != null ? fmt$(f9PurchasePrice) : '—', brokerRaw: brokerPurchasePrice, platformRaw: f9PurchasePrice, resolvedRaw: f9PurchasePrice },
+    { label: 'VACANCY RATE',      brokerFmt: '—', platformFmt: f9VacancyPct != null ? fmtPct(f9VacancyPct * 100) : '—', resolvedFmt: f9VacancyPct != null ? fmtPct(f9VacancyPct * 100) : '—', brokerRaw: null, platformRaw: f9VacancyPct, resolvedRaw: f9VacancyPct },
+    { label: 'YR-1 NOI (F9)',     brokerFmt: '—', platformFmt: f9Yr1Noi != null ? fmt$(f9Yr1Noi) : '—', resolvedFmt: f9Yr1Noi != null ? fmt$(f9Yr1Noi) : '—', brokerRaw: null, platformRaw: f9Yr1Noi, resolvedRaw: f9Yr1Noi },
   ];
   const anyCollision = proFormaRows.some(r => collisionDot(r.brokerRaw, r.platformRaw) != null);
 
@@ -442,12 +442,13 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
             {anyCollision ? (
               <AlertBanner label="COLLISION DETECTED" text="Broker and platform assumptions diverge >10% on highlighted rows" color={BT.text.amber} badge={<Bd c={BT.text.amber}>REVIEW REQUIRED</Bd>} />
             ) : (
-              <AlertBanner label="3-LAYER MODEL" text="BROKER · PLATFORM · YOU — No divergences detected above threshold" color={BT.met.financial} badge={<Bd c={BT.met.financial}>ALIGNED</Bd>} />
+              <AlertBanner label="3-LAYER MODEL" text="BROKER · PLATFORM · RESOLVED · YOU — No divergences detected above threshold" color={BT.met.financial} badge={<Bd c={BT.met.financial}>ALIGNED</Bd>} />
             )}
             <TableHeader cols={[
               { label: 'ASSUMPTION', flex: 2, color: BT.text.muted },
               { label: 'BROKER', flex: 1, color: BT.text.cyan },
               { label: 'PLATFORM', flex: 1, color: BT.text.purple },
+              { label: 'RESOLVED', flex: 1, color: BT.text.green },
               { label: 'YOU', flex: 1, color: BT.text.amber },
             ]} />
             {proFormaRows.map((row, i) => (
@@ -461,6 +462,7 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
                 </div>
                 <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 9, color: BT.text.cyan, textAlign: 'right' as const }}>{row.brokerFmt}</div>
                 <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 9, color: BT.text.purple, textAlign: 'right' as const }}>{row.platformFmt}</div>
+                <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 9, color: BT.text.green, textAlign: 'right' as const }}>{row.resolvedFmt}</div>
                 <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 9, color: BT.text.amber, textAlign: 'right' as const }}>—</div>
               </div>
             ))}

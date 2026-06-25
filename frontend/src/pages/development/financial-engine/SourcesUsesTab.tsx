@@ -137,7 +137,9 @@ export function SourcesUsesTab({
     ?? assumptions?.financing?.loanAmount ?? purchasePriceFb * 0.65;
   const equityFb      = f9Financials?.capitalStack?.equityAtClose ?? Math.max(0, purchasePriceFb - loanAmountFb);
   const totalUnitsFb  = f9Financials?.totalUnits ?? (typeof deal?.unit_count === 'number' ? deal.unit_count as number : 0);
-  const mezzAmtFb     = f9Financials?.debt?.loans?.find(l => l.id === 'mezz')?.loanAmount?.platform ?? 0;
+  const mezzAmtFb     = f9Financials?.debt?.loans?.find(l => l.id === 'mezz')?.loanAmount?.resolved
+    ?? f9Financials?.debt?.loans?.find(l => l.id === 'mezz')?.loanAmount?.platform
+    ?? 0;
 
   const capexLineItems   = assumptions?.capex?.lineItems ?? [];
   const capexTotalFb     = capexLineItems.reduce((s, i) => s + i.amount, 0);
