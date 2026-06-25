@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { requireAuth, AuthenticatedRequest, requireSurface } from '../../middleware/auth';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { CreditService } from '../../services/ai/creditService';
@@ -7,6 +7,8 @@ import { CreditService } from '../../services/ai/creditService';
 const router = Router();
 
 router.use(requireAuth);
+// A5-F2: Billing routes are web-only — enforce surface access.
+router.use(requireSurface('web'));
 
 const TIER_PRICES: Record<string, { monthly: string; annual: string }> = {
   scout: {

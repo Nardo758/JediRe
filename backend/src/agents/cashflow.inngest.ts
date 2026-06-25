@@ -103,9 +103,21 @@ export const cashflowOnDealCreated = inngest.createFunction(
       const userId = (tierRes.rows[0]?.user_id as string | undefined) ?? null;
       const tierAllowed = isTierAllowedForEventDriven(tier);
 
-      // Same gate the research.completed handler uses, so the user
-      // sees the exact reason it will defer when research finishes.
-      // Excludes budget/proforma rows so only true uploaded actuals count.
+      // A5-F5: automation_level read-time enforcement
+      // Level 1 = manual only. Event-driven runs require automation_level >= 2.
+      let automationAllowed = tierAllowed;
+      if (tierAllowed && userId) {
+        const autoRes = await query(
+          `SELECT automation_level FROM user_credit_balances WHERE user_id = $1`,
+          [userId]
+        );
+        const automationLevel = autoRes.rows[0]?.automation_level ?? 1;
+        if (automationLevel < 2) {
+          automationAllowed = false;
+          logger.info('CashFlow Agent: automation_level gate blocked', { dealId, automationLevel });
+        }
+      }
+
       const t12Res = await query(
         `SELECT 1
            FROM deal_monthly_actuals dma
@@ -125,7 +137,7 @@ export const cashflowOnDealCreated = inngest.createFunction(
       const hasRentRoll = (rrRes.rowCount ?? 0) > 0;
 
       const status: 'blocked_tier' | 'deferred_no_documents' | 'ready' =
-        !tierAllowed
+        !automationAllowed
           ? 'blocked_tier'
           : (hasT12Data || hasRentRoll)
             ? 'ready'
@@ -135,7 +147,7 @@ export const cashflowOnDealCreated = inngest.createFunction(
         status === 'ready'
           ? 'CashFlow Agent ready — will run automatically once Research Agent completes.'
           : status === 'blocked_tier'
-            ? `CashFlow Agent skipped — tier "${tier || 'unknown'}" does not include event-driven runs.`
+            ? `CashFlow Agent skipped — tier or automation level does not include event-driven runs.`
             : 'CashFlow Agent deferred — waiting for T12 statements or a rent roll to be uploaded.';
 
       logger.info('cashflow.inngest: deal.created gate evaluation', {
@@ -210,7 +222,22 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
       if (!allowed) {
         logger.info('CashFlow Agent: tier gate blocked (event-driven not permitted)', { dealId, tier: row.tier });
       }
-      return { allowed, userId: row.user_id as string, userTier: row.tier as string };
+
+      // A5-F5: automation_level read-time enforcement
+      let automationAllowed = allowed;
+      if (allowed) {
+        const autoRes = await query(
+          `SELECT automation_level FROM user_credit_balances WHERE user_id = $1`,
+          [row.user_id]
+        );
+        const automationLevel = autoRes.rows[0]?.automation_level ?? 1;
+        if (automationLevel < 2) {
+          automationAllowed = false;
+          logger.info('CashFlow Agent: automation_level gate blocked', { dealId, automationLevel });
+        }
+      }
+
+      return { allowed: automationAllowed, userId: row.user_id as string, userTier: row.tier as string };
     });
 
     if (!tierCheckResult.allowed) {

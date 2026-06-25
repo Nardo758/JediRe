@@ -380,6 +380,28 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       property_type_key, documentFileIds, uploaded_documents
     } = req.body;
 
+    // A5-F1: maxActiveDeals enforcement — check deal count against tier limit
+    // before allowing creation. Scout = 5, Operator = 25, Principal+ = unlimited.
+    const { CreditService } = await import('../../services/ai/creditService');
+    const creditService = new CreditService();
+    const balance = await creditService.getBalance(req.user!.userId);
+    if (balance) {
+      const tierConfig = creditService.getTierConfig(balance.subscriptionTier);
+      if (tierConfig.maxActiveDeals >= 0) {
+        const countRes = await client.query(
+          `SELECT COUNT(*)::int as cnt FROM deals WHERE user_id = $1 AND archived_at IS NULL`,
+          [req.user!.userId]
+        );
+        const dealCount = countRes.rows[0].cnt;
+        if (dealCount >= tierConfig.maxActiveDeals) {
+          return res.status(403).json({
+            success: false,
+            error: `Deal limit reached. Your ${balance.subscriptionTier} tier allows ${tierConfig.maxActiveDeals} active deals. Upgrade to create more.`,
+          });
+        }
+      }
+    }
+
     let resolvedProjectType = projectType || project_type;
     if (!resolvedProjectType && property_type_key) {
       const ptResult = await client.query(

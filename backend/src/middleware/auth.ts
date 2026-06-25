@@ -289,10 +289,38 @@ export async function requireAuthOrApiKey(
 
 export const authenticateToken = requireAuth;
 
-export const authMiddleware = {
-  requireAuth,
-  optionalAuth,
-  requireRole,
-  requireCapability,
-  requireApiKey,
-};
+export function requireSurface(surface: 'chat' | 'web' | 'api') {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized', message: 'Authentication required' });
+      return;
+    }
+
+    try {
+      const { CreditService } = await import('../services/ai/creditService');
+      const creditService = new CreditService();
+      const balance = await creditService.getBalance(req.user.userId);
+
+      if (!balance) {
+        res.status(403).json({
+          error: 'Forbidden',
+          message: 'No subscription found. Please complete onboarding.',
+        });
+        return;
+      }
+
+      if (!creditService.canAccessSurface(balance.subscriptionTier, surface)) {
+        res.status(403).json({
+          error: 'Forbidden',
+          message: `Your ${balance.subscriptionTier} tier does not include access to the ${surface} surface. Upgrade to unlock.`,
+        });
+        return;
+      }
+
+      next();
+    } catch (err) {
+      console.error('[auth.requireSurface] error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  };
+}
