@@ -7,7 +7,7 @@
  */
 
 import { Express } from 'express';
-import { requireAuth, optionalAuth } from '../middleware/auth';
+import { requireAuth, optionalAuth, requireRole } from '../middleware/auth';
 import { aiLimiter } from '../middleware/rateLimit';
 
 // ─── Admin Routes ───────────────────────────────────────────────────────────
@@ -22,13 +22,14 @@ import adminApiKeyRouter from '../api/rest/admin-api-key.routes';
 import adminDataCoverageRouter from '../api/rest/admin-data-coverage.routes';
 
 export function mountAdminRoutes(app: Express) {
-  app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
-  app.use('/api/v1/admin/data-coverage', adminDataCoverageRouter);
-  app.use('/api/v1/admin', adminRouter);
-  app.use('/api/v1/admin', dotAdminRouter);
-  app.use('/api/v1/admin/atlanta-url-discovery', atlantaUrlDiscoveryRouter);
-  app.use('/api/v1/admin', enrichmentAdminRouter);
-  app.use('/api/v1/admin-api', adminApiKeyRouter);
+  // A4-F6: Admin routes MUST be protected with auth + role check
+  app.use('/api/v1/admin/data-tracker', requireAuth, requireRole('admin'), dataTrackerRoutes);
+  app.use('/api/v1/admin/data-coverage', requireAuth, requireRole('admin'), adminDataCoverageRouter);
+  app.use('/api/v1/admin', requireAuth, requireRole('admin'), adminRouter);
+  app.use('/api/v1/admin', requireAuth, requireRole('admin'), dotAdminRouter);
+  app.use('/api/v1/admin/atlanta-url-discovery', requireAuth, requireRole('admin'), atlantaUrlDiscoveryRouter);
+  app.use('/api/v1/admin', requireAuth, requireRole('admin'), enrichmentAdminRouter);
+  app.use('/api/v1/admin-api', requireAuth, requireRole('admin'), adminApiKeyRouter);
 }
 
 // ─── Zoning Routes ──────────────────────────────────────────────────────────

@@ -11,7 +11,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
 import { requireAuth, optionalAuth } from './middleware/auth';
-import { rateLimiter } from './middleware/rateLimiter';
+import { rateLimiter, authLimiter, strictLimiter } from './middleware/rateLimit';
 import { getPool } from './database/connection';
 import { logger } from './utils/logger';
 import { emailSyncScheduler } from './services/email-sync-scheduler';
@@ -94,8 +94,25 @@ const PORT = process.env.PORT || 3000;
 const pool = getPool();
 
 app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: true,
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true,
+  },
 }));
 app.use(cors({
   origin: (origin, callback) => {
@@ -139,7 +156,7 @@ app.use((req, res, next) => {
 app.use(rateLimiter);
 
 app.use('/health', healthRouter);
-app.use('/api/v1/auth', authRouter);
+app.use('/api/v1/auth', authLimiter, authRouter);
 
 // Admin routes MUST be registered before generic /api/v1 routes
 mountAdminRoutes(app);
