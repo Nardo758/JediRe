@@ -11,10 +11,10 @@
  * @date 2026-02-11
  */
 
-import { query, getPool } from '../database/connection';
+import { query, getPool, transaction } from '../database/connection';
 import { getFieldValue } from './field-access/get-field-value.service';
 import { logger } from '../utils/logger';
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import { taxService } from './tax/taxService';
 import type { TaxContext, TaxForecastProvenance } from './tax/taxService';
 import { deriveCounty } from './tax/resolver';
@@ -126,7 +126,17 @@ export interface ComparisonResult {
 // ============================================================================
 
 export class ProFormaAdjustmentService {
-  
+
+  /**
+   * PF-04: Transaction-scoped query runner.
+   * When a PoolClient is provided (inside a transaction), queries run on that
+   * client so they participate in the same transaction. Otherwise falls back
+   * to the global pool query.
+   */
+  private exec(client?: PoolClient) {
+    return (sql: string, params?: any[]) => client ? client.query(sql, params) : query(sql, params);
+  }
+
   /**
    * Get or create pro forma assumptions for a deal
    */
@@ -220,12 +230,14 @@ export class ProFormaAdjustmentService {
   async initializeProForma(
     dealId: string,
     strategy: 'rental' | 'build_to_sell' | 'flip' | 'airbnb',
-    baselineValues?: Partial<ProFormaAssumptions>
+    baselineValues?: Partial<ProFormaAssumptions>,
+    client?: PoolClient
   ): Promise<ProFormaAssumptions> {
     // Get market baseline values (from submarket/MSA data)
     const marketBaseline = await this.getMarketBaseline(dealId);
     
-    const result = await query(
+    const q = this.exec(client);
+    const result = await q(
       `INSERT INTO proforma_assumptions (
         deal_id, strategy,
         rent_growth_baseline, rent_growth_current,
@@ -260,36 +272,40 @@ export class ProFormaAdjustmentService {
   async recalculate(context: RecalculationContext): Promise<ProFormaAssumptions> {
     const { dealId, triggerType, triggerEventId, userId } = context;
     
-    // Get or create pro forma
-    let proforma = await this.getProForma(dealId);
-    
-    if (!proforma) {
-      // Initialize with market baseline
-      const dealInfo = await this.getDealInfo(dealId);
-      proforma = await this.initializeProForma(dealId, 'rental'); // Default to rental
-    }
-    
-    // Get demand signal data
+    // Get demand signal data (read-only, safe outside transaction)
     const demandData = await this.getDemandSignalData(dealId);
     
-    // Calculate adjustments for each assumption type
-    await this.calculateRentGrowthAdjustment(proforma.id, dealId, demandData, triggerType, triggerEventId);
-    await this.calculateVacancyAdjustment(proforma.id, dealId, demandData, triggerType, triggerEventId);
-    await this.calculateOpexGrowthAdjustment(proforma.id, dealId, triggerType, triggerEventId);
-    await this.calculateExitCapAdjustment(proforma.id, dealId, demandData, triggerType, triggerEventId);
-    await this.calculateAbsorptionAdjustment(proforma.id, dealId, demandData, triggerType, triggerEventId);
+    // All writes wrapped in a single transaction so partial failure rolls back
+    // every adjustment and leaves the proforma in a consistent state.
+    const proforma = await transaction(async (client) => {
+      let pf = await this.getProForma(dealId);
+      
+      if (!pf) {
+        const dealInfo = await this.getDealInfo(dealId);
+        pf = await this.initializeProForma(dealId, 'rental', undefined, client); // Default to rental
+      }
+      
+      // Calculate adjustments for each assumption type
+      await this.calculateRentGrowthAdjustment(pf.id, dealId, demandData, triggerType, triggerEventId, client);
+      await this.calculateVacancyAdjustment(pf.id, dealId, demandData, triggerType, triggerEventId, client);
+      await this.calculateOpexGrowthAdjustment(pf.id, dealId, triggerType, triggerEventId, client);
+      await this.calculateExitCapAdjustment(pf.id, dealId, demandData, triggerType, triggerEventId, client);
+      await this.calculateAbsorptionAdjustment(pf.id, dealId, demandData, triggerType, triggerEventId, client);
 
-    // W-04: apply policy event mutations (rent_control_passage, tax_abatement, eviction_moratorium)
-    // after demand-driven adjustments so policy ceilings/constraints take precedence
-    await this.applyPolicyEventMutations(proforma.id, dealId);
+      // W-04: apply policy event mutations (rent_control_passage, tax_abatement, eviction_moratorium)
+      // after demand-driven adjustments so policy ceilings/constraints take precedence
+      await this.applyPolicyEventMutations(pf.id, dealId, client);
 
-    // Update last recalculation timestamp
-    await query(
-      `UPDATE proforma_assumptions SET last_recalculation = NOW() WHERE id = $1`,
-      [proforma.id]
-    );
+      // Update last recalculation timestamp
+      await client.query(
+        `UPDATE proforma_assumptions SET last_recalculation = NOW() WHERE id = $1`,
+        [pf.id]
+      );
+      
+      return pf;
+    });
     
-    // Fetch updated proforma
+    // Fetch updated proforma (now outside transaction, sees committed state)
     const updated = await this.getProForma(dealId);
     
     logger.info('Pro forma recalculated', { dealId, triggerType });
@@ -307,7 +323,8 @@ export class ProFormaAdjustmentService {
     dealId: string,
     demandData: DemandSignalData,
     triggerType: string,
-    triggerEventId?: string
+    triggerEventId?: string,
+    client?: PoolClient
   ): Promise<void> {
     // Get formula
     const formula = await this.getFormula('demand_supply_elasticity');
@@ -347,6 +364,8 @@ export class ProFormaAdjustmentService {
     
     const newValue = current.baseline + constrainedAdjustment;
     
+    const q = this.exec(client);
+    
     // Create adjustment record
     await this.createAdjustment({
       proformaId,
@@ -365,10 +384,10 @@ export class ProFormaAdjustmentService {
         adjustment_constrained: constrainedAdjustment
       },
       confidenceScore: 75
-    });
+    }, client);
     
     // Update current value
-    await query(
+    await q(
       `UPDATE proforma_assumptions SET rent_growth_current = $1 WHERE id = $2`,
       [newValue, proformaId]
     );
@@ -391,7 +410,8 @@ export class ProFormaAdjustmentService {
     dealId: string,
     demandData: DemandSignalData,
     triggerType: string,
-    triggerEventId?: string
+    triggerEventId?: string,
+    client?: PoolClient
   ): Promise<void> {
     const formula = await this.getFormula('employment_vacancy_impact');
     if (!formula) return;
@@ -425,6 +445,8 @@ export class ProFormaAdjustmentService {
     // Ensure vacancy stays in valid range (0-100%)
     const finalValue = Math.max(0, Math.min(100, newValue));
     
+    const q = this.exec(client);
+    
     await this.createAdjustment({
       proformaId,
       newsEventId: triggerType === 'news_event' ? triggerEventId : undefined,
@@ -444,9 +466,9 @@ export class ProFormaAdjustmentService {
         adjustment: constrainedAdjustment
       },
       confidenceScore: 80
-    });
+    }, client);
     
-    await query(
+    await q(
       `UPDATE proforma_assumptions SET vacancy_current = $1 WHERE id = $2`,
       [finalValue, proformaId]
     );
@@ -468,7 +490,8 @@ export class ProFormaAdjustmentService {
     proformaId: string,
     dealId: string,
     triggerType: string,
-    triggerEventId?: string
+    triggerEventId?: string,
+    client?: PoolClient
   ): Promise<void> {
     const formula = await this.getFormula('opex_direct_passthrough');
     if (!formula) return;
@@ -513,6 +536,8 @@ export class ProFormaAdjustmentService {
     
     const newValue = current.baseline + constrainedAdjustment;
     
+    const q = this.exec(client);
+    
     await this.createAdjustment({
       proformaId,
       newsEventId: event.id,
@@ -527,9 +552,9 @@ export class ProFormaAdjustmentService {
         impact_score: parseFloat(event.impact_score)
       },
       confidenceScore: 85
-    });
+    }, client);
     
-    await query(
+    await q(
       `UPDATE proforma_assumptions SET opex_growth_current = $1 WHERE id = $2`,
       [newValue, proformaId]
     );
@@ -547,7 +572,8 @@ export class ProFormaAdjustmentService {
     dealId: string,
     demandData: DemandSignalData,
     triggerType: string,
-    triggerEventId?: string
+    triggerEventId?: string,
+    client?: PoolClient
   ): Promise<void> {
     const formula = await this.getFormula('momentum_cap_compression');
     if (!formula) return;
@@ -583,6 +609,8 @@ export class ProFormaAdjustmentService {
     
     const newValue = current.baseline + constrainedAdjustment;
     
+    const q = this.exec(client);
+    
     await this.createAdjustment({
       proformaId,
       newsEventId: triggerType === 'news_event' ? triggerEventId : undefined,
@@ -601,9 +629,9 @@ export class ProFormaAdjustmentService {
         adjustment: constrainedAdjustment
       },
       confidenceScore: 70
-    });
+    }, client);
     
-    await query(
+    await q(
       `UPDATE proforma_assumptions SET exit_cap_current = $1 WHERE id = $2`,
       [newValue, proformaId]
     );
@@ -621,7 +649,8 @@ export class ProFormaAdjustmentService {
     dealId: string,
     demandData: DemandSignalData,
     triggerType: string,
-    triggerEventId?: string
+    triggerEventId?: string,
+    client?: PoolClient
   ): Promise<void> {
     const formula = await this.getFormula('absorption_demand_adjustment');
     if (!formula) return;
@@ -651,6 +680,8 @@ export class ProFormaAdjustmentService {
     
     const finalValue = current.baseline + constrainedAdjustment;
     
+    const q = this.exec(client);
+    
     await this.createAdjustment({
       proformaId,
       newsEventId: triggerType === 'news_event' ? triggerEventId : undefined,
@@ -668,9 +699,9 @@ export class ProFormaAdjustmentService {
         adjustment: constrainedAdjustment
       },
       confidenceScore: 75
-    });
+    }, client);
     
-    await query(
+    await q(
       `UPDATE proforma_assumptions SET absorption_current = $1 WHERE id = $2`,
       [finalValue, proformaId]
     );
@@ -693,29 +724,31 @@ export class ProFormaAdjustmentService {
       throw new Error('Pro forma not found for deal');
     }
     
-    // Update override value
-    const column = `${assumptionType}_user_override`;
-    const reasonColumn = `${assumptionType}_override_reason`;
-    
-    await query(
-      `UPDATE proforma_assumptions 
-       SET ${column} = $1, ${reasonColumn} = $2
-       WHERE deal_id = $3`,
-      [value, reason, dealId]
-    );
-    
-    // Create adjustment record
-    const current = await this.getCurrentValue(proforma.id, assumptionType);
-    
-    await this.createAdjustment({
-      proformaId: proforma.id,
-      adjustmentTrigger: 'manual',
-      assumptionType,
-      previousValue: current.effective,
-      newValue: value,
-      calculationMethod: 'user_override',
-      calculationInputs: { reason },
-      confidenceScore: 100 // User override = highest confidence
+    await transaction(async (client) => {
+      // Update override value
+      const column = `${assumptionType}_user_override`;
+      const reasonColumn = `${assumptionType}_override_reason`;
+      
+      await client.query(
+        `UPDATE proforma_assumptions 
+         SET ${column} = $1, ${reasonColumn} = $2
+         WHERE deal_id = $3`,
+        [value, reason, dealId]
+      );
+      
+      // Create adjustment record
+      const current = await this.getCurrentValue(proforma.id, assumptionType);
+      
+      await this.createAdjustment({
+        proformaId: proforma.id,
+        adjustmentTrigger: 'manual',
+        assumptionType,
+        previousValue: current.effective,
+        newValue: value,
+        calculationMethod: 'user_override',
+        calculationInputs: { reason },
+        confidenceScore: 100 // User override = highest confidence
+      }, client);
     });
     
     logger.info('Assumption overridden', { dealId, assumptionType, value, reason });
@@ -737,46 +770,48 @@ export class ProFormaAdjustmentService {
     },
     source: string = 'M07 Traffic Engine v2'
   ): Promise<ProFormaAssumptions> {
-    let proforma = await this.getProForma(dealId);
+    return await transaction(async (client) => {
+      let proforma = await this.getProForma(dealId);
 
-    if (!proforma) {
-      proforma = await this.initializeProForma(dealId, 'rental');
-    }
+      if (!proforma) {
+        proforma = await this.initializeProForma(dealId, 'rental', undefined, client);
+      }
 
-    const updates: string[] = [];
-    const params: any[] = [dealId];
-    let paramIdx = 2;
+      const updates: string[] = [];
+      const params: any[] = [dealId];
+      let paramIdx = 2;
 
-    if (platformValues.vacancy !== undefined) {
-      updates.push(`vacancy_current = $${paramIdx++}`);
-      params.push(platformValues.vacancy);
-    }
-    if (platformValues.rentGrowth !== undefined) {
-      updates.push(`rent_growth_current = $${paramIdx++}`);
-      params.push(platformValues.rentGrowth);
-    }
-    if (platformValues.absorption !== undefined) {
-      updates.push(`absorption_current = $${paramIdx++}`);
-      params.push(platformValues.absorption);
-    }
-    if (platformValues.exitCap !== undefined) {
-      updates.push(`exit_cap_current = $${paramIdx++}`);
-      params.push(platformValues.exitCap);
-    }
+      if (platformValues.vacancy !== undefined) {
+        updates.push(`vacancy_current = $${paramIdx++}`);
+        params.push(platformValues.vacancy);
+      }
+      if (platformValues.rentGrowth !== undefined) {
+        updates.push(`rent_growth_current = $${paramIdx++}`);
+        params.push(platformValues.rentGrowth);
+      }
+      if (platformValues.absorption !== undefined) {
+        updates.push(`absorption_current = $${paramIdx++}`);
+        params.push(platformValues.absorption);
+      }
+      if (platformValues.exitCap !== undefined) {
+        updates.push(`exit_cap_current = $${paramIdx++}`);
+        params.push(platformValues.exitCap);
+      }
 
-    if (updates.length > 0) {
-      updates.push('last_recalculation = NOW()');
-      updates.push('updated_at = NOW()');
+      if (updates.length > 0) {
+        updates.push('last_recalculation = NOW()');
+        updates.push('updated_at = NOW()');
 
-      await query(
-        `UPDATE proforma_assumptions SET ${updates.join(', ')} WHERE deal_id = $1`,
-        params
-      );
+        await client.query(
+          `UPDATE proforma_assumptions SET ${updates.join(', ')} WHERE deal_id = $1`,
+          params
+        );
 
-      logger.info('ProForma platform layer updated from traffic', { dealId, source, platformValues });
-    }
+        logger.info('ProForma platform layer updated from traffic', { dealId, source, platformValues });
+      }
 
-    return (await this.getProForma(dealId))!;
+      return (await this.getProForma(dealId))!;
+    });
   }
 
   /**
@@ -952,23 +987,28 @@ export class ProFormaAdjustmentService {
     return { baseline, current, userOverride, effective };
   }
   
-  private async createAdjustment(data: {
-    proformaId: string;
-    newsEventId?: string;
-    demandEventId?: string;
-    adjustmentTrigger: 'news_event' | 'demand_signal' | 'manual' | 'periodic_update';
-    assumptionType: string;
-    previousValue: number;
-    newValue: number;
-    calculationMethod: string;
-    calculationInputs: any;
-    confidenceScore: number;
-  }): Promise<void> {
+  private async createAdjustment(
+    data: {
+      proformaId: string;
+      newsEventId?: string;
+      demandEventId?: string;
+      adjustmentTrigger: 'news_event' | 'demand_signal' | 'manual' | 'periodic_update';
+      assumptionType: string;
+      previousValue: number;
+      newValue: number;
+      calculationMethod: string;
+      calculationInputs: any;
+      confidenceScore: number;
+    },
+    client?: PoolClient
+  ): Promise<void> {
     const adjustmentPct = data.previousValue !== 0 
       ? ((data.newValue - data.previousValue) / data.previousValue) * 100
       : 0;
     
-    await query(
+    const q = this.exec(client);
+    
+    await q(
       `INSERT INTO assumption_adjustments (
         proforma_id, news_event_id, demand_event_id, adjustment_trigger,
         assumption_type, previous_value, new_value, adjustment_pct,
@@ -1106,6 +1146,7 @@ export class ProFormaAdjustmentService {
     proformaId: string,
     dealId: string,
     submarketId: string | null,
+    client?: PoolClient,
   ): Promise<void> {
     if (!submarketId) return;
     const events = await query(
@@ -1124,7 +1165,8 @@ export class ProFormaAdjustmentService {
     const current = await this.getCurrentValue(proformaId, 'rent_growth');
     const currentVal = parseFloat(String(current.current ?? current.baseline));
     if (!isFinite(currentVal) || currentVal <= maxGrowth) return;
-    await query(
+    const q = this.exec(client);
+    await q(
       `UPDATE proforma_assumptions SET rent_growth_current = $1 WHERE id = $2`,
       [maxGrowth, proformaId]
     );
@@ -1137,7 +1179,7 @@ export class ProFormaAdjustmentService {
       calculationMethod: 'rent_control_cap',
       calculationInputs: { submarket_id: submarketId, policy_cap: maxGrowth, event_subtype: 'rent_control_passage' },
       confidenceScore: 95,
-    });
+    }, client);
     logger.info('[W-04] Rent control cap applied', { dealId, submarketId, maxGrowth, previousValue: currentVal });
   }
 
@@ -1150,6 +1192,7 @@ export class ProFormaAdjustmentService {
   private async applyTaxAbatementLevelReset(
     dealId: string,
     propertyId: string | null,
+    client?: PoolClient,
   ): Promise<void> {
     if (!propertyId) return;
     const events = await query(
@@ -1205,8 +1248,9 @@ export class ProFormaAdjustmentService {
     if (overrides.length === 0) return;
 
     // Upsert per-year overrides into deal_assumptions.per_year_overrides
+    const q = this.exec(client);
     for (const [key, val] of overrides) {
-      await query(
+      await q(
         `INSERT INTO deal_assumptions (deal_id, per_year_overrides, updated_at)
          VALUES ($1, jsonb_build_object($2::text, $3::jsonb), NOW())
          ON CONFLICT (deal_id) DO UPDATE
@@ -1232,6 +1276,7 @@ export class ProFormaAdjustmentService {
     proformaId: string,
     dealId: string,
     submarketId: string | null,
+    client?: PoolClient,
   ): Promise<void> {
     if (!submarketId) return;
     const events = await query(
@@ -1287,8 +1332,9 @@ export class ProFormaAdjustmentService {
     if (overrides.length === 0) return;
 
     // Upsert per-year overrides into deal_assumptions.per_year_overrides
+    const q = this.exec(client);
     for (const [key, val] of overrides) {
-      await query(
+      await q(
         `INSERT INTO deal_assumptions (deal_id, per_year_overrides, updated_at)
          VALUES ($1, jsonb_build_object($2::text, $3::jsonb), NOW())
          ON CONFLICT (deal_id) DO UPDATE
@@ -1313,7 +1359,7 @@ export class ProFormaAdjustmentService {
         event_subtype: 'eviction_moratorium',
       },
       confidenceScore: 85,
-    });
+    }, client);
     logger.info('[W-04] Eviction moratorium constraint applied', {
       dealId, submarketId, baseBadDebt, constrainedBadDebt,
       affectedYears: overrides.map(([k]) => k),
@@ -1324,12 +1370,12 @@ export class ProFormaAdjustmentService {
    * Orchestrate W-04 policy event mutations. Non-fatal — recalculate() never throws
    * due to policy wiring failures.
    */
-  private async applyPolicyEventMutations(proformaId: string, dealId: string): Promise<void> {
+  private async applyPolicyEventMutations(proformaId: string, dealId: string, client?: PoolClient): Promise<void> {
     try {
       const { propertyId, submarketId } = await this.getDealPropertyContext(dealId);
-      await this.applyRentControlCap(proformaId, dealId, submarketId);
-      await this.applyTaxAbatementLevelReset(dealId, propertyId);
-      await this.applyEvictionMoratoriumConstraint(proformaId, dealId, submarketId);
+      await this.applyRentControlCap(proformaId, dealId, submarketId, client);
+      await this.applyTaxAbatementLevelReset(dealId, propertyId, client);
+      await this.applyEvictionMoratoriumConstraint(proformaId, dealId, submarketId, client);
     } catch (err) {
       logger.warn('[W-04] applyPolicyEventMutations non-fatal error', { dealId, error: err });
     }
