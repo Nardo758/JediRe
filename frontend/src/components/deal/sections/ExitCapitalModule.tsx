@@ -804,6 +804,31 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   // trajectory grid with a "no live data" banner — the correct state
   // per the D1 NULL-where-no-source contract.
   const dealModule = useDealModule();
+  // AH-1C: real capital structure from persisted deal_data
+  const [capitalStructure, setCapitalStructure] = useState<{
+    dealId: string;
+    layers: Array<{
+      id: string;
+      name: string;
+      layerType: string;
+      amount: string;
+      rate: string;
+      ltv: string;
+      term: string;
+    }>;
+    summary: {
+      purchasePrice: number;
+      loanAmount: number;
+      equityAmount: number;
+      mezzAmount: number | null;
+      ltv: number;
+      interestRate: number;
+      noi: number;
+      dscr: number | null;
+    };
+  } | null>(null);
+  const [capitalStructureLoading, setCapitalStructureLoading] = useState(false);
+
   const live10yHistory: (number | null)[] | null = null; // TODO: wire to /api/v1/rates/history
   const liveCapTrajectory: (number | null)[] | null = null; // TODO: wire to proforma_assumptions.exit_cap_current + LIUS
 
@@ -1101,6 +1126,28 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
       .finally(() => setLiveRatesLoading(false));
   }, [activeTab, liveRates]);
 
+  // AH-1C: Fetch real capital structure for this deal so the Debt & Capital
+  // screen shows persisted loanAmount / interestRate / LTV instead of
+  // hardcoded STACK_PRESET fiction.  Fires on mount and whenever dealId changes.
+  useEffect(() => {
+    if (!dealId) return;
+    setCapitalStructureLoading(true);
+    apiClient.get(`/capital-structure/${dealId}`)
+      .then((res: any) => {
+        if (res?.data?.summary) {
+          setCapitalStructure(res.data);
+        } else if (res?.summary) {
+          setCapitalStructure(res);
+        }
+      })
+      .catch((err: unknown) => {
+        console.warn('[ExitCapitalModule] capital-structure fetch failed', err);
+      })
+      .finally(() => setCapitalStructureLoading(false));
+  // mount-once per dealId
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dealId]);
+
   // Compute returns for selected and optimal quarters. D1: returns
   // are null when no live rentGrowth + exitCap series exist for the
   // target quarter (`computeExitReturns` requires both). The header
@@ -1117,8 +1164,34 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
     return computeExitReturns(optimalFwd, dealType, rg, cap);
   }, [chartSeries, optimalFwd, dealType]);
 
-  const stack = STACK_PRESETS[DEFAULT_EXIT_STRATEGY[dealType]] ?? STACK_PRESETS['sell-stabilized'];
-  const totalBasis = dealType === 'development' ? 52000000 : 46420000;
+  // AH-1C: Use real deal capital structure when available, fall back to presets.
+  const realSummary = capitalStructure?.summary;
+  const realLoanAmount = realSummary?.loanAmount ?? 0;
+  const realPurchasePrice = realSummary?.purchasePrice ?? 0;
+  const realLtv = realSummary?.ltv ?? 0;
+  const realRate = realSummary?.interestRate ?? 0;
+  const realMezz = realSummary?.mezzAmount ?? 0;
+
+  const hasRealDebt = realLoanAmount > 0 && realPurchasePrice > 0;
+
+  const stack: StackPreset = hasRealDebt
+    ? {
+        sr: {
+          pct: realLtv > 0 ? realLtv * 100 : 65,
+          type: realRate > 0 ? 'Deal Data' : 'Bridge',
+          rate: realRate > 0 ? realRate : 8.5,
+          term: '5yr',
+          io: 'Full',
+        },
+        mz: realMezz > 0
+          ? { pct: (realMezz / realPurchasePrice) * 100, type: 'Mezz', rate: 12.0 }
+          : undefined,
+        eq: Math.max(0, 100 - (realLtv > 0 ? realLtv * 100 : 65) - (realMezz > 0 ? (realMezz / realPurchasePrice) * 100 : 0)),
+        label: 'Deal Capital Structure',
+      }
+    : (STACK_PRESETS[DEFAULT_EXIT_STRATEGY[dealType]] ?? STACK_PRESETS['sell-stabilized']);
+
+  const totalBasis = hasRealDebt ? realPurchasePrice : (dealType === 'development' ? 52000000 : 46420000);
   const loanAmt = totalBasis * (stack.sr.pct / 100);
   const annualDS = Math.round(loanAmt * (stack.sr.rate / 100));
 
@@ -1669,8 +1742,20 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
 
               {/* Rate Impact on This Deal */}
               <div style={{ background: liveRates ? 'rgba(99,179,237,0.04)' : 'rgba(255,255,255,0.02)', border: `1px solid ${liveRates ? 'rgba(99,179,237,0.18)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 8, padding: '16px 20px', marginBottom: 16 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: liveRates ? '#63B3ED' : 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 12 }}>
-                  RATE IMPACT ON THIS DEAL — {stack.label.toUpperCase()} @ {presetRate}% PRESET vs. LIVE MARKET
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: liveRates ? '#63B3ED' : 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>
+                    RATE IMPACT ON THIS DEAL — {stack.label.toUpperCase()} @ {presetRate.toFixed(2)}% vs. LIVE MARKET
+                  </div>
+                  {hasRealDebt && (
+                    <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 6px', background: 'rgba(104,211,145,0.08)', border: '1px solid rgba(104,211,145,0.25)', borderRadius: 2, color: '#68D391', fontFamily: "'JetBrains Mono'" }}>
+                      ✓ REAL DEAL DATA
+                    </span>
+                  )}
+                  {!hasRealDebt && (
+                    <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 6px', background: 'rgba(246,173,85,0.08)', border: '1px solid rgba(246,173,85,0.25)', borderRadius: 2, color: '#F6AD55', fontFamily: "'JetBrains Mono'" }}>
+                      PRESET
+                    </span>
+                  )}
                 </div>
                 {!liveRates && !liveRatesLoading && (
                   <div style={{ fontSize: 10, color: 'rgba(232,230,225,0.35)' }}>Open this tab to load live rates.</div>
@@ -1681,7 +1766,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                     <div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {[
-                          { l: 'Model preset rate', v: `${presetRate.toFixed(2)}%`, c: '#E8E6E1' },
+                          { l: hasRealDebt ? 'Deal rate' : 'Model preset rate', v: `${presetRate.toFixed(2)}%`, c: '#E8E6E1' },
                           { l: `${stratMap.spreadKey} index (${stratMap.indexLabel})`, v: `${liveIndex!.toFixed(2)}%`, c: '#63B3ED' },
                           { l: `Market spread (${spreadEntry.bps}bps)`, v: `+${(spreadEntry.bps / 100).toFixed(2)}%`, c: 'rgba(232,230,225,0.5)' },
                           { l: 'Live all-in estimate', v: `${liveAllIn!.toFixed(2)}%`, c: deltaBps! > 0 ? '#FC8181' : '#68D391' },
