@@ -17,6 +17,8 @@ interface TierConfig {
   maxActiveDeals: number;
   maxAutomationLevel: AutomationLevel;
   surfaces: string[];
+  aiMarkup: number;      // multiplier on raw AI cost (e.g. 1.40 = 40% margin)
+  minCharge: number;     // minimum $ per call to prevent micro-transactions
 }
 
 const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
@@ -26,6 +28,8 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     maxActiveDeals: 5,
     maxAutomationLevel: 1,
     surfaces: ['chat'],
+    aiMarkup: 1.50,        // 50% markup on raw AI cost
+    minCharge: 0.005,     // minimum $0.005 per call
   },
   // A5-F4: 'basic' tier — legacy / pre-launch tier mapped to same config as scout.
   // getAllowedTriggerModes('basic') returns ['manual', 'event-driven'] (dev/testing).
@@ -35,6 +39,8 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     maxActiveDeals: 5,
     maxAutomationLevel: 1,
     surfaces: ['chat'],
+    aiMarkup: 1.50,
+    minCharge: 0.005,
   },
   operator: {
     creditsIncludedMonthly: 500,
@@ -42,6 +48,8 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     maxActiveDeals: 25,
     maxAutomationLevel: 2,
     surfaces: ['chat', 'web'],
+    aiMarkup: 1.35,      // 35% markup
+    minCharge: 0.003,
   },
   principal: {
     creditsIncludedMonthly: 2000,
@@ -49,6 +57,8 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     maxActiveDeals: -1, // unlimited
     maxAutomationLevel: 3,
     surfaces: ['chat', 'web', 'api'],
+    aiMarkup: 1.20,      // 20% markup
+    minCharge: 0.001,
   },
   institutional: {
     creditsIncludedMonthly: -1, // custom/negotiated
@@ -56,8 +66,26 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     maxActiveDeals: -1,
     maxAutomationLevel: 4,
     surfaces: ['chat', 'web', 'api'],
+    aiMarkup: 1.00,      // pass-through (no markup)
+    minCharge: 0,
   },
 };
+
+// ── Platform Pricing Engine ────────────────────────────────────
+
+/**
+ * A3: Calculate what the user pays (billable) vs. what the platform
+ * pays (raw cost). The delta is the platform margin.
+ *
+ * @param rawCostUsd — actual AI provider cost (from estimateCost/estimateDeepSeekCost)
+ * @param tier — user's subscription tier (markup varies by tier)
+ * @returns billable USD (rawCost × markup, floored at minCharge)
+ */
+export function calculateBillable(rawCostUsd: number, tier: SubscriptionTier): number {
+  const config = TIER_CONFIG[tier];
+  const withMarkup = rawCostUsd * config.aiMarkup;
+  return Math.max(withMarkup, config.minCharge);
+}
 
 // ── Credit Balance Operations ──────────────────────────────────
 

@@ -16,6 +16,7 @@ import type {
 } from '../../types/dealContext';
 import { modelPreferenceService, getModelFamily, getSurfaceDefault } from './modelPreferenceService';
 import { estimateCost } from '../../agents/runtime/MeteringAdapter';
+import { calculateBillable } from './creditService';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -230,11 +231,12 @@ export class JediAIService {
 
     // 4. Report usage to Stripe meter (uses effective model for accurate attribution)
     const costUsd = estimateCost(effectiveModel, response.usage.input_tokens, response.usage.output_tokens);
+    const billableUsd = calculateBillable(costUsd, tier);
     await this.reportStripeUsage(context, effectiveModel, response.usage);
-    await this.reportStripeCost(context, costUsd);
+    await this.reportStripeCost(context, billableUsd);
 
     // 5. Log to internal analytics (records the model that actually ran)
-    await this.logUsage(context, effectiveModel, response.usage, creditCost, costUsd, latencyMs);
+    await this.logUsage(context, effectiveModel, response.usage, creditCost, costUsd, billableUsd, latencyMs);
 
     return response;
   }
@@ -380,13 +382,14 @@ export class JediAIService {
 
     // Report after stream completes
     const costUsd = estimateCost(model, inputTokens, outputTokens);
+    const billableUsd = calculateBillable(costUsd, tier);
     await this.reportStripeUsage(context, model, {
       input_tokens: inputTokens,
       output_tokens: outputTokens,
       cache_creation_input_tokens: 0,
       cache_read_input_tokens: 0,
     } as any);
-    await this.reportStripeCost(context, costUsd);
+    await this.reportStripeCost(context, billableUsd);
     await this.logUsage(
       context,
       model,
@@ -398,6 +401,7 @@ export class JediAIService {
       } as any,
       creditCost,
       costUsd,
+      billableUsd,
       0
     );
   }
@@ -670,6 +674,7 @@ export class JediAIService {
     },
     creditCost: number,
     costUsd: number,
+    billableUsd: number,
     latencyMs: number
   ): Promise<void> {
     try {
@@ -678,8 +683,8 @@ export class JediAIService {
           user_id, stripe_customer_id, deal_id,
           agent_id, operation_type, surface, platform,
           model, input_tokens, output_tokens, cache_read_tokens,
-          credits_consumed, cost_usd, latency_ms
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          credits_consumed, cost_usd, billable_usd, latency_ms
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
         [
           context.userId,
           context.stripeCustomerId,
@@ -694,6 +699,7 @@ export class JediAIService {
           usage.cache_read_input_tokens || 0,
           creditCost,
           costUsd,
+          billableUsd,
           latencyMs,
         ]
       );

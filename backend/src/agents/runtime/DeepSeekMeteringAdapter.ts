@@ -456,8 +456,8 @@ export class DeepSeekMeteringAdapter {
         `INSERT INTO ai_usage_log (
            user_id, deal_id, agent_id, operation_type, surface,
            model, input_tokens, output_tokens, cache_read_tokens,
-           credits_consumed, cost_usd, latency_ms
-         ) VALUES ($1,$2,$3,$4,'agent',$5,$6,$7,$8,$9,$10,0)
+           credits_consumed, cost_usd, billable_usd, latency_ms
+         ) VALUES ($1,$2,$3,$4,'agent',$5,$6,$7,$8,$9,$10,$11,0)
          ON CONFLICT DO NOTHING`,
         [
           (metadata.user_id && metadata.user_id.trim() !== '') ? metadata.user_id : null,
@@ -470,6 +470,7 @@ export class DeepSeekMeteringAdapter {
           usage.prompt_cache_hit_tokens ?? 0,
           0, // credits_consumed: 0 for DeepSeekMeteringAdapter (user pays via JediAIService)
           costUsd,
+          0, // billable_usd: 0 for platform-absorbed calls
         ]
       );
     } catch (err) {
