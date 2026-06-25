@@ -21,7 +21,6 @@
 import axios, { AxiosError } from 'axios';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
-import { creditService } from '../../services/ai/creditService';
 import type { MeteringMetadata } from './types';
 
 const DEEPSEEK_BASE_URL =
@@ -156,11 +155,14 @@ export class DeepSeekMeteringAdapter {
    */
   private async checkDailySpendCap(): Promise<void> {
     const capUsd = parseFloat(process.env.DEEPSEEK_DAILY_SPEND_CAP_USD ?? '20');
+    if (isNaN(capUsd) || capUsd <= 0) return;
+
     try {
       const result = await query(
-        `SELECT COALESCE(SUM(credits_consumed), 0)::float AS today_spend
+        `SELECT COALESCE(SUM(cost_usd), 0)::float AS today_spend
          FROM ai_usage_log
-         WHERE created_at >= CURRENT_DATE`
+         WHERE created_at >= CURRENT_DATE
+           AND model LIKE 'deepseek-%'`
       );
       const spent: number = result.rows[0]?.today_spend ?? 0;
       if (spent >= capUsd) {
@@ -186,17 +188,9 @@ export class DeepSeekMeteringAdapter {
     await this.checkDailySpendCap();
 
     const { metadata, ...apiParams } = req;
-    const estimate = preflightEstimate(apiParams.model);
 
-    // Pre-flight credit reservation for user-triggered calls.
-    let wasReserved = false;
-    if (metadata.triggered_by === 'user' && metadata.user_id) {
-      wasReserved = await creditService.reserveCredits(
-        metadata.user_id,
-        estimate
-      );
-    }
-
+    // A3: Stripe metering route — agent runtime calls are platform-absorbed.
+    // No credit reservation here; user credits are deducted at JediAIService layer.
     let raw: {
       id: string;
       model: string;
@@ -275,16 +269,6 @@ export class DeepSeekMeteringAdapter {
       );
       raw = resp.data;
     } catch (err) {
-      // Refund only if we actually deducted.
-      if (wasReserved && metadata.user_id) {
-        await creditService
-          .debitActualCost(metadata.user_id, estimate, 0)
-          .catch(refundErr =>
-            logger.error('DeepSeekMeteringAdapter: refund failed', {
-              refundErr,
-            })
-          );
-      }
       if (axios.isAxiosError(err)) {
         const ax = err as AxiosError;
         logger.error('DeepSeek API error', {
@@ -307,7 +291,6 @@ export class DeepSeekMeteringAdapter {
       metadata,
       raw.usage,
       actualCost,
-      wasReserved ? estimate : 0,
       apiParams.model
     );
 
@@ -354,19 +337,14 @@ export class DeepSeekMeteringAdapter {
       prompt_cache_hit_tokens?: number;
     },
     actualCost: number,
-    reservedCost: number,
     model: string
   ): Promise<void> {
     await this.logUsage(metadata, usage, actualCost, model);
 
-    if (metadata.triggered_by === 'user' && metadata.user_id) {
-      await creditService.debitActualCost(
-        metadata.user_id,
-        reservedCost,
-        actualCost
-      );
-      await this.reportStripeUsage(metadata, usage, model);
-    } else {
+    await this.reportStripeUsage(metadata, usage, model);
+    await this.reportStripeCost(metadata, actualCost);
+
+    if (metadata.triggered_by !== 'user') {
       logger.info('DeepSeekMeteringAdapter: platform expense (event/cron)', {
         trigger: metadata.triggered_by,
         costUsd: actualCost.toFixed(6),
@@ -428,6 +406,41 @@ export class DeepSeekMeteringAdapter {
     }
   }
 
+  /**
+   * A3: Report actual cost to Stripe billing meter (jedi_ai_cost_usd).
+   */
+  private async reportStripeCost(
+    metadata: MeteringMetadata,
+    costUsd: number
+  ): Promise<void> {
+    if (!process.env.STRIPE_SECRET_KEY || !metadata.user_id) return;
+    try {
+      const userRow = await query(
+        `SELECT stripe_customer_id FROM user_credit_balances WHERE user_id = $1`,
+        [metadata.user_id]
+      );
+      const stripeCustomerId: string | undefined =
+        userRow.rows[0]?.stripe_customer_id;
+      if (!stripeCustomerId) return;
+
+      const Stripe = (await import('stripe')).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+      await stripe.billing.meterEvents.create({
+        event_name: 'jedi_ai_cost_usd',
+        payload: {
+          stripe_customer_id: stripeCustomerId,
+          value: String(Math.round(costUsd * 1_000_000)), // micro-dollars
+        },
+      });
+    } catch (err) {
+      logger.error('DeepSeekMeteringAdapter: Stripe cost meter event failed', {
+        userId: metadata.user_id,
+        err,
+      });
+    }
+  }
+
   private async logUsage(
     metadata: MeteringMetadata,
     usage: {
@@ -435,7 +448,7 @@ export class DeepSeekMeteringAdapter {
       completion_tokens: number;
       prompt_cache_hit_tokens?: number;
     },
-    cost: number,
+    costUsd: number,
     model: string
   ): Promise<void> {
     try {
@@ -443,8 +456,8 @@ export class DeepSeekMeteringAdapter {
         `INSERT INTO ai_usage_log (
            user_id, deal_id, agent_id, operation_type, surface,
            model, input_tokens, output_tokens, cache_read_tokens,
-           credits_consumed, latency_ms
-         ) VALUES ($1,$2,$3,$4,'agent',$5,$6,$7,$8,$9,0)
+           credits_consumed, cost_usd, latency_ms
+         ) VALUES ($1,$2,$3,$4,'agent',$5,$6,$7,$8,$9,$10,0)
          ON CONFLICT DO NOTHING`,
         [
           (metadata.user_id && metadata.user_id.trim() !== '') ? metadata.user_id : null,
@@ -455,7 +468,8 @@ export class DeepSeekMeteringAdapter {
           usage.prompt_tokens,
           usage.completion_tokens,
           usage.prompt_cache_hit_tokens ?? 0,
-          cost,
+          0, // credits_consumed: 0 for DeepSeekMeteringAdapter (user pays via JediAIService)
+          costUsd,
         ]
       );
     } catch (err) {

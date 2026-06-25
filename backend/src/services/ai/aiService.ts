@@ -15,6 +15,7 @@ import type {
   SubscriptionTier,
 } from '../../types/dealContext';
 import { modelPreferenceService, getModelFamily, getSurfaceDefault } from './modelPreferenceService';
+import { estimateCost } from '../../agents/runtime/MeteringAdapter';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -32,28 +33,28 @@ const MODEL_ROUTING: ModelRouting = {
     commentary: 'deepseek-chat',
   },
   operator: {
-    research: 'deepseek-chat',
+    research: 'claude-sonnet-4-5',
     zoning: 'deepseek-chat',
     supply: 'deepseek-chat',
-    cashflow: 'deepseek-chat',
-    coordinator: 'deepseek-chat',
+    cashflow: 'claude-sonnet-4-5',
+    coordinator: 'claude-sonnet-4-5',
     commentary: 'deepseek-chat',
   },
   principal: {
-    research: 'deepseek-chat',
-    zoning: 'deepseek-chat',
-    supply: 'deepseek-chat',
-    cashflow: 'deepseek-chat',
-    coordinator: 'deepseek-chat',
+    research: 'claude-sonnet-4-5',
+    zoning: 'claude-sonnet-4-5',
+    supply: 'claude-sonnet-4-5',
+    cashflow: 'claude-sonnet-4-5',
+    coordinator: 'claude-sonnet-4-5',
     commentary: 'deepseek-chat',
   },
   institutional: {
-    research: 'deepseek-chat',
-    zoning: 'deepseek-chat',
-    supply: 'deepseek-chat',
-    cashflow: 'deepseek-chat',
-    coordinator: 'deepseek-chat',
-    commentary: 'deepseek-chat',
+    research: 'claude-opus-4-5',
+    zoning: 'claude-sonnet-4-5',
+    supply: 'claude-sonnet-4-5',
+    cashflow: 'claude-opus-4-5',
+    coordinator: 'claude-opus-4-5',
+    commentary: 'claude-sonnet-4-5',
   },
 };
 
@@ -71,6 +72,30 @@ const SURFACE_DEFAULTS: Record<string, string> = {
   'skill:debt_advisor':                   getSurfaceDefault('skill', 'debt_advisor'),
   'skill:tax_advisor':                    getSurfaceDefault('skill', 'tax_advisor'),
   'skill:market_expert':                  getSurfaceDefault('skill', 'market_expert'),
+};
+
+// ── Token Budgets per Operation (max_tokens cap) ───────────────
+// A3-F4: Prevents unbounded loss on large calls. Each operation gets
+// a hard token budget. The platform rejects or truncates calls that
+// would exceed this limit.
+
+const TOKEN_BUDGETS: Record<string, { input: number; output: number }> = {
+  research_single_source:     { input: 8_000,  output: 4_000 },
+  research_full_assembly:       { input: 16_000, output: 8_000 },
+  research_monitoring_check:    { input: 8_000,  output: 4_000 },
+  research_market_scan:         { input: 12_000, output: 6_000 },
+  zoning_analysis:              { input: 8_000,  output: 4_000 },
+  supply_analysis:              { input: 8_000,  output: 4_000 },
+  supply_pipeline_check:        { input: 8_000,  output: 4_000 },
+  cashflow_analysis:            { input: 16_000, output: 8_000 },
+  cashflow_price_rerun:         { input: 8_000,  output: 4_000 },
+  cashflow_sensitivity_cell:    { input: 8_000,  output: 4_000 },
+  coordinator_synthesis:        { input: 12_000, output: 6_000 },
+  coordinator_comparison:       { input: 12_000, output: 6_000 },
+  coordinator_report_lite:      { input: 24_000, output: 12_000 },
+  coordinator_deal_bible:     { input: 48_000, output: 16_000 },
+  coordinator_chat_response:  { input: 8_000,  output: 4_000 },
+  commentary_generation:        { input: 8_000,  output: 4_000 },
 };
 
 // ── Credit Costs per Operation ─────────────────────────────────
@@ -155,6 +180,13 @@ export class JediAIService {
     const creditCost = this.getCreditCost(context.operationType, model);
     await this.checkAndDeductCredits(context.userId, creditCost);
 
+    // A3-F4: Apply token budget to prevent unbounded loss
+    const budget = this.getTokenBudget(context.operationType);
+    const maxTokens = Math.min(
+      options?.maxTokens ?? budget?.output ?? 4096,
+      budget?.output ?? 4096
+    );
+
     // 3. Dispatch to provider
     const startTime = Date.now();
     const family = getModelFamily(model);
@@ -174,19 +206,19 @@ export class JediAIService {
         });
         response = await this.anthropic.messages.create({
           model: effectiveModel,
-          max_tokens: options?.maxTokens ?? 4096,
+          max_tokens: maxTokens,
           system: systemPrompt,
           messages,
           tools: options.tools,
           temperature: options?.temperature ?? 0,
         });
       } else {
-        response = await this.callDeepSeek(model, systemPrompt, messages, options);
+        response = await this.callDeepSeek(model, systemPrompt, messages, { ...options, maxTokens });
       }
     } else {
       response = await this.anthropic.messages.create({
         model,
-        max_tokens: options?.maxTokens ?? 4096,
+        max_tokens: maxTokens,
         system: systemPrompt,
         messages,
         tools: options?.tools,
@@ -197,10 +229,12 @@ export class JediAIService {
     const latencyMs = Date.now() - startTime;
 
     // 4. Report usage to Stripe meter (uses effective model for accurate attribution)
+    const costUsd = estimateCost(effectiveModel, response.usage.input_tokens, response.usage.output_tokens);
     await this.reportStripeUsage(context, effectiveModel, response.usage);
+    await this.reportStripeCost(context, costUsd);
 
     // 5. Log to internal analytics (records the model that actually ran)
-    await this.logUsage(context, effectiveModel, response.usage, creditCost, latencyMs);
+    await this.logUsage(context, effectiveModel, response.usage, creditCost, costUsd, latencyMs);
 
     return response;
   }
@@ -312,9 +346,16 @@ export class JediAIService {
     const creditCost = this.getCreditCost(context.operationType, model);
     await this.checkAndDeductCredits(context.userId, creditCost);
 
+    // A3-F4: Apply token budget to prevent unbounded loss
+    const budget = this.getTokenBudget(context.operationType);
+    const maxTokens = Math.min(
+      options?.maxTokens ?? budget?.output ?? 4096,
+      budget?.output ?? 4096
+    );
+
     const stream = this.anthropic.messages.stream({
       model,
-      max_tokens: 4096,
+      max_tokens: maxTokens,
       system: systemPrompt,
       messages,
     });
@@ -338,12 +379,14 @@ export class JediAIService {
     }
 
     // Report after stream completes
+    const costUsd = estimateCost(model, inputTokens, outputTokens);
     await this.reportStripeUsage(context, model, {
       input_tokens: inputTokens,
       output_tokens: outputTokens,
       cache_creation_input_tokens: 0,
       cache_read_input_tokens: 0,
     } as any);
+    await this.reportStripeCost(context, costUsd);
     await this.logUsage(
       context,
       model,
@@ -354,6 +397,7 @@ export class JediAIService {
         cache_read_input_tokens: 0,
       } as any,
       creditCost,
+      costUsd,
       0
     );
   }
@@ -423,6 +467,17 @@ export class JediAIService {
    */
   getCreditCostTable(): Record<string, number> {
     return { ...CREDIT_COSTS };
+  }
+
+  /**
+   * A3-F4: Token budget per operation. Returns the max input/output token
+   * budget for an operation type. Used to cap max_tokens and prevent
+   * unbounded platform loss on large calls.
+   */
+  getTokenBudget(
+    operationType: string
+  ): { input: number; output: number } | null {
+    return TOKEN_BUDGETS[operationType] ?? null;
   }
 
   // ── Private Methods ────────────────────────────────────────────
@@ -583,6 +638,28 @@ export class JediAIService {
     }
   }
 
+  private async reportStripeCost(
+    context: AICallContext,
+    costUsd: number
+  ): Promise<void> {
+    if (!context.stripeCustomerId || !process.env.STRIPE_SECRET_KEY) {
+      return;
+    }
+    try {
+      const Stripe = (await import('stripe')).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+      await stripe.billing.meterEvents.create({
+        event_name: 'jedi_ai_cost_usd',
+        payload: {
+          stripe_customer_id: context.stripeCustomerId,
+          value: String(Math.round(costUsd * 1_000_000)), // Report in micro-dollars to avoid decimals
+        },
+      });
+    } catch (error) {
+      logger.error('Failed to report Stripe cost', { error, context });
+    }
+  }
+
   private async logUsage(
     context: AICallContext,
     model: string,
@@ -592,6 +669,7 @@ export class JediAIService {
       cache_read_input_tokens?: number;
     },
     creditCost: number,
+    costUsd: number,
     latencyMs: number
   ): Promise<void> {
     try {
@@ -600,8 +678,8 @@ export class JediAIService {
           user_id, stripe_customer_id, deal_id,
           agent_id, operation_type, surface, platform,
           model, input_tokens, output_tokens, cache_read_tokens,
-          credits_consumed, latency_ms
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          credits_consumed, cost_usd, latency_ms
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
           context.userId,
           context.stripeCustomerId,
@@ -615,6 +693,7 @@ export class JediAIService {
           usage.output_tokens,
           usage.cache_read_input_tokens || 0,
           creditCost,
+          costUsd,
           latencyMs,
         ]
       );

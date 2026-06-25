@@ -17,7 +17,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
-import { creditService } from '../../services/ai/creditService';
 import type { MeteringMetadata } from './types';
 
 // ── Token cost table (USD per 1M tokens, approximate) ────────────
@@ -272,7 +271,6 @@ export class MeteringAdapter {
    */
   async createMessage(params: MessageParams): Promise<MeteredMessage> {
     const { metadata, ...apiParams } = params;
-    const estimate = preflightEstimate(apiParams.model);
 
     // Acquire deal concurrency slot (queues if over limit, no-ops if no deal_id).
     // The slot is released in a finally block that wraps the entire call chain,
@@ -283,15 +281,10 @@ export class MeteringAdapter {
     }
 
     try {
-      // Pre-flight credit reservation (user-triggered only — fail-fast).
-      // wasReserved is TRUE only when the estimate was actually deducted from the
-      // user balance. FALSE when the call is allowed without deduction (overage
-      // tier, no credit record). This distinction controls refund/settlement logic.
-      let wasReserved = false;
-      if (metadata.triggered_by === 'user' && metadata.user_id) {
-        wasReserved = await creditService.reserveCredits(metadata.user_id, estimate);
-      }
-
+      // A3: Stripe metering route — agent runtime calls are platform-absorbed.
+      // User credits are deducted at the JediAIService layer (flat credits per
+      // operation). The MeteringAdapter only tracks actual cost for analytics
+      // and Stripe meter reporting. No credit reservation here.
       let response: Anthropic.Message;
 
       try {
@@ -303,13 +296,6 @@ export class MeteringAdapter {
           max_tokens: apiParams.max_tokens,
         });
       } catch (err) {
-        // Model call failed — refund the reservation ONLY if a deduction was made.
-        // Prevents phantom credits if reserveCredits allowed without deducting.
-        if (wasReserved && metadata.user_id) {
-          await creditService.debitActualCost(metadata.user_id, estimate, 0).catch(
-            refundErr => logger.error('MeteringAdapter: failed to refund reservation', { refundErr })
-          );
-        }
         throw err;
       }
 
@@ -319,10 +305,7 @@ export class MeteringAdapter {
         response.usage.output_tokens
       );
 
-      // Synchronous post-call settlement — guaranteed before returning to caller.
-      // Pass the effective reserved amount: if no deduction occurred, treat as 0
-      // so settle() charges full actualCost rather than only the delta.
-      await this.settle(metadata, response, actualCost, wasReserved ? estimate : 0, apiParams.model);
+      await this.settle(metadata, response, actualCost, apiParams.model);
 
       return {
         ...response,
@@ -341,26 +324,17 @@ export class MeteringAdapter {
     metadata: MeteringMetadata,
     response: Anthropic.Message,
     actualCost: number,
-    reservedCost: number,
     model: string
   ): Promise<void> {
-    // 1. Log to internal ai_usage_log (matches JediAIService.logUsage pattern)
+    // 1. Log to internal ai_usage_log (now with cost_usd for platform economics)
     await this.logUsage(metadata, response, actualCost, model);
 
-    // 2. Bucket-specific settlement
-    if (metadata.triggered_by === 'user' && metadata.user_id) {
-      // Reconcile reservation with actual cost
-      await creditService.debitActualCost(
-        metadata.user_id,
-        reservedCost,
-        actualCost
-      );
+    // 2. Report to Stripe billing meters (cost + raw tokens for analytics)
+    await this.reportStripeUsage(metadata, response.usage, model);
+    await this.reportStripeCost(metadata, actualCost);
 
-      // Report to Stripe billing meters (matches JediAIService.reportStripeUsage)
-      await this.reportStripeUsage(metadata, response.usage, model);
-
-    } else {
-      // event / cron — platform absorbs; log for cost attribution
+    // 3. Log platform expense for event/cron attribution
+    if (metadata.triggered_by !== 'user') {
       logger.info('MeteringAdapter: platform expense (event/cron)', {
         trigger: metadata.triggered_by,
         costUsd: actualCost.toFixed(4),
@@ -423,18 +397,54 @@ export class MeteringAdapter {
     }
   }
 
+  /**
+   * A3: Report actual cost to Stripe billing meter (jedi_ai_cost_usd).
+   * This enables usage-based billing at the platform's actual cost.
+   */
+  private async reportStripeCost(
+    metadata: MeteringMetadata,
+    costUsd: number
+  ): Promise<void> {
+    if (!process.env.STRIPE_SECRET_KEY || !metadata.user_id) return;
+    try {
+      const userRow = await query(
+        `SELECT stripe_customer_id FROM user_credit_balances WHERE user_id = $1`,
+        [metadata.user_id]
+      );
+      const stripeCustomerId: string | undefined =
+        userRow.rows[0]?.stripe_customer_id;
+      if (!stripeCustomerId) return;
+
+      const Stripe = (await import('stripe')).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+      await stripe.billing.meterEvents.create({
+        event_name: 'jedi_ai_cost_usd',
+        payload: {
+          stripe_customer_id: stripeCustomerId,
+          value: String(Math.round(costUsd * 1_000_000)), // micro-dollars
+        },
+      });
+    } catch (err) {
+      logger.error('MeteringAdapter: Stripe cost meter event failed', {
+        userId: metadata.user_id,
+        err,
+      });
+    }
+  }
+
   private async logUsage(
     metadata: MeteringMetadata,
     response: Anthropic.Message,
-    cost: number,
+    costUsd: number,
     model: string
   ): Promise<void> {
     try {
       await query(
         `INSERT INTO ai_usage_log (
            user_id, deal_id, agent_id, operation_type, surface,
-           model, input_tokens, output_tokens, credits_consumed, latency_ms
-         ) VALUES ($1,$2,$3,$4,'agent',$5,$6,$7,$8,0)
+           model, input_tokens, output_tokens, credits_consumed, cost_usd, latency_ms
+         ) VALUES ($1,$2,$3,$4,'agent',$5,$6,$7,$8,$9,0)
          ON CONFLICT DO NOTHING`,
         [
           (metadata.user_id && metadata.user_id.trim() !== '' ? metadata.user_id : null) ?? '00000000-0000-0000-0000-000000000000',
@@ -444,7 +454,8 @@ export class MeteringAdapter {
           model,
           response.usage.input_tokens,
           response.usage.output_tokens,
-          cost,
+          0, // credits_consumed: 0 for MeteringAdapter (user pays via JediAIService)
+          costUsd,
         ]
       );
     } catch (err) {
