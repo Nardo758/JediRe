@@ -312,6 +312,12 @@ import {
   cashflowOnWalkthroughRequested,
 } from './agents/cashflow.inngest';
 import { commentaryOnResearchCompleted } from './agents/commentary.inngest';
+import {
+  zoningOnCompleted,
+  supplyOnCompleted,
+  cashflowOnCompleted,
+  commentaryOnCompleted,
+} from './agents/completion-consumers.inngest';
 import { archiveAggregationFunction } from './inngest/functions/archive-aggregation.function';
 import { emailIntakeFunction } from './inngest/functions/email-intake.function';
 import { captureMonthlySnapshotsFunction } from './inngest/functions/capture-monthly-snapshots';
@@ -364,6 +370,10 @@ app.use(
       cashflowOnResearchCompleted,
       cashflowOnWalkthroughRequested,
       commentaryOnResearchCompleted,
+      zoningOnCompleted,
+      supplyOnCompleted,
+      cashflowOnCompleted,
+      commentaryOnCompleted,
       archiveAggregationFunction,
       emailIntakeFunction,
       captureMonthlySnapshotsFunction,
