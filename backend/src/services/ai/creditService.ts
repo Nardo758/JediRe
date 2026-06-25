@@ -19,6 +19,7 @@ interface TierConfig {
   surfaces: string[];
   aiMarkup: number;      // multiplier on raw AI cost (e.g. 1.40 = 40% margin)
   minCharge: number;     // minimum $ per call to prevent micro-transactions
+  platformFeePerCall: number; // flat $ per call (covers fixed overhead: DB, logging, Stripe API, etc.)
 }
 
 const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
@@ -29,7 +30,8 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     maxAutomationLevel: 1,
     surfaces: ['chat'],
     aiMarkup: 1.50,        // 50% markup on raw AI cost
-    minCharge: 0.005,     // minimum $0.005 per call
+    minCharge: 0.005,      // minimum $0.005 per call
+    platformFeePerCall: 0.01, // $0.01 flat fee per call
   },
   // A5-F4: 'basic' tier — legacy / pre-launch tier mapped to same config as scout.
   // getAllowedTriggerModes('basic') returns ['manual', 'event-driven'] (dev/testing).
@@ -41,6 +43,7 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     surfaces: ['chat'],
     aiMarkup: 1.50,
     minCharge: 0.005,
+    platformFeePerCall: 0.01,
   },
   operator: {
     creditsIncludedMonthly: 500,
@@ -50,6 +53,7 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     surfaces: ['chat', 'web'],
     aiMarkup: 1.35,      // 35% markup
     minCharge: 0.003,
+    platformFeePerCall: 0.005, // $0.005 flat fee per call
   },
   principal: {
     creditsIncludedMonthly: 2000,
@@ -59,6 +63,7 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     surfaces: ['chat', 'web', 'api'],
     aiMarkup: 1.20,      // 20% markup
     minCharge: 0.001,
+    platformFeePerCall: 0.002, // $0.002 flat fee per call
   },
   institutional: {
     creditsIncludedMonthly: -1, // custom/negotiated
@@ -68,6 +73,7 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     surfaces: ['chat', 'web', 'api'],
     aiMarkup: 1.00,      // pass-through (no markup)
     minCharge: 0,
+    platformFeePerCall: 0,  // no flat fee (custom pricing)
   },
 };
 
@@ -77,14 +83,20 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
  * A3: Calculate what the user pays (billable) vs. what the platform
  * pays (raw cost). The delta is the platform margin.
  *
- * @param rawCostUsd — actual AI provider cost (from estimateCost/estimateDeepSeekCost)
- * @param tier — user's subscription tier (markup varies by tier)
- * @returns billable USD (rawCost × markup, floored at minCharge)
+ * Formula: billable = (rawCost × markup, floored at minCharge) + platformFeePerCall
+ *
+ * Two components:
+ *   1. Variable: rawCost × aiMarkup (with minCharge floor)
+ *   2. Flat: platformFeePerCall (covers fixed per-call overhead: DB write, logging, Stripe API)
+ *
+ * @param rawCostUsd — actual AI provider cost
+ * @param tier — user's subscription tier
+ * @returns billable USD (what Stripe charges the user)
  */
 export function calculateBillable(rawCostUsd: number, tier: SubscriptionTier): number {
   const config = TIER_CONFIG[tier];
-  const withMarkup = rawCostUsd * config.aiMarkup;
-  return Math.max(withMarkup, config.minCharge);
+  const variable = Math.max(rawCostUsd * config.aiMarkup, config.minCharge);
+  return variable + config.platformFeePerCall;
 }
 
 // ── Credit Balance Operations ──────────────────────────────────
