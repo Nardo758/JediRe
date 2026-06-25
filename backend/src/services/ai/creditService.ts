@@ -17,9 +17,10 @@ interface TierConfig {
   maxActiveDeals: number;
   maxAutomationLevel: AutomationLevel;
   surfaces: string[];
-  aiMarkup: number;      // multiplier on raw AI cost (e.g. 1.40 = 40% margin)
-  minCharge: number;     // minimum $ per call to prevent micro-transactions
-  platformFeePerCall: number; // flat $ per call (covers fixed overhead: DB, logging, Stripe API, etc.)
+  aiMarkup: number;
+  minCharge: number;
+  platformFeePerCall: number;
+  monthlyFee: number; // subscription price in USD (e.g., 49, 97, 197)
 }
 
 const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
@@ -32,6 +33,7 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     aiMarkup: 1.50,        // 50% markup on raw AI cost
     minCharge: 0.005,      // minimum $0.005 per call
     platformFeePerCall: 0.01, // $0.01 flat fee per call
+    monthlyFee: 49,      // $49/mo subscription
   },
   // A5-F4: 'basic' tier — legacy / pre-launch tier mapped to same config as scout.
   // getAllowedTriggerModes('basic') returns ['manual', 'event-driven'] (dev/testing).
@@ -44,6 +46,7 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     aiMarkup: 1.50,
     minCharge: 0.005,
     platformFeePerCall: 0.01,
+    monthlyFee: 49,
   },
   operator: {
     creditsIncludedMonthly: 500,
@@ -54,6 +57,7 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     aiMarkup: 1.35,      // 35% markup
     minCharge: 0.003,
     platformFeePerCall: 0.005, // $0.005 flat fee per call
+    monthlyFee: 97,     // $97/mo subscription
   },
   principal: {
     creditsIncludedMonthly: 2000,
@@ -64,6 +68,7 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     aiMarkup: 1.20,      // 20% markup
     minCharge: 0.001,
     platformFeePerCall: 0.002, // $0.002 flat fee per call
+    monthlyFee: 197,    // $197/mo subscription
   },
   institutional: {
     creditsIncludedMonthly: -1, // custom/negotiated
@@ -74,6 +79,7 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     aiMarkup: 1.00,      // pass-through (no markup)
     minCharge: 0,
     platformFeePerCall: 0,  // no flat fee (custom pricing)
+    monthlyFee: 0,       // custom/negotiated
   },
 };
 
