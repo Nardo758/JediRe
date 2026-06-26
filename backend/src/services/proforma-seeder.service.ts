@@ -1,6 +1,8 @@
 import { Pool } from 'pg';
 import type { LayeredValue, ProFormaYear1Seed } from './document-extraction/types';
 import { buildBoundaryContext, type BoundaryContext } from './proforma/boundary.types';
+import { buildPeriodicSeed } from './proforma/periodic-seeder.service';
+import type { ProFormaPeriodicSeed } from './proforma/periodic-field.types';
 import { logger } from '../utils/logger';
 import { resolvePriorityChain } from '../utils/field-priority-miss';
 import { computeLeaseRollVelocityFromDates } from './proforma/ltl-trajectory';
@@ -1238,6 +1240,8 @@ export async function seedProFormaYear1(
     const capsule: Capsule = (typeof deal.deal_data === 'string' ? JSON.parse(deal.deal_data) : deal.deal_data) || {};
 
     const t12Capsule = obj(capsule, 'extraction_t12');
+    // Phase 0: extract per-month T12 array (may be absent on pre-Phase-0 deals)
+    const t12Months = Array.isArray(t12Capsule?.months) ? (t12Capsule.months as Array<Record<string, unknown>>) : [];
     const rrCapsule = obj(capsule, 'extraction_rent_roll');
     const taxBillCapsule = obj(capsule, 'extraction_tax_bill');
     const omCapsule = obj(capsule, 'extraction_om');

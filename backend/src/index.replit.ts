@@ -45,6 +45,7 @@ import mapConfigsRouter from './api/rest/map-configs.routes';
 import { createCoStarUploadRoutes } from './api/rest/costar-upload.routes';
 import clawdbotWebhooksRouter from './api/rest/clawdbot-webhooks.routes';
 import oppgridRouter from './api/rest/oppgrid.routes';
+import auditRouter from './api/rest/audit.routes';
 import rentScraperAdminRouter from './api/rest/rent-scraper-admin.routes';
 import m26TaxRouter from './api/rest/m26-tax.routes';
 import m27CompsRouter from './api/rest/m27-comps.routes';
@@ -249,6 +250,7 @@ app.use('/api/v1/microsoft', microsoftRouter);
 
 app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
 app.use('/api/v1/oppgrid', oppgridRouter);
+app.use('/api/v1/audit', requireAuth, auditRouter);
 app.use('/api/v1/admin/rent-scraper', rentScraperAdminRouter);
 app.use('/api/v1', m26TaxRouter);
 app.use('/api/v1', m27CompsRouter);
