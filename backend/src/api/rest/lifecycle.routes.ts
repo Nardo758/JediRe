@@ -50,6 +50,13 @@ import {
   getCompetitivePosition,
 } from '../../services/competitive-set.service';
 
+import {
+  guardTransition,
+  buildSideEffectSQL,
+  normalizeStatus,
+  type DealStatus,
+} from '../../services/lifecycle/transition-guard.service';
+
 const router = Router();
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -79,17 +86,100 @@ router.get('/:dealId/dispositions', requireAuth, async (req: AuthenticatedReques
  */
 router.post('/:dealId/disposition', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const dealId = req.params.dealId;
+
+    // Guard: disposition always transitions the deal to SOLD
+    const guardResult = await guardTransition(dealId, 'SOLD');
+    if (!guardResult.allowed) {
+      return res.status(400).json({ success: false, error: guardResult.reason ?? 'Invalid status transition' });
+    }
+
+    // Set guard reason for the trigger to capture
+    await query(
+      `SELECT set_config('app.lifecycle_reason', $1, true)`,
+      [guardResult.reason ?? 'Disposition recorded — transition to SOLD'],
+    );
+
     const data = req.body;
-    data.dealId = req.params.dealId;
+    data.dealId = dealId;
     data.closingDate = new Date(data.closingDate);
     if (data.listingDate) data.listingDate = new Date(data.listingDate);
     if (data.underContractDate) data.underContractDate = new Date(data.underContractDate);
     
     const id = await recordDisposition(data);
-    res.json({ success: true, id });
+    res.json({ success: true, id, transition: { from: guardResult.currentStatus, to: 'SOLD', reason: guardResult.reason } });
   } catch (err) {
     logger.error('Record disposition error:', err);
     res.status(500).json({ success: false, error: 'Failed to record disposition' });
+  }
+});
+
+/**
+ * POST /api/v1/lifecycle/:dealId/status
+ * Explicit status transition with guard enforcement.
+ * Canonical endpoint for Phase 6 lifecycle state machine.
+ */
+router.post('/:dealId/status', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const dealId = req.params.dealId;
+    const { status, reason } = req.body;
+
+    if (!status) {
+      return res.status(400).json({ success: false, error: 'status is required' });
+    }
+
+    const normalizedTarget = normalizeStatus(status) as DealStatus;
+
+    // 1. Validate transition
+    const guardResult = await guardTransition(dealId, normalizedTarget);
+    if (!guardResult.allowed) {
+      return res.status(400).json({ success: false, error: guardResult.reason ?? 'Invalid status transition' });
+    }
+
+    // 2. Compute side effects
+    const { setClauses: sideEffectClauses } = buildSideEffectSQL(dealId, guardResult.sideEffects ?? []);
+
+    // 3. Set guard reason for the trigger
+    await query(
+      `SELECT set_config('app.lifecycle_reason', $1, true)`,
+      [guardResult.reason ?? `Status changed to ${normalizedTarget}`],
+    );
+
+    // 4. Apply UPDATE with side effects
+    const setParts = [`status = $1`, ...sideEffectClauses, `updated_at = NOW()`];
+    await query(
+      `UPDATE deals SET ${setParts.join(', ')} WHERE id = $2`,
+      [normalizedTarget, dealId],
+    );
+
+    // 5. Manual enriched log (trigger also captures a safety-net row)
+    setImmediate(async () => {
+      try {
+        const { recordDealLifecycleEvent } = await import('../../services/portfolio/lifecycle-transition.service');
+        await recordDealLifecycleEvent(
+          dealId,
+          guardResult.currentStatus ?? null,
+          normalizedTarget,
+          req.user!.userId,
+          { reason: guardResult.reason, sideEffects: guardResult.sideEffects },
+        );
+      } catch (lcErr) {
+        logger.warn('[LifecycleEvents] Manual log failed (non-fatal)', { dealId, error: lcErr });
+      }
+    });
+
+    return res.json({
+      success: true,
+      status: normalizedTarget,
+      transition: {
+        from: guardResult.currentStatus,
+        to: normalizedTarget,
+        reason: guardResult.reason,
+      },
+    });
+  } catch (err) {
+    logger.error('Status transition error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to transition status' });
   }
 });
 

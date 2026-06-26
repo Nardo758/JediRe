@@ -66,7 +66,7 @@ export async function recordDealLifecycleEvent(
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type PortfolioTransitionStatus = 'owned' | 'portfolio' | 'closed' | 'closed_won';
+export type PortfolioTransitionStatus = 'CLOSED_OWNED' | 'SOLD' | 'HISTORICAL_RECORD';
 
 export interface LifecycleTransitionResult {
   bootstrapped: boolean;
@@ -221,7 +221,7 @@ export async function onDealStatusTransitionToPortfolio(
 ): Promise<LifecycleTransitionResult> {
   const warnings: string[] = [];
 
-  const portfolioStatuses: string[] = ['owned', 'portfolio', 'closed', 'closed_won'];
+  const portfolioStatuses: string[] = ['CLOSED_OWNED', 'SOLD', 'HISTORICAL_RECORD'];
   if (!portfolioStatuses.includes(newStatus)) {
     return { bootstrapped: false, warnings };
   }

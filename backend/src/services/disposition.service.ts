@@ -8,6 +8,7 @@
 
 import { query, getClient } from '../database/connection';
 import { logger } from '../utils/logger';
+import { guardTransition } from '../lifecycle/transition-guard.service';
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -141,8 +142,16 @@ export async function recordDisposition(data: DispositionData): Promise<string> 
   );
 
   // Update deal status
+  const guardResult = await guardTransition(data.dealId, 'SOLD');
+  if (!guardResult.allowed) {
+    throw new Error(guardResult.reason ?? 'Invalid status transition to SOLD');
+  }
   await query(
-    `UPDATE deals SET status = 'sold', updated_at = NOW() WHERE id = $1`,
+    `SELECT set_config('app.lifecycle_reason', $1, true)`,
+    [guardResult.reason ?? 'Disposition recorded — transition to SOLD'],
+  );
+  await query(
+    `UPDATE deals SET status = 'SOLD', updated_at = NOW() WHERE id = $1`,
     [data.dealId]
   );
 

@@ -12,6 +12,7 @@ import {
   DealRole,
   DealPhase,
 } from './integrations/types';
+import { guardTransition } from '../lifecycle/transition-guard.service';
 
 // ─── Organization Management ──────────────────────────────────────────
 
@@ -358,8 +359,16 @@ export async function completeHandoff(
     
     // Update deal status if acquisition → operations
     if (handoff.handoff_type === 'acquisition_to_operations') {
+      const guardResult = await guardTransition(handoff.deal_id as string, 'CLOSED_OWNED');
+      if (!guardResult.allowed) {
+        throw new Error(guardResult.reason ?? 'Invalid transition to CLOSED_OWNED');
+      }
       await client.query(
-        `UPDATE deals SET status = 'owned', updated_at = NOW() WHERE id = $1`,
+        `SELECT set_config('app.lifecycle_reason', $1, true)`,
+        [guardResult.reason ?? 'Handoff completed — transition to CLOSED_OWNED'],
+      );
+      await client.query(
+        `UPDATE deals SET status = 'CLOSED_OWNED', acquisition_date = NOW(), updated_at = NOW() WHERE id = $1`,
         [handoff.deal_id]
       );
     }

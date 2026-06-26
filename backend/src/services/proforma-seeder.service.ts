@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import type { LayeredValue, ProFormaYear1Seed } from './document-extraction/types';
+import { buildBoundaryContext, type BoundaryContext } from './proforma/boundary.types';
 import { logger } from '../utils/logger';
 import { resolvePriorityChain } from '../utils/field-priority-miss';
 import { computeLeaseRollVelocityFromDates } from './proforma/ltl-trajectory';
@@ -517,7 +518,8 @@ function buildSeed(
   taxBillCapsule: Capsule | null,
   omCapsule: Capsule | null,
   existingSeed: ExistingSeed | null,
-  bpCapsule: Record<string, unknown> | null = null
+  bpCapsule: Record<string, unknown> | null = null,
+  boundary: BoundaryContext | null = null,
 ): ProFormaYear1Seed {
   const ex = existingSeed || {} as ExistingSeed;
 
@@ -1116,6 +1118,8 @@ function buildSeed(
     },
     _unit_count: totalUnits,
     last_seeded_at: now(),
+    // Phase 1 — Boundary context: tells the system where actuals end and projection begins
+    _boundary_context: boundary ?? undefined,
     // Custom (previously unrecognized) GL line items from T12
     ...customOpexItems,
   };
@@ -1224,7 +1228,7 @@ export async function seedProFormaYear1(
   try {
     // Load deal + capsule (city + state_code needed for platform baseline lookup)
     const dealResult = await pool.query(
-      `SELECT id, target_units, deal_data, city, state_code FROM deals WHERE id = $1`,
+      `SELECT id, target_units, deal_data, city, state_code, actuals_through_month, acquisition_date FROM deals WHERE id = $1`,
       [dealId]
     );
     if (dealResult.rows.length === 0) {
@@ -1301,8 +1305,15 @@ export async function seedProFormaYear1(
     const bcObj = bcRaw && typeof bcRaw === 'object' ? bcRaw as Record<string, unknown> : null;
     const bpRaw = bcObj?.proforma;
     const bpProforma = bpRaw && typeof bpRaw === 'object' ? bpRaw as Record<string, unknown> : null;
-    const seed = buildSeed(totalUnits, platform, t12Capsule, rrCapsule, taxBillCapsule, omCapsule, existingSeed, bpProforma);
 
+    // Phase 1 — Boundary Facts: build boundary context from deal fields
+    const boundary = buildBoundaryContext(
+      deal.actuals_through_month as string | null,
+      deal.acquisition_date as string | null,
+    );
+
+    const seed = buildSeed(totalUnits, platform, t12Capsule, rrCapsule, taxBillCapsule, omCapsule, existingSeed, bpProforma, boundary);
+    
     // Task #838 — Re-apply Cashflow Agent sub-keys after re-seed.
     //
     // buildSeed preserves operator overrides (via getOverride()) but has no

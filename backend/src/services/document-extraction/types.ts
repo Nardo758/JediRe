@@ -694,6 +694,17 @@ export interface ProFormaYear1Seed {
   };
   _unit_count: number;
   last_seeded_at: string;
+  /** Boundary context — non-field metadata telling the system where actuals end
+   *  and projection begins. Added by Phase 1 (Boundary Facts). Optional for
+   *  backward compatibility with pre-boundary seeds. */
+  _boundary_context?: {
+    actuals_through_month: string | null;
+    acquisition_date: string | null;
+    has_actuals: boolean;
+    has_projection: boolean;
+    gap_start_month: string | null;
+    gap_end_month: string | null;
+  };
 }
 
 export interface ExtractionT12Capsule {

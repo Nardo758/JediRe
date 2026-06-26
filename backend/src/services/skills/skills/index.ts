@@ -520,7 +520,10 @@ const updateDealStatus: SkillDefinition = {
   description: 'Update the deal stage or status in the pipeline.',
   category: 'action',
   parameters: z.object({
-    status: z.enum(['screening', 'underwriting', 'loi', 'due_diligence', 'closing', 'closed', 'dead']),
+    status: z.enum([
+      'PROSPECT', 'UNDERWRITING', 'UNDER_CONTRACT', 'CLOSED_OWNED',
+      'MONITORING', 'DISPOSITION', 'SOLD', 'HISTORICAL_RECORD', 'PASSED',
+    ]),
     reason: z.string().optional().describe('Reason for status change'),
     confirmed: z.boolean(),
   }),
@@ -541,6 +544,18 @@ const updateDealStatus: SkillDefinition = {
     }
 
     try {
+      // Validate transition before applying
+      const { guardTransition } = await import('../../../lifecycle/transition-guard.service');
+      const guardResult = await guardTransition(dealId, status);
+      if (!guardResult.allowed) {
+        return { success: false, error: guardResult.reason ?? 'Invalid status transition' };
+      }
+
+      await query(
+        `SELECT set_config('app.lifecycle_reason', $1, true)`,
+        [guardResult.reason ?? `Status changed to ${status}`],
+      );
+
       await query(
         `UPDATE deals SET status = $1, updated_at = NOW() WHERE id = $2`,
         [status, dealId]

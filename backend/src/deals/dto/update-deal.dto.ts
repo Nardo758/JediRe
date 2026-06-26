@@ -1,9 +1,15 @@
 import { IsString, IsOptional, IsNumber, IsObject, IsEnum } from 'class-validator';
 
 export enum DealStatus {
-  ACTIVE = 'active',
-  ARCHIVED = 'archived',
-  CLOSED = 'closed',
+  PROSPECT = 'PROSPECT',
+  UNDERWRITING = 'UNDERWRITING',
+  UNDER_CONTRACT = 'UNDER_CONTRACT',
+  CLOSED_OWNED = 'CLOSED_OWNED',
+  MONITORING = 'MONITORING',
+  DISPOSITION = 'DISPOSITION',
+  SOLD = 'SOLD',
+  HISTORICAL_RECORD = 'HISTORICAL_RECORD',
+  PASSED = 'PASSED',
 }
 
 export class UpdateDealDto {

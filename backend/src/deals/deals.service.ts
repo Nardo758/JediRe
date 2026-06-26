@@ -5,6 +5,11 @@ import { DealAnalysisService } from '../services/dealAnalysis';
 import { DealTriageService } from '../services/DealTriageService';
 import { openclawNotifier } from '../services/notifications/openclawNotifier';
 import { resolveTypicalHold, type DevelopmentType } from '../services/hold-period-profiles';
+import {
+  guardTransition,
+  buildSideEffectSQL,
+  normalizeStatus,
+} from '../services/lifecycle/transition-guard.service';
 
 @Injectable()
 export class DealsService {
@@ -78,10 +83,10 @@ export class DealsService {
 
     const deal = result.rows[0];
 
-    // For portfolio deals, set status = 'portfolio' so corpus derivation is correct
+    // For portfolio deals, set status = 'CLOSED_OWNED' so corpus derivation is correct
     if (dto.deal_category === 'portfolio') {
-      await this.db.query(`UPDATE deals SET status = 'portfolio' WHERE id = $1`, [deal.id]);
-      deal.status = 'portfolio';
+      await this.db.query(`UPDATE deals SET status = 'CLOSED_OWNED', acquisition_date = NOW() WHERE id = $1`, [deal.id]);
+      deal.status = 'CLOSED_OWNED';
     }
 
     // Initialize deal modules based on tier
@@ -290,15 +295,27 @@ export class DealsService {
     }
 
     if (dto.status) {
-      updates.push(`status = $${paramIndex++}`);
-      values.push(dto.status);
-      
-      if (dto.status === 'archived') {
-        updates.push(`archived_at = NOW()`);
+      const normalizedTarget = normalizeStatus(dto.status);
+      const guardResult = await guardTransition(dealId, normalizedTarget);
+
+      if (!guardResult.allowed) {
+        throw new BadRequestException(guardResult.reason ?? 'Invalid status transition');
       }
+
+      // Apply side-effect SQL (e.g. acquisition_date, archived_at)
+      const { setClauses: sideEffectClauses } = buildSideEffectSQL(dealId, guardResult.sideEffects ?? []);
+      updates.push(...sideEffectClauses);
+
+      updates.push(`status = $${paramIndex++}`);
+      values.push(normalizedTarget);
+
+      // Set transaction-local reason so the trigger can capture it
+      await this.db.query(`SELECT set_config('app.lifecycle_reason', $1, true)`, [
+        guardResult.reason ?? `Status changed to ${normalizedTarget}`,
+      ]);
     }
     // Track whether a status transition is happening so we can sync corpus rows below
-    const statusChangingTo: string | undefined = dto.status;
+    const statusChangingTo: string | undefined = dto.status ? normalizeStatus(dto.status) : undefined;
 
     if (updates.length === 0) {
       throw new BadRequestException('No fields to update');
@@ -324,18 +341,29 @@ export class DealsService {
   }
 
   /**
-   * Delete/Archive a deal
+   * Delete/Archive a deal — transitions to HISTORICAL_RECORD terminal state
    */
   async remove(dealId: string, userId: string) {
     await this.verifyOwnership(dealId, userId);
 
+    // Validate transition to terminal state
+    const guardResult = await guardTransition(dealId, 'HISTORICAL_RECORD');
+    if (!guardResult.allowed) {
+      throw new BadRequestException(guardResult.reason ?? 'Invalid status transition');
+    }
+
     await this.db.query(
-      'UPDATE deals SET status = \'archived\', archived_at = NOW() WHERE id = $1',
+      `SELECT set_config('app.lifecycle_reason', $1, true)`,
+      [guardResult.reason ?? 'Deal archived (HISTORICAL_RECORD)'],
+    );
+
+    await this.db.query(
+      'UPDATE deals SET status = \'HISTORICAL_RECORD\', archived_at = NOW() WHERE id = $1',
       [dealId]
     );
 
     // Corpus sync: archiving a deal removes subject-property flag from its observations
-    await this.syncCorpusSubjectFlag(dealId, 'archived');
+    await this.syncCorpusSubjectFlag(dealId, 'HISTORICAL_RECORD');
 
     await this.logActivity(dealId, userId, 'archived', 'Deal archived');
 
@@ -347,7 +375,7 @@ export class DealsService {
    * Primary path: rows with deal_id set. Fallback: pre-backfill rows identified by parcel join.
    */
   private async syncCorpusSubjectFlag(dealId: string, status: string): Promise<void> {
-    const SUBJECT_STATUSES = ['owned', 'closed', 'portfolio'];
+    const SUBJECT_STATUSES = ['CLOSED_OWNED', 'MONITORING', 'DISPOSITION', 'SOLD'];
     const isSubjectProperty = SUBJECT_STATUSES.includes(status);
     await this.db.query(
       `UPDATE historical_observations
