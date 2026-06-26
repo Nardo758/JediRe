@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
-import { createHash } from 'crypto';
 import { logger } from '../utils/logger';
 import { transaction } from '../database/connection';
+import { hashLockKey } from '../utils/correlation-lock-key';
 
 export interface CorrelationResult {
   metricA: string;
@@ -23,24 +23,6 @@ export interface CorrelationSweepResult {
 
 export class MetricCorrelationEngine {
   constructor(private pool: Pool) {}
-
-  /**
-   * SCH-04: Generate a 64-bit advisory-lock key from the correlation pair identifiers.
-   * Mirrors CorrelationEngineService.hashLockKey so both services lock on the same key
-   * for the same (metricA, metricB, geographyType, geographyId, windowMonths, scope) tuple.
-   */
-  private hashLockKey(
-    metricA: string,
-    metricB: string,
-    geographyType: string,
-    geographyId: string,
-    windowMonths: number,
-    scope: string
-  ): number {
-    const str = [metricA, metricB, geographyType, geographyId, String(windowMonths), scope].join('::');
-    const hash = createHash('sha256').update(str).digest('hex');
-    return parseInt(hash.slice(0, 15), 16) % 9007199254740991;
-  }
 
   private pearsonR(x: number[], y: number[]): { r: number; n: number } {
     const n = Math.min(x.length, y.length);
@@ -222,7 +204,7 @@ export class MetricCorrelationEngine {
     // SCH-04: Wrap DELETE + INSERT in a transaction with an advisory xact lock
     // so concurrent callers (metrics-catalog API, sweepAllGeographies via
     // CorrelationEngineService) cannot race on the same correlation pair row.
-    const lockKey = this.hashLockKey(metricA, metricB, geoType, geoId, windowMonths, 'GLOBAL');
+    const lockKey = hashLockKey(metricA, metricB, geoType, geoId, windowMonths, 'GLOBAL');
     await transaction(async (client) => {
       await client.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
 
