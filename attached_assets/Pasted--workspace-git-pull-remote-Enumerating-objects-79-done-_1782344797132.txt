@@ -1,0 +1,105 @@
+~/workspace$ git pull 
+remote: Enumerating objects: 79, done.
+remote: Counting objects: 100% (62/62), done.
+remote: Compressing objects: 100% (16/16), done.
+remote: Total 38 (delta 27), reused 33 (delta 22), pack-reused 0 (from 0)
+Unpacking objects: 100% (38/38), 30.51 KiB | 36.00 KiB/s, done.
+From https://github.com/Nardo758/JediRe
+   d49a53d11..25ddee388  master     -> origin/master
+Updating d49a53d11..25ddee388
+Fast-forward
+ TODO.md                                                             | 582 ++++++++++++++++++++++++++++++--------------------------
+ backend/src/agents/tools/fetch_inflation_context.ts                 |   5 +-
+ backend/src/database/migrations/20260624_corpus_tables_scope_id.sql | 112 +++++++++++
+ backend/src/scripts/backfill-correlation-history.ts                 |   6 +-
+ backend/src/services/apartment-locator-sync.service.ts              |   4 +-
+ backend/src/services/correlationEngine.service.ts                   | 114 +++++++----
+ backend/src/services/dataLibrary.service.ts                         |   1 +
+ backend/src/services/metric-correlation-engine.service.ts           |  38 ++--
+ backend/src/services/metric-projection.service.ts                   |   1 +
+ frontend/src/shared/config/deal-type-visibility.ts                  |  37 ++--
+ 10 files changed, 549 insertions(+), 351 deletions(-)
+ create mode 100644 backend/src/database/migrations/20260624_corpus_tables_scope_id.sql
+~/workspace$ git pull
+remote: Enumerating objects: 48, done.
+remote: Counting objects: 100% (48/48), done.
+remote: Compressing objects: 100% (4/4), done.
+remote: Total 25 (delta 20), reused 25 (delta 20), pack-reused 0 (from 0)
+Unpacking objects: 100% (25/25), 4.84 KiB | 4.00 KiB/s, done.
+From https://github.com/Nardo758/JediRe
+   25ddee388..2e6d751ee  master     -> origin/master
+Updating 25ddee388..2e6d751ee
+Fast-forward
+ backend/src/api/rest/archive.routes.ts                                  | 18 +++++++++++------
+ backend/src/api/rest/bulk-upload.routes.ts                              | 12 ++++++------
+ backend/src/services/dataLibrary.service.ts                             |  6 ++++--
+ backend/src/services/document-extraction/data-router.ts                 | 16 ++++++++++++---
+ backend/src/services/document-extraction/parsers/yardi-matrix-parser.ts |  7 +++++--
+ backend/src/services/historical-observations/document-to-corpus.ts      |  7 +++++--
+ backend/src/services/intake-sources/data-library-upload/index.ts        |  5 +++--
+ backend/src/services/macro-signals/corpus-macro-ingestor.ts             |  6 ++++--
+ backend/src/services/portfolio/lifecycle-transition.service.ts          |  6 ++++--
+ docs/Audit files.txt                                                    | 56 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 10 files changed, 112 insertions(+), 27 deletions(-)
+ create mode 100644 docs/Audit files.txt
+~/workspace$ git pull
+remote: Enumerating objects: 42, done.
+remote: Counting objects: 100% (42/42), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 24 (delta 22), reused 24 (delta 22), pack-reused 0 (from 0)
+Unpacking objects: 100% (24/24), 3.65 KiB | 4.00 KiB/s, done.
+From https://github.com/Nardo758/JediRe
+   2e6d751ee..2f5d7fefb  master     -> origin/master
+Updating 2e6d751ee..2f5d7fefb
+Fast-forward
+ backend/src/agents/tools/write_dealcontext.ts                |  3 ++-
+ backend/src/api/rest/chat.routes.ts                          |  7 ++++---
+ backend/src/api/rest/clawdbot-webhooks.routes.ts             |  4 ++--
+ backend/src/routes/index.ts                                  |  3 ++-
+ backend/src/services/chat.service.ts                         |  2 +-
+ backend/src/services/field-access/get-field-value.service.ts | 64 +++++++++++++++++++++++++++++++++++++++++++++-------------------
+ backend/src/services/orchestrator/agent-delegator.ts         | 17 +++++++++++++++--
+ 7 files changed, 71 insertions(+), 29 deletions(-)
+~/workspace$ git pull
+remote: Enumerating objects: 46, done.
+remote: Counting objects: 100% (46/46), done.
+remote: Compressing objects: 100% (5/5), done.
+remote: Total 28 (delta 23), reused 28 (delta 23), pack-reused 0 (from 0)
+Unpacking objects: 100% (28/28), 5.51 KiB | 13.00 KiB/s, done.
+From https://github.com/Nardo758/JediRe
+   2f5d7fefb..3b34760fa  master     -> origin/master
+error: cannot lock ref 'refs/remotes/origin/HEAD': Unable to create '/home/runner/workspace/.git/refs/remotes/origin/HEAD.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.
+Updating 2f5d7fefb..3b34760fa
+Fast-forward
+ backend/src/api/rest/inline-deals.routes.ts                  | 33 ++++++++++++++++++++++++++++++++-
+ backend/src/index.replit.ts                                  |  6 +++++-
+ backend/src/services/field-access/get-field-value.service.ts | 25 ++++++++++++++++++-------
+ backend/src/services/lius/engine.ts                          |  3 +++
+ backend/src/services/proforma-adjustment.service.ts          | 15 +++++++++++----
+ frontend/src/shared/config/deal-type-visibility.ts           | 50 +++++++++++++++++++++++++++++++++-----------------
+ 6 files changed, 102 insertions(+), 30 deletions(-)
+~/workspace$ git pull 
+remote: Enumerating objects: 9, done.
+remote: Counting objects: 100% (9/9), done.
+remote: Compressing objects: 100% (1/1), done.
+remote: Total 5 (delta 4), reused 5 (delta 4), pack-reused 0 (from 0)
+Unpacking objects: 100% (5/5), 854 bytes | 1024 bytes/s, done.
+From https://github.com/Nardo758/JediRe
+   3b34760fa..4ab2c3e0d  master     -> origin/master
+error: cannot lock ref 'refs/remotes/origin/HEAD': Unable to create '/home/runner/workspace/.git/refs/remotes/origin/HEAD.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.
+Merge made by the 'ort' strategy.
+ backend/src/index.replit.ts | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+~/workspace$ 

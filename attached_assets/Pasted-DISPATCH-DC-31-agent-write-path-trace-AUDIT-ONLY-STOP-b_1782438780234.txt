@@ -1,0 +1,20 @@
+DISPATCH: DC-31 agent write-path trace (AUDIT ONLY — STOP before any code change)
+Context: The DC-31 completeness audit established that resolve() has no agent slot — adding 'agent' to FIELD_PRIORITIES would resolve to undefined and fall through silently. The audit then asserted, without file:line, that "agent values currently enter the model via a different code path — not via resolve()." That claim is load-bearing and untraced: it decides whether the agent layer needs a new slot (if agent values are being dropped) or needs deletion/documentation (if they already have a canonical path). Ground it. Report file:line for every finding. Do not modify code.
+
+Does the agent layer emit at all, today? For the five agent sources in the LayeredValue type (agent:research, agent:zoning, agent:supply, agent:cashflow, agent:commentary), find where any of them is written — i.e. where a value is actually assigned into the agent field (or any agent:* slot) of a LayeredValue, or otherwise produced by an agent and persisted toward the proforma. List each writer with file:line. If a given agent source is never written anywhere, state that explicitly — "not emitting yet" is a valid and important finding (it's the latent-vs-live line).
+If agent values are written, how do they reach the model? For each writer found in (1), trace the path from that write to wherever the value lands in the seeded/resolved proforma. Specifically resolve which of these is true, with file:line:
+
+Path A — separate canonical path: agent values flow into the model through some route that does not go through resolve() (e.g. written directly into deal_data, a dedicated agent-merge step, an override write, etc.). If so, name that path exactly and identify where it merges with or overrides the resolved values. This is the claim the audit asserted — confirm or refute it.
+Path B — dropped: agent values are written into the agent LayeredValue field but nothing downstream ever reads that field into the resolved proforma. If so, the agent field is dead from the model's perspective and agent extractions are silently lost — a live data gap.
+Path C — not emitting: no agent source writes a value yet (follows from (1) being empty). Then the question is moot today and DC-31 agent disposition is "fix before agent layer ships," not "fix now."
+
+
+If Path A (separate path exists): is there a conflict surface? Where the agent path and the resolve() output both touch the same field, determine which wins and whether they can disagree. If both can write the same field with no defined precedence, that's a dual-source-of-truth finding — flag it. (This is the thing that would make adding an agent slot to resolve() actively harmful: it'd create a second entry point for a value that already has one.)
+
+Report format. State which path (A / B / C) is the truth, with file:line evidence. Do not propose the fix — the path determines it (A → delete dead field or document the real path; B → add the slot; C → defer to pre-ship), and that disposition is the human review call. STOP after reporting.
+
+When it lands, the disposition is mechanical:
+
+Path A → don't add the slot. The agent already has a home; the agent field on the resolution surface is either dead-to-delete or needs documenting as not-resolver-bound. DC-31 agent closes as a non-fix.
+Path B → add the slot. It's a live drop, the original ticket was right for the wrong reason, and the fix is structural in resolve() (slot + options signature), not a map edit.
+Path C → park it. Not biting yet; revisit when the agent layer emits.

@@ -1,0 +1,32 @@
+Right call running it in Replit against source — `resolve()`'s undefined-key behavior is the kind of thing that reads one way in the ticket and behaves another way at the actual line, and that's the whole reason we trace instead of assume.
+
+Here's the dispatch. Audit-only, three diffs, stops dead before any map edit.
+
+---
+
+**DISPATCH: DC-31 priority-map completeness audit (AUDIT ONLY — STOP before any map change)**
+
+Context: `FIELD_PRIORITIES` (proforma-seeder.service.ts:344) is a hardcoded map of 11 fields → source-priority chains, walked by `resolve()` (line 412). Three suspected gaps: (a) the `agent` layer appears in no entry, (b) `platform` is referenced as a fallback but also appears in no entry, (c) the map's 11 fields may not cover the full field set that flows through `resolve()` — notably expense categories. Before deciding any fix, establish the true shape of all three gaps. Report `file:line` for every finding. Do **not** modify `FIELD_PRIORITIES`, `resolve()`, or any related code.
+
+**Diff 1 — Missing source layers.** Open the `LayeredValue<T>` type definition (find and cite its `file:line`). Enumerate every layer/source field the type declares (e.g. `t12`, `rent_roll`, `om`, `tax_bill`, `agent`, `platform`, and any others — including anything resembling a data-library / extraction source). Diff that full list against the distinct source values that appear anywhere in `FIELD_PRIORITIES`. Output two lists: **layers in the type but absent from the map**, and **sources in the map but not in the type** (if any). This surfaces whether `agent`, `platform`, and any data-library layer are the complete set of missing sources, or whether there are more.
+
+**Diff 2 — Missing fields.** Identify the full set of field names that flow through `resolve()` — i.e. every field for which the seeder calls `resolve(fieldName)` or constructs a LayeredValue expecting resolution. Trace from the call sites of `resolve()`, not from the map itself. Diff that field set against the 11 keys in `FIELD_PRIORITIES`. Output: **fields that flow through `resolve()` but have no `FIELD_PRIORITIES` entry.** Pay specific attention to operating-expense categories — payroll, utilities, repairs & maintenance, contract services, marketing, admin/G&A, turnover/make-ready, reserves, replacement reserves, and any others present in the proforma model. For each missing field, note whether it's an expense line, income line, or other.
+
+**Diff 3 — Undefined-key behavior (highest stakes).** At `resolve()` (line 412), trace exactly what happens when `FIELD_PRIORITIES[fieldName]` is `undefined` — i.e. a field not in the map is passed in. Quote the lookup line and the branch that handles a miss. Classify into one:
+   - **Silent loss** — returns null / platform fallback / default with no error. Finding: every field from Diff 2 is currently resolving without consulting any real source. This is a live data-loss path, not a precedence bug — flag P0/P1 explicitly.
+   - **Throws** — unlisted fields error. Note whether this would already be visible in logs/runtime.
+   - **Tolerable default** — there's a defined fallback chain for unlisted fields. Quote it and state the default source order.
+
+Also confirm: is `resolve()` the only consumer of `FIELD_PRIORITIES`? The ticket names `reResolveClearedLayeredValue()` as a second reader. Grep for every reader of `FIELD_PRIORITIES` and confirm whether all readers walk the order identically, or whether one handles `agent`/missing-keys differently than another. (Same drift risk as the SCH-04 two-writer case — two readers of one order must walk it the same way.)
+
+**Report format.** Three diffs + the undefined-key classification + the reader inventory. Do not propose precedence ordering for `agent` or any missing source — that's a spec decision for human review, not part of this audit. Do not add fields or sources. STOP after reporting. Human review gate before any fix dispatch.
+
+---
+
+Two things I'll be watching for when it comes back, so you know what we're reading toward:
+
+If **Diff 3 is silent loss** and **Diff 2 finds missing expense lines**, those combine into the real headline — core P&L lines resolving to null in production — and that jumps ahead of the agent-layer bug in priority. The agent fix becomes one item in a larger map-completeness fix.
+
+If **Diff 3 is tolerable default**, the expense categories are quietly resolving via some fallback order you didn't know was load-bearing, and the question becomes whether that default order is *correct* for expenses — which is its own spec call.
+
+Either way, the precedence decision for `agent` (and `platform`, and any data-library layer) stays yours to make after the trace — the audit deliberately doesn't touch it. Run it and paste what comes back.
