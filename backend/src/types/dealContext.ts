@@ -385,7 +385,7 @@ export interface CoordinatorResult {
 
 export type ChatPlatform = 'whatsapp' | 'imessage' | 'sms' | 'telegram';
 export type Surface = 'chat' | 'web' | 'api' | 'autonomous';
-export type SubscriptionTier = 'scout' | 'operator' | 'principal' | 'institutional';
+export type SubscriptionTier = 'scout' | 'basic' | 'operator' | 'principal' | 'institutional';
 export type AutomationLevel = 1 | 2 | 3 | 4;
 export type AgentId = 'research' | 'zoning' | 'supply' | 'cashflow' | 'coordinator' | 'commentary';
 

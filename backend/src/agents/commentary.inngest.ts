@@ -78,7 +78,20 @@ export const commentaryOnResearchCompleted = inngest.createFunction(
       if (!allowed) {
         logger.info('Commentary Agent: tier gate blocked', { dealId, tier: row.tier });
       }
-      return { allowed, userId: row.user_id as string };
+      // A5-F5: automation_level read-time enforcement. Level 1 = manual only.
+      let automationAllowed = allowed;
+      if (allowed) {
+        const autoRes = await query(
+          `SELECT automation_level FROM user_credit_balances WHERE user_id = $1`,
+          [row.user_id]
+        );
+        const automationLevel = autoRes.rows[0]?.automation_level ?? 1;
+        if (automationLevel < 2) {
+          automationAllowed = false;
+          logger.info('Commentary Agent: automation_level gate blocked', { dealId, automationLevel });
+        }
+      }
+      return { allowed: automationAllowed, userId: row.user_id as string };
     });
 
     if (!tierCheckResult.allowed) {

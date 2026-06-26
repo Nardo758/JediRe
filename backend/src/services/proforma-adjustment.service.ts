@@ -2959,28 +2959,30 @@ export async function getDealFinancials(
       }
     }
 
-    // noi — always EGI minus total_opex.  NOI is a computed aggregate, not a
-    // raw extraction.  The OM headline NOI lives in the row's 'broker' column
-    // for reference; it must not replace the arithmetic resolved value.
-    // Skip only when the operator has pinned a specific NOI override.
+    // noi — EGI minus total_opex.  DC-30: Preserve OM-extracted values unless a
+    // dependency has been explicitly overridden, matching getFieldValue behavior.
+    // The OM headline NOI is authoritative when the user has not touched leaves.
     if (!_hasOperatorOverride('noi')) {
-      const _egiResolved   = _rf('egi')?.resolved;
-      const _topexResolved = _rf('total_opex')?.resolved;
-      if (_egiResolved != null && _topexResolved != null) {
-        const _computedNoi = _egiResolved - _topexResolved;
-        const _noiRow = _rf('noi');
-        if (_noiRow) {
-          if (Math.abs(_computedNoi - (_noiRow.resolved ?? 0)) > 1) {
-            _noiRow.resolved = Math.round(_computedNoi);
-            if (totalUnits > 0) _noiRow.perUnit = Math.round(_computedNoi / totalUnits);
-          }
-          // NOI is always a derived/computed field.  Correct any stale
-          // 'platform_fallback' label left by an earlier seed run so the UI
-          // shows accurate provenance regardless of what the DB stores.
-          if ((_noiRow.resolution as string) !== 'override') {
-            _noiRow.resolution = 'computed';
-            _noiRow.source     = 'computed';
-            _noiRow.confidence = SOURCE_CONFIDENCE['computed'] ?? null;
+      const _noiRow = _rf('noi');
+      const _omSourced = _noiRow?.source === 'om' || _noiRow?.resolution === 'om';
+      const _depOverride = _hasOperatorOverride('egi') || _hasOperatorOverride('total_opex');
+      // Only recompute when (a) not OM-sourced, or (b) a dependency was overridden.
+      if (!_omSourced || _depOverride) {
+        const _egiResolved   = _rf('egi')?.resolved;
+        const _topexResolved = _rf('total_opex')?.resolved;
+        if (_egiResolved != null && _topexResolved != null) {
+          const _computedNoi = _egiResolved - _topexResolved;
+          if (_noiRow) {
+            if (Math.abs(_computedNoi - (_noiRow.resolved ?? 0)) > 1) {
+              _noiRow.resolved = Math.round(_computedNoi);
+              if (totalUnits > 0) _noiRow.perUnit = Math.round(_computedNoi / totalUnits);
+            }
+            // Only mark as 'computed' when we actually computed it; preserve OM labels
+            if ((_noiRow.resolution as string) !== 'override' && !_omSourced) {
+              _noiRow.resolution = 'computed';
+              _noiRow.source     = 'computed';
+              _noiRow.confidence = SOURCE_CONFIDENCE['computed'] ?? null;
+            }
           }
         }
       }
@@ -4975,7 +4977,13 @@ export async function getDealFinancials(
       const totalOpex  = _isConstrYr
         ? reTaxes
         : payroll + repairs + turnover + contractSvc + marketing + utilities + gAndA + mgmtFee + insurance + reTaxes + reserves;
-      const noi        = egi - totalOpex;
+      // DC-30: Preserve OM-extracted NOI in projection loop. For Y1, prefer the seed's
+      // resolved NOI (which respects OM sourcing) over recomputing from projected EGI/OPEX.
+      // For Y2+, always compute from projected EGI and OPEX.
+      const _noiSeed = lv(year1Seed, 'noi');
+      const noi = yr === 1 && typeof _noiSeed?.resolved === 'number'
+        ? _noiSeed.resolved
+        : egi - totalOpex;
 
       // Debt service — true per-year amortization schedule
       let interest = 0, principal = 0, annualDS = 0;

@@ -61,6 +61,16 @@ export const zoningOnDealCreated = inngest.createFunction(
         logger.info('Zoning Agent: tier gate blocked automated run', { dealId, userId, userTier });
         return { allowed: false };
       }
+      // A5-F5: automation_level read-time enforcement. Level 1 = manual only.
+      const autoRes = await query(
+        `SELECT automation_level FROM user_credit_balances WHERE user_id = $1`,
+        [userId]
+      );
+      const automationLevel = autoRes.rows[0]?.automation_level ?? 1;
+      if (automationLevel < 2) {
+        logger.info('Zoning Agent: automation_level gate blocked', { dealId, automationLevel });
+        return { allowed: false };
+      }
       return { allowed: true };
     });
 
