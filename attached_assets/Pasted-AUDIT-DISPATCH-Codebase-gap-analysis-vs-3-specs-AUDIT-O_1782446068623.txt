@@ -1,0 +1,42 @@
+AUDIT DISPATCH: Codebase gap analysis vs. 3 specs (AUDIT ONLY — STOP before implementing anything)
+You have three spec files: DC31_RESOLUTION_SPEC.md, PROFORMA_TIMELINE_MODEL_SPEC.md, DEAL_LIFECYCLE_TIMELINE_ALIGNMENT_SPEC.md. Audit the current codebase against each and produce a gap report. Do not write or modify any code. Stop at the report. Human review gate before any fix.
+Cardinal rule (enforced): specs, build-status metadata, and green tests are NOT evidence that something is implemented. Only a file:line code-path trace or a live-DB query result counts. For every "Exists" or "Partial" verdict you must cite file:line. "Absent" must mean you searched and found nothing — name what you searched for.
+Output format — one gap matrix per spec, rows = spec requirements:
+RequirementStatus (Exists / Partial / Absent)Evidence (file:line or "searched: X, no hits")Gap — what's missing to satisfy the spec
+Then a final synthesis (see bottom).
+
+BLOCK 1 — DC31_RESOLUTION_SPEC.md (mostly code-level; expect mostly unstarted)
+Confirm current state still matches the trace and that no fix artifacts exist yet:
+
+FIELD_PRIORITIES (proforma-seeder.service.ts:~344) — confirm agent appears in zero entries. Confirm the "agent not resolver-bound" documentation comment from the spec is absent (it's a to-do).
+Agent write-back path — confirm it still exists end to end: cashflow.postprocess.ts (AGENT_FIELD_TO_YEAR1) → writeAgentFieldToActiveScenario() (underwriting-scenarios.service.ts) → resolveLayeredValue() (get-field-value.service.ts). Cite the current lines.
+Reader drift — confirm both miss behaviors still diverge: resolve() miss (proforma-seeder.service.ts:~434, ?? []) vs reResolveClearedLayeredValue() miss (~:390, 6-source fallbackPriority). Confirm no shared miss-handler exists (search for field-priority-miss, resolvePriorityChain, or any extracted helper — report hits or none).
+box_score / aged_ar — confirm they appear only in the fallbackPriority list and in no FIELD_PRIORITIES entry.
+
+BLOCK 2 — PROFORMA_TIMELINE_MODEL_SPEC.md (mostly net-new; expect mostly Absent — find what's reusable)
+For each spec component, status + evidence:
+
+Per-month T12 persistence (Phase 0 — HIGHEST PRIORITY of this block). The parser builds months[] (t12-parser.ts:~385–595) then reduces to trailing-twelve at the seam (~:516–537). Determine definitively: is T12Data.months[] persisted anywhere (deal_data JSONB, an extraction blob, any table) BEFORE the seam reduces it — or is it discarded? Trace the capsule-bridge / data-router path that calls buildSeed(). This is the one item with a now-cost — if discarded, per-month actuals are lost permanently each month. Cite the persist site or confirm discard with file:line.
+Periodic field model — is any proforma field stored as a period-indexed series, or is year1 single-value-per-field throughout? Confirm.
+Actuals/projection boundary — search the whole backend for any boundary concept (actuals_through, projection_start, period_type, is_actual, closing_date as a boundary, etc.). Report hits or none.
+Reusable periodic machinery (important — don't just report Absent). Inventory what periodic/time-series structures DO exist that the timeline could build on: the financial model's per-year output arrays (annualCashFlow, noiByYear, cashOnCashByYear — financial-model.routes.ts, FinancialEnginePage.tsx), rentGrowth per-year arrays, holdYears. These are projection-OUTPUT structures, not actuals storage — note that distinction, but inventory them as reusable substrate.
+F9 period rendering — confirm both F9 surfaces (module data path; tab render ProFormaTab.tsx/FinancialEnginePage.tsx) currently flatten to single/[0]-index values. Cite the flatten points.
+Gap bridge / reconciliation / notification — confirm absent (no gap-handling, no overlap-variance, no boundary-advance notification).
+
+BLOCK 3 — DEAL_LIFECYCLE_TIMELINE_ALIGNMENT_SPEC.md (find existing partial representation)
+
+Deal status/state field — does a deal status/stage/pipeline column or field exist today? What values does it take? Cite the schema/file:line. Map any existing values to the spec's 8 states (Prospect → Archived).
+State transition logic — is there any state machine, status-transition guard, or lifecycle enforcement, or is status a free field?
+Ownership representation — the LayeredValue type carries tier2:owned_asset and subject_history:* literals. Trace whether these back a real "owned vs prospect" distinction, an acquisition/sale-date concept, or a historical-record store. This is the most likely place existing lifecycle substrate hides — chase it with file:line.
+Acquisition date / sale date / archive flag — do any of these exist as fields?
+Owned portfolio (Frisco / McKinney / Duluth) — how are these represented in the DB today? Is there an existing owned-asset/historical record shape the lifecycle overlay should build on rather than replace?
+
+
+SYNTHESIS — convert gaps to a prioritized backlog. After the three matrices, produce a single prioritized list bucketed by:
+
+NOW-COST (do regardless of roadmap): anything where waiting loses recoverable data — specifically the Phase 0 months[] persistence finding if it's discard. State the fix size.
+LAUNCH-RELEVANT (touches the chat analysis product, lifecycle states A–C): e.g. DC-31 reader-drift fix, agent comment. These run on current single-value tooling.
+POST-ACQUISITION / PARKED (lifecycle D–H, timeline Phases 1–5): the periodic field model, boundary, reconciliation, F9 period rendering, monitoring/sale/archive. Confirm these are correctly large/parked, not urgent.
+
+For each backlog item: the file:line gap it closes, and whether existing substrate (from Block 2.4 / Block 3.3) can be reused.
+STOP after the synthesis. Implement nothing. This report is the input to a human review gate that will sequence the work.
