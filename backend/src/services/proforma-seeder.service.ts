@@ -1554,6 +1554,17 @@ export async function seedProFormaYear1(
           JSON.stringify(seed),
         ]
       );
+
+      // Phase 2 — Periodic Field Model: write period-indexed seed alongside year1 (scenario path)
+      if (periodicSeed) {
+        await pool.query(
+          `UPDATE deal_assumptions
+             SET periodic_seed = $2::jsonb,
+                 updated_at = NOW()
+           WHERE deal_id = $1`,
+          [dealId, JSON.stringify(periodicSeed)]
+        );
+      }
     } else {
       // No active scenario — write year1 directly to deal_assumptions (legacy path).
       //

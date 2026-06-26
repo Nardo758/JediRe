@@ -18,8 +18,8 @@ import type {
   PeriodicFieldSeries,
   PeriodLayeredValue,
   BuildPeriodicSeedInput,
-  FIELD_TO_T12_COLUMN,
 } from './periodic-field.types';
+import { FIELD_TO_T12_COLUMN } from './periodic-field.types';
 import type { BoundaryContext, PeriodZoneType } from './boundary.types';
 import { logger } from '../../utils/logger';
 
