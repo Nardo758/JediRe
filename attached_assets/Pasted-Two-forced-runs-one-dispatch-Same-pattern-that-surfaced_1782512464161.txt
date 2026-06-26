@@ -1,0 +1,53 @@
+Two forced runs, one dispatch. Same pattern that surfaced Bugs 1 and 2 — make the untriggered path actually execute on a real deal, then read the row. Both phases are prime suspects for their own dead-path bugs precisely because they've never run.
+
+---
+
+**VERIFICATION DISPATCH: Phase 3 (gap derivation) + Phase 4 (reconciliation) — force execution, prove with live rows (paste SELECTs, not "works")**
+
+Both phases are currently code-exists / never-executed. Phase 3's `deriveGapForSeed` has never produced a non-empty gap (every deal has `actuals_through_month` NULL). Phase 4's `reconcileMonth`/`applyRebase` has never been called (no second actuals delivery over a projected month). This dispatch triggers each once on deal `3f32276f` (which now has a populated `periodic_seed` from the V2 run) and proves the output. Code existing and compiling is not evidence — given two dead-path bugs already found in this exact subsystem, assume a third until a real row proves otherwise. Paste every `SELECT`. STOP at the report.
+
+**Setup — capture baseline.** Before changing anything, paste the current zone distribution for `3f32276f` so the deltas are verifiable:
+`SELECT` the gpr zone counts (`gpr_actuals`, `gpr_gap`, `gpr_forward`, `gpr_total_periods`) and `actuals_through_month` for the deal. Confirm `gpr_gap = 0` and `actuals_through_month IS NULL` at start.
+
+---
+
+**PART A — Phase 3 gap derivation**
+
+A1 — **Set the boundary.** Set `actuals_through_month` on `3f32276f` to a date that sits *after* the last actual month and *before* the projected close — i.e. inside the series, creating a real gap segment. The V2 data showed actuals starting `2017-08`; pick a boundary that leaves a non-zero gap between last-actual and close. State the exact date chosen and why it produces a gap.
+
+A2 — **Re-seed through the production path.** Trigger the same flow that ran in V2 (`ensureDealAssumptionsSeeded(forceReseed=true)` → `seedProFormaYear1` → `buildPeriodicSeed`), so `deriveGapForSeed` actually executes. Do **not** call `deriveGapForSeed` directly — go through the production seed path, or the test proves nothing about production.
+
+A3 — **Prove the gap populated.** Paste the new zone distribution:
+- `gpr_gap > 0` now (was 0).
+- `gpr_actuals + gpr_gap + gpr_forward = gpr_total_periods` still reconciles (the tri-tab invariant — no periods lost or double-counted).
+- Paste 2–3 raw gap-period JSONB entries: confirm `zone: "gap"`, real `resolved` values (not null, not zero, not flat-copied from the last actual unless hold-flat is the chosen bridge), and that the values follow the compound-trend the gap bridge is supposed to apply.
+
+A4 — **Sanity on the trend.** Confirm the gap values are monotonic/trended in the expected direction (not constant, not NaN, not negative where they shouldn't be). If the bridge is compound-growth, the gap months should step by the assumption rate. State whether they do, with the values.
+
+**Part A closes:** PROVEN only if `gpr_gap > 0`, periods reconcile, and gap entries carry real trended values from a production-path re-seed. Anything else (gap still 0, NaNs, periods don't sum, direct-call only) → UNPROVEN or FAILED with the specific symptom.
+
+---
+
+**PART B — Phase 4 reconciliation + rebase**
+
+B1 — **Deliver one actual into the forward zone.** For `3f32276f`, introduce a single new monthly actual for a month that currently falls in the *forward/projection* zone (so the boundary advances over a previously-projected month). Use the real actuals-delivery path that production would use, not a direct function poke. State the month and the actual value chosen, and confirm from the baseline that that month was `zone: "projection"` before this step.
+
+B2 — **Confirm reconcileMonth executed and produced a variance.** After delivery, paste evidence that `reconcileMonth` ran:
+- the previously-projected value for that month, the incoming actual, and the computed `variancePct` (must be non-zero given you chose a differing actual).
+- confirm the month's `zone` flipped `projection → actual` in `periodic_seed`.
+
+B3 — **Confirm applyRebase wrote back.** Paste the `periodic_seed` after rebase:
+- the reconciled month now carries the actual value with `zone: "actual"`.
+- the forward zone re-based from the new boundary (projection now starts one month later; `gpr_forward` count decreased by 1, `gpr_actuals` increased by 1, total still reconciles).
+
+B4 — **Confirm the notification fired (no silent re-base — the invariant).** The spec requires the user is notified on boundary advance / material variance. Paste evidence `buildReconciliationNotification` produced a notification record (or whatever the surface is) — or, if notification is wired but has no delivery target yet, state exactly that and where it stops. A silent rebase is a spec violation even if the numbers are right.
+
+**Part B closes:** PROVEN only if a real actuals delivery produced a non-zero variance, the month flipped to actual, the forward zone re-based with periods still reconciling, AND a notification was emitted. Partial (e.g. rebase works but notification is silent) → name it precisely; don't round up.
+
+---
+
+**Report:** Part A and Part B each = the actual `SELECT`/JSONB pastes at every step, before-and-after. Close each PROVEN / UNPROVEN / FAILED with evidence. Expect to find at least one wiring bug given the track record — if both parts pass clean on first execution, double-check you went through the production path and not a direct call, because clean-first-run on never-executed code in this subsystem has been the exception, not the rule. STOP after reporting; human review gate before any fix.
+
+---
+
+The tell to watch, same as V1: whether B1 and A2 actually route through the **production** delivery/seed paths or whether the only way to make them run is a direct function call. If the phase only executes when poked directly and there's no production caller, that's Bug 2 all over again — the logic works in isolation and is dead in the live flow. The forced run either produces real reconciled rows or it exposes the missing wire. Either outcome is the thread closing honestly on its last two open items.
