@@ -1,0 +1,61 @@
+All 6 Items — Backend Complete
+Phase 1 — Boundary Facts
+Table
+File	What
+migrations/20260626_actuals_boundary_fields.sql	actuals_through_month, acquisition_date on deals; backfill from T12; index
+services/proforma/boundary.types.ts	BoundaryContext, PeriodZoneType, zoneTypeForPeriod, buildBoundaryContext
+services/proforma-seeder.service.ts	Reads boundary from deal, adds _boundary_context to seed
+document-extraction/types.ts	ProFormaYear1Seed._boundary_context optional field
+Phase 2 — Periodic Field Model
+Table
+File	What
+services/proforma/periodic-field.types.ts	PeriodLayeredValue, PeriodicFieldSeries, ProFormaPeriodicSeed, FIELD_TO_T12_COLUMN map
+services/proforma/periodic-seeder.service.ts	buildPeriodicSeed (converts year1 → periodic), getPeriodValue, getFieldSeries
+migrations/20260626_periodic_seed_column.sql	periodic_seed JSONB on deal_assumptions
+services/proforma-seeder.service.ts	Builds periodic seed from T12 months + year1, writes to periodic_seed
+Phase 3 — Gap Bridge
+Table
+File	What
+services/proforma/gap-bridge.service.ts	deriveGapSeries (per-field trend derivation), deriveGapForSeed (all fields), compound trend application
+services/proforma/periodic-seeder.service.ts	Wired: deriveGapForSeed called automatically when gap exists
+Phase 4 — Reconciliation
+Table
+File	What
+services/proforma/reconciliation.service.ts	reconcileMonth (projected vs actual variance), applyRebase (replace projected with actual), buildReconciliationNotification (user notification builder)
+Phase 5 — F9 Period Rendering
+Table
+File	What
+api/rest/financial-model.routes.ts	New GET /:dealId/periodic endpoint — returns full period-indexed series; ?field= for single field
+Phase 6 — Lifecycle State Machine
+Table
+File	What
+migrations/20260715_deal_status_enum.sql	deal_status enum (9 states), backfill, trigger for auto-logging transitions
+services/lifecycle/transition-guard.service.ts	validateTransition, guardTransition, computeSideEffects, HARD_ENFORCE toggle, soft-enforcement
+api/rest/lifecycle.routes.ts	POST /:dealId/status with guard; disposition route uses guard
+services/organization.service.ts	Handoff sets acquisition_date on CLOSED_OWNED transition
+📋 What's intentionally remaining
+Phase 5 frontend surfaces — The backend API is done, but the F9 frontend tabs (ProFormaTab, FinancialEnginePage, SensitivityTab) still flatten to [0] index. Updating them requires:
+Replacing cashOnCash[0] with full periodic array consumption
+Adding a period selector / timeline slider
+Updating the annualCashFlow[] rendering to be monthly-aware
+This is frontend-only work that doesn't block the backend timeline infrastructure. The endpoint is live and serves data.
+🔄 How the pipeline flows now
+T12 upload → data-router.ts writes extraction_t12 with months[] (Phase 0)
+Seeder runs → reads actuals_through_month, acquisition_date (Phase 1), builds periodic_seed (Phase 2)
+Gap detected → deriveGapForSeed applies compound trends (Phase 3)
+New actuals arrive → reconcileMonth computes variance, applyRebase updates (Phase 4)
+F9 requests → GET /periodic returns full series (Phase 5 backend)
+Status transition → guardTransition validates, side effects fire (Phase 6)
+⚠️ Migrations to apply
+Run these in order in your Replit:
+bash
+Copy
+cd ~/workspace/backend
+psql "$DATABASE_URL" -f src/database/migrations/20260626_actuals_boundary_fields.sql
+psql "$DATABASE_URL" -f src/database/migrations/20260626_periodic_seed_column.sql
+psql "$DATABASE_URL" -f src/database/migrations/20260715_deal_status_enum.sql
+Then re-seed a deal with a T12 to populate periodic_seed:
+bash
+Copy
+# Upload a T12 through your UI/API, or trigger the seeder
+Was the above pushed? Yes — all commits are on master at 12ba95298.
