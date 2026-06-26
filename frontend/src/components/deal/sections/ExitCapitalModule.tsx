@@ -1712,6 +1712,18 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
 
           return (
             <div>
+              {/* AH-1C: Inline banner when no real capital structure data */}
+              {!hasRealDebt && (
+                <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(246,173,85,0.04)', border: '1px solid rgba(246,173,85,0.15)', borderRadius: 2 }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: '#F6AD55', fontFamily: "'JetBrains Mono'", letterSpacing: 0.6 }}>
+                    ⚠ USING DEFAULTS — NO DEAL TERMS ENTERED
+                  </span>
+                  <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.35)', marginLeft: 8, fontFamily: "'JetBrains Mono'" }}>
+                    Add debt terms in Deal Data for live capital structure.
+                  </span>
+                </div>
+              )}
+
               {/* Live rate banner header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>
@@ -1744,7 +1756,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
               </div>
 
               {/* Rate Impact on This Deal */}
-              <div style={{ background: liveRates ? 'rgba(99,179,237,0.04)' : 'rgba(255,255,255,0.02)', border: `1px solid ${liveRates ? 'rgba(99,179,237,0.18)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 8, padding: '16px 20px', marginBottom: 16 }}>
+              <div style={{ opacity: hasRealDebt ? 1 : 0.5, background: liveRates ? 'rgba(99,179,237,0.04)' : 'rgba(255,255,255,0.02)', border: `1px solid ${liveRates ? 'rgba(99,179,237,0.18)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 8, padding: '16px 20px', marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: liveRates ? '#63B3ED' : 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>
                     RATE IMPACT ON THIS DEAL — {stack.label.toUpperCase()} @ {presetRate.toFixed(2)}% vs. LIVE MARKET
