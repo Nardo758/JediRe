@@ -802,7 +802,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
         setActualsData(rows);
       })
       .catch(() => {});
-  }, [dealId, activeScreen]);
+  }, [dealId, activeScreen, refreshKey]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -811,7 +811,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
         setExpirations(res.data?.expirations ?? []);
       })
       .catch(() => {});
-  }, [dealId, activeScreen]);
+  }, [dealId, activeScreen, refreshKey]);
 
   useEffect(() => {
     if (!propertyId) return;
@@ -820,21 +820,21 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
         setCorrelSignals(res.data?.data?.correlations ?? []);
       })
       .catch(() => {});
-  }, [propertyId, activeScreen]);
+  }, [propertyId, activeScreen, refreshKey]);
 
   useEffect(() => {
     if (!dealId) return;
     apiClient.get(`/api/v1/operations/${dealId}/rent-roll`)
       .then(res => { setRentRollUnits(res.data?.units ?? []); })
       .catch(() => {});
-  }, [dealId, activeScreen]);
+  }, [dealId, activeScreen, refreshKey]);
 
   useEffect(() => {
     if (!dealId) return;
     apiClient.get(`/api/v1/operations/${dealId}/derived-metrics`)
       .then(res => { setDerivedMetrics(res.data?.data ?? []); })
       .catch(() => {});
-  }, [dealId, activeScreen]);
+  }, [dealId, activeScreen, refreshKey]);
 
   // ── New routes wired in Phase C ──────────────────────────────
   useEffect(() => {
@@ -842,7 +842,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
     apiClient.get(`/api/v1/operations/${dealId}/tradeout-events`)
       .then(res => { setTradeoutEvents(res.data?.events ?? []); })
       .catch(() => {});
-  }, [dealId, activeScreen]);
+  }, [dealId, activeScreen, refreshKey]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -852,7 +852,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
         setLeasingObs(obs);
       })
       .catch(() => {});
-  }, [dealId, activeScreen]);
+  }, [dealId, activeScreen, refreshKey]);
 
   // ── Beat plan fetch ───────────────────────────────────────────
   const fetchBeatPlan = () => {
@@ -874,7 +874,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
   useEffect(() => {
     fetchBeatPlan();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dealId, activeScreen]);
+  }, [dealId, activeScreen, refreshKey]);
 
   useEffect(() => {
     if (targetSavedVersion === 0) return;
@@ -1692,21 +1692,21 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
     apiClient.get(`/api/v1/operations/${dealId}/projected-vs-actual`)
       .then(res => { setPvaData(res.data?.data ?? []); })
       .catch(() => {});
-  }, [dealId, activeScreen]);
+  }, [dealId, activeScreen, refreshKey]);
 
   useEffect(() => {
     if (!dealId) return;
     // Trigger variance computation for current period (idempotent)
     apiClient.post(`/api/v1/operations/${dealId}/variances/compute`, {})
       .catch(() => {});
-  }, [dealId, activeScreen]);
+  }, [dealId, activeScreen, refreshKey]);
 
   useEffect(() => {
     if (!dealId) return;
     apiClient.get(`/api/v1/operations/${dealId}/variances`)
       .then(res => { setVarData(res.data?.variances ?? []); })
       .catch(() => {});
-  }, [dealId, activeScreen]);
+  }, [dealId, activeScreen, refreshKey]);
 
   // TODO(backend: M09 4-col endpoint) — always 404 until live-tracking route is built
   useEffect(() => {
@@ -1714,7 +1714,7 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
     apiClient.get(`/api/v1/operations/${dealId}/live-tracking`)
       .then(res => { setLiveTracking(res.data?.rows ?? []); })
       .catch(() => { setLiveTracking(null); });
-  }, [dealId, activeScreen]);
+  }, [dealId, activeScreen, refreshKey]);
 
   // ── Commentary agent — thesis checkpoints ─────────────────────
   const fetchCommentary = useCallback((forceRefresh = false) => {
@@ -1980,12 +1980,13 @@ function CapitalScreen({ dealId }: { dealId: string }) {
   const [waterfallOp, setWaterfallOp] = useState<any>(null);
   const [waterfallCap, setWaterfallCap] = useState<any>(null);
 
+  // A6-F1: CapitalScreen refresh — add refreshKey to deps
   useEffect(() => {
     if (!dealId) return;
     apiClient.get(`/api/v1/capital/${dealId}/capital-accounts`)
       .then(res => { setCapitalAccounts(res.data ?? null); })
       .catch(() => { setCapitalAccounts(null); });
-  }, [dealId]);
+  }, [dealId, refreshKey]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -1995,7 +1996,7 @@ function CapitalScreen({ dealId }: { dealId: string }) {
     apiClient.get(`/api/v1/capital/${dealId}/waterfall?type=capital`)
       .then(res => { setWaterfallCap(res.data ?? null); })
       .catch(() => { setWaterfallCap(null); });
-  }, [dealId]);
+  }, [dealId, refreshKey]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -2005,7 +2006,7 @@ function CapitalScreen({ dealId }: { dealId: string }) {
         if (positions.length > 0) setDebtPos(positions[0]);
       })
       .catch(() => {});
-  }, [dealId]);
+  }, [dealId, refreshKey]);
 
   // ── Compute display values from live debt position (fall back to hardcoded) ──
   const fmtPct = (v: number | undefined, fallback: string) => {
@@ -2305,6 +2306,9 @@ export default function AssetHubPage() {
   const [comps, setComps] = useState<Comp[]>(DEFAULT_COMPS);
   const [rankCfg, setRankCfg] = useState<RankCfg>({ overall: 2, byType: false, perType: { '1BR': 3, '2BR': 2, '3BR': 3, 'STU': 4 } });
   const [targetSavedVersion, setTargetSavedVersion] = useState(0);
+  // A6-F1/F2/F3: global refresh key — increment to force re-fetch of all live data
+  const [refreshKey, setRefreshKey] = useState(0);
+  const handleRefresh = useCallback(() => setRefreshKey(k => k + 1), []);
 
   useEffect(() => {
     if (!dealId) return;
@@ -2436,6 +2440,20 @@ export default function AssetHubPage() {
                   {icon} {label}
                 </button>
               ))}
+              {/* A6-F1/F2/F3: Refresh button to force re-fetch of live data */}
+              <button
+                onClick={handleRefresh}
+                title="Refresh data"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '0 12px',
+                  cursor: 'pointer', background: 'transparent', border: 'none',
+                  borderRight: `1px solid ${T.border.subtle}`,
+                  fontFamily: T.font.mono, fontSize: 9, fontWeight: 700,
+                  color: T.text.cyan, letterSpacing: 0.5,
+                }}
+              >
+                ↻ REFRESH
+              </button>
             </div>
           </div>
 
