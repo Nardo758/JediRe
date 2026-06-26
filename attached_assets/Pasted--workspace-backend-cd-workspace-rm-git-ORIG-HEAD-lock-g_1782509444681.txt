@@ -1,0 +1,101 @@
+~/workspace/backend$ cd ~/workspace
+rm .git/ORIG_HEAD.lock
+git merge origin/master --no-edit
+Auto-merging backend/src/index.replit.ts
+Auto-merging backend/src/services/proforma-adjustment.service.ts
+Auto-merging backend/src/services/proforma-seeder.service.ts
+Auto-merging frontend/src/pages/AssetHubPage.tsx
+Merge made by the 'ort' strategy.
+ A6_FEATURE_UI_BACKEND_AUDIT.md                                       |  77 +++++++++++
+ A7_ROUTE_REGISTRY_AUDIT.md                                           |  72 ++++++++++
+ AUDIT_DISPATCH_A6_FEATURE_UI_BACKEND.md                              |  88 ++++++++++++
+ AUDIT_DISPATCH_A7_ROUTE_REGISTRY.md                                  |  71 ++++++++++
+ AUDIT_DISPATCH_A8_USER_FLOWS.md                                      |  80 +++++++++++
+ backend/src/api/rest/capsule-intelligence.routes.ts                  | 113 ---------------
+ backend/src/api/rest/demand-intelligence.routes.ts                   |  47 -------
+ backend/src/api/rest/financial-model.routes.ts                       |  50 +++++++
+ backend/src/api/rest/index.ts                                        | 158 ---------------------
+ backend/src/api/rest/lifecycle.routes.ts                             |  94 ++++++++++++-
+ backend/src/api/rest/reporting-package.routes.ts                     | 389 ----------------------------------------------------
+ backend/src/api/rest/zoning-comparator.routes.ts                     |  51 -------
+ backend/src/database/migrations/20260626_actuals_boundary_fields.sql |  38 +++++
+ backend/src/database/migrations/20260626_periodic_seed_column.sql    |  21 +++
+ backend/src/database/migrations/20260715_deal_status_enum.sql        | 121 ++++++++++++++++
+ backend/src/deals/deals.service.ts                                   |  54 ++++++--
+ backend/src/deals/dto/update-deal.dto.ts                             |  12 +-
+ backend/src/index.replit.ts                                          |   2 +
+ backend/src/services/disposition.service.ts                          |  11 +-
+ backend/src/services/document-extraction/types.ts                    |  11 ++
+ backend/src/services/lifecycle/transition-guard.service.ts           | 225 ++++++++++++++++++++++++++++++
+ backend/src/services/organization.service.ts                         |  11 +-
+ backend/src/services/portfolio/lifecycle-transition.service.ts       |   4 +-
+ backend/src/services/proforma-adjustment.service.ts                  |  15 +-
+ backend/src/services/proforma-seeder.service.ts                      |  43 +++++-
+ backend/src/services/proforma/boundary.types.ts                      | 116 ++++++++++++++++
+ backend/src/services/proforma/gap-bridge.service.ts                  | 160 +++++++++++++++++++++
+ backend/src/services/proforma/periodic-field.types.ts                | 175 +++++++++++++++++++++++
+ backend/src/services/proforma/periodic-seeder.service.ts             | 323 +++++++++++++++++++++++++++++++++++++++++++
+ backend/src/services/proforma/reconciliation.service.ts              | 198 ++++++++++++++++++++++++++
+ backend/src/services/saleComps/georgia-sale-comps.service.ts         |   2 +-
+ backend/src/services/skills/skills/index.ts                          |  17 ++-
+ docs/DEAL_LIFECYCLE_TIMELINE_ALIGNMENT_SPEC.md                       |   2 +-
+ docs/architecture/DEAL_LIFECYCLE_TIMELINE_ALIGNMENT_SPEC.md          |   2 +-
+ docs/audits/AUDIT_PROGRAM_INDEX.md                                   |   6 +-
+ frontend/src/pages/AssetHubPage.tsx                                  |  48 +++++--
+ plan.md                                                              | 178 ++++++++++++++++++++++++
+ 37 files changed, 2276 insertions(+), 809 deletions(-)
+ create mode 100644 A6_FEATURE_UI_BACKEND_AUDIT.md
+ create mode 100644 A7_ROUTE_REGISTRY_AUDIT.md
+ create mode 100644 AUDIT_DISPATCH_A6_FEATURE_UI_BACKEND.md
+ create mode 100644 AUDIT_DISPATCH_A7_ROUTE_REGISTRY.md
+ create mode 100644 AUDIT_DISPATCH_A8_USER_FLOWS.md
+ delete mode 100644 backend/src/api/rest/capsule-intelligence.routes.ts
+ delete mode 100644 backend/src/api/rest/demand-intelligence.routes.ts
+ delete mode 100644 backend/src/api/rest/index.ts
+ delete mode 100644 backend/src/api/rest/reporting-package.routes.ts
+ delete mode 100644 backend/src/api/rest/zoning-comparator.routes.ts
+ create mode 100644 backend/src/database/migrations/20260626_actuals_boundary_fields.sql
+ create mode 100644 backend/src/database/migrations/20260626_periodic_seed_column.sql
+ create mode 100644 backend/src/database/migrations/20260715_deal_status_enum.sql
+ create mode 100644 backend/src/services/lifecycle/transition-guard.service.ts
+ create mode 100644 backend/src/services/proforma/boundary.types.ts
+ create mode 100644 backend/src/services/proforma/gap-bridge.service.ts
+ create mode 100644 backend/src/services/proforma/periodic-field.types.ts
+ create mode 100644 backend/src/services/proforma/periodic-seeder.service.ts
+ create mode 100644 backend/src/services/proforma/reconciliation.service.ts
+ create mode 100644 plan.md
+~/workspace$ cd ~/workspace/backend
+psql "$DATABASE_URL" -f src/database/migrations/20260626_actuals_boundary_fields.sql
+psql "$DATABASE_URL" -f src/database/migrations/20260626_periodic_seed_column.sql
+psql "$DATABASE_URL" -f src/database/migrations/20260715_deal_status_enum.sql
+ALTER TABLE
+COMMENT
+psql:src/database/migrations/20260626_actuals_boundary_fields.sql:20: NOTICE:  column "acquisition_date" of relation "deals" already exists, skipping
+ALTER TABLE
+UPDATE 2
+CREATE INDEX
+ALTER TABLE
+COMMENT
+CREATE INDEX
+DO
+psql:src/database/migrations/20260715_deal_status_enum.sql:29: NOTICE:  column "acquisition_date" of relation "deals" already exists, skipping
+ALTER TABLE
+ALTER TABLE
+UPDATE 3
+UPDATE 19
+UPDATE 2
+UPDATE 6
+UPDATE 0
+UPDATE 0
+UPDATE 0
+UPDATE 0
+UPDATE 0
+UPDATE 2
+psql:src/database/migrations/20260715_deal_status_enum.sql:64: ERROR:  default for column "status" cannot be cast automatically to type deal_status
+CREATE FUNCTION
+psql:src/database/migrations/20260715_deal_status_enum.sql:106: NOTICE:  trigger "trg_deal_lifecycle_transition" for relation "deals" does not exist, skipping
+DROP TRIGGER
+CREATE TRIGGER
+COMMENT
+COMMENT
+~/workspace/backend$ 
