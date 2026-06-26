@@ -7,7 +7,7 @@
  */
 
 import { Express } from 'express';
-import { requireAuth, optionalAuth, requireRole } from '../middleware/auth';
+import { requireAuth, optionalAuth, requireRole, requireSurface } from '../middleware/auth';
 import { aiLimiter } from '../middleware/rateLimit';
 
 // ─── Admin Routes ───────────────────────────────────────────────────────────
@@ -114,65 +114,69 @@ export function mountDealRoutes(app: Express) {
   // before the authenticated dealsRouter at the next line intercepts the request.
   app.use('/api/v1', capsuleSharingRoutes);
 
-  // Core deal lifecycle
-  app.use('/api/v1/deals', dealsRouter);
-  app.use('/api/v1/tasks', tasksRouter);
-  app.use('/api/v1/inbox', inboxRouter);
+  // A5-F2: Surface access enforcement — web routes require 'web' surface.
+  // Scout tier (chat-only) cannot access web deal management endpoints.
+  const requireWeb = requireSurface('web');
 
-  // Agent runtime — deal-scoped
+  // Core deal lifecycle
+  app.use('/api/v1/deals', requireWeb, dealsRouter);
+  app.use('/api/v1/tasks', requireWeb, tasksRouter);
+  app.use('/api/v1/inbox', requireWeb, inboxRouter);
+
+  // Agent runtime — deal-scoped (shared surface; individual routes gate themselves)
   app.use('/api/v1/agents', agentRunsRouter);
   app.use('/api/v1/deals', dealAgentRunsRouter);
   app.use('/api/v1/agents', cashflowUnderwritingRoutes);
   app.use('/api/v1/deals', dealUnderwritingRouter);
 
   // Roadmap Mode
-  app.use('/api/v1/deals', requireAuth, roadmapRouter);
+  app.use('/api/v1/deals', requireAuth, requireWeb, roadmapRouter);
 
   // Deal market intelligence & context
-  app.use('/api/v1/deals', dealMarketIntelligenceRoutes);
-  app.use('/api/v1/deals', dealCompSetsRoutes);
-  app.use('/api/v1/deals', requireAuth, dealPhotosRoutes);
-  app.use('/api/v1/deals', requireAuth, dealContextRoutes);
-  app.use('/api/v1/deals', requireAuth, financialModelRoutes);
-  app.use('/api/v1/financial-models', requireAuth, financialModelRoutes);
-  app.use('/api/v1/jedi', jediRoutes);
+  app.use('/api/v1/deals', requireWeb, dealMarketIntelligenceRoutes);
+  app.use('/api/v1/deals', requireWeb, dealCompSetsRoutes);
+  app.use('/api/v1/deals', requireAuth, requireWeb, dealPhotosRoutes);
+  app.use('/api/v1/deals', requireAuth, requireWeb, dealContextRoutes);
+  app.use('/api/v1/deals', requireAuth, requireWeb, financialModelRoutes);
+  app.use('/api/v1/financial-models', requireAuth, requireWeb, financialModelRoutes);
+  app.use('/api/v1/jedi', requireWeb, jediRoutes);
 
   // Phase 10: Cross-Module Validation
-  app.use('/api/v1/deals', requireAuth, dealValidationRoutes);
-  app.use('/api/v1/deals', requireAuth, fieldDivergencesRoutes);
-  app.use('/api/v1/deals', requireAuth, dealCompletenessRoutes);
-  app.use('/api/v1/deals', requireAuth, vendorFreshnessRoutes);
+  app.use('/api/v1/deals', requireAuth, requireWeb, dealValidationRoutes);
+  app.use('/api/v1/deals', requireAuth, requireWeb, fieldDivergencesRoutes);
+  app.use('/api/v1/deals', requireAuth, requireWeb, dealCompletenessRoutes);
+  app.use('/api/v1/deals', requireAuth, requireWeb, vendorFreshnessRoutes);
 
   // Phase 11: Unit Mix Propagation
-  app.use('/api/v1/deals', requireAuth, unitMixPropagationRoutes);
-  app.use('/api/v1/deals', requireAuth, competitionRouter);
+  app.use('/api/v1/deals', requireAuth, requireWeb, unitMixPropagationRoutes);
+  app.use('/api/v1/deals', requireAuth, requireWeb, competitionRouter);
 
   // Proforma & financial documents
-  app.use('/api/v1/proforma', requireAuth, stabilizedPotentialRouter);
-  app.use('/api/v1/proforma', requireAuth, proformaRouter);
-  app.use('/api/v1/deals', dealAssumptionsRoutes);
-  app.use('/api/v1/deals', financialDocumentsRoutes);
-  app.use('/api/v1/deals', requireAuth, sourceDocumentsRoutes);
+  app.use('/api/v1/proforma', requireAuth, requireWeb, stabilizedPotentialRouter);
+  app.use('/api/v1/proforma', requireAuth, requireWeb, proformaRouter);
+  app.use('/api/v1/deals', requireWeb, dealAssumptionsRoutes);
+  app.use('/api/v1/deals', requireWeb, financialDocumentsRoutes);
+  app.use('/api/v1/deals', requireAuth, requireWeb, sourceDocumentsRoutes);
 
   // Deal-level share management (owner-only)
-  app.use('/api/v1/deals', requireAuth, dealSharesRoutes);
+  app.use('/api/v1/deals', requireAuth, requireWeb, dealSharesRoutes);
 
   // Capsule Sharing: authenticated capsule-owner actions
-  app.use('/api/v1/capsules-ext', requireAuth, capsuleSharingRoutes);
+  app.use('/api/v1/capsules-ext', requireAuth, requireWeb, capsuleSharingRoutes);
 
   // Scene storage for 3D scenes — must be BEFORE documentsFilesRoutes so
   // /:dealId/files/3d-scene wins match against /:dealId/files/:fileId
-  app.use('/api/v1/deals', requireAuth, sceneStorageRouter);
+  app.use('/api/v1/deals', requireAuth, requireWeb, sceneStorageRouter);
 
   // Document file routes
-  app.use('/api/v1', documentsFilesRoutes);
-  app.use('/api/v1', submarketDocumentsRoutes);
+  app.use('/api/v1', requireWeb, documentsFilesRoutes);
+  app.use('/api/v1', requireWeb, submarketDocumentsRoutes);
 
   // DD checklists
-  app.use('/api/v1/dd-checklists', requireAuth, ddChecklistsRouter);
+  app.use('/api/v1/dd-checklists', requireAuth, requireWeb, ddChecklistsRouter);
 
   // Deal strategy
-  app.use('/api/v1/deals', requireAuth, dealStrategyRouter);
+  app.use('/api/v1/deals', requireAuth, requireWeb, dealStrategyRouter);
 }
 
 // ─── Property & Data Library Routes ─────────────────────────────────────────

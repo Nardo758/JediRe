@@ -1458,6 +1458,7 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
         period_start: t12.summary.periodStart,
         period_end: t12.summary.periodEnd,
         months_captured: t12.months.length,
+        months: t12.months,         // T12Month[] — per-month granularity; persisted for timeline Phase 0
         gpr: n('gpr') || t12.summary.t12Revenue || 0,
         loss_to_lease: n('lossToLease'),
         loss_to_lease_pct: n('gpr') > 0 ? Math.abs(n('lossToLease')) / n('gpr') : 0,

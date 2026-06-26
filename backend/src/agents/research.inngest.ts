@@ -74,6 +74,16 @@ export const researchOnDealCreated = inngest.createFunction(
         });
         return { allowed: false };
       }
+      // A5-F5: automation_level read-time enforcement. Level 1 = manual only.
+      const autoRes = await query(
+        `SELECT automation_level FROM user_credit_balances WHERE user_id = $1`,
+        [userId]
+      );
+      const automationLevel = autoRes.rows[0]?.automation_level ?? 1;
+      if (automationLevel < 2) {
+        logger.info('Research Agent: automation_level gate blocked', { dealId, automationLevel });
+        return { allowed: false };
+      }
       return { allowed: true };
     });
 

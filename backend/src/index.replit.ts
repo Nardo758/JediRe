@@ -10,7 +10,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
-import { requireAuth, optionalAuth } from './middleware/auth';
+import { requireAuth, optionalAuth, requireSurface } from './middleware/auth';
 import { rateLimiter, authLimiter, strictLimiter } from './middleware/rateLimit';
 import { getPool } from './database/connection';
 import { logger } from './utils/logger';
@@ -463,7 +463,8 @@ mountMiscRoutes(app, pool);
 
 import { MessageRouter } from './services/chat/messageRouter';
 const messageRouter = new MessageRouter();
-app.use('/', messageRouter.createRouter());
+// A5-F2: Chat surface gating — only 'chat' tier users can access message routes
+app.use('/', requireSurface('chat'), messageRouter.createRouter());
 
 // Per-Property Visibility Substrate — unified summary + file-list endpoints.
 // Mounted before requireAuth catch-alls; each route guards itself.
