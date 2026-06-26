@@ -7,6 +7,8 @@ import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { requireDealAccess } from '../../middleware/deal-access';
 import type { ProFormaAssumptions } from '../../services/financial-model-engine.service';
 import { parseSummaryMetrics, computeAnnualDebtService } from './financial-model.snapshot-parser';
+import { getFieldSeries } from '../../services/proforma/periodic-seeder.service';
+import type { ProFormaPeriodicSeed } from '../../services/proforma/periodic-field.types';
 
 // ──────────────────────────────────────────────────────────────────────────
 // Agent Version Helpers
@@ -608,6 +610,54 @@ router.get('/:dealId/export/excel', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Excel export error:', error.message, error.stack);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/v1/financial-model/:dealId/periodic
+ * Phase 5 — F9 Period Rendering: returns full period-indexed field series.
+ * Backward-compatible: returns 404 if no periodic seed exists (pre-Phase-2 deals).
+ */
+router.get('/:dealId/periodic', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { field } = req.query;
+    const pool = getPool();
+
+    const result = await pool.query(
+      `SELECT periodic_seed FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+      [dealId]
+    );
+
+    const periodicSeed: ProFormaPeriodicSeed | null = result.rows[0]?.periodic_seed
+      ? (typeof result.rows[0].periodic_seed === 'string'
+          ? JSON.parse(result.rows[0].periodic_seed)
+          : result.rows[0].periodic_seed)
+      : null;
+
+    if (!periodicSeed) {
+      return res.status(404).json({ error: 'No periodic seed found for this deal' });
+    }
+
+    if (field && typeof field === 'string') {
+      const series = getFieldSeries(periodicSeed, field);
+      if (!series) {
+        return res.status(404).json({ error: `Field '${field}' not found in periodic seed` });
+      }
+      return res.json({ success: true, field, series });
+    }
+
+    // Return all fields (keyed by field name)
+    const allSeries: Record<string, Array<{ month: string; resolved: number | null; zone: string }>> = {};
+    for (const fieldName of Object.keys(periodicSeed.fields)) {
+      const s = getFieldSeries(periodicSeed, fieldName);
+      if (s) allSeries[fieldName] = s;
+    }
+
+    return res.json({ success: true, boundary: periodicSeed.boundary, fields: allSeries });
+  } catch (error: any) {
+    console.error('Periodic data error:', error.message);
     return res.status(500).json({ error: error.message });
   }
 });
