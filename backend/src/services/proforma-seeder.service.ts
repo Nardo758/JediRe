@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import type { LayeredValue, ProFormaYear1Seed } from './document-extraction/types';
 import { logger } from '../utils/logger';
+import { resolvePriorityChain } from '../utils/field-priority-miss';
 import { computeLeaseRollVelocityFromDates } from './proforma/ltl-trajectory';
 import {
   logOverrideTrainingSignal,
@@ -70,7 +71,7 @@ interface PlatformBaseline {
 
 type Resolution =
   | 'platform' | 't12' | 'rent_roll' | 'tax_bill' | 'box_score' | 'aged_ar' | 'om'
-  | 'override' | 'platform_fallback';
+  | 'override' | 'platform_fallback' | 'unresolved_no_priority';
 
 interface Capsule {
   [key: string]: unknown;
@@ -340,6 +341,14 @@ export const isExcludedFromOpex = (label: string): boolean => {
  * Field-name → priority map shared between the initial seed (`resolve()` inside
  * `buildSeed`) and the override-clear fallback (`applyUserOverride`). Keep
  * these in one place so the two code paths can never drift apart.
+ *
+ * DC-31: AGENT LAYER IS NOT RESOLVER-BOUND.
+ * Agent values do NOT flow through resolve() or FIELD_PRIORITIES.
+ * They are written directly to year1 via writeAgentFieldToActiveScenario()
+ * (underwriting-scenarios.service.ts:431) and elevated at read time by
+ * resolveLayeredValue() (get-field-value.service.ts:437). Do not add
+ * 'agent' to FIELD_PRIORITIES — the walker has no agent slot and would
+ * silently no-op. See DC31_RESOLUTION_SPEC.md.
  */
 const FIELD_PRIORITIES: Record<string, Resolution[]> = {
   gpr: ['t12', 'rent_roll'],
@@ -385,14 +394,22 @@ const SKIP_ZERO_FIELDS = new Set<string>([
 export function reResolveClearedLayeredValue(
   field: LayeredValue<number>,
   fieldName: string,
-  fallbackPriority: Resolution[] = ['rent_roll', 't12', 'tax_bill', 'box_score', 'aged_ar', 'om']
 ): void {
-  const priorityOrder = FIELD_PRIORITIES[fieldName] ?? fallbackPriority;
+  const { chain, unresolvedReason } = resolvePriorityChain(fieldName, FIELD_PRIORITIES);
   const shouldSkipZero = SKIP_ZERO_FIELDS.has(fieldName);
+
+  if (unresolvedReason === 'no_priority') {
+    field.resolved = null;
+    field.resolution = 'unresolved_no_priority';
+    field.resolvedFrom = null;
+    logger.warn('[DC-31] reResolveClearedLayeredValue: no priority for field', { fieldName });
+    return;
+  }
+
   field.resolution = 'platform_fallback';
   field.resolved = field.platform ?? null;
   field.resolvedFrom = 'platform';
-  for (const src of priorityOrder) {
+  for (const src of chain) {
     const srcVal = (field as unknown as Record<string, number | null>)[src];
     if (srcVal != null && (!shouldSkipZero || srcVal !== 0)) {
       field.resolved = srcVal;
@@ -408,6 +425,9 @@ export { FIELD_PRIORITIES, SKIP_ZERO_FIELDS, resolve as resolveForTest, recomput
 
 /**
  * Resolve a layered value following priority rules. Honors existing user override.
+ *
+ * DC-31: AGENT LAYER IS NOT RESOLVER-BOUND.
+ * See FIELD_PRIORITIES comment for the full agent-path explanation.
  */
 function resolve(
   fieldName: string,
@@ -431,7 +451,7 @@ function resolve(
     warning?: string;
   }
 ): LayeredValue<number> {
-  const priority = options.priority ?? FIELD_PRIORITIES[fieldName] ?? [];
+  const { chain, unresolvedReason } = resolvePriorityChain(fieldName, FIELD_PRIORITIES, options.priority);
   const lv: LayeredValue<number> = {
     platform,
     t12: options.t12 ?? null,
@@ -455,12 +475,20 @@ function resolve(
     return lv;
   }
 
+  // DC-31: fail-loud-soft on no priority — no silent stale fallback
+  if (unresolvedReason === 'no_priority') {
+    lv.resolved = null;
+    lv.resolution = 'unresolved_no_priority';
+    logger.warn('[DC-31] resolve: no priority for field', { fieldName });
+    return lv;
+  }
+
   // Walk priority list
   // Skip zero values for revenue/NOI fields (extraction edge case: lease-up
   // rent roll has gpr_monthly: 0 even when T12 has real GPR)
   const shouldSkipZero = SKIP_ZERO_FIELDS.has(fieldName);
 
-  for (const src of priority) {
+  for (const src of chain) {
     const v = (lv as unknown as Record<string, number | null>)[src];
     if (v != null && (!shouldSkipZero || v !== 0)) {
       lv.resolved = v;
@@ -469,7 +497,7 @@ function resolve(
     }
   }
 
-  // Final fallback
+  // Final fallback: platform default
   if (platform != null) {
     lv.resolved = platform;
     lv.resolution = 'platform_fallback';

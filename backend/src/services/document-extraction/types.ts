@@ -565,7 +565,8 @@ export interface LayeredValue<T = number> {
     | 'tax_service_computed'
     | 'tax_bill_parsed'
     | 'attom'
-    | 'agent_research';
+    | 'agent_research'
+    | 'unresolved_no_priority';
   warning?: string;
   scenarios?: Record<string, T>;
   updated_at: string;
