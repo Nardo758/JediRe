@@ -1317,6 +1317,17 @@ export async function seedProFormaYear1(
     );
 
     const seed = buildSeed(totalUnits, platform, t12Capsule, rrCapsule, taxBillCapsule, omCapsule, existingSeed, bpProforma, boundary);
+
+    // Phase 2 — Periodic Field Model: build period-indexed seed from single-value year1
+    const periodicSeed: ProFormaPeriodicSeed | null = t12Months.length > 0
+      ? buildPeriodicSeed({
+          year1Seed: seed as unknown as Record<string, unknown>,
+          t12Months,
+          boundary,
+          unitCount: totalUnits,
+          sourceDocs: seed.source_docs,
+        })
+      : null;
     
     // Task #838 — Re-apply Cashflow Agent sub-keys after re-seed.
     //
@@ -1603,6 +1614,17 @@ export async function seedProFormaYear1(
           seed.other_income_per_unit?.resolved,
         ]
       );
+
+      // Phase 2 — Periodic Field Model: write period-indexed seed alongside year1
+      if (periodicSeed) {
+        await pool.query(
+          `UPDATE deal_assumptions
+             SET periodic_seed = $2::jsonb,
+                 updated_at = NOW()
+           WHERE deal_id = $1`,
+          [dealId, JSON.stringify(periodicSeed)]
+        );
+      }
     }
 
     const fieldsSeeded = Object.values(seed).filter(
