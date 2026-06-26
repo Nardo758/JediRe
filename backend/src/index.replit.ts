@@ -332,11 +332,6 @@ import { taxBillUploadedHandler } from './inngest/functions/taxBillUploaded.hand
 import { historicalObservationsBackfill } from './inngest/functions/historicalObservationsBackfill';
 import { dataCorpusReminderCron } from './inngest/functions/dataCorpusReminderCron';
 import { weeklyCorpusDigestCron } from './inngest/functions/weeklyCorpusDigestCron';
-// SCH-01: DISABLED — import commented out to prevent module loading.
-// The Inngest cron is superseded by node-cron daily M07 calibration in
-// m28-scheduler.service.ts (line 72). The registration was already commented out
-// in the functions array below; this completes the disablement.
-// import { trafficCalibrationCron } from './inngest/functions/trafficCalibrationCron';
 import { correlationRollingComputeCron } from './inngest/functions/correlation-rolling-compute';
 import { scenarioArchivalCron } from './inngest/functions/scenarioArchivalCron';
 import { nightlyEventExtractionCron } from './inngest/functions/nightly-event-extraction';
@@ -393,9 +388,6 @@ app.use(
       // Historical Observations (Phase 1): monthly reminder + weekly Monday digest
       dataCorpusReminderCron,
       weeklyCorpusDigestCron,
-      // M07 Traffic Engine (FIX-1): weekly Bayesian calibration update
-      // DISABLED — superseded by node-cron daily M07 calibration in m28-scheduler.service.ts
-      // trafficCalibrationCron,
       // Task #919: nightly rolling correlation compute (12m + 36m windows → correlation_history)
       correlationRollingComputeCron,
       // M40 Phase 5: daily scenario archival (auto-archive + compression + hard-delete)
@@ -1343,22 +1335,7 @@ async function startServer() {
         const { getPropertyMatcherService } = await import('./services/property-enrichment/matching/property-matcher.service');
         const { COUNTY_CONFIGS } = await import('./services/property-enrichment/property-info/county-configs');
 
-        // 1) AL sync from legacy properties → apartment_locator_properties
-        //    (must run BEFORE matching so newly-onboarded AL rows are
-        //    available to the matcher in the same daily cycle).
-        //    SCH-02: DISABLED — Inngest nightlyApartmentSyncCron already covers
-        //    this via syncAllMetros(). The node-cron call is redundant.
-        /*
-        try {
-          const { syncApartmentLocatorTable } = await import('./services/property-enrichment/apartment-locator/sync-table.service');
-          const stats = await syncApartmentLocatorTable({ minUnits: 50 });
-          console.log(`[Property Discovery] AL synced inserted=${stats.inserted}, updated=${stats.updated}, source=${stats.source}`);
-        } catch (e) {
-          console.warn('[Property Discovery] AL sync failed:', (e as Error).message);
-        }
-        */
-
-        // 2) Discover-all: sweep every configured county.
+        // Discover-all: sweep every configured county.
         const discoverySvc = getPropertyDiscoveryService();
         let totalDiscovered = 0;
         for (const cfg of COUNTY_CONFIGS) {
