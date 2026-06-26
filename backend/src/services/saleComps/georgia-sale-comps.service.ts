@@ -521,7 +521,7 @@ class GeorgiaSaleCompsService {
                   END
                 / 5
               ) * 5)::int
-          ),
+          )),
           2
         )
         FROM properties p
