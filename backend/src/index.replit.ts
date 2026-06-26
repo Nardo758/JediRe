@@ -959,12 +959,10 @@ async function initStripe() {
   }
 
   try {
-    const { runMigrations } = await import('stripe-replit-sync');
-    console.log('[Stripe] Running schema migrations...');
-    await runMigrations({ databaseUrl });
+    const { runStripeMigrations, getStripeSync } = await import('./services/stripe/stripeClient');
+    await runStripeMigrations({ databaseUrl });
     console.log('[Stripe] Schema ready');
 
-    const { getStripeSync } = await import('./services/stripe/stripeClient');
     const stripeSync = await getStripeSync();
 
     const domain = process.env.REPLIT_DOMAINS?.split(',')[0] || process.env.REPLIT_DEV_DOMAIN;

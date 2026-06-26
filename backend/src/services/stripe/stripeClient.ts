@@ -1,11 +1,10 @@
 /**
  * Stripe Client & Sync
  *
- * A5-F8 NOTE: `stripe-replit-sync` is NOT declared in package.json. The
- * import is dynamically wrapped so the app won't crash on startup, but
- * Stripe webhook processing and sync backfill will silently fail until
- * the package is installed. Add to package.json:
- *   "stripe-replit-sync": "<version>",
+ * A5-F8: Replaced dynamic `stripe-replit-sync` import with inline Stripe SDK
+ * implementation. The package was never in package.json, so every webhook was
+ * silently failing. Now webhook verification and endpoint management use the
+ * native `stripe` SDK directly.
  */
 
 import Stripe from 'stripe';
@@ -36,20 +35,72 @@ export async function getStripeSecretKey(): Promise<string> {
   return getSecretKey();
 }
 
-let stripeSync: any = null;
+// ── Inline Stripe Sync (replaces stripe-replit-sync dependency) ───────────────
 
-export async function getStripeSync() {
+let _stripeClient: Stripe | null = null;
+async function getStripeClient(): Promise<Stripe> {
+  if (!_stripeClient) {
+    _stripeClient = await getUncachableStripeClient();
+  }
+  return _stripeClient;
+}
+
+export interface StripeSync {
+  /** Verify Stripe webhook signature and return the parsed event. */
+  processWebhook(payload: Buffer, signature: string): Promise<Stripe.Event>;
+  /** Find existing webhook endpoint or create one for this Replit domain. */
+  findOrCreateManagedWebhook(url: string): Promise<{ webhook: Stripe.WebhookEndpoint | null }>;
+}
+
+let stripeSync: StripeSync | null = null;
+
+export async function getStripeSync(): Promise<StripeSync> {
   if (!stripeSync) {
-    const { StripeSync } = await import('stripe-replit-sync');
-    const secretKey = getSecretKey();
-
-    stripeSync = new StripeSync({
-      poolConfig: {
-        connectionString: process.env.DATABASE_URL!,
-        max: 2,
-      },
-      stripeSecretKey: secretKey,
-    });
+    stripeSync = createStripeSync();
   }
   return stripeSync;
+}
+
+function createStripeSync(): StripeSync {
+  const secretKey = getSecretKey();
+  const stripe = new Stripe(secretKey, { apiVersion: '2025-01-27.acacia' as any });
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  return {
+    async processWebhook(payload: Buffer, signature: string): Promise<Stripe.Event> {
+      if (!webhookSecret) {
+        // Dev fallback: parse raw JSON without signature verification.
+        // In production, STRIPE_WEBHOOK_SECRET must be set.
+        const event = JSON.parse(payload.toString()) as Stripe.Event;
+        return event;
+      }
+      return stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+    },
+
+    async findOrCreateManagedWebhook(url: string) {
+      const endpoints = await stripe.webhookEndpoints.list({ limit: 100 });
+      const existing = endpoints.data.find(e => e.url === url);
+      if (existing) {
+        return { webhook: existing };
+      }
+      const created = await stripe.webhookEndpoints.create({
+        url,
+        enabled_events: [
+          'customer.subscription.created',
+          'customer.subscription.updated',
+          'customer.subscription.deleted',
+          'invoice.paid',
+        ],
+      });
+      return { webhook: created };
+    },
+  };
+}
+
+/** Migrations for stripe-replit-sync tables — no-op since we own the schema. */
+export async function runStripeMigrations(opts: { databaseUrl: string }): Promise<void> {
+  // The user_credit_balances table and all billing schema are managed by
+  // the main migration system (20260427_credit_columns_numeric.sql etc.).
+  // Nothing extra needed from stripe-replit-sync.
+  console.log('[Stripe] runMigrations: schema owned by main migration system — skipping');
 }
