@@ -159,7 +159,7 @@ The archived actuals are **versioned immutable inputs** (version inputs, not out
 | A–C | Prospect, Underwriting, Under Contract | ✅ Yes — the chat analysis product | Works on current single-value proforma today; upgrades to periodic timeline later (timeline spec Phases 1–5) |
 | D–H | Closed, Monitoring, Disposition, Sold, Archived | ⚠️ Post-acquisition | Requires timeline infrastructure (Phases 1–5). Aligns with Correlation Engine Phase 1B. Not launch-gating. |
 
-**This overlay is a target-state design frame, not a build order.** The current product implements A–C with existing tooling. D–H come online as the timeline infrastructure is built and as you actually own and monitor deals in-platform. Do **not** read this as "build the full lifecycle now."
+**This overlay is a target-state design frame, not a build order.** The current product implements A–C with existing tooling. D–H come online as the timeline infrastructure is built and as you actually own and monitor deals in-platform. Do **not** read this as "build the full lifecycle now." *(Note: the D–H back-half storage — `deal_monthly_actuals`, `dispositions` with variance columns, `deal_lifecycle_events`, `archive_deals` — already exists in schema. The remaining work is wiring these existing stores to lifecycle-stage triggers, not building from scratch.)*
 
 ---
 
