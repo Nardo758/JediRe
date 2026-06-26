@@ -31,5 +31,10 @@ module.exports = {
     // call so failures leave a console trace for debugging. New empty
     // catches now block the build.
     'no-empty': 'error',
+    // Catch duplicate variable/const declarations before they break the
+    // Vite build. The TS-aware rule supersedes the base ESLint rule so
+    // that TypeScript type declarations are handled correctly.
+    'no-redeclare': 'off',
+    '@typescript-eslint/no-redeclare': 'error',
   },
 }

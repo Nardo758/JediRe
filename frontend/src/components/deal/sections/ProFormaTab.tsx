@@ -655,10 +655,6 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     return () => { cancelled = true; };
   }, [id]);
 
-  // ── High #3: one-time auto-populate guards ──────────────────────────────
-  const userTouchedOccupancyRef = useRef(false);
-  const userTouchedRentGrowthRef  = useRef(false);
-
   // Populate F9 fields from F6 traffic data once, unless user already edited them
   useEffect(() => {
     if (!platformData) return;
