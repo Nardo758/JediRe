@@ -1,0 +1,31 @@
+Here's the gate dispatch — the consumer trace before the Phase 0 one-liner. Audit-only; the fix is a separate paste once this comes back clean.
+
+---
+
+**DISPATCH: `extraction_t12` consumer trace — gate before Phase 0 months[] persistence (AUDIT ONLY — STOP before editing)**
+
+Context: Phase 0 fix is to add `months: t12.months` (12 `T12Month` objects) to the `extraction_t12` capsule payload at `data-router.ts:~1453`, restoring per-month T12 granularity currently discarded at `:1460`. The fix is one line, but `extraction_t12` is a capsule consumed downstream. Before adding a 12-element array to that JSONB blob, confirm nothing assumes its size or shape. Report `file:line`. Do **not** modify code.
+
+1. **Reader inventory.** Find every consumer of `extraction_t12` — anything that reads it off the capsule, off `deal_data`, or off any persisted form. List each with `file:line`. Include the seeder (`proforma-seeder.service.ts:~1236`) and any other service, route, cache layer, or serializer that touches it.
+
+2. **Shape/size assumptions.** For each reader, does it key by specific field names (safe — adding `months` is invisible to it), or does it do anything that assumes the blob's overall shape or size? Specifically flag:
+   - `JSON.stringify` / serialization where the result size matters (payload limits, column size, response size).
+   - Any schema validation, key enumeration (`Object.keys`), or "unknown key" rejection on `extraction_t12`.
+   - Any equality/hash/diff over the whole blob (a shape change would change the hash).
+   - Any caching of the capsule where a larger payload matters (cache size limits, TTL on serialized size).
+
+3. **Persistence path.** Is `extraction_t12` written to a DB column? If so, which column and type — and is there a size constraint (e.g. a capped JSONB, a text column with a length bound, a row-size concern) that 12 month-objects could pressure? Cite the write site and column definition.
+
+4. **Storage-location decision input.** Based on 1–3, report which is safer: inline `months` into the existing `extraction_t12` JSONB blob (the auditor's proposed one-liner), **or** write per-month data to a separate store (`deal_extraction_months` table or similar) before capsule assembly. State the tradeoff with evidence — don't just default to inline.
+
+**Report format.** Reader list + per-reader shape/size verdict + persistence path + the inline-vs-separate recommendation with rationale. Close on one of:
+- **CLEAN — inline safe:** all readers key by field name, no size/shape assumptions, no constraint pressure. Add `months` inline; the one-liner is safe.
+- **CONSTRAINED:** one or more readers assume shape/size, or a persistence constraint exists. Name them with `file:line`; the fix becomes "write to a separate store" or "inline + adjust the constrained reader," not the bare one-liner.
+
+STOP after reporting. The fix (inline one-liner vs. separate store) is determined by this trace — human review gate before it ships.
+
+---
+
+Two outcomes, both fine: **CLEAN** → you paste the one-liner and the data stops bleeding the same day. **CONSTRAINED** → you've just avoided shipping a one-liner that quietly bloated a cached or size-bounded blob, and the fix becomes a small separate-store write instead. Either way you're capturing per-month T12 from here forward, which is the thing that has a cost every day it waits.
+
+One note while this runs: the trace can't recover what's already discarded — every T12 parsed before the fix lands is gone at the month level. So once this comes back and the fix ships, the per-month history starts accumulating from that date, not retroactively. Nothing to do about the past; just don't let the gate-trace turn into a long pause, since the meter's running on new deals in the meantime.
