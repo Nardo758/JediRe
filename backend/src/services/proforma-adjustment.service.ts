@@ -4843,13 +4843,20 @@ export async function getDealFinancials(
       // rent model + nine-line OPEX model with individual anchors). opexGrowthRate is
       // retained as a fallback for any line not mapped to an engine key.
       // No growth at yr=1 (Y1 seeds are the base).
+      // PF-02: per-year overrides from deal_assumptions.per_year_overrides take precedence
+      // over the flat assumptions.perYear array when the user has explicitly set them.
+      const _rentGrowthPyOvr = yr > 1 ? projPyOvr('rent_growth_pct') : null;
       const prevPv         = yr > 1 ? assumptions.perYear.find(p => p.year === yr - 1) : null;
       const _prevLy        = yr > 1 ? _layeredByYear.get(yr - 1) : null;
       const rentGrowthStep = yr === 1 ? 0 : (
-        prevPv?.rentGrowthPct ??                            // operator per-year override wins
-        _prevLy?.rentGrowth.value ??                        // layered engine (five-component)
-        assumptions.rentGrowthStabilized ?? 0.03            // stabilized fallback
+        _rentGrowthPyOvr ??                              // per-year override wins
+        prevPv?.rentGrowthPct ??                        // operator per-year array
+        _prevLy?.rentGrowth.value ??                    // layered engine (five-component)
+        assumptions.rentGrowthStabilized ?? 0.03        // stabilized fallback
       );
+
+      // PF-02: vacancy per-year override from per_year_overrides
+      const _vacancyPyOvr = yr > 1 ? projPyOvr('vacancy_pct') : null;
 
       // Per-line OPEX step resolver: reads the current year's layered engine result for
       // the given OpexLineKey. Falls back to the flat opexGrowthRate scalar when the
@@ -4892,7 +4899,7 @@ export async function getDealFinancials(
       const _stabilizedGpr  = gprOvr != null ? Math.round(gprOvr) : Math.round(runGpr * (1 + rentGrowthStep));
       const gpr             = _isConstrYr ? 0 : Math.round(_stabilizedGpr * _rampFactor);
       runGpr                = _stabilizedGpr; // always compound from stabilized base
-      const vacPct          = tv?.vacancyPct ?? pv?.vacancyPct ?? ry1('vacancy_pct') ?? 0.05;
+      const vacPct          = _vacancyPyOvr ?? tv?.vacancyPct ?? pv?.vacancyPct ?? ry1('vacancy_pct') ?? 0.05;
       const vacancyLoss = Math.round(gpr * vacPct);
       // Per-year LTL: operator override (projPyOvr) sits above trajectory, trajectory beats flat T12
       const _ltlPyOvr = projPyOvr('loss_to_lease_pct');
