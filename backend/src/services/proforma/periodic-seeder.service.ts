@@ -23,6 +23,8 @@ import type {
 import type { BoundaryContext, PeriodZoneType } from './boundary.types';
 import { logger } from '../../utils/logger';
 
+import { deriveGapForSeed, DEFAULT_GAP_TRENDS } from './gap-bridge.service';
+
 // Fields that the periodic model tracks (canonical set from ProFormaYear1Seed)
 const CANONICAL_FIELDS = [
   'gpr', 'loss_to_lease_pct', 'vacancy_pct', 'concessions_pct', 'bad_debt_pct',
@@ -89,7 +91,8 @@ export function buildPeriodicSeed(input: BuildPeriodicSeedInput): ProFormaPeriod
     .filter((v): v is number => v != null)
     .pop() ?? null;
 
-  return {
+  // Phase 3 — Gap Bridge: derive gap values from trend assumptions
+  let periodicSeed: ProFormaPeriodicSeed = {
     fields,
     boundary,
     unitCount,
@@ -101,6 +104,12 @@ export function buildPeriodicSeed(input: BuildPeriodicSeedInput): ProFormaPeriod
       resolved_noi: resolvedNoi,
     },
   };
+
+  if (boundary.gap_start_month && boundary.gap_end_month) {
+    periodicSeed = deriveGapForSeed(periodicSeed, DEFAULT_GAP_TRENDS);
+  }
+
+  return periodicSeed;
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────────────
