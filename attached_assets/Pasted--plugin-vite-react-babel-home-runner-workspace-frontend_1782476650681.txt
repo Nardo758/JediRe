@@ -1,0 +1,52 @@
+[plugin:vite:react-babel] /home/runner/workspace/frontend/src/pages/AssetHubPage.tsx: Identifier 'CAPEX_DATA' has already been declared. (222:6)
+  225 |   { item: 'Roof / Envelope', budget: '$0.18M', spent: '$0.00M', pct: '0%',  flag: true  },
+/home/runner/workspace/frontend/src/pages/AssetHubPage.tsx:222:6
+220|  ];
+221|  
+222|  const CAPEX_DATA = [
+   |        ^
+223|    { item: 'Interior Reno',   budget: '$1.20M', spent: '$0.98M', pct: '82%', flag: false },
+224|    { item: 'Amenity Upgrade', budget: '$0.34M', spent: '$0.31M', pct: '91%', flag: false },
+    at constructor (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:365:19)
+    at TypeScriptParserMixin.raise (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:6599:19)
+    at TypeScriptScopeHandler.checkRedeclarationInScope (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:1619:19)
+    at TypeScriptScopeHandler.declareName (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:1585:12)
+    at TypeScriptScopeHandler.declareName (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:4880:11)
+    at TypeScriptParserMixin.declareNameFromIdentifier (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:7567:16)
+    at TypeScriptParserMixin.checkIdentifier (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:7563:12)
+    at TypeScriptParserMixin.checkLVal (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:7500:12)
+    at TypeScriptParserMixin.parseVarId (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:13412:10)
+    at TypeScriptParserMixin.parseVarId (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9752:11)
+    at TypeScriptParserMixin.parseVar (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:13383:12)
+    at TypeScriptParserMixin.parseVarStatement (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:13230:10)
+    at TypeScriptParserMixin.parseVarStatement (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9408:31)
+    at TypeScriptParserMixin.parseStatementContent (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12851:23)
+    at TypeScriptParserMixin.parseStatementContent (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9508:18)
+    at TypeScriptParserMixin.parseStatementLike (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12767:17)
+    at TypeScriptParserMixin.parseModuleItem (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12744:17)
+    at TypeScriptParserMixin.parseBlockOrModuleBlockBody (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:13316:36)
+    at TypeScriptParserMixin.parseBlockBody (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:13309:10)
+    at TypeScriptParserMixin.parseProgram (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12622:10)
+    at TypeScriptParserMixin.parseTopLevel (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12612:25)
+    at TypeScriptParserMixin.parse (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:14488:25)
+    at TypeScriptParserMixin.parse (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10126:18)
+    at parse (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:14522:38)
+    at parser (/home/runner/workspace/frontend/node_modules/@babel/core/lib/parser/index.js:41:34)
+    at parser.next (<anonymous>)
+    at normalizeFile (/home/runner/workspace/frontend/node_modules/@babel/core/lib/transformation/normalize-file.js:64:37)
+    at normalizeFile.next (<anonymous>)
+    at run (/home/runner/workspace/frontend/node_modules/@babel/core/lib/transformation/index.js:22:50)
+    at run.next (<anonymous>)
+    at transform (/home/runner/workspace/frontend/node_modules/@babel/core/lib/transform.js:22:33)
+    at transform.next (<anonymous>)
+    at step (/home/runner/workspace/frontend/node_modules/gensync/index.js:261:32)
+    at /home/runner/workspace/frontend/node_modules/gensync/index.js:273:13
+    at async.call.result.err.err (/home/runner/workspace/frontend/node_modules/gensync/index.js:223:11)
+    at /home/runner/workspace/frontend/node_modules/gensync/index.js:189:28
+    at /home/runner/workspace/frontend/node_modules/@babel/core/lib/gensync-utils/async.js:67:7
+    at /home/runner/workspace/frontend/node_modules/gensync/index.js:113:33
+    at step (/home/runner/workspace/frontend/node_modules/gensync/index.js:287:14)
+    at /home/runner/workspace/frontend/node_modules/gensync/index.js:273:13
+    at async.call.result.err.err (/home/runner/workspace/frontend/node_modules/gensync/index.js:223:11
+Click outside, press Esc key, or fix the code to dismiss.
+You can also disable this overlay by setting server.hmr.overlay to false in vite.config.ts.
