@@ -39,7 +39,7 @@ const COMMENTARY_CACHE_TTL_HOURS = 24;
 // Manual commentary runs via the market intelligence UI are tier-unrestricted.
 // ────────────────────────────────────────────────────────────────────────────
 const ALLOWED_TIERS: readonly string[] = [
-  'operator', 'professional', 'enterprise', 'principal', 'institutional', 'basic',
+  'scout', 'basic', 'operator', 'principal', 'institutional',
 ];
 
 function isTierAllowed(tier: string): boolean {
@@ -63,9 +63,10 @@ export const commentaryOnResearchCompleted = inngest.createFunction(
     // ── Step 1: Tier gate (look up user tier from deal) ─────────────
     const tierCheckResult = await step.run('tier-gate', async () => {
       const res = await query(
-        `SELECT u.subscription_tier AS tier, d.user_id
+        `SELECT COALESCE(ucb.subscription_tier, 'scout') AS tier, d.user_id
          FROM deals d
          JOIN users u ON u.id = d.user_id
+         LEFT JOIN user_credit_balances ucb ON ucb.user_id = d.user_id
          WHERE d.id = $1`,
         [dealId]
       );

@@ -14,7 +14,11 @@ router.post('/login', validate(loginSchema), async (req, res) => {
     console.log('Login attempt:', { email, hasPassword: !!password, bodyKeys: Object.keys(req.body || {}) });
 
     const result = await pool.query(
-      'SELECT id, email, full_name, role, subscription_tier, enabled_modules, password_hash FROM users WHERE email = $1',
+      `SELECT u.id, u.email, u.full_name, u.role, u.enabled_modules, u.password_hash,
+              COALESCE(ucb.subscription_tier, 'scout') AS subscription_tier
+       FROM users u
+       LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
+       WHERE u.email = $1`,
       [email]
     );
 
@@ -79,11 +83,13 @@ router.get('/dev-login', async (_req, res) => {
     // dev-login lands on the user with the richest workspace, and only fall
     // back to created_at as a tiebreaker.
     const result = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.role, u.subscription_tier, u.enabled_modules
+      `SELECT u.id, u.email, u.full_name, u.role, u.enabled_modules,
+              COALESCE(ucb.subscription_tier, 'scout') AS subscription_tier
          FROM users u
+         LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
          LEFT JOIN deals d ON d.user_id = u.id
         WHERE u.password_hash IS NOT NULL
-        GROUP BY u.id
+        GROUP BY u.id, ucb.subscription_tier
         ORDER BY COUNT(d.id) DESC, u.created_at DESC
         LIMIT 1`
     );
@@ -119,7 +125,11 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.userId;
     const result = await pool.query(
-      'SELECT id, email, full_name, role, subscription_tier, enabled_modules FROM users WHERE id = $1',
+      `SELECT u.id, u.email, u.full_name, u.role, u.enabled_modules,
+              COALESCE(ucb.subscription_tier, 'scout') AS subscription_tier
+       FROM users u
+       LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
+       WHERE u.id = $1`,
       [userId]
     );
     

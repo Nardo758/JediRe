@@ -34,7 +34,7 @@ import type { RunContext } from './runtime/types';
 // Manual runs are available to any authenticated user regardless of tier.
 // ────────────────────────────────────────────────────────────────────────────
 const ALLOWED_TIERS: readonly string[] = [
-  'operator', 'professional', 'enterprise', 'principal', 'institutional', 'basic',
+  'scout', 'basic', 'operator', 'principal', 'institutional',
 ];
 
 function isTierAllowed(tier: string): boolean {

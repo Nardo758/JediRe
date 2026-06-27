@@ -685,7 +685,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
           data: {
             dealId: row.id,
             userId: req.user!.userId,
-            userTier: row.tier || 'basic',
+            userTier: row.tier || 'scout',
             address: row.address || undefined,
             triggeredBy: 'user',
           },

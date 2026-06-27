@@ -4,7 +4,7 @@ import { query } from '../../database/connection';
 
 const router = Router();
 
-const ATTRIBUTION_ELIGIBLE_TIERS = ['enterprise'];
+const ATTRIBUTION_ELIGIBLE_TIERS = ['principal', 'institutional'];
 
 router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -12,8 +12,9 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 
     const result = await query(
       `SELECT ubs.company_name, ubs.logo_url, ubs.show_attribution,
-              COALESCE(u.subscription_tier, 'free') AS tier
+              COALESCE(ucb.subscription_tier, 'scout') AS tier
        FROM users u
+       LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
        LEFT JOIN user_branding_settings ubs ON ubs.user_id = u.id
        WHERE u.id = $1`,
       [userId]
@@ -45,8 +46,9 @@ router.put('/', requireAuth, async (req: Request, res: Response) => {
     const { company_name, logo_url, show_attribution } = req.body;
 
     const tierResult = await query(
-      `SELECT COALESCE(u.subscription_tier, 'free') AS tier
+      `SELECT COALESCE(ucb.subscription_tier, 'scout') AS tier
        FROM users u
+       LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
        WHERE u.id = $1`,
       [userId]
     );

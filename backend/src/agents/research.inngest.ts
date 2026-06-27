@@ -39,11 +39,7 @@ import type { ResearchOutput } from './research.config';
 // are not gated by this check — only the Inngest function applies it.
 // ────────────────────────────────────────────────────────────────────────────
 const ALLOWED_TIERS: readonly string[] = [
-  'operator', 'professional', 'enterprise',
-  // Legacy / future tier aliases kept for forward compatibility:
-  'principal', 'institutional',
-  // Allow basic tier for development/testing:
-  'basic',
+  'scout', 'basic', 'operator', 'principal', 'institutional',
 ];
 
 function isTierAllowed(tier: string): boolean {
