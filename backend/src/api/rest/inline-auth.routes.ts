@@ -190,7 +190,7 @@ router.put('/profile', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     const result = await pool.query(
       `UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1
-       RETURNING id, email, full_name, first_name, last_name, phone, role, subscription_tier`,
+       RETURNING id, email, full_name, first_name, last_name, phone, role`,
       values
     );
 
