@@ -25,8 +25,8 @@ export const verasetNightlyIngest = inngest.createFunction(
     id: 'veraset-nightly-ingest',
     name: 'Veraset Mobility Nightly Ingest',
     concurrency: { limit: 1 },
+    triggers: [{ cron: 'TZ=UTC 0 3 * * *' }],
   },
-  { cron: 'TZ=UTC 0 3 * * *' }, // 03:00 UTC daily
   async ({ step }) => {
     // Step 1: Discover active subscriptions
     const activeSubs = await step.run('discover-active-subscriptions', async () => {

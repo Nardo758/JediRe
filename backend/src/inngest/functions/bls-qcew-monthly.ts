@@ -3,8 +3,7 @@ import { ingestBLSQCEW } from '../../services/ingestion/bls-qcew-ingest.service'
 import { logger } from '../../utils/logger';
 
 export const blsQcewMonthlyCron = inngest.createFunction(
-  { id: 'bls-qcew-monthly', name: 'BLS QCEW Monthly Refresh' },
-  { cron: '0 6 3 * *' },  // 3rd of month, 06:00 UTC
+  { id: 'bls-qcew-monthly', name: 'BLS QCEW Monthly Refresh', triggers: [{ cron: '0 6 3 * *' }] },
   async ({ step }) => {
     // QCEW lags ~6 months, so ingest the previous year
     const year = new Date().getFullYear() - 1;

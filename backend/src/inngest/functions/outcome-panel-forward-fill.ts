@@ -17,8 +17,7 @@ import { logger } from '../../utils/logger';
  */
 
 export const outcomePanelForwardFillCron = inngest.createFunction(
-  { id: 'outcome-panel-forward-fill', name: 'Outcome Panel Forward Fill' },
-  { cron: '0 5 1 * *' },  // 1st of month, 05:00 UTC
+  { id: 'outcome-panel-forward-fill', name: 'Outcome Panel Forward Fill', triggers: [{ cron: '0 5 1 * *' }] },
   async ({ step }) => {
     const targetMonth = await step.run('compute-target-month', () => {
       const now = new Date();

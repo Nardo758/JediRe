@@ -12,8 +12,7 @@ import { logger } from '../../utils/logger';
  */
 
 export const concessionExtractionCron = inngest.createFunction(
-  { id: 'concession-extraction-monthly', name: 'Concession Time Series Extraction' },
-  { cron: '0 3 7 * *' },  // 7th of month, 03:00 UTC
+  { id: 'concession-extraction-monthly', name: 'Concession Time Series Extraction', triggers: [{ cron: '0 3 7 * *' }] },
   async ({ step }) => {
     const targetMonth = await step.run('compute-target-month', () => {
       const now = new Date();

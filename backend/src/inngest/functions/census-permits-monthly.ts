@@ -3,8 +3,7 @@ import { ingestCensusPermits } from '../../services/ingestion/census-permits-ing
 import { logger } from '../../utils/logger';
 
 export const censusPermitsMonthlyCron = inngest.createFunction(
-  { id: 'census-permits-monthly', name: 'Census Building Permits Monthly Refresh' },
-  { cron: '0 4 5 * *' },  // 5th of month, 04:00 UTC
+  { id: 'census-permits-monthly', name: 'Census Building Permits Monthly Refresh', triggers: [{ cron: '0 4 5 * *' }] },
   async ({ step }) => {
     const currentYear = new Date().getFullYear();
     const years = [currentYear - 1, currentYear];
