@@ -1,8 +1,9 @@
 # A9-Finding-1: Tier Divergence — Dual-Table, Dual-Vocabulary Entitlements Bug
 
-**Severity:** Launch-blocking (entitlements hole with confirmed fail-open path)
-**Status:** Dev unblocked; production fix pending
+**Severity:** Launch-blocking (NULL-denial breaks agent runs for all net-new paying users)
+**Status:** Fully traced and closed (write-path confirmed); fix pass pending post-audit gate
 **Discovered:** 2026-06-27 during login/pipeline verification
+**Write-path closure:** 2026-06-27 · SHA `d4d626ebf0713e4c4c2d86f92dd430e20f0f1adc`
 
 ---
 
@@ -130,16 +131,87 @@ async function resolveTier(userId: string): Promise<SubscriptionTier> {
 
 Contract: unknown tier → `'scout'` (lowest privilege). This is the **only sanctioned tier read** — every Group B inline query becomes a call to it.
 
-### 2. Decide canonical vocabulary and kill the legacy enum
+### 2. Drop the zombie column — no COALESCE needed
 
-TIER_CONFIG vocabulary (`scout · basic · operator · principal · institutional`) is the intended set. Required changes:
-- `validation.ts:40` — `z.enum(['basic', 'professional', 'enterprise'])` → update to TIER_CONFIG values
-- All four `*.inngest.ts` allow-lists — remove `'professional'` and `'enterprise'`, add missing TIER_CONFIG values consistently
-- `users.subscription_tier` — either drop the column (preferred if write path is confirmed dead) or migrate to a new enum matching TIER_CONFIG
+Write-path trace confirmed: **`users.subscription_tier` has zero live writers.** Every subscription lifecycle event (created/updated/deleted) writes `user_credit_balances` exclusively via `creditService`. No registration path, no webhook, no automated path writes `users.subscription_tier`. Any value present on existing accounts is a fossil.
 
-### 3. Fix the write path
+**A COALESCE resolver is wrong here.** A resolver that prefers `user_credit_balances` and falls back to `users.subscription_tier` is just ceremony around a permanently stale value. The correct action is narrower:
 
-Once the write path is confirmed, ensure every user creation/upgrade path writes `user_credit_balances` via `creditService.provisionUser()`. If `users.subscription_tier` is retained, add a trigger or application-layer constraint to keep them in sync.
+- **Drop** `users.subscription_tier` column (after verifying no migration or view blocks the DROP)
+- **Repoint** all Group B readers directly at `user_credit_balances.subscription_tier` — no helper needed, it's a single-table read
+- All four `*.inngest.ts` allow-lists must be rewritten to query `user_credit_balances` instead of `users`; remove `'professional'` and `'enterprise'` from the vocabulary arrays
+
+Also update:
+- `validation.ts:40` — `z.enum(['basic', 'professional', 'enterprise'])` → canonical TIER_CONFIG values
+- `deal_capsules.recipient_tier DEFAULT 'free'` — fourth zombie-tier surface (see below)
+
+### 3. The write path is already correct — no change needed
+
+`creditService.provisionUser()` is the sole writer. It is called correctly by `webhookHandlers.ts` on every `customer.subscription.created` event. Registration does not need to be changed — new users correctly start with no `user_credit_balances` row until they subscribe. The NULL-denial bug (below) is caused by inngest reading the wrong table, not by a missing write.
+
+---
+
+## Fourth zombie-tier surface — `deal_capsules.recipient_tier`
+
+`20260619_deal_capsules.sql:29`:
+```sql
+recipient_tier TEXT DEFAULT 'free', -- free | professional | team | enterprise
+```
+
+This column bakes the legacy vocabulary directly into table DDL as a default value. It is a **fourth surface** of the zombie-tier problem alongside:
+1. `users.subscription_tier` column (zombie, no live writer)
+2. Inngest allow-list arrays (mixed vocabulary, fail-open)
+3. Registration INSERT NULLs (new users born desynced)
+4. `deal_capsules.recipient_tier DEFAULT 'free'` ← this entry
+
+**Current liveness:** Inert. `capsule-sharing.routes.ts:87` explicitly documents: *"deal_capsules rows have no separate deal_id column — capsules are standalone."* The capsule-sharing route reads `deal_capsules` by capsule UUID only, never by `deal_id` FK or `recipient_tier`. No entitlement gate reads this column. A paying user with `user_credit_balances.subscription_tier = 'operator'` and `deal_capsules.recipient_tier = 'free'` is not denied anything today.
+
+**Urgency:** Not launch-blocking on its own. Folds into the A9 fix pass — when the legacy vocabulary is retired and `users.subscription_tier` is dropped, this column's default must be updated to a canonical value or the column must be repurposed/dropped.
+
+---
+
+## Write-path closure appendix
+
+*Appended 2026-06-27 · SHA `d4d626ebf0713e4c4c2d86f92dd430e20f0f1adc`*
+
+### Stripe product → tier map
+
+`webhookHandlers.ts:6-11` — **canonical vocabulary only:**
+```typescript
+const PRODUCT_TO_TIER: Record<string, SubscriptionTier> = {
+  [process.env.STRIPE_PRODUCT_SCOUT         || 'prod_scout']:         'scout',
+  [process.env.STRIPE_PRODUCT_OPERATOR      || 'prod_operator']:      'operator',
+  [process.env.STRIPE_PRODUCT_PRINCIPAL     || 'prod_principal']:     'principal',
+  [process.env.STRIPE_PRODUCT_INSTITUTIONAL || 'prod_institutional']: 'institutional',
+};
+```
+`free`, `professional`, `team`, `enterprise` do not appear in this map.
+
+### Writer table (exhaustive)
+
+| file:line | table | column | vocab | value source |
+|---|---|---|---|---|
+| `creditService.ts:160-167` (provisionUser) | `user_credit_balances` | `subscription_tier` | canonical | `PRODUCT_TO_TIER[productId]` |
+| `creditService.ts:257-259` (updateTier) | `user_credit_balances` | `subscription_tier` | canonical | same |
+| `webhookHandlers.ts:74` | `users` | `stripe_customer_id` only | n/a | Stripe customerId (not a tier write) |
+| `auth.routes.ts:64` | `users` | *(omits subscription_tier)* | — | registration INSERT |
+| `oauth.ts:70` | `users` | *(omits subscription_tier)* | — | OAuth INSERT |
+| `sessionStore.ts:66` | `users` | *(omits subscription_tier)* | — | session INSERT |
+| `index.replit.ts:1007` | `users` | *(omits subscription_tier)* | — | seed INSERT |
+
+**`users.subscription_tier` has zero writers in the current codebase.**
+
+### Q3 verdict — confirmed
+
+*Q3: Does the subscription path write `users.subscription_tier` WITHOUT `user_credit_balances`?*
+
+**NO** — but the actual finding is more severe. The subscription path writes `user_credit_balances` only and never touches `users.subscription_tier` at all. The two consequences:
+
+**Consequence A — NULL-denial (launch-blocking):** New Stripe subscriber → `users.subscription_tier = NULL` → inngest `WHERE subscription_tier = ANY('{operator,professional,...}')` → NULL matches nothing → agent runs denied for a paying customer. The chat surface *is* the agent path. This breaks the first real customer.
+
+**Consequence B — Downgrade leak (real, lower urgency):** Fossil accounts with `users.subscription_tier = 'professional'` → Stripe downgrade → `user_credit_balances` drops to `scout` → `requireSurface` denies web surface → but inngest still sees `'professional'` → agent runs continue. Blast radius: only accounts carrying a non-NULL fossil value — a shrinking population as the column is never written again. The column drop incidentally closes this.
+
+**Invisible in dev testing:** The dev account carries the fossil `'professional'` value, which passes every inngest allow-list check. Agents appear to work in the founder's environment. The NULL-denial breaks only new accounts — exactly the users who will never appear in internal testing.
 
 ---
 
@@ -147,14 +219,17 @@ Once the write path is confirmed, ensure every user creation/upgrade path writes
 
 | File | Issue |
 |---|---|
-| `backend/src/middleware/auth.ts:316` | Correct table, TIER_CONFIG crash on unknown tier |
-| `backend/src/api/rest/inline-auth.routes.ts` (×4) | Reads `users` table, emits into JWT `plan` field |
-| `backend/src/agents/commentary.inngest.ts:42` | Mixed-vocabulary allow-list, fail-open |
-| `backend/src/agents/supply.inngest.ts:36` | Mixed-vocabulary allow-list, fail-open |
-| `backend/src/agents/zoning.inngest.ts:37` | Mixed-vocabulary allow-list, fail-open |
-| `backend/src/agents/research.inngest.ts:42` | Mixed-vocabulary allow-list, fail-open |
-| `backend/src/api/rest/auth.routes.ts:64` | Registration INSERT omits `subscription_tier` |
-| `backend/src/auth/oauth.ts:70` | OAuth INSERT omits `subscription_tier` |
+| `backend/src/middleware/auth.ts:316` | Correct table; TIER_CONFIG crashes on unknown tier → HTTP 500 |
+| `backend/src/api/rest/inline-auth.routes.ts` (×4) | Reads `users` table, emits stale tier into JWT `plan` field |
+| `backend/src/agents/commentary.inngest.ts:42` | Mixed-vocabulary allow-list, reads `users`, fail-open on downgrade |
+| `backend/src/agents/supply.inngest.ts:36` | Same |
+| `backend/src/agents/zoning.inngest.ts:37` | Same |
+| `backend/src/agents/research.inngest.ts:42` | Same; NULL-denial blocks new paying users from agent runs |
+| `backend/src/api/rest/auth.routes.ts:64` | Registration INSERT omits `subscription_tier` (by design — correct) |
+| `backend/src/auth/oauth.ts:70` | OAuth INSERT omits `subscription_tier` (by design — correct) |
 | `backend/src/services/ai/creditService.ts:311` | `canAccessSurface` crashes on unknown tier |
-| `backend/src/api/rest/auth.routes.ts:269` | ✅ Correct COALESCE pattern — reference implementation |
+| `backend/src/database/migrations/20260619_deal_capsules.sql:29` | `recipient_tier DEFAULT 'free'` — fourth zombie-tier surface |
+| `backend/src/api/rest/auth.routes.ts:269` | ✅ Correct single-table read — reference implementation |
 | `backend/src/functions/email-intake.function.ts:52` | ✅ Correct COALESCE pattern — reference implementation |
+| `backend/src/services/stripe/webhookHandlers.ts` | ✅ Correct — canonical vocab only, writes `user_credit_balances` |
+| `backend/src/services/ai/creditService.ts` (provisionUser, updateTier) | ✅ Correct sole writer of subscription tier |
