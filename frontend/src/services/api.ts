@@ -93,12 +93,12 @@ export const geocodingAPI = {
 export const authAPI = {
   login: async (email: string, password: string): Promise<{ token: string; user: User }> => {
     const { data } = await api.post('/auth/login', { email, password });
-    return data;
+    return { token: data.tokens?.accessToken ?? data.token, user: data.user };
   },
 
   register: async (email: string, password: string, name: string, platformRole?: string): Promise<{ token: string; user: User }> => {
     const { data } = await api.post('/auth/register', { email, password, name, platformRole });
-    return data;
+    return { token: data.tokens?.accessToken ?? data.token, user: data.user };
   },
 
   logout: async (): Promise<void> => {
