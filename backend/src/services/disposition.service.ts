@@ -8,7 +8,7 @@
 
 import { query, getClient } from '../database/connection';
 import { logger } from '../utils/logger';
-import { guardTransition } from '../lifecycle/transition-guard.service';
+import { guardTransition } from './lifecycle/transition-guard.service';
 
 // ─── Types ────────────────────────────────────────────────────────────
 

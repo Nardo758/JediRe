@@ -5,6 +5,11 @@ import { buildPeriodicSeed } from './proforma/periodic-seeder.service';
 import type { ProFormaPeriodicSeed } from './proforma/periodic-field.types';
 import { FIELD_TO_T12_COLUMN } from './proforma/periodic-field.types';
 import { reconcileMonth, applyRebase, buildReconciliationNotification } from './proforma/reconciliation.service';
+import {
+  loadCustomMetricDefinitions,
+  buildCustomMetricSeries,
+  reconcileCustomMetric,
+} from './custom-metrics/derivation.service';
 import { deriveProjectionForSeed } from './proforma/gap-bridge.service';
 import { logger } from '../utils/logger';
 import { resolvePriorityChain } from '../utils/field-priority-miss';
@@ -1554,6 +1559,93 @@ export async function seedProFormaYear1(
         logger.info('[seeder][Part2] Reconciliation variance rows written', {
           dealId, month, materialCount: report.materialCount, urgency: notification.urgency,
         });
+      }
+
+      // ── V4: Custom metric reconciliation ──────────────────────────────────────
+      // Wire reconcileCustomMetric for all deal-scoped derived custom metrics.
+      // Runs after system-field reconciliation so the periodic seeds are final.
+      // Loads only scope='deal' metrics (owner_id = dealId) — user-level metrics
+      // require a userId not available in the seeder context; they can be added
+      // by passing userId through seedDeal when that context exists.
+      if (reconciledMonths.length > 0) {
+        try {
+          const customDefs = await pool.query(
+            `SELECT id, scope, owner_id, name, metric_key, metric_type, formula_ast,
+                    rollup, format, unit_basis_field
+               FROM custom_metrics
+              WHERE scope = 'deal' AND owner_id = $1`,
+            [dealId]
+          );
+          const definitions = customDefs.rows.map((r: any) => ({
+            id: r.id,
+            scope: r.scope as 'deal',
+            owner_id: r.owner_id,
+            name: r.name,
+            metric_key: r.metric_key,
+            metric_type: r.metric_type as 'derived' | 'input',
+            formula_ast: r.formula_ast,
+            rollup: r.rollup,
+            format: r.format,
+            unit_basis_field: r.unit_basis_field,
+          }));
+
+          if (definitions.length > 0) {
+            // Build metric series against both seeds so we can compare projected vs actual.
+            const oldSeries = buildCustomMetricSeries(definitions, oldPeriodicSeed, {});
+            const newSeries = buildCustomMetricSeries(definitions, periodicSeed, {});
+
+            for (const month of reconciledMonths) {
+              for (const def of definitions) {
+                const oldPeriod = oldSeries[def.metric_key]?.periods.find(p => p.month === month);
+                const newPeriod = newSeries[def.metric_key]?.periods.find(p => p.month === month);
+
+                const reconcileResult = reconcileCustomMetric(
+                  def,
+                  periodicSeed,
+                  newSeries,
+                  month,
+                  oldPeriod?.resolved ?? null,
+                  newPeriod?.resolved ?? null,
+                );
+
+                if (reconcileResult.shouldLog) {
+                  try {
+                    await pool.query(
+                      `INSERT INTO deal_reconciliation_log (
+                        deal_id, field_name, period_month, projected_value, actual_value,
+                        variance_abs, variance_pct, material, trigger_path, reconciled_at
+                      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'CUSTOM_METRIC', NOW())`,
+                      [
+                        dealId,
+                        def.metric_key,
+                        `${month}-01`,
+                        oldPeriod?.resolved ?? null,
+                        newPeriod?.resolved ?? null,
+                        reconcileResult.varianceAbs,
+                        reconcileResult.variancePct,
+                        reconcileResult.variancePct != null
+                          ? Math.abs(reconcileResult.variancePct) >= 0.05
+                          : false,
+                      ]
+                    );
+                  } catch (logErr) {
+                    logger.warn('[seeder][Part2] custom metric reconciliation_log write failed (non-fatal)', {
+                      dealId, month, metric_key: def.metric_key,
+                      error: logErr instanceof Error ? logErr.message : String(logErr),
+                    });
+                  }
+                }
+              }
+            }
+            logger.info('[seeder][Part2] Custom metric reconciliation complete', {
+              dealId, reconciledMonths: reconciledMonths.length, metrics: definitions.length,
+            });
+          }
+        } catch (cmErr) {
+          logger.warn('[seeder][Part2] Custom metric reconciliation failed (non-fatal)', {
+            dealId, error: cmErr instanceof Error ? cmErr.message : String(cmErr),
+          });
+        }
       }
 
       // Re-derive forward projections ONCE from the final reconciled boundary.

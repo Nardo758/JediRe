@@ -289,6 +289,10 @@ export async function requireAuthOrApiKey(
 
 export const authenticateToken = requireAuth;
 
+// Compat export: legacy route files import `authMiddleware.requireAuth`.
+// Only requireAuth is used via this object; all other functions are exported individually above.
+export const authMiddleware = { requireAuth };
+
 export function requireSurface(surface: 'chat' | 'web' | 'api') {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     if (!req.user) {

@@ -1,0 +1,35 @@
+Here's the acceptance dispatch — adversarial-first, every item closes on a paste or it isn't passed.
+
+---
+
+**LIVE-DB ACCEPTANCE: Custom Metrics backend (paste every result — code running ≠ code correct)**
+
+Schema is live (migration confirmed). Now prove the two correctness traps and the reconciliation hook against real rows. Order matters: the evaluator rejection cases gate everything — a metric that accepts good formulas proves nothing; rejecting bad ones is the test. Do not start frontend until this passes. Paste the actual output for each. STOP at the report.
+
+**V0 — Dead-caller check first (the Phase 4 lesson).** Before any runtime test: `grep -rn "reconcileCustomMetric" backend/src`. Is it called by the reconciliation/seed path, or does it appear only in its own definition file? If zero callers outside its definition, custom metrics will not reconcile no matter how correct the body is — report it as a dead hook, same shape as `reconcileMonth` had. Paste the grep.
+
+**V1 — Evaluator rejection cases (the security gate — most likely to leak).** Attempt to create four metrics via `POST /api/v1/custom-metrics`. Each must be **rejected AND write zero rows**. After each attempt, `SELECT count(*) FROM custom_metrics WHERE name = '<the test name>'` → must be 0.
+- (a) unknown identifier: formula references a field not in the whitelist (e.g. `noi / made_up_field`).
+- (b) self-reference: metric `cm_x` whose formula references `cm_x`.
+- (c) cycle: create `cm_a = cm_b + 1`, then `cm_b = cm_a + 1` → the second must be rejected by cycle detection.
+- (d) injection-shaped: a formula with a non-whitelisted function or property-access form (e.g. `noi.constructor`, `process`, or a function name not in `{min,max,avg,abs,round}`).
+Paste, for each: the API rejection response + the `count(*) = 0` confirmation. Any one that persists a row is a FAIL and a ship-blocker.
+
+**V2 — Ratio rollup (the silent-lie gate).** Create Debt Yield = `noi / loan_amount`, format `pct`, on a real deal with a populated periodic series (Highlands or `3f32276f`).
+- Confirm `inferRollup` defaulted it to `rederive` (paste the stored `rollup` value).
+- Paste **both numbers** for one year: (a) the correct annual = `annual_NOI / loan_amount` (re-derived), and (b) what `sum` of the 12 monthly debt-yield values *would* have produced. Show they differ and that the served value is (a).
+- Attempt to `PATCH`/recreate Debt Yield with `rollup = 'sum'` → confirm hard-rejected by `checkRollupAllowed`. Paste the rejection.
+
+**V3 — Derived evaluation + zone inheritance.** For Debt Yield on that deal, paste the per-period series showing: actual-zone periods marked actual, projection-zone marked projection, and — critically — confirm zone inheritance (a period where one input is actual and another projected resolves to **projection**, not actual). Paste 3-4 periods spanning the boundary. Confirm no `NaN`/`Infinity` anywhere; a div-by-zero period shows `null`/gap, not an artifact.
+
+**V4 — Reconciliation row with the metric key.** (Only meaningful if V0 shows a live caller.) Define a derived metric over NOI. Advance a real actual over a previously-projected month (the proven Phase 4 path). Then `SELECT * FROM deal_reconciliation_log WHERE field_name = '<metric_key>' ORDER BY period_month`. Confirm a row exists with real projected-vs-actual variance for the custom metric. Paste it. No row = the reconciliation hook is not wired (cross-check against V0).
+
+**V5 — Derived metric stores no values (derive-not-store).** Confirm a derived metric wrote **zero** rows to `custom_metric_values`: `SELECT count(*) FROM custom_metric_values WHERE metric_id = '<debt yield id>'` → must be 0. Only its formula is stored. Paste it.
+
+**Report:** each V = the actual SELECT/API output. PROVEN / FAILED per item. The two that block ship are V1 (any rejection that persists) and V2 (any ratio that sums). V0 + V4 together tell you whether reconciliation is real or a dead hook. Do not write "acceptance passed" without all pastes. STOP after reporting.
+
+---
+
+The result I'd read first is **V0**, because it's free and it pre-answers V4. If `reconcileCustomMetric` has no caller, you've found the dead hook before running anything — same five-minute grep that's caught a dead path every time it's been run this thread. Then V1: if any of the four rejection cases writes a row, stop and fix the evaluator before touching anything else, because that's the one failure class that's actively unsafe rather than just wrong.
+
+If it all comes back with real pastes — rejections rejecting, the ratio re-deriving instead of summing, a reconciliation row carrying the metric key — then the backend is genuinely trustworthy and Phase 5 frontend can render it knowing the numbers underneath are real. That's the right order: prove the data, then draw it.

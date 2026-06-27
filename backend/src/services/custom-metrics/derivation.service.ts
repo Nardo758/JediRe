@@ -316,14 +316,16 @@ function topologicalSort(definitions: CustomMetricDefinition[]): CustomMetricDef
   }
 
   // Kahn's algorithm
+  // inDegree[key] = number of unprocessed dependencies that key is waiting on.
+  // Increment the DEPENDENT (key), not the dependency (dep).
   const inDegree: Record<string, number> = {};
   for (const key of Object.keys(graph)) {
     inDegree[key] = 0;
   }
-  for (const deps of Object.values(graph)) {
+  for (const [key, deps] of Object.entries(graph)) {
     for (const dep of deps) {
-      if (inDegree[dep] != null) {
-        inDegree[dep]++;
+      if (dep in inDegree) {
+        inDegree[key]++;
       }
     }
   }

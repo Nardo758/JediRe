@@ -12,7 +12,7 @@ import {
   DealRole,
   DealPhase,
 } from './integrations/types';
-import { guardTransition } from '../lifecycle/transition-guard.service';
+import { guardTransition } from './lifecycle/transition-guard.service';
 
 // ─── Organization Management ──────────────────────────────────────────
 
