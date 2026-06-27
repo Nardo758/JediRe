@@ -1232,7 +1232,7 @@ export async function seedProFormaYear1(
   try {
     // Load deal + capsule (city + state_code needed for platform baseline lookup)
     const dealResult = await pool.query(
-      `SELECT id, target_units, deal_data, city, state_code, actuals_through_month, acquisition_date FROM deals WHERE id = $1`,
+      `SELECT id, target_units, deal_data, city, state_code, actuals_through_month, acquisition_date, property_id FROM deals WHERE id = $1`,
       [dealId]
     );
     if (dealResult.rows.length === 0) {
@@ -1248,7 +1248,81 @@ export async function seedProFormaYear1(
     const taxBillCapsule = obj(capsule, 'extraction_tax_bill');
     const omCapsule = obj(capsule, 'extraction_om');
 
-    if (!t12Capsule && !rrCapsule && !taxBillCapsule && !omCapsule) {
+    // Phase 0-B — Portfolio-asset fallback: use deal_monthly_actuals when no T12 capsule.
+    // Portfolio assets (e.g. Highlands) do not upload T12 documents; their operating history
+    // lives in deal_monthly_actuals with is_portfolio_asset=TRUE. Build a synthetic T12
+    // months array from those rows so buildPeriodicSeed gets the full actuals timeline.
+    const portfolioMonths: Array<Record<string, unknown>> = [];
+    if (t12Months.length === 0 && deal.property_id) {
+      const pf = (v: unknown): number | null => {
+        if (v == null) return null;
+        const n = typeof v === 'string' ? parseFloat(v as string) : Number(v);
+        return Number.isFinite(n) ? n : null;
+      };
+      const paRows = await pool.query(
+        `SELECT report_month, gross_potential_rent, vacancy_loss, concessions, bad_debt,
+                net_rental_income, other_income, effective_gross_income, payroll,
+                repairs_maintenance, turnover_costs, marketing, admin_general,
+                management_fee, contract_services, utilities, insurance,
+                property_tax, total_opex, noi, total_units, occupied_units, loss_to_lease
+           FROM deal_monthly_actuals
+          WHERE property_id = $1
+            AND is_budget   = FALSE
+            AND is_proforma = FALSE
+            AND COALESCE(is_portfolio_asset, FALSE) = TRUE
+          ORDER BY report_month`,
+        [deal.property_id]
+      ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+
+      for (const row of paRows.rows) {
+        const rm = row.report_month instanceof Date
+          ? (row.report_month as Date).toISOString().slice(0, 10)
+          : String(row.report_month).slice(0, 10);
+        portfolioMonths.push({
+          reportMonth:          rm,
+          grossPotentialRent:   pf(row.gross_potential_rent),
+          vacancyLoss:          pf(row.vacancy_loss),
+          concessions:          pf(row.concessions),
+          badDebt:              pf(row.bad_debt),
+          netRentalIncome:      pf(row.net_rental_income),
+          otherIncome:          pf(row.other_income),
+          effectiveGrossIncome: pf(row.effective_gross_income),
+          payroll:              pf(row.payroll),
+          repairsMaintenance:   pf(row.repairs_maintenance),
+          turnoverCosts:        pf(row.turnover_costs),
+          marketing:            pf(row.marketing),
+          adminGeneral:         pf(row.admin_general),
+          managementFee:        pf(row.management_fee),
+          contractServices:     pf(row.contract_services),
+          utilities:            pf(row.utilities),
+          insurance:            pf(row.insurance),
+          propertyTax:          pf(row.property_tax),
+          totalOpex:            pf(row.total_opex),
+          noi:                  pf(row.noi),
+          totalUnits:           pf(row.total_units),
+          occupiedUnits:        pf(row.occupied_units),
+          lossToLease:          pf(row.loss_to_lease),
+        });
+      }
+
+      if (portfolioMonths.length > 0) {
+        logger.info('[seeder][P0-B] Portfolio actuals loaded', { dealId, count: portfolioMonths.length });
+        // Advance actuals_through_month in memory so boundary is correct for this run,
+        // then persist to the deal row for future runs.
+        const lastMonth = portfolioMonths[portfolioMonths.length - 1].reportMonth as string;
+        (deal as Record<string, unknown>).actuals_through_month = lastMonth;
+        await pool.query(
+          `UPDATE deals SET actuals_through_month = $2
+            WHERE id = $1
+              AND (actuals_through_month IS NULL OR actuals_through_month < $2)`,
+          [dealId, lastMonth]
+        ).catch(() => {/* non-fatal */});
+      }
+    }
+    // Prefer document T12 months; fall back to portfolio actuals as synthetic T12 months.
+    const effectiveT12Months = t12Months.length > 0 ? t12Months : portfolioMonths;
+
+    if (!t12Capsule && !rrCapsule && !taxBillCapsule && !omCapsule && effectiveT12Months.length === 0) {
       return { seeded: false, fields_seeded: 0, warnings: ['No extraction sources available'], resolved_noi: null };
     }
 
@@ -1331,8 +1405,8 @@ export async function seedProFormaYear1(
     // Before the rebuild overwrites old projections, capture variance for
     // months that the new T12 covers as actuals but were previously projected.
     // ═══════════════════════════════════════════════════════════════════════
-    if (oldPeriodicSeed && t12Months.length > 0) {
-      const t12MonthSet = new Set(t12Months.map((m: any) => m.reportMonth?.slice(0, 7)));
+    if (oldPeriodicSeed && effectiveT12Months.length > 0) {
+      const t12MonthSet = new Set(effectiveT12Months.map((m: any) => m.reportMonth?.slice(0, 7)));
       const overlapMonths: string[] = [];
 
       for (const oldPeriod of oldPeriodicSeed.fields.gpr?.periods ?? []) {
@@ -1348,7 +1422,7 @@ export async function seedProFormaYear1(
           if (!oldPeriod || oldPeriod.resolved == null) continue;
 
           // Find the new actual value from T12 months
-          const t12Month = t12Months.find((m: any) => m.reportMonth?.slice(0, 7) === month);
+          const t12Month = effectiveT12Months.find((m: any) => m.reportMonth?.slice(0, 7) === month);
           const t12Col = FIELD_TO_T12_COLUMN[fieldName];
           let actualValue: number | null = null;
           if (t12Month && t12Col) {
@@ -1360,12 +1434,13 @@ export async function seedProFormaYear1(
           const varianceAbs = actualValue - oldPeriod.resolved;
           const variancePct = oldPeriod.resolved !== 0 ? varianceAbs / oldPeriod.resolved : null;
 
+          const isMaterial = variancePct !== null && Math.abs(variancePct) > 0.05;
           try {
             await pool.query(
               `INSERT INTO deal_reconciliation_log (
                 deal_id, field_name, period_month, projected_value, actual_value,
-                variance_abs, variance_pct, trigger_path, reconciled_at
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'T12_REBUILD', NOW())`,
+                variance_abs, variance_pct, material, trigger_path, reconciled_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'T12_REBUILD', NOW())`,
               [
                 dealId,
                 fieldName,
@@ -1374,6 +1449,7 @@ export async function seedProFormaYear1(
                 actualValue,
                 varianceAbs,
                 variancePct,
+                isMaterial,
               ]
             );
           } catch (logErr) {
@@ -1392,10 +1468,10 @@ export async function seedProFormaYear1(
     }
 
     // Phase 2 — Periodic Field Model: build period-indexed seed from single-value year1
-    let periodicSeed: ProFormaPeriodicSeed | null = t12Months.length > 0
+    let periodicSeed: ProFormaPeriodicSeed | null = effectiveT12Months.length > 0
       ? buildPeriodicSeed({
           year1Seed: seed as unknown as Record<string, unknown>,
-          t12Months,
+          t12Months: effectiveT12Months,
           boundary,
           unitCount: totalUnits,
           sourceDocs: seed.source_docs,
@@ -1436,29 +1512,39 @@ export async function seedProFormaYear1(
           });
         }
 
-        const notification = buildReconciliationNotification(report);
-        try {
-          await pool.query(
-            `INSERT INTO deal_lifecycle_events (
-              deal_id, from_status, to_status, transitioned_at, reason, metadata
-            ) VALUES ($1, 'MONITORING', 'MONITORING', NOW(), $2, $3)`,
-            [
-              dealId,
-              `${notification.title} | ${notification.body}`,
-              JSON.stringify({
-                event: 'reconciliation',
-                month,
-                materialCount: report.materialCount,
-                recommendation: report.recommendation,
-                urgency: notification.urgency,
-              }),
-            ]
-          );
-        } catch (logErr) {
-          logger.warn('[seeder][Part2] Reconciliation event log failed (non-fatal)', {
-            dealId, month, error: logErr instanceof Error ? logErr.message : String(logErr),
-          });
+        // Write per-field variance rows to deal_reconciliation_log, NOT deal_lifecycle_events.
+        // deal_lifecycle_events is the FSM's state-transition log; inserting MONITORING→MONITORING
+        // rows there pollutes the state machine without tripping trg_deal_lifecycle_transition
+        // (that trigger fires only on UPDATE deals, not INSERT into deal_lifecycle_events).
+        for (const variance of report.variances) {
+          try {
+            await pool.query(
+              `INSERT INTO deal_reconciliation_log (
+                deal_id, field_name, period_month, projected_value, actual_value,
+                variance_abs, variance_pct, material, trigger_path, reconciled_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'MONTHLY_ACTUAL', NOW())`,
+              [
+                dealId,
+                variance.fieldName,
+                `${month}-01`,
+                variance.projected,
+                variance.actual,
+                variance.absoluteDiff,
+                variance.variancePct,
+                variance.material,
+              ]
+            );
+          } catch (logErr) {
+            logger.warn('[seeder][Part2] deal_reconciliation_log write failed (non-fatal)', {
+              dealId, month, fieldName: variance.fieldName,
+              error: logErr instanceof Error ? logErr.message : String(logErr),
+            });
+          }
         }
+        const notification = buildReconciliationNotification(report);
+        logger.info('[seeder][Part2] Reconciliation variance rows written', {
+          dealId, month, materialCount: report.materialCount, urgency: notification.urgency,
+        });
       }
     }
 

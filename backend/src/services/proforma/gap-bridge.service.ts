@@ -36,8 +36,10 @@ export const DEFAULT_GAP_TRENDS: GapTrendAssumptions = {
 
 /**
  * Map canonical field names to their trend type for gap derivation.
+ * Exported so reconciliation.service.ts can re-use the same trend mapping when
+ * re-deriving forward projection after a rebase.
  */
-function trendTypeForField(fieldName: string): keyof GapTrendAssumptions | 'none' {
+export function trendTypeForField(fieldName: string): keyof GapTrendAssumptions | 'none' {
   if (fieldName === 'gpr') return 'rentGrowthMonthly';
   if (fieldName === 'net_rental_income') return 'rentGrowthMonthly';
   if (fieldName === 'egi') return 'rentGrowthMonthly';
@@ -147,13 +149,83 @@ export function deriveGapForSeed(
   };
 }
 
+/**
+ * Derive projection values for a single field after a rebase.
+ *
+ * After actuals advance (or gap is re-derived), the projection zone still holds
+ * the original year1 annual seed values as placeholders. This function re-trends
+ * projection periods forward from the last non-projection value (last gap month if
+ * a gap exists, otherwise last actual month), keeping all periods in the same
+ * monthly scale as actuals.
+ */
+function deriveProjectionSeries(
+  series: PeriodicFieldSeries,
+  trends: GapTrendAssumptions,
+): PeriodicFieldSeries {
+  const trendType = trendTypeForField(series.fieldName);
+
+  // Find the last non-projection period to use as baseline.
+  // Priority: last gap value (already trended from actuals), then last actual value.
+  const nonProjPeriods = series.periods.filter(p => p.zone !== 'projection');
+  if (nonProjPeriods.length === 0) return series;
+
+  const lastNonProj = nonProjPeriods[nonProjPeriods.length - 1];
+  if (lastNonProj.resolved == null) return series;
+
+  const baseline = lastNonProj.resolved;
+  const baselineMonth = lastNonProj.month;
+  const trendRate = trendType === 'none' ? 0 : trends[trendType];
+
+  const newPeriods = series.periods.map((period): PeriodLayeredValue => {
+    if (period.zone !== 'projection') return period;
+
+    const monthsFromBaseline = monthDiff(baselineMonth, period.month);
+    const derivedValue = applyCompoundTrend(baseline, trendRate, monthsFromBaseline);
+
+    return {
+      ...period,
+      resolved: derivedValue,
+      resolution: 'derived_projection',
+      source: 'assumption_trend',
+      raw: null,
+      updated_at: new Date().toISOString(),
+    };
+  });
+
+  return { ...series, periods: newPeriods };
+}
+
+/**
+ * Re-derive ALL projection periods for every field in a periodic seed.
+ *
+ * Called by applyRebase after actuals advance and gap is re-derived.
+ * Replaces frozen year1-annual placeholders with monthly-scale trended values
+ * that compound-grow from the last actual/gap baseline.
+ */
+export function deriveProjectionForSeed(
+  seed: ProFormaPeriodicSeed,
+  trends: GapTrendAssumptions = DEFAULT_GAP_TRENDS,
+): ProFormaPeriodicSeed {
+  const newFields: Record<string, PeriodicFieldSeries> = {};
+
+  for (const [fieldName, series] of Object.entries(seed.fields)) {
+    newFields[fieldName] = deriveProjectionSeries(series, trends);
+  }
+
+  return {
+    ...seed,
+    fields: newFields,
+    last_seeded_at: new Date().toISOString(),
+  };
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function applyCompoundTrend(baseline: number, rate: number, months: number): number {
   return baseline * Math.pow(1 + rate, months);
 }
 
-function monthDiff(startMonth: string, endMonth: string): number {
+export function monthDiff(startMonth: string, endMonth: string): number {
   const [sy, sm] = startMonth.split('-').map(Number);
   const [ey, em] = endMonth.split('-').map(Number);
   return (ey - sy) * 12 + (em - sm);

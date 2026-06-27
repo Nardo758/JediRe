@@ -13,7 +13,7 @@
 import type { ProFormaPeriodicSeed, PeriodicFieldSeries, PeriodLayeredValue } from './periodic-field.types';
 import type { BoundaryContext } from './boundary.types';
 import { logger } from '../../utils/logger';
-import { deriveGapForSeed, DEFAULT_GAP_TRENDS } from './gap-bridge.service';
+import { deriveGapForSeed, deriveProjectionForSeed, DEFAULT_GAP_TRENDS } from './gap-bridge.service';
 import type { GapTrendAssumptions } from './gap-bridge.service';
 
 /** 5% material variance threshold (configurable). */
@@ -170,11 +170,12 @@ export function applyRebase(
     last_seeded_at: new Date().toISOString(),
   };
 
-  // Step 2: Re-derive forward projection from the new actual baseline
+  // Step 2: Re-derive forward projection from the new actual baseline.
   // After setting actuals for `month`, all subsequent gap/projection periods
-  // should be re-trended from the new actual baseline. This is a full forward
-  // re-derivation: gap gets trended from actuals, projection gets trended from gap.
+  // should be re-trended from the new actual baseline. Full forward re-derivation:
+  // (a) gap gets trended from actuals, (b) projections re-trended from last gap/actual.
   rebased = deriveGapForSeed(rebased, trends);
+  rebased = deriveProjectionForSeed(rebased, trends);
 
   // Step 3: Advance the actuals boundary if the reconciled month is later than
   // the current boundary
