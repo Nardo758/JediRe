@@ -3,6 +3,7 @@ import type { LayeredValue, ProFormaYear1Seed } from './document-extraction/type
 import { buildBoundaryContext, type BoundaryContext } from './proforma/boundary.types';
 import { buildPeriodicSeed } from './proforma/periodic-seeder.service';
 import type { ProFormaPeriodicSeed } from './proforma/periodic-field.types';
+import { FIELD_TO_T12_COLUMN } from './proforma/periodic-field.types';
 import { reconcileMonth, applyRebase, buildReconciliationNotification } from './proforma/reconciliation.service';
 import { logger } from '../utils/logger';
 import { resolvePriorityChain } from '../utils/field-priority-miss';
@@ -1325,6 +1326,71 @@ export async function seedProFormaYear1(
 
     const seed = buildSeed(totalUnits, platform, t12Capsule, rrCapsule, taxBillCapsule, omCapsule, existingSeed, bpProforma, boundary);
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // PART 1 — Variance capture gate (Path 1: T12 re-upload)
+    // Before the rebuild overwrites old projections, capture variance for
+    // months that the new T12 covers as actuals but were previously projected.
+    // ═══════════════════════════════════════════════════════════════════════
+    if (oldPeriodicSeed && t12Months.length > 0) {
+      const t12MonthSet = new Set(t12Months.map((m: any) => m.reportMonth?.slice(0, 7)));
+      const overlapMonths: string[] = [];
+
+      for (const oldPeriod of oldPeriodicSeed.fields.gpr?.periods ?? []) {
+        if (oldPeriod.zone !== 'projection' && oldPeriod.zone !== 'gap') continue;
+        if (t12MonthSet.has(oldPeriod.month)) {
+          overlapMonths.push(oldPeriod.month);
+        }
+      }
+
+      for (const month of overlapMonths) {
+        for (const [fieldName, series] of Object.entries(oldPeriodicSeed.fields)) {
+          const oldPeriod = series.periods.find(p => p.month === month);
+          if (!oldPeriod || oldPeriod.resolved == null) continue;
+
+          // Find the new actual value from T12 months
+          const t12Month = t12Months.find((m: any) => m.reportMonth?.slice(0, 7) === month);
+          const t12Col = FIELD_TO_T12_COLUMN[fieldName];
+          let actualValue: number | null = null;
+          if (t12Month && t12Col) {
+            const t12Val = t12Month[t12Col];
+            if (typeof t12Val === 'number') actualValue = t12Val;
+          }
+          if (actualValue == null) continue;
+
+          const varianceAbs = actualValue - oldPeriod.resolved;
+          const variancePct = oldPeriod.resolved !== 0 ? varianceAbs / oldPeriod.resolved : null;
+
+          try {
+            await pool.query(
+              `INSERT INTO deal_reconciliation_log (
+                deal_id, field_name, period_month, projected_value, actual_value,
+                variance_abs, variance_pct, trigger_path, reconciled_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'T12_REBUILD', NOW())`,
+              [
+                dealId,
+                fieldName,
+                `${month}-01`,
+                oldPeriod.resolved,
+                actualValue,
+                varianceAbs,
+                variancePct,
+              ]
+            );
+          } catch (logErr) {
+            logger.warn('[seeder][Part1] deal_reconciliation_log write failed (non-fatal)', {
+              dealId, fieldName, month, error: logErr instanceof Error ? logErr.message : String(logErr),
+            });
+          }
+        }
+      }
+
+      if (overlapMonths.length > 0) {
+        logger.info('[seeder][Part1] Variance captured for overlap months', {
+          dealId, overlapMonths: overlapMonths.length, months: overlapMonths,
+        });
+      }
+    }
+
     // Phase 2 — Periodic Field Model: build period-indexed seed from single-value year1
     let periodicSeed: ProFormaPeriodicSeed | null = t12Months.length > 0
       ? buildPeriodicSeed({
@@ -1336,9 +1402,11 @@ export async function seedProFormaYear1(
         })
       : null;
 
-    // Phase 4 — Reconciliation: compare old vs new periodic_seed for months that
-    // changed from gap/projection → actual (e.g., a new T12 arrived covering
-    // previously projected months). If material variance, rebase with forward re-derivation.
+    // ═══════════════════════════════════════════════════════════════════════
+    // PART 2 — Path 2 incremental reconciliation (monthly actual advance)
+    // After the rebuild, handle any months that are now actual but were
+    // previously gap/projection (Path 2: single monthly actual arrival).
+    // ═══════════════════════════════════════════════════════════════════════
     if (periodicSeed && oldPeriodicSeed) {
       const reconciledMonths: string[] = [];
       for (const newPeriod of periodicSeed.fields.gpr?.periods ?? []) {
@@ -1363,7 +1431,7 @@ export async function seedProFormaYear1(
 
         if (report.hasMaterialVariance) {
           periodicSeed = applyRebase(periodicSeed, newActuals, month);
-          logger.info('[seeder][Phase4] Material variance → rebase applied', {
+          logger.info('[seeder][Part2] Material variance → rebase applied', {
             dealId, month, materialCount: report.materialCount,
           });
         }
@@ -1387,7 +1455,7 @@ export async function seedProFormaYear1(
             ]
           );
         } catch (logErr) {
-          logger.warn('[seeder][Phase4] Reconciliation event log failed (non-fatal)', {
+          logger.warn('[seeder][Part2] Reconciliation event log failed (non-fatal)', {
             dealId, month, error: logErr instanceof Error ? logErr.message : String(logErr),
           });
         }
