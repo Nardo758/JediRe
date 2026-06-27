@@ -5,6 +5,7 @@ import { buildPeriodicSeed } from './proforma/periodic-seeder.service';
 import type { ProFormaPeriodicSeed } from './proforma/periodic-field.types';
 import { FIELD_TO_T12_COLUMN } from './proforma/periodic-field.types';
 import { reconcileMonth, applyRebase, buildReconciliationNotification } from './proforma/reconciliation.service';
+import { deriveProjectionForSeed } from './proforma/gap-bridge.service';
 import { logger } from '../utils/logger';
 import { resolvePriorityChain } from '../utils/field-priority-miss';
 import { computeLeaseRollVelocityFromDates } from './proforma/ltl-trajectory';
@@ -1478,10 +1479,28 @@ export async function seedProFormaYear1(
         })
       : null;
 
+    // Phase 2-B — Convert projection placeholders from year1-annual scale to monthly-trended scale.
+    // buildPeriodicSeed fills projection periods with year1 annual values as placeholders.
+    // When we have real actuals (T12 or portfolio), immediately re-derive projections from
+    // the last actual so all periods are in consistent monthly scale before Part 1/2 comparison.
+    if (periodicSeed && effectiveT12Months.length > 0) {
+      periodicSeed = deriveProjectionForSeed(periodicSeed);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // PART 2 — Path 2 incremental reconciliation (monthly actual advance)
-    // After the rebuild, handle any months that are now actual but were
-    // previously gap/projection (Path 2: single monthly actual arrival).
+    // Detects months that were gap/projection in the OLD seed but are now
+    // actual in the NEW seed (boundary advanced), writes variance rows to
+    // deal_reconciliation_log, then re-derives forward projections ONCE from
+    // the final reconciled boundary.
+    //
+    // Key design decisions:
+    // • Projected baseline = oldPeriodicSeed (what was previously forecast).
+    //   Using newPeriodicSeed would always give zero variance (actual == actual).
+    // • applyRebase is called ONCE from the LAST reconciled month — not per-month.
+    //   Calling it N times would re-derive forward projections N times, wasting
+    //   CPU and leaving projections anchored to an intermediate month rather than
+    //   the true new boundary.
     // ═══════════════════════════════════════════════════════════════════════
     if (periodicSeed && oldPeriodicSeed) {
       const reconciledMonths: string[] = [];
@@ -1495,27 +1514,17 @@ export async function seedProFormaYear1(
       }
 
       for (const month of reconciledMonths) {
+        // Actual values come from the NEW seed (what actually came in).
         const newActuals: Record<string, number> = {};
         for (const [fieldName, series] of Object.entries(periodicSeed.fields)) {
           const period = series.periods.find(p => p.month === month);
-          if (period?.resolved != null) {
-            newActuals[fieldName] = period.resolved;
-          }
+          if (period?.resolved != null) newActuals[fieldName] = period.resolved;
         }
 
-        const report = reconcileMonth(periodicSeed, newActuals, month, dealId);
+        // FIX: pass oldPeriodicSeed as the baseline so reconcileMonth reads projected
+        // values from what was previously forecast, not from the just-built new seed.
+        const report = reconcileMonth(oldPeriodicSeed, newActuals, month, dealId);
 
-        if (report.hasMaterialVariance) {
-          periodicSeed = applyRebase(periodicSeed, newActuals, month);
-          logger.info('[seeder][Part2] Material variance → rebase applied', {
-            dealId, month, materialCount: report.materialCount,
-          });
-        }
-
-        // Write per-field variance rows to deal_reconciliation_log, NOT deal_lifecycle_events.
-        // deal_lifecycle_events is the FSM's state-transition log; inserting MONITORING→MONITORING
-        // rows there pollutes the state machine without tripping trg_deal_lifecycle_transition
-        // (that trigger fires only on UPDATE deals, not INSERT into deal_lifecycle_events).
         for (const variance of report.variances) {
           try {
             await pool.query(
@@ -1544,6 +1553,23 @@ export async function seedProFormaYear1(
         const notification = buildReconciliationNotification(report);
         logger.info('[seeder][Part2] Reconciliation variance rows written', {
           dealId, month, materialCount: report.materialCount, urgency: notification.urgency,
+        });
+      }
+
+      // Re-derive forward projections ONCE from the final reconciled boundary.
+      // This converts any remaining year1-annual projection placeholders (for months
+      // not yet touched by Phase 2-B) to monthly-trended values anchored at the
+      // new actuals boundary. applyRebase is intentionally called only once here.
+      if (reconciledMonths.length > 0) {
+        const lastMonth = reconciledMonths[reconciledMonths.length - 1];
+        const lastActuals: Record<string, number> = {};
+        for (const [fieldName, series] of Object.entries(periodicSeed.fields)) {
+          const period = series.periods.find(p => p.month === lastMonth);
+          if (period?.resolved != null) lastActuals[fieldName] = period.resolved;
+        }
+        periodicSeed = applyRebase(periodicSeed, lastActuals, lastMonth);
+        logger.info('[seeder][Part2] Forward projections re-derived from new boundary', {
+          dealId, lastMonth, reconciledCount: reconciledMonths.length,
         });
       }
     }
