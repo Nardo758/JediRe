@@ -119,9 +119,12 @@ export function mountDealRoutes(app: Express) {
   const requireWeb = requireSurface('web');
 
   // Core deal lifecycle
-  app.use('/api/v1/deals', requireWeb, dealsRouter);
-  app.use('/api/v1/tasks', requireWeb, tasksRouter);
-  app.use('/api/v1/inbox', requireWeb, inboxRouter);
+  // §E-F6: requireAuth must precede requireWeb/requireSurface — requireSurface
+  // checks req.user which requireAuth sets; without this ordering every request
+  // to these routes returns 401 before reaching the route-level requireAuth.
+  app.use('/api/v1/deals', requireAuth, requireWeb, dealsRouter);
+  app.use('/api/v1/tasks', requireAuth, requireWeb, tasksRouter);
+  app.use('/api/v1/inbox', requireAuth, requireWeb, inboxRouter);
 
   // Agent runtime — deal-scoped (shared surface; individual routes gate themselves)
   app.use('/api/v1/agents', agentRunsRouter);
@@ -133,13 +136,13 @@ export function mountDealRoutes(app: Express) {
   app.use('/api/v1/deals', requireAuth, requireWeb, roadmapRouter);
 
   // Deal market intelligence & context
-  app.use('/api/v1/deals', requireWeb, dealMarketIntelligenceRoutes);
-  app.use('/api/v1/deals', requireWeb, dealCompSetsRoutes);
+  app.use('/api/v1/deals', requireAuth, requireWeb, dealMarketIntelligenceRoutes);
+  app.use('/api/v1/deals', requireAuth, requireWeb, dealCompSetsRoutes);
   app.use('/api/v1/deals', requireAuth, requireWeb, dealPhotosRoutes);
   app.use('/api/v1/deals', requireAuth, requireWeb, dealContextRoutes);
   app.use('/api/v1/deals', requireAuth, requireWeb, financialModelRoutes);
   app.use('/api/v1/financial-models', requireAuth, requireWeb, financialModelRoutes);
-  app.use('/api/v1/jedi', requireWeb, jediRoutes);
+  app.use('/api/v1/jedi', requireAuth, requireWeb, jediRoutes);
 
   // Phase 10: Cross-Module Validation
   app.use('/api/v1/deals', requireAuth, requireWeb, dealValidationRoutes);
@@ -154,8 +157,8 @@ export function mountDealRoutes(app: Express) {
   // Proforma & financial documents
   app.use('/api/v1/proforma', requireAuth, requireWeb, stabilizedPotentialRouter);
   app.use('/api/v1/proforma', requireAuth, requireWeb, proformaRouter);
-  app.use('/api/v1/deals', requireWeb, dealAssumptionsRoutes);
-  app.use('/api/v1/deals', requireWeb, financialDocumentsRoutes);
+  app.use('/api/v1/deals', requireAuth, requireWeb, dealAssumptionsRoutes);
+  app.use('/api/v1/deals', requireAuth, requireWeb, financialDocumentsRoutes);
   app.use('/api/v1/deals', requireAuth, requireWeb, sourceDocumentsRoutes);
 
   // Deal-level share management (owner-only)
@@ -169,8 +172,8 @@ export function mountDealRoutes(app: Express) {
   app.use('/api/v1/deals', requireAuth, requireWeb, sceneStorageRouter);
 
   // Document file routes
-  app.use('/api/v1', requireWeb, documentsFilesRoutes);
-  app.use('/api/v1', requireWeb, submarketDocumentsRoutes);
+  app.use('/api/v1', requireAuth, requireWeb, documentsFilesRoutes);
+  app.use('/api/v1', requireAuth, requireWeb, submarketDocumentsRoutes);
 
   // DD checklists
   app.use('/api/v1/dd-checklists', requireAuth, requireWeb, ddChecklistsRouter);

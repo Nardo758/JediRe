@@ -923,7 +923,7 @@ router.get('/deals/:dealId/deal-book', async (req: Request, res: Response) => {
       sender_display_name: branding?.sender_display_name ?? null,
       show_attribution: (() => {
         const tier: string = branding?.tier ?? 'free';
-        const eligible = ['enterprise'].includes(tier);
+        const eligible = ['principal', 'institutional'].includes(tier);
         if (!eligible) return true;
         if (share.show_attribution_override !== null && share.show_attribution_override !== undefined)
           return Boolean(share.show_attribution_override);
