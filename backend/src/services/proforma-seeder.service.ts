@@ -3,6 +3,7 @@ import type { LayeredValue, ProFormaYear1Seed } from './document-extraction/type
 import { buildBoundaryContext, type BoundaryContext } from './proforma/boundary.types';
 import { buildPeriodicSeed } from './proforma/periodic-seeder.service';
 import type { ProFormaPeriodicSeed } from './proforma/periodic-field.types';
+import { reconcileMonth, applyRebase, buildReconciliationNotification } from './proforma/reconciliation.service';
 import { logger } from '../utils/logger';
 import { resolvePriorityChain } from '../utils/field-priority-miss';
 import { computeLeaseRollVelocityFromDates } from './proforma/ltl-trajectory';
@@ -1288,9 +1289,9 @@ export async function seedProFormaYear1(
     });
     const activeScenId: string | null = activeScenRes.rows[0]?.id ?? null;
 
-    type ExistingRow = { year1: unknown };
+    type ExistingRow = { year1: unknown; periodic_seed?: unknown };
     const existing = await pool.query<ExistingRow>(
-      `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+      `SELECT year1, periodic_seed FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
       [dealId]
     ).catch((err: unknown) => {
       logger.error('[seeder][P0] deal_assumptions year1 query failed', {
@@ -1303,6 +1304,12 @@ export async function seedProFormaYear1(
     const rawExistingSeed = activeScenRes.rows[0]?.year1 ?? existing.rows[0]?.year1 ?? null;
     const existingSeed = rawExistingSeed
       ? (typeof rawExistingSeed === 'string' ? JSON.parse(rawExistingSeed) : rawExistingSeed)
+      : null;
+
+    // Phase 4 — Reconciliation: read old periodic_seed before rebuild (for variance comparison)
+    const rawOldPeriodic = existing.rows[0]?.periodic_seed ?? null;
+    const oldPeriodicSeed: ProFormaPeriodicSeed | null = rawOldPeriodic
+      ? (typeof rawOldPeriodic === 'string' ? JSON.parse(rawOldPeriodic) : rawOldPeriodic as ProFormaPeriodicSeed)
       : null;
 
     const bcRaw = capsule?.broker_claims;
@@ -1319,7 +1326,7 @@ export async function seedProFormaYear1(
     const seed = buildSeed(totalUnits, platform, t12Capsule, rrCapsule, taxBillCapsule, omCapsule, existingSeed, bpProforma, boundary);
 
     // Phase 2 — Periodic Field Model: build period-indexed seed from single-value year1
-    const periodicSeed: ProFormaPeriodicSeed | null = t12Months.length > 0
+    let periodicSeed: ProFormaPeriodicSeed | null = t12Months.length > 0
       ? buildPeriodicSeed({
           year1Seed: seed as unknown as Record<string, unknown>,
           t12Months,
@@ -1328,7 +1335,65 @@ export async function seedProFormaYear1(
           sourceDocs: seed.source_docs,
         })
       : null;
-    
+
+    // Phase 4 — Reconciliation: compare old vs new periodic_seed for months that
+    // changed from gap/projection → actual (e.g., a new T12 arrived covering
+    // previously projected months). If material variance, rebase with forward re-derivation.
+    if (periodicSeed && oldPeriodicSeed) {
+      const reconciledMonths: string[] = [];
+      for (const newPeriod of periodicSeed.fields.gpr?.periods ?? []) {
+        if (newPeriod.zone !== 'actual') continue;
+        const oldPeriod = oldPeriodicSeed.fields.gpr?.periods.find(p => p.month === newPeriod.month);
+        if (!oldPeriod) continue;
+        if (oldPeriod.zone === 'gap' || oldPeriod.zone === 'projection') {
+          reconciledMonths.push(newPeriod.month);
+        }
+      }
+
+      for (const month of reconciledMonths) {
+        const newActuals: Record<string, number> = {};
+        for (const [fieldName, series] of Object.entries(periodicSeed.fields)) {
+          const period = series.periods.find(p => p.month === month);
+          if (period?.resolved != null) {
+            newActuals[fieldName] = period.resolved;
+          }
+        }
+
+        const report = reconcileMonth(periodicSeed, newActuals, month, dealId);
+
+        if (report.hasMaterialVariance) {
+          periodicSeed = applyRebase(periodicSeed, newActuals, month);
+          logger.info('[seeder][Phase4] Material variance → rebase applied', {
+            dealId, month, materialCount: report.materialCount,
+          });
+        }
+
+        const notification = buildReconciliationNotification(report);
+        try {
+          await pool.query(
+            `INSERT INTO deal_lifecycle_events (
+              deal_id, from_status, to_status, transitioned_at, reason, metadata
+            ) VALUES ($1, 'MONITORING', 'MONITORING', NOW(), $2, $3)`,
+            [
+              dealId,
+              `${notification.title} | ${notification.body}`,
+              JSON.stringify({
+                event: 'reconciliation',
+                month,
+                materialCount: report.materialCount,
+                recommendation: report.recommendation,
+                urgency: notification.urgency,
+              }),
+            ]
+          );
+        } catch (logErr) {
+          logger.warn('[seeder][Phase4] Reconciliation event log failed (non-fatal)', {
+            dealId, month, error: logErr instanceof Error ? logErr.message : String(logErr),
+          });
+        }
+      }
+    }
+
     // Task #838 — Re-apply Cashflow Agent sub-keys after re-seed.
     //
     // buildSeed preserves operator overrides (via getOverride()) but has no
