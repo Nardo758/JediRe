@@ -151,22 +151,37 @@ Also update:
 
 ---
 
-## Fourth zombie-tier surface — `deal_capsules.recipient_tier`
+## Fourth zombie-tier surface — `capsule-sharing.routes.ts:133-144`
 
-`20260619_deal_capsules.sql:29`:
+**Correction from earlier draft:** `deal_capsules.recipient_tier DEFAULT 'free'` is migration-DDL-only from the stale `20260619_deal_capsules.sql` migration, which was baselined without being applied. The live `deal_capsules` table has 15 columns and no `recipient_tier` column — confirmed against the live DB. That entry was wrong and is retracted.
+
+**The actual fourth surface** is a live reader in `capsule-sharing.routes.ts`:
+
 ```sql
-recipient_tier TEXT DEFAULT 'free', -- free | professional | team | enterprise
+-- capsule-sharing.routes.ts:133-144
+SELECT dc.id, dc.property_address, ...,
+       COALESCE(u.subscription_tier, 'free') AS subscription_tier
+FROM deal_capsules dc
+JOIN users u ON u.id = dc.user_id
+WHERE dc.id = $1 AND dc.user_id = $2 LIMIT 1
 ```
 
-This column bakes the legacy vocabulary directly into table DDL as a default value. It is a **fourth surface** of the zombie-tier problem alongside:
-1. `users.subscription_tier` column (zombie, no live writer)
-2. Inngest allow-list arrays (mixed vocabulary, fail-open)
-3. Registration INSERT NULLs (new users born desynced)
-4. `deal_capsules.recipient_tier DEFAULT 'free'` ← this entry
+Then at line 188:
+```typescript
+const senderTier: string = capsuleRow.subscription_tier ?? 'free';
+const canRemoveAttribution = ['enterprise'].includes(senderTier);
+```
 
-**Current liveness:** Inert. `capsule-sharing.routes.ts:87` explicitly documents: *"deal_capsules rows have no separate deal_id column — capsules are standalone."* The capsule-sharing route reads `deal_capsules` by capsule UUID only, never by `deal_id` FK or `recipient_tier`. No entitlement gate reads this column. A paying user with `user_credit_balances.subscription_tier = 'operator'` and `deal_capsules.recipient_tier = 'free'` is not denied anything today.
+This reads `users.subscription_tier` (the zombie column) via a JOIN to gate whether the sender can suppress attribution branding on external shares. Two consequences:
 
-**Urgency:** Not launch-blocking on its own. Folds into the A9 fix pass — when the legacy vocabulary is retired and `users.subscription_tier` is dropped, this column's default must be updated to a canonical value or the column must be repurposed/dropped.
+1. **Drop-time breakage:** When `users.subscription_tier` is dropped, PostgreSQL will throw `column u.subscription_tier does not exist` on every capsule share attempt. The column drop requires this JOIN to be repointed to `user_credit_balances.subscription_tier` first.
+2. **Current silent miscalibration:** The zombie column defaults `'free'` today. `canRemoveAttribution` evaluates `['enterprise'].includes('free')` → always `false` for every user regardless of their actual billing tier. This means no paying user can currently suppress attribution branding even if they are entitled to.
+
+**Updated four zombie-tier surfaces for the fix pass:**
+1. `users.subscription_tier` column (the core — zombie, zero live writers)
+2. 4 inngest allow-lists (`commentary/supply/zoning/research.inngest.ts`) — mixed-vocabulary, fail-open; NULL-denial for new paying users
+3. `validation.ts:40` — `z.enum(['basic','professional','enterprise'])` in Zod schema
+4. `capsule-sharing.routes.ts:133-144` — live JOIN on zombie column; breaks on DROP, currently misrates every sender as non-enterprise
 
 ---
 
@@ -228,7 +243,7 @@ const PRODUCT_TO_TIER: Record<string, SubscriptionTier> = {
 | `backend/src/api/rest/auth.routes.ts:64` | Registration INSERT omits `subscription_tier` (by design — correct) |
 | `backend/src/auth/oauth.ts:70` | OAuth INSERT omits `subscription_tier` (by design — correct) |
 | `backend/src/services/ai/creditService.ts:311` | `canAccessSurface` crashes on unknown tier |
-| `backend/src/database/migrations/20260619_deal_capsules.sql:29` | `recipient_tier DEFAULT 'free'` — fourth zombie-tier surface |
+| `backend/src/api/rest/capsule-sharing.routes.ts:133-144` | Live JOIN on `users.subscription_tier` — breaks on DROP; currently misrates all senders as non-enterprise |
 | `backend/src/api/rest/auth.routes.ts:269` | ✅ Correct single-table read — reference implementation |
 | `backend/src/functions/email-intake.function.ts:52` | ✅ Correct COALESCE pattern — reference implementation |
 | `backend/src/services/stripe/webhookHandlers.ts` | ✅ Correct — canonical vocab only, writes `user_credit_balances` |
