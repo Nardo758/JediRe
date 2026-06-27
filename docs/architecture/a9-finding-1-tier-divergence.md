@@ -1,9 +1,18 @@
 # A9-Finding-1: Tier Divergence — Dual-Table, Dual-Vocabulary Entitlements Bug
 
 **Severity:** Launch-blocking (NULL-denial breaks agent runs for all net-new paying users)
-**Status:** Fully traced and closed (write-path confirmed); fix pass pending post-audit gate
+**Status:** ✅ CLOSED — fix verified (S1-01 passed 2026-06-27), column dropped
 **Discovered:** 2026-06-27 during login/pipeline verification
 **Write-path closure:** 2026-06-27 · SHA `d4d626ebf0713e4c4c2d86f92dd430e20f0f1adc`
+**Reader repoint:** 2026-06-27 · ~16 sites across 7 files (see session handoff doc)
+**Column dropped:** 2026-06-27 · migration `20260627_drop_users_subscription_tier.sql`
+
+**S1-01 evidence (2026-06-27):**
+- Seeded two users: both with `users.subscription_tier = 'free'` (old vocab DEFAULT), differing only in UCB tier (operator vs. no row → scout)
+- Fired `research.completed` events for both deals; Commentary + CashFlow agents ran
+- Deal A (UCB=operator): Commentary `automation_level gate blocked` (tier gate PASSED ✅), CashFlow `automation_level gate blocked` (tier gate PASSED ✅)
+- Deal B (UCB=absent → COALESCE='scout'): Commentary `automation_level gate blocked` (PASSED ✅), CashFlow `tier gate blocked (event-driven not permitted, scout)` — **intentional by design** (scout is manual-only for CashFlow)
+- No "tier gate blocked" from stale vocabulary in either agent for Deal A. UCB overrides zombie column.
 
 ---
 
