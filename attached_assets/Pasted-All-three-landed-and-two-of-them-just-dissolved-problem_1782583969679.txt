@@ -1,0 +1,37 @@
+All three landed, and two of them just dissolved problems we thought we had. Let me give you the read on each, because the dispositions are now genuinely different from where we started the turn.
+
+**Migration baseline — clean, and it self-corrected a stale assumption.** The `\d` confirmed the real shape, and the useful surprise: `deal_status_enum` was *already* baselined (migration_number 1587, stamped 17:51 today) after the first triage. So only the two 20260619 migrations remain, and the INSERT is grounded in the runner's actual format — sequence integers 1588/1589, not date prefixes, `applied_at` defaulting. That's a trustworthy, zero-guesswork write. Run it:
+
+```sql
+INSERT INTO schema_migrations (migration_number, migration_name) VALUES
+  (1588, '20260619_audit_log.sql'),
+  (1589, '20260619_deal_capsules.sql')
+ON CONFLICT DO NOTHING;
+```
+
+This is the one action of the three that's actually a *fix*, and it's appropriate to apply now — pure tracking-row hygiene, no schema touched, clears the startup noise. After it lands, restart the backend once and confirm the log shows zero migration failures. That's the verification that it took.
+
+**A8-F1 — verdict is VESTIGIAL, and that's the answer that's been sitting under this whole thread since the original audit.** The chain is fully traced: the Portfolio card is live and clickable (`CreateDealPage.tsx:839`), the payload sends `deal_category:'portfolio'` unremapped (line 388), and the Zod gate rejects it (`validation.ts:41` accepts only `['pipeline','owned']`). The decisive evidence is provenance: all 10 portfolio rows were SQL-seeded — 9 share an identical `02:43:27` batch timestamp, Highlands came via `vault-enrich-deals.ts`. **Zero portfolio rows have ever been created through the API.** So the original audit's framing — "P0: portfolio deal creation broken" — was half-right in a way that matters: the *gate* is real, but it's blocking a path no user has ever successfully used, because the feature was only ever populated by seed scripts.
+
+That reframes the fix severity. It's not a P0 launch-blocker in the "users are hitting this and failing" sense — nobody's creating portfolio deals via the UI today, so nothing is *regressing*. It's a **latent UI-promises-what-the-API-rejects gap**: the card is clickable, so a user *could* hit it and get a 400. The fix is still correct and still trivial — `z.enum(['pipeline','owned','portfolio'])` at validation.ts:41 — but its real character is "make the live UI honest," not "unblock a broken core flow." And there's a design question the trace surfaces that the one-line fix glosses: the schema's *accepted* values are `pipeline`/`owned`, but every seeded row uses `portfolio` and **none use `owned`**. So `owned` may itself be the vestigial value and `portfolio` the real one — meaning the right fix might be reconciling the vocabulary (does the system want `owned` or `portfolio` as the canonical owned-asset category?), not just appending `portfolio` to the enum. Adding `portfolio` without resolving whether `owned` is dead leaves you with two values meaning the same thing — the exact two-vocabularies pattern A9-Finding-1 is built around. Worth one beat of thought before the fix: is this "add portfolio" or "portfolio replaces owned"? That decides whether it's a one-line enum edit or a small category-vocabulary cleanup.
+
+Either way, A8-F1 is now *closed as an audit* — verdict delivered, evidence complete, fix identified, severity correctly downgraded from P0-broken to latent-UI-honesty with a vocabulary question attached. It goes to the fix queue, not a fire drill.
+
+**capsule_api_connections — there is no gap. The whole concern was a misread, and the trace caught its own error.** This is the cleanest outcome: the table the routes actually use is `recipient_api_connections`, which **exists and is fully column-complete**. The earlier "missing table" was the prior triage reading the route-group *comment* (`capsule_api_connections`) as a table name when every actual SQL statement targets `recipient_api_connections`. Every column the three routes INSERT/SELECT/UPDATE is present. So:
+
+- `external_agent_enabled` sharing is **schema-complete on the backend** — the launch-vs-roadmap question I kept pressing is now *moot for the migration/schema angle*. There's no table to build, so there's no build to sequence against launch. That severity question dissolves.
+- The one residual: the trace notes that *if* there's a runtime failure in the agent-query flow, it'd be in `recipient-agent-executor.service.ts` or the Stripe/API-key validation — not the schema. That's a "no known break, but the service layer is untraced" state. Don't chase it now; there's no symptom. File it as "agent-query flow is schema-verified; service-layer execution unverified" so if `external_agent_enabled` *is* a launch feature, there's a known next trace target. But absent a reported failure, it's not actionable.
+
+So the capsule thread closes too — better than expected, no build needed.
+
+Where that leaves the session — and it's a notably clean state:
+
+- **Login**: closed, pushed.
+- **A9-Finding-1**: closed (zombie column, launch-blocking via NULL-denial), fix scoped, reader inventory includes the capsule-sharing tier gate.
+- **Migrations**: all three baselined (pending your INSERT + restart-verify), schema confirmed healthy.
+- **A8-F1**: closed as audit, verdict vestigial, fix is a one-line enum edit with a small vocabulary question (`owned` vs `portfolio`) attached.
+- **capsule_api_connections**: closed, no gap, misread corrected.
+
+You've burned down the entire investigation queue. What's left is *fixes*, not *audits* — and your discipline says those go in a consolidated pass behind a review gate, not interleaved. The natural next move is the **formal A9 dispatch** (scoped to the rest of the RBAC surface — roles, `enabled_modules`, route-level authz — explicitly *not* re-tracing Finding-1, which is done), or you stop here and start a fix session against the three closed findings (A8-F1 enum, A9-Finding-1 zombie-column cleanup, capsule tier-gate repoint).
+
+Run the migration INSERT and restart-verify first — that's the only open *action*. Then tell me: formal A9 dispatch, or open the consolidated fix pass? Given how much context this session is holding, a fix pass might want a fresh thread with the closed findings carried in as a clean brief — I can write that handoff if you want to bank the work and reset.

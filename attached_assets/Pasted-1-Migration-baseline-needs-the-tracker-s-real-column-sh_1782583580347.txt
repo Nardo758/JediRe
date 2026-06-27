@@ -1,0 +1,55 @@
+1. Migration baseline — needs the tracker's real column shape confirmed first, then it's trivial. Your two triages disagree on what schema_migrations looks like: the first assumed (filename, executed_at), the second pulled live columns (migration_number, migration_name, applied_at). The second is schema-grounded so I trust it — but don't hand-write an INSERT against either until you've matched what the runner actually writes. Don't guess column names; mirror an existing row:
+sql\d schema_migrations
+SELECT * FROM schema_migrations ORDER BY applied_at DESC LIMIT 3;
+That shows the real columns and how the runner formats migration_number/migration_name from a filename (is the number the date prefix 20260619, or a sequence?). Then write three INSERTs in that exact shape:
+sql-- template — fill columns to match the existing rows you just saw
+INSERT INTO schema_migrations (<cols>) VALUES
+  (<20260715_deal_status_enum.sql, already-applied>),
+  (<20260619_audit_log.sql, stale — live table is actor-based, migration retired>),
+  (<20260619_deal_capsules.sql, superseded by capsule_external_shares architecture>)
+ON CONFLICT DO NOTHING;
+Zero code, clears the startup log. The two \d/SELECT lines are the only thing standing between you and it.
+2. A8-F1 trace — fire it now, schema's verified clean. Reprinted ready for Claude Code:
+DISPATCH — A8-F1 CREATION-PATH TRACE (READ-ONLY)
+Mode: READ-ONLY. Verdict + evidence table. Zero code. Repo @ HEAD (record SHA).
+Evidence rule (S1-01): every row = file:line caller→callee OR pasted live-DB output.
+
+VERDICT: Expanding createDealSchema.deal_category to include 'portfolio' unblocks
+  [ LIVE user-reachable path / vestigial path with no live frontend entry ].
+
+1. UI: does CreateDealPage.tsx expose a 'portfolio' option a user can select?
+   file:line. If not → vestigial; report first, it gates the rest.
+2. Payload: trace create submit → api.post body. Confirm it sends
+   deal_category:'portfolio' (not remapped client-side). file:line.
+3. Gate: validation.ts createDealSchema.deal_category enum at HEAD, verbatim. file:line.
+4. Service: deals.service.ts 'portfolio' branch — sets status=CLOSED_OWNED, skips
+   acquisition pipeline, AND is reached by the createDeal controller. file:line.
+5. Provenance: grep every writer of the deals.status='CLOSED_OWNED'/portfolio path.
+   How did the 3 existing portfolio rows (Highlands, College Park, Midtown) get
+   created — this API, or SQL/seed? file:line per writer.
+6. Live-DB:
+   SELECT name, status, deal_category, created_at FROM deals
+   WHERE deal_category='portfolio' OR status='CLOSED_OWNED' ORDER BY created_at;
+   If those rows show deal_category≠'portfolio', the category likely never created
+   a row via the API → corroborates vestigial.
+
+DELIVERABLE: SHA + READ-ONLY header, one-line verdict, 6-row evidence table, pasted
+query. If vestigial, add: what the real portfolio-creation path is.
+STOP at verdict. No fix.
+3. capsule_api_connections — can't be a CREATE TABLE yet; it needs a column-contract trace first. This is the trap I won't walk you into: the ground-truth trace told us which routes hit the missing table (connect_api, query, DELETE connect_api) but not what columns those routes expect of it. Writing a CREATE TABLE from imagination is exactly the invent-the-schema move we've rejected three times. So "doing" this one = a micro-trace that derives the table shape from the routes that use it:
+DISPATCH — capsule_api_connections COLUMN-CONTRACT TRACE (READ-ONLY)
+Mode: READ-ONLY. Derive the table's required schema from its callers. No DDL.
+Repo @ HEAD (SHA).
+
+In capsule-sharing.routes.ts, read the three routes that reference
+capsule_api_connections (connect_api / query / DELETE connect_api). For each:
+- every column the route INSERTs, SELECTs, UPDATEs, or filters on (file:line)
+- inferred type + nullability from how it's used
+- FK relationships (does it reference capsule_external_shares.share_id?
+  access_token? a user?)
+- any unique constraint implied (e.g. one connection per share)
+
+DELIVERABLE: a proposed CREATE TABLE capsule_api_connections derived ENTIRELY from
+caller usage, every column traced to a file:line that requires it. Plus: confirm
+whether the agent-query flow writes anything ELSE that's also missing.
+STOP. The CREATE TABLE is a proposal for review, not applied.
