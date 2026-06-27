@@ -198,7 +198,16 @@ app.post(
 );
 
 // A4-F7: Rate limiter BEFORE body parsers — prevents DoS via large JSON payloads
-app.use(rateLimiter);
+// Skip automated/internal paths that poll at high frequency and must not
+// consume the user-facing rate-limit budget (Inngest every 5 s, dev-login
+// bootstrap on every cold page load in DEV).
+const RATE_LIMIT_SKIP = ['/api/inngest', '/api/v1/auth/dev-login'];
+app.use((req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+  if (RATE_LIMIT_SKIP.some(p => req.path === p || req.path.startsWith(p + '/'))) {
+    return next();
+  }
+  return rateLimiter(req, res, next);
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

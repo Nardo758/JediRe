@@ -51,7 +51,7 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
             state: forkAddress ? { forkSuccess: forkAddress } : undefined,
           });
         } else {
-          navigate('/dashboard');
+          navigate('/terminal/dashboard');
         }
       } else {
         setError(result.error || 'Login failed');

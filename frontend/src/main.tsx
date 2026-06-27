@@ -6,12 +6,10 @@ import './index.css';
 import { logSwallowedError } from './utils/swallowedError';
 
 async function bootstrap() {
-  // In DEV we always re-run dev-login on bootstrap. If we only ran it when
-  // no token was cached, a stale JWT for a throwaway test user (e.g. one
-  // auto-created by a test harness) would persist across refreshes and
-  // silently keep the workspace empty — even after the backend's dev-login
-  // started picking the correct, data-rich user. Re-fetching keeps the
-  // session in sync with whichever user the server considers the dev owner.
+  // In DEV we always re-run dev-login on bootstrap so that a stale JWT (e.g.
+  // from a previous backend restart) never silently breaks the session.
+  // /api/inngest and /api/v1/auth/dev-login are excluded from the global
+  // rate limiter so this call does not burn the user-facing budget.
   if (import.meta.env.DEV) {
     try {
       const resp = await fetch('/api/v1/auth/dev-login');
@@ -20,6 +18,14 @@ async function bootstrap() {
         if (data.success && data.token) {
           localStorage.setItem('auth_token', data.token);
           localStorage.setItem('jedi_user', JSON.stringify(data.user));
+          // If the app was redirected to /login (e.g. after a stale-token
+          // 401), bounce straight to the dashboard so the user never sees
+          // the login form during development.
+          const path = window.location.pathname;
+          if (path === '/login' || path === '/' || path === '') {
+            window.location.replace('/terminal/dashboard');
+            return;
+          }
         }
       }
     } catch (err) { logSwallowedError('main', err); }

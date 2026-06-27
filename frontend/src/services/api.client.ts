@@ -27,9 +27,11 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      const hadToken = localStorage.getItem('auth_token');
       localStorage.removeItem('auth_token');
-      if (hadToken) {
+      // In DEV the bootstrap always runs dev-login on page load, so a redirect
+      // loop is worse than the widget error states.  Only hard-redirect in
+      // production where there is no automatic token refresh mechanism.
+      if (!import.meta.env.DEV && !window.location.pathname.startsWith('/login')) {
         window.location.href = '/login';
       }
     }
