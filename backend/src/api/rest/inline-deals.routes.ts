@@ -375,7 +375,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
     const client = pool;
     const {
       name, boundary, projectType, project_type, projectIntent, targetUnits,
-      budget, timelineStart, timelineEnd, tier,
+      budget, timelineStart, timelineEnd,
       deal_category, development_type, strategy, address, description,
       property_type_key, documentFileIds, uploaded_documents
     } = req.body;
@@ -450,7 +450,9 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       }
     }
 
-    const userTier = tier || 'basic';
+    // §E-F2(a): derive deals.tier server-side from UCB — never trust req.body.tier.
+    // balance is already fetched above (A5-F1). If user has no UCB row, default scout.
+    const userTier = balance?.subscriptionTier ?? 'scout';
 
     const orgResult = await client.query(
       'SELECT org_id FROM org_members WHERE user_id = $1 ORDER BY joined_at ASC LIMIT 1',
