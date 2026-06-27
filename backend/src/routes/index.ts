@@ -429,6 +429,7 @@ import georgiaIngestionRouter from '../api/rest/georgia-ingestion.routes';
 import learningRouter from '../api/rest/learning.routes';
 import operationsRouter from '../api/rest/operations.routes';
 import lifecycleRouter from '../api/rest/lifecycle.routes';
+import customMetricsRouter from '../api/rest/custom-metrics.routes';
 import revenueRouter from '../api/rest/revenue.routes';
 import investorCapitalRoutes from '../api/rest/investor-capital.routes';
 import organizationRouter from '../api/rest/organization.routes';
@@ -449,6 +450,7 @@ export function mountOperationsRoutes(app: Express, pool: any) {
   app.use('/api/v1/learning', learningRouter);
   app.use('/api/v1/operations', operationsRouter);
   app.use('/api/v1/lifecycle', lifecycleRouter);
+  app.use('/api/v1/custom-metrics', customMetricsRouter);
   app.use('/api/v1/revenue', revenueRouter);
   app.use('/api/v1/capital', requireAuth, investorCapitalRoutes);
   app.use('/api/v1/organization', organizationRouter);
