@@ -469,7 +469,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
         target_units, budget, timeline_start, timeline_end, tier, status,
         deal_category, development_type, address, description, org_id, strategy
       )
-      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14, $15, $16)
+      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'PROSPECT', $11, $12, $13, $14, $15, $16)
       RETURNING *
     `, [
       req.user!.userId,

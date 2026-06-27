@@ -14,7 +14,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
     console.log('Login attempt:', { email, hasPassword: !!password, bodyKeys: Object.keys(req.body || {}) });
 
     const result = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.role, u.enabled_modules, u.password_hash,
+      `SELECT u.id, u.email, u.full_name, u.role, u.password_hash,
               COALESCE(ucb.subscription_tier, 'scout') AS subscription_tier
        FROM users u
        LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
@@ -50,7 +50,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
       role: dbUser.role || 'user',
       subscription: {
         plan: dbUser.subscription_tier || 'free',
-        modules: dbUser.enabled_modules || ['supply']
+        modules: []
       }
     };
     const token = generateAccessToken({
@@ -83,7 +83,7 @@ router.get('/dev-login', async (_req, res) => {
     // dev-login lands on the user with the richest workspace, and only fall
     // back to created_at as a tiebreaker.
     const result = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.role, u.enabled_modules,
+      `SELECT u.id, u.email, u.full_name, u.role,
               COALESCE(ucb.subscription_tier, 'scout') AS subscription_tier
          FROM users u
          LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
@@ -105,7 +105,7 @@ router.get('/dev-login', async (_req, res) => {
       role: dbUser.role || 'user',
       subscription: {
         plan: dbUser.subscription_tier || 'free',
-        modules: dbUser.enabled_modules || ['supply']
+        modules: []
       }
     };
     const token = generateAccessToken({
@@ -125,7 +125,7 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.userId;
     const result = await pool.query(
-      `SELECT u.id, u.email, u.full_name, u.role, u.enabled_modules,
+      `SELECT u.id, u.email, u.full_name, u.role,
               COALESCE(ucb.subscription_tier, 'scout') AS subscription_tier
        FROM users u
        LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
@@ -146,7 +146,7 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
       role: dbUser.role || 'user',
       subscription: {
         plan: dbUser.subscription_tier || 'free',
-        modules: dbUser.enabled_modules || ['supply']
+        modules: []
       }
     });
   } catch (error) {

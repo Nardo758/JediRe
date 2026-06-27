@@ -259,7 +259,7 @@ export class CreditService {
        SET subscription_tier = $1,
            credits_included_monthly = $2,
            credits_remaining = $3,
-           automation_level = LEAST(automation_level, $4),
+           automation_level = $4,
            updated_at = NOW()
        WHERE user_id = $5`,
       [
