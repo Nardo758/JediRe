@@ -1,0 +1,41 @@
+DISPATCH — A9-F1 WRITE-PATH CLOSURE (READ-ONLY)
+
+Mode: READ-ONLY. Report only, zero code. Repo @ HEAD (record SHA).
+Goal: name the writer(s) of users.subscription_tier and confirm whether the
+billing path manufactures the tier divergence. This is the last open question
+on A9-Finding-1.
+
+Evidence rule (S1-01): every claim carries file:line or a pasted query result.
+
+TRACE:
+1. Find the Stripe webhook handler(s):
+   grep -rn "checkout.session\|customer.subscription\|webhook\|stripe.*event" \
+     backend/src --include=*.ts
+   Identify the file that processes subscription lifecycle events
+   (created/updated/deleted, checkout completed).
+
+2. In that handler, find every write to a tier column. For each write, record:
+   - file:line
+   - which table: users.subscription_tier OR user_credit_balances.subscription_tier
+   - which vocabulary the written value uses:
+       legacy enum  → free·professional·team·enterprise
+       canonical    → scout·basic·operator·principal·institutional
+   - the SOURCE of the value (Stripe price ID → tier mapping? hardcoded? metadata?)
+
+3. The decisive question — answer YES/NO with evidence:
+   Does the subscription path write users.subscription_tier (legacy vocab)
+   WITHOUT also writing user_credit_balances (canonical vocab) in the same
+   transaction/handler? If yes, the payment path generates the desync on every
+   real subscription event → A9-F1 root cause confirmed, prod-recurring.
+
+4. Also grep any non-webhook writer (onboarding/admin/seed):
+   grep -rn "subscription_tier\s*=\|UPDATE users\|INSERT INTO users" \
+     backend/src --include=*.ts
+   List every path that sets users.subscription_tier.
+
+DELIVERABLE: header (SHA, READ-ONLY), a writer table (file:line | table | vocab |
+value source), and the YES/NO verdict on Q3 with the deciding file:line.
+If a Stripe price→tier map exists, paste it — it shows which vocabulary billing
+believes in.
+
+STOP at the verdict. No fix. This appends to A9-Finding-1, doesn't open a fix pass.

@@ -1,0 +1,48 @@
+DISPATCH — FAILED MIGRATION TRIAGE (READ-ONLY)
+
+Mode: READ-ONLY. Diagnose, classify, recommend — apply NOTHING. The backend is
+running on LENIENT_SCHEMA_CHECK=1; do not change that flag or run any migration.
+Repo @ HEAD (record SHA).
+
+Three migrations fail at startup:
+  20260619_audit_log.sql      ✗ column "deal_id" does not exist
+  20260619_deal_capsules.sql  ✗ column "deal_id" does not exist
+  20260715_deal_status_enum.sql ✗ function lower(deal_status) does not exist
+
+For EACH, produce a diagnosis backed by the migration SQL + a live-DB query:
+
+A. Read the migration file. Quote the exact failing statement (file:line).
+
+B. deal_status_enum: we know the deals table column is `status` (not deal_status),
+   and the enum TYPE is named `deal_status` with values PROSPECT·UNDERWRITING·
+   UNDER_CONTRACT·CLOSED_OWNED·MONITORING·DISPOSITION·SOLD·HISTORICAL_RECORD·PASSED.
+   Determine: is the migration referencing a column named deal_status that doesn't
+   exist (should be `status`)? Or calling lower() on an enum without ::text cast?
+   Name which. (lower(enum) fails without an explicit ::text cast — likely the cause.)
+
+C. audit_log + deal_capsules (both "deal_id does not exist"): for each, find which
+   table the failing statement targets and run:
+     SELECT column_name FROM information_schema.columns
+     WHERE table_name = '<target_table>' ORDER BY ordinal_position;
+   Determine whether: (i) the column is named differently (e.g. deal vs deal_id),
+   (ii) the target table doesn't exist yet at this migration's point (ordering bug —
+   a later migration creates it), or (iii) the column was never added.
+
+D. Classify each migration:
+   ALREADY-APPLIED (failing because re-run against state it already produced — safe,
+     should be skipped not failed) | STALE (references schema that changed under it —
+     migration is wrong) | ORDERING (correct SQL, runs too early) | BROKEN-SQL (genuine
+     bug, e.g. missing ::text cast).
+
+E. Cross-check the launch concern: does ANY of these three failures leave a table
+   the chat-launch path or the deals/pipeline path reads in a partial/wrong state?
+   Specifically — is deal_capsules (Deal Capsule, the chat-born DealContext surface)
+   actually broken, or does it already exist and the migration is just a no-op re-run?
+   Run a query confirming deal_capsules' real current shape.
+
+DELIVERABLE: header (SHA, READ-ONLY), one section per migration (failing stmt,
+diagnosis, classification, live-DB evidence), and a one-line verdict: are these
+3 failures COSMETIC (already-applied re-runs, schema is actually fine) or REAL
+(schema genuinely partial, something downstream is broken)?
+
+STOP at the report. Recommend the fix per migration but do not write or run it.
