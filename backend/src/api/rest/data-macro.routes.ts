@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth } from '../../middleware/auth';
 import { query } from '../../database/connection';
-import { logger } from '../utils/logger';
+import { logger } from '../../utils/logger';
 
 /**
  * Macro Data Freshness API

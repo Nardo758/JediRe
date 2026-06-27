@@ -1,4 +1,4 @@
-import { inngest } from '../inngest';
+import { inngest } from '../../lib/inngest';
 import { extractConcessionsFromSnapshots } from '../../services/ingestion/concession-time-series.service';
 import { logger } from '../../utils/logger';
 

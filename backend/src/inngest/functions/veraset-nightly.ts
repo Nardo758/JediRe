@@ -16,7 +16,7 @@
  * @see backend/src/services/veraset-mobility.service.ts
  */
 
-import { inngest } from '../client';
+import { inngest } from '../../lib/inngest';
 import { verasetMobilityService } from '../../services/veraset-mobility.service';
 import { logger } from '../../utils/logger';
 

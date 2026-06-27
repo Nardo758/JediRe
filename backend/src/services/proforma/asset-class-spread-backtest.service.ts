@@ -19,7 +19,7 @@
  */
 
 import { Pool } from 'pg';
-import { logger } from '../utils/logger';
+import { logger } from '../../utils/logger';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -76,7 +76,7 @@ export interface BacktestCalibrationReport {
 
 // ─── The assumed spread table (source of truth) ─────────────────────────────
 
-import { ASSET_CLASS_SPREAD_BPS } from './proforma/layered-growth/rent-growth';
+import { ASSET_CLASS_SPREAD_BPS } from './layered-growth/rent-growth';
 
 // ─── Service ───────────────────────────────────────────────────────────────────
 
@@ -533,5 +533,5 @@ export class AssetClassSpreadBacktestService {
 
 // ─── Singleton instance ────────────────────────────────────────────────────────
 
-import { pool } from '../database';
+import { pool } from '../../database';
 export const assetClassSpreadBacktestService = new AssetClassSpreadBacktestService(pool);

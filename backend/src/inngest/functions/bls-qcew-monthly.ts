@@ -1,4 +1,4 @@
-import { inngest } from '../inngest';
+import { inngest } from '../../lib/inngest';
 import { ingestBLSQCEW } from '../../services/ingestion/bls-qcew-ingest.service';
 import { logger } from '../../utils/logger';
 

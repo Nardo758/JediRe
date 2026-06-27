@@ -13,10 +13,10 @@
  */
 
 import { Router } from 'express';
-import { requireAuth, requireRole, AuthenticatedRequest } from '../middleware/auth';
-import { verasetMobilityService } from '../services/veraset-mobility.service';
-import { logger } from '../utils/logger';
-import { query } from '../database/connection';
+import { requireAuth, requireRole, AuthenticatedRequest } from '../../middleware/auth';
+import { verasetMobilityService } from '../../services/veraset-mobility.service';
+import { logger } from '../../utils/logger';
+import { query } from '../../database/connection';
 
 const router = Router();
 

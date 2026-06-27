@@ -4,7 +4,7 @@ import { bustM08Cache } from '../../m08-strategies.service';
 import { jediScoreService } from '../../jedi-score.service';
 import { getPool } from '../../../database/connection';
 import { m35TrafficApiService } from '../../m35-traffic-api.service';
-import { logger } from '../../utils/logger';
+import { logger } from '../../../utils/logger';
 
 const RECOMPUTE_BATCH = 10;
 

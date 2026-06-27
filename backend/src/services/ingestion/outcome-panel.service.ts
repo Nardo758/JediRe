@@ -14,7 +14,7 @@
  */
 
 import { Pool } from 'pg';
-import { logger } from '../utils/logger';
+import { logger } from '../../utils/logger';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -675,5 +675,5 @@ export class OutcomePanelService {
 
 // ─── Singleton instance ──────────────────────────────────────────────────────
 
-import { pool } from '../database';
+import { pool } from '../../database';
 export const outcomePanelService = new OutcomePanelService(pool);

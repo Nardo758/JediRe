@@ -1,4 +1,4 @@
-import { inngest } from '../inngest';
+import { inngest } from '../../lib/inngest';
 import { ingestCensusPermits } from '../../services/ingestion/census-permits-ingest.service';
 import { logger } from '../../utils/logger';
 

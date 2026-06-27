@@ -12,8 +12,8 @@
  * @see HISTORICAL_OBSERVATIONS_SPEC.md
  */
 
-import { query } from '../../database/connection';
-import { logger } from '../../utils/logger';
+import { query } from '../database/connection';
+import { logger } from '../utils/logger';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

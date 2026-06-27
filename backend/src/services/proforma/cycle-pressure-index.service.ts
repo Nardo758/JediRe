@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { ProvenancedValue, provenanced } from '../types/provenanced-value';
+import { ProvenancedValue, provenanced } from '../../types/provenanced-value';
 
 /**
  * Compute the cycle pressure index for a given submarket.

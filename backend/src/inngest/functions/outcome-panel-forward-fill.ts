@@ -1,4 +1,4 @@
-import { inngest } from '../inngest';
+import { inngest } from '../../lib/inngest';
 import { outcomePanelService } from '../../services/ingestion/outcome-panel.service';
 import { pool } from '../../database';
 import { logger } from '../../utils/logger';

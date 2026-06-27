@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { ProvenancedValue, provenanced } from '../../types/provenanced-value';
-import { OpexLineKey } from '../blueprint/proforma-blueprint';
+import { OpexLineKey } from './blueprint/proforma-blueprint';
 
 /**
  * Compute live CPI-anchored OPEX growth rates for every line item.
