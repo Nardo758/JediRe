@@ -84,9 +84,10 @@ export const zoningOnDealCreated = inngest.createFunction(
     const dealCtx = await step.run('resolve-deal-context', async () => {
       const res = await query(
         `SELECT d.address, d.property_address, d.city, d.state_code,
-                dp.property_id, dp.lot_size_sqft
+                dp.property_id, p.lot_size_sqft
          FROM deals d
          LEFT JOIN deal_properties dp ON dp.deal_id = d.id
+         LEFT JOIN properties p ON p.id = dp.property_id
          WHERE d.id = $1
          ORDER BY dp.created_at ASC
          LIMIT 1`,

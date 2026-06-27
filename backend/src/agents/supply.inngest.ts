@@ -83,9 +83,10 @@ export const supplyOnDealCreated = inngest.createFunction(
     const dealCtx = await step.run('resolve-deal-context', async () => {
       const res = await query(
         `SELECT d.address, d.property_address, d.city, d.state_code,
-                dp.property_id, dp.property_type
+                dp.property_id, p.property_type
          FROM deals d
          LEFT JOIN deal_properties dp ON dp.deal_id = d.id
+         LEFT JOIN properties p ON p.id = dp.property_id
          WHERE d.id = $1
          ORDER BY dp.created_at ASC
          LIMIT 1`,
