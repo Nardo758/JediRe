@@ -3,6 +3,8 @@ import type { LayeredValue, ProFormaYear1Seed } from './document-extraction/type
 import { buildBoundaryContext, type BoundaryContext } from './proforma/boundary.types';
 import { buildPeriodicSeed } from './proforma/periodic-seeder.service';
 import type { ProFormaPeriodicSeed } from './proforma/periodic-field.types';
+import { FIELD_TO_T12_COLUMN } from './proforma/periodic-field.types';
+import { reconcileMonth, applyRebase, buildReconciliationNotification } from './proforma/reconciliation.service';
 import { logger } from '../utils/logger';
 import { resolvePriorityChain } from '../utils/field-priority-miss';
 import { computeLeaseRollVelocityFromDates } from './proforma/ltl-trajectory';
@@ -1288,9 +1290,9 @@ export async function seedProFormaYear1(
     });
     const activeScenId: string | null = activeScenRes.rows[0]?.id ?? null;
 
-    type ExistingRow = { year1: unknown };
+    type ExistingRow = { year1: unknown; periodic_seed?: unknown };
     const existing = await pool.query<ExistingRow>(
-      `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+      `SELECT year1, periodic_seed FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
       [dealId]
     ).catch((err: unknown) => {
       logger.error('[seeder][P0] deal_assumptions year1 query failed', {
@@ -1303,6 +1305,12 @@ export async function seedProFormaYear1(
     const rawExistingSeed = activeScenRes.rows[0]?.year1 ?? existing.rows[0]?.year1 ?? null;
     const existingSeed = rawExistingSeed
       ? (typeof rawExistingSeed === 'string' ? JSON.parse(rawExistingSeed) : rawExistingSeed)
+      : null;
+
+    // Phase 4 — Reconciliation: read old periodic_seed before rebuild (for variance comparison)
+    const rawOldPeriodic = existing.rows[0]?.periodic_seed ?? null;
+    const oldPeriodicSeed: ProFormaPeriodicSeed | null = rawOldPeriodic
+      ? (typeof rawOldPeriodic === 'string' ? JSON.parse(rawOldPeriodic) : rawOldPeriodic as ProFormaPeriodicSeed)
       : null;
 
     const bcRaw = capsule?.broker_claims;
@@ -1318,8 +1326,73 @@ export async function seedProFormaYear1(
 
     const seed = buildSeed(totalUnits, platform, t12Capsule, rrCapsule, taxBillCapsule, omCapsule, existingSeed, bpProforma, boundary);
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // PART 1 — Variance capture gate (Path 1: T12 re-upload)
+    // Before the rebuild overwrites old projections, capture variance for
+    // months that the new T12 covers as actuals but were previously projected.
+    // ═══════════════════════════════════════════════════════════════════════
+    if (oldPeriodicSeed && t12Months.length > 0) {
+      const t12MonthSet = new Set(t12Months.map((m: any) => m.reportMonth?.slice(0, 7)));
+      const overlapMonths: string[] = [];
+
+      for (const oldPeriod of oldPeriodicSeed.fields.gpr?.periods ?? []) {
+        if (oldPeriod.zone !== 'projection' && oldPeriod.zone !== 'gap') continue;
+        if (t12MonthSet.has(oldPeriod.month)) {
+          overlapMonths.push(oldPeriod.month);
+        }
+      }
+
+      for (const month of overlapMonths) {
+        for (const [fieldName, series] of Object.entries(oldPeriodicSeed.fields)) {
+          const oldPeriod = series.periods.find(p => p.month === month);
+          if (!oldPeriod || oldPeriod.resolved == null) continue;
+
+          // Find the new actual value from T12 months
+          const t12Month = t12Months.find((m: any) => m.reportMonth?.slice(0, 7) === month);
+          const t12Col = FIELD_TO_T12_COLUMN[fieldName];
+          let actualValue: number | null = null;
+          if (t12Month && t12Col) {
+            const t12Val = t12Month[t12Col];
+            if (typeof t12Val === 'number') actualValue = t12Val;
+          }
+          if (actualValue == null) continue;
+
+          const varianceAbs = actualValue - oldPeriod.resolved;
+          const variancePct = oldPeriod.resolved !== 0 ? varianceAbs / oldPeriod.resolved : null;
+
+          try {
+            await pool.query(
+              `INSERT INTO deal_reconciliation_log (
+                deal_id, field_name, period_month, projected_value, actual_value,
+                variance_abs, variance_pct, trigger_path, reconciled_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'T12_REBUILD', NOW())`,
+              [
+                dealId,
+                fieldName,
+                `${month}-01`,
+                oldPeriod.resolved,
+                actualValue,
+                varianceAbs,
+                variancePct,
+              ]
+            );
+          } catch (logErr) {
+            logger.warn('[seeder][Part1] deal_reconciliation_log write failed (non-fatal)', {
+              dealId, fieldName, month, error: logErr instanceof Error ? logErr.message : String(logErr),
+            });
+          }
+        }
+      }
+
+      if (overlapMonths.length > 0) {
+        logger.info('[seeder][Part1] Variance captured for overlap months', {
+          dealId, overlapMonths: overlapMonths.length, months: overlapMonths,
+        });
+      }
+    }
+
     // Phase 2 — Periodic Field Model: build period-indexed seed from single-value year1
-    const periodicSeed: ProFormaPeriodicSeed | null = t12Months.length > 0
+    let periodicSeed: ProFormaPeriodicSeed | null = t12Months.length > 0
       ? buildPeriodicSeed({
           year1Seed: seed as unknown as Record<string, unknown>,
           t12Months,
@@ -1328,7 +1401,67 @@ export async function seedProFormaYear1(
           sourceDocs: seed.source_docs,
         })
       : null;
-    
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PART 2 — Path 2 incremental reconciliation (monthly actual advance)
+    // After the rebuild, handle any months that are now actual but were
+    // previously gap/projection (Path 2: single monthly actual arrival).
+    // ═══════════════════════════════════════════════════════════════════════
+    if (periodicSeed && oldPeriodicSeed) {
+      const reconciledMonths: string[] = [];
+      for (const newPeriod of periodicSeed.fields.gpr?.periods ?? []) {
+        if (newPeriod.zone !== 'actual') continue;
+        const oldPeriod = oldPeriodicSeed.fields.gpr?.periods.find(p => p.month === newPeriod.month);
+        if (!oldPeriod) continue;
+        if (oldPeriod.zone === 'gap' || oldPeriod.zone === 'projection') {
+          reconciledMonths.push(newPeriod.month);
+        }
+      }
+
+      for (const month of reconciledMonths) {
+        const newActuals: Record<string, number> = {};
+        for (const [fieldName, series] of Object.entries(periodicSeed.fields)) {
+          const period = series.periods.find(p => p.month === month);
+          if (period?.resolved != null) {
+            newActuals[fieldName] = period.resolved;
+          }
+        }
+
+        const report = reconcileMonth(periodicSeed, newActuals, month, dealId);
+
+        if (report.hasMaterialVariance) {
+          periodicSeed = applyRebase(periodicSeed, newActuals, month);
+          logger.info('[seeder][Part2] Material variance → rebase applied', {
+            dealId, month, materialCount: report.materialCount,
+          });
+        }
+
+        const notification = buildReconciliationNotification(report);
+        try {
+          await pool.query(
+            `INSERT INTO deal_lifecycle_events (
+              deal_id, from_status, to_status, transitioned_at, reason, metadata
+            ) VALUES ($1, 'MONITORING', 'MONITORING', NOW(), $2, $3)`,
+            [
+              dealId,
+              `${notification.title} | ${notification.body}`,
+              JSON.stringify({
+                event: 'reconciliation',
+                month,
+                materialCount: report.materialCount,
+                recommendation: report.recommendation,
+                urgency: notification.urgency,
+              }),
+            ]
+          );
+        } catch (logErr) {
+          logger.warn('[seeder][Part2] Reconciliation event log failed (non-fatal)', {
+            dealId, month, error: logErr instanceof Error ? logErr.message : String(logErr),
+          });
+        }
+      }
+    }
+
     // Task #838 — Re-apply Cashflow Agent sub-keys after re-seed.
     //
     // buildSeed preserves operator overrides (via getOverride()) but has no
