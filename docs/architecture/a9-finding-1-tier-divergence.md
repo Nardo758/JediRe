@@ -7,12 +7,52 @@
 **Reader repoint:** 2026-06-27 · ~16 sites across 7 files (see session handoff doc)
 **Column dropped:** 2026-06-27 · migration `20260627_drop_users_subscription_tier.sql`
 
-**S1-01 evidence (2026-06-27):**
-- Seeded two users: both with `users.subscription_tier = 'free'` (old vocab DEFAULT), differing only in UCB tier (operator vs. no row → scout)
-- Fired `research.completed` events for both deals; Commentary + CashFlow agents ran
-- Deal A (UCB=operator): Commentary `automation_level gate blocked` (tier gate PASSED ✅), CashFlow `automation_level gate blocked` (tier gate PASSED ✅)
-- Deal B (UCB=absent → COALESCE='scout'): Commentary `automation_level gate blocked` (PASSED ✅), CashFlow `tier gate blocked (event-driven not permitted, scout)` — **intentional by design** (scout is manual-only for CashFlow)
-- No "tier gate blocked" from stale vocabulary in either agent for Deal A. UCB overrides zombie column.
+**S1-01 evidence — v2 (2026-06-27, definitive):**
+
+Test design: defeated the `automation_level` confound by seeding User A with `automation_level=2` in UCB.
+This forces the agent past both gates to its next step, producing direct observable evidence of admission
+(not inference from a downstream block). `users.subscription_tier` column confirmed absent before seeding.
+
+Pre-flight query result (tier-gate SQL against live DB, post-DROP):
+```
+Deal A (UCB='operator'):  COALESCE tier='operator' ✅
+Deal B (no UCB row):      COALESCE tier='scout'    ✅
+```
+
+**ADMIT path — Deal A (UCB=`operator`, `automation_level=2`):**
+```
+19:46:54 [error] column dp.property_type does not exist
+  at backend/src/agents/commentary.inngest.ts:110       ← resolve-deal-context step
+  at backend/src/agents/supply.inngest.ts:84            ← resolve-deal-context step (payload-tier)
+19:46:54 [error] column dp.lot_size_sqft does not exist
+  at backend/src/agents/zoning.inngest.ts:85            ← resolve-deal-context step (payload-tier)
+19:46:37 [info] CashFlow Agent: no T12 or rent-roll data found — deferring run
+  dealId: 00000000-5102-0001-dddd-000000000001          ← reached business logic, past both gates
+```
+`resolve-deal-context` and business-logic steps are ONLY reachable when `tier-gate` step returns
+`allowed:true`. Direct observation — no inference. Schema errors (`dp.property_type`,
+`dp.lot_size_sqft`) are pre-existing unrelated issues in `deal_properties`, not caused by this work.
+
+**DENY path — Deal B (no UCB row → COALESCE=`scout`):**
+```
+19:46:36 [info] CashFlow Agent: tier gate blocked (event-driven not permitted)
+  dealId: 00000000-5102-0002-dddd-000000000002          ← tier gate's own deny log ✅
+19:46:36 [info] Supply Agent: automation_level gate blocked
+  dealId: 00000000-5102-0002-dddd-000000000002          ← scout passes Supply tier gate; auto=1 blocks
+19:46:36 [info] Commentary Agent: automation_level gate blocked
+  dealId: 00000000-5102-0002-dddd-000000000002          ← scout passes Commentary tier gate; auto=1 blocks
+19:46:36 [info] Zoning Agent: automation_level gate blocked
+  dealId: 00000000-5102-0002-dddd-000000000002          ← scout passes Zoning tier gate; auto=1 blocks
+```
+CashFlow tier-gate deny for scout is **direct observation** — tier gate's own log line. For
+Commentary/Supply/Zoning, scout is in their ALLOWED_TIERS (only CashFlow event-driven requires
+operator+); automation_level blocks at default=1. Both behaviours are correct by design.
+
+**DID NOT APPEAR (confirms no regression):**
+- No `"Commentary Agent: tier gate blocked"` for Deal A
+- No `"automation_level gate blocked"` for Deal A
+
+UCB is the sole tier source post-DROP. Repoint is correct across both trigger patterns.
 
 ---
 
