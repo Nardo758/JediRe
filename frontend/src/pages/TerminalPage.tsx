@@ -617,7 +617,7 @@ export default function TerminalPage() {
   const logout = useCallback(() => {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('jedi_user');
-    window.location.replace('/login');
+    window.location.replace('/login?logged_out=1');
   }, []);
 
   // Core UI state — resolve fkey from: URL slug > ?fkey param > location state > F1
