@@ -61,7 +61,7 @@ interface ScenarioData {
   riskSummary: string;
 }
 
-interface ScenarioComparison {
+interface ScenarioComparisonData {
   dealId: string;
   dealName: string;
   scenarios: {
@@ -87,7 +87,7 @@ interface ScenarioComparisonProps {
 const ScenarioComparison: React.FC<ScenarioComparisonProps> = ({ dealId, onScenarioClick }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [comparison, setComparison] = useState<ScenarioComparison | null>(null);
+  const [comparison, setComparison] = useState<ScenarioComparisonData | null>(null);
   const [selectedScenario, setSelectedScenario] = useState<ScenarioData | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -166,7 +166,7 @@ const ScenarioComparison: React.FC<ScenarioComparisonProps> = ({ dealId, onScena
   const formatMetricColor = (
     value: number,
     metricType: 'irr' | 'coc' | 'npv',
-    ranges: ScenarioComparison['ranges']
+    ranges: ScenarioComparisonData['ranges']
   ): string => {
     if (metricType === 'irr') {
       const threshold = (ranges.irrMax + ranges.irrMin) / 2;

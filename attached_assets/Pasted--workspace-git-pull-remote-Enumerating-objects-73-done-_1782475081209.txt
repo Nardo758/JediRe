@@ -1,0 +1,237 @@
+~/workspace$ git pull
+
+remote: Enumerating objects: 73, done.
+remote: Counting objects: 100% (56/56), done.
+remote: Compressing objects: 100% (15/15), done.
+remote: Total 35 (delta 28), reused 26 (delta 20), pack-reused 0 (from 0)
+Unpacking objects: 100% (35/35), 19.41 KiB | 17.00 KiB/s, done.
+From https://github.com/Nardo758/JediRe
+   902c29b0b..337b004e6  master     -> origin/master
+Merge made by the 'ort' strategy.
+ backend/src/agents/cashflow.config.ts     |   4 +-
+ backend/src/agents/commentary.inngest.ts  |  15 +-
+ backend/src/agents/research.inngest.ts    |  10 +
+ backend/src/agents/supply.inngest.ts      |  10 +
+ backend/src/agents/zoning.inngest.ts      |  10 +
+ backend/src/index.replit.ts               |   5 +-
+ backend/src/routes/index.ts               |  66 +++---
+ .../document-extraction/data-router.ts    |   1 +
+ .../proforma-adjustment.service.ts        |  52 +++--
+ backend/src/types/dealContext.ts          |   2 +-
+ docs/DC31_RESOLUTION_SPEC.md              | 140 ++++++++++++
+ ...L_LIFECYCLE_TIMELINE_ALIGNMENT_SPEC.md | 178 +++++++++++++++
+ docs/PROFORMA_TIMELINE_MODEL_SPEC.md      | 152 ++++++++++++
+ 13 files changed, 585 insertions(+), 60 deletions(-)
+ create mode 100644 docs/DC31_RESOLUTION_SPEC.md
+ create mode 100644 docs/DEAL_LIFECYCLE_TIMELINE_ALIGNMENT_SPEC.md
+ create mode 100644 docs/PROFORMA_TIMELINE_MODEL_SPEC.md
+~/workspace$ 
+~/workspace$ cd backend
+npm install
+npx tsc --noEmit --skipLibCheck src/services/document-extraction/data-router.ts
+npm run build
+
+up to date, audited 811 packages in 6s
+
+106 packages are looking for funding
+  run `npm fund` for details
+
+64 vulnerabilities (1 low, 47 moderate, 14 high, 2 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+src/services/proforma-seeder.service.ts:2418:1 - error TS1005: '}' expected.
+
+2418 
+     
+
+  src/services/proforma-seeder.service.ts:1977:18
+    1977 ): Promise<void> {
+                          ~
+    The parser expected to find a '}' to match the '{' token here.
+
+
+Found 1 error in src/services/proforma-seeder.service.ts:2418
+
+
+> jedire-backend-replit@1.0.0 build
+> tsc --skipLibCheck > /dev/null 2>&1 || true && mkdir -p dist/services/tax/rateSheets && cp src/services/tax/rateSheets/*.json dist/services/tax/rateSheets/
+
+~/workspace/backend$ npm run dev
+
+> jedire-backend-replit@1.0.0 dev
+> ts-node --transpile-only src/index.replit.ts
+
+/home/runner/workspace/backend/src/config/secrets.ts:67
+    })(),
+      ^
+Error: FATAL: JWT_SECRET must be at least 32 characters long
+    at /home/runner/workspace/backend/src/config/secrets.ts:64:15
+    at Object.<anonymous> (/home/runner/workspace/backend/src/config/secrets.ts:67:7)
+    at Module._compile (node:internal/modules/cjs/loader:1521:14)
+    at Module.m._compile (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:1618:23)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1623:10)
+    at Object.require.extensions.<computed> [as .ts] (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1266:32)
+    at Function.Module._load (node:internal/modules/cjs/loader:1091:12)
+    at Module.require (node:internal/modules/cjs/loader:1289:19)
+    at require (node:internal/modules/helpers:182:18)
+~/workspace/backend$ SELECT
+  deal_data->'extraction_t12'->'months' AS months_array,
+  jsonb_array_length(deal_data->'extraction_t12'->'months') AS months_count,
+  deal_data->'extraction_t12'->'months_captured' AS months_captured_legacy,
+  deal_data->'extraction_t12'->'gpr' AS gpr,
+  deal_data->'extraction_t12'->'noi' AS noi,
+  deal_data->'extraction_t12'->'vacancy_loss_pct' AS vacancy_loss_pct
+FROM deals
+WHERE id = '<dealId>';
+bash: SELECT: command not found
+bash: deal_data-: command not found
+bash: syntax error near unexpected token `deal_data-'
+bash: deal_data-: command not found
+bash: deal_data-: command not found
+bash: deal_data-: command not found
+bash: deal_data-: command not found
+bash: FROM: command not found
+bash: WHERE: command not found
+~/workspace/backend$ git add backend/src/services/document-extraction/data-router.ts
+git commit -m "Phase 0: persist T12Data.months[] in extraction_t12 capsule"
+git push
+warning: could not open directory 'backend/backend/src/services/document-extraction/': No such file or directory
+fatal: pathspec 'backend/src/services/document-extraction/data-router.ts' did not match any files
+fatal: Unable to create '/home/runner/workspace/.git/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.
+Enumerating objects: 30, done.
+Counting objects: 100% (25/25), done.
+Delta compression using up to 2 threads
+Compressing objects: 100% (10/10), done.
+Writing objects: 100% (10/10), 5.90 KiB | 2.95 MiB/s, done.
+Total 10 (delta 5), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (5/5), completed with 3 local objects.
+To https://github.com/Nardo758/JediRe.git
+   337b004e6..70b87ff76  master -> master
+~/workspace/backend$ cd ~/workspace
+rm -f .git/index.lock
+git add src/services/document-extraction/data-router.ts
+git status
+fatal: pathspec 'src/services/document-extraction/data-router.ts' did not match any files
+On branch master
+Your branch is up to date with 'origin/master'.
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+    backend/extraction_t12-
+    backend/gpr
+    backend/months
+    backend/months_captured
+    backend/noi
+    backend/vacancy_loss_pct
+
+nothing added to commit but untracked files present (use "git add" to track)
+~/workspace$ cd ~/workspace
+grep -n "months: t12.months" backend/src/services/document-extraction/data-router.ts
+1461:        months: t12.months,         // T12Month[] — per-month granularity; persisted for timeline Phase 0
+~/workspace$ cd ~/workspace
+git add backend/src/services/document-extraction/data-router.ts
+git status
+On branch master
+Your branch is up to date with 'origin/master'.
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+    backend/extraction_t12-
+    backend/gpr
+    backend/months
+    backend/months_captured
+    backend/noi
+    backend/vacancy_loss_pct
+
+nothing added to commit but untracked files present (use "git add" to track)
+~/workspace$ cd ~/workspace
+git add backend/src/services/document-extraction/data-router.ts
+git commit -m "Phase 0: persist T12Data.months[] in extraction_t12 capsule"
+git push
+On branch master
+Your branch is up to date with 'origin/master'.
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+    backend/extraction_t12-
+    backend/gpr
+    backend/months
+    backend/months_captured
+    backend/noi
+    backend/vacancy_loss_pct
+
+nothing added to commit but untracked files present (use "git add" to track)
+Everything up-to-date
+~/workspace$ cd ~/workspace/backend
+sed -i 's/JWT_SECRET=change-this-to-a-random-secret-key/JWT_SECRET=jedire-phase0-acceptance-gate-2025-07-very-secret-key/' .env.replit
+npm run dev
+
+> jedire-backend-replit@1.0.0 dev
+> ts-node --transpile-only src/index.replit.ts
+
+/home/runner/workspace/backend/src/config/secrets.ts:67
+    })(),
+      ^
+Error: FATAL: JWT_SECRET must be at least 32 characters long
+    at /home/runner/workspace/backend/src/config/secrets.ts:64:15
+    at Object.<anonymous> (/home/runner/workspace/backend/src/config/secrets.ts:67:7)
+    at Module._compile (node:internal/modules/cjs/loader:1521:14)
+    at Module.m._compile (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:1618:23)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1623:10)
+    at Object.require.extensions.<computed> [as .ts] (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1266:32)
+    at Function.Module._load (node:internal/modules/cjs/loader:1091:12)
+    at Module.require (node:internal/modules/cjs/loader:1289:19)
+    at require (node:internal/modules/helpers:182:18)
+~/workspace/backend$ cd ~/workspace/backend
+# Using psql if you have it:
+psql "$DATABASE_URL" -c "SELECT deal_data->'extraction_t12'->'months' AS months_array, jsonb_array_length(deal_data->'extraction_t12'->'months') AS months_count, deal_data->'extraction_t12'->'months_captured' AS months_captured_legacy, deal_data->'extraction_t12'->'gpr' AS gpr FROM deals WHERE id = '<dealId>';"
+ERROR:  invalid input syntax for type uuid: "<dealId>"
+LINE 1: ...traction_t12'->'gpr' AS gpr FROM deals WHERE id = '<dealId>'...
+                                                             ^
+~/workspace/backend$ cd ~/workspace/backend
+npx ts-node --transpile-only scripts/phase0-acceptance.ts <dealId>
+bash: syntax error near unexpected token `newline'
+~/workspace/backend$ cd ~/workspace/backend
+export JWT_SECRET="jedire-phase0-acceptance-gate-2025-07-very-secret-key"
+npm run dev
+
+> jedire-backend-replit@1.0.0 dev
+> ts-node --transpile-only src/index.replit.ts
+
+/home/runner/workspace/backend/src/config/secrets.ts:18
+    throw new Error(`FATAL: Missing required environment variable: ${key}`);
+          ^
+Error: FATAL: Missing required environment variable: JWT_REFRESH_SECRET
+    at requireEnv (/home/runner/workspace/backend/src/config/secrets.ts:18:11)
+    at /home/runner/workspace/backend/src/config/secrets.ts:70:22
+    at Object.<anonymous> (/home/runner/workspace/backend/src/config/secrets.ts:80:7)
+    at Module._compile (node:internal/modules/cjs/loader:1521:14)
+    at Module.m._compile (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:1618:23)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1623:10)
+    at Object.require.extensions.<computed> [as .ts] (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1266:32)
+    at Function.Module._load (node:internal/modules/cjs/loader:1091:12)
+    at Module.require (node:internal/modules/cjs/loader:1289:19)
+~/workspace/backend$ cd ~/workspace/backend
+psql "$DATABASE_URL" -c "SELECT jsonb_array_length(deal_data->'extraction_t12'->'months') AS months_count, deal_data->'extraction_t12'->'months_captured' AS legacy, deal_data->'extraction_t12'->'gpr' AS gpr FROM deals WHERE id = 'YOUR-REAL-DEAL-ID-HERE';"
+ERROR:  invalid input syntax for type uuid: "YOUR-REAL-DEAL-ID-HERE"
+LINE 1: ...traction_t12'->'gpr' AS gpr FROM deals WHERE id = 'YOUR-REAL...
+                                                             ^
+~/workspace/backend$ 

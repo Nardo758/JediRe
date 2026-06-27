@@ -219,12 +219,6 @@ const CAPEX_DATA = [
   { item: 'Roof / Envelope', budget: '$0.18M', spent: '$0.00M', pct: '0%',  flag: true  },
 ];
 
-const CAPEX_DATA = [
-  { item: 'Interior Reno',   budget: '$1.20M', spent: '$0.98M', pct: '82%', flag: false },
-  { item: 'Amenity Upgrade', budget: '$0.34M', spent: '$0.31M', pct: '91%', flag: false },
-  { item: 'Roof / Envelope', budget: '$0.18M', spent: '$0.00M', pct: '0%',  flag: true  },
-];
-
 const LIFECYCLE_DATA = [
   { label: 'Hold Period',   value: 'Yr 4.4 of 7' },
   { label: 'Business Plan', value: '82% complete' },
