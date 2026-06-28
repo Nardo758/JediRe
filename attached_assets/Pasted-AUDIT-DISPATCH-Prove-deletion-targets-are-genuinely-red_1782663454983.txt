@@ -1,0 +1,27 @@
+AUDIT DISPATCH: Prove deletion targets are genuinely redundant (AUDIT ONLY — delete nothing, prove redundancy or flag unique content)
+Before any re-home or deletion, prove each target is redundant — not merely unused. The bar is positive evidence that everything the target does exists elsewhere (or is dead), file:line. "Zero imports" proves unreachable, NOT redundant — an orphan can hold logic that exists nowhere else. For each target, the verdict is REDUNDANT (safe to delete, with proof) or HOLDS-UNIQUE-CONTENT (do not delete; extract first). Change nothing. STOP at the report.
+Target 1 — PropertyTerminalPage.tsx (stub + router orphan).
+
+Confirm it's not in the router (grep the route table) and has zero imports (grep). Already claimed — re-verify.
+The redundancy claim is "PropertyCardPage replaces it at /terminal/property/:id." Prove the replacement is real: does PropertyCardPage actually render at that route today, and does it cover the intent of PropertyTerminalPage? Since PropertyTerminalPage is a placeholder body ("Awaiting new wireframe"), confirm there's no half-built unique logic in it beyond the placeholder — read the full file. If it's purely placeholder, REDUNDANT. If it contains any real wiring (data fetch, layout, props) not in PropertyCardPage, flag it.
+Verdict + evidence.
+
+Target 2 — ProFormaWithTrafficSection.tsx (orphan, 890 lines — highest deletion risk).
+
+This is the dangerous one: zero imports but 890 lines of M07→M09 integration logic. Unreachable ≠ redundant. The audit must answer: does that integration logic exist anywhere else in the codebase, or is this file the only place it lives?
+Diff its substantive logic against the live surfaces (the F6 traffic tab, F9 proforma, the periodic grid path). Is the M07→M09 integration it implements (a) already implemented in a live component, (b) superseded by a different approach now live, or (c) unique and not present anywhere reachable?
+If (a) or (b): REDUNDANT — but name the live equivalent file:line.
+If (c): HOLDS-UNIQUE-CONTENT — do not delete. The overview grid re-home extracts only the <PeriodicGrid preset="overview"> usage; the 890 lines of integration logic need a separate decision (port it, or consciously discard it — but consciously, with you deciding, not silently deleted as "an orphan").
+Verdict + evidence. Err toward HOLDS-UNIQUE if uncertain — a wrong "redundant" here deletes logic that exists nowhere else.
+
+Target 3 — mount removals (NOT file deletions): FinancialsTab.tsx:492 + the buried CONSOLE full mount.
+
+These aren't deletions, they're removing a <PeriodicGrid> line from a component that keeps living. Confirm: after removing the monitoring mount from FinancialsTab, does the rest of FinancialsTab still function (it has charts/projections/assumptions — confirm those don't depend on the grid)? Same for the CONSOLE mount in ProFormaSummaryTab — removing/relocating the grid line must not strand sibling content.
+Confirm the grid component itself (PeriodicGrid) is imported in more than one place, so removing one mount doesn't orphan the component.
+Verdict: safe-to-relocate / has-dependencies-flag.
+
+Target 4 — the legacy rollback routes (PortfolioPropertyPage -legacy, AssetOwnedPage -old). NOT in the grid re-home, but flagged in the map. Do not audit for deletion — these are explicitly kept for rollback. Just confirm they're still wired to their -legacy/-old routes and note them as intentional-keep, so they don't get swept into a cleanup later. One line each.
+Report: per target — REDUNDANT (with the live equivalent file:line that makes it safe) / HOLDS-UNIQUE-CONTENT (with what's unique) / SAFE-TO-RELOCATE / INTENTIONAL-KEEP. The deletion list is only the REDUNDANT + SAFE-TO-RELOCATE targets. Anything HOLDS-UNIQUE goes to a human decision before its logic is touched. STOP — review gate before any deletion.
+
+The one I'd watch is Target 2. 890 lines of M07→M09 integration in an orphan is precisely the shape where "delete the dead file" loses something real — it's been sitting unreachable, but unreachable is how code looks when a feature was half-migrated and the old path was never wired back, not necessarily how dead code looks. If that integration logic (traffic feeding the proforma) is unique to that file and not yet live anywhere, deleting it discards work, and the overview re-home only needs the one grid line out of it anyway. So the audit extracts the grid usage and quarantines the 890 lines for your decision rather than letting "it's an orphan" auto-delete them.
+Everything else is lower-risk: the stub is probably genuinely empty, the mount removals are relocations not deletions, and the legacy routes are explicit keeps. But proving it beats assuming it — same as every prior step. Want it sent as-is?
