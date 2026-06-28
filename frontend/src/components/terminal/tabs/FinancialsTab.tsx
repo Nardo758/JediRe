@@ -9,7 +9,8 @@ import { BT, fmt, terminalStyles } from '../theme';
 import { TerminalChart, ChartDataPoint, ChartSeries } from '../TerminalChart';
 import { M35EventCard, M35EventCardData } from '../../m35/M35EventCard';
 import { ContextIndicator } from '../../intelligence/ContextIndicator';
-import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
+import { usePeriodicField } from '../../../hooks/usePeriodicField';
+import { fmtPeriodicValue } from '../../periodic/fieldLabels';
 
 interface FinancialsTabProps {
   dealId: string;
@@ -117,6 +118,8 @@ export const FinancialsTab: React.FC<FinancialsTabProps> = ({ dealId, deal }) =>
     { key: 'noi', name: 'NOI', color: BT.text.green, data: [] },
     { key: 'cashFlow', name: 'Cash Flow', color: BT.text.cyan, data: [] },
   ];
+
+  const { value: y1Noi, loading: y1NoiLoading } = usePeriodicField({ dealId, field: 'noi', preferZone: 'projection' });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -442,7 +445,12 @@ export const FinancialsTab: React.FC<FinancialsTabProps> = ({ dealId, deal }) =>
                   <tr>
                     <td style={terminalStyles.td}>Year 1 NOI</td>
                     <td style={{ ...terminalStyles.td, textAlign: 'right', fontWeight: 600, color: BT.text.green, fontFamily: "'JetBrains Mono', monospace" }}>
-                      {fmt.currency(model.cashFlows[0]?.noi || 0)}
+                      {y1NoiLoading ? '…' : fmtPeriodicValue(y1Noi, 'noi')}
+                      {y1Noi != null && (
+                        <span style={{ fontSize: '9px', color: BT.text.muted, marginLeft: 4 }}>
+                          (periodic)
+                        </span>
+                      )}
                     </td>
                   </tr>
                   <tr>

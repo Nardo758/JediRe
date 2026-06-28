@@ -20,14 +20,15 @@
  * here, they should be pre-composed into f9Financials by the backend engine
  * rather than fetched separately, avoiding duplicate API calls and parse logic.
  */
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { SectionPanel, DataRow, Bd } from '../../../components/deal/bloomberg-ui';
 import type { FinancialEngineTabProps } from './types';
 import { fmt$, fmtPct, fmtX } from './types';
 import { ConcessionDrilldownModal, aggregateConcessionDetail } from './ConcessionDrilldownModal';
 import type { AggregatedConcessionDetail } from './ConcessionDrilldownModal';
-import { apiClient } from '../../../services/api.client';
+import { usePeriodicField } from '../../../hooks/usePeriodicField';
+import { fmtPeriodicValue } from '../../../components/periodic/fieldLabels';
 
 const MONO = BT.font.mono;
 
@@ -43,7 +44,11 @@ interface RiskFlag {
   detail: string;
 }
 
-function deriveRiskFlags(assumptions: FinancialEngineTabProps['assumptions'], results: FinancialEngineTabProps['modelResults']): RiskFlag[] {
+function deriveRiskFlags(
+  assumptions: FinancialEngineTabProps['assumptions'],
+  results: FinancialEngineTabProps['modelResults'],
+  periodicRentGrowth?: number | null,
+): RiskFlag[] {
   const flags: RiskFlag[] = [];
   const s = results?.summary;
   const a = assumptions;
@@ -52,7 +57,9 @@ function deriveRiskFlags(assumptions: FinancialEngineTabProps['assumptions'], re
   if (s?.dscr != null && s.dscr < 1.25) flags.push({ severity: 'high', label: 'TIGHT DSCR', detail: `DSCR of ${s.dscr.toFixed(2)}× is below the 1.25× minimum for most lenders` });
   if (a?.revenue?.stabilizedOccupancy != null && a.revenue.stabilizedOccupancy < 0.90) flags.push({ severity: 'medium', label: 'LOW OCCUPANCY', detail: `Stabilized occupancy of ${fmtPct(a.revenue.stabilizedOccupancy * 100)} is aggressive` });
   if (a?.disposition?.exitCapRate != null && a.disposition.exitCapRate < 0.045) flags.push({ severity: 'medium', label: 'AGGRESSIVE EXIT CAP', detail: `Exit cap of ${fmtPct(a.disposition.exitCapRate * 100)} assumes significant cap rate compression` });
-  if (a?.revenue?.rentGrowth?.[0] != null && a.revenue.rentGrowth[0] > 0.04) flags.push({ severity: 'low', label: 'HIGH RENT GROWTH', detail: `Year 1 rent growth of ${fmtPct(a.revenue.rentGrowth[0] * 100)} exceeds typical market growth` });
+  // Phase 5: prefer periodic-derived rent growth over assumptions flatten
+  const rentGrowth = periodicRentGrowth ?? a?.revenue?.rentGrowth?.[0] ?? null;
+  if (rentGrowth != null && rentGrowth > 0.04) flags.push({ severity: 'low', label: 'HIGH RENT GROWTH', detail: `Year 1 rent growth of ${fmtPct(rentGrowth * 100)} exceeds typical market growth` });
   if (s?.equityMultiple != null && s.equityMultiple < 1.5) flags.push({ severity: 'medium', label: 'LOW EM', detail: `Equity multiple of ${fmtX(s.equityMultiple)} may not meet LP return expectations` });
 
   if (flags.length === 0) flags.push({ severity: 'low', label: 'NO FLAGS', detail: 'No risk flags identified — model assumptions appear within normal ranges' });
@@ -87,6 +94,16 @@ function provenanceLabel(path: VerdictPath): string {
 
 export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }: FinancialEngineTabProps) {
   const summary = modelResults?.summary;
+
+  // Phase 5: derive Y1 rent growth from periodic GPR series (replaces assumptions[0] flatten)
+  const { series: gprSeries } = usePeriodicField({ dealId, field: 'gpr', preferZone: 'projection' });
+  const periodicRentGrowth = useMemo(() => {
+    const proj = gprSeries.filter(p => p.zone === 'projection' && p.resolved != null && p.resolved !== 0);
+    if (proj.length < 2) return null;
+    // Approximate annual growth from first two projection months
+    const monthly = (proj[1].resolved! - proj[0].resolved!) / proj[0].resolved!;
+    return monthly * 12;
+  }, [gprSeries]);
 
   // ─── JEDI Score fetch (ADR-004 primary path) ─────────────────────────────
   const [jediScore, setJediScore] = useState<{ totalScore: number; createdAt: string } | null>(null);
@@ -230,7 +247,7 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
     }
   }
 
-  const baseFlags = deriveRiskFlags(assumptions, modelResults);
+  const baseFlags = deriveRiskFlags(assumptions, modelResults, periodicRentGrowth);
   const flags = [
     ...f9Flags,
     ...baseFlags.filter(f => f.label !== 'NO FLAGS' || f9Flags.length === 0),

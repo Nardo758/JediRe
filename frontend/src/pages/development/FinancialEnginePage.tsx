@@ -28,7 +28,8 @@ import { fmt$, fmtPct, fmtX } from './financial-engine/types';
 import { apiClient } from '../../services/api.client';
 import { useDealStore } from '../../stores/dealStore';
 import { opusProformaService, type CustomTabRow } from '../../services/opusProforma.service';
-import { F9SummaryBar } from '../../components/f9/F9SummaryBar';
+import { usePeriodicField } from '../../hooks/usePeriodicField';
+import { fmtPeriodicValue } from '../../components/periodic/fieldLabels';
 import { formatOverrideNote } from './financial-engine/field-labels';
 import { useSourceDocuments } from '../../hooks/useSourceDocuments';
 import { useVendorFreshness } from '../../hooks/useVendorFreshness';
@@ -312,8 +313,11 @@ function normalizeBuildResponse(raw: any): ModelResults {
   // Y1 NOI. Schema differs:
   //   deterministic: s.noiByYear[0] + s.noiYear1
   //   LLM:           s.noiYear1
+  //   periodic:      periodicNoiY1 (Phase 5 — replaces flatten)
   // Final fallback: first row of annualCashFlow.
   const noiY1 = (() => {
+    // Phase 5: prefer periodic-derived Y1 NOI over model results flatten
+    if (periodicNoiY1 != null && Number.isFinite(periodicNoiY1)) return periodicNoiY1;
     if (Array.isArray(s.noiByYear) && s.noiByYear.length > 0) return s.noiByYear[0];
     if (typeof s.noiYear1 === 'number') return s.noiYear1;
     return af[0]?.netOperatingIncome ?? 0;
@@ -524,6 +528,10 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const platformRole = useUserRole();
   const params = useParams<{ id?: string; dealId?: string }>();
   const resolvedDealId = dealId || params.dealId || params.id || '';
+
+  // Phase 5: periodic-derived Y1 NOI (replaces noiByYear[0] flatten)
+  const { value: periodicNoiY1 } = usePeriodicField({ dealId: resolvedDealId, field: 'noi', preferZone: 'projection' });
+
   // Resolve deal type from prop → deal record → platform default.
   // Never silently default to 'existing' when the deal has a project_type on the record.
   const resolvedDealType: DealType = (propDealType as DealType)

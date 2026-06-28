@@ -7,6 +7,8 @@ import { computeExitReturns } from '../../../shared/calculations/returns';
 import GoalSeekWidget from '../../../components/F9/GoalSeekWidget';
 import type { BroaderGoalSeekResult, SolveVariable, TargetMetric } from '../../../components/F9/GoalSeekWidget';
 
+import { usePeriodicField } from '../../../hooks/usePeriodicField';
+
 const MONO = BT.font.mono;
 
 const EXIT_CAPS = [4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0];
@@ -46,6 +48,15 @@ export function SensitivityTab({
   const [activeTable, setActiveTable] = useState<TableType>('irr');
   const resolvedDealType = dealType || 'existing';
 
+  // Phase 5: periodic-derived Y1 rent growth (replaces assumptions.rentGrowth[0] flatten)
+  const { value: periodicRentGrowth, series: gprSeries } = usePeriodicField({ dealId, field: 'gpr', preferZone: 'projection' });
+  const periodicRG = useMemo(() => {
+    const proj = gprSeries.filter(p => p.zone === 'projection' && p.resolved != null && p.resolved !== 0);
+    if (proj.length < 2) return null;
+    const monthly = (proj[1].resolved! - proj[0].resolved!) / proj[0].resolved!;
+    return monthly * 12;
+  }, [gprSeries]);
+
   const irrGrid = useMemo(() => {
     return EXIT_CAPS.map(cap =>
       RENT_GROWTH.map(growth => {
@@ -80,7 +91,7 @@ export function SensitivityTab({
   const currentCoC   = modelResults?.summary?.cashOnCash ?? undefined;
   const currentPP    = assumptions?.acquisition?.purchasePrice ?? undefined;
   const currentExit  = assumptions?.disposition?.exitCapRate ?? undefined;
-  const currentRG    = assumptions?.revenue?.rentGrowth?.[0] ?? undefined;
+  const currentRG    = periodicRG ?? assumptions?.revenue?.rentGrowth?.[0] ?? undefined;
   const currentHold  = assumptions?.holdPeriod ?? undefined;
   const currentLtv   = assumptions && assumptions.financing.loanAmount > 0 && assumptions.acquisition.purchasePrice > 0
     ? assumptions.financing.loanAmount / assumptions.acquisition.purchasePrice
