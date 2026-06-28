@@ -454,6 +454,7 @@ function normalizeBuildResponse(raw: any): ModelResults {
 }
 
 import { EvidencePanel } from '../../components/underwriting/EvidencePanel';
+import { F9SummaryBar } from '../../components/f9/F9SummaryBar';
 
 const MONO = BT.font.mono;
 

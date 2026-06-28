@@ -113,6 +113,18 @@ export function buildPeriodicSeed(input: BuildPeriodicSeedInput): ProFormaPeriod
   // Phase 5: derive rent_growth from GPR series (server-side, not client approximation)
   periodicSeed = deriveRentGrowth(periodicSeed, year1Seed);
 
+  // Phase 5 — Augment boundary with data-driven has_projection + first_projection_month.
+  // has_projection was previously "acquisition_date !== null" but Highlands (portfolio asset)
+  // has no acquisition_date recorded yet has 120 projection-zone periods. Recompute from data.
+  const firstProjPeriod = Object.values(periodicSeed.fields)[0]?.periods.find(
+    p => p.zone === 'projection',
+  );
+  periodicSeed.boundary = {
+    ...periodicSeed.boundary,
+    has_projection: firstProjPeriod != null,
+    first_projection_month: firstProjPeriod?.month ?? null,
+  };
+
   return periodicSeed;
 }
 

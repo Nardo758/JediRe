@@ -29,7 +29,7 @@ export interface BoundaryContext {
   /** Derived: true if actuals_through_month is set (has at least one actual month). */
   has_actuals: boolean;
 
-  /** Derived: true if acquisition_date is set (deal is owned/closed). */
+  /** Derived: true if any projection-zone periods exist in the seed data. */
   has_projection: boolean;
 
   /** Derived: the first month that is gap (actuals_end + 1 month), or null. */
@@ -37,6 +37,9 @@ export interface BoundaryContext {
 
   /** Derived: the closing / acquisition month that ends the gap, or null. */
   gap_end_month: string | null;
+
+  /** Derived: the first month in the projection zone, or null. Populated by buildPeriodicSeed. */
+  first_projection_month: string | null;
 }
 
 /**
@@ -69,6 +72,7 @@ export function buildBoundaryContext(
     has_projection: ad !== null,
     gap_start_month: gap_start,
     gap_end_month: gap_end,
+    first_projection_month: null, // populated by buildPeriodicSeed after period data is built
   };
 }
 

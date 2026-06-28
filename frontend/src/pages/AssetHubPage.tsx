@@ -766,10 +766,10 @@ function RankCompsConfig({ rankCfg, setRankCfg, comps, setComps, propertyId, onT
 }
 
 // ── REVENUE SCREEN ────────────────────────────────────────────────────────────
-function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeScreen, targetSavedVersion }: {
+function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeScreen, targetSavedVersion, refreshKey }: {
   rankCfg: RankCfg; comps: Comp[]; openDrawer: (d: string) => void;
   dealId: string; propertyId: string | null; activeScreen: string;
-  targetSavedVersion: number;
+  targetSavedVersion: number; refreshKey: number;
 }) {
   const [tf, setTf] = useState(12);
   const [mk, setMk] = useState('occ');
@@ -2482,6 +2482,7 @@ export default function AssetHubPage() {
                 rankCfg={rankCfg} comps={comps} openDrawer={openDrawer}
                 dealId={dealId} propertyId={propertyId} activeScreen={screen}
                 targetSavedVersion={targetSavedVersion}
+                refreshKey={refreshKey}
               />
             )}
             {screen === 'performance' && <PerformanceScreen dealId={dealId} activeScreen={screen} />}
