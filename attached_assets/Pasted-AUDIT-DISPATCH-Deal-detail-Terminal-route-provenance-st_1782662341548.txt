@@ -1,0 +1,26 @@
+AUDIT DISPATCH: Deal-detail + Terminal route/provenance/stub map (AUDIT ONLY — map and recommend, change nothing)
+Produce a provenance and reachability map of both web surfaces so the periodic grid (and future features) mount onto live Bloomberg-layer surfaces, not pre-switch orphans. The grid-homelessness is a provenance symptom — three presets got wired into a stub (PropertyTerminalPage = "Awaiting new wireframe"), an orphan (ProFormaWithTrafficSection, zero imports), and a buried sub-tab. Map the whole tree so this doesn't recur on interventions, custom-metric rows, and the variance overlay. Trace the router, not component-name greps — grep is what produced "it's mounted" for surfaces that don't render. Do not delete, re-mount, or modify. Report only. STOP at the report.
+Provenance anchor: the Bloomberg switch was March 16, 2026 (Task #77, MainLayout shell graduation). Use it as the partition.
+1 — Route table, both surfaces. From the router config (not component files), enumerate every registered route/destination:
+
+Terminal: the F-key tabs (F1–F9) and every sub-tab, with which are reachable from the current nav at default state vs. only via forced index/state.
+Deal detail (/deals/:id/...): every tab/section, same reachability classification.
+
+For each destination: the path, the component it renders, and the reachability class — routable (user reaches it in a normal session, no forced state) / mounted-unreachable (rendered by a non-routable parent) / orphan (zero import sites) / stub.
+
+2 — Stub inventory. Flag every destination whose component is a placeholder: grep render bodies for awaiting, wireframe, coming soon, TODO, not implemented, empty/near-empty returns. List each with file:line. (PropertyTerminalPage is the known one — find the rest.)
+3 — Provenance tag, git-dated. For each component in the route table: git log --follow --diff-filter=A --format=%aI -- <file> for birth date, and git log -1 --format=%aI -- <file> for last substantive change. Tag each:
+
+bloomberg — created ≥ 2026-03-16, OR rewritten in/after the March 16 graduation, AND uses the T-token/F-key/JetBrains system.
+pre-bloomberg — created < 2026-03-16, not substantially rewritten since, uses canvas/Tailwind-color styling.
+shared/ambiguous — mixed signals (e.g. old birth date but recent token migration) — flag for human judgment, don't force a bucket.
+
+Corroborate the date with the style/nav tells; where date and style disagree, report the disagreement rather than picking silently.
+
+4 — The three grid mounts, diagnosed. For full (ProFormaSummaryTab), monitoring (FinancialsTab/PropertyTerminal), overview (ProFormaWithTrafficSection): state each one's reachability + provenance from the above. Confirm the hypothesis that they're mounted on pre-switch/stub surfaces. file:line.
+5 — Recommended homes (recommend, don't implement). Of the routable, non-stub, bloomberg-layer surfaces only: which hosts full, which monitoring, which overview (deal-detail capsule overview). Name the target route/component for each, and the dead mounts to retire. Recommendation only — human gate before any re-mount.
+6 — Schematic data. Output, per surface, a structured tree (text or mermaid) of: nav node → route → component → {reachability, provenance, stub?}. This is the data I'll render into visual maps. Keep it complete — every node, color-codable by the two axes (provenance, reachability).
+Report: the route/provenance/stub table for both surfaces, the three-mount diagnosis, the recommended homes, and the schematic tree. Change nothing. STOP — human review gate before any re-mount or deletion (deleting pre-switch code goes through review after the map exists, never during).
+
+When it comes back, I'll turn the §6 schematic data into clean visual maps here — one per surface, color-coded by provenance (Bloomberg / pre-switch / ambiguous) and reachability (live / unreachable / stub), with the three grid presets placed onto their recommended homes and the dead mounts marked for retirement. That's the picture that makes "which code was pre-switch" legible at a glance and gives you the re-home decision on a real map instead of a grep.
+One thing worth saying about what this map is likely to show, so it's not a surprise: if three of the surfaces touched so far were pre-switch dead weight, the audit probably finds more — orphaned pre-Bloomberg components that were superseded by the March 16 shell but never deleted. That's useful (it's your cleanup list) but it's also a scope flag: the map will likely reveal a decommissioning project sitting underneath the feature work — pre-switch surfaces safe to delete. Don't let that balloon this audit; capture it as an inventory, decide what to delete later through its own gate. The immediate goal is re-homing the grid onto live surfaces; the dead-weight inventory is a valuable byproduct, not this pass's job to act on.
