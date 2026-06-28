@@ -8,7 +8,7 @@ import { ChevronDown, ChevronRight, TrendingUp, DollarSign, Building2, Percent }
 import { BT, fmt, terminalStyles } from '../theme';
 import { TerminalChart, ChartDataPoint, ChartSeries } from '../TerminalChart';
 import { M35EventCard, M35EventCardData } from '../../m35/M35EventCard';
-import { ContextIndicator } from '../../intelligence/ContextIndicator';
+import { PeriodicGrid } from '../../periodic/PeriodicGrid';
 import { usePeriodicField } from '../../../hooks/usePeriodicField';
 import { fmtPeriodicValue } from '../../periodic/fieldLabels';
 
@@ -479,6 +479,14 @@ export const FinancialsTab: React.FC<FinancialsTabProps> = ({ dealId, deal }) =>
           </div>
         </div>
       )}
+      {/* Phase 5: Periodic Grid — actual + gap monitoring view */}
+      <div style={{ marginTop: 16 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: BT.text.dim, letterSpacing: '0.08em', fontFamily: "'JetBrains Mono', monospace", marginBottom: 6 }}>
+          PERIODIC MONITORING
+        </div>
+        <PeriodicGrid dealId={dealId} preset="monitoring" />
+      </div>
+
     </div>
   );
 };
