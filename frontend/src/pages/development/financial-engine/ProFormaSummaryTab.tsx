@@ -2853,6 +2853,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
         {/* ── SECTION C — Capital Stack at Close ── */}
         <CapitalStackPanel
+          dealId={dealId}
           capitalStack={data.capitalStack}
           purchasePriceFallback={purchasePrice}
           capRate={capRate}
@@ -4418,7 +4419,8 @@ function NoisBridge({ egiRow, ctrlOpex, nctrlOpex, noi, totalUnits, capRate }: {
   );
 }
 
-function CapitalStackPanel({ capitalStack, purchasePriceFallback, capRate, noi, totalUnits }: {
+function CapitalStackPanel({ dealId, capitalStack, purchasePriceFallback, capRate, noi, totalUnits }: {
+  dealId: string;
   capitalStack: DealCapitalStack;
   purchasePriceFallback: number | null;
   capRate: number | null;

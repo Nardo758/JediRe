@@ -4838,6 +4838,14 @@ export async function getDealFinancials(
       // Uses month-precision: all 12 months must be < constructionMonths.
       const _isConstrYr = _isProjDev && yr * 12 <= _atCm;
 
+      // Per-year override resolver: returns the operator-set dollar value for field F at
+      // year yr (from per_year_overrides), or null if no override (formula applies).
+      // Declared here (before first use at rent_growth_pct) to avoid TDZ error.
+      const projPyOvr = (field: string): number | null => {
+        const entry = (allPyOverrides as Record<string, { value?: number | null } | null>)[`${field}:yr${yr}`];
+        return entry?.value != null ? Number(entry.value) : null;
+      };
+
       // Growth step applied TO this year: uses the prior year's per-year growth rate.
       // Rent growth and per-line OPEX growth come from the layered engine (five-component
       // rent model + nine-line OPEX model with individual anchors). opexGrowthRate is
@@ -4884,13 +4892,6 @@ export async function getDealFinancials(
       const gAndAStep      = _opexStep('marketingAdmin');
       const insStep        = _opexStep('insurance');
       const reservesStep   = _opexStep('replacementReserves');
-
-      // Per-year override resolver: returns the operator-set dollar value for field F at
-      // year yr (from per_year_overrides), or null if no override (formula applies).
-      const projPyOvr = (field: string): number | null => {
-        const entry = (allPyOverrides as Record<string, { value?: number | null } | null>)[`${field}:yr${yr}`];
-        return entry?.value != null ? Number(entry.value) : null;
-      };
 
       // Revenue — override-aware running-base compounding
       // For development/lease-up deals, track the stabilized GPR separately so

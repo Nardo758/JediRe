@@ -2327,20 +2327,33 @@ export async function ensureDealAssumptionsSeeded(
     return { seeded: false, skipped: true, reason: 'year1 already seeded' };
   }
 
-  // Check deal has extraction data before attempting to seed
+  // Check deal has extraction data OR portfolio actuals before attempting to seed.
+  // Portfolio assets (is_portfolio_asset=TRUE) have no T12/RR/tax-bill uploads — their
+  // operating history lives in deal_monthly_actuals. seedProFormaYear1 handles this via
+  // the Phase 0-B fallback path. Let them through the guard so the production path works
+  // without the one-off reseed-highlands.ts workaround.
   const dealCheck = await pool.query(
-    `SELECT id,
-            deal_data->'extraction_t12' IS NOT NULL AS has_t12,
-            deal_data->'extraction_rent_roll' IS NOT NULL AS has_rr,
-            deal_data->'extraction_tax_bill' IS NOT NULL AS has_tax
-       FROM deals WHERE id = $1`,
+    `SELECT d.id,
+            d.deal_data->'extraction_t12' IS NOT NULL AS has_t12,
+            d.deal_data->'extraction_rent_roll' IS NOT NULL AS has_rr,
+            d.deal_data->'extraction_tax_bill' IS NOT NULL AS has_tax,
+            EXISTS (
+              SELECT 1 FROM deal_monthly_actuals dma
+               WHERE dma.property_id = d.property_id
+                 AND COALESCE(dma.is_portfolio_asset, FALSE) = TRUE
+                 AND dma.is_budget   = FALSE
+                 AND dma.is_proforma = FALSE
+              LIMIT 1
+            ) AS is_portfolio_asset
+       FROM deals d WHERE d.id = $1`,
     [dealId]
   ).catch(() => ({ rows: [] }));
 
   const row = dealCheck.rows[0];
   if (!row) return { seeded: false, skipped: true, reason: 'deal not found' };
 
-  if (!row.has_t12 && !row.has_rr && !row.has_tax) {
+  const hasData = row.has_t12 || row.has_rr || row.has_tax || row.is_portfolio_asset;
+  if (!hasData) {
     return { seeded: false, skipped: true, reason: 'no extraction data available for deal' };
   }
 
