@@ -18,7 +18,6 @@ import type { SourceDocument } from '../../../hooks/useSourceDocuments';
 import { OverrideInputCell } from '../../../components/f9/OverrideInputCell';
 import { isPatternB } from '../../../config/m09_line_item_patterns';
 import { UnitMixMismatchBannerConnected } from './UnitMixMismatchBanner';
-import { PeriodicGrid } from '../../../components/periodic/PeriodicGrid';
 import {
   FLIP_BASIS_ROWS, FLIP_CAPEX_ROWS, FLIP_EXIT_ROWS,
   STR_REVENUE_ROWS,
@@ -4478,13 +4477,6 @@ function CapitalStackPanel({ dealId, capitalStack, purchasePriceFallback, capRat
         )}
       </div>
 
-      {/* Phase 5: Periodic Grid — full timeline view */}
-      <div style={{ marginTop: 16, padding: '8px 10px', background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 2 }}>
-        <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.secondary, letterSpacing: 0.5, marginBottom: 8, textTransform: 'uppercase' }}>
-          Periodic Timeline
-        </div>
-        <PeriodicGrid dealId={dealId} preset="full" />
-      </div>
     </div>
 
   );

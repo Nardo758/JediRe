@@ -3,7 +3,7 @@
 // Replaces AssetOwnedPage.tsx as the primary owned-asset view.
 // ============================================================================
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -18,6 +18,7 @@ import { LifecycleSection } from '../components/deal/sections/LifecycleSection';
 import { ExitTimingTab } from '../components/deal/sections/ExitTimingTab';
 import ActivityTab from './admin/sections/intel/ActivityTab';
 import type { Deal } from '../types/deal';
+import { PeriodicGrid } from '../components/periodic/PeriodicGrid';
 
 // ── DESIGN TOKENS (verbatim from v5 prototype) ──────────────────────────────
 const T = {
@@ -1669,7 +1670,7 @@ function RevenueScreen({ rankCfg, comps, openDrawer, dealId, propertyId, activeS
 }
 
 // ── PERFORMANCE SCREEN ────────────────────────────────────────────────────────
-function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScreen: string }) {
+function PerformanceScreen({ dealId, activeScreen, refreshKey = 0 }: { dealId: string; activeScreen: string; refreshKey?: number }) {
   const [sub, setSub] = useState('tracking');
   const [tf, setTf] = useState(12);
 
@@ -1874,6 +1875,10 @@ function PerformanceScreen({ dealId, activeScreen }: { dealId: string; activeScr
               }
             />
           </Panel>
+          {/* Periodic monitoring grid — NOI actuals vs projection boundary (M09) */}
+          <div style={{ marginBottom: 10 }}>
+            <PeriodicGrid dealId={dealId} preset="monitoring" />
+          </div>
 
           <div style={{ display: 'flex', gap: 10 }}>
             <Panel style={{ flex: 1.2, minWidth: 0 }}>
@@ -2295,7 +2300,10 @@ export default function AssetHubPage() {
   }, [dealId, propertyId, setSelectedAsset]);
 
   // ── Fetch comps from the API (populates drawer + rank leaderboard) ──
-  const [screen, setScreen] = useState<'revenue' | 'performance' | 'capital'>('revenue');
+  const [searchParams] = useSearchParams();
+  const [screen, setScreen] = useState<'revenue' | 'performance' | 'capital'>(
+    (searchParams.get('screen') as 'revenue' | 'performance' | 'capital' | null) ?? 'revenue'
+  );
   const [drawer, setDrawer] = useState<string | null>(null);
   const [comps, setComps] = useState<Comp[]>(DEFAULT_COMPS);
   const [rankCfg, setRankCfg] = useState<RankCfg>({ overall: 2, byType: false, perType: { '1BR': 3, '2BR': 2, '3BR': 3, 'STU': 4 } });
@@ -2485,7 +2493,7 @@ export default function AssetHubPage() {
                 refreshKey={refreshKey}
               />
             )}
-            {screen === 'performance' && <PerformanceScreen dealId={dealId} activeScreen={screen} />}
+            {screen === 'performance' && <PerformanceScreen dealId={dealId} activeScreen={screen} refreshKey={refreshKey} />}
             {screen === 'capital' && <CapitalScreen dealId={dealId} />}
           </div>
         </div>

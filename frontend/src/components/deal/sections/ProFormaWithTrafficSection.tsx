@@ -857,13 +857,6 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
         </div>
       </div>
 
-      {/* Phase 5: Periodic Grid — real data overview (only when API data is available) */}
-      {dataSource === 'api' && deal?.id && (
-        <div className="mb-4">
-          <div className="text-xs font-semibold text-stone-600 mb-2">Periodic Overview</div>
-          <PeriodicGrid dealId={deal.id} preset="overview" />
-        </div>
-      )}
 
       <div className="flex gap-1 border-b border-stone-200 pb-0.5 overflow-x-auto">
         {TABS.map(t => {

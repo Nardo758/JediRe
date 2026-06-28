@@ -10,8 +10,8 @@ import {
 import type {
   PeriodicGridPreset,
   PeriodicPeriod,
-  MONITORING_FIELDS,
 } from './PeriodicGrid.types';
+import { MONITORING_FIELDS } from './PeriodicGrid.types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props

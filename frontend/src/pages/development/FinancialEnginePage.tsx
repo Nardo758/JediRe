@@ -29,6 +29,7 @@ import { apiClient } from '../../services/api.client';
 import { useDealStore } from '../../stores/dealStore';
 import { opusProformaService, type CustomTabRow } from '../../services/opusProforma.service';
 import { usePeriodicField } from '../../hooks/usePeriodicField';
+import { PeriodicGrid } from '../../components/periodic/PeriodicGrid';
 import { fmtPeriodicValue } from '../../components/periodic/fieldLabels';
 import { formatOverrideNote } from './financial-engine/field-labels';
 import { useSourceDocuments } from '../../hooks/useSourceDocuments';
@@ -1930,6 +1931,11 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
             ))}
         </div>
       )}
+
+      {/* Periodic full timeline — top-level F9, visible before sub-tab nav */}
+      <div style={{ padding: '8px 0 4px' }}>
+        <PeriodicGrid dealId={resolvedDealId} preset="full" />
+      </div>
 
       <div style={{ position: 'relative' }}>
         <SubTabBar
