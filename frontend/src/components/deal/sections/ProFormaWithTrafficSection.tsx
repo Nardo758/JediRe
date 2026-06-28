@@ -19,7 +19,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ArrowRight, Layers, TrendingUp, DollarSign, BarChart3,
   AlertTriangle, CheckCircle2, ChevronDown, ChevronRight,
-  RefreshCw, Beaker, Loader2, Rocket,
+  RefreshCw, Loader2, Rocket,
 } from 'lucide-react';
 import { Deal } from '@/types';
 import api from '@/lib/api';
@@ -117,128 +117,6 @@ interface ProFormaWithTrafficSectionProps {
 // ════════════════════════════════════════════════════════════════════
 // Mock Data Generator (fallback when API isn't ready)
 // ════════════════════════════════════════════════════════════════════
-
-function generateMockData(deal?: Deal): TrafficProFormaData {
-  const units = deal?.units || 290;
-  const acqPrice = 52_200_000;
-  const name = deal?.name || 'Property';
-
-  const rawTraffic: AnnualTrafficPrediction[] = [];
-  const occTrajectory: OccupancyTrajectoryPoint[] = [];
-  const rentTrajectory: RentTrajectoryPoint[] = [];
-
-  const baseRents = [1877, 1937, 1997, 2055, 2114, 2170, 2224, 2276, 2325, 2371];
-  const growths = [3.8, 3.2, 3.1, 2.9, 2.9, 2.6, 2.5, 2.3, 2.2, 2.0];
-  const occs = [95.2, 95.5, 95.8, 95.6, 95.5, 95.3, 95.1, 94.8, 94.5, 94.2];
-
-  for (let y = 0; y < 10; y++) {
-    const conf = Math.max(40, Math.round(92 - y * 5.3));
-    const baseTraffic = 12.4 - y * 0.2;
-    rawTraffic.push({
-      year: y + 1, weeklyTraffic: +(baseTraffic).toFixed(1),
-      weeklyTours: +(baseTraffic * 0.56).toFixed(1), weeklyApps: +(baseTraffic * 0.56 * 0.44).toFixed(1),
-      weeklyLeases: +(baseTraffic * 0.56 * 0.44 * 0.75).toFixed(1),
-      closingRatio: +((baseTraffic * 0.56 * 0.44 * 0.75) / baseTraffic * 100).toFixed(1),
-      occPct: occs[y], effRent: baseRents[y],
-      annualLeases: Math.round(baseTraffic * 0.56 * 0.44 * 0.75 * 52),
-      turnover: 38 + y, confidence: conf,
-    });
-    occTrajectory.push({ year: y + 1, occ: occs[y], vacancy: +(100 - occs[y]).toFixed(1), confidence: conf });
-    rentTrajectory.push({ year: y + 1, effRent: baseRents[y], growth: growths[y], confidence: conf });
-  }
-
-  const assumptions: ThreeLayerAssumption[] = [
-    {
-      id: 'vacancy', label: 'Vacancy Rate', category: 'revenue',
-      baseline: { values: Array(10).fill(5.5), source: 'Submarket avg (M05)', conf: 60 },
-      platform: { values: occTrajectory.map(o => o.vacancy), source: 'Traffic Engine v2 occupancy trajectory', conf: 92, module: 'M07' },
-      override: { values: Array(10).fill(5.0), active: false },
-      unit: '%', direction: 'lower-is-better',
-      insight: 'Traffic engine predicts 4.8% Y1 vacancy vs 5.5% market default — 70bps tighter.',
-    },
-    {
-      id: 'rentGrowth', label: 'Rent Growth', category: 'revenue',
-      baseline: { values: Array(10).fill(2.8), source: '3yr historical avg (M05)', conf: 55 },
-      platform: { values: growths, source: 'Traffic Engine v2 rent trajectory', conf: 92, module: 'M07' },
-      override: { values: Array(10).fill(3.0), active: false },
-      unit: '%', direction: 'higher-is-better',
-      insight: 'Traffic engine sees 3.8% Y1 growth — 100bps above market baseline.',
-    },
-    {
-      id: 'absorption', label: 'Absorption Rate', category: 'leasing',
-      baseline: { values: Array(10).fill(130), source: 'Submarket avg (M05)', conf: 50 },
-      platform: { values: rawTraffic.map(t => t.annualLeases), source: 'Traffic Engine v2 leasing velocity', conf: 92, module: 'M07' },
-      override: { values: Array(10).fill(140), active: false },
-      unit: ' leases/yr', direction: 'higher-is-better',
-      insight: 'Property is leasing at 3/week (156 annualized) vs 2.5/week submarket avg.',
-    },
-    {
-      id: 'opexGrowth', label: 'OpEx Growth', category: 'expense',
-      baseline: { values: Array(10).fill(3.0), source: 'CPI + 50bps', conf: 65 },
-      platform: { values: Array(10).fill(3.0), source: 'No traffic adjustment (expense-side)', conf: 65, module: null },
-      override: { values: Array(10).fill(3.0), active: false },
-      unit: '%', direction: 'lower-is-better',
-      insight: "Traffic engine doesn't adjust expenses. OpEx growth uses CPI + 50bps baseline.",
-    },
-    {
-      id: 'exitCap', label: 'Exit Cap Rate', category: 'exit',
-      baseline: { values: [null, null, null, null, 5.5, null, null, null, null, 5.5], source: 'Trailing 12mo submarket avg (M05)', conf: 45 },
-      platform: { values: [null, null, null, null, 5.3, null, null, null, null, 5.5], source: 'Traffic velocity suggests cap compression', conf: 60, module: 'M07' },
-      override: { values: [null, null, null, null, 5.5, null, null, null, null, 5.75], active: false },
-      unit: '%', direction: 'lower-is-better',
-      insight: 'Strong leasing velocity -> lower perceived risk -> slight cap compression.',
-    },
-  ];
-
-  // Build proforma helper
-  const buildPF = (layer: 'baseline' | 'platform'): ProFormaYear[] => {
-    const getVal = (id: string, yr: number) => {
-      const a = assumptions.find(x => x.id === id);
-      if (!a) return null;
-      const src = layer === 'platform' ? a.platform : a.baseline;
-      return src.values[yr];
-    };
-    const years: ProFormaYear[] = [];
-    let rent = 1808;
-    const debt = 2_280_000;
-    for (let y = 0; y < 10; y++) {
-      const vac = (getVal('vacancy', y) || 5.5) / 100;
-      const rg = (getVal('rentGrowth', y) || 2.8) / 100;
-      const og = (getVal('opexGrowth', y) || 3.0) / 100;
-      if (y > 0) rent = rent * (1 + rg);
-      const gpr = units * rent * 12;
-      const vl = gpr * vac;
-      const egi = gpr - vl;
-      const opex = units * 6800 * Math.pow(1 + og, y);
-      const noi = egi - opex;
-      const btcf = noi - debt;
-      years.push({ year: y + 1, rent: Math.round(rent), gpr: Math.round(gpr), vacancy: (vac * 100).toFixed(1), vacancyLoss: Math.round(vl), egi: Math.round(egi), opex: Math.round(opex), noi: Math.round(noi), debtService: debt, btcf: Math.round(btcf), capRate: (noi / acqPrice * 100).toFixed(2) });
-    }
-    return years;
-  };
-
-  const platform = buildPF('platform');
-  const baseline = buildPF('baseline');
-  const equity = acqPrice * 0.35;
-
-  return {
-    handoff: {
-      rawTraffic, occupancyTrajectory: occTrajectory, rentTrajectory,
-      leasingVelocity: { weeklyLeases: 3, annualized: 156, confidence: 92 },
-      leaseUpTimeline: null, dataWeeks: 243, lastCalibrated: '2026-02-24', modelConfidence: 92,
-    },
-    assumptions,
-    incomeStatement: { platform, baseline },
-    returns: {
-      irr: { platform: '16.2%', baseline: '14.8%', delta: '+1.4%' },
-      equityMultiple: { platform: '2.28x', baseline: '2.10x', delta: '+0.18x' },
-      cashOnCash: { platform: `${(platform[0].btcf / equity * 100).toFixed(1)}%`, baseline: `${(baseline[0].btcf / equity * 100).toFixed(1)}%`, delta: `+${((platform[0].btcf - baseline[0].btcf) / equity * 100).toFixed(1)}%` },
-      exitValue: { platform: fmt$(Math.round(platform[4].noi / 0.053)), baseline: fmt$(Math.round(baseline[4].noi / 0.055)), delta: fmt$(Math.round(platform[4].noi / 0.053 - baseline[4].noi / 0.055)) },
-      dscr: { platform: `${(platform[0].noi / 2_280_000).toFixed(2)}x`, baseline: `${(baseline[0].noi / 2_280_000).toFixed(2)}x`, delta: `+${((platform[0].noi - baseline[0].noi) / 2_280_000).toFixed(2)}x` },
-    },
-    property: { name, units, type: 'Existing — Stabilized', acquisitionPrice: acqPrice },
-  };
-}
 
 // ════════════════════════════════════════════════════════════════════
 // Utilities
@@ -845,9 +723,16 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
     setInitializing(false);
   };
 
-  const handleLoadDemo = () => {
-    setData(generateMockData(deal));
-    setDataSource('demo');
+  const handleInitialize = async () => {
+    if (!deal?.id) return;
+    setInitializing(true);
+    try {
+      await api.post(`/proforma/${deal.id}/initialize`, {
+        strategy: selectedStrategy,
+      });
+      await fetchData();
+    } catch (err) { logSwallowedError('components/deal/sections/ProFormaWithTrafficSection', err); }
+    setInitializing(false);
   };
 
   const handleRefreshTraffic = async () => {
@@ -890,7 +775,7 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
           <div>
             <h3 className="text-sm font-bold text-stone-800">No Pro Forma Data</h3>
             <p className="text-xs text-stone-500 mt-1">
-              Initialize a pro forma with a strategy to start generating financial projections, or view demo data.
+              Initialize a pro forma with a strategy to start generating financial projections.
             </p>
           </div>
 
@@ -916,18 +801,6 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
               {initializing ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
               {initializing ? 'Initializing...' : 'Initialize Pro Forma'}
             </button>
-            <div className="flex items-center gap-2 w-full">
-              <div className="flex-1 h-px bg-stone-200" />
-              <span className="text-[10px] text-stone-400">or</span>
-              <div className="flex-1 h-px bg-stone-200" />
-            </div>
-            <button
-              onClick={handleLoadDemo}
-              className="w-full flex items-center justify-center gap-2 border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-            >
-              <Beaker size={14} />
-              View Demo Data
-            </button>
           </div>
         </div>
       </div>
@@ -943,30 +816,11 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
 
   return (
     <div className="space-y-4">
-      {dataSource === 'demo' && (
-        <div className="bg-amber-50 border border-amber-300 rounded-lg px-4 py-2.5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Beaker size={14} className="text-amber-600" />
-            <span className="text-xs font-semibold text-amber-800">[DEMO DATA]</span>
-            <span className="text-xs text-amber-700">Showing sample projections. Initialize a pro forma for real data.</span>
-          </div>
-          <button
-            onClick={() => { setData(null); setDataSource('none'); }}
-            className="text-xs text-amber-700 underline hover:text-amber-900 font-medium"
-          >
-            Initialize Real Data
-          </button>
-        </div>
-      )}
-
       <div className="bg-stone-900 text-white rounded-xl p-4">
         <div className="flex justify-between items-center">
           <div>
             <div className="flex items-center gap-2">
               <div className="text-[9px] uppercase tracking-[2px] text-emerald-400">Deal Capsule → ProForma Engine · M09</div>
-              {dataSource === 'demo' && (
-                <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold">DEMO</span>
-              )}
             </div>
             <div className="text-base font-bold mt-1">{data.property.name}</div>
             <div className="text-xs text-stone-400">{data.property.units} units · {data.property.type} · {fmt$(data.property.acquisitionPrice)}</div>

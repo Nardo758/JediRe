@@ -34,6 +34,7 @@ const CANONICAL_FIELDS = [
   'electric', 'gas_fuel', 'landscaping', 'management_fee_pct', 'insurance',
   'real_estate_tax', 'personal_property_tax', 'replacement_reserves', 'total_opex',
   'noi', 'noi_per_unit',
+  'rent_growth', // Phase 5: derived from GPR series
 ];
 
 /**
@@ -109,7 +110,85 @@ export function buildPeriodicSeed(input: BuildPeriodicSeedInput): ProFormaPeriod
     periodicSeed = deriveGapForSeed(periodicSeed, DEFAULT_GAP_TRENDS);
   }
 
+  // Phase 5: derive rent_growth from GPR series (server-side, not client approximation)
+  periodicSeed = deriveRentGrowth(periodicSeed, year1Seed);
+
   return periodicSeed;
+}
+
+/**
+ * Derive annual rent-growth rate from the GPR series.
+ * For each period, compares GPR to the value 12 months prior (same month, prior year).
+ * Falls back to the year1 seed's rentGrowth assumption when 12-month history is unavailable.
+ */
+function deriveRentGrowth(
+  seed: ProFormaPeriodicSeed,
+  year1Seed: Record<string, unknown>,
+): ProFormaPeriodicSeed {
+  const gprSeries = seed.fields.gpr;
+  if (!gprSeries) return seed;
+
+  const periods = gprSeries.periods;
+  const rentGrowthPeriods: PeriodLayeredValue[] = [];
+
+  // Extract year1 rentGrowth assumption as fallback
+  const revenueSeed = year1Seed.revenue as Record<string, unknown> | undefined;
+  const rentGrowthArr = Array.isArray(revenueSeed?.rentGrowth)
+    ? (revenueSeed.rentGrowth as number[])
+    : null;
+  const fallbackGrowth = rentGrowthArr?.[0] ?? 0.03;
+
+  for (let i = 0; i < periods.length; i++) {
+    const period = periods[i];
+    const month = period.month;
+    const year = parseInt(month.slice(0, 4), 10);
+    const monthNum = parseInt(month.slice(5, 7), 10);
+
+    // Find the same month in the prior year
+    const priorYear = `${year - 1}-${String(monthNum).padStart(2, '0')}`;
+    const priorPeriod = periods.find(p => p.month === priorYear);
+
+    let resolved: number | null = null;
+    let resolution: PeriodLayeredValue['resolution'] = 'unresolved';
+    let source: string | null = null;
+
+    if (priorPeriod != null && period.resolved != null && priorPeriod.resolved != null && priorPeriod.resolved !== 0) {
+      // Year-over-year growth: (current - prior) / prior
+      resolved = (period.resolved - priorPeriod.resolved) / priorPeriod.resolved;
+      resolution = 'computed';
+      source = 'gpr_series_yoy';
+    } else if (period.zone === 'projection' && fallbackGrowth != null) {
+      // Projection zone: use year1 assumption growth rate
+      resolved = fallbackGrowth;
+      resolution = 'assumption_trend';
+      source = 'year1_seed';
+    } else if (period.zone === 'gap' && fallbackGrowth != null) {
+      // Gap zone: use year1 assumption as placeholder
+      resolved = fallbackGrowth;
+      resolution = 'derived_gap';
+      source = 'assumption_trend';
+    }
+
+    rentGrowthPeriods.push({
+      periodIndex: period.periodIndex,
+      month: period.month,
+      resolved,
+      resolution,
+      source,
+      zone: period.zone,
+      updated_at: new Date().toISOString(),
+    });
+  }
+
+  seed.fields.rent_growth = {
+    fieldName: 'rent_growth',
+    periods: rentGrowthPeriods,
+    fallbackResolved: fallbackGrowth,
+    fallbackResolution: 'assumption_trend',
+    fallbackSource: 'year1_seed',
+  };
+
+  return seed;
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────────────

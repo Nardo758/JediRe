@@ -48,14 +48,8 @@ export function SensitivityTab({
   const [activeTable, setActiveTable] = useState<TableType>('irr');
   const resolvedDealType = dealType || 'existing';
 
-  // Phase 5: periodic-derived Y1 rent growth (replaces assumptions.rentGrowth[0] flatten)
-  const { value: periodicRentGrowth, series: gprSeries } = usePeriodicField({ dealId, field: 'gpr', preferZone: 'projection' });
-  const periodicRG = useMemo(() => {
-    const proj = gprSeries.filter(p => p.zone === 'projection' && p.resolved != null && p.resolved !== 0);
-    if (proj.length < 2) return null;
-    const monthly = (proj[1].resolved! - proj[0].resolved!) / proj[0].resolved!;
-    return monthly * 12;
-  }, [gprSeries]);
+  // Phase 5: periodic-derived Y1 rent growth from server-side rent_growth field (replaces assumptions.rentGrowth[0] flatten + client approximation)
+  const { value: periodicRG } = usePeriodicField({ dealId, field: 'rent_growth', preferZone: 'projection' });
 
   const irrGrid = useMemo(() => {
     return EXIT_CAPS.map(cap =>

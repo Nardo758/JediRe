@@ -455,8 +455,13 @@ export const FinancialsTab: React.FC<FinancialsTabProps> = ({ dealId, deal }) =>
                   </tr>
                   <tr>
                     <td style={terminalStyles.td}>Year 1 Cash Flow</td>
-                    <td style={{ ...terminalStyles.td, textAlign: 'right', fontWeight: 600, color: BT.text.cyan, fontFamily: "'JetBrains Mono', monospace" }}>
-                      {fmt.currency(model.cashFlows[0]?.leveredCashFlow || 0)}
+                    <td style={{ ...terminalStyles.td, textAlign: 'right', fontWeight: 600, color: BT.text.muted, fontFamily: "'JetBrains Mono', monospace" }}>
+                      {/* Phase 5: periodic model has noi but not levered_cash_flow / debt_service.
+                          Do not fabricate a number. Show [NO DATA] until debt terms are in the periodic model. */}
+                      [NO DATA]
+                      <span style={{ fontSize: '9px', color: BT.text.muted, marginLeft: 4 }}>
+                        (debt terms not in periodic model)
+                      </span>
                     </td>
                   </tr>
                 </tbody>

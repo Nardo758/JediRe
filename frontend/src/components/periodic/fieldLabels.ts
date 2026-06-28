@@ -37,6 +37,7 @@ export const FIELD_LABELS: Record<string, string> = {
   total_opex: 'Total OpEx',
   noi: 'NOI',
   noi_per_unit: 'NOI / Unit',
+  rent_growth: 'Rent Growth %',
 };
 
 /** Format a periodic field value for display. */

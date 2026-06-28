@@ -25,6 +25,7 @@ import React, { useState, useEffect } from 'react';
 import { CheckCircle, AlertTriangle, AlertCircle, HelpCircle } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
+import { usePeriodicField } from '../../../hooks/usePeriodicField';
 import { ContestedBadge } from './SourceBadge';
 import type { FinancialEngineTabProps, EvidenceFieldMeta } from './types';
 
@@ -383,6 +384,13 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
   const assum = props.assumptions;
   const em    = props.evidenceFieldMap;   // per-field evidence metadata
 
+  // Phase 5: periodic-derived rent growth (replaces assumptions.rentGrowth[0] flatten)
+  const { value: periodicRentGrowth } = usePeriodicField({
+    dealId: props.dealId,
+    field: 'rent_growth',
+    preferZone: 'projection',
+  });
+
   const [rawA,            setRawA]            = useState<RawAssumptions | null>(null);
   const [impliedCap,      setImpliedCap]      = useState<ImpliedCapData | null>(null);
   const [loading,         setLoading]         = useState(true);
@@ -658,9 +666,9 @@ export function ValidationGridTab(props: FinancialEngineTabProps) {
     // Rent Growth Y1
     // CF-04: canonical source is f9Financials.assumptions.rentGrowthYr1 (Engine A).
     // Fall back to ModelAssumptions only when f9Financials hasn't loaded yet.
-    const rentGrowthY1  = fin != null
+    const rentGrowthY1  = periodicRentGrowth ?? (fin != null
       ? (fin.assumptions?.rentGrowthYr1 ?? null)
-      : (assum?.revenue?.rentGrowth?.[0] ?? null);
+      : (assum?.revenue?.rentGrowth?.[0] ?? null));
     const rentGrPyo     = pyoSrc(pyo, 'revenue.rentGrowth[0]');
     const rentGrQ: QualityBand =
       rentGrowthY1 != null ? 'WATCH'

@@ -531,6 +531,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
 
   // Phase 5: periodic-derived Y1 NOI (replaces noiByYear[0] flatten)
   const { value: periodicNoiY1 } = usePeriodicField({ dealId: resolvedDealId, field: 'noi', preferZone: 'projection' });
+  // Phase 5: periodic-derived rent growth (replaces assumptions.rentGrowth[0] flatten)
+  const { value: periodicRentGrowth } = usePeriodicField({ dealId: resolvedDealId, field: 'rent_growth', preferZone: 'projection' });
 
   // Resolve deal type from prop → deal record → platform default.
   // Never silently default to 'existing' when the deal has a project_type on the record.
@@ -904,7 +906,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       // Rebuild projections from assumptions if present
       if (assumptions && cloned.projections) {
         const holdYears = assumptions.holdPeriod ?? 5;
-        const rentGrowth = assumptions.revenue?.rentGrowth?.[0] ?? 0.03;
+        const rentGrowth = periodicRentGrowth ?? assumptions.revenue?.rentGrowth?.[0] ?? 0.03;
         const expenseGrowth = assumptions.expenses
           ? Object.values(assumptions.expenses)[0]?.growthRate ?? 0.03
           : 0.03;
@@ -1285,7 +1287,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       const debtRate = rawRate > 1 ? rawRate / 100 : rawRate > 0 ? rawRate : 0.065;
       const loanAmount = assumptions?.financing?.loanAmount ?? 0;
       const ltv = purchasePrice > 0 && loanAmount > 0 ? loanAmount / purchasePrice : 0.70;
-      const noiGrowthRate = assumptions?.revenue?.rentGrowth?.[0] ?? 0.03;
+      const noiGrowthRate = periodicRentGrowth ?? assumptions?.revenue?.rentGrowth?.[0] ?? 0.03;
       const sellingCostsPct = assumptions?.disposition?.sellingCosts ?? 0.02;
       const ioPeriodYears = assumptions?.financing?.ioPeriod ?? 0;
       const amortYears = assumptions?.financing?.amortization ?? 30;

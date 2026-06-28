@@ -95,15 +95,8 @@ function provenanceLabel(path: VerdictPath): string {
 export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }: FinancialEngineTabProps) {
   const summary = modelResults?.summary;
 
-  // Phase 5: derive Y1 rent growth from periodic GPR series (replaces assumptions[0] flatten)
-  const { series: gprSeries } = usePeriodicField({ dealId, field: 'gpr', preferZone: 'projection' });
-  const periodicRentGrowth = useMemo(() => {
-    const proj = gprSeries.filter(p => p.zone === 'projection' && p.resolved != null && p.resolved !== 0);
-    if (proj.length < 2) return null;
-    // Approximate annual growth from first two projection months
-    const monthly = (proj[1].resolved! - proj[0].resolved!) / proj[0].resolved!;
-    return monthly * 12;
-  }, [gprSeries]);
+  // Phase 5: derive Y1 rent growth from periodic rent_growth field (server-side, replaces GPR approximation)
+  const { value: periodicRentGrowth } = usePeriodicField({ dealId, field: 'rent_growth', preferZone: 'projection' });
 
   // ─── JEDI Score fetch (ADR-004 primary path) ─────────────────────────────
   const [jediScore, setJediScore] = useState<{ totalScore: number; createdAt: string } | null>(null);
