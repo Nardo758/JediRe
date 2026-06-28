@@ -1,0 +1,244 @@
+3DErrorBoundary
+agent/deals
+analysis
+ArchitectureOverlay
+asset/AssetMapModule.example.tsx: * import AssetMapModule from '@/components/asset/AssetMapModule.example
+asset/AssetMapModule.example.tsx:import { MapView } from '@/components/asset
+auth/LoginForm
+auth/ProtectedRoute
+auth/RegisterForm
+capsule/DivergenceDisagreementsSection
+capsule/RecipientConnectModal
+capsule/RecipientConnectModal.tsx:import { BT } from '@/components/deal/bloomberg-ui
+capsule/ShareCapsuleModal
+dashboard/AgentStatusBar
+dashboard/AssetsSection
+dashboard/Dashboard.tsx:import { BT } from '@/components/deal/bloomberg-ui
+dashboard/FiltersBar
+dashboard/FiltersBar.tsx:import { BT } from '@/components/deal/bloomberg-ui
+dashboard/KeyFindingsSection
+dashboard/KeyFindingsSection.tsx:import { BT } from '@/components/deal/bloomberg-ui
+dashboard/ModuleToggle.tsx:import { BT } from '@/components/deal/bloomberg-ui
+dashboard/MorningBriefWidget
+dashboard/NeuralNetworkHubWidget
+dashboard/QuickInsights
+dashboard/QuickInsights.tsx:import { BT } from '@/components/deal/bloomberg-ui
+dashboard/SearchBar.tsx:import { BT } from '@/components/deal/bloomberg-ui
+data-library
+data-library/AssetDetailModal
+deal/ActionStatusPanel.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/ActivityFeed.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/AssumptionsPanel
+deal/bloomberg-tokens
+deal/bloomberg-ui
+deal/CommentThread.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/CompletenesBadge
+deal/context/ActivityFeedItem.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/context/KeyMoment.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/context/TimelineView.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/CoStarUploadPanel
+deal/CreateDealModal
+deal/CreateDealModal.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/DealCard
+deal/DealCard.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/DealContextTracker.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/DealJourneyOverlay
+deal/DealMapView.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/DealPipeline.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/DealProperties.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/DealScreenWrapper
+deal/DealSection.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/DealSharesTab
+deal/DealSidebar.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/DealStrategy.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/DealTeamPanel.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/LeaseRolloverAnalysis.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/ModuleSuggestionModal.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/ModuleToggle.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/PlaceholderContent.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/PresenceIndicator
+deal/PresenceIndicator.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/ProFormaComparison.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/PropertyDetailsForm.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/RecipientAgentPanel
+deal/RecipientAgentPanel.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/RecipientAssumptionsPanel
+deal/SectionCard.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/sections/BloombergOverviewSection
+deal/sections/CollisionAnalysisSection
+deal/sections/CompsModule
+deal/sections/ConvergenceChart
+deal/sections/CostSheetTab
+deal/sections/CustomScreenTab
+deal/sections/DealCompAnalysisTab
+deal/sections/DealCompAnalysisTab.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/sections/DealStatusSection
+deal/sections/DealToolsSection
+deal/sections/DebtAdvisorSection
+deal/sections/DocumentsSection
+deal/sections/EventTimelineSection
+deal/sections/ExitCapitalModule
+deal/sections/ExitDrivesCapital.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/sections/ExitTimingTab
+deal/sections/FilesSection
+deal/sections/InvestorCapitalModule
+deal/sections/LifecycleSection
+deal/sections/MarketAnalysisSection.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/sections/MarketSection.test-usage.tsx: *    import { MarketSection } from '@/components/deal/sections
+deal/sections/MonthlyActualsSection
+deal/sections/OperationsIntelligenceSection
+deal/sections/OpportunityEngineSection
+deal/sections/OpusAISection.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/sections/ProFormaWithTrafficSection.tsx:import { PeriodicGrid } from '@/components/periodic/PeriodicGrid
+deal/sections/PropertyBoundarySection.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/sections/SignalStabilityTab
+deal/sections/StrategyV2Components
+deal/sections/TeamSection
+deal/sections/TrafficModule
+deal/sections/TrendsAnalysisSection
+deal/sections/TrendsAnalysisSection.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/sections/UnitMixIntelligence
+deal/sections/UnitMixTab
+deal/sections/ZoningModuleSection
+deal/StrategyAnalysisResults.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/SupplyPipeline.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/TabGroup
+deal/TabGroup.tsx:import { BT } from '@/components/deal/bloomberg-ui
+deal/ThreeColumnComparison.tsx:import { BT } from '@/components/deal/bloomberg-ui
+design
+design/Building3DEditor
+design/MapBuildingView
+design/ProgrammingTab
+development/market-analysis/AIInsightsPanel
+development/market-analysis/AIInsightsPanel.tsx:import { Button } from '@/components/shared/Button
+development/market-analysis/AmenityAnalysisTable
+development/market-analysis/AmenityAnalysisTable.tsx:import { Button } from '@/components/shared/Button
+development/market-analysis/DemandHeatMap
+development/market-analysis/DemographicInsights
+development/market-analysis/UnitMixOptimizer
+development/market-analysis/UnitMixOptimizer.tsx:import { Button } from '@/components/shared/Button
+error-boundaries.ts: * import { ErrorBoundary, ThreeDErrorBoundary, APIErrorBoundary, FormErrorBoundary } from '@/components/error-boundaries
+ErrorBoundary
+f9/F9SummaryBar
+f9/FloorPlanGrid
+F9/GoalSeekWidget
+f9/OverrideInputCell
+f9/ReconciliationChip
+f9/RegimeExpand
+f9/SourceDocPill
+F9/StabilizedPotentialView
+f9/UnderwritingWalkthrough
+fallbacks/ErrorFallback
+fallbacks/PageLoadingFallback
+grid/DataGrid
+InlineAssumptionBlock
+intelligence/ContextIndicator
+knowledge-graph/KGContextPanel
+layout/BottomPanel
+layout/MainLayout
+layout/PageHeader
+layout/PageHeader.tsx:import { BT } from '@/components/deal/bloomberg-ui
+layout/SidebarItem.tsx:import { BT } from '@/components/deal/bloomberg-ui
+layout/SkillsBar
+layout/ThreePanelLayout
+layout/ThreePanelLayout.tsx:import { BT } from '@/components/deal/bloomberg-ui
+m28/widgets
+m35/AttributionWaterfall
+m35/CascadeMap
+m35/EventDensityStrip
+m35/EventHeroBanner
+m35/ForecastTracker
+m35/M35EventCard
+m35/M35KeyEventsHub
+m35/MultiMetricPanel
+map/DrawingControlPanel
+map/HorizontalBar
+map/LayerRenderer
+map/LayerRendererFull
+map/LayersPanel
+map/MapTabsBar
+map/MapView
+map/TerminalMapView
+map/WarMapsComposer
+MarketIntelligence/CompsTabContent
+MarketIntelligence/MarketTabContent
+MarketIntelligence/PhotosManager
+MarketIntelligence/ZoningTabContent
+market-research/HeroMetrics
+market-research/InsightCard
+market-research/MarketResearchLayout
+market-research/SubmarketLeaderboard
+market-research/SubmarketPerformanceTable
+mobile/MobileLayout.tsx:import MapView from '@/components/map/MapView
+Opus
+periodic/fieldLabels
+periodic/PeriodicGrid
+periodic/PeriodicGrid.types
+pipeline/COMPLETION_REPORT.md:import { Pipeline3DProgressDemo } from '@/components/pipeline
+pipeline/COMPLETION_REPORT.md:import { Pipeline3DProgress } from '@/components/pipeline
+pipeline/DELIVERABLES.md:   import { Pipeline3DProgress } from '@/components/pipeline/Pipeline3DProgress
+pipeline/INSTALLATION.md:import { MOCK_DATA } from '@/components/pipeline/mockConstructionData
+pipeline/INSTALLATION.md:import { Pipeline3DProgress } from '@/components/pipeline/Pipeline3DProgress
+pipeline/Pipeline3DProgress
+pipeline/Pipeline3DProgressDemo.tsx: *   import { Pipeline3DProgressDemo } from '@/components/pipeline/Pipeline3DProgressDemo
+pipeline/Pipeline3DProgressDemo.tsx: * import Pipeline3DProgressDemo from '@/components/pipeline/Pipeline3DProgressDemo
+pipeline/Pipeline3DProgress_README.md:import { MOCK_DATA } from '@/components/pipeline/mockConstructionData
+pipeline/Pipeline3DProgress_README.md:import { Pipeline3DProgress } from '@/components/pipeline/Pipeline3DProgress
+pipeline/PipelineMapView
+property-coverage/PropertyCoverageDashboard
+property/PropertyAnalyzer
+property/PropertyDetail
+property/PropertyDetail.tsx:import { DigitalTrafficCard } from '@/components/analytics/DigitalTrafficCard
+scenarios/ScenarioComparePane
+scenarios/ScenarioComparePane.tsx:import { BT, SectionPanel, DataRow } from '../../components/deal/bloomberg-ui
+scenarios/ScenarioIndicator
+scenarios/ScenarioManagementTab
+scenarios/ScenarioPicker
+settings/ModuleCard
+settings/ModuleCard.tsx:import { BT } from '@/components/deal/bloomberg-ui
+shared/Button
+shared/GooglePlacesInput
+showcase/ActivityTimeline
+showcase/ContactMap
+showcase/DecisionLog
+showcase/DocumentVault
+showcase/DueDiligenceSuite
+showcase/FinancialModelingPro
+showcase/FinancialSnapshot
+showcase/KeyDates
+showcase/RiskFlags
+showcase/StrategyArbitrageEngine
+tasks/CreateTaskModal
+tasks/TaskCompletionReview
+tasks/TaskDetailModal
+tasks/TaskFiltersGrid
+tasks/TaskGrid
+terminal/cells/SupplyCell
+terminal/ColumnConfigPopover
+terminal/ColumnPicker
+terminal/commentary
+terminal/MSATerminal
+terminal/PropertyTerminal
+terminal/SubmarketTerminal
+terminal/tabs/DemandTab
+terminal/tabs/F4DealsView
+terminal/tabs/msa/PlaybookAccuracyDashboard
+terminal/TerminalChrome
+terminal/theme
+terminal/TickerBar
+trade-area
+ui/DateRangeFilter
+ui/DateRangeFilter.tsx:import { BT } from '@/components/deal/bloomberg-ui
+ui/SaveStatusBadge
+ui/Tabs
+underwriting/EvidencePanel
+vendor/VendorFreshnessPrompt
+workspace/PinToWorkspaceButton
+zoning/tabs/components/InterpretationPanel
+zoning/tabs/DevelopmentCapacityTab.tsx:import ComplianceTriggerAnalysisCard from './components/ComplianceTriggerAnalysisCard
+zoning/tabs/DevelopmentCapacityTab.tsx:import ConformanceCheckSection from './components/ConformanceCheckSection
+zoning/tabs/DevelopmentCapacityTab.tsx:import ExpansionScenariosCards from './components/ExpansionScenariosCards
+zoning/tabs/DevelopmentCapacityTab.tsx:import InterpretationPanel, { InterpretationDecision } from './components/InterpretationPanel
+zoning/tabs/DevelopmentCapacityTab.tsx:import NonconformingWarning from './components/NonconformingWarning
+zoning/tabs/DevelopmentCapacityTab.tsx:import RedevelopmentScenariosCards from './components/RedevelopmentScenariosCards
+zoning/tabs/DevelopmentCapacityTab.tsx:import UntappedEntitlementCard from './components/UntappedEntitlementCard
