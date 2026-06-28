@@ -169,20 +169,22 @@ export class CreditService {
     const periodEnd = new Date();
     periodEnd.setMonth(periodEnd.getMonth() + 1);
 
+    const cap = config.creditsIncludedMonthly > 0 ? config.creditsIncludedMonthly : null;
     await query(
       `INSERT INTO user_credit_balances (
         user_id, stripe_customer_id, subscription_tier, automation_level,
         credits_included_monthly, credits_remaining, credits_used_this_period,
-        period_start, period_end
-      ) VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8)
+        monthly_credit_cap, period_start, period_end
+      ) VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9)
       ON CONFLICT (user_id) DO UPDATE SET
         stripe_customer_id = $2,
         subscription_tier = $3,
         automation_level = $4,
         credits_included_monthly = $5,
         credits_remaining = $6,
-        period_start = $7,
-        period_end = $8,
+        monthly_credit_cap = $7,
+        period_start = $8,
+        period_end = $9,
         updated_at = NOW()`,
       [
         userId,
@@ -191,6 +193,7 @@ export class CreditService {
         1, // start at Level 1 automation
         config.creditsIncludedMonthly,
         config.creditsIncludedMonthly,
+        cap,
         periodStart.toISOString(),
         periodEnd.toISOString(),
       ]
@@ -267,19 +270,22 @@ export class CreditService {
       }
     }
 
+    const cap = config.creditsIncludedMonthly > 0 ? config.creditsIncludedMonthly : null;
     await query(
       `UPDATE user_credit_balances
        SET subscription_tier = $1,
            credits_included_monthly = $2,
            credits_remaining = $3,
            automation_level = $4,
+           monthly_credit_cap = $5,
            updated_at = NOW()
-       WHERE user_id = $5`,
+       WHERE user_id = $6`,
       [
         newTier,
         config.creditsIncludedMonthly,
         newCreditsRemaining,
         config.maxAutomationLevel,
+        cap,
         userId,
       ]
     );
