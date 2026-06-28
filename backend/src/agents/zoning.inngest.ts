@@ -78,6 +78,13 @@ export const zoningOnDealCreated = inngest.createFunction(
       return { runId: '', confidence_score: 0 };
     }
 
+    // ── Step 2: Credit debit ─────────────────────────────────────────
+    await step.run('credit-debit', async () => {
+      const { creditService } = await import('../services/ai/creditService');
+      await creditService.debitAgentRun(userId, 'zoning');
+      return { debited: true };
+    });
+
     // ── Step 3: Resolve deal context ────────────────────────────────
     // NOTE: prompt seeding is handled at server startup only (seedAllAgentPrompts).
     // Per-run seeding was removed in Phase 5 to make rollback authoritative.

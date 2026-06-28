@@ -105,6 +105,19 @@ export function calculateBillable(rawCostUsd: number, tier: SubscriptionTier): n
   return variable + config.platformFeePerCall;
 }
 
+// ── Agent Run Credit Costs (flat credits per event-driven agent invocation) ──
+// Scale reference: news.search=1, news.morning_brief=5.
+// An operator user (500 cr/mo) gets ~14 full deal analyses/month at these rates.
+// A principal user (2000 cr/mo) gets ~57 full deal analyses/month.
+export const AGENT_CREDIT_COSTS: Record<string, number> = {
+  research:    10,
+  cashflow:    10,
+  supply:       5,
+  zoning:       5,
+  commentary:   5,
+};
+export const DEFAULT_AGENT_CREDIT_COST = 5;
+
 // ── Credit Balance Operations ──────────────────────────────────
 
 export class CreditService {
@@ -309,6 +322,28 @@ export class CreditService {
    */
   canAccessSurface(tier: SubscriptionTier, surface: string): boolean {
     return TIER_CONFIG[tier].surfaces.includes(surface);
+  }
+
+  /**
+   * Debit a flat credit cost for an event-driven agent run.
+   * Called after the tier + automation_level gate passes, before the LLM call.
+   * Non-fatal: if the user is in overage or exhausted, logs and allows through.
+   * Uses reserveCredits() which handles the atomic deduction and soft-overage logic.
+   */
+  async debitAgentRun(userId: string, agentType: string): Promise<void> {
+    if (!userId) return;
+    const cost = AGENT_CREDIT_COSTS[agentType] ?? DEFAULT_AGENT_CREDIT_COST;
+    try {
+      const deducted = await this.reserveCredits(userId, cost);
+      logger.info('CreditService: agent run debited', { userId, agentType, cost, deducted });
+    } catch (err: any) {
+      logger.warn('CreditService: agent run over credit cap, allowing through', {
+        userId,
+        agentType,
+        cost,
+        err: err?.message,
+      });
+    }
   }
 
   /**

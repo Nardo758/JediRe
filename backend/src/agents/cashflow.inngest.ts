@@ -248,6 +248,13 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
 
     const { userId } = tierCheckResult;
 
+    // ── Step 2: Credit debit ─────────────────────────────────────────
+    await step.run('credit-debit', async () => {
+      const { creditService } = await import('../services/ai/creditService');
+      await creditService.debitAgentRun(userId, 'cashflow');
+      return { debited: true };
+    });
+
     // ── Step 3: Resolve deal context + document availability ────────
     // NOTE: prompt seeding is handled at server startup only (seedAllAgentPrompts).
     // Per-run seeding was removed in Phase 5 to make rollback authoritative.

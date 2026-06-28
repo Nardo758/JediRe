@@ -87,6 +87,13 @@ export const researchOnDealCreated = inngest.createFunction(
       return { runId: '', confidence_score: 0 };
     }
 
+    // ── Step 2: Credit debit ─────────────────────────────────────────
+    await step.run('credit-debit', async () => {
+      const { creditService } = await import('../services/ai/creditService');
+      await creditService.debitAgentRun(userId, 'research');
+      return { debited: true };
+    });
+
     // ── Step 2b: Resolve deal context for tool inputs ───────────────
     // NOTE: prompt seeding is handled at server startup only (seedAllAgentPrompts).
     // Per-run seeding was removed in Phase 5 so that operator rollbacks
