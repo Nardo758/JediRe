@@ -65,6 +65,26 @@ export function fmtPeriodicValue(
   return value.toFixed(2);
 }
 
+/** Format a custom metric value using its format descriptor. */
+export function fmtCustomMetricValue(
+  value: number | null,
+  format: 'pct' | 'currency' | 'ratio' | 'per_unit',
+): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  if (format === 'pct') {
+    return `${(value * 100).toFixed(2)}%`;
+  }
+  if (format === 'currency') {
+    if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
+    if (Math.abs(value) >= 1_000) return `$${(value / 1_000).toFixed(1)}k`;
+    return `$${value.toFixed(0)}`;
+  }
+  if (format === 'per_unit') {
+    return `$${value.toFixed(2)}/u`;
+  }
+  return value.toFixed(3);
+}
+
 /** Zone type → CSS color (from BT tokens). */
 export const ZONE_COLORS: Record<string, string> = {
   actual: '#00BCD4',      // cyan

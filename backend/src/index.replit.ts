@@ -22,6 +22,7 @@ import analogRouter from './api/rest/analog.routes';
 import zoningTriangulationRouter from './api/rest/zoning-triangulation.routes';
 import preferencesRouter from './api/rest/preferences.routes';
 import customStrategiesRouter from './api/rest/custom-strategies.routes';
+import customMetricsRouter from './api/rest/custom-metrics.routes';
 import strategiesRouter from './api/rest/strategies.routes';
 import strategyDefinitionsRouter from './api/rest/strategy-definitions.routes';
 import metricsCatalogRouter from './api/rest/metrics-catalog.routes';
@@ -763,6 +764,7 @@ app.post('/api/v1/strategy-scoring/analyze', requireAuth, async (req: any, res) 
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/v1/email', emailRouter);
+app.use('/api/v1/custom-metrics', requireAuth, customMetricsRouter);
 
 const activeUsers = new Map<string, any>();
 const dealPresence = new Map<string, Map<string, { userId: string; email: string; activeModule?: string; joinedAt: number }>>();
