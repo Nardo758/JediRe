@@ -49,7 +49,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
       name: dbUser.full_name || 'User',
       role: dbUser.role || 'user',
       subscription: {
-        plan: dbUser.subscription_tier || 'free',
+        plan: dbUser.subscription_tier || 'scout',
         modules: []
       }
     };
@@ -104,7 +104,7 @@ router.get('/dev-login', async (_req, res) => {
       name: dbUser.full_name || 'User',
       role: dbUser.role || 'user',
       subscription: {
-        plan: dbUser.subscription_tier || 'free',
+        plan: dbUser.subscription_tier || 'scout',
         modules: []
       }
     };
@@ -145,7 +145,7 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
       name: dbUser.full_name || 'User',
       role: dbUser.role || 'user',
       subscription: {
-        plan: dbUser.subscription_tier || 'free',
+        plan: dbUser.subscription_tier || 'scout',
         modules: []
       }
     });
