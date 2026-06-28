@@ -1,0 +1,40 @@
+Here's the Phase 5 frontend dispatch. It's a build, but it carries the same discipline — and one thing has to be settled before code, because the frontend has a different failure mode than the backend.
+
+The backend failures this thread caught were *dead paths and wrong math*. The frontend's failure mode is **the flatten quietly surviving** — you wire the periodic series in, but some component, some helper, some memoized selector still reads `[0]` and the screen shows year-one numbers while looking like it changed. So the dispatch's acceptance isn't "it renders" — it's "prove no `[0]` flatten remains, and prove the boundary column matches Highlands' real `actuals_through_month`."
+
+---
+
+**BUILD DISPATCH: Phase 5 frontend — F9 periodic rendering (build, but prove the flatten is gone)**
+
+Wire the F9 tabs to consume the periodic series and render the approved layout (P&L grid + boundary column + returns strip, NOI-led). The backend is proven (`periodic_seed` real, custom metrics acceptance passed). Preserve the `T`-token dark terminal aesthetic — JetBrains Mono, dark, `T` hex tokens, F-key nav, 9px floor, max 2px radius, no gradients, inline styles via `T`. Do NOT use canvas/light styling.
+
+**Pre-build — find every flatten, not just the three known ones.** The audit named `ProFormaTab.tsx:270`, `FinancialEnginePage.tsx:783`, `SensitivityTab.tsx:83`. Before building, `grep -rn "\[0\]" frontend/src` scoped to the F9 components + any selector/helper they call, and list **every** `rentGrowth[0]`, `cashOnCash[0]`, `[0]`-index on a series. The three are the known ones; the risk is a fourth in a shared helper. Report the full list `file:line` first.
+
+**Data source.** Consume `GET /financial-model/:dealId/periodic` (the live endpoint). The component renders the returned series with its zone labels (`actual` / `gap` / `projection`) and the `actuals_through_month` boundary — it does not recompute zones or re-derive; the backend is the source of truth (derive-not-store holds on the frontend too — render the series, don't recompute it).
+
+**Build — the approved layout:**
+1. **P&L grid** — line items down (NOI headline/emphasized, then GPR, vacancy, EGI, opex stack, reserves), 15 year-columns across (annual rollup from the series). NOI visually primary.
+2. **Boundary column** — the transition year carries the `T`-token boundary accent (the red left-border running down every row), marked as the split year. Left = actual styling, right = projection styling, driven by each period's zone label from the API, **not** a hardcoded year.
+3. **Year→month drill** — click a year, expand its 12 months in the same zone language. Split transition year shows part-actual/part-projection months.
+4. **15YR | MO toggle** — flips native granularity.
+5. **Returns strip** — cash-on-cash + net distributions across the same year columns, same boundary, IRR/EM at the right. Consume the existing `annualCashFlow[]`/`noiByYear[]`/`cashOnCashByYear[]`/`netDistributionsByYear[]` arrays — stop flattening them.
+6. **Custom-metric rows** — render `GET /api/v1/custom-metrics/:dealId` results as additional rows in the grid, marked with a user glyph, same zones/boundary/drill. They're just more rows.
+7. **SensitivityTab** — runs against the selected period, not `[0]`.
+
+**Acceptance (against real Highlands, by eye + grep):**
+- **Flatten gone:** re-run the `[0]` grep on the F9 components post-build → every series-flatten from the pre-build list is replaced. Paste before/after. A surviving `[0]` on a rendered series = FAIL.
+- **Boundary matches reality:** open Highlands. The boundary column must fall at its real `actuals_through_month` (2026-04 per the Phase 4 work), NOT a hardcoded year. Confirm actual years show Highlands' real NOI from `periodic_seed` and projection years show derived values. Paste a screenshot or the rendered values next to the DB row.
+- **Custom metric renders:** the Debt Yield metric from the acceptance run shows as a row with the correct re-derived annual values (59.31%, not 712%) and the user glyph.
+- **Drill + split year:** expand 2026, confirm Jan–Apr render actual, May–Dec projection, boundary between.
+
+**DECISION needed before build:** returns strip inline under the P&L grid, or its own sub-tab? (Master plan §3 open decision — pick before building so the layout's settled.)
+
+STOP after the acceptance report. Frontend "renders" is not "renders the right numbers" — prove against the Highlands DB row.
+
+---
+
+The two acceptance items that matter: **the post-build `[0]` grep** (proves the flatten is actually gone, not just visually overlaid) and **the boundary matching Highlands' real `actuals_through_month`** (proves it's reading the live zone data, not a hardcoded "2026 is the split year"). A frontend that hardcodes the boundary year looks identical to one that reads it from the API — until a different deal with a different boundary renders wrong. The Highlands check catches that.
+
+One decision is yours before they build: returns strip **inline** under the P&L grid, or **its own sub-tab**. My lean is inline for owned/monitoring deals (you want NOI and return in one glance when you're managing the asset) but it's a real call about screen density — tell me which and the dispatch is final, or hand it over with the decision noted and let them default to inline.
+
+That's the visible win. Once this renders against Highlands and the grep proves the flatten's gone, everything you've built across the whole thread — the periodic seed, the reconciliation engine, the custom metrics — becomes something you can actually *see* on the terminal, which it hasn't been until now.
