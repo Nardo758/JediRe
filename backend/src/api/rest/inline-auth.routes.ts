@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { getPool } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { generateAccessToken } from '../../auth/jwt';
 import { validate, loginSchema } from './validation';
+import { emailService } from '../../services/email.service';
+import { createRateLimiter } from '../../middleware/rateLimit';
 
 const router = Router();
 const pool = getPool();
@@ -215,6 +218,138 @@ router.put('/profile', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     console.error('Error updating profile:', error);
     res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// ─── Password reset ──────────────────────────────────────────────────────────
+
+const RESET_EXPIRY_MINUTES = 45;
+
+// 5 requests per 15 min per IP/user — stricter than authLimiter to prevent token spam
+const resetRequestLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 5,
+  message: 'Too many password reset requests. Please try again in 15 minutes.',
+});
+
+// POST /api/v1/auth/password-reset/request
+// Always returns 200 + generic message — never reveals whether the email exists.
+router.post('/password-reset/request', resetRequestLimiter, async (req, res) => {
+  const GENERIC_OK = { success: true, message: 'If an account exists for that email, a reset link was sent.' };
+
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string') {
+      res.json(GENERIC_OK);
+      return;
+    }
+
+    const userResult = await pool.query(
+      'SELECT id, email, password_hash FROM users WHERE email = $1 LIMIT 1',
+      [email.toLowerCase().trim()]
+    );
+
+    // No account or Google-only account (no password_hash): silently return generic ok.
+    if (userResult.rows.length === 0 || !userResult.rows[0].password_hash) {
+      res.json(GENERIC_OK);
+      return;
+    }
+
+    const user = userResult.rows[0];
+
+    // Generate raw token (goes in email only — never logged or stored).
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + RESET_EXPIRY_MINUTES * 60 * 1000);
+
+    // Delete any prior unexpired tokens for this user (one active reset at a time).
+    await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [user.id]);
+
+    await pool.query(
+      `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3)`,
+      [user.id, tokenHash, expiresAt]
+    );
+
+    const domain = process.env.REPLIT_DOMAINS?.split(',')[0] || process.env.REPLIT_DEV_DOMAIN || 'localhost:5000';
+    const baseUrl = `https://${domain}`;
+    const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
+
+    await emailService.sendPasswordResetEmail({
+      to: user.email,
+      resetUrl,
+      expiryMinutes: RESET_EXPIRY_MINUTES,
+    });
+
+    console.log(`[password-reset] Reset email dispatched for user ${user.id}`);
+  } catch (err) {
+    // Log but still return generic ok — don't leak internal errors.
+    console.error('[password-reset] request error:', err);
+  }
+
+  res.json(GENERIC_OK);
+});
+
+// POST /api/v1/auth/password-reset/confirm
+// Validates token, updates password, marks token used.
+router.post('/password-reset/confirm', async (req, res) => {
+  const INVALID_MSG = 'This reset link is invalid or has expired.';
+
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || typeof token !== 'string' || !newPassword || typeof newPassword !== 'string') {
+      res.status(400).json({ success: false, error: INVALID_MSG });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      res.status(400).json({ success: false, error: 'Password must be at least 8 characters.' });
+      return;
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    const tokenResult = await pool.query(
+      `SELECT id, user_id, expires_at, used_at
+       FROM password_reset_tokens
+       WHERE token_hash = $1
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    if (tokenResult.rows.length === 0) {
+      res.status(400).json({ success: false, error: INVALID_MSG });
+      return;
+    }
+
+    const row = tokenResult.rows[0];
+
+    if (row.used_at !== null) {
+      res.status(400).json({ success: false, error: INVALID_MSG });
+      return;
+    }
+
+    if (new Date(row.expires_at) < new Date()) {
+      res.status(400).json({ success: false, error: INVALID_MSG });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await pool.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [
+      passwordHash,
+      row.user_id,
+    ]);
+
+    // Mark token used (single-use — replay rejected above).
+    await pool.query('UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1', [row.id]);
+
+    console.log(`[password-reset] Password updated for user ${row.user_id}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[password-reset] confirm error:', err);
+    res.status(500).json({ success: false, error: 'An internal error occurred. Please try again.' });
   }
 });
 

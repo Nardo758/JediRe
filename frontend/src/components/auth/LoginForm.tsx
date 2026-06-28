@@ -5,9 +5,10 @@ import { Mail, Lock, Loader, Eye, EyeOff } from 'lucide-react';
 
 interface LoginFormProps {
   onSwitchToRegister: () => void;
+  onForgotPassword?: () => void;
 }
 
-export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
+export default function LoginForm({ onSwitchToRegister, onForgotPassword }: LoginFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -147,12 +148,15 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
             />
             <span className="text-sm text-gray-600">Remember me</span>
           </label>
-          <button
-            type="button"
-            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-          >
-            Forgot password?
-          </button>
+          {onForgotPassword && (
+            <button
+              type="button"
+              onClick={onForgotPassword}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              Forgot password?
+            </button>
+          )}
         </div>
 
         <button

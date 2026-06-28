@@ -413,6 +413,69 @@ function buildParcelConflictAlertText(params: {
   ].join('\n');
 }
 
+// ─── Password reset ──────────────────────────────────────────────────────────
+
+function buildPasswordResetHtml(params: { resetUrl: string; expiryMinutes: number }): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Reset Your Password</title></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+
+        <!-- Header -->
+        <tr><td style="background:#0f172a;padding:24px 32px;">
+          <p style="margin:0;color:#94a3b8;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;">JediRe</p>
+          <h1 style="margin:6px 0 0 0;color:#ffffff;font-size:20px;font-weight:600;">Reset your password</h1>
+        </td></tr>
+
+        <!-- Body -->
+        <tr><td style="padding:32px;">
+          <p style="margin:0 0 16px 0;font-size:15px;color:#111827;">
+            We received a request to reset the password for your JediRe account. Click the button below to choose a new password.
+          </p>
+
+          <!-- CTA -->
+          <div style="text-align:center;margin:28px 0;">
+            <a href="${params.resetUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;text-decoration:none;">Reset Password →</a>
+          </div>
+
+          <p style="color:#6b7280;font-size:13px;margin:16px 0 0 0;">This link expires in ${params.expiryMinutes} minutes. If you didn't request a password reset, you can safely ignore this email — your password won't change.</p>
+          <p style="color:#6b7280;font-size:13px;margin:12px 0 0 0;">Or copy this link into your browser:</p>
+          <p style="color:#2563eb;font-size:13px;margin:4px 0 0 0;word-break:break-all;">${params.resetUrl}</p>
+        </td></tr>
+
+        <!-- Footer -->
+        <tr><td style="border-top:1px solid #e5e7eb;padding:20px 32px;background:#f9fafb;">
+          <p style="color:#9ca3af;font-size:12px;margin:0;">This email was sent by JediRe. If you did not request a password reset, no action is required.</p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+function buildPasswordResetText(params: { resetUrl: string; expiryMinutes: number }): string {
+  return [
+    'Reset your JediRe password',
+    '',
+    'We received a request to reset the password for your account.',
+    'Click the link below to choose a new password:',
+    '',
+    params.resetUrl,
+    '',
+    `This link expires in ${params.expiryMinutes} minutes.`,
+    '',
+    "If you didn't request a password reset, ignore this email — your password won't change.",
+    '',
+    '---',
+    'JediRe — Real Estate Intelligence',
+  ].join('\n');
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export const emailService = {
@@ -446,6 +509,21 @@ export const emailService = {
 
     await provider.send({ to: params.to, subject, html, text });
     return this.isEnabled();
+  },
+
+  /**
+   * Sends a password reset email with the raw token embedded in the reset link.
+   * The caller must never log or store the raw token — only the SHA-256 hash goes to DB.
+   */
+  async sendPasswordResetEmail(params: {
+    to: string;
+    resetUrl: string;
+    expiryMinutes: number;
+  }): Promise<void> {
+    const subject = 'Reset your JediRe password';
+    const html = buildPasswordResetHtml(params);
+    const text = buildPasswordResetText(params);
+    await provider.send({ to: params.to, subject, html, text });
   },
 
   /**

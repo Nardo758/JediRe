@@ -9,16 +9,33 @@ export default function ResetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState<'form' | 'success' | 'error'>('form');
+  const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== confirmPassword) return;
     setLoading(true);
-    setTimeout(() => {
-      setStatus('success');
+    setErrorMessage('');
+    try {
+      const res = await fetch('/api/v1/auth/password-reset/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, newPassword: password }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setStatus('success');
+      } else {
+        setErrorMessage(data.error || 'This reset link is invalid or has expired.');
+        setStatus('error');
+      }
+    } catch {
+      setErrorMessage('Network error. Please try again.');
+      setStatus('error');
+    } finally {
       setLoading(false);
-    }, 1500);
+    }
   };
 
   if (!token) {
@@ -41,8 +58,8 @@ export default function ResetPasswordPage() {
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-4">Invalid Reset Link</h1>
             <p className="text-gray-600 mb-8">This password reset link is invalid or has expired.</p>
-            <Link to="/auth" className="text-blue-600 hover:text-blue-700 font-medium">
-              Request a new reset link
+            <Link to="/login" className="text-blue-600 hover:text-blue-700 font-medium">
+              Request a new reset link →
             </Link>
           </div>
         </main>
@@ -119,8 +136,8 @@ export default function ResetPasswordPage() {
                 
                 <button
                   type="submit"
-                  disabled={loading || password !== confirmPassword}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg font-medium"
+                  disabled={loading || password !== confirmPassword || password.length < 8}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg font-medium transition-colors"
                 >
                   {loading ? 'Resetting...' : 'Reset Password'}
                 </button>
@@ -134,12 +151,31 @@ export default function ResetPasswordPage() {
                 <CheckCircle className="w-8 h-8 text-green-600" />
               </div>
               <h1 className="text-2xl font-bold text-gray-900 mb-4">Password Reset Successful</h1>
-              <p className="text-gray-600 mb-8">Your password has been successfully reset. You can now log in with your new password.</p>
+              <p className="text-gray-600 mb-8">Your password has been updated. You can now log in with your new password.</p>
               <Link
-                to="/auth"
+                to="/login"
                 className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
               >
                 Go to Login
+              </Link>
+            </div>
+          )}
+
+          {status === 'error' && (
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertCircle className="w-8 h-8 text-red-600" />
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-4">Reset Link Invalid</h1>
+              <p className="text-gray-600 mb-8">{errorMessage}</p>
+              <button
+                onClick={() => { setStatus('form'); setErrorMessage(''); }}
+                className="text-blue-600 hover:text-blue-700 font-medium mr-4"
+              >
+                Try again
+              </button>
+              <Link to="/login" className="text-gray-500 hover:text-gray-700 font-medium">
+                Back to login
               </Link>
             </div>
           )}
