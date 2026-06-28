@@ -23,6 +23,7 @@ import { dispatchAction } from '../notifications/openclaw-actions';
 import { sendTelegramText, telegramChannel } from '../notifications/channels/telegram';
 import { parseTwilioActionCommand } from '../notifications/channels/twilio';
 import { verifyTelegramSecret, verifyTwilioSignature } from '../notifications/webhook-verification';
+import { requireAuth, requireSurface } from '../../middleware/auth';
 
 // ============================================================================
 // Message Router
@@ -44,16 +45,20 @@ export class MessageRouter {
     const router = Router();
 
     // Twilio Conversations webhook (WhatsApp + iMessage + SMS)
+    // No JWT auth — Twilio platform authenticates via signature verification inside the handler.
     router.post('/webhooks/twilio', this.handleTwilio.bind(this));
 
     // Telegram Bot API webhook
+    // No JWT auth — Telegram authenticates via secret token verification inside the handler.
     router.post('/webhooks/telegram', this.handleTelegram.bind(this));
 
     // Internal REST API endpoint (web app / direct API)
-    router.post('/api/v1/chat/message', this.handleAPI.bind(this));
-    
+    // §E-F6(b): requireAuth before requireSurface so req.user is populated when surface check runs.
+    router.post('/api/v1/chat/message', requireAuth, requireSurface('chat'), this.handleAPI.bind(this));
+
     // Mobile app endpoint
-    router.post('/api/v1/chat/mobile', this.handleMobile.bind(this));
+    // §E-F6(b): same ordering fix.
+    router.post('/api/v1/chat/mobile', requireAuth, requireSurface('chat'), this.handleMobile.bind(this));
 
     return router;
   }

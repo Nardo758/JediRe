@@ -466,8 +466,10 @@ mountMiscRoutes(app, pool);
 
 import { MessageRouter } from './services/chat/messageRouter';
 const messageRouter = new MessageRouter();
-// A5-F2: Chat surface gating — only 'chat' tier users can access message routes
-app.use('/', requireSurface('chat'), messageRouter.createRouter());
+// §E-F6(b): Mount with no top-level surface gate — webhook routes (/webhooks/twilio,
+// /webhooks/telegram) must remain open for platform callbacks. requireAuth +
+// requireSurface('chat') are applied per-route inside MessageRouter.createRouter().
+app.use('/', messageRouter.createRouter());
 
 // Per-Property Visibility Substrate — unified summary + file-list endpoints.
 // Mounted before requireAuth catch-alls; each route guards itself.
