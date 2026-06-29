@@ -22,7 +22,7 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
     expectedCloseDate: deal?.expectedCloseDate || null,
     priority: deal?.priority || 'medium',
     notes: deal?.notes || '',
-    deal_category: (deal as Record<string, unknown>)?.deal_category as 'pipeline' | 'portfolio' | undefined ?? 'pipeline',
+    deal_category: (deal as Record<string, unknown>)?.deal_category as 'pipeline' | undefined ?? 'pipeline',
   });
 
   const commissionEstimate = (formData.dealValue * formData.commissionRate) / 100;
@@ -184,7 +184,7 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
             Category
           </label>
           <div className="flex gap-3">
-            {(['pipeline', 'portfolio'] as const).map(cat => (
+            {(['pipeline'] as const).map(cat => (
               <label
                 key={cat}
                 className={`
@@ -200,7 +200,7 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
                   name="deal_category"
                   value={cat}
                   checked={formData.deal_category === cat}
-                  onChange={(e) => updateField('deal_category', e.target.value as 'pipeline' | 'portfolio')}
+                  onChange={(e) => updateField('deal_category', e.target.value as 'pipeline')}
                   className="sr-only"
                   disabled={isSubmitting}
                 />

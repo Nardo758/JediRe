@@ -26,7 +26,7 @@ interface CreateDealModalProps {
   onDealCreated?: (deal: any) => void;
 }
 
-type DealCategory = 'portfolio' | 'pipeline';
+type DealCategory = 'pipeline';
 type DevelopmentType = 'new' | 'existing';
 
 const STEPS = {
@@ -315,20 +315,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                 <h3 style={{ fontSize: BT.fontSize.lg, fontWeight: 600, color: BT.text.primary, fontFamily: BT.font.mono, marginBottom: 12 }}>
                   1. Deal Category
                 </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={() => setDealCategory('portfolio')}
-                    className="p-4 transition"
-                    style={{
-                      border: `2px solid ${dealCategory === 'portfolio' ? BT.text.cyan : BT.border.subtle}`,
-                      background: dealCategory === 'portfolio' ? `${BT.text.cyan}12` : BT.bg.panel,
-                      borderRadius: 0,
-                    }}
-                  >
-                    <div style={{ fontSize: 24, marginBottom: 8 }}>📁</div>
-                    <h4 style={{ fontWeight: 600, color: BT.text.primary, fontSize: BT.fontSize.base, fontFamily: BT.font.mono, marginBottom: 4 }}>Portfolio</h4>
-                    <p style={{ fontSize: BT.fontSize.xs, color: BT.text.secondary, fontFamily: BT.font.label }}>Properties you own or manage</p>
-                  </button>
+                <div className="grid grid-cols-1 gap-4">
                   <button
                     onClick={() => setDealCategory('pipeline')}
                     className="p-4 transition"
@@ -591,7 +578,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                 <div className="space-y-1" style={{ fontSize: BT.fontSize.base, color: BT.text.secondary, fontFamily: BT.font.label }}>
                   <p>
                     <strong style={{ color: BT.text.primary }}>Category:</strong>{' '}
-                    {dealCategory === 'portfolio' ? 'Portfolio (Owned)' : 'Pipeline (Prospecting)'}
+                    {dealCategory === 'pipeline' ? 'Pipeline (Prospecting)' : 'Pipeline (Prospecting)'}
                   </p>
                   <p>
                     <strong style={{ color: BT.text.primary }}>Type:</strong>{' '}
