@@ -125,7 +125,7 @@ export const AssetsSection: React.FC = () => {
         <div className="text-4xl mb-2">🏢</div>
         <p className="text-gray-600 mb-4">No assets yet. Add properties to your portfolio.</p>
         <button
-          onClick={() => navigate('/deals/create', { state: { category: 'portfolio' } })}
+          onClick={() => navigate('/terminal/portfolio', { state: { openAddAsset: true } })}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
         >
           Add Asset

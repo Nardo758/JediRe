@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   TrendingUp, TrendingDown, Building2, DollarSign, 
   FileText, Download, ChevronRight, ChevronDown,
@@ -223,6 +223,12 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
 
   // Add Asset modal
   const [showAddAssetModal, setShowAddAssetModal] = useState(false);
+  const location = useLocation();
+  useEffect(() => {
+    if (location.state?.openAddAsset) {
+      setShowAddAssetModal(true);
+    }
+  }, [location.state]);
   const [addAssetForm, setAddAssetForm] = useState({
     name: '', address: '', city: '', state: '', units: '', assetClass: 'B',
     yearBuilt: '', submarketId: '', submarketSearch: '',
