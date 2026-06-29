@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { Deal } from '@/types';
 import api from '@/lib/api';
-import { PeriodicGrid } from '@/components/periodic/PeriodicGrid';
+import { PeriodicTimelineTrigger } from '@/components/periodic/PeriodicTimelineTrigger';
 
 // ════════════════════════════════════════════════════════════════════
 // Types
@@ -853,6 +853,9 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
                 {refreshing ? 'Refreshing...' : 'Refresh Traffic'}
               </button>
             )}
+            <div className="mt-2">
+              <PeriodicTimelineTrigger dealId={deal?.id || ''} preset="overview" label="Periodic Timeline" />
+            </div>
           </div>
         </div>
       </div>

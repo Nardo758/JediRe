@@ -18,7 +18,7 @@ import { LifecycleSection } from '../components/deal/sections/LifecycleSection';
 import { ExitTimingTab } from '../components/deal/sections/ExitTimingTab';
 import ActivityTab from './admin/sections/intel/ActivityTab';
 import type { Deal } from '../types/deal';
-import { PeriodicGrid } from '../components/periodic/PeriodicGrid';
+import { PeriodicTimelineTrigger } from '../components/periodic/PeriodicTimelineTrigger';
 
 // ── DESIGN TOKENS (verbatim from v5 prototype) ──────────────────────────────
 const T = {
@@ -1875,9 +1875,9 @@ function PerformanceScreen({ dealId, activeScreen, refreshKey = 0 }: { dealId: s
               }
             />
           </Panel>
-          {/* Periodic monitoring grid — NOI actuals vs projection boundary (M09) */}
+          {/* Periodic monitoring grid — button opens modal */}
           <div style={{ marginBottom: 10 }}>
-            <PeriodicGrid dealId={dealId} preset="monitoring" />
+            <PeriodicTimelineTrigger dealId={dealId} preset="monitoring" label="Periodic Timeline" />
           </div>
 
           <div style={{ display: 'flex', gap: 10 }}>

@@ -24,6 +24,7 @@ import {
   LAND_HOLD_EXIT_ROWS,
   type TemplateRowDef,
 } from './proforma-template-row-sets';
+import { PeriodicTimelineTrigger } from '../../../components/periodic/PeriodicTimelineTrigger';
 
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
@@ -1222,6 +1223,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               PRO FORMA · YR {_effStabYear}{_stabYearIsOverride ? ' · OVR' : ''}
             </span>
           )}
+          <PeriodicTimelineTrigger dealId={dealId} preset="full" label="Timeline" />
           {/* ── Phase 1A: Window undefined badge ── */}
           {_proformaWindowUndefined && (
             <span

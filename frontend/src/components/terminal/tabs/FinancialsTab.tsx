@@ -10,6 +10,7 @@ import { TerminalChart, ChartDataPoint, ChartSeries } from '../TerminalChart';
 import { M35EventCard, M35EventCardData } from '../../m35/M35EventCard';
 import { usePeriodicField } from '../../../hooks/usePeriodicField';
 import { fmtPeriodicValue } from '../../periodic/fieldLabels';
+import { PeriodicTimelineTrigger } from '../../periodic/PeriodicTimelineTrigger';
 
 interface FinancialsTabProps {
   dealId: string;
@@ -469,6 +470,11 @@ export const FinancialsTab: React.FC<FinancialsTabProps> = ({ dealId, deal }) =>
           </div>
         </div>
       )}
+
+      {/* Phase 1: Periodic Timeline button */}
+      <div style={{ marginTop: 12 }}>
+        <PeriodicTimelineTrigger dealId={dealId} preset="monitoring" label="Periodic Timeline" />
+      </div>
 
       {/* M35 Events — market events affecting this deal's pro forma assumptions */}
       {dealEvents.length > 0 && (
