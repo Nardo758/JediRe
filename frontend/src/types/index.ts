@@ -231,7 +231,7 @@ export interface DealFormData {
   expectedCloseDate: string | null;
   priority: string;
   notes: string;
-  deal_category?: 'pipeline' | 'portfolio';
+  deal_category?: 'pipeline';
 }
 
 export interface Client {

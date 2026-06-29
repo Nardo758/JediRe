@@ -80,7 +80,7 @@ const LIGHT = {
   },
 };
 
-type DealCategory = 'portfolio' | 'pipeline';
+type DealCategory = 'pipeline';
 
 interface PropertyType {
   id: number;
@@ -423,13 +423,7 @@ export const CreateDealPage: React.FC = () => {
       if (result?.id) {
         navigate(`/deals/${result.id}/detail`);
       } else {
-        if (dealCategory === 'pipeline') {
-          navigate('/deals');
-        } else if (dealCategory === 'portfolio') {
-          navigate('/assets-owned');
-        } else {
-          navigate('/dashboard');
-        }
+        navigate('/deals');
       }
     } catch (err: any) {
       setError(err.message || 'Failed to create deal');
@@ -833,14 +827,6 @@ export const CreateDealPage: React.FC = () => {
             {currentStep === STEPS.CATEGORY && (
               <div>
                 <h2 style={styles.sectionTitle}>Deal Category</h2>
-                
-                <TypeCard
-                  icon="📁"
-                  title="Portfolio"
-                  description="Properties you own or manage. Track performance, documents, and operations."
-                  onClick={() => handleSelectCategory('portfolio')}
-                  color={T.text.link}
-                />
                 <TypeCard
                   icon="📈"
                   title="Pipeline"

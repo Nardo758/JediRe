@@ -38,7 +38,7 @@ export const createDealSchema = z.object({
   timelineStart: z.string().nullable().optional(),
   timelineEnd: z.string().nullable().optional(),
   tier: z.enum(['scout', 'basic', 'operator', 'principal', 'institutional']).optional(),
-  deal_category: z.enum(['pipeline', 'portfolio']).optional(),
+  deal_category: z.enum(['pipeline']).optional(),
   development_type: z.string().optional(),
   strategy: z.string().nullable().optional(),
   property_type_id: z.number().int().positive().nullable().optional(),
