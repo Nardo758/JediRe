@@ -30,7 +30,7 @@ export interface PeriodLayeredValue {
   resolved: number | null;
 
   /** How this value was determined at this period. */
-  resolution: 'actual' | 'derived_gap' | 'assumption_trend' | 'platform_default' | 'operator_override' | 'agent' | 'computed' | 'unresolved';
+  resolution: 'actual' | 'derived_gap' | 'assumption_trend' | 'platform_default' | 'operator_override' | 'agent' | 'computed' | 'unresolved' | 'year1_accrual';
 
   /** Source tag for provenance tracking. */
   source: string | null;
@@ -174,4 +174,46 @@ export const PERCENTAGE_FIELDS = new Set([
   'bad_debt_pct',
   'non_revenue_units_pct',
   'management_fee_pct',
+]);
+
+/**
+ * Dollar fields whose annual grid value is a SUM of monthly values (not an AVG).
+ *
+ * When a month in the actual zone has no T12/actuals coverage, the seeder
+ * falls back to the year1 seed's resolved value — which is an ANNUAL figure.
+ * Writing that annual figure verbatim into a monthly slot causes 12× inflation
+ * when the grid sums 12 slots for the year column.
+ *
+ * For every field in this set, the NULL-coverage fallback writes
+ * `year1_annual ÷ 12` (monthly accrual) tagged as `resolution: 'year1_accrual'`,
+ * so the annual SUM of 12 accruals equals the year1 annual figure — not 12×.
+ *
+ * Rate fields (vacancy_pct, bad_debt_pct, etc.) and per-unit AVG fields
+ * (noi_per_unit, other_income_per_unit) are intentionally excluded: a constant
+ * rate in → AVG rollup → correct rate out, no ÷12 needed.
+ */
+export const SUM_ROLLUP_DOLLAR_FIELDS = new Set([
+  'gpr',
+  'net_rental_income',
+  'egi',
+  'payroll',
+  'repairs_maintenance',
+  'turnover',
+  'amenities',
+  'contract_services',
+  'marketing',
+  'office',
+  'g_and_a',
+  'hoa_dues',
+  'utilities',
+  'water_sewer',
+  'electric',
+  'gas_fuel',
+  'landscaping',
+  'insurance',
+  'real_estate_tax',
+  'personal_property_tax',
+  'replacement_reserves',
+  'total_opex',
+  'noi',
 ]);

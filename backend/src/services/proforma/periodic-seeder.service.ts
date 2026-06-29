@@ -19,7 +19,7 @@ import type {
   PeriodLayeredValue,
   BuildPeriodicSeedInput,
 } from './periodic-field.types';
-import { FIELD_TO_T12_COLUMN } from './periodic-field.types';
+import { FIELD_TO_T12_COLUMN, SUM_ROLLUP_DOLLAR_FIELDS } from './periodic-field.types';
 import type { BoundaryContext, PeriodZoneType } from './boundary.types';
 import { logger } from '../../utils/logger';
 
@@ -320,17 +320,31 @@ function buildFieldSeries(input: BuildFieldSeriesInput): PeriodicFieldSeries {
         }
       }
 
-      // If not found in T12 column map, fall back to year1 value
+      // If T12 value is absent (no mapping or NULL monthly row), fall back to year1.
+      // SUM-rollup dollar fields: divide by 12 so the annual SUM of 12 accruals
+      // equals the year1 annual figure, not 12×. Tag as 'year1_accrual' so the
+      // grid can style imputed months distinctly from real extraction_t12 actuals.
+      // Rate/AVG fields: copy verbatim (constant rate → AVG rollup → correct).
       if (resolved == null && fallbackResolved != null) {
-        resolved = fallbackResolved;
-        resolution = 'actual';
-        source = fallbackSource;
+        if (SUM_ROLLUP_DOLLAR_FIELDS.has(fieldName)) {
+          resolved = fallbackResolved / 12;
+          resolution = 'year1_accrual';
+          source = 'year1_annual_accrual';
+        } else {
+          resolved = fallbackResolved;
+          resolution = 'actual';
+          source = fallbackSource;
+        }
       }
     } else if (period.zone === 'gap') {
       // Phase 3 placeholder: gap uses year1 value as trend baseline
       // (Phase 3 will replace with actual trend derivation)
+      // Same ÷12 rule for SUM-rollup dollar fields to keep gap-year annual
+      // totals sane (year1 annual, not 12×).
       if (fallbackResolved != null) {
-        resolved = fallbackResolved;
+        resolved = SUM_ROLLUP_DOLLAR_FIELDS.has(fieldName)
+          ? fallbackResolved / 12
+          : fallbackResolved;
         resolution = 'derived_gap';
         source = 'assumption_trend';
       }
