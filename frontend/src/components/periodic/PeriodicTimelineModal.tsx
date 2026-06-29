@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Table2, LineChart } from 'lucide-react';
 import { BT } from '../deal/bloomberg-ui';
 import { PeriodicGrid } from './PeriodicGrid';
+import { PeriodicChart } from './PeriodicChart';
 import type { PeriodicGridPreset } from './PeriodicGrid.types';
 
 interface PeriodicTimelineModalProps {
@@ -136,19 +137,7 @@ export const PeriodicTimelineModal: React.FC<PeriodicTimelineModalProps> = ({
             <PeriodicGrid dealId={dealId} preset={preset} />
           )}
           {activeView === 'chart' && (
-            <div
-              style={{
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: BT.text.muted,
-                fontFamily: BT.font.mono,
-                fontSize: BT.fontSize.md,
-              }}
-            >
-              CHART view — Step 3 (new renderer, same data)
-            </div>
+            <PeriodicChart dealId={dealId} />
           )}
         </div>
       </div>
