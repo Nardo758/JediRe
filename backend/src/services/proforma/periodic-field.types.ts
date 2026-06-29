@@ -142,6 +142,7 @@ export const FIELD_TO_T12_COLUMN: Record<string, string> = {
   net_rental_income: 'netRentalIncome',
   other_income: 'otherIncome',
   effective_gross_income: 'effectiveGrossIncome',
+  egi: 'effectiveGrossIncome',          // canonical name → same T12 column
   payroll: 'payroll',
   repairs_maintenance: 'repairsMaintenance',
   turnover: 'turnoverCosts',
@@ -155,6 +156,7 @@ export const FIELD_TO_T12_COLUMN: Record<string, string> = {
   management_fee_pct: 'managementFee',
   insurance: 'insurance',
   property_tax: 'propertyTax',
+  real_estate_tax: 'propertyTax',       // canonical name → same T12 column
   total_opex: 'totalOpex',
   noi: 'noi',
   total_units: 'totalUnits',
