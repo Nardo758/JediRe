@@ -51,12 +51,16 @@
 BEGIN;
 
 -- No deals currently qualify as safe-to-delete (zero references).
--- Add UUIDs here after human review per the tier guidance above.
+-- WHERE FALSE makes this a syntactically valid no-op that PostgreSQL can parse and
+-- run safely (deletes 0 rows). Replace FALSE with the approved UUID list after
+-- human review per the tier guidance above, e.g.:
+--   id = ANY(ARRAY[
+--     'fb46a388-f3b8-44bd-ad12-7ed3250079a2'::uuid,  -- College Park (Tier 1)
+--     '5191737b-79f5-4b8d-b1c0-9c33c919edda'::uuid   -- Downtown OC  (Tier 1)
+--   ]::uuid[])
 DELETE FROM deals
-WHERE id IN (
-  -- paste approved deal UUIDs here, one per line
-)
-AND deal_category = 'portfolio'                                    -- safety guard
+WHERE FALSE                                                        -- no-op: 0 rows this pass
+AND deal_category = 'portfolio'                                    -- safety guard (retained for when IDs are added)
 AND id != 'eaabeb9f-830e-44f9-a923-56679ad0329d'::uuid;          -- never Highlands
 
 -- Confirm Highlands untouched (run this after switching to COMMIT):
