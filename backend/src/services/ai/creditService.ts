@@ -190,7 +190,7 @@ export class CreditService {
         userId,
         stripeCustomerId,
         tier,
-        1, // start at Level 1 automation
+        config.maxAutomationLevel, // derive from tier config, not hardcoded
         config.creditsIncludedMonthly,
         config.creditsIncludedMonthly,
         cap,
