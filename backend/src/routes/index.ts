@@ -106,6 +106,7 @@ import documentsFilesRoutes from '../api/rest/documentsFiles.routes';
 import submarketDocumentsRoutes from '../api/rest/submarketDocuments.routes';
 import ddChecklistsRouter from '../api/rest/dd-checklists.routes';
 import dealStrategyRouter from '../api/rest/deal-strategy.routes';
+import skillChatRouter from '../api/rest/skill-chat.routes';
 import jediRoutes from '../api/rest/jedi.routes';
 
 export function mountDealRoutes(app: Express) {
@@ -180,6 +181,9 @@ export function mountDealRoutes(app: Express) {
 
   // Deal strategy
   app.use('/api/v1/deals', requireAuth, requireWeb, dealStrategyRouter);
+
+  // Skill Chat — deal-scoped AI assistant chat
+  app.use('/api/v1/deals', requireAuth, requireWeb, skillChatRouter);
 }
 
 // ─── Property & Data Library Routes ─────────────────────────────────────────

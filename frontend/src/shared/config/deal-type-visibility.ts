@@ -25,7 +25,7 @@ export type StationId = 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6';
 export type ModuleId =
   | 'M01' | 'M02' | 'M03' | 'M04' | 'M05' | 'M06' | 'M07' | 'M08'
   | 'M09' | 'M10' | 'M11' | 'M12' | 'M13' | 'M14' | 'M15'
-  | 'M17' | 'M18' | 'M20' | 'M21' | 'M22' | 'M27' | 'M29' | 'M35';
+  | 'M16' | 'M17' | 'M18' | 'M20' | 'M21' | 'M22' | 'M27' | 'M29' | 'M35';
 
 export type FKey =
   | 'F1' | 'F2' | 'F3' | 'F4' | 'F5' | 'F6' | 'F7' | 'F8'
@@ -368,6 +368,16 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
   {
     moduleId: 'M15',
     name: 'Competition Analysis',
+    fKey: null,
+    station: 'S4',
+    stationLabel: 'Due Diligence & Risk',
+    category: 'Intelligence',
+    showFor: { existing: 'full', development: 'full', redevelopment: 'full' },
+  },
+
+  {
+    moduleId: 'M16',
+    name: 'AI Skills Chat',
     fKey: null,
     station: 'S4',
     stationLabel: 'Due Diligence & Risk',

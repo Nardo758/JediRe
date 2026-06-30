@@ -61,6 +61,7 @@ import type { DealType, ModuleId } from '../shared/config/deal-type-visibility';
 import { BT, BT_CSS, PanelHeader, SectionPanel } from '../components/deal/bloomberg-ui';
 import { BottomPanel } from '../components/layout/BottomPanel';
 import { SkillsBar } from '../components/layout/SkillsBar';
+import { SkillsChatSection } from '../components/deal/sections/SkillsChatSection';
 import { BloombergOverviewSection } from '../components/deal/sections/BloombergOverviewSection';
 import { PeriodicGrid } from '../components/periodic/PeriodicGrid';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
@@ -177,6 +178,13 @@ const FinancialEngineWrapper = (p: ScreenProps) => (
 const PROFORMA_TABS = [{ id: 'proforma', label: 'Pro Forma', component: FinancialEngineWrapper }];
 const ProFormaScreen = (props: ScreenProps) => (
   <DealScreenWrapper passProps={props} tabs={PROFORMA_TABS} />
+);
+const SkillsChatScreen = (props: ScreenProps) => (
+  <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+    <div style={{ flex: 1, overflow: 'auto', minHeight: 0, padding: '8px 0' }}>
+      <SkillsChatSection dealId={props.dealId} />
+    </div>
+  </div>
 );
 const isOwnedDeal = (status?: string, pipelineStage?: string) =>
   ['owned', 'closed'].includes((status ?? '').toLowerCase()) ||
@@ -852,6 +860,7 @@ const DealDetailPage: React.FC = () => {
     { id: 'proforma',    moduleId: 'M09', fkey: 'F9',  code: 'M09', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
     { id: 'risk',        moduleId: 'M14', fkey: 'F10', code: 'M14', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
     { id: 'deal-tools',  moduleId: 'M21', fkey: 'F11', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
+    { id: 'skills-chat', moduleId: 'M16', fkey: '',    code: 'M16', short: 'SKILLS',    label: 'AI Skills',        icon: <Bot size={14} />,            component: SkillsChatScreen },
   ];
 
   const dealScreens = allDealScreens.filter((s) => config.isModuleVisible(s.moduleId));
