@@ -576,7 +576,7 @@ router.get('/:dealId/latest', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/:dealId/export/excel', async (req: Request, res: Response) => {
+router.get('/:dealId/export/excel', requireAuth, requireDealAccess, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
     const model = await financialModelEngine.getLatestModel(dealId);
