@@ -368,6 +368,11 @@ router.get('/performance', requireAuth, async (req: AuthenticatedRequest, res: R
         WHERE (deal_data->>'noi') IS NOT NULL
           AND (deal_data->>'noi')::numeric > 0
           AND (status IN ('owned', 'closed', 'portfolio') OR deal_category = 'portfolio')
+          AND EXISTS (
+            SELECT 1 FROM deal_properties dp
+            JOIN properties p ON p.id = dp.property_id
+            WHERE dp.deal_id = deals.id AND p.name IS NOT NULL
+          )
       ),
       date_series AS (
         SELECT generate_series(
@@ -455,6 +460,11 @@ router.get('/performance/contributors', requireAuth, async (req: AuthenticatedRe
       JOIN deals d ON d.id = ap.deal_id
       WHERE DATE_TRUNC('month', ap.period_start) = DATE_TRUNC('month', $1::date)
         AND (d.status IN ('owned', 'closed', 'portfolio') OR d.deal_category = 'portfolio')
+        AND EXISTS (
+          SELECT 1 FROM deal_properties dp
+          JOIN properties p ON p.id = dp.property_id
+          WHERE dp.deal_id = d.id AND p.name IS NOT NULL
+        )
       ORDER BY ap.actual_noi DESC NULLS LAST
     `, [period]);
 
@@ -479,8 +489,12 @@ router.get('/allocation', requireAuth, async (req: AuthenticatedRequest, res: Re
         COUNT(*) as count,
         COALESCE(SUM((d.deal_data->>'current_value')::numeric), 0) as value
       FROM deals d
-      WHERE d.status IN ('owned', 'closed', 'portfolio')
-        OR d.deal_category = 'portfolio'
+      WHERE (d.status IN ('owned', 'closed', 'portfolio') OR d.deal_category = 'portfolio')
+        AND EXISTS (
+          SELECT 1 FROM deal_properties dp
+          JOIN properties p ON p.id = dp.property_id
+          WHERE dp.deal_id = d.id AND p.name IS NOT NULL
+        )
       GROUP BY d.deal_data->>'asset_class'
     `);
 
@@ -490,8 +504,12 @@ router.get('/allocation', requireAuth, async (req: AuthenticatedRequest, res: Re
         COUNT(*) as count,
         COALESCE(SUM((d.deal_data->>'unit_count')::int), 0) as units
       FROM deals d
-      WHERE d.status IN ('owned', 'closed', 'portfolio')
-        OR d.deal_category = 'portfolio'
+      WHERE (d.status IN ('owned', 'closed', 'portfolio') OR d.deal_category = 'portfolio')
+        AND EXISTS (
+          SELECT 1 FROM deal_properties dp
+          JOIN properties p ON p.id = dp.property_id
+          WHERE dp.deal_id = d.id AND p.name IS NOT NULL
+        )
       GROUP BY COALESCE(d.deal_data->>'msa', d.deal_data->>'city', 'Unknown')
       ORDER BY units DESC
       LIMIT 10

@@ -284,6 +284,11 @@ router.get('/owned', async (req: AuthenticatedRequest, res: Response) => {
           AND d.deal_category = 'portfolio' 
           AND d.status = 'closed_won' 
           AND d.archived_at IS NULL
+          AND EXISTS (
+            SELECT 1 FROM deal_properties dp
+            JOIN properties p ON p.id = dp.property_id
+            WHERE dp.deal_id = d.id AND p.name IS NOT NULL
+          )
       `, [userId]);
 
       if (dealAssets.rows.length > 0) {
@@ -329,6 +334,11 @@ router.get('/owned/:id/report', async (req: AuthenticatedRequest, res: Response)
         AND d.deal_category = 'portfolio'
         AND d.status = 'closed_won'
         AND d.archived_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM deal_properties dp
+          JOIN properties p ON p.id = dp.property_id
+          WHERE dp.deal_id = d.id AND p.name IS NOT NULL
+        )
     `, [id]);
 
     if (dealActuals.rows.length > 0) {

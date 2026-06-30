@@ -477,7 +477,12 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
             -- High score opportunities not in pipeline yet
             (ar.jedi_score >= 70 AND d.state IN ('SIGNAL_INTAKE', 'TRIAGE'))
             -- Risk alerts on portfolio deals
-            OR (ar.jedi_score < 50 AND d.deal_category = 'portfolio')
+            OR (ar.jedi_score < 50 AND d.deal_category = 'portfolio'
+                AND EXISTS (
+                  SELECT 1 FROM deal_properties dp
+                  JOIN properties p ON p.id = dp.property_id
+                  WHERE dp.deal_id = d.id AND p.name IS NOT NULL
+                ))
             -- Optimization opportunities
             OR (ar.analysis_data->'recommendations' IS NOT NULL AND jsonb_array_length(COALESCE(ar.analysis_data->'recommendations', '[]'::jsonb)) > 0)
           )
@@ -657,6 +662,11 @@ router.get('/assets', authMiddleware.requireAuth, async (req: Request, res: Resp
         AND d.deal_category = 'portfolio'
         AND d.state = 'POST_CLOSE'
         AND d.archived_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM deal_properties dp
+          JOIN properties p ON p.id = dp.property_id
+          WHERE dp.deal_id = d.id AND p.name IS NOT NULL
+        )
       ORDER BY d.created_at DESC`,
       [userId]
     );
