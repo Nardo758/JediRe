@@ -247,8 +247,13 @@ app.use('/api/v1/supply', requireAuth, supplyRoutes);
 // Cost-incurring routes (/geocode, /zoning/lookup, /analyze, third-party GIS)
 // are intentionally NOT listed: auth makes future metering possible.
 //
-// The accidental broad-prefix guards (routes/index.ts:176,177 etc.) remain
-// as defense-in-depth until Step 4 converts them to specific-path mounts.
+// LEGACY BROAD GUARDS: ~16 app.use('/api/v1', requireAuth, router) mounts in
+// routes/index.ts and this file remain as defense-in-depth (see AUTH_STEP4_DEBT.md
+// for the full list and why narrowing them requires router-file edits, not just
+// mount-point changes). Those guards honour this floor via the res.locals.bypassAuth
+// flag checked at the top of requireAuth and requireSurface (auth.ts:66, auth.ts:310).
+// INVARIANT: any NEW middleware that gates /api/v1 must check bypassAuth first —
+// ignoring it silently 401s the allowlisted public paths below.
 const API_V1_PUBLIC_PREFIXES = [
   '/auth',                    // /api/v1/auth/* — login, register, dev-login
   '/ticker',                  // /api/v1/ticker/* — FRED tickers (validatePublicQuery)
