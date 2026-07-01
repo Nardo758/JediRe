@@ -69,10 +69,11 @@ function createStripeSync(): StripeSync {
   return {
     async processWebhook(payload: Buffer, signature: string): Promise<Stripe.Event> {
       if (!webhookSecret) {
-        // Dev fallback: parse raw JSON without signature verification.
-        // In production, STRIPE_WEBHOOK_SECRET must be set.
-        const event = JSON.parse(payload.toString()) as Stripe.Event;
-        return event;
+        throw new Error(
+          'STRIPE_WEBHOOK_SECRET is not configured. ' +
+          'All webhook requests are rejected until the signing secret is set. ' +
+          'Obtain the whsec_... value from the Stripe dashboard and set it as STRIPE_WEBHOOK_SECRET.'
+        );
       }
       return stripe.webhooks.constructEvent(payload, signature, webhookSecret);
     },
