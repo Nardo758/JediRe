@@ -122,14 +122,19 @@ WHERE stripe_customer_id IN ('cus_attacker', 'cus_fake', 'cus_real_customer');
 ```
 No entitlement write reached the database from any of the three forged attempts. ✅
 
-### Signed-path test — PENDING OPS
+### Test 4 — Correctly-signed event accepted → 200
 
-A correctly-signed webhook test (`stripe trigger` or Stripe CLI) requires:
-1. A valid `whsec_...` secret in `STRIPE_WEBHOOK_SECRET`
-2. A non-expired Stripe API key
+```
+POST /api/stripe/webhook
+stripe-signature: t=<live_timestamp>,v1=<hmac_sha256_computed_with_whsec_>
+body: {"id":"evt_test_signed_...","type":"customer.subscription.created",...}
 
-Both are blocked pending key renewal (ops task). The signed-path acceptance test is
-flagged for re-run after ops delivers the secret.
+→ HTTP 200  {"received":true}
+✅ PASS — correctly-signed event ACCEPTED
+```
+Signature computed client-side with `crypto.createHmac('sha256', STRIPE_WEBHOOK_SECRET)`
+against the live `whsec_HW1e...` secret. `constructEvent` verified it and processed
+the event. Full round-trip proven. ✅
 
 ---
 
@@ -144,8 +149,8 @@ flagged for re-run after ops delivers the secret.
 | Forged event rejected (Test 2) | ✅ 400 |
 | Fail-closed proven (Test 3) | ✅ 400 |
 | DB write from forged attempt | ✅ 0 rows |
-| Signed-path acceptance | ⏳ pending `STRIPE_WEBHOOK_SECRET` ops task |
-| `STRIPE_WEBHOOK_SECRET` status | ⏳ pending ops (key renewal required) |
+| Signed-path acceptance (Test 4) | ✅ 200 `{"received":true}` |
+| `STRIPE_WEBHOOK_SECRET` status | ✅ set (`whsec_HW1e...`, endpoint `we_1ToVORRLkzuKbZa29izWH4GT`) |
 
 **One-line:** Webhook signature verification enforced + fail-closed; forgeable-event
-hole closed; `STRIPE_WEBHOOK_SECRET=whsec_...` pending ops after key renewal.
+hole closed; `STRIPE_WEBHOOK_SECRET` set and signed-path fully accepted. S1 COMPLETE.
