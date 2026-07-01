@@ -10,6 +10,11 @@ router.use(requireAuth);
 // A5-F2: Billing routes are web-only — enforce surface access.
 router.use(requireSurface('web'));
 
+// Metered price line item added to every checkout session (flat + usage billing).
+// Unit: micro-dollars (1 unit = $0.000001). MeteringAdapter reports jedi_ai_cost_usd
+// as Math.round(costUsd * 1_000_000). S5 applies per-tier aiMarkup before reporting.
+const METERED_PRICE_ID = process.env.STRIPE_PRICE_METERED_AI_COST || '';
+
 const TIER_PRICES: Record<string, { monthly: string; annual: string }> = {
   scout: {
     monthly: process.env.STRIPE_PRICE_SCOUT_MONTHLY || 'price_scout_monthly',
@@ -87,7 +92,10 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
 
     const sessionParams: any = {
       mode: 'subscription',
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [
+        { price: priceId, quantity: 1 },
+        ...(METERED_PRICE_ID ? [{ price: METERED_PRICE_ID }] : []),
+      ],
       success_url: `${baseUrl}/terminal/settings?tab=subscription&checkout=success`,
       cancel_url: `${baseUrl}/terminal/settings?tab=subscription&checkout=canceled`,
       client_reference_id: userId,

@@ -11,6 +11,11 @@ import Stripe from 'stripe';
 
 function getSecretKey(): string {
   const key = process.env.STRIPE_SECRET_KEY;
+  const keyLive = process.env.STRIPE_SECRET_KEY_LIVE;
+  // If STRIPE_SECRET_KEY is a publishable key (pk_*), fall back to STRIPE_SECRET_KEY_LIVE.
+  // This handles the transition period where the secret was initially set to pk_live_.
+  if (key && key.startsWith('sk_')) return key;
+  if (keyLive && keyLive.startsWith('sk_')) return keyLive;
   if (!key) {
     throw new Error('STRIPE_SECRET_KEY environment variable is not set');
   }
