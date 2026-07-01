@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import pool from '../../database/connection';
-import { optionalAuth } from '../../middleware/auth';
+import { optionalAuth, requireAuth } from '../../middleware/auth';
 
 interface AuthenticatedRequest extends Request {
   user?: { userId: string; email: string };
@@ -495,7 +495,7 @@ router.get('/owned/:id/report', async (req: AuthenticatedRequest, res: Response)
   }
 });
 
-router.post('/export', async (req: Request, res: Response) => {
+router.post('/export', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { type, data } = req.body;
     

@@ -233,6 +233,67 @@ mountAdminRoutes(app);
 // same router on line ~459.
 app.use('/api/v1/supply', requireAuth, supplyRoutes);
 
+// ─── /api/v1 Auth Floor ─────────────────────────────────────────────────────
+//
+// §AUTH-FLOOR: Single intentional auth gate for all /api/v1/* routes.
+// Replaces the ACCIDENTAL floor (routes/index.ts:176, documentsFilesRoutes
+// broad mount with requireAuth+requireWeb leaking to all post-line-240 routes).
+//
+// Only paths listed in API_V1_PUBLIC_PREFIXES serve unauthenticated callers.
+// Everything else requires a valid session or API key via requireAuth.
+// Uses requireAuth ONLY — not requireAuth+requireWeb. Surface enforcement
+// (web vs chat vs api) stays a per-route concern; this floor is identity-only.
+//
+// Cost-incurring routes (/geocode, /zoning/lookup, /analyze, third-party GIS)
+// are intentionally NOT listed: auth makes future metering possible.
+//
+// LEGACY BROAD GUARDS: ~16 app.use('/api/v1', requireAuth, router) mounts in
+// routes/index.ts and this file remain as defense-in-depth (see AUTH_STEP4_DEBT.md
+// for the full list and why narrowing them requires router-file edits, not just
+// mount-point changes). Those guards honour this floor via the res.locals.bypassAuth
+// flag checked at the top of requireAuth and requireSurface (auth.ts:66, auth.ts:310).
+// INVARIANT: any NEW middleware that gates /api/v1 must check bypassAuth first —
+// ignoring it silently 401s the allowlisted public paths below.
+const API_V1_PUBLIC_PREFIXES = [
+  '/auth',                    // /api/v1/auth/* — login, register, dev-login
+  '/ticker',                  // /api/v1/ticker/* — FRED tickers (validatePublicQuery)
+  '/time-series',             // /api/v1/time-series/* (validatePublicQuery)
+  '/data-macro',              // /api/v1/data-macro/* (validatePublicQuery)
+  '/driver-analysis',         // /api/v1/driver-analysis/* (validatePublicQuery)
+  '/derived-metrics',         // /api/v1/derived-metrics/* (validatePublicQuery)
+  '/columns',                 // /api/v1/columns/* (validatePublicQuery)
+  '/column-catalog',          // /api/v1/column-catalog — public catalog handler
+  '/grid-data',               // /api/v1/grid-data — public grid data handler
+  '/column-insights',         // /api/v1/column-insights — public insights handler
+  '/grid-templates',          // /api/v1/grid-templates — optionalAuth (serves both)
+  '/microsoft/auth/callback', // OAuth callback — Microsoft reaches this unauthenticated
+  '/oppgrid',                 // /api/v1/oppgrid/* — public market intelligence
+  '/shares',                  // /api/v1/shares/* — token-gated capsule exports
+  '/capsule-links',           // /api/v1/capsule-links/* — token-gated capsule data
+  '/capsules',                // /api/v1/capsules/* — token-gated (legacy)
+  '/webhooks',                // /api/v1/webhooks/* — signature-verified (notarize)
+  '/clawdbot',                // /api/v1/clawdbot/* — HMAC webhook (command + query)
+] as const;
+
+app.use('/api/v1', (
+  req: import('express').Request,
+  res: import('express').Response,
+  next: import('express').NextFunction,
+) => {
+  const p = req.path;
+  for (const prefix of API_V1_PUBLIC_PREFIXES) {
+    if (p === prefix || p.startsWith(prefix + '/')) {
+      // Set the bypass flag so that ALL downstream requireAuth and
+      // requireSurface calls (including legacy broad-prefix guards that
+      // run after this floor) honour the allowlist decision without
+      // needing to be individually modified.
+      res.locals.bypassAuth = true;
+      return next();
+    }
+  }
+  return requireAuth(req, res, next);
+});
+
 app.use('/api/v1', dataRouter);
 // Capsule sharing routes mounted here (second, early mount) so that the
 // unauthenticated GET /api/v1/deals/:dealId/deal-book endpoint is reachable

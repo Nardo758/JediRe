@@ -14,7 +14,7 @@ export interface AuthenticatedRequest extends Request {
     userId: string;
     email: string;
     role: string;
-    user_type?: 'human' | 'agent' | 'human_sponsor' | 'human_lp' | 'human_lender';
+    user_type?: 'human' | 'agent' | 'human_sponsor' | 'human_lp' | 'human_lender' | 'system';
     agent_id?: string;
     capabilities?: string[];
   };
@@ -59,6 +59,14 @@ export async function requireAuth(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  // INVARIANT: any middleware that gates /api/v1 MUST check res.locals.bypassAuth first.
+  // The public-route allowlist floor (index.replit.ts, conditionalApiV1Auth) sets this flag
+  // for allowlisted paths (/auth, /ticker, /oppgrid, /webhooks/notarize, /clawdbot, token
+  // shares, etc). Skipping this check silently 401s public routes. See AUTH_STEP4_DEBT.
+  if (res.locals.bypassAuth === true) {
+    return next();
+  }
+
   // Allow API key auth on any route that requires auth
   const apiKey = extractApiKey(req);
   if (apiKey) {
@@ -295,6 +303,14 @@ export const authMiddleware = { requireAuth };
 
 export function requireSurface(surface: 'chat' | 'web' | 'api') {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    // INVARIANT: any middleware that gates /api/v1 MUST check res.locals.bypassAuth first.
+    // The public-route allowlist floor (index.replit.ts, conditionalApiV1Auth) sets this flag
+    // for allowlisted paths (/auth, /ticker, /oppgrid, /webhooks/notarize, /clawdbot, token
+    // shares, etc). Skipping this check silently 401s public routes. See AUTH_STEP4_DEBT.
+    if (res.locals.bypassAuth === true) {
+      return next();
+    }
+
     if (!req.user) {
       res.status(401).json({ error: 'Unauthorized', message: 'Authentication required' });
       return;

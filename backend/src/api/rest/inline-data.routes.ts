@@ -32,44 +32,6 @@ router.get('/supply/:market', async (req, res, next) => {
   }
 });
 
-router.get('/markets', async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT DISTINCT ON (market) 
-        market, timestamp, total_inventory, months_of_supply, score, interpretation
-      FROM supply_metrics
-      ORDER BY market, timestamp DESC
-    `);
-    res.json({ success: true, data: result.rows });
-  } catch (error) {
-    console.error('Error fetching markets:', error);
-    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
-  }
-});
-
-router.get('/properties', async (req, res) => {
-  try {
-    // Validate and sanitize limit parameter
-    const limitParam = parseInt(req.query.limit as string);
-    const limit = !isNaN(limitParam) && limitParam > 0 && limitParam <= 500 ? limitParam : 50;
-    
-    const city = req.query.city as string;
-    let query = 'SELECT * FROM properties';
-    const params: any[] = [];
-    if (city) {
-      query += ' WHERE city ILIKE $1';
-      params.push(`%${city}%`);
-    }
-    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
-    params.push(limit);
-    const result = await pool.query(query, params);
-    res.json({ success: true, count: result.rows.length, data: result.rows });
-  } catch (error) {
-    console.error('Error fetching properties:', error);
-    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
-  }
-});
-
 router.get('/alerts', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.userId;

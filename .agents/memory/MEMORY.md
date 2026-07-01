@@ -2,3 +2,4 @@
 - [deal_files local path convention](deal-files-path.md) — file_path column is relative to backend/ (process.cwd()), not workspace root; files are in backend/uploads/deals/{dealId}/
 - [Scenario sync trigger wipe pattern](scenario-sync-trigger.md) — trg_sync_underwriting_scenario fully overwrites deal_assumptions.year1; any deal_assumptions write must also write to the active scenario or it will be erased on the next GET /financials
 - [Backend startup crash history](startup-crash-history.md) — cascading module import + inngest v4 + migration failures fixed June 2026; LENIENT_SCHEMA_CHECK=1 set in backend/.env
+- [/api/v1 bypassAuth invariant](api-v1-bypass-auth-invariant.md) — any /api/v1 gate middleware MUST check res.locals.bypassAuth first; ignoring it silently 401s public allowlist routes

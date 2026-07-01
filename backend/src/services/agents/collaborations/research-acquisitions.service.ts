@@ -13,7 +13,8 @@
  * @date 2026-04-22
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { meteringAdapter } from '../../../agents/runtime/MeteringAdapter';
+import type { MeteringMetadata } from '../../../agents/runtime/types';
 import { query } from '../../../database/connection';
 import { logger } from '../../../utils/logger';
 
@@ -76,14 +77,6 @@ export interface ScreeningAdjustment {
 }
 
 // ============================================================================
-// ANTHROPIC CLIENT
-// ============================================================================
-
-const anthropic = new Anthropic({
-  apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
-});
-
-// ============================================================================
 // RESEARCH → ACQUISITIONS SERVICE
 // ============================================================================
 
@@ -102,7 +95,7 @@ class ResearchAcquisitionsService {
     const activePipeline = await this.getActivePipeline(userId, signal.market);
     
     // Generate AI recommendations
-    const aiAnalysis = await this.getAIRecommendations(signal, currentParams, activePipeline);
+    const aiAnalysis = await this.getAIRecommendations(signal, currentParams, activePipeline, userId);
     
     const adjustment: ScreeningAdjustment = {
       id: `screen_adj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -139,7 +132,7 @@ class ResearchAcquisitionsService {
     const currentParams = await this.getCurrentScreeningParams(userId);
     const activePipeline = await this.getActivePipelineAll(userId);
     
-    const aiAnalysis = await this.getBatchAIRecommendations(byMarket, currentParams, activePipeline);
+    const aiAnalysis = await this.getBatchAIRecommendations(byMarket, currentParams, activePipeline, userId);
     
     const adjustment: ScreeningAdjustment = {
       id: `screen_adj_batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -241,7 +234,7 @@ class ResearchAcquisitionsService {
   /**
    * Get AI recommendations for single signal
    */
-  private async getAIRecommendations(signal: MarketSignal, currentParams: any, activePipeline: any[]): Promise<any> {
+  private async getAIRecommendations(signal: MarketSignal, currentParams: any, activePipeline: any[], userId: string): Promise<any> {
     const prompt = `You are a real estate Research analyst advising Acquisitions on screening adjustments.
 
 MARKET SIGNAL:
@@ -301,10 +294,17 @@ Based on this signal, provide recommendations in JSON:
 }`;
 
     try {
-      const response = await anthropic.messages.create({
+      const meta: MeteringMetadata = {
+        actor_type: 'human',
+        actor_id: userId,
+        user_id: userId,
+        triggered_by: 'user',
+      };
+      const response = await meteringAdapter.createMessage({
         model: 'claude-sonnet-4-5',
         max_tokens: 2048,
         messages: [{ role: 'user', content: prompt }],
+        metadata: meta,
       });
 
       const text = response.content.find(b => b.type === 'text')?.text || '{}';
@@ -322,7 +322,8 @@ Based on this signal, provide recommendations in JSON:
   private async getBatchAIRecommendations(
     byMarket: Record<string, MarketSignal[]>,
     currentParams: any,
-    activePipeline: any[]
+    activePipeline: any[],
+    userId: string
   ): Promise<any> {
     const marketsummary = Object.entries(byMarket).map(([market, signals]) => {
       return `${market}:\n${signals.map(s => `  - ${s.signalType}: ${s.direction} ${s.magnitude}%`).join('\n')}`;
@@ -352,10 +353,17 @@ Synthesize these signals and provide comprehensive recommendations in JSON:
 }`;
 
     try {
-      const response = await anthropic.messages.create({
+      const meta: MeteringMetadata = {
+        actor_type: 'human',
+        actor_id: userId,
+        user_id: userId,
+        triggered_by: 'user',
+      };
+      const response = await meteringAdapter.createMessage({
         model: 'claude-sonnet-4-5',
         max_tokens: 3000,
         messages: [{ role: 'user', content: prompt }],
+        metadata: meta,
       });
 
       const text = response.content.find(b => b.type === 'text')?.text || '{}';

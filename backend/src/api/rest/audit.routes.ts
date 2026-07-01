@@ -7,6 +7,7 @@ import { Router, Request, Response } from 'express';
 import { pool } from '../../database/connection';
 import { AuditTrailService } from '../../services/audit-trail.service';
 import { authenticateToken } from '../../middleware/auth';
+import { requireDealAccess } from '../../middleware/deal-access';
 
 const router = Router();
 const auditService = new AuditTrailService(pool);
@@ -128,7 +129,7 @@ router.use(authenticateToken);
    * POST /api/v1/audit/export/:dealId
    * Generate and export audit report
    */
-  router.post('/export/:dealId', async (req: Request, res: Response) => {
+  router.post('/export/:dealId', requireDealAccess, async (req: Request, res: Response) => {
     try {
       const { dealId } = req.params;
       const {

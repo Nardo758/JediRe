@@ -14,7 +14,8 @@
  * @date 2026-04-22
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { meteringAdapter } from '../../../agents/runtime/MeteringAdapter';
+import type { MeteringMetadata } from '../../../agents/runtime/types';
 import { query } from '../../../database/connection';
 import { logger } from '../../../utils/logger';
 
@@ -84,14 +85,6 @@ export interface LegalProtection {
 }
 
 // ============================================================================
-// ANTHROPIC CLIENT
-// ============================================================================
-
-const anthropic = new Anthropic({
-  apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
-});
-
-// ============================================================================
 // COMPLIANCE → LEGAL SERVICE
 // ============================================================================
 
@@ -107,7 +100,7 @@ class ComplianceLegalService {
     const dealContext = await this.getDealContext(dealId);
     
     // Get AI recommendations
-    const aiAnalysis = await this.getAIRecommendations(issues, dealContext);
+    const aiAnalysis = await this.getAIRecommendations(issues, dealContext, userId, dealId);
     
     const protection: LegalProtection = {
       id: `legal_prot_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -156,7 +149,7 @@ class ComplianceLegalService {
   /**
    * Get AI recommendations
    */
-  private async getAIRecommendations(issues: ComplianceIssue[], dealContext: any): Promise<any> {
+  private async getAIRecommendations(issues: ComplianceIssue[], dealContext: any, userId: string, dealId?: string): Promise<any> {
     const issuesSummary = issues.map(i => 
       `- [${i.severity.toUpperCase()}] ${i.issueType}: ${i.description} (Source: ${i.source})${i.estimatedCost ? ` Est. cost: $${i.estimatedCost.toLocaleString()}` : ''}`
     ).join('\n');
@@ -226,10 +219,18 @@ GUIDANCE BY ISSUE TYPE:
 Be specific with dollar amounts based on estimated costs. For language, draft actual contract text.`;
 
     try {
-      const response = await anthropic.messages.create({
+      const meta: MeteringMetadata = {
+        actor_type: 'human',
+        actor_id: userId,
+        user_id: userId,
+        deal_id: dealId,
+        triggered_by: 'user',
+      };
+      const response = await meteringAdapter.createMessage({
         model: 'claude-sonnet-4-5',
         max_tokens: 3500,
         messages: [{ role: 'user', content: prompt }],
+        metadata: meta,
       });
 
       const text = response.content.find(b => b.type === 'text')?.text || '{}';

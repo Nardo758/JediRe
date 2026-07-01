@@ -13,7 +13,8 @@
  * @date 2026-04-22
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { meteringAdapter } from '../../../agents/runtime/MeteringAdapter';
+import type { MeteringMetadata } from '../../../agents/runtime/types';
 import { query } from '../../../database/connection';
 import { logger } from '../../../utils/logger';
 
@@ -84,14 +85,6 @@ export interface VarianceImpactAnalysis {
 }
 
 // ============================================================================
-// ANTHROPIC CLIENT
-// ============================================================================
-
-const anthropic = new Anthropic({
-  apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
-});
-
-// ============================================================================
 // ASSET MANAGER → CFO SERVICE
 // ============================================================================
 
@@ -115,7 +108,7 @@ class AssetManagerCFOService {
     const riskImpact = this.calculateRiskImpact(dealData, alert);
     
     // Get AI recommendation
-    const aiAnalysis = await this.getAIAnalysis(dealData, alert, returnImpact, riskImpact);
+    const aiAnalysis = await this.getAIAnalysis(dealData, alert, returnImpact, riskImpact, userId, dealId);
     
     const analysis: VarianceImpactAnalysis = {
       id: `var_impact_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -267,7 +260,7 @@ class AssetManagerCFOService {
   /**
    * Get AI analysis and recommendations
    */
-  private async getAIAnalysis(dealData: any, alert: VarianceAlert, returnImpact: any, riskImpact: any): Promise<any> {
+  private async getAIAnalysis(dealData: any, alert: VarianceAlert, returnImpact: any, riskImpact: any, userId: string, dealId?: string): Promise<any> {
     const prompt = `You are a real estate CFO analyzing operational variance reported by the Asset Manager.
 
 VARIANCE ALERT:
@@ -313,10 +306,18 @@ Provide recommendations in JSON:
 }`;
 
     try {
-      const response = await anthropic.messages.create({
+      const meta: MeteringMetadata = {
+        actor_type: 'human',
+        actor_id: userId,
+        user_id: userId,
+        deal_id: dealId,
+        triggered_by: 'user',
+      };
+      const response = await meteringAdapter.createMessage({
         model: 'claude-sonnet-4-5',
         max_tokens: 2048,
         messages: [{ role: 'user', content: prompt }],
+        metadata: meta,
       });
 
       const text = response.content.find(b => b.type === 'text')?.text || '{}';

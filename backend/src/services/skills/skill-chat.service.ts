@@ -9,6 +9,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { skillRegistry, SkillContext, SkillResult } from './skill-registry';
 import { logger } from '../../utils/logger';
 import { query } from '../../database/connection';
+import { meteringAdapter } from '../../agents/runtime/MeteringAdapter';
+import type { MeteringMetadata } from '../../agents/runtime/types';
 
 // ============================================================================
 // TYPES
@@ -46,15 +48,13 @@ export interface ChatResponse {
   message: string;
   skillCalls: SkillCallInfo[];
   conversationId: string;
+  blocked?: boolean;
+  blockReason?: {
+    reason: 'out_of_credits';
+    credits_remaining: number;
+    upgrade_url: string;
+  };
 }
-
-// ============================================================================
-// ANTHROPIC CLIENT
-// ============================================================================
-
-const anthropic = new Anthropic({
-  apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
-});
 
 // ============================================================================
 // SYSTEM PROMPT
@@ -97,6 +97,50 @@ export async function skillChat(request: ChatRequest): Promise<ChatResponse> {
   const skillCalls: SkillCallInfo[] = [];
 
   try {
+    // ── Message-level balance gate (Part B) ─────────────────────────────────
+    // Check ONCE per message before firing any Sonnet call. A barely-positive
+    // user runs the whole message (bounded overshoot accepted). Next message
+    // will block. No between-turn re-checks.
+    const balanceRow = await query(
+      `SELECT credits_remaining FROM user_credit_balances WHERE user_id = $1`,
+      [userId]
+    );
+    const creditsRemaining = parseFloat(balanceRow.rows[0]?.credits_remaining ?? '0');
+    if (creditsRemaining <= 0) {
+      // Log demand signal: blocked attempt
+      try {
+        await query(
+          `INSERT INTO ai_usage_log
+             (user_id, deal_id, agent_id, operation_type, surface,
+              model, input_tokens, output_tokens, credits_consumed,
+              cost_usd, billable_usd, latency_ms)
+           VALUES ($1,$2,$3,'skill_chat:blocked','skill_chat','none',0,0,0,0,0,0)`,
+          [userId, dealId, userId]
+        );
+      } catch { /* best-effort demand log */ }
+      return {
+        message: '',
+        skillCalls: [],
+        conversationId: convId,
+        blocked: true,
+        blockReason: {
+          reason: 'out_of_credits',
+          credits_remaining: creditsRemaining,
+          upgrade_url: '/terminal/settings?tab=subscription',
+        },
+      };
+    }
+
+    // ── MeteringMetadata (Part A) — shared by all Sonnet calls this message ─
+    const meteringMeta: MeteringMetadata = {
+      actor_type: 'human',
+      actor_id: userId,
+      user_id: userId,
+      deal_id: dealId,
+      triggered_by: 'user',
+      agent_run_id: convId,
+    };
+
     // Load conversation history if exists
     const history = await loadConversationHistory(convId, 10);
 
@@ -132,13 +176,14 @@ export async function skillChat(request: ChatRequest): Promise<ChatResponse> {
       }
     }
 
-    // Initial API call
-    let response = await anthropic.messages.create({
+    // Initial API call (A1 — metered)
+    let response = await meteringAdapter.createMessage({
       model: 'claude-sonnet-4-5',
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
       tools,
       messages,
+      metadata: meteringMeta,
       ...(initialToolChoice ? { tool_choice: initialToolChoice } : {}),
     });
 
@@ -182,12 +227,13 @@ export async function skillChat(request: ChatRequest): Promise<ChatResponse> {
       messages.push({ role: 'assistant', content: response.content });
       messages.push({ role: 'user', content: toolResults });
 
-      response = await anthropic.messages.create({
+      response = await meteringAdapter.createMessage({
         model: 'claude-sonnet-4-5',
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         tools,
         messages,
+        metadata: meteringMeta,
       });
     }
 
