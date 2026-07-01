@@ -136,7 +136,7 @@ async function runPersonaConsultation(
   userQuestion: string,
   context: SkillContext
 ): Promise<SkillResult> {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY) {
     return { success: false, error: 'AI service not configured (ANTHROPIC_API_KEY missing)' };
   }
 

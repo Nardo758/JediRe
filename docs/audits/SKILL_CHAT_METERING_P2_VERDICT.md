@@ -14,7 +14,9 @@ Wire all 11 `claude-sonnet-4-5` call sites through `MeteringAdapter` (per-token 
 
 ## Summary
 
-**PASS.** All 11 call sites are now metered. Zero raw `anthropic.messages.create` calls remain in the 9 target files. Balance gate is live in `skill-chat.service.ts`. Backend restarted cleanly with no new errors.
+**PASS.** All 11 call sites are now metered. Zero raw `anthropic.messages.create` calls remain in the 9 target files. Balance gate is live in `skill-chat.service.ts`. All 7 S1-01 acceptance tests confirmed live against real Anthropic API calls.
+
+**Bonus fix (discovered during live testing):** `personas.ts` line 139 had a hard `!process.env.ANTHROPIC_API_KEY` guard that prevented B1/B2 from reaching the MeteringAdapter in any environment where only `AI_INTEGRATIONS_ANTHROPIC_API_KEY` is set. Updated to `!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY` — matching the dual-key check MeteringAdapter already uses.
 
 ---
 
@@ -108,22 +110,124 @@ cd backend && npx tsc --noEmit --skipLibCheck 2>&1 | grep -E \
 Result: **Zero errors** in all 9 touched files. All pre-existing errors are in unrelated files.
 
 ### Runtime
-Backend restarted at 2026-07-01T16:49:36Z. Startup log: `"service":"jedire-api","environment":"development"` — clean. No import or module errors logged.
+Backend restarted at 2026-07-01T18:22:29Z. Startup log: `"service":"jedire-api","environment":"development"` — clean. No import or module errors logged.
 
 `meteringAdapter` singleton load check: `object OK` (verified via `ts-node --transpile-only -e` probe).
 
 ---
 
-## S1-01 Live Run Confirmation
+## S1-01 Live Run Confirmation — COMPLETE ✅
 
-**Status: PENDING — requires manual execution.**
+**Test user:** `f2a-operator@test.jedi` (user_id `31720afb-fe3f-421a-9697-096e3fe52565`)  
+**Test deal:** `c92b5746-79a4-4303-8f2a-aba8d5bd4182`  
+**Executed:** 2026-07-01T18:18–18:24Z
 
-The dispatch verification rule S1-01 requires a live round-trip through the skill-chat endpoint with a real user to confirm:
-- `ai_usage_log` row inserted with correct `user_id`, `model`, `input_tokens`, `output_tokens`.
-- `user_credit_balances.credits_remaining` decremented (if Stripe metering is active).
-- Balance gate returns `blocked: true` for a test user with `credits_remaining = 0`.
+---
 
-This step cannot be completed automatically without a live Anthropic API call. It should be run manually or as part of a post-deploy smoke test against a development user account.
+### Acceptance #1 — Deep-session debit ✅
+
+Two live sessions fired against real Anthropic API.
+
+**Session 1** (`conv_1782929974735_9nalpn`) — orchestrator only, 3 Sonnet calls:
+
+| Call | input_tokens | output_tokens | cost_usd |
+|------|-------------|---------------|----------|
+| A1 (orchestrator initial) | 6,283 | 221 | $0.022164 |
+| A2 (tool-loop continuation) | 7,604 | 73 | $0.023907 |
+| A3 (final synthesis) | 7,804 | 1,662 | $0.048342 |
+| **Session 1 total** | **21,691** | **1,956** | **$0.094413** |
+
+**Session 2** (`conv_1782930196455_y35zu6`) — orchestrator + CFO persona sub-loop (A1 → B1/B2/B3/B4 → A2), 6 Sonnet calls:
+
+| Call | input_tokens | output_tokens | cost_usd |
+|------|-------------|---------------|----------|
+| A1 (orchestrator initial) | 6,281 | 47 | $0.019548 |
+| B1 (CFO persona initial) | 1,933 | 239 | $0.009384 |
+| B2 (CFO persona tool-loop) | 3,442 | 290 | $0.014676 |
+| B3 (CFO persona tool-loop) | 3,838 | 92 | $0.012894 |
+| B4 (CFO persona synthesis) | 4,123 | 604 | $0.021429 |
+| A2 (orchestrator synthesis) | 7,239 | 575 | $0.030342 |
+| **Session 2 total** | **26,856** | **1,847** | **$0.108273** |
+
+**Combined totals — 9 Sonnet calls:**  
+Input: 48,547 tokens | Output: 3,803 tokens | **Total cost: $0.202686**
+
+Before Phase 2: $0.000 (no metering). After Phase 2: $0.202686. Delta = material dollars. **S1-01 arithmetic confirmed.**
+
+---
+
+### Acceptance #2 — Zero-balance block ✅
+
+`user_credit_balances.credits_remaining` set to `0`. Fired:
+```
+POST /api/v1/deals/c92b5746.../skills/chat  {"message":"What is the cap rate..."}
+```
+Response (HTTP 200):
+```json
+{
+  "success": true,
+  "blocked": true,
+  "blockReason": {
+    "reason": "out_of_credits",
+    "credits_remaining": 0,
+    "upgrade_url": "/terminal/settings?tab=subscription"
+  },
+  "skillCalls": []
+}
+```
+Zero Sonnet calls fired. Zero `cost_usd` incurred. Gate fired before any API call.
+
+---
+
+### Acceptance #3 — Bounded overshoot ✅
+
+Gate fires **once per message, before the first Sonnet call** — not between tool-use turns. Maximum theoretical overshoot = the token cost of one complete session (worst case: $0.10–$0.50 for a deep multi-tool run). In practice: zero dollars overshoot when balance is at exactly 0 (gate blocks immediately). Once the external credit manager (Stripe/JediAIService) reconciles and writes `credits_remaining = 0`, the next message is blocked. No mid-session interruption is possible by design.
+
+Verified: at `credits_remaining = 0.05` (above gate threshold), gate decision = **WOULD_PASS** and session proceeds. At `credits_remaining = 0`, gate decision = **WOULD_BLOCK** (confirmed by Acceptance #2).
+
+---
+
+### Acceptance #4 — Blocked attempt logged ✅
+
+`ai_usage_log` row written on block:
+
+| column | value |
+|--------|-------|
+| operation_type | `skill_chat:blocked` |
+| model | `none` |
+| input_tokens | `0` |
+| output_tokens | `0` |
+| cost_usd | `$0.000000` |
+| deal_id | `c92b5746-79a4-4303-8f2a-aba8d5bd4182` |
+| user_id | `31720afb-fe3f-421a-9697-096e3fe52565` |
+
+Row is suitable for demand-signal analytics (identify users near upgrade threshold).
+
+---
+
+### Acceptance #5 — No double-debit ✅
+
+Each `meteringAdapter.createMessage()` call produces exactly one `ai_usage_log` row. Calls within a session are sequential (tool-use loop, not concurrent). Session 1 → 3 rows, Session 2 → 6 rows. No duplicates. Verified by per-`operation_type` aggregation:
+
+| conversation | row_count | total_input | total_output | total_cost_usd |
+|-------------|-----------|-------------|--------------|----------------|
+| conv_…9nalpn (Session 1) | 3 | 21,691 | 1,956 | $0.094413 |
+| conv_…y35zu6 (Session 2) | 6 | 26,856 | 1,847 | $0.108273 |
+
+---
+
+### Acceptance #6 — Attribution ✅
+
+Every `ai_usage_log` row (10/10 including the blocked demand-signal) carries:
+- `user_id = 31720afb-fe3f-421a-9697-096e3fe52565` ✅
+- `deal_id = c92b5746-79a4-4303-8f2a-aba8d5bd4182` ✅
+- `model = claude-sonnet-4-5` (or `none` for blocked) ✅
+
+---
+
+### Acceptance #7 — Cleanup ✅
+
+`user_credit_balances.credits_remaining` restored to `500.000000` for `f2a-operator@test.jedi`. No test state left in the system.
 
 ---
 
@@ -131,9 +235,8 @@ This step cannot be completed automatically without a live Anthropic API call. I
 
 | Item | Severity | Notes |
 |------|----------|-------|
-| S1-01 live run | Required | Balance gate + token passthrough must be confirmed with a real API call |
-| `StubMeteringAdapter` in `admin.routes.ts:1669` | Pre-existing TS error | `Cannot find name 'StubMeteringAdapter'` — not introduced by this dispatch, but should be resolved in a follow-up |
-| REST route `POST /skill-chat` should return HTTP 402 when `response.blocked === true` | Enhancement | Currently the route likely returns 200+body; the frontend should surface an upgrade prompt on `blocked: true` |
+| `StubMeteringAdapter` in `admin.routes.ts:1669` | Pre-existing TS error | `Cannot find name 'StubMeteringAdapter'` — not introduced by this dispatch |
+| REST route returns HTTP 200+body on `blocked:true` | Enhancement | Frontend should surface an upgrade prompt on `blocked: true`; REST route could optionally return HTTP 402 |
 
 ---
 
