@@ -59,6 +59,13 @@ export async function requireAuth(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  // §AUTH-FLOOR: /api/v1 intentional auth floor sets this flag for paths on
+  // the public allowlist (API_V1_PUBLIC_PREFIXES in index.replit.ts).
+  // Subsequent broad guards (legacy accidental mounts) must honour it.
+  if (res.locals.bypassAuth === true) {
+    return next();
+  }
+
   // Allow API key auth on any route that requires auth
   const apiKey = extractApiKey(req);
   if (apiKey) {
@@ -295,6 +302,12 @@ export const authMiddleware = { requireAuth };
 
 export function requireSurface(surface: 'chat' | 'web' | 'api') {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    // §AUTH-FLOOR: honour the /api/v1 auth floor allowlist bypass flag.
+    // Allowlisted paths skip surface enforcement (they are pre-auth public routes).
+    if (res.locals.bypassAuth === true) {
+      return next();
+    }
+
     if (!req.user) {
       res.status(401).json({ error: 'Unauthorized', message: 'Authentication required' });
       return;
