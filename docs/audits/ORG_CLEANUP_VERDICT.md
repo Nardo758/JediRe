@@ -1,8 +1,8 @@
-# B1: Org Cleanup — Phase 1 Verdict
+# B1: Org Cleanup — Complete (Phase 1 + Phase 2)
 
 **Date:** 2026-07-01  
 **Repo SHA:** `657499814fe21e40c0c06f7accd1a04e2b40e419`  
-**Status:** ✅ PHASE 1 COMPLETE — HARD STOP. Awaiting approval for Phase 2.
+**Status:** ✅ COMPLETE — 37 artifact orgs deleted; 1 real org remains; Leon 34→1 memberships; dd201183 untouched.
 
 ---
 
@@ -277,3 +277,116 @@ all above.
    rows (irreversible without a DB restore).
 
 **On approval, Phase 2 runs Step 1 + Step 2 above and pastes all row-counts.**
+
+---
+
+## Phase 2 — Execution Record
+
+### Step 0 — Bridge Pre-Check Result: CREATE-FRESH ✅
+
+Traced `backend/src/services/chat/sessionStore.ts` `findOrCreateUser()` (lines 26–81):
+
+```
+1. SELECT from chat_sessions WHERE platform_user_id=$1 AND platform=$2  → return if found
+2. SELECT from users WHERE phone=$1                                       → return if found
+3. INSERT INTO users (email, ...)                                         → mint new user
+4. Return userId — no organization lookup or create at any step
+```
+
+`organizations` table is **never referenced** anywhere in `sessionStore.ts`.
+`messageRouter.ts` references to `org_id` are all in B-arc planning comments, not
+live handler code. The bridge runtime creates users fresh on first contact and does
+not require or assume org rows exist.
+
+**Conclusion:** all 37 deletions (including the 4 bot-fixture orgs) are safe.
+The runtime re-mints bridge users on demand; no pre-existing org required.
+
+---
+
+### Step 1 — Re-confirm Inventory (pre-delete)
+
+| Metric | Value |
+|---|---|
+| `SELECT COUNT(*) FROM organizations` | **38** — unchanged |
+| Artifact orgs (`id != dd201183`) | **37** — unchanged |
+| Deals in artifact orgs | **0** — no new dependents |
+| Leon total memberships | **34** |
+| dd201183 deals / members | **28 / 1** |
+
+---
+
+### Step 2 — Delete Executed
+
+```sql
+DELETE FROM organizations WHERE id IN (<37 IDs>);
+```
+
+**Rows affected:**
+- `organizations`: **37 deleted**
+- `org_members` (CASCADE): **37 cascade-deleted**
+- All other FK tables: **0** (confirmed empty for artifact orgs in Phase 1)
+
+---
+
+### Step 3 — Verification (post-delete)
+
+```sql
+SELECT COUNT(*) FROM organizations;
+```
+→ **1** ✅
+
+```sql
+SELECT id, name, slug FROM organizations;
+```
+→ `dd201183-3cb5-45dd-8485-d17f5a053421 | Leon Dixon's Organization | m-dixon5030-dd201183` ✅
+
+```sql
+SELECT COUNT(*) FROM org_members WHERE user_id = '6253ba3f-d40d-4597-86ab-270c8397a857';
+```
+→ **1** (was 34) ✅
+
+```sql
+SELECT COUNT(*) FROM org_members;
+```
+→ **1** (total — only Leon's real membership remains) ✅
+
+---
+
+### Step 4 — Real Data Intact
+
+| Metric | Before | After | Delta |
+|---|---|---|---|
+| `dd201183` deals (`deals.org_id`) | 28 | **28** | 0 |
+| `dd201183` members (`org_members`) | 1 | **1** | 0 |
+| Leon total memberships | 34 | **1** | −33 smoke |
+
+Real org untouched. ✅
+
+---
+
+### Step 5 — Bridge Post-Delete Verification ✅
+
+Bot-fixture user accounts still present in `users` table (org deletion does not cascade to `users`):
+
+| User | Email | Sessions |
+|---|---|---|
+| `b24c746c` | web_test-user@chat.jedire.com | 1 active (`web / test-user`) |
+| `c20d4f65` | whatsapp_whatsapp:+1234567890@chat.jedire.com | 1 active (`whatsapp / whatsapp:+1234567890`) |
+| `2e655939` | whatsapp_whatsapp:+15551234567@chat.jedire.com | 1 active (`whatsapp / whatsapp:+15551234567`) |
+| `17d6a518` | sms_+15551234567@chat.jedire.com | 1 active (`sms / +15551234567`) |
+
+All 4 accounts have `chat_sessions` rows → if a message arrives from any of these
+channel users, `findOrCreateUser` resolves them via the `chat_sessions` lookup (step 1)
+and returns without touching `organizations`. The bridge is unaffected.
+
+If a **new** inbound message arrives from an unknown channel user, `findOrCreateUser`
+INSERTs a fresh `users` row and returns — no org created (B2 will introduce org
+provisioning as part of the entitlement arc; for now bridge users are org-less by design).
+
+---
+
+## Final One-Line
+
+**37 artifact orgs deleted (33 SMOKE-ORG + 4 BOT-FIXTURE); 1 real org remains
+(`dd201183`); Leon 34 → 1 memberships; dd201183 untouched (28 deals, 1 member);
+bridge runtime unaffected (CREATE-FRESH, no org dependency confirmed).**
