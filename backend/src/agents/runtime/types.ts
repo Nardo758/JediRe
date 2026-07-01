@@ -223,5 +223,7 @@ export interface MeteringMetadata {
   agent_run_id?: string;
   deal_id?: string;
   user_id?: string;
+  /** B2a: resolved org_id for the spending member (user_id → org_members → org_credit_balances). */
+  org_id?: string;
   triggered_by?: TriggerBucket;
 }

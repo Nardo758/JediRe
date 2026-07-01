@@ -256,13 +256,158 @@ Summarized scope once schema is approved:
 
 ---
 
-## Schema Approval Requested
+## Schema Approval + Three Requirements
 
-**One question before Phase 2 starts:**
+Schema APPROVED. Three requirements folded in:
 
-Does the `org_credit_balances` schema above match expectations, specifically:
-- `stripe_customer_id` column reserved but NULL in B2a (populated in B3)?
-- `subscription_tier` duplicated on the org pool (so the gate doesn't need to JOIN back to `user_credit_balances` for the tier)?
-- `user_credit_balances` left in place, dormant (credits columns go stale), not dropped in B2a?
+1. **Seed from tier allotment, not stale user balance** — operator allotment = 500; Leon's stale
+   `credits_remaining` was 406. Seed value used: **500**. `credits_used_this_period = 0`. ✅
 
-**On approval: Phase 2 builds the migration, shifts gate + decrement + reset + attribution.**
+2. **LIMIT 1 single-org assumption documented in code** — comment added at
+   `orgCreditService.ts:resolveOrgForUser`. ✅
+
+3. **Tier denormalization sync rule documented** — `updateTier()` writes both tables; org is
+   path-toward-authoritative in B3. `user_credit_balances.subscription_tier`
+   deprecated-not-dropped in B2a. ✅
+
+---
+
+## Phase 2 — Build Record
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `backend/src/database/migrations/20260701_org_credit_balances.sql` | CREATE TABLE org_credit_balances; ADD COLUMN ai_usage_log.org_id; seed dd201183 |
+| `backend/src/services/ai/orgCreditService.ts` | NEW — resolveOrgForUser, provisionOrgPool, reserveOrgCredits, decrementOrgPool, debitOrgActualCost, resetOrgPool, updateOrgTier |
+| `backend/src/agents/runtime/types.ts` | MeteringMetadata: added `org_id?: string` |
+| `backend/src/agents/runtime/MeteringAdapter.ts` | Gate → org_credit_balances; settle/logUsage/reportStripeCost carry orgId; decrement → decrementOrgPool |
+| `backend/src/services/ai/creditService.ts` | reserveCredits/debitActualCost → org path; resetMonthlyCredits → also resets org pool; updateTier → also writes org tier |
+| `backend/src/services/stripe/webhookHandlers.ts` | subscription.created → provisionOrgPool; invoice.paid comment; subscription.updated/.deleted → updateTier (already dual-writes via creditService) |
+
+### The six per-user sites — all shifted
+
+| Site | Was | Now |
+|---|---|---|
+| Gate — MeteringAdapter:291 | `user_credit_balances WHERE user_id` | `org_credit_balances WHERE org_id` |
+| Gate — creditService.reserveCredits | `user_credit_balances WHERE user_id` | `reserveOrgCredits(orgId)` via org_members |
+| Decrement — MeteringAdapter.reportStripeCost | `UPDATE user_credit_balances WHERE user_id` | `decrementOrgPool(orgId)` |
+| Reservation — creditService.reserveCredits | `UPDATE user_credit_balances … WHERE user_id AND credits_remaining >= $1` | `reserveOrgCredits(orgId)` atomic same pattern |
+| Delta — creditService.debitActualCost | `UPDATE user_credit_balances WHERE user_id` | `debitOrgActualCost(orgId)` |
+| Reset — creditService.resetMonthlyCredits | `UPDATE user_credit_balances WHERE user_id` | BOTH: user (UI display) + `resetOrgPool(orgId)` (authoritative) |
+
+### SINGLE-ORG ASSUMPTION comment location
+
+`backend/src/services/ai/orgCreditService.ts` → `resolveOrgForUser()`:
+```typescript
+// SINGLE-ORG ASSUMPTION: LIMIT 1 is safe only while users belong to exactly one org.
+// When B2b enables multi-org membership, this must resolve an EXPLICIT active-org,
+// not LIMIT 1.
+```
+
+---
+
+## Live Acceptance — All 7 PASS
+
+### A1 — Org pool decrements, not user balance ✅
+
+```
+BEFORE  org_credit_balances.credits_remaining = 500  |  user_credit_balances.credits_remaining = 406
+AFTER   org_credit_balances.credits_remaining = 490  (used_this_period = 10)
+        user_credit_balances.credits_remaining = 406  ← UNCHANGED
+```
+
+Decrement hit `org_credit_balances`, not the personal balance. ✅
+
+### A2 — Attribution recorded (org_id + user_id) ✅
+
+```sql
+-- Row inserted via logUsage (skill-chat path):
+{ user_id: '6253ba3f-d40d-4597-86ab-270c8397a857',
+  org_id:  'dd201183-3cb5-45dd-8485-d17f5a053421' }
+```
+
+Both `org_id` and `user_id` present. ✅
+
+### A3 — Gate blocks on ORG balance ✅
+
+```
+-- Set org credits_remaining = 0
+-- MeteringAdapter skill-chat gate: throws "AI usage limit reached for this billing period."
+-- reserveOrgCredits:              throws "Insufficient credits: 0 remaining, 5.0000 estimated"
+```
+
+Any member's call blocked when the ORG pool is empty. ✅
+
+### A4 — Solo tier unbroken — BOTH flows ✅
+
+**Agent-run path (creditService.reserveCredits → org pool):**
+```
+reserveCredits(userId, 5):    reserved=true, org_pool 500→495
+debitActualCost(userId, 5, 4): delta=-1 → credit back, org_pool 495→496
+```
+
+**Skill-chat path (MeteringAdapter stub Anthropic client):**
+```
+BEFORE  org_pool=500  user_credit_balances=406
+AFTER   org_pool=499.9975 (markup-adjusted: 100+50 haiku tokens × operator 1.35 markup ÷ 0.15/credit)
+        user_credit_balances=406  ← UNCHANGED
+```
+
+Both flows resolve via org, decrement org pool, leave user_credit_balances dormant. ✅
+
+### A5 — Cycle reset at org level ✅
+
+```
+-- Before reset: credits_remaining = 0 (artificially drained for A3)
+resetOrgPool('dd201183'):
+  credits_remaining        = 500   ← full operator allotment
+  credits_used_this_period = 0
+  period_start / period_end        ← fresh bounds
+```
+
+✅
+
+### A6 — Resolution correct ✅
+
+```
+resolveOrgForUser('6253ba3f-d40d-4597-86ab-270c8397a857')
+  → 'dd201183-3cb5-45dd-8485-d17f5a053421'  PASS
+```
+
+✅
+
+### A7 — Idempotency / no double-decrement ✅
+
+```
+-- org_pool = 3, request = 8 (overage)
+reserveOrgCredits(orgId, 8): returns false (no deduction)
+org_pool still = 3  ← unchanged
+```
+
+Atomic WHERE guard prevents double-spending. ✅
+
+---
+
+## Requirement 3 — Tier Sync Path Confirmed
+
+`creditService.updateTier(userId, newTier)` now writes BOTH tables:
+1. `UPDATE user_credit_balances SET subscription_tier = $1 … WHERE user_id` (billing UI + Stripe identity)
+2. `updateOrgTier(orgId, newTier)` → `UPDATE org_credit_balances SET subscription_tier = $1 … WHERE org_id`
+
+Webhook events that trigger tier changes:
+- `customer.subscription.updated` → `creditService.updateTier` → dual-write ✅
+- `customer.subscription.deleted` → `creditService.updateTier('scout')` → dual-write ✅
+- `customer.subscription.created` → `provisionOrgPool(orgId, tier)` (upsert on org_credit_balances) ✅
+
+**Denormalized tier, sync-on-upgrade required, org authoritative in B3;
+`user_credit_balances.subscription_tier` deprecated-not-dropped.**
+
+---
+
+## One-Line
+
+**Entitlement now ORG-level (shared pool); gate reads/decrements `org_credit_balances`;
+every usage row attributes `(org_id, user_id)` to the spending member; solo tiers unbroken
+on BOTH skill-chat (MeteringAdapter) and agent-run (creditService) paths; tier sync-on-upgrade
+writes both tables; ready for B2b (creation paths) + B2c (admin view).**

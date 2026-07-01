@@ -19,6 +19,7 @@ import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import type { MeteringMetadata } from './types';
 import { TIER_CONFIG } from '../../services/ai/creditService';
+import { resolveOrgForUser, decrementOrgPool } from '../../services/ai/orgCreditService';
 import type { SubscriptionTier } from '../../types/dealContext';
 
 // ── Token cost table (USD per 1M tokens, approximate) ────────────
@@ -283,25 +284,31 @@ export class MeteringAdapter {
     }
 
     try {
-      // S5: Pre-flight gate — hard-block user-triggered calls when period-usage cap
-      // is exhausted. event/cron calls are platform-absorbed and bypass the gate.
+      // B2a: Pre-flight gate — resolve user → org, check ORG credit pool.
+      // event/cron calls are platform-absorbed and bypass the gate.
       // Institutional (monthly_credit_cap = NULL) is always allowed through.
+      // Users with no org (bridge users pre-B2b) are allowed through (no pool → no block).
+      let resolvedOrgId: string | null = null;
       if (metadata.triggered_by === 'user' && metadata.user_id) {
-        const gateRow = await query(
-          `SELECT credits_remaining, monthly_credit_cap
-           FROM user_credit_balances WHERE user_id = $1`,
-          [metadata.user_id]
-        );
-        if (gateRow.rows.length > 0) {
-          const remaining = parseFloat(gateRow.rows[0].credits_remaining ?? '0');
-          const cap = gateRow.rows[0].monthly_credit_cap; // null = unlimited (Institutional)
-          if (cap !== null && remaining <= 0) {
-            throw new Error(
-              `AI usage limit reached for this billing period. ` +
-              `Upgrade your plan to continue. (Credits remaining: ${remaining})`
-            );
+        resolvedOrgId = await resolveOrgForUser(metadata.user_id);
+        if (resolvedOrgId) {
+          const gateRow = await query(
+            `SELECT credits_remaining, monthly_credit_cap
+             FROM org_credit_balances WHERE org_id = $1`,
+            [resolvedOrgId]
+          );
+          if (gateRow.rows.length > 0) {
+            const remaining = parseFloat(gateRow.rows[0].credits_remaining ?? '0');
+            const cap = gateRow.rows[0].monthly_credit_cap; // null = unlimited (Institutional)
+            if (cap !== null && remaining <= 0) {
+              throw new Error(
+                `AI usage limit reached for this billing period. ` +
+                `Upgrade your plan to continue. (Credits remaining: ${remaining})`
+              );
+            }
           }
         }
+        // No org → allow through (same as "no credit record" policy pre-B2b)
       }
 
       // A3: Stripe metering route — agent runtime calls are platform-absorbed.
@@ -329,7 +336,7 @@ export class MeteringAdapter {
         response.usage.output_tokens
       );
 
-      await this.settle(metadata, response, actualCost, apiParams.model);
+      await this.settle(metadata, response, actualCost, apiParams.model, resolvedOrgId);
 
       return {
         ...response,
@@ -348,14 +355,15 @@ export class MeteringAdapter {
     metadata: MeteringMetadata,
     response: Anthropic.Message,
     actualCost: number,
-    model: string
+    model: string,
+    orgId: string | null = null
   ): Promise<void> {
-    // 1. Log to internal ai_usage_log (now with cost_usd for platform economics)
-    await this.logUsage(metadata, response, actualCost, model);
+    // 1. Log to internal ai_usage_log (now with org_id for per-member attribution)
+    await this.logUsage(metadata, response, actualCost, model, orgId);
 
     // 2. Report to Stripe billing meters (cost + raw tokens for analytics)
     await this.reportStripeUsage(metadata, response.usage, model);
-    await this.reportStripeCost(metadata, actualCost);
+    await this.reportStripeCost(metadata, actualCost, orgId);
 
     // 3. Log platform expense for event/cron attribution
     if (metadata.triggered_by !== 'user') {
@@ -421,26 +429,29 @@ export class MeteringAdapter {
   }
 
   /**
-   * S5/A3: Report markup-adjusted cost to Stripe billing meter (jedi_ai_cost_usd)
-   * and decrement the user's period-usage credit balance.
+   * B2a/S5/A3: Report markup-adjusted cost to Stripe billing meter (jedi_ai_cost_usd)
+   * and decrement the ORG credit pool (not the user's personal balance).
+   *
+   * Stripe customer ID and tier are still resolved per-user from user_credit_balances
+   * (billing identity stays per-user in B2a; moves to org in B3).
    *
    * Markup decision (confirmed per-tier from TIER_CONFIG.aiMarkup):
    *   Scout 1.50 (50%), Operator 1.35 (35%), Principal 1.20 (20%),
    *   Institutional 1.00 (pass-through, no margin — flagged).
-   * The metered price (price_1ToVcmRLkzuKbZa2qVcNpOnT) is 0.0001 cents/micro-dollar
-   * (1:1 pass-through at the Stripe layer); the markup is applied HERE, app-side.
-   * Confirm: no double-markup — the Stripe price is 1:1, markup lives here only.
+   * The metered price is 1:1 pass-through at the Stripe layer; markup is applied HERE only.
    *
-   * Credit decrement (user-triggered calls only):
+   * Credit decrement (user-triggered calls only, B2a: targets ORG pool):
    *   credits = billableUsd / overageCostPerCredit
    *   Institutional skipped (overageCostPerCredit = 0, unlimited cap).
    */
   private async reportStripeCost(
     metadata: MeteringMetadata,
-    costUsd: number
+    costUsd: number,
+    orgId: string | null = null
   ): Promise<void> {
     if (!metadata.user_id) return;
     try {
+      // Billing identity (stripe_customer_id, tier) stays per-user in B2a.
       const userRow = await query(
         `SELECT stripe_customer_id, subscription_tier
          FROM user_credit_balances WHERE user_id = $1`,
@@ -452,7 +463,7 @@ export class MeteringAdapter {
       const tier = (userRow.rows[0]?.subscription_tier || 'scout') as SubscriptionTier;
       const tierCfg = TIER_CONFIG[tier] ?? TIER_CONFIG['scout'];
 
-      // Apply per-tier markup to raw cost (this is where platform margin is captured).
+      // Apply per-tier markup to raw cost (platform margin captured here).
       const billableUsd = costUsd * tierCfg.aiMarkup;
 
       // Report markup-adjusted cost to Stripe (in micro-dollars).
@@ -463,27 +474,21 @@ export class MeteringAdapter {
           event_name: 'jedi_ai_cost_usd',
           payload: {
             stripe_customer_id: stripeCustomerId,
-            value: String(Math.round(billableUsd * 1_000_000)), // micro-dollars of BILLABLE amount
+            value: String(Math.round(billableUsd * 1_000_000)),
           },
         });
       }
 
-      // S5: Decrement period-usage for user-triggered calls.
+      // B2a: Decrement ORG pool (not per-user balance) for user-triggered calls.
       // Skips Institutional (overageCostPerCredit = 0 → unlimited, no decrement).
-      if (metadata.triggered_by === 'user' && tierCfg.overageCostPerCredit > 0) {
+      if (metadata.triggered_by === 'user' && tierCfg.overageCostPerCredit > 0 && orgId) {
         const creditsToDeduct = billableUsd / tierCfg.overageCostPerCredit;
-        await query(
-          `UPDATE user_credit_balances
-           SET credits_remaining     = credits_remaining - $1,
-               credits_used_this_period = credits_used_this_period + $1,
-               updated_at            = NOW()
-           WHERE user_id = $2`,
-          [creditsToDeduct, metadata.user_id]
-        );
+        await decrementOrgPool(orgId, creditsToDeduct);
       }
 
       logger.info('MeteringAdapter: cost metered', {
         userId: metadata.user_id,
+        orgId: orgId ?? 'none',
         tier,
         rawCostUsd: costUsd.toFixed(6),
         billableUsd: billableUsd.toFixed(6),
@@ -502,17 +507,20 @@ export class MeteringAdapter {
     metadata: MeteringMetadata,
     response: Anthropic.Message,
     costUsd: number,
-    model: string
+    model: string,
+    orgId: string | null = null
   ): Promise<void> {
     try {
+      // B2a: include org_id for per-member attribution (B2c reads org_id + user_id grouped).
       await query(
         `INSERT INTO ai_usage_log (
-           user_id, deal_id, agent_id, operation_type, surface,
+           user_id, org_id, deal_id, agent_id, operation_type, surface,
            model, input_tokens, output_tokens, credits_consumed, cost_usd, billable_usd, latency_ms
-         ) VALUES ($1,$2,$3,$4,'agent',$5,$6,$7,$8,$9,$10,0)
+         ) VALUES ($1,$2,$3,$4,$5,'agent',$6,$7,$8,$9,$10,$11,0)
          ON CONFLICT DO NOTHING`,
         [
           (metadata.user_id && metadata.user_id.trim() !== '' ? metadata.user_id : null) ?? '00000000-0000-0000-0000-000000000000',
+          orgId ?? null,
           metadata.deal_id ?? null,
           metadata.actor_id,
           `agent_run:${metadata.agent_run_id ?? 'unknown'}`,

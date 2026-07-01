@@ -1,6 +1,12 @@
 import { getStripeSync } from './stripeClient';
 import { logger } from '../../utils/logger';
 import { CreditService } from '../ai/creditService';
+import {
+  resolveOrgForUser,
+  provisionOrgPool,
+  resetOrgPool,
+  updateOrgTier,
+} from '../ai/orgCreditService';
 import type { SubscriptionTier } from '../../types/dealContext';
 
 const PRODUCT_TO_TIER: Record<string, SubscriptionTier> = {
@@ -74,6 +80,12 @@ export class WebhookHandlers {
               `UPDATE users SET stripe_customer_id = $1 WHERE id = $2`,
               [customerId, userId]
             );
+            // B2a: provision the org pool for this user's org.
+            const orgId = await resolveOrgForUser(userId);
+            if (orgId) {
+              await provisionOrgPool(orgId, tier);
+              logger.info('Subscription created — org pool provisioned', { userId, orgId, tier });
+            }
             logger.info('Subscription created — user provisioned', { userId, tier });
           }
           break;
@@ -82,8 +94,10 @@ export class WebhookHandlers {
           const invoice = event.data?.object;
           const userId = await findUserByStripeCustomer(invoice?.customer);
           if (userId) {
+            // B2a: resetMonthlyCredits now resets both user_credit_balances (UI display)
+            // and the org pool (gate/decrement target) in a single call.
             await creditService.resetMonthlyCredits(userId);
-            logger.info('Invoice paid — credits reset', { userId });
+            logger.info('Invoice paid — credits reset (user + org pool)', { userId });
           }
           break;
         }
@@ -93,8 +107,10 @@ export class WebhookHandlers {
           const newTier = resolveTier(productId);
           const userId = await findUserByStripeCustomer(sub?.customer);
           if (userId) {
+            // B2a: updateTier now updates both user_credit_balances and org_credit_balances
+            // (Requirement 3 — sync-on-upgrade rule, both tables kept in sync).
             await creditService.updateTier(userId, newTier);
-            logger.info('Subscription updated — tier changed', { userId, newTier });
+            logger.info('Subscription updated — tier changed (user + org)', { userId, newTier });
           }
           break;
         }
@@ -102,8 +118,9 @@ export class WebhookHandlers {
           const sub = event.data?.object;
           const userId = await findUserByStripeCustomer(sub?.customer);
           if (userId) {
+            // B2a: updateTier now updates both user_credit_balances and org_credit_balances.
             await creditService.updateTier(userId, 'scout');
-            logger.info('Subscription deleted — downgraded to scout', { userId });
+            logger.info('Subscription deleted — downgraded to scout (user + org)', { userId });
           }
           break;
         }
