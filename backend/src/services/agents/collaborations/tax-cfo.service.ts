@@ -14,7 +14,8 @@
  * @date 2026-04-22
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { meteringAdapter } from '../../../agents/runtime/MeteringAdapter';
+import type { MeteringMetadata } from '../../../agents/runtime/types';
 import { query } from '../../../database/connection';
 import { logger } from '../../../utils/logger';
 
@@ -136,14 +137,6 @@ export interface AfterTaxReturns {
 }
 
 // ============================================================================
-// ANTHROPIC CLIENT
-// ============================================================================
-
-const anthropic = new Anthropic({
-  apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
-});
-
-// ============================================================================
 // TAX → CFO SERVICE
 // ============================================================================
 
@@ -173,7 +166,7 @@ class TaxCFOService {
     const exitTaxAnalysis = this.calculateExitTaxes(dealData, depreciation, analysis);
     
     // Get AI synthesis
-    const aiAnalysis = await this.getAIAnalysis(analysis, preTaxReturns, depreciation, costSegAnalysis, exitTaxAnalysis);
+    const aiAnalysis = await this.getAIAnalysis(analysis, preTaxReturns, depreciation, costSegAnalysis, exitTaxAnalysis, userId, dealId);
     
     // Calculate after-tax IRR
     const afterTaxIRR = this.calculateAfterTaxIRR(preTaxReturns, depreciation, exitTaxAnalysis, analysis);
@@ -417,7 +410,9 @@ class TaxCFOService {
     preTaxReturns: any,
     depreciation: any,
     costSegAnalysis: any,
-    exitTaxAnalysis: any
+    exitTaxAnalysis: any,
+    userId: string,
+    dealId?: string
   ): Promise<any> {
     const prompt = `You are a real estate Tax Strategist advising the CFO on after-tax returns.
 
@@ -473,10 +468,18 @@ Provide analysis in JSON:
 }`;
 
     try {
-      const response = await anthropic.messages.create({
+      const meta: MeteringMetadata = {
+        actor_type: 'human',
+        actor_id: userId,
+        user_id: userId,
+        deal_id: dealId,
+        triggered_by: 'user',
+      };
+      const response = await meteringAdapter.createMessage({
         model: 'claude-sonnet-4-5',
         max_tokens: 2048,
         messages: [{ role: 'user', content: prompt }],
+        metadata: meta,
       });
 
       const text = response.content.find(b => b.type === 'text')?.text || '{}';

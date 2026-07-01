@@ -11,8 +11,9 @@ import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
 import { skillRegistry, SkillDefinition, SkillContext, SkillResult } from '../skill-registry';
 import { logger } from '../../../utils/logger';
+import { meteringAdapter } from '../../../agents/runtime/MeteringAdapter';
+import type { MeteringMetadata } from '../../../agents/runtime/types';
 
-const anthropic = new Anthropic({ apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY });
 const PERSONA_MODEL = 'claude-sonnet-4-5';
 const MAX_PERSONA_TURNS = 5;
 
@@ -150,13 +151,23 @@ async function runPersonaConsultation(
 
   const subSkillCalls: Array<{ skillId: string; parameters: any }> = [];
 
+  const meteringMeta: MeteringMetadata = {
+    actor_type: 'human',
+    actor_id: context.userId,
+    user_id: context.userId,
+    deal_id: context.dealId,
+    triggered_by: 'user',
+    agent_run_id: context.conversationId,
+  };
+
   try {
-    let response = await anthropic.messages.create({
+    let response = await meteringAdapter.createMessage({
       model: PERSONA_MODEL,
       max_tokens: 2048,
       system: persona.systemPrompt,
       tools,
       messages,
+      metadata: meteringMeta,
     });
 
     let turns = 0;
@@ -189,12 +200,13 @@ async function runPersonaConsultation(
       messages.push({ role: 'assistant', content: response.content });
       messages.push({ role: 'user', content: toolResults });
 
-      response = await anthropic.messages.create({
+      response = await meteringAdapter.createMessage({
         model: PERSONA_MODEL,
         max_tokens: 2048,
         system: persona.systemPrompt,
         tools,
         messages,
+        metadata: meteringMeta,
       });
     }
 

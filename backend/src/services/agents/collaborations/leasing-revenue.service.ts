@@ -13,7 +13,8 @@
  * @date 2026-04-22
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { meteringAdapter } from '../../../agents/runtime/MeteringAdapter';
+import type { MeteringMetadata } from '../../../agents/runtime/types';
 import { query } from '../../../database/connection';
 import { logger } from '../../../utils/logger';
 
@@ -107,14 +108,6 @@ export interface PricingRecommendation {
 }
 
 // ============================================================================
-// ANTHROPIC CLIENT
-// ============================================================================
-
-const anthropic = new Anthropic({
-  apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
-});
-
-// ============================================================================
 // LEASING → REVENUE MANAGEMENT SERVICE
 // ============================================================================
 
@@ -135,7 +128,7 @@ class LeasingRevenueService {
     const compPricing = await this.getCompSetPricing(dealId);
     
     // Generate AI recommendations
-    const aiAnalysis = await this.getAIRecommendations(metrics, historical, compPricing);
+    const aiAnalysis = await this.getAIRecommendations(metrics, historical, compPricing, userId, dealId);
     
     const recommendation: PricingRecommendation = {
       id: `pricing_rec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -225,7 +218,7 @@ class LeasingRevenueService {
   /**
    * Get AI recommendations
    */
-  private async getAIRecommendations(metrics: LeasingMetrics, historical: any[], compPricing: any[]): Promise<any> {
+  private async getAIRecommendations(metrics: LeasingMetrics, historical: any[], compPricing: any[], userId: string, dealId?: string): Promise<any> {
     const prompt = `You are a real estate Revenue Manager optimizing rent pricing based on leasing data.
 
 CURRENT LEASING METRICS:
@@ -309,10 +302,18 @@ Consider:
 - Comp positioning`;
 
     try {
-      const response = await anthropic.messages.create({
+      const meta: MeteringMetadata = {
+        actor_type: 'human',
+        actor_id: userId,
+        user_id: userId,
+        deal_id: dealId,
+        triggered_by: 'user',
+      };
+      const response = await meteringAdapter.createMessage({
         model: 'claude-sonnet-4-5',
         max_tokens: 2500,
         messages: [{ role: 'user', content: prompt }],
+        metadata: meta,
       });
 
       const text = response.content.find(b => b.type === 'text')?.text || '{}';

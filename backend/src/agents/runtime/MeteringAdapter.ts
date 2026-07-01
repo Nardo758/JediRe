@@ -53,12 +53,12 @@ function preflightEstimate(model: string): number {
 
 export interface MessageParams {
   model: string;
-  system: string;
+  system?: string;
   messages: Anthropic.MessageParam[];
   tools?: Anthropic.Tool[];
   max_tokens: number;
   metadata: MeteringMetadata;
-  tool_choice?: { type: 'function'; function: { name: string } };
+  tool_choice?: Anthropic.MessageCreateParams['tool_choice'];
 }
 
 export interface MeteredMessage extends Anthropic.Message {
@@ -290,10 +290,11 @@ export class MeteringAdapter {
       try {
         response = await this.anthropic.messages.create({
           model: apiParams.model,
-          system: apiParams.system,
+          ...(apiParams.system ? { system: apiParams.system } : {}),
           messages: apiParams.messages,
           tools: apiParams.tools,
           max_tokens: apiParams.max_tokens,
+          ...(apiParams.tool_choice ? { tool_choice: apiParams.tool_choice } : {}),
         });
       } catch (err) {
         throw err;
