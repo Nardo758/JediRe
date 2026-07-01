@@ -23,7 +23,7 @@ interface TierConfig {
   monthlyFee: number; // subscription price in USD (e.g., 49, 97, 197)
 }
 
-const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
+export const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
   scout: {
     creditsIncludedMonthly: 100,
     overageCostPerCredit: 0.25,
@@ -33,7 +33,7 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     aiMarkup: 1.50,        // 50% markup on raw AI cost
     minCharge: 0.005,      // minimum $0.005 per call
     platformFeePerCall: 0.01, // $0.01 flat fee per call
-    monthlyFee: 49,      // $49/mo subscription
+    monthlyFee: 49,      // $49/mo subscription (matches Stripe price_1ToVcRRLkzuKbZa20IiE4N94)
   },
   // A5-F4: 'basic' tier — legacy / pre-launch tier mapped to same config as scout.
   // getAllowedTriggerModes('basic') returns ['manual', 'event-driven'] (dev/testing).
@@ -57,7 +57,7 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     aiMarkup: 1.35,      // 35% markup
     minCharge: 0.003,
     platformFeePerCall: 0.005, // $0.005 flat fee per call
-    monthlyFee: 97,     // $97/mo subscription
+    monthlyFee: 199,    // $199/mo subscription (matches Stripe price_1ToVcRRLkzuKbZa2KMLUgYP9)
   },
   principal: {
     creditsIncludedMonthly: 2000,
@@ -68,7 +68,7 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     aiMarkup: 1.20,      // 20% markup
     minCharge: 0.001,
     platformFeePerCall: 0.002, // $0.002 flat fee per call
-    monthlyFee: 197,    // $197/mo subscription
+    monthlyFee: 499,    // $499/mo subscription (matches Stripe price_1ToVcSRLkzuKbZa27g3GXFvB)
   },
   institutional: {
     creditsIncludedMonthly: -1, // custom/negotiated
@@ -76,10 +76,10 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     maxActiveDeals: -1,
     maxAutomationLevel: 4,
     surfaces: ['chat', 'web', 'api'],
-    aiMarkup: 1.00,      // pass-through (no markup)
+    aiMarkup: 1.00,      // pass-through (no markup) — FLAGGED: zero platform margin on AI cost
     minCharge: 0,
     platformFeePerCall: 0,  // no flat fee (custom pricing)
-    monthlyFee: 0,       // custom/negotiated
+    monthlyFee: 999,    // $999/mo placeholder (matches Stripe price_1ToVcSRLkzuKbZa20xZtVrdY — TBD)
   },
 };
 

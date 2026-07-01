@@ -18,6 +18,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import type { MeteringMetadata } from './types';
+import { TIER_CONFIG } from '../../services/ai/creditService';
+import type { SubscriptionTier } from '../../types/dealContext';
 
 // ── Token cost table (USD per 1M tokens, approximate) ────────────
 
@@ -281,10 +283,31 @@ export class MeteringAdapter {
     }
 
     try {
+      // S5: Pre-flight gate — hard-block user-triggered calls when period-usage cap
+      // is exhausted. event/cron calls are platform-absorbed and bypass the gate.
+      // Institutional (monthly_credit_cap = NULL) is always allowed through.
+      if (metadata.triggered_by === 'user' && metadata.user_id) {
+        const gateRow = await query(
+          `SELECT credits_remaining, monthly_credit_cap
+           FROM user_credit_balances WHERE user_id = $1`,
+          [metadata.user_id]
+        );
+        if (gateRow.rows.length > 0) {
+          const remaining = parseFloat(gateRow.rows[0].credits_remaining ?? '0');
+          const cap = gateRow.rows[0].monthly_credit_cap; // null = unlimited (Institutional)
+          if (cap !== null && remaining <= 0) {
+            throw new Error(
+              `AI usage limit reached for this billing period. ` +
+              `Upgrade your plan to continue. (Credits remaining: ${remaining})`
+            );
+          }
+        }
+      }
+
       // A3: Stripe metering route — agent runtime calls are platform-absorbed.
       // User credits are deducted at the JediAIService layer (flat credits per
-      // operation). The MeteringAdapter only tracks actual cost for analytics
-      // and Stripe meter reporting. No credit reservation here.
+      // operation). The MeteringAdapter tracks actual cost for analytics
+      // and Stripe meter reporting; S5 adds cost-based credit decrement post-call.
       let response: Anthropic.Message;
 
       try {
@@ -348,7 +371,7 @@ export class MeteringAdapter {
   }
 
   /**
-   * Report token usage to Stripe billing meters.
+   * Report token usage to Stripe billing meters (informational — input/output tokens).
    * Mirrors JediAIService.reportStripeUsage() — same meter names.
    */
   private async reportStripeUsage(
@@ -356,10 +379,9 @@ export class MeteringAdapter {
     usage: { input_tokens: number; output_tokens: number },
     _model: string
   ): Promise<void> {
-    if (!process.env.STRIPE_SECRET_KEY || !metadata.user_id) return;
+    if (!metadata.user_id) return;
 
     try {
-      // Resolve stripe customer id from user record
       const userRow = await query(
         `SELECT stripe_customer_id FROM user_credit_balances WHERE user_id = $1`,
         [metadata.user_id]
@@ -370,8 +392,8 @@ export class MeteringAdapter {
 
       if (!stripeCustomerId) return;
 
-      const Stripe = (await import('stripe')).default;
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+      const { getUncachableStripeClient } = await import('../../services/stripe/stripeClient');
+      const stripe = await getUncachableStripeClient();
 
       await stripe.billing.meterEvents.create({
         event_name: 'jedi_input_tokens',
@@ -399,32 +421,74 @@ export class MeteringAdapter {
   }
 
   /**
-   * A3: Report actual cost to Stripe billing meter (jedi_ai_cost_usd).
-   * This enables usage-based billing at the platform's actual cost.
+   * S5/A3: Report markup-adjusted cost to Stripe billing meter (jedi_ai_cost_usd)
+   * and decrement the user's period-usage credit balance.
+   *
+   * Markup decision (confirmed per-tier from TIER_CONFIG.aiMarkup):
+   *   Scout 1.50 (50%), Operator 1.35 (35%), Principal 1.20 (20%),
+   *   Institutional 1.00 (pass-through, no margin — flagged).
+   * The metered price (price_1ToVcmRLkzuKbZa2qVcNpOnT) is 0.0001 cents/micro-dollar
+   * (1:1 pass-through at the Stripe layer); the markup is applied HERE, app-side.
+   * Confirm: no double-markup — the Stripe price is 1:1, markup lives here only.
+   *
+   * Credit decrement (user-triggered calls only):
+   *   credits = billableUsd / overageCostPerCredit
+   *   Institutional skipped (overageCostPerCredit = 0, unlimited cap).
    */
   private async reportStripeCost(
     metadata: MeteringMetadata,
     costUsd: number
   ): Promise<void> {
-    if (!process.env.STRIPE_SECRET_KEY || !metadata.user_id) return;
+    if (!metadata.user_id) return;
     try {
       const userRow = await query(
-        `SELECT stripe_customer_id FROM user_credit_balances WHERE user_id = $1`,
+        `SELECT stripe_customer_id, subscription_tier
+         FROM user_credit_balances WHERE user_id = $1`,
         [metadata.user_id]
       );
+
       const stripeCustomerId: string | undefined =
         userRow.rows[0]?.stripe_customer_id;
-      if (!stripeCustomerId) return;
+      const tier = (userRow.rows[0]?.subscription_tier || 'scout') as SubscriptionTier;
+      const tierCfg = TIER_CONFIG[tier] ?? TIER_CONFIG['scout'];
 
-      const Stripe = (await import('stripe')).default;
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+      // Apply per-tier markup to raw cost (this is where platform margin is captured).
+      const billableUsd = costUsd * tierCfg.aiMarkup;
 
-      await stripe.billing.meterEvents.create({
-        event_name: 'jedi_ai_cost_usd',
-        payload: {
-          stripe_customer_id: stripeCustomerId,
-          value: String(Math.round(costUsd * 1_000_000)), // micro-dollars
-        },
+      // Report markup-adjusted cost to Stripe (in micro-dollars).
+      if (stripeCustomerId) {
+        const { getUncachableStripeClient } = await import('../../services/stripe/stripeClient');
+        const stripe = await getUncachableStripeClient();
+        await stripe.billing.meterEvents.create({
+          event_name: 'jedi_ai_cost_usd',
+          payload: {
+            stripe_customer_id: stripeCustomerId,
+            value: String(Math.round(billableUsd * 1_000_000)), // micro-dollars of BILLABLE amount
+          },
+        });
+      }
+
+      // S5: Decrement period-usage for user-triggered calls.
+      // Skips Institutional (overageCostPerCredit = 0 → unlimited, no decrement).
+      if (metadata.triggered_by === 'user' && tierCfg.overageCostPerCredit > 0) {
+        const creditsToDeduct = billableUsd / tierCfg.overageCostPerCredit;
+        await query(
+          `UPDATE user_credit_balances
+           SET credits_remaining     = credits_remaining - $1,
+               credits_used_this_period = credits_used_this_period + $1,
+               updated_at            = NOW()
+           WHERE user_id = $2`,
+          [creditsToDeduct, metadata.user_id]
+        );
+      }
+
+      logger.info('MeteringAdapter: cost metered', {
+        userId: metadata.user_id,
+        tier,
+        rawCostUsd: costUsd.toFixed(6),
+        billableUsd: billableUsd.toFixed(6),
+        aiMarkup: tierCfg.aiMarkup,
+        triggeredBy: metadata.triggered_by,
       });
     } catch (err) {
       logger.error('MeteringAdapter: Stripe cost meter event failed', {
