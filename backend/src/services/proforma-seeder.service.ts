@@ -1507,13 +1507,29 @@ export async function seedProFormaYear1(
         agentValue: null,   // no agent tool writes this yet in v1
         trafficEngineValue,
       });
-      // IMPORTANT: `seed.noi.resolved` (the ANNUAL year1 stabilized NOI from
-      // buildSeed(), NOT `periodicSeed._meta.resolved_noi` which is the last
-      // ACTUAL monthly NOI value carried through the periodic series) is the
-      // correct ramp target. deriveProjectionForSeed does the ÷12 conversion.
+      // IMPORTANT: the ramp target must be the LIVE year1 NOI, not the
+      // freshly-recomputed `seed.noi.resolved` from buildSeed(). For a deal
+      // whose `noi` field already exists in DB, the persist step below only
+      // merges EXTRACTION_SUBKEYS (t12/om/rent_roll/platform/etc.) into
+      // existing fields — `resolved`/`resolution` are deliberately preserved
+      // from the DB row (see EXTRACTION_SUBKEYS comment above) so a reseed
+      // never silently overwrites an operator/agent-influenced resolution.
+      // That means `seed.noi.resolved` (buildSeed's in-memory recomputation)
+      // is a phantom value that is NEVER actually persisted for existing
+      // deals — using it as the ramp target silently rams toward a number
+      // the live deal_assumptions.year1.noi will never itself hold.
+      // Correct read: prefer the LIVE value already in `existingSeed` (what
+      // will remain true after this reseed's DB write); only fall back to
+      // `seed.noi.resolved` for a deal's very first seed, when `noi` does
+      // not yet exist in year1 and buildSeed's fresh computation IS what
+      // gets persisted (new-field branch of the merge).
+      const liveYear1Noi = (existingSeed as Record<string, unknown> | null)?.noi as
+        | { resolved?: number | null }
+        | undefined;
+      const rampTargetNoi = liveYear1Noi?.resolved ?? seed.noi?.resolved ?? null;
       periodicSeed._meta = {
         ...(periodicSeed._meta ?? { warnings: [], fields_seeded: 0, resolved_noi: null }),
-        resolved_noi: seed.noi?.resolved ?? periodicSeed._meta?.resolved_noi ?? null,
+        resolved_noi: rampTargetNoi ?? periodicSeed._meta?.resolved_noi ?? null,
         stabilization: stabilizationLV,
       } as any;
       periodicSeed = deriveProjectionForSeed(periodicSeed, undefined, {
