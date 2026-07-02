@@ -4,6 +4,7 @@ import * as crypto from 'crypto';
 import { getPool } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { requireOrgRole, requireOrgRoleForOrg, OrgAuthenticatedRequest } from '../../middleware/rbac';
+import { emailService } from '../../services/email.service';
 
 const router = Router();
 
@@ -120,6 +121,26 @@ router.post('/:orgId/invitations', requireAuth, requireOrgRoleForOrg('principal'
     const pool = getPool();
     const orgId = req.params.orgId;
 
+    // Institutional-only gate: only orgs on the Institutional tier can invite members.
+    const tierResult = await pool.query(
+      `SELECT subscription_tier FROM org_credit_balances WHERE org_id = $1`,
+      [orgId]
+    );
+    if (!tierResult.rows.length || tierResult.rows[0].subscription_tier !== 'institutional') {
+      return res.status(403).json({ error: 'Team invitations are available on the Institutional tier only' });
+    }
+
+    // Fetch org name + inviter display name for the email (in parallel)
+    const [orgResult, inviterResult] = await Promise.all([
+      pool.query('SELECT name FROM organizations WHERE id = $1', [orgId]),
+      pool.query(
+        `SELECT COALESCE(NULLIF(TRIM(full_name), ''), email) AS display_name FROM users WHERE id = $1`,
+        [req.user!.userId]
+      ),
+    ]);
+    const orgName = (orgResult.rows[0]?.name as string) || 'your organization';
+    const inviterName = (inviterResult.rows[0]?.display_name as string) || 'A teammate';
+
     const existingMember = await pool.query(
       `SELECT om.id FROM org_members om
        JOIN users u ON u.id = om.user_id
@@ -148,9 +169,24 @@ router.post('/:orgId/invitations', requireAuth, requireOrgRoleForOrg('principal'
       [orgId, data.email, data.role, token, req.user!.userId, expiresAt]
     );
 
+    const domain = process.env.REPLIT_DOMAINS?.split(',')[0] || process.env.REPLIT_DEV_DOMAIN || 'localhost:5000';
+    const baseUrl = `https://${domain}`;
+    const acceptUrl = `${baseUrl}/accept-invite?token=${token}`;
+
+    // Send invitation email — non-blocking, so email failures don't reject the invite creation.
+    emailService.sendOrgInvitation({
+      to: data.email,
+      inviterName,
+      orgName,
+      acceptUrl,
+      expiresAt: expiresAt.toISOString(),
+    }).catch((err: Error) => {
+      console.error('Failed to send org invitation email:', err);
+    });
+
     res.status(201).json({
       ...result.rows[0],
-      accept_url: `/api/v1/orgs/invitations/${token}/accept`,
+      accept_url: acceptUrl,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

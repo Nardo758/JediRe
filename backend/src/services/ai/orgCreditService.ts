@@ -27,14 +27,33 @@ import type { SubscriptionTier } from '../../types/dealContext';
 export async function resolveOrgForUser(userId: string): Promise<string | null> {
   if (!userId) return null;
   try {
-    const result = await query(
-      // SINGLE-ORG ASSUMPTION: LIMIT 1 is safe only while users belong to exactly one org.
-      // When B2b enables multi-org membership, this must resolve an EXPLICIT active-org,
-      // not LIMIT 1.
+    // B2b: deterministic resolution via users.default_org_id.
+    // Resolution order: session_active_org_id (future switcher, not yet populated) ??
+    //   users.default_org_id (set at signup / bridge / invite-accept) ??
+    //   org_members LIMIT 1 fallback (warns — means a creation path missed setting default_org_id).
+    const userResult = await query(
+      `SELECT default_org_id FROM users WHERE id = $1`,
+      [userId]
+    );
+    if (userResult.rows.length > 0 && userResult.rows[0].default_org_id) {
+      return userResult.rows[0].default_org_id as string;
+    }
+
+    // Fallback: LIMIT 1 on org_members for users whose default_org_id was not set by a
+    // creation path. This MUST NOT fire silently — a real user hitting this in production
+    // means signup/bridge/accept-invite failed to write default_org_id. Log a warning.
+    const fallbackResult = await query(
       `SELECT org_id FROM org_members WHERE user_id = $1 LIMIT 1`,
       [userId]
     );
-    return result.rows.length > 0 ? (result.rows[0].org_id as string) : null;
+    if (fallbackResult.rows.length > 0) {
+      logger.warn('resolveOrgForUser: LIMIT 1 fallback fired — default_org_id missing', {
+        userId,
+        resolvedTo: fallbackResult.rows[0].org_id,
+      });
+      return fallbackResult.rows[0].org_id as string;
+    }
+    return null;
   } catch (err: any) {
     if (err?.message?.includes?.('invalid input syntax for type uuid')) {
       return null;

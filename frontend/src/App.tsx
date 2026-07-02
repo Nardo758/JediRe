@@ -11,6 +11,7 @@ import { PricingPage } from './pages/PricingPage';
 const Design3DPage = lazy(() => import('./pages/Design3DPage').then(m => ({ default: m.Design3DPage })));
 import AuthPage from './pages/AuthPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import AcceptInvitePage from './pages/AcceptInvitePage';
 import { ShowcaseLandingPage } from './pages/ShowcaseLandingPage';
 import { DealShowcasePage } from './pages/DealShowcasePage';
 import { ModuleShowcasePage } from './pages/ModuleShowcasePage';
@@ -195,6 +196,7 @@ function AppContent() {
       <Routes>
         <Route path="/login" element={<AuthPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/accept-invite" element={<AcceptInvitePage />} />
         
         {/* Showcase Routes (No Layout) */}
         <Route path="/showcase" element={<ShowcaseLandingPage />} />

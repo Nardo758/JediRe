@@ -5,8 +5,9 @@
  * caches. Supports all chat platforms and the web app.
  */
 
-import { query } from '../../database/connection';
+import { query, getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import crypto from 'crypto';
 import type {
   ChatPlatform,
   ChatSession,
@@ -61,17 +62,62 @@ export class SessionStore {
       };
     }
 
-    // Create a new user for this platform contact
-    const newUser = await query(
-      `INSERT INTO users (email, role, email_verified, user_type)
-       VALUES ($1, 'investor', false, 'human_sponsor')
-       RETURNING id`,
-      [`${platform}_${platformUserId}@chat.jedire.com`]
-    );
+    // Create a new user for this platform contact.
+    // B2b: wrapped in a transaction — user + org-of-one + org_members + org_credit_balances
+    // + default_org_id all committed atomically. Closes the B1 gap where bridge users
+    // had no org membership.
+    const pool = getPool();
+    const client = await pool.connect();
+    let userId: string;
+    let orgId: string;
+    try {
+      await client.query('BEGIN');
 
-    const userId = newUser.rows[0].id;
+      const userEmail = `${platform}_${platformUserId}@chat.jedire.com`;
+      const userRow = await client.query(
+        `INSERT INTO users (email, role, email_verified, user_type)
+         VALUES ($1, 'investor', false, 'human_sponsor')
+         RETURNING id`,
+        [userEmail]
+      );
+      userId = userRow.rows[0].id;
 
-    logger.info('New chat user created', { userId, platform, platformUserId });
+      const orgSlug = `personal-${crypto.randomBytes(4).toString('hex')}`;
+      const orgRow = await client.query(
+        `INSERT INTO organizations (name, slug, owner_id) VALUES ('Personal Organization', $1, $2) RETURNING id`,
+        [orgSlug, userId]
+      );
+      orgId = orgRow.rows[0].id;
+
+      await client.query(
+        `INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'owner')`,
+        [orgId, userId]
+      );
+
+      const periodEnd = new Date();
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+      await client.query(
+        `INSERT INTO org_credit_balances
+           (org_id, subscription_tier, credits_included_monthly, credits_remaining,
+            credits_used_this_period, monthly_credit_cap, period_start, period_end, updated_at)
+         VALUES ($1, 'scout', 100, 100, 0, 100, NOW(), $2, NOW())`,
+        [orgId, periodEnd.toISOString()]
+      );
+
+      await client.query(
+        `UPDATE users SET default_org_id = $1 WHERE id = $2`,
+        [orgId, userId]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    logger.info('New chat user created with org', { userId, orgId, platform, platformUserId });
 
     return {
       userId,
