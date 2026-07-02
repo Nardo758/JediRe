@@ -115,6 +115,98 @@ router.get('/:orgId/members', requireAuth, requireOrgRoleForOrg('viewer'), async
   }
 });
 
+/**
+ * GET /api/v1/orgs/:orgId/pool
+ *
+ * Pool status for the org. Visible to all org members.
+ * Cross-org isolation + auth enforced by requireOrgRoleForOrg('viewer').
+ */
+router.get('/:orgId/pool', requireAuth, requireOrgRoleForOrg('viewer'), async (req: OrgAuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT org_id, subscription_tier,
+              credits_remaining, credits_included_monthly, monthly_credit_cap,
+              credits_used_this_period, period_start, period_end, updated_at
+       FROM org_credit_balances
+       WHERE org_id = $1`,
+      [req.params.orgId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Pool not found for this organization' });
+    }
+    const row = result.rows[0];
+    res.json({
+      org_id:                    row.org_id,
+      subscription_tier:         row.subscription_tier,
+      credits_remaining:         parseFloat(row.credits_remaining),
+      credits_included_monthly:  parseFloat(row.credits_included_monthly),
+      monthly_credit_cap:        row.monthly_credit_cap != null ? parseFloat(row.monthly_credit_cap) : null,
+      credits_used_this_period:  parseFloat(row.credits_used_this_period),
+      period_start:              row.period_start,
+      period_end:                row.period_end,
+      updated_at:                row.updated_at,
+    });
+  } catch (error) {
+    console.error('Error fetching org pool:', error);
+    res.status(500).json({ error: 'Failed to fetch pool status' });
+  }
+});
+
+/**
+ * GET /api/v1/orgs/:orgId/usage/by-member
+ *
+ * Per-member credit breakdown for the current billing period.
+ * Owner-only — non-owner members receive 403.
+ * Cross-org isolation + role enforced by requireOrgRoleForOrg('owner').
+ */
+router.get('/:orgId/usage/by-member', requireAuth, requireOrgRoleForOrg('owner'), async (req: OrgAuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPool();
+    const orgId = req.params.orgId;
+
+    // Resolve current period start from the pool row
+    const periodResult = await pool.query(
+      `SELECT period_start, credits_used_this_period FROM org_credit_balances WHERE org_id = $1`,
+      [orgId]
+    );
+    if (periodResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Pool not found for this organization' });
+    }
+    const { period_start, credits_used_this_period } = periodResult.rows[0];
+
+    // Per-member aggregation: SUM(credits_consumed) by user_id for the current period
+    const usageResult = await pool.query(
+      `SELECT al.user_id::text,
+              COALESCE(NULLIF(TRIM(u.full_name), ''), u.email) AS display_name,
+              COUNT(*)::int AS calls,
+              ROUND(SUM(al.credits_consumed)::numeric, 4) AS credits_used
+       FROM ai_usage_log al
+       LEFT JOIN users u ON u.id = al.user_id
+       WHERE al.org_id = $1
+         AND al.created_at >= $2
+       GROUP BY al.user_id, u.full_name, u.email
+       ORDER BY credits_used DESC`,
+      [orgId, period_start]
+    );
+
+    res.json({
+      org_id:                   orgId,
+      period_start:             period_start,
+      credits_used_this_period: parseFloat(credits_used_this_period),
+      by_member:                usageResult.rows.map(r => ({
+        user_id:      r.user_id,
+        display_name: r.display_name || r.user_id,
+        calls:        r.calls,
+        credits_used: parseFloat(r.credits_used),
+      })),
+    });
+  } catch (error) {
+    console.error('Error fetching usage by member:', error);
+    res.status(500).json({ error: 'Failed to fetch usage breakdown' });
+  }
+});
+
 router.post('/:orgId/invitations', requireAuth, requireOrgRoleForOrg('principal'), async (req: OrgAuthenticatedRequest, res: Response) => {
   try {
     const data = InviteMemberSchema.parse(req.body);
