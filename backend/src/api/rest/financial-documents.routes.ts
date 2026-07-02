@@ -257,17 +257,11 @@ router.get('/:dealId/data-sources', requireAuth, async (req: AuthenticatedReques
     if (!await verifyDealOwnership(req, res)) return;
     const { dealId } = req.params;
 
-    const propertyIdResult = await pool.query(
-      `SELECT property_id FROM deals WHERE id = $1
-       UNION SELECT id FROM properties WHERE id = $1
-       LIMIT 1`,
-      [dealId]
-    );
-    const propertyId = propertyIdResult.rows[0]?.property_id || dealId;
-
     const [assumptions, actuals, leases, balanceSheets, capex, debt] = await Promise.all([
       pool.query('SELECT source_type, source_ref, source_date FROM deal_assumptions WHERE deal_id = $1', [dealId]),
-      pool.query('SELECT DISTINCT source_document_type, data_source, source_period_label FROM deal_monthly_actuals WHERE property_id = $1 ORDER BY source_period_label DESC NULLS LAST', [propertyId]),
+      // Scope actuals to this deal's own rows only (not all rows on a shared public property).
+      // Using deal_id directly prevents cross-operator actuals leaking through a shared property_id.
+      pool.query('SELECT DISTINCT source_document_type, data_source, source_period_label FROM deal_monthly_actuals WHERE deal_id = $1 ORDER BY source_period_label DESC NULLS LAST', [dealId]),
       pool.query('SELECT DISTINCT source_type, source_ref FROM deal_lease_transactions WHERE deal_id = $1', [dealId]),
       pool.query('SELECT report_month, source_type, source_ref FROM deal_balance_sheets WHERE deal_id = $1 ORDER BY report_month DESC', [dealId]),
       pool.query('SELECT DISTINCT source_type, source_ref FROM deal_capex_items WHERE deal_id = $1', [dealId]),

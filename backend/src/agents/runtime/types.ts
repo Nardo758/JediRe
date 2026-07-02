@@ -106,6 +106,13 @@ export interface RunContext {
    * string (scenario ID): writes to a specific existing scenario.
    */
   scenarioTarget?: 'create_new' | 'active' | string;
+
+  /**
+   * B2a/B4b: resolved org_id for the caller (user_id → org_members).
+   * Set by AgentRuntime before the tool loop so tools can scope private reads
+   * to the caller's org without re-resolving it per-tool.
+   */
+  org_id?: string;
 }
 
 // ── Tool definitions ──────────────────────────────────────────────────────────
