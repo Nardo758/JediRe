@@ -4,8 +4,17 @@ import { BT } from '../deal/bloomberg-ui';
 import { fmtPeriodicValue, ZONE_COLORS } from './fieldLabels';
 import type { PeriodicPeriod } from './PeriodicGrid.types';
 
+export interface M35Event {
+  id: string;
+  date: string | null;
+  label: string;
+  subtype: string;
+  magnitude?: string;
+}
+
 interface PeriodicChartProps {
   dealId: string;
+  events?: M35Event[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,7 +74,7 @@ const LayerBadge: React.FC<{ label: string; status: 'real' | 'not-yet' }> = ({ l
 // Main Chart Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const PeriodicChart: React.FC<PeriodicChartProps> = ({ dealId }) => {
+export const PeriodicChart: React.FC<PeriodicChartProps> = ({ dealId, events = [] }) => {
   const { data, loading, error } = usePeriodicData({ dealId });
 
   // Chart dimensions (responsive)
@@ -98,6 +107,21 @@ export const PeriodicChart: React.FC<PeriodicChartProps> = ({ dealId }) => {
     if (resolvedPoints.length <= 1) return margin.left + chartW / 2;
     return margin.left + (index / (resolvedPoints.length - 1)) * chartW;
   };
+
+  // Date-based x-scale for M35 event pins (handles gaps in periodic data)
+  const dateXScale = useMemo((): ((dateStr: string) => number | null) => {
+    if (resolvedPoints.length === 0) return () => null;
+    const toMs = (m: string) => new Date(m + '-01').getTime();
+    const minMs = toMs(resolvedPoints[0].month);
+    const maxMs = toMs(resolvedPoints[resolvedPoints.length - 1].month);
+    const span = maxMs - minMs;
+    if (span === 0) return () => margin.left + chartW / 2;
+    return (dateStr: string) => {
+      const ms = new Date(dateStr).getTime();
+      if (ms < minMs || ms > maxMs) return null;
+      return margin.left + ((ms - minMs) / span) * chartW;
+    };
+  }, [resolvedPoints, margin.left, chartW]);
 
   const yScale = (value: number): number => {
     if (max === min) return margin.top + chartH / 2;
@@ -201,7 +225,7 @@ export const PeriodicChart: React.FC<PeriodicChartProps> = ({ dealId }) => {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '4px 8px' }}>
         <LayerBadge label="Deal NOI" status="real" />
         <LayerBadge label="Submarket reference" status="not-yet" />
-        <LayerBadge label="M35 events" status="not-yet" />
+        <LayerBadge label="M35 events" status={events.length > 0 ? 'real' : 'not-yet'} />
         <LayerBadge label="Interventions" status="not-yet" />
       </div>
 
@@ -377,6 +401,38 @@ export const PeriodicChart: React.FC<PeriodicChartProps> = ({ dealId }) => {
               strokeWidth={1}
             />
           ))}
+
+          {/* M35 event annotation pins */}
+          {events.map((evt, i) => {
+            if (!evt.date) return null;
+            const x = dateXScale(evt.date);
+            if (x === null) return null;
+            const pinColor = '#A78BFA';
+            return (
+              <g key={`m35-pin-${evt.id ?? i}`}>
+                <line
+                  x1={x} x2={x}
+                  y1={margin.top} y2={margin.top + chartH}
+                  stroke={pinColor}
+                  strokeWidth={1}
+                  strokeDasharray="3,3"
+                  opacity={0.8}
+                />
+                <circle cx={x} cy={margin.top} r={2} fill={pinColor} />
+                <text
+                  x={x + 4}
+                  y={margin.top + 22 + (i % 3) * 11}
+                  fill={pinColor}
+                  fontSize={9}
+                  fontFamily="'JetBrains Mono', monospace"
+                  fontWeight={500}
+                  style={{ pointerEvents: 'none', userSelect: 'none' }}
+                >
+                  {evt.label.length > 28 ? evt.label.slice(0, 26) + '…' : evt.label}
+                </text>
+              </g>
+            );
+          })}
 
           {/* Zone labels */}
           {zoneSegments.map((seg, i) => {

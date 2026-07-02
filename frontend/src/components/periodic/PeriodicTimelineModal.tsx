@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Table2, LineChart } from 'lucide-react';
 import { BT } from '../deal/bloomberg-ui';
 import { PeriodicGrid } from './PeriodicGrid';
 import { PeriodicChart } from './PeriodicChart';
+import type { M35Event } from './PeriodicChart';
 import type { PeriodicGridPreset } from './PeriodicGrid.types';
 
 interface PeriodicTimelineModalProps {
@@ -12,6 +13,12 @@ interface PeriodicTimelineModalProps {
   onClose: () => void;
 }
 
+interface MarketEventsResponse {
+  events: M35Event[];
+  strategy?: string;
+  reason?: string;
+}
+
 export const PeriodicTimelineModal: React.FC<PeriodicTimelineModalProps> = ({
   dealId,
   preset,
@@ -19,6 +26,31 @@ export const PeriodicTimelineModal: React.FC<PeriodicTimelineModalProps> = ({
   onClose,
 }) => {
   const [activeView, setActiveView] = useState<'grid' | 'chart'>('grid');
+  const [m35Events, setM35Events] = useState<M35Event[]>([]);
+  const [m35Strategy, setM35Strategy] = useState<string | null>(null);
+  const [m35Reason, setM35Reason] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !dealId) return;
+    let cancelled = false;
+
+    fetch(`/api/v1/deals/${dealId}/market-events`, { credentials: 'include' })
+      .then(r => r.json())
+      .then((body: MarketEventsResponse) => {
+        if (cancelled) return;
+        setM35Events(body.events ?? []);
+        setM35Strategy(body.strategy ?? null);
+        setM35Reason(body.reason ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setM35Events([]);
+          setM35Reason('fetch_error');
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [isOpen, dealId]);
 
   if (!isOpen) return null;
 
@@ -73,6 +105,39 @@ export const PeriodicTimelineModal: React.FC<PeriodicTimelineModalProps> = ({
             >
               Periodic Timeline
             </span>
+            {/* M35 strategy badge */}
+            {m35Strategy && (
+              <span
+                style={{
+                  fontFamily: BT.font.mono,
+                  fontSize: BT.fontSize.xs,
+                  color: '#A78BFA',
+                  backgroundColor: '#A78BFA11',
+                  padding: '2px 6px',
+                  borderRadius: '2px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                M35 · {m35Events.length} event{m35Events.length !== 1 ? 's' : ''} · via {m35Strategy}
+              </span>
+            )}
+            {m35Reason === 'no_geography_resolved' && (
+              <span
+                style={{
+                  fontFamily: BT.font.mono,
+                  fontSize: BT.fontSize.xs,
+                  color: BT.text.muted,
+                  backgroundColor: BT.bg.panelAlt,
+                  padding: '2px 6px',
+                  borderRadius: '2px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                M35 · no geography resolved
+              </span>
+            )}
             {/* View toggle */}
             <div style={{ display: 'flex', gap: 2 }}>
               <button
@@ -137,7 +202,7 @@ export const PeriodicTimelineModal: React.FC<PeriodicTimelineModalProps> = ({
             <PeriodicGrid dealId={dealId} preset={preset} />
           )}
           {activeView === 'chart' && (
-            <PeriodicChart dealId={dealId} />
+            <PeriodicChart dealId={dealId} events={m35Events} />
           )}
         </div>
       </div>

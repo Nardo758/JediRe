@@ -63,7 +63,7 @@ import { BottomPanel } from '../components/layout/BottomPanel';
 import { SkillsBar } from '../components/layout/SkillsBar';
 import { SkillsChatSection } from '../components/deal/sections/SkillsChatSection';
 import { BloombergOverviewSection } from '../components/deal/sections/BloombergOverviewSection';
-import { PeriodicGrid } from '../components/periodic/PeriodicGrid';
+import { PeriodicTimelineTrigger } from '../components/periodic/PeriodicTimelineTrigger';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
 import { PresenceIndicator } from '../components/deal/PresenceIndicator';
 
@@ -144,7 +144,7 @@ const OverviewScreen = (props: ScreenProps) => {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         <div style={{ padding: '8px 0 4px' }}>
-          <PeriodicGrid dealId={props.dealId} preset="overview" />
+          <PeriodicTimelineTrigger dealId={props.dealId} preset="overview" label="Periodic Timeline" />
         </div>
         <BloombergOverviewSection
           deal={props.deal}

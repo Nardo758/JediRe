@@ -108,6 +108,7 @@ import ddChecklistsRouter from '../api/rest/dd-checklists.routes';
 import dealStrategyRouter from '../api/rest/deal-strategy.routes';
 import skillChatRouter from '../api/rest/skill-chat.routes';
 import jediRoutes from '../api/rest/jedi.routes';
+import dealMarketEventsRouter from '../api/rest/deal-market-events.routes';
 
 export function mountDealRoutes(app: Express) {
   // Capsule sharing routes mounted here (second, early mount) so that the
@@ -184,6 +185,9 @@ export function mountDealRoutes(app: Express) {
 
   // Skill Chat — deal-scoped AI assistant chat
   app.use('/api/v1/deals', requireAuth, requireWeb, skillChatRouter);
+
+  // M35 annotation layer — market events for a deal's timeline
+  app.use('/api/v1/deals', requireAuth, requireWeb, dealMarketEventsRouter);
 }
 
 // ─── Property & Data Library Routes ─────────────────────────────────────────
