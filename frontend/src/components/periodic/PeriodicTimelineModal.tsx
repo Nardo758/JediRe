@@ -5,6 +5,7 @@ import { PeriodicGrid } from './PeriodicGrid';
 import { PeriodicChart } from './PeriodicChart';
 import type { M35Event } from './PeriodicChart';
 import type { PeriodicGridPreset } from './PeriodicGrid.types';
+import { apiClient } from '../../services/api.client';
 
 interface PeriodicTimelineModalProps {
   dealId: string;
@@ -34,10 +35,10 @@ export const PeriodicTimelineModal: React.FC<PeriodicTimelineModalProps> = ({
     if (!isOpen || !dealId) return;
     let cancelled = false;
 
-    fetch(`/api/v1/deals/${dealId}/market-events`, { credentials: 'include' })
-      .then(r => r.json())
-      .then((body: MarketEventsResponse) => {
+    apiClient.get<MarketEventsResponse>(`/api/v1/deals/${dealId}/market-events`)
+      .then(res => {
         if (cancelled) return;
+        const body = res.data;
         setM35Events(body.events ?? []);
         setM35Strategy(body.strategy ?? null);
         setM35Reason(body.reason ?? null);
