@@ -40,26 +40,48 @@ export interface BoundaryContext {
 
   /** Derived: the first month in the projection zone, or null. Populated by buildPeriodicSeed. */
   first_projection_month: string | null;
+
+  /**
+   * The as-of date the analysis is being performed against (ISO date, YYYY-MM-DD).
+   * Gap zone = (last actual + 1 month) -> (analysis_date - 1 month); projection
+   * zone starts at analysis_date. This REPLACES acquisition_date as the gap/
+   * projection boundary driver (acquisition_date is retained on the type for
+   * other consumers but no longer drives gap math).
+   *
+   * Persisted, not recomputed: once a seed has an analysis_date, subsequent
+   * reseeds must reuse the same value (pass it back in via analysisDateOverride)
+   * so gap/projection boundaries stay stable and reseeds are deterministic.
+   * Only defaults to "today" the first time a deal is seeded under this scheme.
+   */
+  analysis_date: string | null;
 }
 
 /**
  * Build a BoundaryContext from raw deal fields.
+ *
+ * @param analysisDateOverride - Persisted analysis_date from a prior seed's
+ *   boundary, if one exists. Pass this in on every reseed to keep the gap/
+ *   projection boundary stable (determinism requirement). When null/undefined,
+ *   defaults to the current date (first-ever seed for this deal under this scheme).
  */
 export function buildBoundaryContext(
   actuals_through_month: string | Date | null,
   acquisition_date: string | Date | null,
+  analysisDateOverride?: string | Date | null,
 ): BoundaryContext {
   const atm = toIsoDate(actuals_through_month);
   const ad = toIsoDate(acquisition_date);
+  const analysisDate = toIsoDate(analysisDateOverride ?? null) ?? toIsoDate(new Date());
 
   let gap_start: string | null = null;
   let gap_end: string | null = null;
 
-  if (atm && ad) {
+  if (atm && analysisDate) {
     const gapStart = addOneMonth(atm);
-    const gapEnd = ad;
-    // Only meaningful if gap start is before gap end
-    if (gapStart && gapStart <= gapEnd) {
+    const gapEnd = subtractOneMonth(analysisDate);
+    // Only meaningful if gap start is on/before gap end (i.e. there's at least
+    // one full month between the last actual and the analysis date).
+    if (gapStart && gapEnd && gapStart.slice(0, 7) <= gapEnd.slice(0, 7)) {
       gap_start = gapStart;
       gap_end = gapEnd;
     }
@@ -69,10 +91,11 @@ export function buildBoundaryContext(
     actuals_through_month: atm,
     acquisition_date: ad,
     has_actuals: atm !== null,
-    has_projection: ad !== null,
+    has_projection: analysisDate !== null,
     gap_start_month: gap_start,
     gap_end_month: gap_end,
     first_projection_month: null, // populated by buildPeriodicSeed after period data is built
+    analysis_date: analysisDate,
   };
 }
 
@@ -116,5 +139,16 @@ function addOneMonth(ymd: string): string | null {
   const yy = next.getFullYear();
   const mm = String(next.getMonth() + 1).padStart(2, '0');
   const dd = String(next.getDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+function subtractOneMonth(ymd: string): string | null {
+  const [y, m, d] = ymd.split('-').map(Number);
+  if (!y || !m) return null;
+  // new Date(y, m - 2, d) = one month before the m-th month (m is 1-12, JS month index is m-1)
+  const prev = new Date(y, m - 2, d || 1);
+  const yy = prev.getFullYear();
+  const mm = String(prev.getMonth() + 1).padStart(2, '0');
+  const dd = String(prev.getDate()).padStart(2, '0');
   return `${yy}-${mm}-${dd}`;
 }

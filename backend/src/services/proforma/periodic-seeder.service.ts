@@ -252,9 +252,11 @@ function buildPeriodList(
     }
   }
 
-  // 3. Projection zone: from acquisition or after gap, forward N months
-  const projectionStart = boundary.acquisition_date
-    ? boundary.acquisition_date.slice(0, 7)
+  // 3. Projection zone: from analysis_date (or after gap, if the gap already
+  // reaches analysis_date), forward N months. analysis_date replaces
+  // acquisition_date as the gap/projection boundary driver (W-A gap zone dispatch).
+  const projectionStart = boundary.analysis_date
+    ? boundary.analysis_date.slice(0, 7)
     : (periods.length > 0 ? nextMonth(periods[periods.length - 1].month) : '2024-01');
 
   let projIdx = periods.length;

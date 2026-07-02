@@ -30,7 +30,7 @@ export interface PeriodLayeredValue {
   resolved: number | null;
 
   /** How this value was determined at this period. */
-  resolution: 'actual' | 'derived_gap' | 'assumption_trend' | 'platform_default' | 'operator_override' | 'agent' | 'computed' | 'unresolved' | 'year1_accrual';
+  resolution: 'actual' | 'derived_gap' | 'derived_projection' | 'assumption_trend' | 'platform_default' | 'operator_override' | 'agent' | 'computed' | 'unresolved' | 'year1_accrual';
 
   /** Source tag for provenance tracking. */
   source: string | null;

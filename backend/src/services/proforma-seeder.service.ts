@@ -1398,10 +1398,15 @@ export async function seedProFormaYear1(
     const bpRaw = bcObj?.proforma;
     const bpProforma = bpRaw && typeof bpRaw === 'object' ? bpRaw as Record<string, unknown> : null;
 
-    // Phase 1 — Boundary Facts: build boundary context from deal fields
+    // Phase 1 — Boundary Facts: build boundary context from deal fields.
+    // analysis_date is persisted, not recomputed: reuse the prior seed's value
+    // if one exists so gap/projection boundaries stay stable across reseeds
+    // (determinism requirement — W-A gap zone dispatch). Only defaults to
+    // "today" on the deal's first-ever seed under this scheme.
     const boundary = buildBoundaryContext(
       deal.actuals_through_month as string | null,
       deal.acquisition_date as string | null,
+      oldPeriodicSeed?.boundary?.analysis_date ?? null,
     );
 
     const seed = buildSeed(totalUnits, platform, t12Capsule, rrCapsule, taxBillCapsule, omCapsule, existingSeed, bpProforma, boundary);
