@@ -141,9 +141,8 @@ router.post('/login', validate(loginSchema), async (req, res) => {
 
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role, u.password_hash,
-              COALESCE(ucb.subscription_tier, 'scout') AS subscription_tier
+              COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS subscription_tier
        FROM users u
-       LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
        WHERE u.email = $1`,
       [email]
     );
@@ -210,12 +209,11 @@ router.get('/dev-login', async (_req, res) => {
     // back to created_at as a tiebreaker.
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role,
-              COALESCE(ucb.subscription_tier, 'scout') AS subscription_tier
+              COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS subscription_tier
          FROM users u
-         LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
          LEFT JOIN deals d ON d.user_id = u.id
         WHERE u.password_hash IS NOT NULL
-        GROUP BY u.id, ucb.subscription_tier
+        GROUP BY u.id, u.default_org_id
         ORDER BY COUNT(d.id) DESC, u.created_at DESC
         LIMIT 1`
     );
@@ -252,9 +250,8 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
     const userId = req.user?.userId;
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role,
-              COALESCE(ucb.subscription_tier, 'scout') AS subscription_tier
+              COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS subscription_tier
        FROM users u
-       LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
        WHERE u.id = $1`,
       [userId]
     );

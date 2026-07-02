@@ -390,8 +390,13 @@ export class MeteringAdapter {
     if (!metadata.user_id) return;
 
     try {
+      // B3: prefer org-level Stripe customer (authoritative); fall back to user row.
       const userRow = await query(
-        `SELECT stripe_customer_id FROM user_credit_balances WHERE user_id = $1`,
+        `SELECT COALESCE(ocb.stripe_customer_id, ucb.stripe_customer_id) AS stripe_customer_id
+         FROM user_credit_balances ucb
+         LEFT JOIN users uu ON uu.id = ucb.user_id
+         LEFT JOIN org_credit_balances ocb ON ocb.org_id = uu.default_org_id
+         WHERE ucb.user_id = $1`,
         [metadata.user_id]
       );
 
@@ -451,10 +456,15 @@ export class MeteringAdapter {
   ): Promise<void> {
     if (!metadata.user_id) return;
     try {
-      // Billing identity (stripe_customer_id, tier) stays per-user in B2a.
+      // B3: billing identity is org-level. Prefer org customer + org tier.
       const userRow = await query(
-        `SELECT stripe_customer_id, subscription_tier
-         FROM user_credit_balances WHERE user_id = $1`,
+        `SELECT
+           COALESCE(ocb.stripe_customer_id, ucb.stripe_customer_id) AS stripe_customer_id,
+           COALESCE(ocb.subscription_tier, ucb.subscription_tier, 'scout') AS subscription_tier
+         FROM user_credit_balances ucb
+         LEFT JOIN users uu ON uu.id = ucb.user_id
+         LEFT JOIN org_credit_balances ocb ON ocb.org_id = uu.default_org_id
+         WHERE ucb.user_id = $1`,
         [metadata.user_id]
       );
 

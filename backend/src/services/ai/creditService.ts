@@ -134,8 +134,20 @@ export class CreditService {
   async getBalance(userId: string): Promise<CreditBalance | null> {
     let result: any;
     try {
+      // B3: JOIN org_credit_balances via users.default_org_id so the returned
+      // subscriptionTier is always org-authoritative. Falls back to the user row's
+      // tier only when the user has no org (bridge/bot users).
       result = await query(
-        `SELECT * FROM user_credit_balances WHERE user_id = $1`,
+        `SELECT ucb.*,
+           COALESCE(
+             (SELECT ocb.subscription_tier
+              FROM users uu
+              JOIN org_credit_balances ocb ON ocb.org_id = uu.default_org_id
+              WHERE uu.id = ucb.user_id),
+             ucb.subscription_tier
+           ) AS effective_subscription_tier
+         FROM user_credit_balances ucb
+         WHERE ucb.user_id = $1`,
         [userId]
       );
     } catch (err: any) {
@@ -151,7 +163,7 @@ export class CreditService {
     return {
       userId: row.user_id,
       stripeCustomerId: row.stripe_customer_id,
-      subscriptionTier: row.subscription_tier,
+      subscriptionTier: row.effective_subscription_tier, // B3: org-authoritative
       automationLevel: row.automation_level,
       creditsIncludedMonthly: row.credits_included_monthly,
       creditsRemaining: row.credits_remaining,

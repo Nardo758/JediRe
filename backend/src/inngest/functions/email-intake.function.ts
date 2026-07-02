@@ -48,10 +48,10 @@ const AUTO_INTAKE_TIERS = new Set([
  * Returns the user's subscription tier.
  */
 async function getUserTier(userId: string): Promise<string> {
+  // B3: tier is org-authoritative.
   const res = await query(
-    `SELECT COALESCE(ucb.subscription_tier, u.subscription_tier, 'scout') AS tier
+    `SELECT COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS tier
      FROM users u
-     LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
      WHERE u.id = $1`,
     [userId]
   );

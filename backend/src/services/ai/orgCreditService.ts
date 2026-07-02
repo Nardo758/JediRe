@@ -242,6 +242,27 @@ export async function resetOrgPool(orgId: string): Promise<void> {
  * authoritative (fully authoritative in B3 when billing moves to org level).
  * user_credit_balances.subscription_tier is deprecated-not-dropped in B2a.
  */
+/**
+ * B3: Return the org-authoritative subscription tier for a user.
+ * Resolves user → default_org → org_credit_balances.subscription_tier.
+ * Falls back to 'scout' when the user has no org or no pool record.
+ */
+export async function getUserOrgTier(userId: string): Promise<SubscriptionTier> {
+  if (!userId) return 'scout';
+  try {
+    const result = await query(
+      `SELECT ocb.subscription_tier
+       FROM users u
+       JOIN org_credit_balances ocb ON ocb.org_id = u.default_org_id
+       WHERE u.id = $1`,
+      [userId]
+    );
+    return (result.rows[0]?.subscription_tier as SubscriptionTier) || 'scout';
+  } catch {
+    return 'scout';
+  }
+}
+
 export async function updateOrgTier(orgId: string, newTier: SubscriptionTier): Promise<void> {
   if (!orgId) return;
   const config = TIER_CONFIG[newTier];

@@ -30,7 +30,8 @@ export class SessionStore {
   ): Promise<PlatformUser> {
     // Check if this platform user already has a mapping
     const existing = await query(
-      `SELECT u.id as user_id, ucb.stripe_customer_id, ucb.subscription_tier
+      `SELECT u.id as user_id, ucb.stripe_customer_id,
+              COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS subscription_tier
        FROM chat_sessions cs
        JOIN users u ON u.id = cs.user_id
        LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
@@ -146,10 +147,14 @@ export class SessionStore {
     if (existing.rows.length > 0) {
       const row = existing.rows[0];
 
-      // Get subscription tier
+      // Get subscription tier — B3: org-authoritative.
       const tierResult = await query(
-        `SELECT subscription_tier, stripe_customer_id, automation_level
-         FROM user_credit_balances WHERE user_id = $1`,
+        `SELECT COALESCE(
+           (SELECT ocb.subscription_tier FROM users uu JOIN org_credit_balances ocb ON ocb.org_id = uu.default_org_id WHERE uu.id = ucb.user_id),
+           ucb.subscription_tier
+         ) AS subscription_tier,
+         ucb.stripe_customer_id, ucb.automation_level
+         FROM user_credit_balances ucb WHERE ucb.user_id = $1`,
         [userId]
       );
 
@@ -184,10 +189,14 @@ export class SessionStore {
       [userId, platform, platformUserId, JSON.stringify([]), expiresAt.toISOString()]
     );
 
-    // Get tier info
+    // Get tier info — B3: org-authoritative.
     const tierResult = await query(
-      `SELECT subscription_tier, stripe_customer_id, automation_level
-       FROM user_credit_balances WHERE user_id = $1`,
+      `SELECT COALESCE(
+         (SELECT ocb.subscription_tier FROM users uu JOIN org_credit_balances ocb ON ocb.org_id = uu.default_org_id WHERE uu.id = ucb.user_id),
+         ucb.subscription_tier
+       ) AS subscription_tier,
+       ucb.stripe_customer_id, ucb.automation_level
+       FROM user_credit_balances ucb WHERE ucb.user_id = $1`,
       [userId]
     );
     const tier = tierResult.rows[0];

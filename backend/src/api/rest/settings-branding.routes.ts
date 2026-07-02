@@ -12,9 +12,8 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 
     const result = await query(
       `SELECT ubs.company_name, ubs.logo_url, ubs.show_attribution,
-              COALESCE(ucb.subscription_tier, 'scout') AS tier
+              COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS tier
        FROM users u
-       LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
        LEFT JOIN user_branding_settings ubs ON ubs.user_id = u.id
        WHERE u.id = $1`,
       [userId]
@@ -46,9 +45,8 @@ router.put('/', requireAuth, async (req: Request, res: Response) => {
     const { company_name, logo_url, show_attribution } = req.body;
 
     const tierResult = await query(
-      `SELECT COALESCE(ucb.subscription_tier, 'scout') AS tier
+      `SELECT COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS tier
        FROM users u
-       LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
        WHERE u.id = $1`,
       [userId]
     );

@@ -91,8 +91,10 @@ router.post('/cashflow/underwrite', requireAuth, async (req: AuthenticatedReques
     await assertDealAccess(deal_id, req.user!.userId);
 
     // Tier-trigger policy: verify the user's tier permits manual runs
+    // B3: org-authoritative tier.
     const userTierRes = await query(
-      `SELECT COALESCE(ucb.subscription_tier, 'scout') AS tier FROM users u JOIN deals d ON d.user_id = u.id LEFT JOIN user_credit_balances ucb ON ucb.user_id = d.user_id WHERE d.id = $1`,
+      `SELECT COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS tier
+       FROM users u JOIN deals d ON d.user_id = u.id WHERE d.id = $1`,
       [deal_id]
     );
     const userTier = (userTierRes.rows[0]?.tier as string | null) ?? '';
@@ -241,8 +243,9 @@ dealUnderwritingRouter.get(
       let archiveContext: Record<string, unknown> | null = null;
       let archiveEnabled = false;
       try {
+        // B3: org-authoritative tier.
         const tierCheckResult = await query(
-          `SELECT COALESCE(ucb.subscription_tier, 'scout') AS tier FROM users u LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id WHERE u.id = $1 LIMIT 1`,
+          `SELECT COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS tier FROM users u WHERE u.id = $1 LIMIT 1`,
           [req.user!.userId]
         );
         const userTierForArchive = ((tierCheckResult.rows[0] as Record<string, unknown> | undefined)?.tier as string | undefined) ?? 'scout';
@@ -797,8 +800,9 @@ dealUnderwritingRouter.get(
       // Tier-gated: Scout tier does not see archive percentile.
       let archivePercentile: number | null = null;
       try {
+        // B3: org-authoritative tier.
         const summaryTierCheck = await query(
-          `SELECT COALESCE(ucb.subscription_tier, 'scout') AS tier FROM users u LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id WHERE u.id = $1 LIMIT 1`,
+          `SELECT COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS tier FROM users u WHERE u.id = $1 LIMIT 1`,
           [req.user!.userId]
         );
         const summaryUserTier = ((summaryTierCheck.rows[0] as Record<string, unknown> | undefined)?.tier as string | undefined) ?? 'scout';

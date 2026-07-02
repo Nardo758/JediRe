@@ -62,11 +62,11 @@ export const commentaryOnResearchCompleted = inngest.createFunction(
 
     // ── Step 1: Tier gate (look up user tier from deal) ─────────────
     const tierCheckResult = await step.run('tier-gate', async () => {
+      // B3: tier is org-authoritative.
       const res = await query(
-        `SELECT COALESCE(ucb.subscription_tier, 'scout') AS tier, d.user_id
+        `SELECT COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS tier, d.user_id
          FROM deals d
          JOIN users u ON u.id = d.user_id
-         LEFT JOIN user_credit_balances ucb ON ucb.user_id = d.user_id
          WHERE d.id = $1`,
         [dealId]
       );
