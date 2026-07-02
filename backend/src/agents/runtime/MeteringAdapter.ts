@@ -284,23 +284,21 @@ export class MeteringAdapter {
     }
 
     try {
-      // B2a: Pre-flight gate — resolve user → org, check ORG credit pool.
+      // B2a/B5: Pre-flight gate — resolve user → org, check ORG credit pool.
       // event/cron calls are platform-absorbed and bypass the gate.
-      // Institutional (monthly_credit_cap = NULL) is always allowed through.
+      // ALL tiers including Institutional hard-block at cap (B5: Institutional is no longer unlimited).
       // Users with no org (bridge users pre-B2b) are allowed through (no pool → no block).
       let resolvedOrgId: string | null = null;
       if (metadata.triggered_by === 'user' && metadata.user_id) {
         resolvedOrgId = await resolveOrgForUser(metadata.user_id);
         if (resolvedOrgId) {
           const gateRow = await query(
-            `SELECT credits_remaining, monthly_credit_cap
-             FROM org_credit_balances WHERE org_id = $1`,
+            `SELECT credits_remaining FROM org_credit_balances WHERE org_id = $1`,
             [resolvedOrgId]
           );
           if (gateRow.rows.length > 0) {
             const remaining = parseFloat(gateRow.rows[0].credits_remaining ?? '0');
-            const cap = gateRow.rows[0].monthly_credit_cap; // null = unlimited (Institutional)
-            if (cap !== null && remaining <= 0) {
+            if (remaining <= 0) {
               throw new Error(
                 `AI usage limit reached for this billing period. ` +
                 `Upgrade your plan to continue. (Credits remaining: ${remaining})`
@@ -441,13 +439,12 @@ export class MeteringAdapter {
    * (billing identity stays per-user in B2a; moves to org in B3).
    *
    * Markup decision (confirmed per-tier from TIER_CONFIG.aiMarkup):
-   *   Scout 1.50 (50%), Operator 1.35 (35%), Principal 1.20 (20%),
-   *   Institutional 1.00 (pass-through, no margin — flagged).
+   *   Scout 1.50 (50%), Operator 1.35 (35%), Principal 1.20 (20%), Institutional 1.15 (15%).
    * The metered price is 1:1 pass-through at the Stripe layer; markup is applied HERE only.
    *
    * Credit decrement (user-triggered calls only, B2a: targets ORG pool):
    *   credits = billableUsd / overageCostPerCredit
-   *   Institutional skipped (overageCostPerCredit = 0, unlimited cap).
+   *   All tiers including Institutional decrement and hard-block at cap (B5).
    */
   private async reportStripeCost(
     metadata: MeteringMetadata,
@@ -489,8 +486,8 @@ export class MeteringAdapter {
         });
       }
 
-      // B2a: Decrement ORG pool (not per-user balance) for user-triggered calls.
-      // Skips Institutional (overageCostPerCredit = 0 → unlimited, no decrement).
+      // B2a/B5: Decrement ORG pool (not per-user balance) for user-triggered calls.
+      // All tiers including Institutional decrement the pool (B5: overageCostPerCredit = 0.10).
       if (metadata.triggered_by === 'user' && tierCfg.overageCostPerCredit > 0 && orgId) {
         const creditsToDeduct = billableUsd / tierCfg.overageCostPerCredit;
         await decrementOrgPool(orgId, creditsToDeduct);

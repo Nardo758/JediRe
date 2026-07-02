@@ -123,9 +123,10 @@ export async function reserveOrgCredits(orgId: string, estimatedCost: number): P
     return false;
   }
 
-  const { credits_remaining, monthly_credit_cap } = selectResult.rows[0];
+  const { credits_remaining } = selectResult.rows[0];
 
-  if (credits_remaining <= 0 && monthly_credit_cap !== null) {
+  // B5: hard-block applies to ALL tiers (Institutional is no longer unlimited).
+  if (credits_remaining <= 0) {
     throw new Error(
       `Insufficient credits: ${credits_remaining} remaining, ${estimatedCost.toFixed(4)} estimated`
     );

@@ -78,15 +78,15 @@ export const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     monthlyFee: 499,    // $499/mo subscription (matches Stripe price_1ToVcSRLkzuKbZa27g3GXFvB)
   },
   institutional: {
-    creditsIncludedMonthly: -1, // custom/negotiated
-    overageCostPerCredit: 0, // volume pricing
+    creditsIncludedMonthly: 10000,   // B5: real allotment (5× Principal; raise before enterprise signup)
+    overageCostPerCredit: 0.10,      // pool conversion rate (hard-block at cap — no actual overage billing)
     maxActiveDeals: -1,
     maxAutomationLevel: 4,
     surfaces: ['chat', 'web', 'api'],
-    aiMarkup: 1.00,      // pass-through (no markup) — FLAGGED: zero platform margin on AI cost
-    minCharge: 0,
-    platformFeePerCall: 0,  // no flat fee (custom pricing)
-    monthlyFee: 999,    // $999/mo placeholder (matches Stripe price_1ToVcSRLkzuKbZa20xZtVrdY — TBD)
+    aiMarkup: 1.15,      // 15% markup — volume discount vs. Principal (20%), but NOT zero-margin
+    minCharge: 0.001,
+    platformFeePerCall: 0.002,
+    monthlyFee: 2000,    // $2,000/mo — 10,000 credits ≈ ~$1,000 AI cost; $2,000 keeps ~2× cushion
   },
 };
 
