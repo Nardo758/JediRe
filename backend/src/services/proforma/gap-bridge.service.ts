@@ -15,6 +15,7 @@ import type {
 } from './periodic-field.types';
 import type { BoundaryContext, PeriodZoneType } from './boundary.types';
 import { logger } from '../../utils/logger';
+import { applyStabilizationRamp } from './stabilization.service';
 
 export interface GapTrendAssumptions {
   /** Monthly rent growth rate (e.g., 0.03/12 = 0.0025 for 3% annual). */
@@ -161,6 +162,7 @@ export function deriveGapForSeed(
 function deriveProjectionSeries(
   series: PeriodicFieldSeries,
   trends: GapTrendAssumptions,
+  ramp?: { stabilizedMonthly: number; monthsToStabilization: number },
 ): PeriodicFieldSeries {
   const trendType = trendTypeForField(series.fieldName);
 
@@ -180,13 +182,19 @@ function deriveProjectionSeries(
     if (period.zone !== 'projection') return period;
 
     const monthsFromBaseline = monthDiff(baselineMonth, period.month);
-    const derivedValue = applyCompoundTrend(baseline, trendRate, monthsFromBaseline);
+    // W-B Phase 2: ramp only applies where a stabilization target was supplied
+    // (currently 'noi' — see deriveProjectionForSeed). No degenerate special
+    // case for baseline ≈ target: applyStabilizationRamp naturally collapses
+    // to ≈stabilizedMonthly for the whole ramp window in that case.
+    const derivedValue = ramp
+      ? applyStabilizationRamp(baseline, ramp.stabilizedMonthly, monthsFromBaseline, ramp.monthsToStabilization, trendRate)
+      : applyCompoundTrend(baseline, trendRate, monthsFromBaseline);
 
     return {
       ...period,
       resolved: derivedValue,
       resolution: 'derived_projection',
-      source: 'assumption_trend',
+      source: ramp ? 'assumption_trend_ramp' : 'assumption_trend',
       raw: null,
       updated_at: new Date().toISOString(),
     };
@@ -205,11 +213,23 @@ function deriveProjectionSeries(
 export function deriveProjectionForSeed(
   seed: ProFormaPeriodicSeed,
   trends: GapTrendAssumptions = DEFAULT_GAP_TRENDS,
+  stabilization?: { monthsToStabilization: number; resolution: string },
 ): ProFormaPeriodicSeed {
   const newFields: Record<string, PeriodicFieldSeries> = {};
 
+  // W-B Phase 2: stabilized_monthly = year1 stabilized NOI ÷ 12 — the ONE named
+  // location for this units conversion. `seed._meta.resolved_noi` is the
+  // ANNUAL stabilized NOI figure produced by the seeder's buildSeed(); the ramp
+  // target must be MONTHLY, hence ÷ 12.
+  const stabilizedMonthlyNoi = seed._meta?.resolved_noi != null
+    ? seed._meta.resolved_noi / 12
+    : null;
+
   for (const [fieldName, series] of Object.entries(seed.fields)) {
-    newFields[fieldName] = deriveProjectionSeries(series, trends);
+    const ramp = (fieldName === 'noi' && stabilization && stabilizedMonthlyNoi != null)
+      ? { stabilizedMonthly: stabilizedMonthlyNoi, monthsToStabilization: stabilization.monthsToStabilization }
+      : undefined;
+    newFields[fieldName] = deriveProjectionSeries(series, trends, ramp);
   }
 
   return {

@@ -174,6 +174,12 @@ export function applyRebase(
   // After setting actuals for `month`, all subsequent gap/projection periods
   // should be re-trended from the new actual baseline. Full forward re-derivation:
   // (a) gap gets trended from actuals, (b) projections re-trended from last gap/actual.
+  //
+  // W-B Phase 2 scope note: the stabilization ramp is NOT wired into this
+  // per-month rebase path in v1 — only the full seedProFormaYear1 reseed path
+  // resolves months_to_stabilization (see proforma-seeder.service.ts). A
+  // single-month rebase falls back to pure compound trend here, matching
+  // pre-ramp behavior. Revisit if per-month rebase needs ramp continuity.
   rebased = deriveGapForSeed(rebased, trends);
   rebased = deriveProjectionForSeed(rebased, trends);
 

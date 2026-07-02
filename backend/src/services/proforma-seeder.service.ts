@@ -11,6 +11,7 @@ import {
   reconcileCustomMetric,
 } from './custom-metrics/derivation.service';
 import { deriveProjectionForSeed } from './proforma/gap-bridge.service';
+import { resolveMonthsToStabilization, fetchTrafficEngineMonthsToStabilization } from './proforma/stabilization.service';
 import { logger } from '../utils/logger';
 import { resolvePriorityChain } from '../utils/field-priority-miss';
 import { computeLeaseRollVelocityFromDates } from './proforma/ltl-trajectory';
@@ -1493,8 +1494,32 @@ export async function seedProFormaYear1(
     // buildPeriodicSeed fills projection periods with year1 annual values as placeholders.
     // When we have real actuals (T12 or portfolio), immediately re-derive projections from
     // the last actual so all periods are in consistent monthly scale before Part 1/2 comparison.
+    //
+    // W-B Phase 2: resolve months_to_stabilization (user > agent > traffic_engine >
+    // platform_default) before deriving projections, so the noi field ramps toward
+    // the stabilized level instead of pure compound-trending off a lease-up-era baseline.
+    // ONE named seam: fetchTrafficEngineMonthsToStabilization reads whatever
+    // pushTrafficToProForma already persisted — never invokes traffic computation here.
     if (periodicSeed && effectiveT12Months.length > 0) {
-      periodicSeed = deriveProjectionForSeed(periodicSeed);
+      const trafficEngineValue = await fetchTrafficEngineMonthsToStabilization(dealId);
+      const stabilizationLV = resolveMonthsToStabilization({
+        userOverride: null, // no UI seam exists yet in v1
+        agentValue: null,   // no agent tool writes this yet in v1
+        trafficEngineValue,
+      });
+      // IMPORTANT: `seed.noi.resolved` (the ANNUAL year1 stabilized NOI from
+      // buildSeed(), NOT `periodicSeed._meta.resolved_noi` which is the last
+      // ACTUAL monthly NOI value carried through the periodic series) is the
+      // correct ramp target. deriveProjectionForSeed does the ÷12 conversion.
+      periodicSeed._meta = {
+        ...(periodicSeed._meta ?? { warnings: [], fields_seeded: 0, resolved_noi: null }),
+        resolved_noi: seed.noi?.resolved ?? periodicSeed._meta?.resolved_noi ?? null,
+        stabilization: stabilizationLV,
+      } as any;
+      periodicSeed = deriveProjectionForSeed(periodicSeed, undefined, {
+        monthsToStabilization: stabilizationLV.resolved,
+        resolution: stabilizationLV.resolution,
+      });
     }
 
     // ═══════════════════════════════════════════════════════════════════════

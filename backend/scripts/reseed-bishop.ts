@@ -69,6 +69,7 @@ async function main() {
   console.log('  Last actual -> first projection step:', JSON.stringify({ lastActual, firstProj }));
 
   await pool.end();
+  process.exit(0);
 }
 
 main().catch(err => {
