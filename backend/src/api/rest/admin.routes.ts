@@ -712,7 +712,7 @@ router.get('/users', requireAdminAuth, async (req: AuthenticatedRequest, res: Re
 
     const usersResult = await query(`
       SELECT id, email, first_name, last_name, role, is_active, last_login_at, created_at,
-        (SELECT count(*) FROM deals WHERE user_id = users.id) as deal_count
+        (SELECT count(*) FROM deals WHERE user_id = users.id) as deal_count /* B4a-admin: admin aggregate */
       FROM users ${whereClause}
       ORDER BY created_at DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
@@ -742,7 +742,7 @@ router.get('/users/:id', requireAdminAuth, async (req: AuthenticatedRequest, res
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
-    const dealCount = await query(`SELECT count(*) as cnt FROM deals WHERE user_id = $1`, [req.params.id]);
+    const dealCount = await query(`SELECT count(*) as cnt FROM deals WHERE user_id = $1 /* B4a-admin */`, [req.params.id]);
 
     let recentActivity: any[] = [];
     try {

@@ -20,6 +20,7 @@
  */
 
 import { Router, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { AuthenticatedRequest } from '../../middleware/auth';
@@ -41,12 +42,8 @@ router.get('/:dealId/vendor-freshness', async (req: AuthenticatedRequest, res: R
     const pool = getPool();
 
     // Verify the deal belongs to this user
-    const ownerCheck = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2 LIMIT 1`,
-      [dealId, userId],
-    );
-    if (ownerCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Deal not found or access denied' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     const result = await getVendorFreshnessForDeal(dealId, pool);
@@ -76,12 +73,8 @@ router.post('/:dealId/vendor-refresh', async (req: AuthenticatedRequest, res: Re
     const pool = getPool();
 
     // Verify the deal belongs to this user
-    const ownerCheck = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2 LIMIT 1`,
-      [dealId, userId],
-    );
-    if (ownerCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Deal not found or access denied' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     const result = await enqueueVendorRefresh(dealId, vendorId, pool);

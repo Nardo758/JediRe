@@ -10,6 +10,7 @@
  */
 
 import { Router, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import multer from 'multer';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { ValuationGridService } from '../../services/valuation/valuation-grid.service';
@@ -68,11 +69,7 @@ router.get('/deals/:dealId/valuation-grid', requireAuth, async (req: Authenticat
     }
 
     // Verify deal ownership (owner or admin) before computing
-    const ownerCheck = await pool.query(
-      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
-      [dealId, userId, req.user?.role === 'admin']
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found.' });
     }
 
@@ -101,11 +98,7 @@ router.post('/deals/:dealId/valuation-grid/populate-subject', requireAuth, async
     const userId = req.user?.userId;
     const pool = getPool();
 
-    const ownerCheck = await pool.query(
-      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
-      [dealId, userId, req.user?.role === 'admin']
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found.' });
     }
 
@@ -138,11 +131,7 @@ router.patch('/deals/:dealId/valuation-grid/override', requireAuth, async (req: 
     const pool = getPool();
 
     // Verify deal ownership before allowing writes
-    const ownerCheck = await pool.query(
-      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
-      [dealId, userId, req.user?.role === 'admin']
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found.' });
     }
 
@@ -191,11 +180,7 @@ router.post(
         return res.status(400).json({ success: false, error: 'No file uploaded.' });
       }
 
-      const ownerCheck = await pool.query(
-        `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
-        [dealId, userId, req.user?.role === 'admin']
-      );
-      if (ownerCheck.rows.length === 0) {
+      if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
         return res.status(404).json({ success: false, error: 'Deal not found.' });
       }
 
@@ -264,11 +249,7 @@ router.post(
         return res.status(400).json({ success: false, error: 'No file uploaded.' });
       }
 
-      const ownerCheck = await pool.query(
-        `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
-        [dealId, userId, req.user?.role === 'admin']
-      );
-      if (ownerCheck.rows.length === 0) {
+      if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
         return res.status(404).json({ success: false, error: 'Deal not found.' });
       }
 
@@ -325,11 +306,7 @@ router.post(
         return res.status(400).json({ success: false, error: 'No file uploaded.' });
       }
 
-      const ownerCheck = await pool.query(
-        `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
-        [dealId, userId, req.user?.role === 'admin']
-      );
-      if (ownerCheck.rows.length === 0) {
+      if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
         return res.status(404).json({ success: false, error: 'Deal not found.' });
       }
 
@@ -391,11 +368,9 @@ router.get('/deals/:dealId/valuation-grid/comps', requireAuth, async (req: Authe
     const userId = req.user?.userId;
     const pool = getPool();
 
-    const ownerCheck = await pool.query(
-      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
-      [dealId, userId, req.user?.role === 'admin']
-    );
-    if (ownerCheck.rows.length === 0) return res.status(404).json({ success: false, error: 'Deal not found.' });
+    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found.' });
+    }
 
     const svc = new ValuationGridService(pool);
     const result = await svc.listCompsForReview(dealId);
@@ -419,11 +394,9 @@ router.patch('/deals/:dealId/valuation-grid/comps/criteria', requireAuth, async 
     const userId = req.user?.userId;
     const pool = getPool();
 
-    const ownerCheck = await pool.query(
-      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
-      [dealId, userId, req.user?.role === 'admin']
-    );
-    if (ownerCheck.rows.length === 0) return res.status(404).json({ success: false, error: 'Deal not found.' });
+    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found.' });
+    }
 
     const { radiusMiles, maxAgeMonths, minUnits, maxUnits, minYearBuilt, maxYearBuilt, propertyClasses } = req.body;
     const patch: Record<string, unknown> = {};
@@ -456,11 +429,9 @@ router.delete('/deals/:dealId/valuation-grid/comps/:compId', requireAuth, async 
     const userId = req.user?.userId;
     const pool = getPool();
 
-    const ownerCheck = await pool.query(
-      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
-      [dealId, userId, req.user?.role === 'admin']
-    );
-    if (ownerCheck.rows.length === 0) return res.status(404).json({ success: false, error: 'Deal not found.' });
+    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found.' });
+    }
 
     const svc = new ValuationGridService(pool);
     await svc.excludeComp(dealId, compId);
@@ -482,11 +453,9 @@ router.post('/deals/:dealId/valuation-grid/comps/:compId/include', requireAuth, 
     const userId = req.user?.userId;
     const pool = getPool();
 
-    const ownerCheck = await pool.query(
-      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
-      [dealId, userId, req.user?.role === 'admin']
-    );
-    if (ownerCheck.rows.length === 0) return res.status(404).json({ success: false, error: 'Deal not found.' });
+    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found.' });
+    }
 
     const svc = new ValuationGridService(pool);
     await svc.includeComp(dealId, compId);
@@ -510,11 +479,9 @@ router.post('/deals/:dealId/valuation-grid/comps/:compId/add', requireAuth, asyn
     const userId = req.user?.userId;
     const pool = getPool();
 
-    const ownerCheck = await pool.query(
-      `SELECT id FROM deals WHERE id = $1::uuid AND (user_id = $2::uuid OR $3 = true)`,
-      [dealId, userId, req.user?.role === 'admin']
-    );
-    if (ownerCheck.rows.length === 0) return res.status(404).json({ success: false, error: 'Deal not found.' });
+    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found.' });
+    }
 
     const svc = new ValuationGridService(pool);
     await svc.addComp(dealId, compId);

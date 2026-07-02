@@ -4,6 +4,7 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { authMiddleware, AuthenticatedRequest } from '../../middleware/auth';
 import { verifyAccessToken, extractTokenFromHeader } from '../../auth/jwt';
 import { documentsFilesService } from '../../services/documentsFiles.service';
@@ -198,12 +199,8 @@ router.get(
       }
 
       // Authz: caller must own (or have access to) the deal
-      const dealCheck = await dbQuery(
-        'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-        [dealId, userId]
-      );
-      if (dealCheck.rows.length === 0) {
-        return res.status(404).json({ success: false, message: 'Deal not found' });
+      if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+        return res.status(404).json({ success: false, error: 'Not authorized' });
       }
 
       const result = await dbQuery(
@@ -248,12 +245,8 @@ router.post(
       }
 
       // Authz: caller must own the deal
-      const dealCheck = await dbQuery(
-        'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-        [dealId, userId]
-      );
-      if (dealCheck.rows.length === 0) {
-        return res.status(404).json({ success: false, message: 'Deal not found' });
+      if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+        return res.status(404).json({ success: false, error: 'Not authorized' });
       }
 
       // Look up the file's category + mime so we can pick the right skill
@@ -532,12 +525,8 @@ router.delete(
         return res.status(401).json({ success: false, message: 'Unauthorized' });
       }
 
-      const dealCheck = await dbQuery(
-        'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-        [dealId, userId]
-      );
-      if (dealCheck.rows.length === 0) {
-        return res.status(404).json({ success: false, message: 'Deal not found' });
+      if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+        return res.status(404).json({ success: false, error: 'Not authorized' });
       }
 
       const deleted = await documentsFilesService.deleteFile(fileId, userId, dealId);

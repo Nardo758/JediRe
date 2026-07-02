@@ -84,22 +84,13 @@ function normalizeRun(row: Record<string, unknown>) {
  * Returns the deal row if accessible, throws 403/404 otherwise.
  */
 async function assertDealAccess(dealId: string, userId: string): Promise<{ id: string }> {
-  const result = await query(
-    `SELECT d.id
-     FROM deals d
-     LEFT JOIN org_members om ON om.org_id = d.org_id AND om.user_id = $2
-     WHERE d.id = $1
-       AND d.archived_at IS NULL
-       AND (d.user_id = $2 OR om.user_id IS NOT NULL)`,
-    [dealId, userId]
-  );
-
-  if (result.rows.length === 0) {
-    // Use 404 to avoid leaking deal existence to unauthorized users
+  // B4a: org-scoped access check (uses deals.org_id + org_members, not the dead-stub columns)
+  const { assertDealOrgAccess } = await import('../../services/deal-scoping.service');
+  const deal = await assertDealOrgAccess(dealId, userId, { query } as any);
+  if (!deal) {
     throw new AppError(404, `Deal ${dealId} not found`);
   }
-
-  return result.rows[0] as { id: string };
+  return deal as { id: string };
 }
 
 /**

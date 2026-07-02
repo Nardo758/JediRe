@@ -5,8 +5,9 @@
  * caches. Supports all chat platforms and the web app.
  */
 
-import { query } from '../../database/connection';
+import { query, getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import crypto from 'crypto';
 import type {
   ChatPlatform,
   ChatSession,
@@ -29,7 +30,8 @@ export class SessionStore {
   ): Promise<PlatformUser> {
     // Check if this platform user already has a mapping
     const existing = await query(
-      `SELECT u.id as user_id, ucb.stripe_customer_id, ucb.subscription_tier
+      `SELECT u.id as user_id, ucb.stripe_customer_id,
+              COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS subscription_tier
        FROM chat_sessions cs
        JOIN users u ON u.id = cs.user_id
        LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
@@ -61,17 +63,62 @@ export class SessionStore {
       };
     }
 
-    // Create a new user for this platform contact
-    const newUser = await query(
-      `INSERT INTO users (email, role, email_verified, user_type)
-       VALUES ($1, 'investor', false, 'human_sponsor')
-       RETURNING id`,
-      [`${platform}_${platformUserId}@chat.jedire.com`]
-    );
+    // Create a new user for this platform contact.
+    // B2b: wrapped in a transaction — user + org-of-one + org_members + org_credit_balances
+    // + default_org_id all committed atomically. Closes the B1 gap where bridge users
+    // had no org membership.
+    const pool = getPool();
+    const client = await pool.connect();
+    let userId: string;
+    let orgId: string;
+    try {
+      await client.query('BEGIN');
 
-    const userId = newUser.rows[0].id;
+      const userEmail = `${platform}_${platformUserId}@chat.jedire.com`;
+      const userRow = await client.query(
+        `INSERT INTO users (email, role, email_verified, user_type)
+         VALUES ($1, 'investor', false, 'human_sponsor')
+         RETURNING id`,
+        [userEmail]
+      );
+      userId = userRow.rows[0].id;
 
-    logger.info('New chat user created', { userId, platform, platformUserId });
+      const orgSlug = `personal-${crypto.randomBytes(4).toString('hex')}`;
+      const orgRow = await client.query(
+        `INSERT INTO organizations (name, slug, owner_id) VALUES ('Personal Organization', $1, $2) RETURNING id`,
+        [orgSlug, userId]
+      );
+      orgId = orgRow.rows[0].id;
+
+      await client.query(
+        `INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'owner')`,
+        [orgId, userId]
+      );
+
+      const periodEnd = new Date();
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+      await client.query(
+        `INSERT INTO org_credit_balances
+           (org_id, subscription_tier, credits_included_monthly, credits_remaining,
+            credits_used_this_period, monthly_credit_cap, period_start, period_end, updated_at)
+         VALUES ($1, 'scout', 100, 100, 0, 100, NOW(), $2, NOW())`,
+        [orgId, periodEnd.toISOString()]
+      );
+
+      await client.query(
+        `UPDATE users SET default_org_id = $1 WHERE id = $2`,
+        [orgId, userId]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    logger.info('New chat user created with org', { userId, orgId, platform, platformUserId });
 
     return {
       userId,
@@ -100,10 +147,14 @@ export class SessionStore {
     if (existing.rows.length > 0) {
       const row = existing.rows[0];
 
-      // Get subscription tier
+      // Get subscription tier — B3: org-authoritative.
       const tierResult = await query(
-        `SELECT subscription_tier, stripe_customer_id, automation_level
-         FROM user_credit_balances WHERE user_id = $1`,
+        `SELECT COALESCE(
+           (SELECT ocb.subscription_tier FROM users uu JOIN org_credit_balances ocb ON ocb.org_id = uu.default_org_id WHERE uu.id = ucb.user_id),
+           ucb.subscription_tier
+         ) AS subscription_tier,
+         ucb.stripe_customer_id, ucb.automation_level
+         FROM user_credit_balances ucb WHERE ucb.user_id = $1`,
         [userId]
       );
 
@@ -138,10 +189,14 @@ export class SessionStore {
       [userId, platform, platformUserId, JSON.stringify([]), expiresAt.toISOString()]
     );
 
-    // Get tier info
+    // Get tier info — B3: org-authoritative.
     const tierResult = await query(
-      `SELECT subscription_tier, stripe_customer_id, automation_level
-       FROM user_credit_balances WHERE user_id = $1`,
+      `SELECT COALESCE(
+         (SELECT ocb.subscription_tier FROM users uu JOIN org_credit_balances ocb ON ocb.org_id = uu.default_org_id WHERE uu.id = ucb.user_id),
+         ucb.subscription_tier
+       ) AS subscription_tier,
+       ucb.stripe_customer_id, ucb.automation_level
+       FROM user_credit_balances ucb WHERE ucb.user_id = $1`,
       [userId]
     );
     const tier = tierResult.rows[0];

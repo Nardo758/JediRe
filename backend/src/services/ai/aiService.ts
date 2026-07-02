@@ -588,8 +588,14 @@ export class JediAIService {
 
   private async getUserTier(userId: string): Promise<SubscriptionTier> {
     try {
+      // B3: tier is org-authoritative.
       const result = await query(
-        `SELECT subscription_tier FROM user_credit_balances WHERE user_id = $1`,
+        `SELECT COALESCE(
+           (SELECT ocb.subscription_tier FROM users uu JOIN org_credit_balances ocb ON ocb.org_id = uu.default_org_id WHERE uu.id = $1),
+           ucb.subscription_tier,
+           'scout'
+         ) AS subscription_tier
+         FROM user_credit_balances ucb WHERE ucb.user_id = $1`,
         [userId]
       );
 

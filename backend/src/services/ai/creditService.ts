@@ -8,6 +8,13 @@
 import { query, transaction } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import type { SubscriptionTier, AutomationLevel } from '../../types/dealContext';
+import {
+  resolveOrgForUser,
+  reserveOrgCredits,
+  debitOrgActualCost,
+  resetOrgPool,
+  updateOrgTier,
+} from './orgCreditService';
 
 // ── Tier Configuration ─────────────────────────────────────────
 
@@ -23,7 +30,7 @@ interface TierConfig {
   monthlyFee: number; // subscription price in USD (e.g., 49, 97, 197)
 }
 
-const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
+export const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
   scout: {
     creditsIncludedMonthly: 100,
     overageCostPerCredit: 0.25,
@@ -33,7 +40,7 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     aiMarkup: 1.50,        // 50% markup on raw AI cost
     minCharge: 0.005,      // minimum $0.005 per call
     platformFeePerCall: 0.01, // $0.01 flat fee per call
-    monthlyFee: 49,      // $49/mo subscription
+    monthlyFee: 49,      // $49/mo subscription (matches Stripe price_1ToVcRRLkzuKbZa20IiE4N94)
   },
   // A5-F4: 'basic' tier — legacy / pre-launch tier mapped to same config as scout.
   // getAllowedTriggerModes('basic') returns ['manual', 'event-driven'] (dev/testing).
@@ -57,7 +64,7 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     aiMarkup: 1.35,      // 35% markup
     minCharge: 0.003,
     platformFeePerCall: 0.005, // $0.005 flat fee per call
-    monthlyFee: 97,     // $97/mo subscription
+    monthlyFee: 199,    // $199/mo subscription (matches Stripe price_1ToVcRRLkzuKbZa2KMLUgYP9)
   },
   principal: {
     creditsIncludedMonthly: 2000,
@@ -68,18 +75,18 @@ const TIER_CONFIG: Record<SubscriptionTier, TierConfig> = {
     aiMarkup: 1.20,      // 20% markup
     minCharge: 0.001,
     platformFeePerCall: 0.002, // $0.002 flat fee per call
-    monthlyFee: 197,    // $197/mo subscription
+    monthlyFee: 499,    // $499/mo subscription (matches Stripe price_1ToVcSRLkzuKbZa27g3GXFvB)
   },
   institutional: {
-    creditsIncludedMonthly: -1, // custom/negotiated
-    overageCostPerCredit: 0, // volume pricing
+    creditsIncludedMonthly: 10000,   // B5: real allotment (5× Principal; raise before enterprise signup)
+    overageCostPerCredit: 0.10,      // pool conversion rate (hard-block at cap — no actual overage billing)
     maxActiveDeals: -1,
     maxAutomationLevel: 4,
     surfaces: ['chat', 'web', 'api'],
-    aiMarkup: 1.00,      // pass-through (no markup)
-    minCharge: 0,
-    platformFeePerCall: 0,  // no flat fee (custom pricing)
-    monthlyFee: 0,       // custom/negotiated
+    aiMarkup: 1.15,      // 15% markup — volume discount vs. Principal (20%), but NOT zero-margin
+    minCharge: 0.001,
+    platformFeePerCall: 0.002,
+    monthlyFee: 2000,    // $2,000/mo — 10,000 credits ≈ ~$1,000 AI cost; $2,000 keeps ~2× cushion
   },
 };
 
@@ -127,8 +134,20 @@ export class CreditService {
   async getBalance(userId: string): Promise<CreditBalance | null> {
     let result: any;
     try {
+      // B3: JOIN org_credit_balances via users.default_org_id so the returned
+      // subscriptionTier is always org-authoritative. Falls back to the user row's
+      // tier only when the user has no org (bridge/bot users).
       result = await query(
-        `SELECT * FROM user_credit_balances WHERE user_id = $1`,
+        `SELECT ucb.*,
+           COALESCE(
+             (SELECT ocb.subscription_tier
+              FROM users uu
+              JOIN org_credit_balances ocb ON ocb.org_id = uu.default_org_id
+              WHERE uu.id = ucb.user_id),
+             ucb.subscription_tier
+           ) AS effective_subscription_tier
+         FROM user_credit_balances ucb
+         WHERE ucb.user_id = $1`,
         [userId]
       );
     } catch (err: any) {
@@ -144,7 +163,7 @@ export class CreditService {
     return {
       userId: row.user_id,
       stripeCustomerId: row.stripe_customer_id,
-      subscriptionTier: row.subscription_tier,
+      subscriptionTier: row.effective_subscription_tier, // B3: org-authoritative
       automationLevel: row.automation_level,
       creditsIncludedMonthly: row.credits_included_monthly,
       creditsRemaining: row.credits_remaining,
@@ -207,7 +226,11 @@ export class CreditService {
   }
 
   /**
-   * Reset monthly credits (called on invoice.paid webhook).
+   * Reset monthly credits (called on invoice.paid webhook and dev auto-replenish).
+   *
+   * B2a: resets the ORG pool (authoritative) AND user_credit_balances (kept in sync
+   * so the billing UI display remains accurate while the UI is not yet reading from
+   * org_credit_balances). Both resets use the same tier allotment + fresh period bounds.
    */
   async resetMonthlyCredits(userId: string): Promise<void> {
     const balance = await this.getBalance(userId);
@@ -218,6 +241,7 @@ export class CreditService {
     const periodEnd = new Date();
     periodEnd.setMonth(periodEnd.getMonth() + 1);
 
+    // Reset user_credit_balances (kept for billing UI display — dormant for gate/decrement).
     await query(
       `UPDATE user_credit_balances
        SET credits_remaining = $1,
@@ -234,14 +258,27 @@ export class CreditService {
       ]
     );
 
+    // B2a: also reset the ORG pool (the gate/decrement target).
+    const orgId = await resolveOrgForUser(userId);
+    if (orgId) {
+      await resetOrgPool(orgId);
+    }
+
     logger.info('Monthly credits reset', {
       userId,
+      orgId: orgId ?? 'none',
       credits: config.creditsIncludedMonthly,
     });
   }
 
   /**
    * Handle tier changes (upgrade/downgrade).
+   *
+   * Requirement 3 (B2a): subscription_tier is denormalized on BOTH user_credit_balances
+   * (old, kept for billing UI) and org_credit_balances (new, authoritative path).
+   * Both must be updated on every tier change to prevent drift. org_credit_balances is
+   * the path toward fully authoritative (B3). user_credit_balances.subscription_tier
+   * is deprecated-not-dropped in B2a.
    */
   async updateTier(
     userId: string,
@@ -271,6 +308,8 @@ export class CreditService {
     }
 
     const cap = config.creditsIncludedMonthly > 0 ? config.creditsIncludedMonthly : null;
+
+    // Update user_credit_balances (kept for billing UI display and Stripe identity lookup).
     await query(
       `UPDATE user_credit_balances
        SET subscription_tier = $1,
@@ -290,7 +329,14 @@ export class CreditService {
       ]
     );
 
-    logger.info('User tier updated', { userId, newTier, newCreditsRemaining });
+    // B2a/Requirement 3: also update org_credit_balances tier (sync-on-upgrade rule).
+    // org is authoritative in B3; both must stay in sync here.
+    const orgId = await resolveOrgForUser(userId);
+    if (orgId) {
+      await updateOrgTier(orgId, newTier);
+    }
+
+    logger.info('User tier updated', { userId, orgId: orgId ?? 'none', newTier, newCreditsRemaining });
   }
 
   /**
@@ -360,113 +406,43 @@ export class CreditService {
   }
 
   /**
-   * Pre-flight credit reservation for agent-triggered runs.
-   * Checks that the user has sufficient credits for the estimated cost.
-   * Deducts the estimate immediately so concurrent requests are blocked.
-   * Use debitActualCost() post-call to reconcile the true cost.
+   * B2a: Pre-flight credit reservation for agent-triggered runs.
    *
-   * Returns TRUE if the estimated cost was actually deducted from the user's
-   * credit balance. Returns FALSE when the call is allowed to proceed without
-   * deduction (e.g. overage-allowed tier, no credit record).
-   * Throws CreditExhaustedError if the user cannot cover the estimate and
-   * has exhausted their credit cap.
+   * Resolves user_id → org_id → org_credit_balances and atomically reserves credits
+   * from the ORG pool (not the user's personal balance).
+   *
+   * Returns TRUE if credits were deducted from the org pool.
+   * Returns FALSE when the call is allowed to proceed without deduction
+   * (no org, no pool record, overage-allowed tier).
+   * Throws if the org's pool is exhausted (credits_remaining <= 0, cap not null).
    */
   async reserveCredits(
     userId: string,
     estimatedCost: number
   ): Promise<boolean> {
-    // Phase 1: read tier + current balance to determine hard-cap vs overage policy.
-    // This SELECT is NOT used as the deduction guard — that happens atomically in
-    // the conditional UPDATE below to prevent concurrent oversubscription.
-    let selectResult: any;
-    try {
-      selectResult = await query(
-        `SELECT credits_remaining, monthly_credit_cap
-         FROM user_credit_balances WHERE user_id = $1`,
-        [userId]
-      );
-    } catch (err: any) {
-      // Non-UUID user_id (e.g. bot string IDs) cause Postgres to throw
-      // "invalid input syntax for type uuid". Treat as no credit record.
-      if (err?.message?.includes?.('invalid input syntax for type uuid')) {
-        logger.warn('reserveCredits: non-UUID userId, allowing through', { userId });
-        return false;
-      }
-      throw err;
-    }
-
-    if (selectResult.rows.length === 0) {
-      // No credit record — allow through (new user or pre-billing setup).
-      // Caller must treat this as not-deducted and charge full actual cost.
-      logger.warn('reserveCredits: no credit record, allowing through', { userId });
+    // Resolve org: non-UUID user_ids (bot strings) return null → allow through.
+    const orgId = await resolveOrgForUser(userId);
+    if (!orgId) {
+      logger.warn('reserveCredits: no org for user, allowing through', { userId });
       return false;
     }
 
-    const { credits_remaining, monthly_credit_cap } = selectResult.rows[0];
-
-    // Hard-cap enforcement: throw before attempting any deduction
-    if (credits_remaining <= 0 && monthly_credit_cap !== null) {
-      throw new Error(
-        `Insufficient credits: ${credits_remaining} remaining, ${estimatedCost.toFixed(4)} estimated`
-      );
-    }
-
-    // Overage path: balance is positive but below estimate, or cap is null.
-    // Allow through — Stripe meters capture actual usage. No deduction.
-    if (credits_remaining < estimatedCost) {
-      logger.info('reserveCredits: user in overage, proceeding (no deduction)', {
-        userId,
-        remaining: credits_remaining,
-        estimated: estimatedCost,
-      });
-      return false;
-    }
-
-    // Phase 2: Atomic conditional deduction.
-    // The WHERE guard (credits_remaining >= $1) prevents concurrent oversubscription:
-    // if another request drained the balance between our SELECT and this UPDATE,
-    // 0 rows are returned and we treat the caller as overage rather than double-spending.
-    const updateResult = await query(
-      `UPDATE user_credit_balances
-       SET credits_remaining = credits_remaining - $1,
-           credits_used_this_period = credits_used_this_period + $1,
-           updated_at = NOW()
-       WHERE user_id = $2
-         AND credits_remaining >= $1
-       RETURNING credits_remaining`,
-      [estimatedCost, userId]
-    );
-
-    if (updateResult.rows.length === 0) {
-      // Concurrent drain: another request consumed the balance in the window between
-      // our SELECT and this UPDATE. Treat as overage — Stripe meters capture actual usage.
-      logger.warn('reserveCredits: concurrent drain detected, proceeding in overage', { userId });
-      return false;
-    }
-
-    return true; // estimate was atomically deducted; debitActualCost() will settle the delta
+    // Delegate to org-level atomic reservation (same guard pattern as old per-user logic).
+    return reserveOrgCredits(orgId, estimatedCost);
   }
 
   /**
-   * Post-call reconciliation: adds back the over-reservation if actual cost
-   * was lower than the estimate, or deducts the remainder if higher.
+   * B2a: Post-call reconciliation — deducts delta from ORG pool.
+   * Adds back over-reservation if actual < estimate; deducts remainder if actual > estimate.
    */
   async debitActualCost(
     userId: string,
     estimatedCost: number,
     actualCost: number
   ): Promise<void> {
-    const delta = actualCost - estimatedCost;
-    if (Math.abs(delta) < 0.0001) return; // negligible difference
-
-    await query(
-      `UPDATE user_credit_balances
-       SET credits_remaining = credits_remaining - $1,
-           credits_used_this_period = credits_used_this_period + $1,
-           updated_at = NOW()
-       WHERE user_id = $2`,
-      [delta, userId]
-    );
+    const orgId = await resolveOrgForUser(userId);
+    if (!orgId) return;
+    await debitOrgActualCost(orgId, estimatedCost, actualCost);
   }
 
   /**

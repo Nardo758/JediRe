@@ -27,8 +27,15 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.userId;
 
+    // B3: tier is org-authoritative — read from org_credit_balances via default_org_id.
     const result = await query(
-      `SELECT subscription_tier, llm_preference FROM user_credit_balances WHERE user_id = $1`,
+      `SELECT
+         COALESCE(
+           (SELECT ocb.subscription_tier FROM users uu JOIN org_credit_balances ocb ON ocb.org_id = uu.default_org_id WHERE uu.id = $1),
+           'scout'
+         ) AS subscription_tier,
+         llm_preference
+       FROM user_credit_balances WHERE user_id = $1`,
       [userId]
     );
 
@@ -69,8 +76,12 @@ router.put('/', requireAuth, async (req: Request, res: Response) => {
       });
     }
 
+    // B3: tier is org-authoritative.
     const result = await query(
-      `SELECT subscription_tier FROM user_credit_balances WHERE user_id = $1`,
+      `SELECT COALESCE(
+         (SELECT ocb.subscription_tier FROM users uu JOIN org_credit_balances ocb ON ocb.org_id = uu.default_org_id WHERE uu.id = $1),
+         'scout'
+       ) AS subscription_tier`,
       [userId]
     );
 
@@ -116,8 +127,12 @@ router.get('/surfaces', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.userId;
 
+    // B3: tier is org-authoritative.
     const tierRow = await query(
-      `SELECT subscription_tier FROM user_credit_balances WHERE user_id = $1`,
+      `SELECT COALESCE(
+         (SELECT ocb.subscription_tier FROM users uu JOIN org_credit_balances ocb ON ocb.org_id = uu.default_org_id WHERE uu.id = $1),
+         'scout'
+       ) AS subscription_tier`,
       [userId]
     );
     const tier = tierRow.rows[0]?.subscription_tier ?? 'scout';
@@ -189,9 +204,12 @@ router.put('/surfaces', requireAuth, async (req: Request, res: Response) => {
       if (!modelDef) {
         return res.status(400).json({ success: false, error: `Unknown model ${model}` });
       }
-      // Tier gate
+      // Tier gate — B3: org-authoritative tier.
       const tierRow = await query(
-        `SELECT subscription_tier FROM user_credit_balances WHERE user_id = $1`,
+        `SELECT COALESCE(
+           (SELECT ocb.subscription_tier FROM users uu JOIN org_credit_balances ocb ON ocb.org_id = uu.default_org_id WHERE uu.id = $1),
+           'scout'
+         ) AS subscription_tier`,
         [userId]
       );
       const tier = tierRow.rows[0]?.subscription_tier ?? 'scout';
@@ -228,8 +246,12 @@ router.post('/surfaces/test', requireAuth, async (req: Request, res: Response) =
     if (!modelDef) return res.status(400).json({ success: false, error: `Unknown model ${model}` });
 
     // Tier gate: don't let lower-tier users burn platform $$ test-driving Opus.
+    // B3: tier is org-authoritative.
     const tierRow = await query(
-      `SELECT subscription_tier FROM user_credit_balances WHERE user_id = $1`,
+      `SELECT COALESCE(
+         (SELECT ocb.subscription_tier FROM users uu JOIN org_credit_balances ocb ON ocb.org_id = uu.default_org_id WHERE uu.id = $1),
+         'scout'
+       ) AS subscription_tier`,
       [userId]
     );
     const tier = tierRow.rows[0]?.subscription_tier ?? 'scout';

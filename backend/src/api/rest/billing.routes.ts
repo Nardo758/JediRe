@@ -10,6 +10,11 @@ router.use(requireAuth);
 // A5-F2: Billing routes are web-only — enforce surface access.
 router.use(requireSurface('web'));
 
+// Metered price line item added to every checkout session (flat + usage billing).
+// Unit: micro-dollars (1 unit = $0.000001). MeteringAdapter reports jedi_ai_cost_usd
+// as Math.round(costUsd * 1_000_000). S5 applies per-tier aiMarkup before reporting.
+const METERED_PRICE_ID = process.env.STRIPE_PRICE_METERED_AI_COST || '';
+
 const TIER_PRICES: Record<string, { monthly: string; annual: string }> = {
   scout: {
     monthly: process.env.STRIPE_PRICE_SCOUT_MONTHLY || 'price_scout_monthly',
@@ -47,38 +52,67 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
     const { getUncachableStripeClient } = await import('../../services/stripe/stripeClient');
     const stripe = await getUncachableStripeClient();
 
+    // B3: Billing identity is ORG-level. Resolve the user's org first.
+    const { resolveOrgForUser } = await import('../../services/ai/orgCreditService');
+    const orgId = await resolveOrgForUser(userId!);
+
     const userResult = await query(
-      `SELECT email, stripe_customer_id FROM users WHERE id = $1`,
+      `SELECT email FROM users WHERE id = $1`,
       [userId]
     );
+    const customerEmail: string | undefined = userResult.rows[0]?.email;
 
     let stripeCustomerId: string | undefined;
-    let customerEmail: string | undefined;
 
-    if (userResult.rows.length > 0) {
-      stripeCustomerId = userResult.rows[0].stripe_customer_id || undefined;
-      customerEmail = userResult.rows[0].email;
+    // 1. Check org-level Stripe customer (B3 primary path).
+    if (orgId) {
+      const orgResult = await query(
+        `SELECT stripe_customer_id FROM org_credit_balances WHERE org_id = $1`,
+        [orgId]
+      );
+      if (orgResult.rows.length > 0 && orgResult.rows[0].stripe_customer_id) {
+        stripeCustomerId = orgResult.rows[0].stripe_customer_id;
+      }
     }
 
+    // 2. Fallback: user-level customer (pre-B3 subscriptions). Link it to the org now.
     if (!stripeCustomerId) {
-      const creditResult = await query(
-        `SELECT stripe_customer_id FROM user_credit_balances WHERE user_id = $1`,
+      const userCustResult = await query(
+        `SELECT stripe_customer_id FROM users WHERE id = $1`,
         [userId]
       );
-      if (creditResult.rows.length > 0 && creditResult.rows[0].stripe_customer_id) {
-        stripeCustomerId = creditResult.rows[0].stripe_customer_id;
+      if (userCustResult.rows[0]?.stripe_customer_id) {
+        stripeCustomerId = userCustResult.rows[0].stripe_customer_id;
+        // Opportunistic link: write the existing user customer onto the org row
+        // so future webhook events resolve via customer → org (not customer → user → org).
+        if (orgId && stripeCustomerId) {
+          await query(
+            `UPDATE org_credit_balances SET stripe_customer_id = $1, updated_at = NOW()
+             WHERE org_id = $2 AND stripe_customer_id IS NULL`,
+            [stripeCustomerId, orgId]
+          );
+        }
       }
     }
 
     const domain = process.env.REPLIT_DOMAINS?.split(',')[0] || process.env.REPLIT_DEV_DOMAIN || 'localhost:5000';
     const baseUrl = `https://${domain}`;
 
+    // 3. Create new Stripe customer attached to the ORG if none exists.
     if (!stripeCustomerId && customerEmail) {
       const customer = await stripe.customers.create({
         email: customerEmail,
-        metadata: { userId },
+        metadata: { orgId: orgId ?? '', userId }, // B3: org is the billing entity
       });
       stripeCustomerId = customer.id;
+      // Write to org row (authoritative).
+      if (orgId) {
+        await query(
+          `UPDATE org_credit_balances SET stripe_customer_id = $1, updated_at = NOW() WHERE org_id = $2`,
+          [stripeCustomerId, orgId]
+        );
+      }
+      // Keep users.stripe_customer_id in sync (A5-F7 — backward compat for portal lookup).
       await query(
         `UPDATE users SET stripe_customer_id = $1 WHERE id = $2`,
         [stripeCustomerId, userId]
@@ -87,11 +121,14 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
 
     const sessionParams: any = {
       mode: 'subscription',
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [
+        { price: priceId, quantity: 1 },
+        ...(METERED_PRICE_ID ? [{ price: METERED_PRICE_ID }] : []),
+      ],
       success_url: `${baseUrl}/terminal/settings?tab=subscription&checkout=success`,
       cancel_url: `${baseUrl}/terminal/settings?tab=subscription&checkout=canceled`,
-      client_reference_id: userId,
-      metadata: { userId, tier, billingCycle },
+      client_reference_id: orgId ?? userId, // B3: org is the billing entity
+      metadata: { orgId: orgId ?? '', userId, tier, billingCycle },
     };
 
     if (stripeCustomerId) {
@@ -100,7 +137,7 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
 
     const session = await stripe.checkout.sessions.create(sessionParams);
 
-    logger.info('Checkout session created', { userId, tier, billingCycle, sessionId: session.id });
+    logger.info('Checkout session created', { userId, orgId, tier, billingCycle, sessionId: session.id });
 
     res.json({ success: true, sessionUrl: session.url, sessionId: session.id });
   } catch (error: any) {
@@ -115,12 +152,28 @@ router.post('/create-portal-session', async (req: Request, res: Response) => {
 
     let stripeCustomerId: string | null = null;
 
-    const creditResult = await query(
-      `SELECT stripe_customer_id FROM user_credit_balances WHERE user_id = $1`,
-      [userId]
-    );
-    if (creditResult.rows.length > 0) {
-      stripeCustomerId = creditResult.rows[0].stripe_customer_id;
+    // B3: check org-level customer first.
+    const { resolveOrgForUser } = await import('../../services/ai/orgCreditService');
+    const orgId = await resolveOrgForUser(userId!);
+    if (orgId) {
+      const orgResult = await query(
+        `SELECT stripe_customer_id FROM org_credit_balances WHERE org_id = $1`,
+        [orgId]
+      );
+      if (orgResult.rows[0]?.stripe_customer_id) {
+        stripeCustomerId = orgResult.rows[0].stripe_customer_id;
+      }
+    }
+
+    // Fallback: user-level lookup (pre-B3 customers).
+    if (!stripeCustomerId) {
+      const creditResult = await query(
+        `SELECT stripe_customer_id FROM user_credit_balances WHERE user_id = $1`,
+        [userId]
+      );
+      if (creditResult.rows.length > 0) {
+        stripeCustomerId = creditResult.rows[0].stripe_customer_id;
+      }
     }
 
     if (!stripeCustomerId) {
@@ -148,7 +201,7 @@ router.post('/create-portal-session', async (req: Request, res: Response) => {
       return_url: returnUrl,
     });
 
-    logger.info('Portal session created', { userId, stripeCustomerId });
+    logger.info('Portal session created', { userId, orgId, stripeCustomerId });
 
     res.json({ success: true, portalUrl: session.url });
   } catch (error: any) {

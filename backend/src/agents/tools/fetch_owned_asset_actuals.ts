@@ -200,11 +200,33 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
     const ttm24End = new Date(now);
     ttm24End.setMonth(ttm24End.getMonth() - 24);
 
+    // Resolve caller's org — prefer ctx.org_id (set by B2a attribution); fall back to deal lookup.
+    // Required to scope portfolio reads to the caller's org only — prevents cross-operator actuals
+    // leaking when two orgs share a public property_id (B4b finding FIX-2).
+    const callerOrgId: string | null =
+      ctx.org_id ??
+      ((await query(
+        `SELECT org_id FROM deals WHERE id = $1 LIMIT 1`,
+        [input.deal_id],
+      )).rows[0]?.org_id as string | null) ??
+      null;
+
+    if (!callerOrgId) {
+      logger.warn('fetch_owned_asset_actuals: could not resolve org_id for caller — returning empty');
+      return { assets: [], total_owned_portfolio_size: 0, note: 'Unable to resolve caller org.' };
+    }
+
+    // Count only the caller org's owned portfolio properties.
+    // JOIN via deal_id (not property_id) — two orgs can share the same property_id on a
+    // public property; joining on property_id would leak cross-org rows through the shared key.
     const totalResult = await query(
-      `SELECT COUNT(DISTINCT property_id) AS cnt
-       FROM deal_monthly_actuals
-       WHERE is_portfolio_asset = TRUE`,
-      []
+      `SELECT COUNT(DISTINCT dma.property_id) AS cnt
+       FROM deal_monthly_actuals dma
+       JOIN deal_properties dp ON dp.deal_id = dma.deal_id
+       JOIN deals d ON d.id = dp.deal_id
+       WHERE dma.is_portfolio_asset = TRUE
+         AND d.org_id = $1`,
+      [callerOrgId]
     );
     const totalCount = parseInt(String(totalResult.rows[0]?.cnt ?? '0'), 10);
 
@@ -232,10 +254,13 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
        FROM properties p
        WHERE EXISTS (
          SELECT 1 FROM deal_monthly_actuals dma
+         JOIN deal_properties dp ON dp.deal_id = dma.deal_id
+         JOIN deals d ON d.id = dp.deal_id
          WHERE dma.property_id = p.id
            AND dma.is_portfolio_asset = TRUE
            AND dma.report_month >= $1
            AND dma.is_budget = false
+           AND d.org_id = $3
        )
        AND p.id NOT IN (
          SELECT dp.property_id FROM deal_properties dp WHERE dp.deal_id = $2
@@ -245,7 +270,7 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
        )
        ${valueAddClause}
        LIMIT 50`,
-      [ttmStart.toISOString().slice(0, 10), input.deal_id]
+      [ttmStart.toISOString().slice(0, 10), input.deal_id, callerOrgId]
     );
 
     if (propsResult.rows.length === 0) {

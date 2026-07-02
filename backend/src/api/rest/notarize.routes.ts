@@ -27,11 +27,11 @@ const InitiateSchema = z.object({
 async function verifyDealAccess(dealId: string, userId: string): Promise<boolean> {
   try {
     const pool = getPool();
-    const result = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId],
-    );
-    if (result.rows.length > 0) return true;
+    // B4a: org-scoped access check (primary gate)
+    const { assertDealOrgAccess } = await import('../../services/deal-scoping.service');
+    const deal = await assertDealOrgAccess(dealId, userId, pool);
+    if (deal) return true;
+    // Fallback: deal-team collab members with edit+ permission
     const collab = await pool.query(
       "SELECT id FROM deal_team_members WHERE deal_id = $1 AND user_id = $2 AND status = 'active' AND permission_level IN ('admin', 'edit')",
       [dealId, userId],
@@ -83,12 +83,8 @@ router.get('/deals/:dealId/notarize/status', requireAuth, async (req: Request, r
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     const pool = getPool();
-    const dealCheck = await pool.query(
-      "SELECT id FROM deals WHERE id = $1 AND (user_id = $2 OR id IN (SELECT deal_id FROM deal_team_members WHERE user_id = $2 AND status = 'active'))",
-      [dealId, userId],
-    );
-    if (dealCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
     const result = await getSessionStatus(dealId);
@@ -110,12 +106,8 @@ router.get('/deals/:dealId/notarize/history', requireAuth, async (req: Request, 
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     const pool = getPool();
-    const dealCheck = await pool.query(
-      "SELECT id FROM deals WHERE id = $1 AND (user_id = $2 OR id IN (SELECT deal_id FROM deal_team_members WHERE user_id = $2 AND status = 'active'))",
-      [dealId, userId],
-    );
-    if (dealCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
     const sessions = await getSessionHistory(dealId);
@@ -152,12 +144,8 @@ router.get('/deals/:dealId/notarize/certificate', requireAuth, async (req: Reque
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     const pool = getPool();
-    const dealCheck = await pool.query(
-      "SELECT id FROM deals WHERE id = $1 AND (user_id = $2 OR id IN (SELECT deal_id FROM deal_team_members WHERE user_id = $2 AND status = 'active'))",
-      [dealId, userId],
-    );
-    if (dealCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
     const result = await getCertificate(dealId);

@@ -212,10 +212,34 @@ router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response,
   try {
     const { id } = req.params;
 
-    // Check if property exists
-    const existing = await query('SELECT * FROM properties WHERE id = $1', [id]);
+    // Check if property exists and resolve write-auth:
+    // Only the creating user OR a member of an org that owns a deal linked to this property
+    // may update it. Prevents arbitrary users from overwriting shared market rows.
+    const existing = await query(
+      `SELECT p.*,
+         (p.created_by = $2) AS is_creator,
+         (
+           EXISTS (
+             SELECT 1 FROM deal_properties dp
+             JOIN deals d ON d.id = dp.deal_id
+             JOIN org_members om ON om.org_id = d.org_id
+             WHERE dp.property_id = p.id AND om.user_id = $2
+           )
+           OR EXISTS (
+             SELECT 1 FROM deals d
+             JOIN org_members om ON om.org_id = d.org_id
+             WHERE d.property_id = p.id AND om.user_id = $2
+           )
+         ) AS has_deal_link
+       FROM properties p WHERE p.id = $1`,
+      [id, req.user!.userId]
+    );
     if (existing.rows.length === 0) {
       throw new AppError(404, 'Property not found');
+    }
+    const existingRow = existing.rows[0] as Record<string, unknown>;
+    if (!existingRow.is_creator && !existingRow.has_deal_link) {
+      throw new AppError(403, 'You do not have permission to update this property');
     }
 
     const updates = req.body;
@@ -275,9 +299,33 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res: Respons
   try {
     const { id } = req.params;
 
-    const existing = await query('SELECT id FROM properties WHERE id = $1', [id]);
+    const existing = await query(
+      `SELECT p.id, p.created_by,
+         (p.created_by = $2) AS is_creator,
+         (
+           EXISTS (
+             SELECT 1 FROM deal_properties dp
+             JOIN deals d ON d.id = dp.deal_id
+             JOIN org_members om ON om.org_id = d.org_id
+             WHERE dp.property_id = p.id AND om.user_id = $2
+           )
+           OR EXISTS (
+             SELECT 1 FROM deals d
+             JOIN org_members om ON om.org_id = d.org_id
+             WHERE d.property_id = p.id AND om.user_id = $2
+           )
+         ) AS has_deal_link
+       FROM properties p WHERE p.id = $1`,
+      [id, req.user!.userId]
+    );
     if (existing.rows.length === 0) {
       throw new AppError(404, 'Property not found');
+    }
+    {
+      const row = existing.rows[0] as Record<string, unknown>;
+      if (!row.is_creator && !row.has_deal_link) {
+        throw new AppError(403, 'You do not have permission to update this property');
+      }
     }
 
     const allowedFields = ['stories', 'units'];
@@ -335,6 +383,39 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res: Respons
 router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { id } = req.params;
+
+    // Require ownership: only the creating user may delete a property.
+    // Market rows (created_by IS NULL, no deal link) are platform corpus — not user-deletable.
+    const existingCheck = await query(
+      `SELECT p.id, p.created_by,
+         (p.created_by = $2) AS is_creator,
+         (
+           EXISTS (
+             SELECT 1 FROM deal_properties dp
+             JOIN deals d ON d.id = dp.deal_id
+             JOIN org_members om ON om.org_id = d.org_id
+             WHERE dp.property_id = p.id AND om.user_id = $2
+           )
+           OR EXISTS (
+             SELECT 1 FROM deals d
+             JOIN org_members om ON om.org_id = d.org_id
+             WHERE d.property_id = p.id AND om.user_id = $2
+           )
+         ) AS has_deal_link
+       FROM properties p WHERE p.id = $1`,
+      [id, req.user!.userId]
+    );
+    if (existingCheck.rows.length === 0) {
+      throw new AppError(404, 'Property not found');
+    }
+    {
+      const row = existingCheck.rows[0] as Record<string, unknown>;
+      // For deletion: creator-only (deal-link alone is not sufficient — a deal member should
+      // not be able to delete a shared market row that other deals may reference).
+      if (!row.is_creator) {
+        throw new AppError(403, 'You do not have permission to delete this property');
+      }
+    }
 
     const result = await query('DELETE FROM properties WHERE id = $1 RETURNING id', [id]);
 

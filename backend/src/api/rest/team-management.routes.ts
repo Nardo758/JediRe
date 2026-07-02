@@ -40,11 +40,10 @@ const CommentSchema = z.object({
 
 async function verifyDealAccess(dealId: string, userId: string): Promise<boolean> {
   try {
-    const result = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-    return result.rows.length > 0;
+    // B4a: org-scoped access check
+    const { assertDealOrgAccess } = await import('../../services/deal-scoping.service');
+    const deal = await assertDealOrgAccess(dealId, userId, pool);
+    return !!deal;
   } catch {
     return false;
   }

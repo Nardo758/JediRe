@@ -11,6 +11,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { requireAuth } from '../../middleware/auth';
 import { getPool } from '../../database/connection';
 import { getFieldValues, getDivergenceSummary } from '../../services/field-access/get-field-value.service';
@@ -33,11 +34,7 @@ router.get('/:dealId/field-divergences', async (req: Request, res: Response) => 
   const pool = getPool();
 
   try {
-    const accessCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1::uuid AND user_id = $2 LIMIT 1',
-      [dealId, userId],
-    );
-    if (accessCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
@@ -68,11 +65,7 @@ router.get('/:dealId/field-divergences/summary', async (req: Request, res: Respo
   const pool = getPool();
 
   try {
-    const accessCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1::uuid AND user_id = $2 LIMIT 1',
-      [dealId, userId],
-    );
-    if (accessCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 

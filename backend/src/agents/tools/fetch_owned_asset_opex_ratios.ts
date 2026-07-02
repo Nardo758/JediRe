@@ -48,6 +48,12 @@ export const fetchOwnedAssetOpexRatiosTool: ToolDefinition<
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - input.months_lookback);
 
+    // Caller org from B2a attribution — used to defensively scope opex reads even if
+    // property_ids came from a (now-org-scoped) fetch_owned_asset_actuals call.
+    // Null-safe: if ctx.org_id is absent, the IS NULL guard disables the filter and
+    // trusts that property_ids are already org-scoped from the upstream actuals tool.
+    const callerOrgId: string | null = ctx.org_id ?? null;
+
     const result = await query(
       `SELECT
          AVG(payroll)           / NULLIF(MAX(total_units), 0) AS payroll_per_unit,
@@ -59,13 +65,22 @@ export const fetchOwnedAssetOpexRatiosTool: ToolDefinition<
          AVG(management_fee_pct)                              AS mgmt_fee_pct,
          AVG(turnover_costs)    / NULLIF(MAX(total_units), 0) AS turnover_per_unit,
          AVG(effective_gross_income) / NULLIF(MAX(total_units), 0) AS egi_per_unit,
-         COUNT(DISTINCT property_id)                          AS asset_count,
+         COUNT(DISTINCT dma.property_id)                      AS asset_count,
          COUNT(*)                                             AS month_rows
-       FROM deal_monthly_actuals
-       WHERE property_id = ANY($1::uuid[])
-         AND report_month >= $2
-         AND is_budget = false`,
-      [input.property_ids, cutoff.toISOString().slice(0, 10)]
+       FROM deal_monthly_actuals dma
+       WHERE dma.property_id = ANY($1::uuid[])
+         AND dma.report_month >= $2
+         AND dma.is_budget = false
+         AND (
+           $3::uuid IS NULL
+           OR EXISTS (
+             SELECT 1 FROM deal_properties dp
+             JOIN deals d ON d.id = dp.deal_id
+             WHERE dp.deal_id = dma.deal_id
+               AND d.org_id = $3
+           )
+         )`,
+      [input.property_ids, cutoff.toISOString().slice(0, 10), callerOrgId]
     );
 
     const r = result.rows[0] ?? {};

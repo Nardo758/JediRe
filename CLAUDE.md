@@ -473,3 +473,44 @@ The Valuation Grid v0.1 implementation surfaced this gap. The engine was structu
 - The degraded state rendered confusingly because UX assumed Layer 1 would be present
 
 Without P10 codified, future features will repeat this pattern: structurally complete, operationally empty, with no clear path for operators to fill the gap.
+
+---
+
+## Org-Isolation Escape Hatches — Governance (B4a/B4b/B5)
+
+These are the ONLY legitimate bypasses of org-isolation in the platform. Every one is explicit,
+named, and must be justified. The default is always scoped.
+
+### 1. `isAdmin: true` — deal-scoping bypass
+**File:** `backend/src/services/deal-scoping.service.ts`
+`buildDealOrgClause(orgId, alias, opts)` and `assertDealOrgAccess(dealId, orgId, opts)` accept
+`opts.isAdmin = true` to skip the org-ownership check. **Only admin routes** (`/api/admin/…`)
+should pass this. Every non-admin route must pass `isAdmin: false` (or omit it) and let the
+org filter run.
+
+Periodic audit: grep for `isAdmin: true` — every hit must be an admin route. A non-admin
+route passing `isAdmin: true` is a scope bypass and a data-boundary violation.
+
+### 2. `triggered_by: 'event' | 'cron'` — metering gate bypass
+**File:** `backend/src/agents/runtime/MeteringAdapter.ts`
+The B2a/B5 pre-flight gate (credit pool check) only fires on `triggered_by: 'user'` calls.
+Event- and cron-triggered agent runs are platform-absorbed and bypass the gate by design —
+they run on platform credit, not the user's org pool. Any new background job that performs
+real AI inference must use `triggered_by: 'event'` or `'cron'` deliberately, not to sidestep
+the gate, but because it IS platform cost. Log it accordingly.
+
+### 3. Public properties — no org-isolation by design
+**File:** `backend/src/api/rest/property.routes.ts`, `backend/src/services/deal-scoping.service.ts`
+The `properties` table is intentionally platform-public (no `org_id`). Any read of market
+property rows bypasses org-isolation — this is correct. The private data (actuals, deal
+assumptions, rent roll) is what requires org-scoping, not the public property metadata.
+**Invariant:** never add financial/private data columns to `properties`. If a field is private,
+it belongs in `deal_monthly_actuals`, `deal_assumptions`, or another deal-scoped table.
+(B4b: the `is_market_data` / `org_id` migration was retired — properties stay public.)
+
+### 4. `is_portfolio_asset = TRUE` reads — must JOIN via `deal_id`, not `property_id`
+**File:** `backend/src/agents/tools/fetch_owned_asset_actuals.ts`, `fetch_owned_asset_opex_ratios.ts`
+Portfolio actuals scoping must JOIN `deal_properties dp ON dp.deal_id = dma.deal_id` (not
+`dp.property_id = dma.property_id`). Two orgs can share the same public `property_id`; joining
+on `property_id` leaks cross-org rows through the shared key. **Any new portfolio read must
+use the `deal_id`-based JOIN path.** (B4b-fix, proven live.)

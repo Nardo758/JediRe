@@ -7,9 +7,132 @@ import { generateAccessToken } from '../../auth/jwt';
 import { validate, loginSchema } from './validation';
 import { emailService } from '../../services/email.service';
 import { createRateLimiter } from '../../middleware/rateLimit';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 const pool = getPool();
+
+/**
+ * POST /api/v1/auth/register
+ *
+ * Creates a new user account with an org-of-one in a single atomic transaction:
+ *   INSERT users → INSERT organizations → INSERT org_members (owner) →
+ *   INSERT org_credit_balances (scout) → UPDATE users SET default_org_id.
+ *
+ * All-or-nothing: if any step fails the whole tx rolls back, no orphan rows.
+ */
+router.post('/register', async (req, res) => {
+  try {
+    const { email, password, name } = req.body as {
+      email?: string;
+      password?: string;
+      name?: string;
+    };
+
+    if (!email || !password) {
+      return res.status(400).json({ success: false, error: 'Email and password are required' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 8 characters' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, error: 'Invalid email address' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [normalizedEmail]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ success: false, error: 'An account with this email already exists' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    const nameTrimmed = (name || '').trim();
+    const nameParts = nameTrimmed.split(/\s+/);
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+    const fullName = nameTrimmed || normalizedEmail.split('@')[0];
+    const emailPrefix = normalizedEmail.split('@')[0];
+    const orgName = firstName ? `${firstName}'s Organization` : `${emailPrefix}'s Organization`;
+    const orgSlug = (firstName || emailPrefix)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      + '-' + crypto.randomBytes(4).toString('hex');
+
+    const client = await pool.connect();
+    let userId: string;
+    let orgId: string;
+    try {
+      await client.query('BEGIN');
+
+      const userRow = await client.query(
+        `INSERT INTO users (email, first_name, last_name, full_name, password_hash, email_verified, role)
+         VALUES ($1, $2, $3, $4, $5, false, 'investor')
+         RETURNING id`,
+        [normalizedEmail, firstName, lastName, fullName, passwordHash]
+      );
+      userId = userRow.rows[0].id;
+
+      const orgRow = await client.query(
+        `INSERT INTO organizations (name, slug, owner_id) VALUES ($1, $2, $3) RETURNING id`,
+        [orgName, orgSlug, userId]
+      );
+      orgId = orgRow.rows[0].id;
+
+      await client.query(
+        `INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'owner')`,
+        [orgId, userId]
+      );
+
+      // Seed org credit pool inline (scout tier: 100 credits) — keeps entire creation atomic.
+      const periodEnd = new Date();
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+      await client.query(
+        `INSERT INTO org_credit_balances
+           (org_id, subscription_tier, credits_included_monthly, credits_remaining,
+            credits_used_this_period, monthly_credit_cap, period_start, period_end, updated_at)
+         VALUES ($1, 'scout', 100, 100, 0, 100, NOW(), $2, NOW())`,
+        [orgId, periodEnd.toISOString()]
+      );
+
+      await client.query(
+        `UPDATE users SET default_org_id = $1 WHERE id = $2`,
+        [orgId, userId]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    const token = generateAccessToken({ userId, email: normalizedEmail, role: 'investor' });
+
+    logger.info('New user registered', { userId, orgId, orgName });
+
+    return res.status(201).json({
+      success: true,
+      user: {
+        id: userId,
+        email: normalizedEmail,
+        name: fullName,
+        role: 'investor',
+        subscription: { plan: 'scout', modules: [] },
+      },
+      token,
+    });
+  } catch (error) {
+    console.error('Error during registration:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Registration failed',
+    });
+  }
+});
 
 router.post('/login', validate(loginSchema), async (req, res) => {
   try {
@@ -18,9 +141,8 @@ router.post('/login', validate(loginSchema), async (req, res) => {
 
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role, u.password_hash,
-              COALESCE(ucb.subscription_tier, 'scout') AS subscription_tier
+              COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS subscription_tier
        FROM users u
-       LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
        WHERE u.email = $1`,
       [email]
     );
@@ -87,12 +209,11 @@ router.get('/dev-login', async (_req, res) => {
     // back to created_at as a tiebreaker.
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role,
-              COALESCE(ucb.subscription_tier, 'scout') AS subscription_tier
+              COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS subscription_tier
          FROM users u
-         LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
          LEFT JOIN deals d ON d.user_id = u.id
         WHERE u.password_hash IS NOT NULL
-        GROUP BY u.id, ucb.subscription_tier
+        GROUP BY u.id, u.default_org_id
         ORDER BY COUNT(d.id) DESC, u.created_at DESC
         LIMIT 1`
     );
@@ -129,9 +250,8 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
     const userId = req.user?.userId;
     const result = await pool.query(
       `SELECT u.id, u.email, u.full_name, u.role,
-              COALESCE(ucb.subscription_tier, 'scout') AS subscription_tier
+              COALESCE((SELECT ocb.subscription_tier FROM org_credit_balances ocb WHERE ocb.org_id = u.default_org_id), 'scout') AS subscription_tier
        FROM users u
-       LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
        WHERE u.id = $1`,
       [userId]
     );

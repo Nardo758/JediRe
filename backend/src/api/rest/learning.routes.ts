@@ -20,6 +20,7 @@ import {
   getModelAccuracySummary,
 } from '../../services/learning-feedback.service';
 import { query } from '../../database/connection';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -325,8 +326,7 @@ router.get('/outcomes/deal/:dealId/summary', requireAuth, async (req: Authentica
     const { dealId } = req.params;
     const userId = req.user?.userId;
     // Verify deal belongs to requesting user (prevents IDOR)
-    const dealCheck = await query('SELECT id FROM deals WHERE id = $1 AND user_id = $2', [dealId, userId]);
-    if (dealCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
     const result = await query(

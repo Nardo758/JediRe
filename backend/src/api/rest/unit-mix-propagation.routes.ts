@@ -5,6 +5,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { requireAuth } from '../../middleware/auth';
 import { 
   propagateUnitMix, 
@@ -29,16 +30,9 @@ router.post('/:dealId/unit-mix/apply', async (req: Request, res: Response) => {
     const { source = 'manual' } = req.body;
 
     // Verify access
-    const dealCheck = await query(
-      'SELECT id, name FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    const dealCheck = await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null);
+    if (!dealCheck) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     logger.info('Applying unit mix:', { userId, dealId, source });
@@ -49,7 +43,7 @@ router.post('/:dealId/unit-mix/apply', async (req: Request, res: Response) => {
       success: result.success,
       data: {
         dealId,
-        dealName: dealCheck.rows[0].name,
+        dealName: dealCheck.name,
         result,
         timestamp: new Date().toISOString(),
       }
@@ -74,16 +68,8 @@ router.get('/:dealId/unit-mix/status', async (req: Request, res: Response) => {
     const { dealId } = req.params;
 
     // Verify access
-    const dealCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     const status = await getUnitMixStatus(dealId);
@@ -120,16 +106,9 @@ router.post('/:dealId/unit-mix/set', async (req: Request, res: Response) => {
     }
 
     // Verify access
-    const dealCheck = await query(
-      'SELECT id, name FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    const dealCheck = await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null);
+    if (!dealCheck) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     logger.info('Setting manual unit mix:', { userId, dealId, unitMix });
@@ -140,7 +119,7 @@ router.post('/:dealId/unit-mix/set', async (req: Request, res: Response) => {
       success: result.success,
       data: {
         dealId,
-        dealName: dealCheck.rows[0].name,
+        dealName: dealCheck.name,
         result,
         timestamp: new Date().toISOString(),
       }
@@ -180,15 +159,12 @@ router.put('/:dealId/unit-mix/types', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'types must be an array' });
     }
 
-    const dealCheck = await query(
-      'SELECT id, name, target_units, deal_category, development_type FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-    if (dealCheck.rows.length === 0) {
+    const dealCheck = await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null);
+    if (!dealCheck) {
       return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
-    const dealType = dealCheck.rows[0].deal_category || dealCheck.rows[0].development_type || '';
+    const dealType = dealCheck.deal_category || dealCheck.development_type || '';
     if (dealType === 'development' || dealType === 'redevelopment') {
       return res.status(403).json({ success: false, error: 'Unit mix cannot be changed for development or redevelopment deals' });
     }
@@ -233,7 +209,7 @@ router.put('/:dealId/unit-mix/types', async (req: Request, res: Response) => {
            target_units = $2,
            updated_at = NOW()
        WHERE id = $3`,
-      [JSON.stringify(unitMixOverride), totalCount > 0 ? totalCount : dealCheck.rows[0].target_units, dealId]
+      [JSON.stringify(unitMixOverride), totalCount > 0 ? totalCount : dealCheck.target_units, dealId]
     );
 
     // 3. Propagate to financial model, 3D design, dev capacity, etc.
@@ -244,7 +220,7 @@ router.put('/:dealId/unit-mix/types', async (req: Request, res: Response) => {
       success: result.success,
       data: {
         dealId,
-        dealName: dealCheck.rows[0].name,
+        dealName: dealCheck.name,
         typesCount: types.length,
         totalUnits: totalCount,
         propagation: result,
@@ -275,19 +251,12 @@ router.post('/:dealId/development-path/select', async (req: Request, res: Respon
     }
 
     // Verify access
-    const dealCheck = await query(
-      'SELECT id, name, module_outputs FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    const dealCheck = await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null);
+    if (!dealCheck) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
-    const deal = dealCheck.rows[0];
+    const deal = dealCheck;
     const moduleOutputs = deal.module_outputs || {};
     const strategy = moduleOutputs.developmentStrategy;
 
@@ -358,11 +327,7 @@ router.get('/:dealId/f3-program', async (req: Request, res: Response) => {
     const userId = (req as any).user?.userId;
     const { dealId } = req.params;
 
-    const dealCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-    if (dealCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
@@ -394,11 +359,7 @@ router.put('/:dealId/f3-program', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'program object required' });
     }
 
-    const dealCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-    if (dealCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 

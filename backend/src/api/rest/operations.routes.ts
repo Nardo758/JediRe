@@ -5,6 +5,7 @@
  */
 
 import { Router, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import {
   computeVarianceAnalysis,
@@ -33,11 +34,7 @@ router.get('/:dealId/summary', requireAuth, async (req: AuthenticatedRequest, re
     const { dealId } = req.params;
 
     // Verify deal ownership
-    const ownerCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
@@ -394,11 +391,7 @@ router.post('/:dealId/rent-roll', requireAuth, async (req: AuthenticatedRequest,
 router.get('/:dealId/rent-roll', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const ownerCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
     const result = await query(
@@ -420,11 +413,7 @@ router.get('/:dealId/rent-roll', requireAuth, async (req: AuthenticatedRequest, 
 router.get('/:dealId/other-income', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const ownerCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
     const result = await query(
@@ -450,11 +439,7 @@ router.get('/:dealId/traffic', requireAuth, async (req: AuthenticatedRequest, re
     const { months = '3' } = req.query;
 
     // Verify deal ownership
-    const ownerCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
@@ -636,11 +621,7 @@ router.get('/:dealId/projected-vs-actual', requireAuth, async (req: Authenticate
     const { dealId } = req.params;
 
     // Verify deal ownership
-    const ownerCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
@@ -820,12 +801,9 @@ router.get('/:dealId/live-tracking', requireAuth, async (req: AuthenticatedReque
     const userId = req.user!.userId;
 
     // Ownership check
-    const ownerCheck = await query(
-      'SELECT id, property_id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, userId],
-    );
-    if (!ownerCheck.rows.length) return res.status(404).json({ success: false, error: 'Deal not found' });
-    const propId = ownerCheck.rows[0].property_id as string | null;
+    const ownerCheck = await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null);
+    if (!ownerCheck) return res.status(404).json({ success: false, error: 'Deal not found' });
+    const propId = ownerCheck.property_id as string | null;
 
     // ── Fetch last 12 actual months ───────────────────────────────────────────
     const actualsRes = propId
@@ -1066,17 +1044,14 @@ router.get('/:dealId/derived-metrics', requireAuth, async (req: AuthenticatedReq
     const { dealId } = req.params;
 
     // Ownership check — also resolves property_id for the bridge pattern
-    const ownerCheck = await query(
-      'SELECT id, property_id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId],
-    );
-    if (!ownerCheck.rows.length) {
+    const ownerCheck = await assertDealOrgAccess(dealId, req.user!.userId, { query } as any).catch(() => null);
+    if (!ownerCheck) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
     // Bridge: property_id is resolved here and forwarded to the service.
     // rent_roll_units currently stores rows by deal_id only; property_id is reserved
     // for when the table gains a property_id column (parallel to deal_monthly_actuals).
-    const propertyId = (ownerCheck.rows[0].property_id as string | null) ?? null;
+    const propertyId = (ownerCheck.property_id as string | null) ?? null;
 
     const metrics = await getRentRollDerivations(dealId, propertyId);
     return res.json({ success: true, data: metrics });
@@ -1329,11 +1304,7 @@ router.get('/:dealId/balance-sheet', requireAuth, async (req: AuthenticatedReque
     const { dealId } = req.params;
 
     // Verify deal ownership
-    const ownerCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
@@ -1472,11 +1443,7 @@ router.get('/:dealId/lease-transactions', requireAuth, async (req: Authenticated
     const { limit = '50', type } = req.query;
 
     // Verify ownership
-    const ownerCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
@@ -1584,11 +1551,7 @@ router.get('/:dealId/unit-mix', requireAuth, async (req: AuthenticatedRequest, r
     const { dealId } = req.params;
 
     // Verify ownership
-    const ownerCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
@@ -1699,11 +1662,7 @@ router.get('/:dealId/tradeout-events', requireAuth, async (req: AuthenticatedReq
   const { dealId } = req.params;
   try {
     // Verify deal ownership — return 404 for unknown/unauthorized deals
-    const ownerCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
     const result = await query(
@@ -1745,11 +1704,7 @@ router.get('/:dealId/leasing-observations', requireAuth, async (req: Authenticat
   const weeks = Math.min(parseInt((req.query.weeks as string) || '52', 10), 276);
   try {
     // Verify deal ownership — return 404 for unknown/unauthorized deals
-    const ownerCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
     const result = await query(
@@ -1797,16 +1752,13 @@ router.post('/:dealId/commentary', requireAuth, async (req: AuthenticatedRequest
     const { dealId } = req.params;
     const forceRefresh = req.body?.forceRefresh === true || req.query.refresh === 'true';
 
-    const ownerCheck = await query(
-      'SELECT id, property_id, name FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    const ownerCheck = await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null);
+    if (!ownerCheck) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
-    const propertyId = ownerCheck.rows[0].property_id as string | null;
-    const dealName   = (ownerCheck.rows[0].name as string | null) ?? 'Owned Asset';
+    const propertyId = ownerCheck.property_id as string | null;
+    const dealName   = (ownerCheck.name as string | null) ?? 'Owned Asset';
 
     // Derive signals from real monthly actuals so the commentary is grounded
     // in actual performance rather than the hash-based defaults.
@@ -1884,11 +1836,7 @@ router.get('/:dealId/activity', requireAuth, async (req: AuthenticatedRequest, r
     const parsedLimit = parseInt(limitParam as string, 10);
     const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 200) : 100;
 
-    const ownerCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId],
-    );
-    if (!ownerCheck.rows.length) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, { query } as any).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
