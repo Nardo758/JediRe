@@ -9,14 +9,11 @@ const router = Router();
 
 async function verifyDealAccess(dealId: string, userId: string): Promise<boolean> {
   try {
+    // B4a: org-scoped access check
     const pool = getPool();
-    const result = await pool.query(
-      `SELECT d.id FROM deals d
-       LEFT JOIN deal_team_members dtm ON dtm.deal_id = d.id AND dtm.user_id = $2 AND dtm.status = 'active'
-       WHERE d.id = $1 AND (d.user_id = $2 OR dtm.id IS NOT NULL)`,
-      [dealId, userId]
-    );
-    return result.rows.length > 0;
+    const { assertDealOrgAccess } = await import('../../services/deal-scoping.service');
+    const deal = await assertDealOrgAccess(dealId, userId, pool);
+    return !!deal;
   } catch {
     return false;
   }
@@ -25,8 +22,10 @@ async function verifyDealAccess(dealId: string, userId: string): Promise<boolean
 async function verifyDealPermission(dealId: string, userId: string, minLevel: string): Promise<boolean> {
   const levels: Record<string, number> = { view: 1, comment: 2, edit: 3, admin: 4 };
   const pool = getPool();
-  const ownerCheck = await pool.query('SELECT id FROM deals WHERE id = $1 AND user_id = $2', [dealId, userId]);
-  if (ownerCheck.rows.length > 0) return true;
+  // B4a: org-scoped owner check
+  const { assertDealOrgAccess } = await import('../../services/deal-scoping.service');
+  const ownerCheck = await assertDealOrgAccess(dealId, userId, pool);
+  if (ownerCheck) return true;
   const memberCheck = await pool.query(
     'SELECT permission_level FROM deal_team_members WHERE deal_id = $1 AND user_id = $2 AND status = $3',
     [dealId, userId, 'active']
@@ -104,7 +103,7 @@ router.post('/deals/:dealId/collaborators', requireAuth, async (req: Authenticat
       [dealId, linkedUserId, data.name, data.email, data.company || null, data.role, data.permission_level, req.user!.userId]
     );
 
-    const deal = await pool.query('SELECT name, org_id FROM deals WHERE id = $1', [dealId]);
+    const deal = await pool.query('SELECT name, org_id FROM deals WHERE id = $1 /* B4a-safe: after verifyDealAccess */', [dealId]);
     await logActivity({
       dealId,
       orgId: deal.rows[0]?.org_id || undefined,
@@ -151,7 +150,7 @@ router.put('/deals/:dealId/collaborators/:collabId', requireAuth, async (req: Au
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Collaborator not found' });
 
-    const deal = await pool.query('SELECT name, org_id FROM deals WHERE id = $1', [dealId]);
+    const deal = await pool.query('SELECT name, org_id FROM deals WHERE id = $1 /* B4a-safe: after verifyDealAccess */', [dealId]);
     await logActivity({
       dealId,
       orgId: deal.rows[0]?.org_id || undefined,
@@ -193,7 +192,7 @@ router.delete('/deals/:dealId/collaborators/:collabId', requireAuth, async (req:
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Collaborator not found' });
 
-    const deal = await pool.query('SELECT name, org_id FROM deals WHERE id = $1', [dealId]);
+    const deal = await pool.query('SELECT name, org_id FROM deals WHERE id = $1 /* B4a-safe: after verifyDealAccess */', [dealId]);
     await logActivity({
       dealId,
       orgId: deal.rows[0]?.org_id || undefined,
@@ -297,7 +296,7 @@ router.post('/deals/:dealId/comments', requireAuth, async (req: AuthenticatedReq
       ]
     );
 
-    const deal = await pool.query('SELECT name, org_id FROM deals WHERE id = $1', [dealId]);
+    const deal = await pool.query('SELECT name, org_id FROM deals WHERE id = $1 /* B4a-safe: after verifyDealAccess */', [dealId]);
     const action = data.parent_comment_id ? 'comment_replied' : 'comment_added';
     await logActivity({
       dealId,
@@ -340,7 +339,7 @@ router.post('/deals/:dealId/comments/:commentId/resolve', requireAuth, async (re
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Comment not found or is a reply' });
 
-    const deal = await pool.query('SELECT name, org_id FROM deals WHERE id = $1', [dealId]);
+    const deal = await pool.query('SELECT name, org_id FROM deals WHERE id = $1 /* B4a-safe: after verifyDealAccess */', [dealId]);
     await logActivity({
       dealId,
       orgId: deal.rows[0]?.org_id || undefined,

@@ -21,14 +21,10 @@ export const roadmapRouter = Router({ mergeParams: true });
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function assertDealAccess(dealId: string, userId: string): Promise<void> {
-  const result = await query(
-    `SELECT d.id FROM deals d
-     LEFT JOIN org_members om ON om.org_id = d.org_id AND om.user_id = $2
-     WHERE d.id = $1 AND d.archived_at IS NULL
-       AND (d.user_id = $2 OR om.user_id IS NOT NULL)`,
-    [dealId, userId]
-  );
-  if (result.rows.length === 0) {
+  // B4a: org-scoped access check (uses deals.org_id + org_members, not the dead-stub columns)
+  const { assertDealOrgAccess } = await import('../../services/deal-scoping.service');
+  const deal = await assertDealOrgAccess(dealId, userId, { query } as any);
+  if (!deal) {
     throw new AppError(404, `Deal ${dealId} not found`);
   }
 }

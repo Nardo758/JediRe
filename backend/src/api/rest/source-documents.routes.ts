@@ -8,6 +8,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
@@ -308,19 +309,8 @@ router.get('/:dealId/documents/access_log', requireAuth, async (req: Authenticat
     const pool = getPool();
 
     // Verify ownership
-    const dealCheck = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2 LIMIT 1`,
-      [dealId, userId]
-    );
-    if (dealCheck.rows.length === 0) {
-      // Also check team membership
-      const teamCheck = await pool.query(
-        `SELECT 1 FROM deal_team_members WHERE deal_id = $1 AND user_id = $2 LIMIT 1`,
-        [dealId, userId]
-      );
-      if (teamCheck.rows.length === 0) {
-        return res.status(403).json({ error: 'Only the deal owner or team members can view the access log' });
-      }
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Only the deal owner or team members can view the access log' });
     }
 
     const { rows } = await pool.query(

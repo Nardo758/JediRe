@@ -5,6 +5,7 @@
  */
 
 import axios from 'axios';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { Router, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
@@ -162,7 +163,7 @@ router.get('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest
     res.json({
       success: true,
       data: {
-        ...result.rows[0],
+        ...result,
         exists: true
       }
     });
@@ -256,7 +257,7 @@ router.put('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest
     
     res.json({
       success: true,
-      data: result.rows[0]
+      data: result
     });
   } catch (error: any) {
     logger.error('Error updating deal assumptions:', error);
@@ -283,7 +284,7 @@ router.post('/:dealId/compute-returns', requireAuth, async (req: AuthenticatedRe
     `, [dealId]);
     
     const dealResult = await pool.query(
-      'SELECT target_units, budget FROM deals WHERE id = $1',
+      'SELECT target_units, budget FROM deals WHERE id = $1 /* B4a-safe: inside assertDealOrgAccess-guarded handler */',
       [dealId]
     );
     
@@ -293,12 +294,12 @@ router.post('/:dealId/compute-returns', requireAuth, async (req: AuthenticatedRe
     
     const assumptions = {
       ...DEFAULT_ASSUMPTIONS,
-      ...(assumptionsResult.rows[0] || {}),
+      ...(assumptionsResult || {}),
       ...overrides
     };
     
-    const site = siteResult.rows[0] || {};
-    const deal = dealResult.rows[0];
+    const site = siteResult || {};
+    const deal = dealResult;
     
     const n = (v: any, fallback: number) => {
       const parsed = parseFloat(v);
@@ -395,7 +396,7 @@ router.put('/:dealId/site-data', requireAuth, async (req: AuthenticatedRequest, 
       return res.status(404).json({ error: 'Property not found for this deal' });
     }
 
-    const propertyId = propLookup.rows[0].property_id;
+    const propertyId = propLookup.property_id;
 
     const result = await pool.query(`
       UPDATE properties SET
@@ -428,7 +429,7 @@ router.put('/:dealId/site-data', requireAuth, async (req: AuthenticatedRequest, 
     
     res.json({
       success: true,
-      data: result.rows[0]
+      data: result
     });
   } catch (error: any) {
     logger.error('Error updating site data:', error);
@@ -451,7 +452,7 @@ router.get('/:dealId/full-context', requireAuth, async (req: AuthenticatedReques
     
     res.json({
       success: true,
-      data: result.rows[0]
+      data: result
     });
   } catch (error: any) {
     logger.error('Error fetching deal context:', error);
@@ -471,12 +472,8 @@ router.patch('/:dealId/assumptions/dates', requireAuth, async (req: Authenticate
     const userId = req.user?.userId;
     const { closeDate, saleDate } = req.body as { closeDate?: string | null; saleDate?: string | null };
 
-    const own = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (own.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized for this deal' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
     }
 
     await pool.query(
@@ -540,12 +537,8 @@ router.patch('/:dealId/purchase-price', requireAuth, async (req: AuthenticatedRe
       return res.status(400).json({ error: 'purchasePrice must be a positive finite number' });
     }
 
-    const own = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (own.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized for this deal' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
     }
 
     // Atomic dual-write: deal_data.purchase_price (financial composer source)
@@ -586,12 +579,8 @@ router.patch('/:dealId/assumptions/hold-period', requireAuth, async (req: Authen
       return res.status(400).json({ error: 'holdPeriodYears must be an integer between 1 and 36' });
     }
 
-    const own = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (own.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized for this deal' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
     }
 
     await pool.query(
@@ -629,12 +618,8 @@ router.patch('/:dealId/assumptions/targets', requireAuth, async (req: Authentica
       targetCoc?: number | null;
     };
 
-    const own = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (own.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized for this deal' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
     }
 
     await pool.query(
@@ -784,19 +769,15 @@ router.post('/:dealId/assumptions/apply-from-module', requireAuth, async (req: A
       }
     }
 
-    const own = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (own.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized for this deal' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
     }
 
     const pyRes = await pool.query(
       `SELECT per_year_overrides FROM deal_assumptions WHERE deal_id = $1`,
       [dealId]
     );
-    const existingPyo = (pyRes.rows[0]?.per_year_overrides ?? {}) as Record<string, unknown>;
+    const existingPyo = (pyRes?.per_year_overrides ?? {}) as Record<string, unknown>;
 
     const applied: Array<{ fieldPath: string; value: unknown }> = [];
     const conflicts: Array<{ fieldPath: string; reason: string; existingValue: unknown }> = [];
@@ -907,11 +888,9 @@ router.post('/:dealId/assumptions/strategy-annotation', requireAuth, async (req:
       return res.status(400).json({ error: 'annotations must be a plain object' });
     }
 
-    const own = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, req.user?.userId],
-    );
-    if (own.rows.length === 0) return res.status(403).json({ error: 'Not authorized for this deal' });
+    if (!await assertDealOrgAccess(dealId, req.user?.userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
+    }
 
     const sectionPatch = JSON.stringify({
       ...(annotations as object),
@@ -1006,13 +985,8 @@ router.patch('/:dealId/assumptions/strategy', requireAuth, async (req: Authentic
     try {
       await client.query('BEGIN');
 
-      const own = await client.query(
-        `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-        [dealId, userId]
-      );
-      if (own.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(403).json({ error: 'Not authorized for this deal' });
+      if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+        return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
       }
 
       // Ensure the deal_assumptions row exists before patching.
@@ -1123,12 +1097,8 @@ router.patch('/:dealId/assumptions/ltl-controls', requireAuth, async (req: Authe
       return res.status(400).json({ error: 'At least one of ltlBaselineSource or markToMarketCaptureRate must be provided' });
     }
 
-    const own = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (own.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized for this deal' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
     }
 
     // Always pass both column values; use COALESCE on the conflict path to
@@ -1199,12 +1169,8 @@ router.patch('/:dealId/assumptions/selling-costs', requireAuth, async (req: Auth
       return res.status(400).json({ error: 'sellingCostsPct must be a decimal between 0 and 1 (e.g. 0.02 for 2%)' });
     }
 
-    const own = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (own.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized for this deal' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
     }
 
     await pool.query(
@@ -1272,12 +1238,8 @@ router.patch('/:dealId/assumptions/adoption-timeline', requireAuth, async (req: 
     addCol('absorption_units_per_month', apm);
     addCol('stabilization_target_pct',   stp);
 
-    const own = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (own.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized for this deal' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
     }
 
     await pool.query(
@@ -1298,16 +1260,16 @@ router.patch('/:dealId/assumptions/adoption-timeline', requireAuth, async (req: 
             `SELECT construction_months, total_units FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
             [dealId]
           );
-          const ar = assumRow.rows[0];
+          const ar = assumRow;
           const dealDataRes = await pool.query(
             `SELECT deal_data->'extraction_rent_roll'->>'weighted_occupancy_pct' AS occ,
                     deal_data->'capex_schedule'->>'total_budget' AS total_budget
-             FROM deals WHERE id = $1`,
+             FROM deals WHERE id = $1 /* B4a-safe */`,
             [dealId]
           );
-          const rawOcc = dealDataRes.rows[0]?.occ;
+          const rawOcc = dealDataRes?.occ;
           const occupancyPct = rawOcc != null ? parseFloat(rawOcc) || null : null;
-          const totalBudget = parseFloat(dealDataRes.rows[0]?.total_budget ?? '') || null;
+          const totalBudget = parseFloat(dealDataRes?.total_budget ?? '') || null;
           const units = ar?.total_units != null ? +ar.total_units : null;
           const renovationBudgetPerUnit = totalBudget != null && units != null && units > 0
             ? totalBudget / units : null;
@@ -1350,11 +1312,9 @@ router.patch('/:dealId/assumptions/stabilization-window', requireAuth, async (re
     const userId = req.user?.userId;
     const body = req.body as Record<string, number | null | undefined>;
 
-    const own = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (own.rows.length === 0) return res.status(403).json({ error: 'Not authorized for this deal' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
+    }
 
     const setClauses: string[] = ['updated_at = NOW()'];
     const sqlParams: (number | null | string)[] = [dealId];
@@ -1410,8 +1370,9 @@ router.patch('/:dealId/assumptions/adoption-timeline/clear', requireAuth, async 
     const { dealId } = req.params;
     const userId = req.user?.userId;
 
-    const own = await pool.query(`SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`, [dealId, userId]);
-    if (own.rows.length === 0) return res.status(403).json({ error: 'Not authorized for this deal' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
+    }
 
     await pool.query(
       `UPDATE deal_assumptions SET
@@ -1460,12 +1421,8 @@ router.patch('/:dealId/assumptions/closing-costs', requireAuth, async (req: Auth
       }
     }
 
-    const own = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId],
-    );
-    if (own.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized for this deal' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
     }
 
     const suMap: Array<[string, string]> = [
@@ -1570,12 +1527,8 @@ router.patch('/:dealId/financials/override', requireAuth, requireCapability('edi
     // path now also serves Task #519's `other_income_breakdown.<cat>` paths
     // delegated from the inline-deals router (which only checked ownership
     // on its unit_mix branch).
-    const own = await pool.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (own.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized for this deal' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
     }
 
     if (!field || typeof field !== 'string') {
@@ -1635,8 +1588,9 @@ router.get('/:dealId/assumptions/monthly', requireAuth, async (req: Authenticate
   try {
     const { dealId } = req.params;
     const userId = req.user?.userId ?? 'unknown';
-    const own = await pool.query(`SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`, [dealId, userId]);
-    if (own.rows.length === 0) return res.status(403).json({ error: 'Not authorized' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
 
     const { rows } = await pool.query(
       `SELECT field_key, abs_month, value FROM deal_monthly_assumptions WHERE deal_id = $1 ORDER BY field_key, abs_month`,
@@ -1663,8 +1617,9 @@ router.patch('/:dealId/assumptions/monthly', requireAuth, async (req: Authentica
     if (!field || typeof field !== 'string') return res.status(400).json({ error: 'field required' });
     if (!Number.isInteger(month) || month < 1 || month > 120) return res.status(400).json({ error: 'month must be 1–120' });
 
-    const own = await pool.query(`SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`, [dealId, userId]);
-    if (own.rows.length === 0) return res.status(403).json({ error: 'Not authorized' });
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
 
     if (value === null || value === undefined) {
       await pool.query(
@@ -1709,13 +1664,8 @@ async function mutateUserLines(
   try {
     await client.query('BEGIN');
     // Ownership check (IDOR guard) — must match deals.user_id.
-    const own = await client.query(
-      `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (own.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return { ok: false, status: 403, error: 'Not authorized for this deal' };
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
     }
     // Row-lock the assumptions row to serialize concurrent CRUD on user_lines.
     const res = await client.query(
@@ -1726,9 +1676,9 @@ async function mutateUserLines(
       await client.query('ROLLBACK');
       return { ok: false, status: 404, error: 'deal_assumptions not seeded for this deal yet' };
     }
-    const year1 = typeof res.rows[0].year1 === 'string'
-      ? JSON.parse(res.rows[0].year1)
-      : res.rows[0].year1;
+    const year1 = typeof res.year1 === 'string'
+      ? JSON.parse(res.year1)
+      : res.year1;
     if (!year1) {
       await client.query('ROLLBACK');
       return { ok: false, status: 404, error: 'deal_assumptions.year1 is empty' };
@@ -2018,13 +1968,8 @@ router.patch('/:dealId/financials/other-income/category-overrides', requireAuth,
     try {
       await client.query('BEGIN');
 
-      const own = await client.query(
-        `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2`,
-        [dealId, userId]
-      );
-      if (own.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(403).json({ error: 'Not authorized for this deal' });
+      if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+        return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
       }
 
       const res2 = await client.query(
@@ -2036,9 +1981,9 @@ router.patch('/:dealId/financials/other-income/category-overrides', requireAuth,
         return res.status(404).json({ error: 'deal_assumptions not seeded for this deal yet' });
       }
 
-      const year1 = typeof res2.rows[0].year1 === 'string'
-        ? JSON.parse(res2.rows[0].year1)
-        : res2.rows[0].year1;
+      const year1 = typeof res2.year1 === 'string'
+        ? JSON.parse(res2.year1)
+        : res2.year1;
 
       if (!year1) {
         await client.query('ROLLBACK');
@@ -2322,8 +2267,8 @@ router.get('/:dealId/financials/narrative', requireAuth, async (req: Authenticat
           `SELECT narrative_text, narrative_generated_at FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
           [dealId],
         );
-        const dbNarrative = dbRow.rows[0]?.narrative_text ?? null;
-        const dbGeneratedAt = dbRow.rows[0]?.narrative_generated_at;
+        const dbNarrative = dbRow?.narrative_text ?? null;
+        const dbGeneratedAt = dbRow?.narrative_generated_at;
         if (dbNarrative && dbGeneratedAt) {
           const dbAge = now - new Date(dbGeneratedAt).getTime();
           if (dbAge < NARRATIVE_TTL_MS) {
@@ -2584,11 +2529,7 @@ router.patch('/:dealId/m22/floor-plan-cost', requireAuth, async (req: Authentica
     const pool = getPool();
 
     // Verify deal ownership
-    const dealCheck = await pool.query(
-      `SELECT id FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (dealCheck.rowCount === 0) {
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ error: 'Deal not found' });
     }
 
@@ -2705,11 +2646,7 @@ router.patch('/:dealId/m22/floor-plan-positioning', requireAuth, async (req: Aut
 
     const pool = getPool();
 
-    const dealCheck = await pool.query(
-      `SELECT id FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (dealCheck.rowCount === 0) {
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ error: 'Deal not found' });
     }
 
@@ -2815,11 +2752,7 @@ router.patch('/:dealId/unit-mix', requireAuth, async (req: AuthenticatedRequest,
 
     const pool = getPool();
 
-    const dealCheck = await pool.query(
-      `SELECT id, target_units FROM deals WHERE id = $1 AND user_id = $2`,
-      [dealId, userId]
-    );
-    if (dealCheck.rowCount === 0) {
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ error: 'Deal not found' });
     }
 
@@ -2847,8 +2780,8 @@ router.patch('/:dealId/unit-mix', requireAuth, async (req: AuthenticatedRequest,
       };
     }).filter((e): e is NonNullable<typeof e> => e !== null);
 
-    const dealTargetUnits: number | null = dealCheck.rows[0].target_units
-      ? Number(dealCheck.rows[0].target_units)
+    const dealTargetUnits: number | null = dealCheck.target_units
+      ? Number(dealCheck.target_units)
       : null;
     const totalCount = validated.reduce((s, e) => s + e.count, 0);
 

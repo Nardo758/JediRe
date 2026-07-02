@@ -32,6 +32,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import type { RequestHandler } from 'express';
 import multer from 'multer';
@@ -106,12 +107,7 @@ async function assertDealOwnership(req: Request, res: Response, dealId: string):
     return false;
   }
 
-  const result = await pool.query<{ id: string }>(
-    'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-    [dealId, userId],
-  );
-
-  if (result.rows.length === 0) {
+  if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
     res.status(404).json({ error: 'Deal not found' });
     return false;
   }

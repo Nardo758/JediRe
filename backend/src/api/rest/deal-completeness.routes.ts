@@ -13,6 +13,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { requireAuth } from '../../middleware/auth';
 import { pool } from '../../database';
 import { logger } from '../../utils/logger';
@@ -31,11 +32,8 @@ async function verifyDealAccess(
   dealId: string,
   userId: string,
 ): Promise<boolean> {
-  const res = await pool.query(
-    `SELECT 1 FROM deals WHERE id = $1 AND user_id = $2 LIMIT 1`,
-    [dealId, userId],
-  );
-  return res.rows.length > 0;
+  const res = await assertDealOrgAccess(dealId, userId, pool);
+  return !!res;
 }
 
 // ─── GET /api/v1/deals/:dealId/completeness ───────────────────────────────────

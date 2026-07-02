@@ -4,6 +4,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { requireAuth } from '../../middleware/auth';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
@@ -33,16 +34,8 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // Verify user has access to this deal
-    const dealCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     // Create strategy analysis
@@ -98,16 +91,8 @@ router.get('/:dealId', async (req: Request, res: Response) => {
     const { dealId } = req.params;
 
     // Verify user has access to this deal
-    const dealCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     // Get all strategy analyses for this deal
@@ -151,16 +136,8 @@ router.post('/compare', async (req: Request, res: Response) => {
     }
 
     // Verify user has access to this deal
-    const dealCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     // Get strategy analyses for the specified strategies

@@ -8,6 +8,7 @@
  */
 
 import { Router, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { skillChat } from '../../services/skills/skill-chat.service';
 import { skillRegistry } from '../../services/skills/skill-registry';
@@ -41,16 +42,8 @@ router.post('/:dealId/skills/chat', requireAuth, async (req: AuthenticatedReques
     }
 
     // Verify deal access
-    const dealCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found',
-      });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
     // Process chat

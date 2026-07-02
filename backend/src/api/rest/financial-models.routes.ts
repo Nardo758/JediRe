@@ -4,6 +4,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { requireAuth } from '../../middleware/auth';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
@@ -78,16 +79,8 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // Verify user has access to this deal
-    const dealCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     // Create financial model
@@ -137,16 +130,8 @@ router.get('/:dealId', async (req: Request, res: Response) => {
     const { dealId } = req.params;
 
     // Verify user has access to this deal
-    const dealCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     // Get latest financial model for this deal
@@ -328,16 +313,8 @@ router.post('/:dealId/compute-claude', async (req: Request, res: Response) => {
     const { forceRecompute = false, modelTypeOverride } = req.body;
 
     // Verify user has access to this deal
-    const dealCheck = await query(
-      'SELECT * FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     const deal = dealCheck.rows[0];
@@ -476,16 +453,8 @@ router.get('/:dealId/claude-output', async (req: Request, res: Response) => {
     const { dealId } = req.params;
 
     // Verify user has access to this deal
-    const dealCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     // Get latest financial model with Claude output
@@ -528,16 +497,8 @@ router.get('/:dealId/assumptions', async (req: Request, res: Response) => {
     const { dealId } = req.params;
 
     // Verify user has access to this deal
-    const dealCheck = await query(
-      'SELECT * FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     const deal = dealCheck.rows[0];
@@ -584,16 +545,8 @@ router.patch('/:dealId/assumptions', async (req: Request, res: Response) => {
     const updates = req.body;
 
     // Verify user has access to this deal
-    const dealCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     // Log to assumption_history table
@@ -646,16 +599,8 @@ router.post('/:dealId/validate', async (req: Request, res: Response) => {
     const { modelId } = req.body;
 
     // Verify user has access to this deal
-    const dealCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     // Get the model

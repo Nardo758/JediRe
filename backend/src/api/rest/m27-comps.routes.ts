@@ -4,6 +4,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { compSetService } from '../../services/saleComps/compSet.service';
 import { getPool } from '../../database/connection';
@@ -186,11 +187,7 @@ router.post('/deals/:dealId/comps/:compId', requireAuth, async (req: Authenticat
     const { dealId, compId } = req.params;
     const userId = req.user!.userId;
     const pool = getPool();
-    const ownerCheck = await pool.query(
-      `SELECT id FROM deals WHERE id = $1::uuid AND user_id = $2::uuid LIMIT 1`,
-      [dealId, userId],
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
     const result = await compSetService.addCompToSet(dealId, compId);
@@ -209,11 +206,7 @@ router.delete('/deals/:dealId/comps/:compId', requireAuth, async (req: Authentic
     const { dealId, compId } = req.params;
     const userId = req.user!.userId;
     const pool = getPool();
-    const ownerCheck = await pool.query(
-      `SELECT id FROM deals WHERE id = $1::uuid AND user_id = $2::uuid LIMIT 1`,
-      [dealId, userId],
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
     const result = await compSetService.deleteCompFromSet(dealId, compId);
@@ -282,11 +275,7 @@ router.get('/deals/:dealId/comps/ranked', requireAuth, async (req: Authenticated
     const userId = req.user!.userId;
 
     // Ownership check — fail fast before any data access
-    const ownerCheck = await pool.query(
-      `SELECT id FROM deals WHERE id = $1::uuid AND user_id = $2::uuid LIMIT 1`,
-      [dealId, userId],
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 

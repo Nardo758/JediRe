@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
@@ -14,13 +15,8 @@ async function verifyDealOwnership(req: AuthenticatedRequest, res: Response): Pr
     res.status(401).json({ error: 'Unauthorized' });
     return false;
   }
-  const check = await pool.query(
-    'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-    [dealId, userId]
-  );
-  if (check.rows.length === 0) {
-    res.status(403).json({ error: 'Access denied' });
-    return false;
+  if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+    return res.status(403).json({ success: false, error: 'Access denied' });
   }
   return true;
 }

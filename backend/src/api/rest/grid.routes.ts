@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import pool from '../../database/connection';
 import { optionalAuth, requireAuth } from '../../middleware/auth';
+import { resolveCallerOrg, dealListWhereClause } from '../../services/deal-scoping.service';
 
 interface AuthenticatedRequest extends Request {
   user?: { userId: string; email: string };
@@ -14,6 +15,9 @@ router.get('/pipeline', async (req: AuthenticatedRequest, res: Response) => {
     const userId = req.user?.userId;
 
     if (userId) {
+      // B4a: org-scoped deal list
+      const callerOrgId = await resolveCallerOrg(userId);
+      const { clause: scopeClause, params: scopeParams } = dealListWhereClause('d', callerOrgId, userId, false);
       const result = await pool.query(`
         SELECT 
           d.id,
@@ -33,11 +37,11 @@ router.get('/pipeline', async (req: AuthenticatedRequest, res: Response) => {
           d.timeline_end as closing_date,
           d.created_at
         FROM deals d
-        WHERE d.user_id = $1
+        WHERE ${scopeClause}
           AND d.deal_category = 'pipeline'
           AND d.archived_at IS NULL
         ORDER BY d.created_at DESC
-      `, [userId]);
+      `, scopeParams);
 
       return res.json({
         success: true,
@@ -129,10 +133,13 @@ router.get('/owned', async (req: AuthenticatedRequest, res: Response) => {
     }
 
     if (userId) {
+      // B4a: org-scoped deal query
+      const callerOrg2 = await resolveCallerOrg(userId);
+      const { clause: sc2, params: sp2 } = dealListWhereClause('d', callerOrg2, userId, false);
       const userDeals = await pool.query(`
         SELECT d.property_address, d.address FROM deals d 
-        WHERE d.user_id = $1 AND d.status = 'closed_won' AND d.archived_at IS NULL
-      `, [userId]);
+        WHERE ${sc2} AND d.status = 'closed_won' AND d.archived_at IS NULL
+      `, sp2);
       
       if (userDeals.rows.length > 0) {
         const addresses = userDeals.rows
@@ -280,7 +287,7 @@ router.get('/owned', async (req: AuthenticatedRequest, res: Response) => {
           WHERE dp.deal_id = d.id 
           ORDER BY dma2.report_month DESC LIMIT 1
         ) dma ON true
-        WHERE d.user_id = $1 
+        WHERE ${sc2} 
           AND d.deal_category = 'portfolio' 
           AND d.status = 'closed_won' 
           AND d.archived_at IS NULL
@@ -289,7 +296,7 @@ router.get('/owned', async (req: AuthenticatedRequest, res: Response) => {
             JOIN properties p ON p.id = dp.property_id
             WHERE dp.deal_id = d.id AND p.name IS NOT NULL
           )
-      `, [userId]);
+      `, sp2);
 
       if (dealAssets.rows.length > 0) {
         const dealAddresses = new Set(dealAssets.rows.map((da: any) => da.address?.toLowerCase()));

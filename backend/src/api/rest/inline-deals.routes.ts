@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { getPool } from '../../database/connection';
 import { requireAuth, requireAuthOrApiKey, AuthenticatedRequest } from '../../middleware/auth';
+import { assertDealOrgAccess, resolveCallerOrg, dealListWhereClause } from '../../services/deal-scoping.service';
 import { requireCapability } from '../../middleware/rbac';
 import { refreshAllDqaAlerts } from '../../services/data-quality-agent.service';
 import { validate, createDealSchema, updateDealSchema } from './validation';
@@ -282,6 +283,13 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     const userRole = (req.user as any)?.role || 'user';
     const isAdmin = userRole === 'admin';
 
+    // B4a: verify caller can access this deal before returning full data
+    const callerOrgId = isAdmin ? null : await resolveCallerOrg(userId);
+    const accessErr = await assertDealOrgAccess(req.params.id, userId, pool, { isAdmin, orgId: callerOrgId }).catch(() => null);
+    if (!accessErr) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
     // Use pool directly instead of req.dbClient
     const client = pool;
     const result = await client.query(`
@@ -308,8 +316,8 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       LEFT JOIN deal_properties dp_link ON dp_link.deal_id = d.id
       LEFT JOIN properties p_linked ON p_linked.id = dp_link.property_id
       LEFT JOIN deal_assumptions da ON da.deal_id = d.id
-      WHERE d.id = $1 AND ${isAdmin ? 'TRUE' : 'd.user_id = $2'} AND d.archived_at IS NULL
-    `, isAdmin ? [req.params.id] : [req.params.id, userId]);
+      WHERE d.id = $1 AND d.archived_at IS NULL
+    `, [req.params.id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
@@ -389,7 +397,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       const tierConfig = creditService.getTierConfig(balance.subscriptionTier);
       if (tierConfig.maxActiveDeals >= 0) {
         const countRes = await client.query(
-          `SELECT COUNT(*)::int as cnt FROM deals WHERE user_id = $1 AND archived_at IS NULL`,
+          `/* B4a-tier-limit: per-user count for plan enforcement, not a deal read */SELECT COUNT(*)::int as cnt FROM deals WHERE user_id = $1 AND archived_at IS NULL`,
           [req.user!.userId]
         );
         const dealCount = countRes.rows[0].cnt;
@@ -454,11 +462,8 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
     // balance is already fetched above (A5-F1). If user has no UCB row, default scout.
     const userTier = balance?.subscriptionTier ?? 'scout';
 
-    const orgResult = await client.query(
-      'SELECT org_id FROM org_members WHERE user_id = $1 ORDER BY joined_at ASC LIMIT 1',
-      [req.user!.userId]
-    );
-    const userOrgId = orgResult.rows.length > 0 ? orgResult.rows[0].org_id : null;
+    // B4a: resolve org via resolveCallerOrg (same path as entitlement gate)
+    const userOrgId = await resolveCallerOrg(req.user!.userId);
 
     const boundaryGeom = boundary.type === 'Point'
       ? `ST_Buffer(ST_GeomFromGeoJSON($3)::geography, 200)::geometry`
@@ -791,16 +796,11 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
     const dealId = req.params.id;
     const updates = req.body;
 
-    const dealCheck = await client.query(
-      'SELECT id, budget, target_units, status FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
+    // B4a: org-scoped access check; assertDealOrgAccess returns full row (SELECT *)
+    const previousDeal = await assertDealOrgAccess(dealId, req.user!.userId, pool);
+    if (!previousDeal) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
-
-    const previousDeal = dealCheck.rows[0];
     const priceChanged = updates.budget !== undefined && updates.budget !== previousDeal.budget;
     const statusChanged = updates.status !== undefined && updates.status !== previousDeal.status;
 
@@ -943,11 +943,7 @@ router.patch('/:id/property', requireAuth, async (req: AuthenticatedRequest, res
   try {
     const dealId = req.params.id;
 
-    const dealCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
-      [dealId, req.user!.userId]
-    );
-    if (dealCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
@@ -1062,14 +1058,14 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     // Use pool directly instead of req.dbClient
     const client = pool;
     const dealId = req.params.id;
-    const result = await client.query(
-      'UPDATE deals SET archived_at = NOW(), updated_at = NOW() WHERE id = $1 AND user_id = $2 AND archived_at IS NULL RETURNING id',
-      [dealId, req.user!.userId]
-    );
-
-    if (result.rows.length === 0) {
+    // B4a: verify org access before archiving
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
+    await client.query(
+      'UPDATE deals SET archived_at = NOW(), updated_at = NOW() WHERE id = $1 AND archived_at IS NULL',
+      [dealId]
+    );
 
     res.json({ success: true, message: 'Deal archived' });
   } catch (error) {
@@ -1084,12 +1080,9 @@ router.get('/:id/modules', requireAuth, async (req: AuthenticatedRequest, res) =
     const client = pool;
     const dealId = req.params.id;
 
-    const dealCheck = await client.query(
-      'SELECT id, status FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, req.user!.userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
+    // B4a: org-scoped access check; full row returned so we can read status
+    const dealRow = await assertDealOrgAccess(dealId, req.user!.userId, pool);
+    if (!dealRow) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
@@ -1098,7 +1091,7 @@ router.get('/:id/modules', requireAuth, async (req: AuthenticatedRequest, res) =
       [dealId]
     );
 
-    const dealStatus = dealCheck.rows[0]?.status;
+    const dealStatus = dealRow.status;
     const isOwned = dealStatus === 'owned' || dealStatus === 'closed_won';
 
     const pipelineModules = [
@@ -1329,11 +1322,7 @@ router.get('/:id/lease-analysis', requireAuth, async (req: AuthenticatedRequest,
     // Use pool directly instead of req.dbClient
     const client = pool;
 
-    const dealCheck = await client.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, req.user!.userId]
-    );
-    if (dealCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
@@ -1804,15 +1793,10 @@ router.post('/upload-document', requireAuth, documentUpload.single('file') as an
     let verifiedDealId: string | null = null;
 
     if (dealId) {
-      const ownerResult = await pool.query(
-        'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-        [dealId, req.user!.userId]
-      );
-      if (ownerResult.rows.length > 0) {
-        verifiedDealId = dealId as string;
-      } else {
+      if (!await assertDealOrgAccess(dealId as string, req.user!.userId, pool).catch(() => null)) {
         return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
       }
+      verifiedDealId = dealId as string;
     }
 
     const insertResult = await pool.query(
@@ -1919,11 +1903,7 @@ router.post('/upload-document', requireAuth, documentUpload.single('file') as an
 router.get('/:dealId/extraction-accuracy', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { dealId } = req.params;
-    const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(403).json({ success: false, error: 'Not authorized' });
     }
     const { computeExtractionAccuracy } = await import('../../services/extraction-accuracy.service');
@@ -1939,11 +1919,7 @@ router.post('/:dealId/reprocess-documents', requireAuth, async (req: Authenticat
   try {
     const { dealId } = req.params;
 
-    const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(403).json({ success: false, error: 'Not authorized to access this deal' });
     }
 
@@ -1974,11 +1950,7 @@ router.post('/:dealId/extract-document', requireAuth, documentUpload.single('fil
 
     const { dealId } = req.params;
 
-    const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(403).json({ success: false, error: 'Not authorized to access this deal' });
     }
 
@@ -2004,11 +1976,7 @@ router.post('/:dealId/extract-document', requireAuth, documentUpload.single('fil
 router.get('/:dealId/proforma/year1', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { dealId } = req.params;
-    const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(403).json({ success: false, error: 'Not authorized' });
     }
     const result = await pool.query(
@@ -2047,11 +2015,7 @@ router.patch('/:dealId/proforma/year1/override', requireAuth, async (req: Authen
       return res.status(400).json({ success: false, error: 'value must be a finite number or null' });
     }
 
-    const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(403).json({ success: false, error: 'Not authorized' });
     }
 
@@ -2206,11 +2170,7 @@ router.post('/:dealId/proforma/seed', requireAuth, async (req: AuthenticatedRequ
   try {
     const { dealId } = req.params;
 
-    const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(403).json({ success: false, error: 'Not authorized' });
     }
 
@@ -2227,11 +2187,7 @@ router.post('/:dealId/validate/cross-doc', requireAuth, async (req: Authenticate
   try {
     const { dealId } = req.params;
 
-    const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(403).json({ success: false, error: 'Not authorized' });
     }
 
@@ -2248,11 +2204,7 @@ router.post('/:dealId/traffic-snapshot', requireAuth, async (req: AuthenticatedR
   try {
     const { dealId } = req.params;
 
-    const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(403).json({ success: false, error: 'Not authorized to access this deal' });
     }
 
@@ -2284,11 +2236,7 @@ router.get('/:dealId/traffic-snapshot', requireAuth, async (req: AuthenticatedRe
   try {
     const { dealId } = req.params;
 
-    const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, req.user!.userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, req.user!.userId, pool).catch(() => null)) {
       return res.status(403).json({ success: false, error: 'Not authorized to access this deal' });
     }
 
@@ -2366,16 +2314,13 @@ router.patch('/:dealId/financials/override', requireAuth, requireCapability('edi
       return next();
     }
 
-    // Validate ownership
-    const ownerCheck = await pool.query(
-      'SELECT id, deal_category, development_type FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    // B4a: org-scoped ownership check; full row returned
+    const ownerCheck = await assertDealOrgAccess(dealId, userId, pool);
+    if (!ownerCheck) {
       return res.status(403).json({ success: false, error: 'Not authorized' });
     }
 
-    const dealType = ownerCheck.rows[0].deal_category || ownerCheck.rows[0].development_type || '';
+    const dealType = ownerCheck.deal_category || ownerCheck.development_type || '';
     if (dealType === 'development' || dealType === 'redevelopment') {
       return res.status(403).json({ success: false, error: 'Unit mix cannot be changed for development or redevelopment deals' });
     }
@@ -2706,11 +2651,7 @@ router.patch('/:dealId/assumptions/lifecycle-profile', requireAuth, requireCapab
       });
     }
 
-    const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(403).json({ success: false, error: 'Not authorized' });
     }
 
@@ -2744,11 +2685,7 @@ router.patch('/:dealId/assumptions/stabilization', requireAuth, requireCapabilit
     const userId = req.user!.userId;
     const { stabilizationYearOverride, stabilizationTargetPct } = req.body;
 
-    const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(403).json({ success: false, error: 'Not authorized' });
     }
 
@@ -2813,11 +2750,7 @@ router.patch('/:dealId/assumptions/profile-inputs', requireAuth, requireCapabili
     const { dealId } = req.params;
     const userId = req.user!.userId;
 
-    const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-    if (ownerCheck.rows.length === 0) {
+    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(403).json({ success: false, error: 'Not authorized' });
     }
 

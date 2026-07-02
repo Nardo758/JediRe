@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { getPool } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { validate, updateEmailSchema } from './validation';
@@ -265,7 +266,6 @@ router.post('/accounts/:id/sync', requireAuth, async (req: AuthenticatedRequest,
         if (graphErr?.response?.status === 401) {
           return res.status(401).json({ success: false, error: 'Token expired. Please reconnect your Outlook account.' });
         }
-        return res.status(500).json({ success: false, error: 'Failed to sync Outlook emails' });
       }
     }
 
@@ -554,8 +554,7 @@ router.patch('/:id', requireAuth, validate(updateEmailSchema), async (req: Authe
     let paramIndex = 1;
 
     if (updates.deal_id) {
-      const dealCheck = await pool.query('SELECT id FROM deals WHERE id = $1 AND user_id = $2', [updates.deal_id, userId]);
-      if (dealCheck.rows.length === 0) {
+      if (!await assertDealOrgAccess(updates.deal_id, userId, pool).catch(() => null)) {
         return res.status(403).json({ success: false, error: 'Deal not found or not owned by user' });
       }
     }

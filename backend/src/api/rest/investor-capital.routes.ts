@@ -4,6 +4,7 @@
  */
 
 import { Router, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { query } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
@@ -18,11 +19,8 @@ const router = Router();
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 async function ownsDeal(dealId: string, userId: string): Promise<boolean> {
-  const r = await query(
-    'SELECT id FROM deals WHERE id=$1 AND user_id=$2 AND archived_at IS NULL',
-    [dealId, userId],
-  );
-  return r.rows.length > 0;
+  const r = await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null);
+  return !!r;
 }
 
 function fmtInvestor(r: Record<string, unknown>) {
@@ -101,7 +99,7 @@ router.post('/investors', requireAuth, async (req: AuthenticatedRequest, res: Re
         tax_id_last4 ?? null, notes ?? null, metadata ? JSON.stringify(metadata) : null,
       ],
     );
-    res.status(201).json({ success: true, investor: fmtInvestor(r.rows[0]) });
+    res.status(201).json({ success: true, investor: fmtInvestor(r) });
   } catch (err) {
     logger.error('POST /investors', err);
     res.status(500).json({ success: false, error: 'Failed to create investor' });
@@ -115,7 +113,7 @@ router.get('/investors/:investorId', requireAuth, async (req: AuthenticatedReque
       [req.params.investorId, req.user!.userId],
     );
     if (!r.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
-    res.json({ success: true, investor: fmtInvestor(r.rows[0]) });
+    res.json({ success: true, investor: fmtInvestor(r) });
   } catch (err) {
     logger.error('GET /investors/:id', err);
     res.status(500).json({ success: false, error: 'Failed to fetch investor' });
@@ -141,7 +139,7 @@ router.patch('/investors/:investorId', requireAuth, async (req: AuthenticatedReq
       params,
     );
     if (!r.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
-    res.json({ success: true, investor: fmtInvestor(r.rows[0]) });
+    res.json({ success: true, investor: fmtInvestor(r) });
   } catch (err) {
     logger.error('PATCH /investors/:id', err);
     res.status(500).json({ success: false, error: 'Failed to update investor' });
@@ -202,7 +200,7 @@ router.post('/deals/:dealId/investments', requireAuth, async (req: Authenticated
        RETURNING *`,
       [req.params.dealId, investor_id, commitment_amount, ownership_pct ?? null, cls, notes ?? null],
     );
-    res.status(201).json({ success: true, investment: r.rows[0] });
+    res.status(201).json({ success: true, investment: r });
   } catch (err) {
     logger.error('POST investments', err);
     res.status(500).json({ success: false, error: 'Failed to add investment' });
@@ -226,7 +224,7 @@ router.patch('/deals/:dealId/investments/:id', requireAuth, async (req: Authenti
       params,
     );
     if (!r.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
-    res.json({ success: true, investment: r.rows[0] });
+    res.json({ success: true, investment: r });
   } catch (err) {
     logger.error('PATCH investments/:id', err);
     res.status(500).json({ success: false, error: 'Failed to update investment' });
@@ -289,7 +287,7 @@ router.post('/deals/:dealId/capital-calls', requireAuth, async (req: Authenticat
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [req.params.dealId, nextNum.rows[0].n, call_date, due_date, total_amount, purpose ?? null, allocation_method, notes ?? null, req.user!.userId],
     );
-    const call = r.rows[0];
+    const call = r;
 
     if (allocation_method === 'pro_rata') {
       const investors = await query(
@@ -350,7 +348,7 @@ router.post('/deals/:dealId/capital-calls/:callId/send', requireAuth, async (req
       [req.params.callId, req.params.dealId],
     );
     if (!r.rows.length) return res.status(400).json({ success: false, error: 'Call not in draft status' });
-    res.json({ success: true, capitalCall: r.rows[0] });
+    res.json({ success: true, capitalCall: r });
   } catch (err) {
     logger.error('POST capital-calls/send', err);
     res.status(500).json({ success: false, error: 'Failed to send capital call' });
@@ -382,12 +380,12 @@ router.patch('/deals/:dealId/capital-calls/:callId/items/:itemId/pay', requireAu
     const callStatus = Number(paid_count) === Number(total) ? 'fully_paid' : 'partially_paid';
     await query('UPDATE capital_calls SET status=$1,updated_at=NOW() WHERE id=$2', [callStatus, req.params.callId]);
 
-    const item = r.rows[0];
+    const item = r;
     await query(
       'INSERT INTO capital_account_entries (deal_id,investor_id,entry_type,amount,reference_id,reference_type,entry_date,description) VALUES ($1,$2,\'contribution\',$3,$4,\'capital_call\',CURRENT_DATE,$5)',
       [req.params.dealId, item.investor_id, paid_amount, req.params.callId, `Capital Call #${req.params.callId.slice(-6)}`],
     );
-    res.json({ success: true, item: r.rows[0] });
+    res.json({ success: true, item: r });
   } catch (err) {
     logger.error('PATCH items/pay', err);
     res.status(500).json({ success: false, error: 'Failed to record payment' });
@@ -447,12 +445,12 @@ router.post('/deals/:dealId/distributions', requireAuth, async (req: Authenticat
           const gross = Math.round(Number(total_amount) * (Number(inv.commitment_amount) / totalCommit) * 100) / 100;
           await query(
             'INSERT INTO distribution_items (distribution_id,investor_id,gross_amount,profit_share) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
-            [r.rows[0].id, inv.investor_id, gross, gross],
+            [r.id, inv.investor_id, gross, gross],
           );
         }
       }
     }
-    res.status(201).json({ success: true, distribution: r.rows[0] });
+    res.status(201).json({ success: true, distribution: r });
   } catch (err) {
     logger.error('POST distributions', err);
     res.status(500).json({ success: false, error: 'Failed to create distribution' });
@@ -489,7 +487,7 @@ router.post('/deals/:dealId/distributions/:distId/approve', requireAuth, async (
       [req.user!.userId, req.params.distId, req.params.dealId],
     );
     if (!r.rows.length) return res.status(400).json({ success: false, error: 'Not in draft status' });
-    res.json({ success: true, distribution: r.rows[0] });
+    res.json({ success: true, distribution: r });
   } catch (err) {
     logger.error('POST distributions/approve', err);
     res.status(500).json({ success: false, error: 'Failed to approve' });
@@ -914,7 +912,7 @@ router.post('/deals/:dealId/communications', requireAuth, async (req: Authentica
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
       [req.params.dealId, investor_id ?? null, comm_type, subject, body ?? null, delivery_method, attachments ? JSON.stringify(attachments) : null, req.user!.userId],
     );
-    res.status(201).json({ success: true, communication: r.rows[0] });
+    res.status(201).json({ success: true, communication: r });
   } catch (err) {
     logger.error('POST communications', err);
     res.status(500).json({ success: false, error: 'Failed to create communication' });

@@ -5,6 +5,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { assertDealOrgAccess, resolveCallerOrg, dealListWhereClause } from '../../services/deal-scoping.service';
 import { requireAuth } from '../../middleware/auth';
 import { validateDealConsistency } from '../../services/deal-consistency-validator.service';
 import { query } from '../../database/connection';
@@ -25,16 +26,8 @@ router.post('/:dealId/validate', async (req: Request, res: Response) => {
     const { dealId } = req.params;
 
     // Verify user has access to this deal
-    const dealCheck = await query(
-      'SELECT id, name FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     const deal = dealCheck.rows[0];
@@ -82,16 +75,8 @@ router.get('/:dealId/validation-status', async (req: Request, res: Response) => 
     const { dealId } = req.params;
 
     // Verify access
-    const dealCheck = await query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-      [dealId, userId]
-    );
-
-    if (dealCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found or access denied'
-      });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
     // Run validation
@@ -128,10 +113,12 @@ router.post('/validate-all', async (req: Request, res: Response) => {
     const userId = (req as any).user?.userId;
     const { limit = 10 } = req.body;
 
-    // Get user's deals
+    // B4a: org-scoped deal list
+    const callerOrg = await resolveCallerOrg(userId);
+    const { clause: scopeClause, params: scopeParams } = dealListWhereClause('deals', callerOrg, userId, false);
     const dealsResult = await query(
-      'SELECT id, name FROM deals WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2',
-      [userId, limit]
+      `SELECT id, name FROM deals WHERE ${scopeClause} AND archived_at IS NULL ORDER BY updated_at DESC LIMIT $${scopeParams.length + 1}`,
+      [...scopeParams, limit]
     );
 
     const results = [];

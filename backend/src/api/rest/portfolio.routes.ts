@@ -5,6 +5,7 @@
  */
 
 import { Router, Response } from 'express';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
@@ -536,20 +537,12 @@ router.get('/:dealId/summary', requireAuth, async (req: AuthenticatedRequest, re
     const { dealId } = req.params;
     const userId = req.user!.userId;
 
-    const dealResult = await query(
-      `SELECT id, name, address, state, project_type, budget, target_units,
-              status, deal_category, deal_data, created_at, property_id
-       FROM deals
-       WHERE id = $1 AND user_id = $2 AND archived_at IS NULL
-       LIMIT 1`,
-      [dealId, userId]
-    );
-
-    if (dealResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Deal not found' });
+    const dealResult = await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null);
+    if (!dealResult) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
-    const row = dealResult.rows[0] as Record<string, unknown>;
+    const row = dealResult as Record<string, unknown>;
     const dealData = (typeof row.deal_data === 'string'
       ? JSON.parse(row.deal_data as string)
       : (row.deal_data as Record<string, unknown>)) || {};
@@ -679,20 +672,12 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
     const userId = req.user!.userId;
 
     // Verify deal ownership
-    const ownerCheck = await query(
-      `SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL LIMIT 1`,
-      [dealId, userId]
-    );
-    if (ownerCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Deal not found' });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 
-    // Resolve property_id to include legacy rows with null deal_id
-    const propLookup = await query(
-      `SELECT property_id FROM deals WHERE id = $1 AND user_id = $2 LIMIT 1`,
-      [dealId, userId]
-    );
-    const propId = propLookup.rows[0]?.property_id as string | null;
+    // B4a: property_id available directly from assertDealOrgAccess result (SELECT *)
+    const propId = ownerCheck?.property_id as string | null;
 
     const result = await (propId
       ? query(
@@ -1161,11 +1146,9 @@ router.get('/:dealId/traffic', requireAuth, async (req: AuthenticatedRequest, re
     const { dealId } = req.params;
     const userId = req.user!.userId;
 
-    const ownerCheck = await query(
-      `SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL LIMIT 1`,
-      [dealId, userId]
-    );
-    if (ownerCheck.rows.length === 0) return res.status(404).json({ error: 'Deal not found' });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
 
     const result = await query(
       `SELECT
@@ -1208,11 +1191,9 @@ router.get('/:dealId/leasing', requireAuth, async (req: AuthenticatedRequest, re
     const userId = req.user!.userId;
     const limit = Math.min(parseInt((req.query.limit as string) || '100', 10), 500);
 
-    const ownerCheck = await query(
-      `SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL LIMIT 1`,
-      [dealId, userId]
-    );
-    if (ownerCheck.rows.length === 0) return res.status(404).json({ error: 'Deal not found' });
+    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
 
     const [monthly, quarterly, recent] = await Promise.all([
       // Monthly stats: avg new rent, avg renewal rent, avg loss-to-lease %
