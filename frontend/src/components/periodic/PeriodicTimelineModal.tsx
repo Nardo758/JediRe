@@ -25,7 +25,7 @@ export const PeriodicTimelineModal: React.FC<PeriodicTimelineModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const [activeView, setActiveView] = useState<'grid' | 'chart'>('grid');
+  const [activeView, setActiveView] = useState<'grid' | 'chart'>('chart');
   const [m35Events, setM35Events] = useState<M35Event[]>([]);
   const [m35Strategy, setM35Strategy] = useState<string | null>(null);
   const [m35Reason, setM35Reason] = useState<string | null>(null);
@@ -138,27 +138,8 @@ export const PeriodicTimelineModal: React.FC<PeriodicTimelineModalProps> = ({
                 M35 · no geography resolved
               </span>
             )}
-            {/* View toggle */}
+            {/* View toggle — CHART is primary */}
             <div style={{ display: 'flex', gap: 2 }}>
-              <button
-                onClick={() => setActiveView('grid')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '3px 8px',
-                  fontSize: BT.fontSize.xs,
-                  fontFamily: BT.font.mono,
-                  border: 'none',
-                  borderRadius: '2px',
-                  cursor: 'pointer',
-                  backgroundColor: activeView === 'grid' ? BT.bg.active : BT.bg.panelAlt,
-                  color: activeView === 'grid' ? BT.text.amber : BT.text.muted,
-                }}
-              >
-                <Table2 size={12} />
-                GRID
-              </button>
               <button
                 onClick={() => setActiveView('chart')}
                 style={{
@@ -177,6 +158,25 @@ export const PeriodicTimelineModal: React.FC<PeriodicTimelineModalProps> = ({
               >
                 <LineChart size={12} />
                 CHART
+              </button>
+              <button
+                onClick={() => setActiveView('grid')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '3px 8px',
+                  fontSize: BT.fontSize.xs,
+                  fontFamily: BT.font.mono,
+                  border: 'none',
+                  borderRadius: '2px',
+                  cursor: 'pointer',
+                  backgroundColor: activeView === 'grid' ? BT.bg.active : BT.bg.panelAlt,
+                  color: activeView === 'grid' ? BT.text.amber : BT.text.muted,
+                }}
+              >
+                <Table2 size={12} />
+                GRID
               </button>
             </div>
           </div>

@@ -175,6 +175,20 @@ export const PeriodicChart: React.FC<PeriodicChartProps> = ({ dealId, events = [
     return paths;
   }, [resolvedPoints, zoneSegments, xScale, yScale]);
 
+  // X-axis labels (year labels, one per year) — MUST be above early returns (Rules of Hooks)
+  const yearLabels = useMemo(() => {
+    const labels: { x: number; label: string }[] = [];
+    const seenYears = new Set<string>();
+    for (const p of resolvedPoints) {
+      const year = p.month.slice(0, 4);
+      if (!seenYears.has(year)) {
+        seenYears.add(year);
+        labels.push({ x: xScale(p.index), label: year });
+      }
+    }
+    return labels;
+  }, [resolvedPoints, xScale]);
+
   if (loading) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: BT.text.muted, fontFamily: BT.font.mono, fontSize: BT.fontSize.md }}>
@@ -204,20 +218,6 @@ export const PeriodicChart: React.FC<PeriodicChartProps> = ({ dealId, events = [
   const yTickValues = Array.from({ length: yTicks + 1 }, (_, i) =>
     min + ((max - min) / yTicks) * i
   );
-
-  // X-axis labels (year labels, one per year)
-  const yearLabels = useMemo(() => {
-    const labels: { x: number; label: string }[] = [];
-    const seenYears = new Set<string>();
-    for (const p of resolvedPoints) {
-      const year = p.month.slice(0, 4);
-      if (!seenYears.has(year)) {
-        seenYears.add(year);
-        labels.push({ x: xScale(p.index), label: year });
-      }
-    }
-    return labels;
-  }, [resolvedPoints, xScale]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
