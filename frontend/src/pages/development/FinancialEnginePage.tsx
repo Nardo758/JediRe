@@ -1192,20 +1192,6 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     setAssumptions(bootstrapped);
   }, [f9Financials, assumptions, resolvedDealType]);
 
-  // Auto-build model when assumptions and financials are both available.
-  // Declared after handleBuildModel to avoid a temporal dead zone reference.
-  const modelBuiltRef = useRef(false);
-  useEffect(() => {
-    if (!resolvedDealId || !assumptions || !f9Financials) return;
-    if (modelBuiltRef.current) return;
-    if (modelResults) {
-      modelBuiltRef.current = true;
-      return;
-    }
-    modelBuiltRef.current = true;
-    handleBuildModel();
-  }, [resolvedDealId, assumptions, f9Financials, modelResults, handleBuildModel]);
-
   const handleSaveVersion = useCallback(async () => {
     if (!resolvedDealId || !assumptions) return;
     const name = saveVersionName.trim() || `v${versions.length + 1}`;
