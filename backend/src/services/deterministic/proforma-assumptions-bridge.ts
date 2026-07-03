@@ -210,6 +210,16 @@ export function mapProFormaAssumptionsToModelAssumptions(
   if (marketRent <= 0) marketRent = 1500;
   if (inPlaceRent <= 0) inPlaceRent = marketRent;
 
+  // Occupancy at close from rent-roll unit mix (provenance document)
+  let occupancyAtClose: number | null = null;
+  if (a.unitMix && a.unitMix.length > 0) {
+    const totalOccupied = a.unitMix.reduce((s, u) => s + (u.occupied ?? 0), 0);
+    const totalUnitsInMix = a.unitMix.reduce((s, u) => s + u.units, 0) || units;
+    if (totalUnitsInMix > 0) {
+      occupancyAtClose = totalOccupied / totalUnitsInMix;
+    }
+  }
+
   // ── Purchase / closing costs ─────────────────────────────────────────────
   const purchasePrice = toNumber(a.acquisition?.purchasePrice, 0);
   const closingCostsTotal = a.acquisition.closingCosts
@@ -409,6 +419,7 @@ export function mapProFormaAssumptionsToModelAssumptions(
     ...(renoTurnDowntimeWeeks != null ? { renoTurnDowntimeWeeks } : {}),
     newLeaseConcessionMonths,
     annualTurnoverRate,
+    ...(occupancyAtClose != null ? { occupancyAtClose } : {}),
   };
 }
 
