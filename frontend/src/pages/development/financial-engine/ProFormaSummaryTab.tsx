@@ -1183,13 +1183,13 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
   return (
     <>
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: '#0a0a0a', color: '#e2e8f0', fontFamily: LABEL }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: BT.bg.terminal, color: '#e2e8f0', fontFamily: LABEL }}>
 
       {/* ── Header bar ── */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0 12px', height: 40, flexShrink: 0,
-        background: '#111111', borderBottom: '1px solid #1e1e1e',
+        background: BT.bg.header, borderBottom: '1px solid #1e1e1e',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {/* Template badge — only shown for non-standard templates */}
@@ -1492,7 +1492,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
       {isSpecialTemplate && (
         <div style={{
           flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          padding: '48px 32px', background: '#0a0a0a', gap: 20,
+          padding: '48px 32px', background: BT.bg.terminal, gap: 20,
         }}>
           <div style={{
             width: 48, height: 48, borderRadius: '50%',
@@ -1773,7 +1773,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 </td>
               </tr>
             )}
-            <tr style={{ background: '#111111', borderBottom: '1px solid #2d2d2d' }}>
+            <tr style={{ background: BT.bg.header, borderBottom: '1px solid #2d2d2d' }}>
               <Th label="Line Item" left min={180} sticky />
               <Th label="Broker" color={viewMode === 'BUILD_OWN' || y1IsBroker ? '#f59e0b' : undefined} brokerActive={viewMode === 'BROKER_VIEW'} />
               <Th label={activePeriod.replace('T', 'T-')} color={y1IsTperiod ? '#34d399' : '#e2e8f0'} hidden={viewMode === 'BROKER_VIEW'} onCycle={cycleTPeriod} />
@@ -2869,7 +2869,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
       {/* ── Footer legend ── */}
       <div style={{
         flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '4px 12px', borderTop: '1px solid #1e1e1e', background: '#111111',
+        padding: '4px 12px', borderTop: '1px solid #1e1e1e', background: BT.bg.header,
       }}>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
           <span style={{ fontFamily: MONO, fontSize: 8, color: '#475569', letterSpacing: 0.5 }}>SOURCE LEGEND:</span>
@@ -3138,11 +3138,11 @@ function ValuationSnapshotStrip({ vs }: { vs: ValuationSnapshot }) {
     <div style={{
       position: 'sticky', top: 0, zIndex: 20,
       flexShrink: 0, borderBottom: '1px solid #1e1e1e',
-      background: '#0a0a0a',
+      background: BT.bg.terminal,
     }}>
       <div style={{
         padding: '5px 12px 4px',
-        background: '#0a0a0a',
+        background: BT.bg.terminal,
         borderBottom: '1px solid #1e1e1e',
         display: 'flex', alignItems: 'center', gap: 8,
       }}>
@@ -3214,7 +3214,7 @@ function Th({ label, color, highlight, left, min, sticky, hidden, brokerActive, 
         fontWeight: 700, fontSize: 9, letterSpacing: 0.5,
         minWidth: min, whiteSpace: 'nowrap',
         position: sticky ? 'sticky' : undefined, left: sticky ? 0 : undefined,
-        background: '#111111', borderBottom: '1px solid #2d2d2d',
+        background: BT.bg.header, borderBottom: '1px solid #2d2d2d',
         fontFamily: 'Inter, sans-serif',
         ...(onCycle ? { cursor: 'pointer', userSelect: 'none' } : {}),
         ...(brokerActive ? { borderBottom: '2px solid #f59e0b', background: '#1c1000' } : {}),
@@ -3986,10 +3986,10 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   const [optimisticResolved, setOptimisticResolved] = useState<number | null | undefined>(undefined);
 
   const baseBg = shade === 'warm'
-    ? (isEven ? '#0e0a06' : '#0c0907')
+    ? (isEven ? '#1a1208' : '#160f06')
     : shade === 'purple'
-      ? (isEven ? '#0d0a10' : '#0b0810')
-      : (isEven ? '#0c0c0c' : '#0a0a0a');
+      ? (isEven ? '#181328' : '#141021')
+      : (isEven ? BT.bg.panelAlt : BT.bg.panel);
 
   const rowBg = isDeviant ? 'rgba(234,179,8,0.07)' : baseBg;
   const corr = corrections[row.field];
