@@ -29,7 +29,7 @@ vi.mock('../../../utils/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-vi.mock('../notifications/openclawNotifier', () => ({
+vi.mock('../../notifications/openclawNotifier', () => ({
   openclawNotifier: {
     isEnabled: vi.fn().mockReturnValue(false),
     notifyAgentRunCompleted: vi.fn(),
@@ -46,7 +46,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 // Mock skill registry
 const mockExecute = vi.fn();
-vi.mock('../skills/skill-registry', () => ({
+vi.mock('../../skills/skill-registry', () => ({
   skillRegistry: {
     getToolDefinitions: vi.fn().mockReturnValue([
       {
@@ -60,7 +60,7 @@ vi.mock('../skills/skill-registry', () => ({
 }));
 
 // Mock agent personas
-vi.mock('./agent-personas', () => ({
+vi.mock('../agent-personas', () => ({
   AGENT_PERSONAS: [],
   AgentPersona: {},
   TriggerEvent: {},
@@ -77,8 +77,8 @@ vi.mock('./agent-personas', () => ({
 }));
 
 // Import AFTER mocks are set up
-import { agentOrchestrator } from './agent-orchestrator';
-import { logger } from '../../utils/logger';
+import { agentOrchestrator } from '../agent-orchestrator';
+import { logger } from '../../../utils/logger';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
