@@ -3,4 +3,5 @@
 - [Scenario sync trigger wipe pattern](scenario-sync-trigger.md) — trg_sync_underwriting_scenario fully overwrites deal_assumptions.year1; any deal_assumptions write must also write to the active scenario or it will be erased on the next GET /financials
 - [Backend startup crash history](startup-crash-history.md) — cascading module import + inngest v4 + migration failures fixed June 2026; LENIENT_SCHEMA_CHECK=1 set in backend/.env
 - [/api/v1 bypassAuth invariant](api-v1-bypass-auth-invariant.md) — any /api/v1 gate middleware MUST check res.locals.bypassAuth first; ignoring it silently 401s public allowlist routes
+- [DeepSeek metered cost_usd zero bug](deepseek-cost-zero-bug.md) — 99.86% of historical ai_usage_log DeepSeek rows logged cost_usd=0; internal $/day cap was blind to real spend for most of system's life
 - [Ramp target + tri-tab reconciliation](ramp-target-and-tri-tab-reconciliation.md) — correct NOI ramp target field, single-source-of-truth periodic API, DeepSeek 402 is an env issue not a regression
