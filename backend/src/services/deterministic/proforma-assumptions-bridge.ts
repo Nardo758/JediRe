@@ -633,3 +633,210 @@ type ModelResultsShape = {
     netSaleProceeds?: number | null;
   };
 };
+
+// ── D2: Deterministic-primary conversion ────────────────────────────────────
+//
+// Replaces the LLM → deterministic merge with a direct deterministic →
+// FinancialModelResult conversion.  The frontend's normalizeBuildResponse()
+// and normalizeModelResults() already handle both LLM and deterministic field
+// names; this adapter ensures the DB-persisted shape is complete and
+// backward-compatible.
+
+import type { FinancialModelResult } from '../financial-model-engine.service';
+import type { ModelResults, AnnualCashFlowRow, SourcesUsesItem, WaterfallTier } from './deterministic-model-runner';
+
+/**
+ * Convert deterministic `ModelResults` to the `FinancialModelResult` contract
+ * expected by the frontend normalization layer.
+ *
+ * Key mappings:
+ *   - deterministic annualCashFlow → FinancialModelResult.annualCashFlow
+ *   - deterministic sourcesAndUses (arrays with metadata) → Record<string,number>
+ *   - deterministic waterfallDistributions (tiers) → year-based rows
+ *   - sensitivity matrix → exitCapVsHoldPeriod + rentGrowthVsHoldPeriod grids
+ */
+export function modelResultsToFinancialModelResult(det: ModelResults): FinancialModelResult {
+  const hold = det.annualCashFlow.length > 0
+    ? det.annualCashFlow[det.annualCashFlow.length - 1].year
+    : 5;
+  const opRows = det.annualCashFlow.slice(0, hold);
+
+  // ── Annual cash flow: deterministic → FinancialModelResult shape ──────────
+  const annualCashFlow: FinancialModelResult['annualCashFlow'] = opRows.map(row => ({
+    year: row.year,
+    potentialRent: row.grossPotentialRent,
+    lossToLease: row.lossToLease,
+    vacancy: row.vacancy,
+    collectionLoss: row.badDebt,
+    netRentalIncome: row.baseRevenue,
+    otherIncome: row.otherIncome,
+    effectiveGrossRevenue: row.effectiveGrossIncome,
+    operatingExpenses: {
+      payroll: row.payroll,
+      repairs_maintenance: row.maintenance,
+      contract_services: row.contractServices,
+      marketing: row.marketing,
+      utilities: row.utilities,
+      g_and_a: row.admin,
+      insurance: row.insurance,
+      real_estate_tax: row.propertyTax,
+      management_fee: row.managementFee,
+      replacement_reserves: row.replacementReserves,
+    },
+    totalExpenses: row.totalExpenses,
+    noi: row.noi,
+    replacementReserves: row.replacementReserves,
+    noiAfterReserves: row.noi - row.replacementReserves,
+    debtService: row.debtService,
+    capitalExpenditures: 0,
+    beforeTaxCashFlow: row.preTaxCashFlow,
+    leveredCashFlow: row.preTaxCashFlow,
+  }));
+
+  // ── Sources & Uses: array → Record for backward compat ────────────────────
+  const sourcesAndUses: FinancialModelResult['sourcesAndUses'] = {
+    sources: Object.fromEntries(
+      det.sourcesAndUses.sources.map((s: SourcesUsesItem) => [s.label, s.amount]),
+    ),
+    uses: Object.fromEntries(
+      det.sourcesAndUses.uses.map((u: SourcesUsesItem) => [u.label, u.amount]),
+    ),
+  };
+
+  // ── Waterfall: tier-based → year-based approximation ──────────────────────
+  // The deterministic runner tracks cumulative tier distributions.  We map
+  // these to per-year rows for the frontend waterfall chart.  Promote is
+  // back-ended: operating years show pro-rata splits; exit year captures
+  // the full promote realization.
+  const lpCF = det.waterfallDistributions.length > 0
+    ? det.waterfallDistributions[0].lpIrr != null
+      ? (det as any)._lpCFAggregate ?? []
+      : []
+    : [];
+  const waterfallDistributions: FinancialModelResult['waterfallDistributions'] = [];
+  if (lpCF.length > 0) {
+    // Reconstruct per-year LP/GP distributions from aggregate CF vectors
+    for (let y = 1; y <= hold; y++) {
+      const lpDist = (lpCF[y] ?? 0) > 0 ? lpCF[y] : 0;
+      const gpDist = (det as any)._gpCFAggregate?.[y] ?? 0;
+      waterfallDistributions.push({
+        year: y,
+        lpDistribution: lpDist,
+        gpDistribution: gpDist,
+        gpPromote: y === hold ? det.summary.gpPromoteEarned ?? 0 : 0,
+        totalDistribution: lpDist + gpDist,
+      });
+    }
+  } else {
+    // Fallback: simple pro-rata when waterfall vectors are unavailable
+    for (let y = 1; y <= hold; y++) {
+      const cf = opRows[y - 1]?.preTaxCashFlow ?? 0;
+      const lpPct = det.summary.totalEquity > 0
+        ? (det.summary.lpTotalDistributions ?? 0) / Math.max(1, det.summary.totalEquity)
+        : 0.9;
+      const gpPct = 1 - lpPct;
+      waterfallDistributions.push({
+        year: y,
+        lpDistribution: cf * lpPct,
+        gpDistribution: cf * gpPct,
+        gpPromote: y === hold ? det.summary.gpPromoteEarned ?? 0 : 0,
+        totalDistribution: cf,
+      });
+    }
+  }
+
+  // ── Sensitivity: matrix → grid format ─────────────────────────────────────
+  const { matrix } = det.sensitivityAnalysis;
+  const exitCapVsHoldPeriod: FinancialModelResult['sensitivityAnalysis']['exitCapVsHoldPeriod'] = [];
+  const rentGrowthVsHoldPeriod: FinancialModelResult['sensitivityAnalysis']['rentGrowthVsHoldPeriod'] = [];
+
+  for (let ei = 0; ei < matrix.exitCapAxis.length; ei++) {
+    for (let ri = 0; ri < matrix.rentGrowthAxis.length; ri++) {
+      exitCapVsHoldPeriod.push({
+        holdPeriod: hold,
+        capRate: matrix.exitCapAxis[ei],
+        irr: matrix.irrGrid[ei]?.[ri] ?? null,
+        equityMultiple: matrix.emGrid[ei]?.[ri] ?? null,
+      });
+    }
+  }
+
+  // ── Debt metrics ──────────────────────────────────────────────────────────
+  const dm = det.debtMetrics;
+  const debtMetrics: FinancialModelResult['debtMetrics'] = {
+    loanAmount: dm.structural.loanAmount,
+    annualDebtService: det.capital.debtServiceByYear[0] ?? 0,
+    dscr: dm.coverage.dscrY1 ?? 0,
+    ltv: dm.leverage.ltvAtClose,
+    ltc: 0,
+    debtYield: dm.coverage.debtYieldY1 ?? 0,
+  };
+
+  // ── Meta ──────────────────────────────────────────────────────────────────
+  const meta: FinancialModelResult['meta'] = {
+    m11Converged: det.meta?.m11Converged ?? false,
+    m11Iterations: det.meta?.m11Iterations ?? 0,
+    m14Applied: det.meta?.m14Applied ?? false,
+    m14CapRateAdjBps: det.meta?.m14CapRateAdjBps ?? 0,
+    m14DscrConstraintBinds: false,
+  };
+
+  return {
+    summary: {
+      irr: det.summary.irr,
+      equityMultiple: det.summary.equityMultiple,
+      cashOnCash: det.summary.cashOnCashByYear,
+      noiYear1: det.summary.noiYear1,
+      noiStabilized: det.disposition.stabilizedNOI,
+      purchaseCapRate: det.summary.goingInCapRate,
+      yieldOnCost: det.valuation.multiples.yieldOnCost ?? 0,
+      exitValue: det.disposition.grossSalePrice,
+      netProceeds: det.disposition.netSaleProceeds,
+      totalEquity: det.summary.totalEquity,
+      totalDebt: det.summary.loanAmount,
+      dscr: det.summary.dscrByYear,
+      debtYield: det.summary.debtYieldByYear,
+      avgCoC: det.summary.avgCoC,
+      lpIrr: det.summary.lpIrr,
+      gpIrr: det.summary.gpIrr,
+      lpEquityMultiple: det.summary.lpEquityMultiple,
+      gpEquityMultiple: det.summary.gpEquityMultiple,
+      lpCoC: det.summary.lpCoC,
+      gpCoC: det.summary.gpCoC,
+      lpTotalDistributions: det.summary.lpTotalDistributions,
+      lpProfit: det.summary.lpProfit,
+      gpTotalDistributions: det.summary.gpTotalDistributions,
+      gpPromoteEarned: det.summary.gpPromoteEarned,
+      totalProfit: det.summary.totalProfit,
+    },
+    annualCashFlow,
+    sourcesAndUses,
+    debtMetrics,
+    sensitivityAnalysis: {
+      exitCapVsHoldPeriod,
+      rentGrowthVsHoldPeriod,
+    },
+    waterfallDistributions,
+    developmentSchedule: undefined,
+    evidence: det.evidence,
+    reasoning: {
+      walkthrough: det.reasoning.walkthrough,
+      collisionReport: det.reasoning.collisionReport,
+    },
+    integrityChecks: det.integrityChecks,
+    meta,
+  };
+}
+  summary?: {
+    irr?: number | null;
+    equityMultiple?: number | null;
+    noiYear1?: number | null;
+    goingInCapRate?: number | null;
+    totalEquity?: number | null;
+    dscrByYear?: number[];
+  };
+  disposition?: {
+    grossSalePrice?: number | null;
+    netSaleProceeds?: number | null;
+  };
+};

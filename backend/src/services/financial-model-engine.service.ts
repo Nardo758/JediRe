@@ -1,12 +1,10 @@
-import axios from 'axios';
 import { createHash } from 'crypto';
 import { getPool } from '../database/connection';
 import { getFinancialInputsFromModules, FinancialModuleInputs } from './module-wiring/data-flow-router';
 import { dataFlowRouter } from './module-wiring/data-flow-router';
 import { logger } from '../utils/logger';
 import { applyFullAnchorInterceptor, normalizeExpensesForInterceptor, rekeyExpensesFromInterceptor } from './sigma/anchor-interceptor.service';
-import OpenAI from 'openai';
-import { mapProFormaAssumptionsToModelAssumptions, crossCheckLLMVsDeterministic, buildEvidenceHintsFromSeed } from './deterministic/proforma-assumptions-bridge';
+import { mapProFormaAssumptionsToModelAssumptions, buildEvidenceHintsFromSeed, modelResultsToFinancialModelResult } from './deterministic/proforma-assumptions-bridge';
 import { runModel, runIntegrityChecks } from './deterministic/deterministic-model-runner';
 import { runM11Cycle, applyM14RiskAdjustments, writeM11ToFinancing, type M11CapitalStructureSummary } from './module-wiring/capital-structure-adapter';
 import { evaluatePipeline, enforceStageGates } from './module-wiring/reasoning-pipeline';
@@ -14,76 +12,7 @@ import { resolveAssumptionBatch, type ModuleValueInput } from './module-wiring/c
 import { ASSUMPTION_MODULE_MAPPINGS, type AssumptionField } from './module-wiring/assumption-module-mapping.config';
 import { ASSUMPTION_EXTRACTORS, type ModuleDataSources } from './module-wiring/d-mod-extractors';
 import type { ProFormaYear1Seed } from './document-extraction/types';
-import { estimateDeepSeekCost, checkDeepSeekDailySpendCap } from '../agents/runtime/DeepSeekMeteringAdapter';
-import { resolveOrgForUser } from './ai/orgCreditService';
 
-// ── T1 (TOKEN_LEAK_REMEDIATION_TRANCHE1): F9 build-path cost table for
-// non-DeepSeek fallback providers. Approximate published rates (USD per 1M
-// tokens); refined cost modeling for these fallback paths is out of scope
-// for this mechanical remediation — DeepSeek is the primary/expected path.
-const F9_FALLBACK_COST_PER_MTK: Record<string, { input: number; output: number }> = {
-  'gpt-4o': { input: 2.50, output: 10.00 },
-};
-
-/**
- * selectLLMClient — provider-selection strategy for the financial-model build path.
- *
- * Priority order mirrors the project-wide getLLMProvider() convention in
- * llm.service.ts, but explicitly prefers DeepSeek first because the financial
- * model build prompt is an analytical JSON workload where DeepSeek performs
- * well and is cost-efficient.
- *
- *  1. DeepSeek via DEEPSEEK_API_KEY
- *  2. OpenAI-compatible integration via AI_INTEGRATIONS_OPENAI_API_KEY (Replit connector)
- *  3. Plain OpenAI via OPENAI_API_KEY (fallback — uses gpt-4o)
- *
- * Returns { client, model, providerName } so callLLMForModel can log which
- * provider was selected.
- */
-function selectLLMClient(): { client: OpenAI; model: string; providerName: string } {
-  if (process.env.DEEPSEEK_API_KEY) {
-    return {
-      client: new OpenAI({
-        apiKey: process.env.DEEPSEEK_API_KEY,
-        baseURL: (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '') + '/v1',
-      }),
-      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
-      providerName: 'deepseek',
-    };
-  }
-
-  if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
-    const customBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-    // When a custom base URL is provided (e.g. a DeepSeek-compatible endpoint),
-    // honour the DEEPSEEK_MODEL env-var.  When no custom URL is set the key
-    // belongs to OpenAI's own endpoint, so use gpt-4o to avoid sending
-    // 'deepseek-chat' to a host that doesn't know that model name.
-    const model = customBase
-      ? (process.env.DEEPSEEK_MODEL || 'deepseek-chat')
-      : 'gpt-4o';
-    return {
-      client: new OpenAI({
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-        baseURL: customBase || 'https://api.openai.com/v1',
-      }),
-      model,
-      providerName: customBase ? 'ai-integrations-deepseek-compat' : 'ai-integrations-openai',
-    };
-  }
-
-  if (process.env.OPENAI_API_KEY) {
-    return {
-      client: new OpenAI({ apiKey: process.env.OPENAI_API_KEY }),
-      model: 'gpt-4o',
-      providerName: 'openai',
-    };
-  }
-
-  throw new Error(
-    'No LLM provider configured for financial-model build. ' +
-    'Set DEEPSEEK_API_KEY, AI_INTEGRATIONS_OPENAI_API_KEY, or OPENAI_API_KEY.'
-  );
-}
 
 /**
  * Authoritative list of OPEX line-item keys the financial-model engine and
@@ -1323,10 +1252,9 @@ export class FinancialModelEngineService {
     //   3. resolveAssumptionBatch() — D-MOD-2: auth wins (Step 1), blend within band
     //                                  (Step 2), flag beyond band (Step 3).
     //   4. applyResolved()          — write resolved values BACK into enhancedAssumptions
-    //                                  BEFORE callLLMForModel(). This is the enforcement
+    //                                  BEFORE the deterministic model run. This is the enforcement
     //                                  point: D-MOD-2 step-2 blends materialise in the
-    //                                  model that the financial LLM and deterministic runner
-    //                                  both receive.
+    //                                  model that the deterministic runner receives.
     //   5. enforceStageGates()      — collect gate violations for the evidence trail.
     //   6. Persist to DB            — evidence rows + violation rows → underwriting_evidence.
     //
@@ -1545,25 +1473,15 @@ export class FinancialModelEngineService {
     const modelId = insertResult.rows[0].id;
 
     try {
-      const result = await this.callLLMForModel(enhancedAssumptions as any, dealId, userId);
-
-      // ── Phase 5: Server-side integrity verification (F9 wiring spec W1/W2) ──
-      // Translate the ProFormaAssumptions envelope to the deterministic runner's
-      // flat ModelAssumptions struct, run the full deterministic model, then
-      // execute all hard invariant checks.  Any INV-X failure halts the build
-      // and writes status='error' before we touch the DB with 'complete'.
+      // ── D2: Deterministic-primary build path ──────────────────────────────
+      let result: FinancialModelResult;
       let verificationPassed = true;
       let verificationDiagnostics = '';
+
       try {
         const modelAssumptions = mapProFormaAssumptionsToModelAssumptions(enhancedAssumptions as ProFormaAssumptions);
 
-        // ── Hydrate loanAmount from deal_data when bridge received zero ─────────
-        // The bridge sources loanAmount from a.financing?.loanAmount (default 0).
-        // For deals where the analyst has not yet populated financing assumptions,
-        // fall back to any loan amount recorded in deal_data.  This is a defensive
-        // read — it is always a no-op when the LLM/analyst has already provided a
-        // value; it only fires when the bridge computed loanAmount === 0.
-        // Primary seeding path for purchasePrice/loanAmount is Task #545.
+        // ── Hydrate loanAmount from deal_data when bridge received zero ──────
         if (modelAssumptions.loanAmount === 0) {
           try {
             const laRow = await pool.query(
@@ -1579,19 +1497,12 @@ export class FinancialModelEngineService {
             const fallbackLoan: number | null = laRow.rows[0]?.loan_amount ?? null;
             if (fallbackLoan !== null && fallbackLoan > 0) {
               modelAssumptions.loanAmount = fallbackLoan;
-              logger.info(
-                `[F9-Verifier] Hydrated loanAmount=${fallbackLoan.toFixed(0)} from deal_data for ${dealId}`
-              );
+              logger.info(`[F9-Build] Hydrated loanAmount=${fallbackLoan.toFixed(0)} from deal_data for ${dealId}`);
             }
-          } catch (_laErr) {
-            // non-fatal: verifier proceeds with loanAmount=0
-          }
+          } catch (_laErr) { /* non-fatal */ }
         }
 
-        // ── Batch-7: Hydrate purchasePrice from Valuation Grid when zero ────────
-        // When neither the LLM nor the deal_data fallback could populate a purchase
-        // price, fall back to the Valuation Grid's confidence-weighted reconciled
-        // value (reconciledValue = weighted mean across active valuation methods).
+        // ── Batch-7: Hydrate purchasePrice from Valuation Grid when zero ─────
         if (modelAssumptions.purchasePrice === 0) {
           try {
             const { ValuationGridService } = await import('./valuation/valuation-grid.service');
@@ -1600,10 +1511,6 @@ export class FinancialModelEngineService {
             const reconciledValue = vgResult.reconciliation.reconciledValue;
             if (reconciledValue && reconciledValue > 0) {
               modelAssumptions.purchasePrice = reconciledValue;
-              // Also update acquisition extended fields in enhancedAssumptions
-              // (in case Batch-7A did not fire — e.g., ValuationGrid was temporarily
-              // unavailable at that point but available now). This is a belt-and-suspenders
-              // writeback for the persisted assumptions range/evidence payload.
               if (enhancedAssumptions.acquisition) {
                 const acq7 = enhancedAssumptions.acquisition as Record<string, unknown>;
                 if (!acq7._purchasePriceSource) {
@@ -1622,24 +1529,6 @@ export class FinancialModelEngineService {
                     }));
                 }
               }
-              const methodSummary = (vgResult.methods as any[])
-                .filter((m: any) => m.active !== false)
-                .map((m: any) =>
-                  `${m.methodId ?? m.label ?? '?'}` +
-                  `:P50=$${m.p50 != null ? Math.round(m.p50).toLocaleString() : 'n/a'}` +
-                  `${m.ppu != null ? `/ppu=$${Math.round(m.ppu).toLocaleString()}` : ''}`
-                )
-                .join(', ');
-              logger.info(
-                `[Batch7-PurchasePrice] Post-bridge hydration for ${dealId}: ` +
-                `reconciledValue=$${Math.round(reconciledValue).toLocaleString()} ` +
-                `range=[$${vgResult.reconciliation.recommendedPriceLow != null ? Math.round(vgResult.reconciliation.recommendedPriceLow).toLocaleString() : 'n/a'}` +
-                `–$${vgResult.reconciliation.recommendedPriceHigh != null ? Math.round(vgResult.reconciliation.recommendedPriceHigh).toLocaleString() : 'n/a'}] ` +
-                `signal=${vgResult.reconciliation.convergenceSignal} ` +
-                `activeMethods=${vgResult.reconciliation.activeMethodCount} ` +
-                `reconciledPPU=${vgResult.reconciliation.reconciledPPU != null ? '$' + Math.round(vgResult.reconciliation.reconciledPPU).toLocaleString() : 'n/a'} ` +
-                `[${methodSummary}]`
-              );
             }
           } catch (_vgErr: any) {
             logger.debug(`[Batch7-PurchasePrice] Valuation Grid unavailable for ${dealId}: ${_vgErr?.message}`);
@@ -1647,10 +1536,6 @@ export class FinancialModelEngineService {
         }
 
         // ── Enrich dealMode from rent-roll occupancy when not explicitly provided ─
-        // An existing-type deal with current occupancy < 90% is in lease-up /
-        // absorption phase; the verifier should use relaxed semantics for INV-5/INV-7.
-        // This inference is intentional for deals like 464 Bishop where deal_data
-        // carries no type fields but the rent roll shows sub-90% occupancy.
         if (!enhancedAssumptions.dealMode && enhancedAssumptions.modelType !== 'development') {
           try {
             const rrRow = await pool.query(
@@ -1663,14 +1548,9 @@ export class FinancialModelEngineService {
             const occRate: number | null = rrRow.rows[0]?.occ_rate ?? null;
             if (occRate !== null && occRate < 0.90) {
               modelAssumptions.dealMode = 'lease_up';
-              logger.info(
-                `[F9-Verifier] Inferred dealMode=lease_up from rent-roll occupancy ` +
-                `(${(occRate * 100).toFixed(1)}%) for ${dealId}`
-              );
+              logger.info(`[F9-Build] Inferred dealMode=lease_up from rent-roll occupancy ($${(occRate * 100).toFixed(1)}%) for ${dealId}`);
             }
-          } catch (_rrErr) {
-            // non-fatal: verifier falls back to modelType-derived mode
-          }
+          } catch (_rrErr) { /* non-fatal */ }
         }
 
         // Attach LayeredValue evidence hints from deal_assumptions.year1 if available
@@ -1691,104 +1571,28 @@ export class FinancialModelEngineService {
         }
 
         const deterministicResult = runModel(modelAssumptions, { skipSensitivity: true });
-
-        // Merge LP/GP partition + scalar summary fields from the deterministic
-        // runner into the LLM result. The LLM schema does not emit these, but
-        // the F9 Overview tab (top KPIs, Returns Breakdown, Year table) reads
-        // them. The deterministic runner is the canonical source for partition
-        // math, so copying its summary fields is the single-source-of-truth
-        // pattern already used for `result.evidence` / `result.reasoning`.
-        const detSum = deterministicResult.summary;
-        result.summary.avgCoC               = detSum.avgCoC;
-        result.summary.lpIrr                = detSum.lpIrr;
-        result.summary.gpIrr                = detSum.gpIrr;
-        result.summary.lpEquityMultiple     = detSum.lpEquityMultiple;
-        result.summary.gpEquityMultiple     = detSum.gpEquityMultiple;
-        result.summary.lpCoC                = detSum.lpCoC;
-        result.summary.gpCoC                = detSum.gpCoC;
-        result.summary.lpTotalDistributions = detSum.lpTotalDistributions;
-        result.summary.lpProfit             = detSum.lpProfit;
-        result.summary.gpTotalDistributions = detSum.gpTotalDistributions;
-        result.summary.gpPromoteEarned      = detSum.gpPromoteEarned;
-        result.summary.totalProfit          = detSum.totalProfit;
-
-        // The LLM schema declares summary.exitValue / summary.netProceeds as
-        // required, but the deterministic runner canonicalises both under
-        // `disposition.*` (grossSalePrice / netSaleProceeds). Map them onto
-        // summary so the F9 Overview Disposition Summary panel reads them
-        // directly, matching the contract OverviewTab.tsx expects.
-        const detDisp = (deterministicResult as { disposition?: { grossSalePrice?: number; netSaleProceeds?: number } }).disposition;
-        if (detDisp) {
-          if (detDisp.grossSalePrice != null) result.summary.exitValue = detDisp.grossSalePrice;
-          if (detDisp.netSaleProceeds != null) result.summary.netProceeds = detDisp.netSaleProceeds;
-        }
-
-        // sourcesAndUses and annualCashFlow: the deterministic runner is the
-        // canonical source for both — it emits well-formed arrays with stable
-        // field names. The LLM frequently emits sparse Records or omits rows.
-        // Prefer the deterministic shape so the F9 Overview Sources/Uses panel
-        // and Returns By Year table populate consistently. Frontend
-        // normalize{Build,Model}Results handles the row-key aliasing.
-        const detResultAny = deterministicResult as {
-          sourcesAndUses?: unknown;
-          annualCashFlow?: unknown[];
-        };
-        if (detResultAny.sourcesAndUses) {
-          (result as { sourcesAndUses?: unknown }).sourcesAndUses = detResultAny.sourcesAndUses;
-        }
-        if (Array.isArray(detResultAny.annualCashFlow) && detResultAny.annualCashFlow.length > 0) {
-          (result as { annualCashFlow?: unknown[] }).annualCashFlow = detResultAny.annualCashFlow;
-        }
+        result = modelResultsToFinancialModelResult(deterministicResult);
 
         const checks = runIntegrityChecks(modelAssumptions, deterministicResult);
-        // Only INV-* checks are hard invariants that halt the build.
-        // SOFT checks (e.g. DSCR_BREACH) may have status='error' but are advisory only.
         const hardFailures = checks.filter(c => c.status === 'error' && c.id.startsWith('INV-'));
-
-        // Cross-check LLM output KPIs against deterministic output for the same inputs
-        const divergences = crossCheckLLMVsDeterministic(result, deterministicResult);
-        const materialDivergences = divergences.filter(d => d.material);
-        if (materialDivergences.length > 0) {
-          logger.warn(
-            `[F9-Verifier] LLM↔deterministic KPI divergences for ${dealId} (${materialDivergences.length} material):` +
-            materialDivergences.map(d =>
-              ` ${d.field}: LLM=${d.llmValue?.toFixed ? d.llmValue.toFixed(4) : d.llmValue}` +
-              ` det=${d.deterministicValue?.toFixed ? d.deterministicValue.toFixed(4) : d.deterministicValue}` +
-              ` (${d.deltaPct !== null ? (d.deltaPct * 100).toFixed(1) + '%' : 'abs=' + d.deltaAbsolute.toFixed(0)})`
-            ).join(';')
-          );
-        }
 
         if (hardFailures.length > 0) {
           verificationPassed = false;
-          verificationDiagnostics = hardFailures
-            .map(c => `${c.id}: ${c.message}`)
-            .join('; ');
-          logger.error(
-            `[F9-Verifier] Hard invariant failures for ${dealId}: ${verificationDiagnostics}`
-          );
+          verificationDiagnostics = hardFailures.map(c => `${c.id}: ${c.message}`).join('; ');
+          logger.error(`[F9-Verifier] Hard invariant failures for ${dealId}: ${verificationDiagnostics}`);
         } else {
           const cd = deterministicResult.evidence?.confidence_distribution;
-          const cdSummary = cd
-            ? `evidence confidence: H=${cd.high} M=${cd.medium} L=${cd.low}`
-            : 'evidence: n/a';
+          const cdSummary = cd ? `evidence confidence: H=${cd.high} M=${cd.medium} L=${cd.low}` : 'evidence: n/a';
           logger.info(
-            `[F9-Verifier] All invariants pass for ${dealId}` +
-            ` (${checks.filter(c => c.status === 'warn').length} warnings,` +
-            ` ${materialDivergences.length} material LLM↔det divergences, ${cdSummary})`
+            `[F9-Verifier] All invariants pass for ${dealId} ` +
+            `(${checks.filter(c => c.status === 'warn').length} warnings, ${cdSummary})`
           );
-          // Inject deterministic evidence, reasoning, and integrity signals into LLM
-          // result before persist. These fields come exclusively from the deterministic
-          // runner and cannot be hallucinated by the LLM.
           result.evidence = deterministicResult.evidence;
           result.reasoning = {
             walkthrough: deterministicResult.reasoning.walkthrough,
             collisionReport: deterministicResult.reasoning.collisionReport,
           };
-          // Merge deterministic integrity checks (including LOW_CONFIDENCE_MODEL warn)
-          // into the persisted result so the full signal set is available to consumers.
-          const existingChecks = Array.isArray(result.integrityChecks) ? result.integrityChecks : [];
-          result.integrityChecks = [...existingChecks, ...deterministicResult.integrityChecks];
+          result.integrityChecks = deterministicResult.integrityChecks;
 
           // ── M11 Debt Optimizer Cycle ──────────────────────────────────────
           let adjustedAssumptions = modelAssumptions;
@@ -2057,279 +1861,6 @@ export class FinancialModelEngineService {
       assumptionsHash: storedHash ?? undefined,
       stale,
     };
-  }
-
-  /**
-   * T1 (TOKEN_LEAK_REMEDIATION_TRANCHE1): mechanical metering wrapper for the
-   * F9 build LLM call. Prior to this fix, `callLLMForModel` called the raw
-   * OpenAI/DeepSeek client with zero ai_usage_log instrumentation — every F9
-   * build was an invisible, unmetered spend. This writes the same
-   * ai_usage_log row shape as DeepSeekMeteringAdapter.logUsage (surface
-   * tagged 'f9_build' so it's distinguishable from agent-pipeline 'agent'
-   * rows), resolves org_id via the canonical resolveOrgForUser() helper
-   * (T6), and enforces the existing DeepSeek daily spend cap (does not
-   * introduce a new cap — reuses the T2/pre-existing one).
-   */
-  private async logF9BuildUsage(params: {
-    dealId: string;
-    userId?: string | null;
-    model: string;
-    providerName: string;
-    inputTokens: number;
-    outputTokens: number;
-  }): Promise<number> {
-    const { dealId, userId, model, providerName, inputTokens, outputTokens } = params;
-    const costUsd = providerName === 'deepseek' || providerName === 'ai-integrations-deepseek-compat'
-      ? estimateDeepSeekCost(model, inputTokens, outputTokens, 0)
-      : (() => {
-          const rates = F9_FALLBACK_COST_PER_MTK[model] ?? F9_FALLBACK_COST_PER_MTK['gpt-4o'];
-          return (inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output;
-        })();
-
-    try {
-      const orgId = userId ? await resolveOrgForUser(userId) : null;
-      const pool = getPool();
-      await pool.query(
-        `INSERT INTO ai_usage_log (
-           user_id, org_id, deal_id, agent_id, operation_type, surface,
-           model, input_tokens, output_tokens, credits_consumed, cost_usd, billable_usd, latency_ms
-         ) VALUES ($1,$2,$3,$4,$5,'f9_build',$6,$7,$8,0,$9,0,0)`,
-        [
-          userId && userId.trim() !== '' ? userId : null,
-          orgId,
-          dealId,
-          'financial-model-engine',
-          `financial_model_build:${providerName}`,
-          model,
-          inputTokens,
-          outputTokens,
-          costUsd,
-        ]
-      );
-      logger.info(
-        `[Financial-Model] Metered F9 build: provider=${providerName} model=${model} ` +
-        `inTok=${inputTokens} outTok=${outputTokens} cost=$${costUsd.toFixed(6)} orgId=${orgId ?? 'none'}`
-      );
-    } catch (err) {
-      logger.warn('[Financial-Model] Failed to write ai_usage_log for F9 build', { err });
-    }
-    return costUsd;
-  }
-
-  private async callLLMForModel(
-    assumptions: ProFormaAssumptions,
-    dealId: string,
-    userId?: string | null,
-  ): Promise<FinancialModelResult> {
-    const { client, model, providerName } = selectLLMClient();
-    logger.info(`[Financial-Model] Using provider=${providerName} model=${model} for deal build`);
-
-    // T1/T2: enforce the same DeepSeek daily spend cap that agent-pipeline
-    // calls already respect, before spending on an unbounded F9 build call.
-    if (providerName === 'deepseek' || providerName === 'ai-integrations-deepseek-compat') {
-      await checkDeepSeekDailySpendCap();
-    }
-
-    const systemPrompt = this.buildSystemPrompt(assumptions.modelType);
-    const userPrompt = this.buildUserPrompt(assumptions);
-
-    const response = await client.chat.completions.create({
-      model,
-      max_tokens: 16000,
-      temperature: 0.1,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-    });
-
-    await this.logF9BuildUsage({
-      dealId,
-      userId,
-      model,
-      providerName,
-      inputTokens: response.usage?.prompt_tokens ?? 0,
-      outputTokens: response.usage?.completion_tokens ?? 0,
-    });
-
-    const text = response.choices?.[0]?.message?.content || '';
-
-    let parsed: FinancialModelResult;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-      const rawJson = codeBlockMatch ? codeBlockMatch[1].trim() : text.trim();
-
-      let depth = 0;
-      let start = -1;
-      let end = -1;
-      for (let i = 0; i < rawJson.length; i++) {
-        if (rawJson[i] === '{') {
-          if (depth === 0) start = i;
-          depth++;
-        } else if (rawJson[i] === '}') {
-          depth--;
-          if (depth === 0) { end = i + 1; break; }
-        }
-      }
-
-      if (start === -1 || end === -1) {
-        throw new Error('LLM did not return valid JSON. Response starts with: ' + text.substring(0, 200));
-      }
-
-      try {
-        parsed = JSON.parse(rawJson.substring(start, end));
-      } catch (parseErr: any) {
-        throw new Error('Failed to parse LLM response as JSON: ' + parseErr.message);
-      }
-    }
-
-    if (!parsed.summary || !parsed.annualCashFlow) {
-      throw new Error('LLM response missing required fields (summary, annualCashFlow)');
-    }
-
-    return parsed;
-  }
-
-  private buildSystemPrompt(modelType: string): string {
-    return `You are an expert real estate financial analyst who builds institutional-grade financial models for multifamily real estate investments. You produce precise, detailed financial projections.
-
-You will receive a set of Pro Forma assumptions for a ${modelType === 'development' ? 'ground-up development' : 'stabilized existing asset acquisition'} deal. Your job is to build a complete financial model and return the results as structured JSON.
-
-CRITICAL RULES:
-1. All dollar amounts should be rounded to the nearest dollar (no cents).
-2. All percentages should be expressed as decimals (0.05 = 5%).
-3. Use monthly compounding for interest calculations.
-4. Rent growth is applied at the beginning of each operating year.
-5. Operating expenses grow at their specified rate (default 3% if not specified).
-6. Management fee is calculated as a percentage of Effective Gross Revenue.
-7. Replacement reserves grow at inflation rate.
-8. IRR should be calculated using the standard XIRR methodology on equity cash flows.
-9. DSCR = NOI / Annual Debt Service.
-10. Debt Yield = NOI / Loan Amount.
-11. For the sensitivity analysis, vary exit cap rate by -50bps, -25bps, 0, +25bps, +50bps and hold period by the given period and ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â±1 year.
-12. For rent growth sensitivity, vary by -1%, -0.5%, 0, +0.5%, +1%.
-${modelType === 'development' ? `
-13. Construction costs are drawn monthly over the construction period.
-14. Lease-up begins after construction completion at the specified velocity (units/month).
-15. Operating income during lease-up is proportional to occupied units.
-16. Construction loan interest accrues on drawn balance.
-` : ''}
-
-Return ONLY valid JSON matching the FinancialModelResult schema. No explanation, no markdown.`;
-  }
-
-  private buildUserPrompt(a: ProFormaAssumptions): string {
-    const totalUnits = a.dealInfo.totalUnits;
-    const avgRent = a.unitMix.length > 0
-      ? a.unitMix.reduce((sum, u) => sum + u.marketRent * u.units, 0) / totalUnits
-      : 1500;
-    const totalSF = a.dealInfo.netRentableSF || a.unitMix.reduce((sum, u) => sum + u.unitSize * u.units, 0);
-
-    const expenseLines = Object.entries(a.expenses).map(([name, e]) =>
-      `  - ${name}: $${e.amount}/year, type: ${e.type}, growth: ${(e.growthRate * 100).toFixed(1)}%`
-    ).join('\n');
-
-    const otherIncomeLines = Object.entries(a.revenue.otherIncome || {}).map(([name, oi]) =>
-      `  - ${name}: $${oi.perUnitMonth}/unit/month, penetration: ${(oi.penetration * 100).toFixed(0)}%`
-    ).join('\n');
-
-    const capexLines = (a.capex.lineItems || []).map(item =>
-      `  - ${item.description}: $${item.amount}`
-    ).join('\n');
-
-    const waterfallLines = (a.waterfall.hurdles || []).map((h, i) =>
-      `  Tier ${i + 1}: ${(h.hurdleRate * 100).toFixed(1)}% hurdle, GP promote ${(h.promoteToGP * 100).toFixed(0)}%, LP split ${(h.lpSplit * 100).toFixed(0)}%`
-    ).join('\n');
-
-    let prompt = `Build a complete financial model for this ${a.modelType === 'development' ? 'development' : 'existing asset'} deal:
-
-DEAL INFO:
-- Name: ${a.dealInfo.dealName}
-- Location: ${a.dealInfo.city}, ${a.dealInfo.state}
-- Total Units: ${totalUnits}
-- Net Rentable SF: ${totalSF}
-- Year Built: ${a.dealInfo.vintage}
-- Hold Period: ${a.holdPeriod} years
-
-UNIT MIX:
-${a.unitMix.map(u => `- ${u.floorPlan}: ${u.units} units, ${u.unitSize} SF, ${u.beds} bed, Market Rent: $${u.marketRent}/mo, In-Place: $${u.inPlaceRent}/mo, Occupied: ${u.occupied}/${u.units}`).join('\n')}
-
-Average Market Rent: $${avgRent.toFixed(0)}/unit/mo ($${(avgRent / (totalSF / totalUnits)).toFixed(2)}/SF)
-
-ACQUISITION:
-- Purchase Price: $${a.acquisition.purchasePrice}
-- Going-In Cap Rate: ${(a.acquisition.capRate * 100).toFixed(2)}%
-- Closing Costs: ${JSON.stringify(a.acquisition.closingCosts)}
-
-DISPOSITION:
-- Exit Cap Rate: ${(a.disposition.exitCapRate * 100).toFixed(2)}%
-- Selling Costs: ${(a.disposition.sellingCosts * 100).toFixed(2)}% of sale price
-- Sale NOI Method: ${a.disposition.saleNOIMethod}
-
-REVENUE ASSUMPTIONS:
-- Annual Rent Growth: ${a.revenue.rentGrowth.map(r => (r * 100).toFixed(1) + '%').join(', ')}
-- Loss-to-Lease: ${(a.revenue.lossToLease * 100).toFixed(1)}%
-- Stabilized Occupancy: ${(a.revenue.stabilizedOccupancy * 100).toFixed(1)}%
-- Collection Loss: ${(a.revenue.collectionLoss * 100).toFixed(2)}%
-- Other Income:
-${otherIncomeLines || '  (none)'}
-
-OPERATING EXPENSES:
-${expenseLines || '  (none)'}
-
-FINANCING:
-- Loan Amount: $${a.financing.loanAmount}
-- Type: ${a.financing.loanType}
-- Interest Rate: ${(a.financing.interestRate * 100).toFixed(2)}%
-- Spread: ${(a.financing.spread * 100).toFixed(2)}%
-- Term: ${a.financing.term} years
-- Amortization: ${a.financing.amortization} years
-- IO Period: ${a.financing.ioPeriod} months
-- Origination Fee: ${(a.financing.originationFee * 100).toFixed(2)}%
-- Rate Cap Cost: $${a.financing.rateCapCost}
-- Prepayment Penalty: ${(a.financing.prepayPenalty * 100).toFixed(2)}%
-
-CAPITAL EXPENDITURES:
-${capexLines || '  (none)'}
-- Contingency: ${(a.capex.contingencyPct * 100).toFixed(0)}%
-- Replacement Reserves: $${a.capex.reservesPerUnit}/unit/year
-
-WATERFALL:
-- Total Equity: $${a.waterfall.equityContribution}
-- LP/GP Split: ${(a.waterfall.lpShare * 100).toFixed(0)}/${(a.waterfall.gpShare * 100).toFixed(0)}
-${waterfallLines || '  No promote structure'}`;
-
-    if (a.modelType === 'development' && a.development) {
-      prompt += `
-
-DEVELOPMENT SPECIFIC:
-- Land Cost: $${a.development.landCost}
-- Hard Cost: $${a.development.hardCostPerSF}/SF
-- Hard Cost Contingency: ${(a.development.hardCostContingency * 100).toFixed(0)}%
-- Soft Cost: ${(a.development.softCostPct * 100).toFixed(1)}% of hard cost
-- Developer Fee: ${(a.development.developerFee * 100).toFixed(1)}% of cost
-- Construction Period: ${a.development.constructionPeriod} months
-- Lease-Up Velocity: ${a.development.leaseUpVelocity} units/month
-- Construction Loan LTC: ${(a.development.constructionLoanLTC * 100).toFixed(0)}%
-- Construction Loan Rate: ${(a.development.constructionLoanRate * 100).toFixed(2)}%`;
-    }
-
-    prompt += `
-
-Now build the complete model and return the FinancialModelResult JSON with:
-1. summary (IRR, equity multiple, CoC by year, NOI, cap rates, exit value, debt metrics)
-2. annualCashFlow (one object per year with full income statement lines)
-3. sourcesAndUses
-4. debtMetrics
-5. sensitivityAnalysis (exitCapVsHoldPeriod grid, rentGrowthVsHoldPeriod grid)
-6. waterfallDistributions (by year)
-${a.modelType === 'development' ? '7. developmentSchedule (monthly during construction + lease-up)' : ''}
-
-Return ONLY valid JSON. No markdown, no explanation.`;
-
-    return prompt;
   }
 
   async getUpstreamModuleInputs(dealId: string): Promise<FinancialModuleInputs> {
