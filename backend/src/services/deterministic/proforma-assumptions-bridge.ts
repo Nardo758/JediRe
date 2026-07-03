@@ -244,9 +244,21 @@ export function mapProFormaAssumptionsToModelAssumptions(
   const concessions = (a.revenue as Record<string, unknown>)._concessionsPct as number ?? 0;
   // Batch-6b M07: months to stabilization from absorption curve (lease-up ramp)
   const monthsToStabilize = (a.revenue as Record<string, unknown>)._vacancyM07MonthsToStabilize as number ?? null;
+  // Phase 2 W1: turn-cohort engine assumptions — read from extended provenance
+  // fields when available; otherwise use platform defaults.
+  const standardTurnDowntimeDays = (a.revenue as Record<string, unknown>)._standardTurnDowntimeDays as number ?? 14;
+  const renoTurnDowntimeWeeks = (a.revenue as Record<string, unknown>)._renoTurnDowntimeWeeks as number ?? null;
+  const newLeaseConcessionMonths = (a.revenue as Record<string, unknown>)._newLeaseConcessionMonths as number ?? 1;
+  const annualTurnoverRate = (a.revenue as Record<string, unknown>)._annualTurnoverRate as number ?? 0.50;
 
   // Other income: sum perUnitMonth × penetration × 12 months → annual per unit
   let otherIncomePerUnit = 0;
+
+  // Other income: sum perUnitMonth × penetration × 12 months → annual per unit
+
+  // Other income: sum perUnitMonth × penetration × 12 months → annual per unit
+
+  // Other income: sum perUnitMonth × penetration × 12 months → annual per unit
   if (a.revenue.otherIncome) {
     for (const oi of Object.values(a.revenue.otherIncome)) {
       if (oi && typeof oi === 'object') {
@@ -392,6 +404,11 @@ export function mapProFormaAssumptionsToModelAssumptions(
     dealType: a.modelType || 'existing',
     dealMode: a.dealMode ?? a.modelType ?? 'existing',
     ...(monthsToStabilize != null && monthsToStabilize > 0 ? { monthsToStabilize } : {}),
+    // Phase 2 W1: turn-cohort engine assumptions
+    standardTurnDowntimeDays,
+    ...(renoTurnDowntimeWeeks != null ? { renoTurnDowntimeWeeks } : {}),
+    newLeaseConcessionMonths,
+    annualTurnoverRate,
   };
 }
 

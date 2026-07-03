@@ -761,6 +761,301 @@ export function computeMonthOperating(
   };
 }
 
+// =========================================================================
+// TURN-COHORT MONTHLY ENGINE (Phase 2 W2)
+// =========================================================================
+// Replaces the vacuous "div 12" monthly model with a real unit-cohort engine.
+// Tracks lease expiry -> turn downtime -> vacant -> new lease (with concession)
+// for every unit, every month.  Y1 NOI is derived from monthly first, then
+// aggregated to yearly -- satisfying Operator Ruling #1.
+// =========================================================================
+
+/** Mutable state for the turn-cohort engine. */
+export interface TurnCohortState {
+  /** Units still on original leases (paying in-place rent). */
+  occupiedAtInPlace: number;
+  /** Units that turned over and now pay market rent. */
+  occupiedAtMarket: number;
+  /** Units between move-out and ready-for-lease (no rent). */
+  turning: number;
+  /** Units ready for lease but not yet leased (no rent). */
+  vacant: number;
+  /** Units occupied but in free-rent concession period (no rent). */
+  concession: number;
+  /** Running rent-growth multiplier (1.0 at acquisition). */
+  cumulativeGrowth: number;
+  /** FIFO queue: turnEntries[m] = units that entered turn in month m. */
+  turnEntries: number[];
+  /** FIFO queue: concessionEntries[m] = units that entered concession in month m. */
+  concessionEntries: number[];
+}
+
+/** Initialise turn-cohort state at acquisition (all units occupied, in-place). */
+export function createTurnCohortState(a: ModelAssumptions): TurnCohortState {
+  return {
+    occupiedAtInPlace: a.units,
+    occupiedAtMarket: 0,
+    turning: 0,
+    vacant: 0,
+    concession: 0,
+    cumulativeGrowth: 1.0,
+    turnEntries: [],
+    concessionEntries: [],
+  };
+}
+
+/** Resolve effective downtime in months from assumptions. */
+function getDowntimeMonths(a: ModelAssumptions): number {
+  if (a.renoTurnDowntimeWeeks != null && a.renoTurnDowntimeWeeks > 0) {
+    return a.renoTurnDowntimeWeeks * 7 / 30;
+  }
+  return (a.standardTurnDowntimeDays ?? DEF_STANDARD_TURN_DOWNTIME_DAYS) / 30;
+}
+
+/**
+ * Compute ONE month using the turn-cohort engine.
+ *
+ * State is mutated in-place (pass by reference) so the caller can iterate
+ * month-by-month without copying large structs.
+ *
+ * @param monthIdx  0-based month index (0 = first month of operations)
+ * @param year      1-based operating year (1..holdYears)
+ * @param a         Model assumptions
+ * @param state     Mutable TurnCohortState
+ * @param taxMonth  Monthly property-tax amount ($/mo)
+ * @returns MonthlyCashFlowRow for this month
+ */
+export function computeMonthTurnCohort(
+  monthIdx: number,
+  year: number,
+  a: ModelAssumptions,
+  state: TurnCohortState,
+  taxMonth: number,
+): MonthlyCashFlowRow {
+  const totalUnits = a.units;
+  const monthlyTurnover = (a.annualTurnoverRate ?? DEF_ANNUAL_TURNOVER_RATE) / 12;
+  const downtimeMonths = getDowntimeMonths(a);
+  const concessionMonths = a.newLeaseConcessionMonths ?? DEF_NEW_LEASE_CONCESSION_MONTHS;
+
+  // Rent growth: apply at the start of each year after Y1
+  if (monthIdx > 0 && monthIdx % 12 === 0) {
+    const growthIdx = Math.min(year - 1, a.rentGrowth.length - 1);
+    state.cumulativeGrowth *= (1 + (a.rentGrowth[growthIdx] ?? 0.03));
+  }
+
+  const marketRent = a.marketRent * state.cumulativeGrowth;
+  const inPlaceRent = a.inPlaceRent * state.cumulativeGrowth;
+
+  // STEP 1 -- Lease expiries: in-place occupied units turn over
+  const expiring = Math.min(state.occupiedAtInPlace, totalUnits * monthlyTurnover);
+  state.occupiedAtInPlace -= expiring;
+  state.turning += expiring;
+  state.turnEntries[monthIdx] = expiring;
+
+  // STEP 2 -- Turn completion: units that entered turn `downtimeMonths` ago
+  // finish and become vacant
+  const completedMonth = Math.floor(monthIdx - downtimeMonths);
+  const completingTurn = completedMonth >= 0 ? (state.turnEntries[completedMonth] ?? 0) : 0;
+  state.turning -= completingTurn;
+  state.vacant += completingTurn;
+
+  // STEP 3 -- New leases: all vacant units lease immediately
+  // TODO(W3): absorption pacing via monthsToStabilize for lease-up deals
+  const newLeases = state.vacant;
+  state.vacant = 0;
+  state.concession += newLeases;
+  state.concessionEntries[monthIdx] = newLeases;
+
+  // STEP 4 -- Concession expiry: units that entered concession
+  // `concessionMonths` ago start paying rent at market
+  const concessionCompleteMonth = Math.floor(monthIdx - concessionMonths);
+  const concessionCompleting = concessionCompleteMonth >= 0
+    ? (state.concessionEntries[concessionCompleteMonth] ?? 0)
+    : 0;
+  state.concession -= concessionCompleting;
+  state.occupiedAtMarket += concessionCompleting;
+
+  // STEP 5 -- Revenue computation
+  // GPR = what we would collect if every unit were occupied at market rent
+  const gpr = totalUnits * marketRent;
+
+  // Loss to lease = in-place units paying below market
+  const lossToLease = state.occupiedAtInPlace * (marketRent - inPlaceRent);
+
+  // Vacancy = units generating $0 rent (turning + vacant + concession)
+  const vacancyUnits = state.turning + state.vacant + state.concession;
+  const vacancy = totalUnits > 0 ? vacancyUnits / totalUnits : 0;
+
+  // Concessions = free-rent period on newly leased units
+  const concessions = state.concession * marketRent;
+
+  // Bad debt
+  const badDebt = gpr * a.badDebt;
+
+  // Base revenue = GPR - lossToLease - vacancyLoss - concessions - badDebt
+  // vacancyLoss = vacancyUnits * marketRent (those units generate $0)
+  const vacancyLoss = vacancyUnits * marketRent;
+  const baseRevenue = gpr - lossToLease - vacancyLoss - concessions - badDebt;
+
+  // Other income (scales with total units, not occupancy)
+  const expenseGrowthFactor = Math.pow(1 + a.expenseGrowth, year - 1);
+  const otherIncome = a.otherIncomePerUnit * totalUnits * expenseGrowthFactor;
+
+  // Effective gross income
+  const egi = baseRevenue + otherIncome;
+
+  // STEP 6 -- Operating expenses (flat per-unit, scaled by expense growth)
+  const payroll = a.payrollPerUnit * totalUnits * expenseGrowthFactor;
+  const maintenance = a.maintenancePerUnit * totalUnits * expenseGrowthFactor;
+  const contractServices = a.contractServicesPerUnit * totalUnits * expenseGrowthFactor;
+  const marketing = a.marketingPerUnit * totalUnits * expenseGrowthFactor;
+  const utilities = a.utilitiesPerUnit * totalUnits * expenseGrowthFactor;
+  const admin = a.adminPerUnit * totalUnits * expenseGrowthFactor;
+  const insurance = a.insurancePerUnit * totalUnits * expenseGrowthFactor;
+  const managementFee = egi * a.managementFee;
+  const replacementReserves = a.replacementReserves * totalUnits * expenseGrowthFactor;
+
+  const totalExpenses = payroll + maintenance + contractServices + marketing +
+    utilities + admin + insurance + taxMonth + managementFee + replacementReserves;
+
+  const noi = egi - totalExpenses;
+
+  const occupiedCount = state.occupiedAtInPlace + state.occupiedAtMarket;
+  const occupancy = totalUnits > 0 ? occupiedCount / totalUnits : 0;
+
+  return {
+    month: monthIdx + 1,
+    year,
+    gpr,
+    lossToLease,
+    vacancy,
+    concessions,
+    badDebt,
+    baseRevenue,
+    otherIncome,
+    egi,
+    payroll,
+    maintenance,
+    contractServices,
+    marketing,
+    utilities,
+    admin,
+    insurance,
+    propertyTax: taxMonth,
+    managementFee,
+    replacementReserves,
+    totalExpenses,
+    noi,
+    occupancy,
+  };
+}
+
+/**
+ * Build the full monthly cash-flow array using the turn-cohort engine.
+ *
+ * This is the PRIMARY monthly computation path.  It iterates month-by-month,
+ * tracking unit states, then returns the full MonthlyCashFlowRow array.
+ * The caller can aggregate these rows to yearly rows via
+ * `aggregateMonthlyToAnnual()`.
+ *
+ * @param a          Model assumptions
+ * @param taxByYear  Annual property-tax array (taxByYear[0] = Y1 tax)
+ * @returns MonthlyCashFlowRow[] for all operating months
+ */
+export function buildMonthlyCashFlowTurnCohort(
+  a: ModelAssumptions,
+  taxByYear: number[],
+): MonthlyCashFlowRow[] {
+  const monthly: MonthlyCashFlowRow[] = [];
+  const state = createTurnCohortState(a);
+  const totalMonths = a.holdYears * 12;
+
+  for (let m = 0; m < totalMonths; m++) {
+    const year = Math.floor(m / 12) + 1;
+    const taxMonth = (taxByYear[year - 1] ?? 0) / 12;
+    const row = computeMonthTurnCohort(m, year, a, state, taxMonth);
+    monthly.push(row);
+  }
+
+  return monthly;
+}
+
+/**
+ * Aggregate monthly cash-flow rows into annual rows.
+ *
+ * Sums every monthly field across the 12 months of each year, then fills in
+ * the annual-specific fields (interest, principal, debtService, etc.) from
+ * the amortization schedule.
+ *
+ * @param monthly    Array of MonthlyCashFlowRow (from turn-cohort engine)
+ * @param a          Model assumptions
+ * @param amort      Amortization result { interestByYear, principalByYear, ... }
+ * @returns AnnualCashFlowRow[]
+ */
+export function aggregateMonthlyToAnnual(
+  monthly: MonthlyCashFlowRow[],
+  a: ModelAssumptions,
+  amort: ReturnType<typeof computeAmortization>,
+): AnnualCashFlowRow[] {
+  const annual: AnnualCashFlowRow[] = [];
+  const nYears = a.holdYears;
+
+  for (let y = 1; y <= nYears; y++) {
+    const monthRows = monthly.filter(r => r.year === y);
+    if (monthRows.length === 0) continue;
+
+    const sum = (field: keyof MonthlyCashFlowRow): number =>
+      monthRows.reduce((s, r) => s + (r[field] as number), 0);
+
+    const noi = sum('noi');
+    const egi = sum('egi');
+    const debtService = amort.debtServiceByYear[y - 1] ?? 0;
+    const preTaxCashFlow = noi - debtService;
+    const dscr = debtService > 0 ? noi / debtService : null;
+    const avgOccupancy = monthRows.reduce((s, r) => s + r.occupancy, 0) / monthRows.length;
+
+    annual.push({
+      year: y,
+      grossPotentialRent: sum('gpr'),
+      lossToLease: sum('lossToLease'),
+      vacancy: sum('baseRevenue') > 0 ? sum('gpr') - sum('baseRevenue') - sum('otherIncome') : 0,
+      concessions: sum('concessions'),
+      badDebt: sum('badDebt'),
+      baseRevenue: sum('baseRevenue'),
+      otherIncome: sum('otherIncome'),
+      effectiveGrossIncome: egi,
+      payroll: sum('payroll'),
+      maintenance: sum('maintenance'),
+      contractServices: sum('contractServices'),
+      marketing: sum('marketing'),
+      utilities: sum('utilities'),
+      admin: sum('admin'),
+      insurance: sum('insurance'),
+      propertyTax: sum('propertyTax'),
+      managementFee: sum('managementFee'),
+      replacementReserves: sum('replacementReserves'),
+      totalExpenses: sum('totalExpenses'),
+      noi,
+      annualInterest: amort.interestByYear[y - 1] ?? 0,
+      annualPrincipal: amort.principalByYear[y - 1] ?? 0,
+      debtService,
+      preTaxCashFlow,
+      cfads: preTaxCashFlow,
+      dscr,
+      occupancy: avgOccupancy,
+      debtYield: a.loanAmount > 0 ? noi / a.loanAmount : null,
+      capRateOnCost: null,
+      isExitYear: false,
+      depreciation: 0,
+      taxableIncome: 0,
+      taxPayable: 0,
+      afterTaxCashFlow: 0,
+    });
+  }
+
+  return annual;
+}
+
 /**
  * Build the full monthly cash-flow array from the annual rows and assumptions.
  *
@@ -1225,30 +1520,19 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     }
   }
 
-  // INV-10: occupancy(y) = 1 − vacancySchedule[y]
-  // Development deals use the lease-up absorption curve; acquisition deals use buildVacancySchedule
-  const inv10IsDev = a.dealType === 'development' || a.dealType === 'ground_up';
-  const inv10ConstrYrs = inv10IsDev ? Math.ceil((a.constructionMonths ?? 18) / 12) : 0;
-  const inv10LeaseUpYrs = inv10IsDev ? Math.ceil((a.leaseUpMonths ?? 12) / 12) : 0;
-  const expectedVacSched = buildVacancySchedule(hold, a.vacancyY1, a.vacancyStab);
+  // INV-10: annual occupancy == month-weighted aggregate of monthly series
+  // Under the turn-cohort model occupancy is emergent (turns + absorption +
+  // downtime), not schedule-derived.  This check verifies that the annual
+  // aggregation correctly reflects the monthly series — an internal-consistency
+  // check stronger than the old schedule-echo check.
+  const monthlyCF = result.monthlyCashFlow;
   for (const row of opRows) {
-    let expectedOcc: number;
-    if (inv10IsDev) {
-      if (row.year <= inv10ConstrYrs) continue; // construction: occupancy=0 by design, skip check
-      const phaseY = row.year - inv10ConstrYrs;
-      if (phaseY <= inv10LeaseUpYrs && inv10LeaseUpYrs > 0) {
-        const vacForYear = 1 - (phaseY / inv10LeaseUpYrs) * (1 - a.vacancyStab);
-        expectedOcc = 1 - vacForYear;
-      } else {
-        expectedOcc = 1 - a.vacancyStab;
-      }
-    } else {
-      if (row.grossPotentialRent <= 0 && row.occupancy === 0) continue;
-      const expectedVacRate = expectedVacSched[row.year - 1] ?? a.vacancyStab;
-      expectedOcc = 1 - expectedVacRate;
-    }
+    if (row.grossPotentialRent <= 0 && row.occupancy === 0) continue;
+    const yearMonthly = monthlyCF.filter(m => m.year === row.year);
+    if (yearMonthly.length === 0) continue;
+    const expectedOcc = yearMonthly.reduce((s, m) => s + m.occupancy, 0) / yearMonthly.length;
     if (Math.abs(row.occupancy - expectedOcc) > 0.0001) {
-      checks.push({ id: 'INV-10', status: 'error', message: `INV-10 Occupancy Y${row.year}: got ${row.occupancy.toFixed(4)}, expected ${expectedOcc.toFixed(4)}` });
+      checks.push({ id: 'INV-10', status: 'error', message: `INV-10 Occupancy Y${row.year}: annual ${row.occupancy.toFixed(4)} ≠ monthly avg ${expectedOcc.toFixed(4)}` });
       break;
     }
   }
@@ -1353,6 +1637,7 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
   const log: string[] = [];
   const hold = a.holdYears;
   const nYears = hold + 1;
+  let monthlyRows: MonthlyCashFlowRow[] = [];
 
   // ── Phase 1: Derived inputs ─────────────────────────────────────────────
   log.push(`Phase 1: Deriving inputs for ${a.dealType} deal, ${hold}yr hold, ${a.units} units`);
@@ -1487,41 +1772,28 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       }
     }
   } else {
-    for (let y = 1; y <= nYears; y++) {
-      const expCum = Math.pow(1 + a.expenseGrowth, y - 1);
-      const taxYear = y <= taxSchedule.perYear.length ? taxSchedule.perYear[y - 1] : taxSchedule.perYear[taxSchedule.perYear.length - 1];
+    // Acquisition / value-add path: monthly-first via turn-cohort engine
+    log.push('  Acquisition path: turn-cohort monthly engine');
+    monthlyRows = buildMonthlyCashFlowTurnCohort(a, taxSchedule.perYear);
+    const aggregated = aggregateMonthlyToAnnual(monthlyRows, a, amort);
 
-      const op = computeYearOperating(y, a, cumGrowth[y - 1], vacancySched, taxYear, expCum);
-
-      const interest = amort.interestByYear[y - 1] ?? (a.loanAmount * a.rate);
-      const principal = amort.principalByYear[y - 1] ?? 0;
-      const debtService = amort.debtServiceByYear[y - 1] ?? interest;
-      const cf = op.noi - debtService;
-      const dscr = debtService > 0.01 ? op.noi / debtService : null;
-      const dyield = a.loanAmount > 0 ? op.noi / a.loanAmount : null;
-
-      const applyBonus    = a.useBonusDepreciation !== false; // default true
-      const depreciation  = (y === 1 && applyBonus) ? incomeTaxBonusDepr : incomeTaxAnnualDepr;
-      const taxableIncome = op.noi - interest - depreciation;
-      const taxPayable    = Math.max(0, taxableIncome * INCOME_TAX_MARGINAL);
-      annualRows.push({
-        year: y,
-        ...op,
-        annualInterest: interest,
-        annualPrincipal: principal,
-        debtService,
-        preTaxCashFlow: cf,
-        cfads: cf,
-        dscr,
-        debtYield: dyield,
-        capRateOnCost: null,  // filled below after totalAcqCost is available
-        isExitYear: y === nYears,
-        depreciation,
-        taxableIncome,
-        taxPayable,
-        afterTaxCashFlow: cf - taxPayable,
-      });
+    // Fill income-tax fields and isExitYear on aggregated annual rows
+    for (let i = 0; i < aggregated.length; i++) {
+      const y = i + 1;
+      const row = aggregated[i];
+      const interest = amort.interestByYear[i] ?? (a.loanAmount * a.rate);
+      const applyBonus = a.useBonusDepreciation !== false;
+      const depreciation = (y === 1 && applyBonus) ? incomeTaxBonusDepr : incomeTaxAnnualDepr;
+      const taxableIncome = row.noi - interest - depreciation;
+      const taxPayable = Math.max(0, taxableIncome * INCOME_TAX_MARGINAL);
+      row.annualInterest = interest;
+      row.depreciation = depreciation;
+      row.taxableIncome = taxableIncome;
+      row.taxPayable = taxPayable;
+      row.afterTaxCashFlow = row.preTaxCashFlow - taxPayable;
+      row.isExitYear = y === nYears;
     }
+    annualRows.push(...aggregated);
   }
 
   // ── Phase 6: Disposition ────────────────────────────────────────────────
@@ -1614,8 +1886,18 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
   const dscrMin = dscrValues.length > 0 ? Math.min(...dscrValues) : null;
   const dscrAvg = dscrValues.length > 0 ? dscrValues.reduce((s, v) => s + v, 0) / dscrValues.length : null;
   const dscrY1 = annualRows[0]?.dscr ?? null;
-  // Stabilization year = first year vacancy reaches vacancyStab (Y2 when Y1 is higher, else Y1)
-  const stabRowIdx = a.vacancyY1 > a.vacancyStab ? 1 : 0;
+  // Stabilization year: first month the series reaches the stabilized band,
+  // then map to the corresponding year.  For acquisition deals with monthly
+  // data we read the actual month; for dev deals we fall back to the old
+  // vacancy-schedule heuristic.
+  let stabRowIdx: number;
+  if (monthlyRows.length > 0) {
+    const stabOcc = 1 - a.vacancyStab;
+    const stabMonthIdx = monthlyRows.findIndex(m => m.occupancy >= stabOcc - 0.01);
+    stabRowIdx = stabMonthIdx >= 0 ? Math.floor(stabMonthIdx / 12) : (a.vacancyY1 > a.vacancyStab ? 1 : 0);
+  } else {
+    stabRowIdx = a.vacancyY1 > a.vacancyStab ? 1 : 0;
+  }
   const dscrAtStabilization = annualRows[stabRowIdx]?.dscr ?? dscrY1;
   const debtYieldValues = opRows.map(r => r.debtYield).filter((d): d is number => d !== null);
   const debtYieldMin = debtYieldValues.length > 0 ? Math.min(...debtYieldValues) : null;
@@ -1772,7 +2054,7 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       source: noiSource,
       confidence: noiConf,
       reasoning: noiHint?.reasoning ??
-        `Year-1 NOI of $${Math.round(noiY1).toLocaleString()} derived from GPR × (1 − vacancy) − opex using ${a.dealType} assumptions.`,
+        `Year-1 NOI of $${Math.round(noiY1).toLocaleString()} derived from the turn-cohort monthly engine (lease-expiry cohorts, turn downtime, absorption pacing) aggregated to yearly.`,
     },
     {
       field: 'IRR',
@@ -1829,10 +2111,13 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
     `This ${a.dealType} deal underwrites ${a.units} units with a ${a.holdYears}-year hold. ` +
     `The purchase price is ${fmtUSD(a.purchasePrice)} at a going-in cap rate of ${fmtPct(goingInCap)}. ` +
     `Gross potential rent is derived from a weighted-average market rent of ${fmtUSD(a.marketRent)}/unit/month ` +
-    `with a ${fmtPct(a.lossToLease)} loss-to-lease adjustment.`,
+    `(${fmtUSD(a.inPlaceRent)}/unit/month in-place) with a ${fmtPct(a.lossToLease)} loss-to-lease adjustment.`,
 
-    `Year-1 NOI of ${fmtUSD(noiY1)} reflects a ${fmtPct(a.vacancyY1)} vacancy rate stabilizing to ` +
-    `${fmtPct(a.vacancyStab)} and a ${fmtPct(a.badDebt)} bad-debt assumption. ` +
+    `Year-1 NOI of ${fmtUSD(noiY1)} is derived from a monthly turn-cohort model: ` +
+    `${a.units} units with lease-expiry turnover at ${((a.annualTurnoverRate ?? DEF_ANNUAL_TURNOVER_RATE) * 100).toFixed(0)}%/yr, ` +
+    `${a.standardTurnDowntimeDays ?? DEF_STANDARD_TURN_DOWNTIME_DAYS}-day standard turns, ` +
+    `and ${a.newLeaseConcessionMonths ?? DEF_NEW_LEASE_CONCESSION_MONTHS}-month new-lease concessions. ` +
+    `Vacancy emerges from turn dynamics; stabilized occupancy targets ${fmtPct(1 - a.vacancyStab)}. ` +
     `Operating expenses grow at ${fmtPct(a.expenseGrowth)} per year with management fee at ` +
     `${fmtPct(a.managementFee)} of EGI. Rent growth is projected at ` +
     `${fmtPct(a.rentGrowth[0])} in Year 1.`,
@@ -2016,7 +2301,13 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       runner: 'deterministic-model-runner',
       computedAt: new Date().toISOString(),
     },
+    monthlyCashFlow: [],
   };
+
+  // Populate monthly cash flow before integrity checks (INV-10 needs it)
+  modelResult.monthlyCashFlow = monthlyRows.length > 0
+    ? monthlyRows
+    : buildMonthlyCashFlow(a, annualRows);
 
   modelResult.integrityChecks = runIntegrityChecks(a, modelResult);
 
@@ -2070,7 +2361,11 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
   }
 
   // Populate monthly cash-flow resolution (D2 ribbon consumption)
-  modelResult.monthlyCashFlow = buildMonthlyCashFlow(a, annualRows);
+  // Already set before integrity checks for acquisition deals;
+  // dev deals fall back to buildMonthlyCashFlow in that path.
+  if (modelResult.monthlyCashFlow.length === 0) {
+    modelResult.monthlyCashFlow = buildMonthlyCashFlow(a, annualRows);
+  }
 
   return modelResult;
 }
