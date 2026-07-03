@@ -26,6 +26,7 @@ import type { ModelAssumptions, ModelResults, ModelVersion, DealType, F9DealFina
 import type { BroaderGoalSeekResult, SolveVariable, TargetMetric } from '../../components/F9/GoalSeekWidget';
 import { fmt$, fmtPct, fmtX } from './financial-engine/types';
 import { apiClient } from '../../services/api.client';
+import { buildFinancialModelIdempotencyKey } from '../../utils/idempotencyKey';
 import { useDealStore } from '../../stores/dealStore';
 import { opusProformaService, type CustomTabRow } from '../../services/opusProforma.service';
 import { usePeriodicField } from '../../hooks/usePeriodicField';
@@ -1002,10 +1003,15 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     setBuildError(null);
     try {
       // The build endpoint calls Claude and can take >30 s — override the global 30 s timeout.
+      // T8 (TOKEN_LEAK_REMEDIATION_TRANCHE1): stable Idempotency-Key so a
+      // double-click or re-render-triggered re-call for the same deal +
+      // assumptions hits the server's idempotency cache instead of
+      // re-running the LLM.
+      const idempotencyKey = buildFinancialModelIdempotencyKey(resolvedDealId, assumptions);
       const res = await apiClient.post(
         '/api/v1/financial-model/build',
         { dealId: resolvedDealId, assumptions },
-        { timeout: 120_000 },
+        { timeout: 120_000, headers: { 'Idempotency-Key': idempotencyKey } },
       );
       // Response envelope: { success: true, data: { summary, annualCashFlow, ... } }
       // or the API client may unwrap: { data: { summary, ... } }

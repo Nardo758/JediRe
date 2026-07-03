@@ -383,8 +383,25 @@ class AgentOrchestrator {
       messages,
     });
 
+    // T5 (TOKEN_LEAK_REMEDIATION_TRANCHE1): mirrors AgentRuntime's
+    // maxStepsPerRun bound. Prior to this fix, this tool-use loop had no
+    // iteration ceiling — a tool-calling model that never returns
+    // stop_reason !== 'tool_use' burns unbounded Anthropic spend per
+    // conversation turn. AGENT_ORCHESTRATOR_MAX_TOOL_ROUNDS defaults to the
+    // same 10-round ceiling AgentRuntime uses elsewhere.
+    const maxToolRounds = parseInt(process.env.AGENT_ORCHESTRATOR_MAX_TOOL_ROUNDS ?? '10', 10);
+    let toolRounds = 0;
+
     // Process tool calls
     while (response.stop_reason === 'tool_use') {
+      toolRounds += 1;
+      if (toolRounds > maxToolRounds) {
+        logger.error(
+          `AgentOrchestrator: agent "${agent.id}" exceeded maxToolRounds (${maxToolRounds}) ` +
+          `for conversationId=${conversationId} — halting tool-use loop`
+        );
+        break;
+      }
       const toolUseBlocks = response.content.filter(
         (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
       );

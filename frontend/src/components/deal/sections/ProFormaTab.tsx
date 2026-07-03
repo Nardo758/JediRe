@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Deal } from '@/types';
 import { apiClient } from '@/services/api.client';
+import { buildFinancialModelIdempotencyKey } from '@/utils/idempotencyKey';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import { useDealType } from '../../../stores/dealStore';
 import { getProFormaTemplate, PROFORMA_TEMPLATES } from '../../../shared/config/deal-type-visibility';
@@ -743,7 +744,16 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     setModelResults(null);
     try {
       const assumptions = buildAssumptionsPayload();
-      const res = await apiClient.post('/api/v1/financial-model/build', { dealId: id, assumptions });
+      // T8 (TOKEN_LEAK_REMEDIATION_TRANCHE1): stable Idempotency-Key so a
+      // double-click or effect-retriggered rebuild for the same deal +
+      // assumptions hits the server's idempotency cache instead of
+      // re-running the LLM.
+      const idempotencyKey = buildFinancialModelIdempotencyKey(id, assumptions);
+      const res = await apiClient.post(
+        '/api/v1/financial-model/build',
+        { dealId: id, assumptions },
+        { headers: { 'Idempotency-Key': idempotencyKey } },
+      );
       const data = (res as any)?.data;
       let results: ModelResults | null = null;
       if (data?.data) {

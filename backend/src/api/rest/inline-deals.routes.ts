@@ -1577,6 +1577,62 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
       const results: Record<string, unknown> = {};
       const errors: string[] = [];
 
+      // T4 (TOKEN_LEAK_REMEDIATION_TRANCHE1): circuit breaker. Without this,
+      // a provider outage/quota exhaustion on step 1 silently repeats the
+      // same failing call for steps 2-4 (4x the wasted spend/latency) with
+      // no visible signal that the provider itself is down. Halts remaining
+      // steps on (a) a 402/quota-exhaustion error from any step, or
+      // (b) 3 consecutive 5xx provider errors. No silent fallback — halted
+      // steps are recorded as explicit "SKIPPED (circuit breaker)" entries.
+      let pipelineHalted = false;
+      let haltReason = '';
+      let consecutive5xx = 0;
+
+      const classifyProviderError = (err: any): 'quota_exhausted' | 'server_error' | 'other' => {
+        const status = err?.status ?? err?.response?.status;
+        const msg = String(err?.message ?? '');
+        if (status === 402 || /daily ai spend cap|usage limit reached|credits remaining/i.test(msg)) {
+          return 'quota_exhausted';
+        }
+        if (typeof status === 'number' && status >= 500) return 'server_error';
+        return 'other';
+      };
+
+      /** Runs one pipeline step unless the circuit breaker has already tripped. */
+      const runStep = async (label: string, fn: () => Promise<unknown>): Promise<unknown> => {
+        if (pipelineHalted) {
+          logger.warn(`[Pipeline] Skipping ${label} for ${dealId} — circuit breaker tripped (${haltReason})`);
+          errors.push(`${label}: SKIPPED (circuit breaker: ${haltReason})`);
+          return undefined;
+        }
+        try {
+          logger.info(`[Pipeline] Starting ${label} for ${dealId}`);
+          const out = await fn();
+          logger.info(`[Pipeline] ${label} complete for ${dealId}`);
+          consecutive5xx = 0;
+          return out;
+        } catch (err: any) {
+          logger.error(`[Pipeline] ${label} failed for ${dealId}: ${err.message}`);
+          errors.push(`${label}: ${err.message}`);
+          const kind = classifyProviderError(err);
+          if (kind === 'quota_exhausted') {
+            pipelineHalted = true;
+            haltReason = `provider quota/spend cap exhausted at ${label}: ${err.message}`;
+            logger.error(`[Pipeline] Circuit breaker tripped for ${dealId}: ${haltReason}`);
+          } else if (kind === 'server_error') {
+            consecutive5xx += 1;
+            if (consecutive5xx >= 3) {
+              pipelineHalted = true;
+              haltReason = `3 consecutive provider 5xx errors (last at ${label}): ${err.message}`;
+              logger.error(`[Pipeline] Circuit breaker tripped for ${dealId}: ${haltReason}`);
+            }
+          } else {
+            consecutive5xx = 0;
+          }
+          return undefined;
+        }
+      };
+
       const ctxBase: import('../../agents/runtime/types').RunContext =
         { dealId, userId: req.user!.userId, triggeredBy: 'user' as const };
 
@@ -1653,45 +1709,17 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
       }
 
       // Step 1: Research agent — market context
-      try {
-        logger.info(`[Pipeline] Starting Research for ${dealId}`);
-        results.research = await researchRuntime.run(enrichedDealInput, ctxBase);
-        logger.info(`[Pipeline] Research complete for ${dealId}`);
-      } catch (err: any) {
-        logger.error(`[Pipeline] Research failed for ${dealId}: ${err.message}`);
-        errors.push(`Research: ${err.message}`);
-      }
+      results.research = await runStep('Research', () => researchRuntime.run(enrichedDealInput, ctxBase));
 
       // Step 2: Supply agent — supply pipeline
-      try {
-        logger.info(`[Pipeline] Starting Supply for ${dealId}`);
-        results.supply = await supplyRuntime.run(enrichedDealInput, ctxBase);
-        logger.info(`[Pipeline] Supply complete for ${dealId}`);
-      } catch (err: any) {
-        logger.error(`[Pipeline] Supply failed for ${dealId}: ${err.message}`);
-        errors.push(`Supply: ${err.message}`);
-      }
+      results.supply = await runStep('Supply', () => supplyRuntime.run(enrichedDealInput, ctxBase));
 
       // Step 3: CashFlow agent — pro forma + underwriting
-      try {
-        logger.info(`[Pipeline] Starting CashFlow for ${dealId}`);
-        const cashflowCtx = { ...ctxBase, scenarioTarget: 'create_new' as const };
-        results.cashflow = await cashflowRuntime.run(enrichedDealInput, cashflowCtx);
-        logger.info(`[Pipeline] CashFlow complete for ${dealId}`);
-      } catch (err: any) {
-        logger.error(`[Pipeline] CashFlow failed for ${dealId}: ${err.message}`);
-        errors.push(`CashFlow: ${err.message}`);
-      }
+      const cashflowCtx = { ...ctxBase, scenarioTarget: 'create_new' as const };
+      results.cashflow = await runStep('CashFlow', () => cashflowRuntime.run(enrichedDealInput, cashflowCtx));
 
       // Step 4: Commentary agent — narrative summary
-      try {
-        logger.info(`[Pipeline] Starting Commentary for ${dealId}`);
-        results.commentary = await commentaryRuntime.run(enrichedDealInput, ctxBase);
-        logger.info(`[Pipeline] Commentary complete for ${dealId}`);
-      } catch (err: any) {
-        logger.error(`[Pipeline] Commentary failed for ${dealId}: ${err.message}`);
-        errors.push(`Commentary: ${err.message}`);
-      }
+      results.commentary = await runStep('Commentary', () => commentaryRuntime.run(enrichedDealInput, ctxBase));
 
       // Mark pipeline run (use fresh pool connection — don't capture from outer scope)
       try {

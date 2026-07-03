@@ -538,7 +538,7 @@ router.post('/build', async (req: Request, res: Response) => {
 
       // Store the in-flight promise before awaiting so concurrent duplicates
       // attach to it rather than spawning independent LLM calls.
-      const promise: Promise<IdempPayload> = financialModelEngine.buildModel(dealId, normalized)
+      const promise: Promise<IdempPayload> = financialModelEngine.buildModel(dealId, normalized, (req as AuthenticatedRequest).user?.userId)
         .then(({ result, assumptionsHash }) => {
           const pl: IdempPayload = { data: result, assumptionsHash };
           _idempotencyCache.set(cacheKey, { payload: pl, ts: Date.now() });
@@ -550,11 +550,26 @@ router.post('/build', async (req: Request, res: Response) => {
       return res.json({ success: true, ...payload });
     }
 
-    const { result, assumptionsHash } = await financialModelEngine.buildModel(dealId, normalized);
+    const { result, assumptionsHash } = await financialModelEngine.buildModel(dealId, normalized, (req as AuthenticatedRequest).user?.userId);
     return res.json({ success: true, data: result, assumptionsHash });
   } catch (error: any) {
     console.error('Financial model build error:', error.message);
-    return res.status(500).json({ error: error.message || 'Failed to build financial model' });
+    // T7 (TOKEN_LEAK_REMEDIATION_TRANCHE1): propagate the real upstream
+    // status instead of hardcoding 500 for everything. Prior to this fix, a
+    // 402 (quota exhausted) or a provider outage looked identical to a
+    // generic internal error to the frontend/user — no way to tell "your
+    // AI budget ran out" from "the server crashed."
+    const upstreamStatus = error?.status ?? error?.response?.status;
+    const msg = String(error?.message ?? '');
+    let status = 500;
+    if (typeof upstreamStatus === 'number' && upstreamStatus >= 400 && upstreamStatus < 600) {
+      status = upstreamStatus;
+    } else if (/daily ai spend cap|usage limit reached|credits remaining/i.test(msg)) {
+      status = 402;
+    } else if (/no llm provider configured/i.test(msg)) {
+      status = 503;
+    }
+    return res.status(status).json({ error: error.message || 'Failed to build financial model' });
   }
 });
 

@@ -10,6 +10,7 @@ import { skillRegistry, SkillContext, SkillResult } from './skill-registry';
 import { logger } from '../../utils/logger';
 import { query } from '../../database/connection';
 import { meteringAdapter } from '../../agents/runtime/MeteringAdapter';
+import { resolveOrgForUser } from '../ai/orgCreditService';
 import type { MeteringMetadata } from '../../agents/runtime/types';
 
 // ============================================================================
@@ -109,13 +110,16 @@ export async function skillChat(request: ChatRequest): Promise<ChatResponse> {
     if (creditsRemaining <= 0) {
       // Log demand signal: blocked attempt
       try {
+        // T6 (TOKEN_LEAK_REMEDIATION_TRANCHE1): resolve org_id so even
+        // zero-cost demand-signal rows are attributable to an org.
+        const orgId = await resolveOrgForUser(userId);
         await query(
           `INSERT INTO ai_usage_log
-             (user_id, deal_id, agent_id, operation_type, surface,
+             (user_id, org_id, deal_id, agent_id, operation_type, surface,
               model, input_tokens, output_tokens, credits_consumed,
               cost_usd, billable_usd, latency_ms)
-           VALUES ($1,$2,$3,'skill_chat:blocked','skill_chat','none',0,0,0,0,0,0)`,
-          [userId, dealId, userId]
+           VALUES ($1,$2,$3,$4,'skill_chat:blocked','skill_chat','none',0,0,0,0,0,0)`,
+          [userId, orgId, dealId, userId]
         );
       } catch { /* best-effort demand log */ }
       return {
