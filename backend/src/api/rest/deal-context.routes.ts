@@ -2,14 +2,30 @@ import { Router, Request, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { JEDIScoreService } from '../../services/jedi-score.service';
+import { computeVintageDebtEstimate, type VintageDebtEstimate } from '../../services/debt-advisor/vintage-debt-estimator.service';
 import { bustM08Cache } from '../../services/m08-strategies.service';
 
 const router = Router();
 const jediService = new JEDIScoreService();
 
 /**
+ * loadDebtContext — assemble debt-distress flag group for DealContext.
+ * Non-blocking: if estimator fails, returns null so the context assembly
+ * continues without debt enrichment.
+ */
+async function loadDebtContext(dealId: string): Promise<VintageDebtEstimate | null> {
+  try {
+    const estimate = await computeVintageDebtEstimate(dealId);
+    return estimate;
+  } catch (err: any) {
+    logger.warn(`[DealContext] loadDebtContext failed for ${dealId}: ${err.message}`);
+    return null;
+  }
+}
+
+/**
  * GET /api/v1/deals/:dealId/context
- * 
+ *
  * Hydrate full DealContext from database.
  * Assembles data from deal_capsules + various agent caches.
  */
@@ -20,7 +36,7 @@ router.get('/:dealId/context', async (req: Request, res: Response) => {
 
     // Fetch base deal data
     const dealResult = await pool.query(`
-      SELECT 
+      SELECT
         id,
         name,
         address,
@@ -48,7 +64,6 @@ router.get('/:dealId/context', async (req: Request, res: Response) => {
     const dealData = deal.deal_data || {};
 
     // Determine mode: existing vs development vs redevelopment
-    // Note: redevelopment is preserved as a distinct value, not collapsed to 'existing'
     const modeValue = deal.project_type === 'development' ? 'development'
                      : deal.project_type === 'redevelopment' ? 'redevelopment'
                      : 'existing';
@@ -116,6 +131,9 @@ router.get('/:dealId/context', async (req: Request, res: Response) => {
       employmentGrowthPct: layered(0, 'platform', 0.5),
     };
 
+    // Load debt context (non-blocking enrichment)
+    const debtContext = await loadDebtContext(dealId);
+
     // Build context object
     const context = {
       identity,
@@ -156,6 +174,26 @@ router.get('/:dealId/context', async (req: Request, res: Response) => {
         debt: [],
         equity: [],
       },
+      debtContext: debtContext
+        ? {
+            hydrated: true,
+            computedAt: debtContext.computedAt,
+            rulesetVersion: debtContext.rulesetVersion,
+            dscrCurrent: typeof debtContext.dscrCurrent === 'number' ? debtContext.dscrCurrent : null,
+            dscrAtRefi: typeof debtContext.dscrAtRefi === 'number' ? debtContext.dscrAtRefi : null,
+            proceedsGap: typeof debtContext.proceedsGap === 'number' ? debtContext.proceedsGap : null,
+            estDebtService: typeof debtContext.estDebtService === 'number' ? debtContext.estDebtService : null,
+            flags: {
+              negativeDscr: debtContext.negativeDscr,
+              thinDscr: debtContext.thinDscr,
+              ioExpiryShock: debtContext.ioExpiryShock,
+              underwaterEquity: debtContext.underwaterEquity,
+              cashInRefi: debtContext.cashInRefi,
+              negativeLeverage: debtContext.negativeLeverage,
+            },
+            positionCount: debtContext.positions.length,
+          }
+        : { hydrated: false, computedAt: null, flags: null },
       strategy: dealData.strategy || {
         scores: [],
         selectedStrategy: layered('rental', 'platform', 0.5),
@@ -189,6 +227,7 @@ router.get('/:dealId/context', async (req: Request, res: Response) => {
         strategy: { hydrated: !!dealData.strategy, lastFetchedAt: new Date().toISOString(), source: dealData.strategy ? 'live' : 'mock' },
         scores: { hydrated: !!dealData.scores, lastFetchedAt: new Date().toISOString(), source: dealData.scores ? 'live' : 'mock' },
         risk: { hydrated: false, lastFetchedAt: null, source: 'mock' },
+        debtContext: { hydrated: !!debtContext, lastFetchedAt: debtContext ? debtContext.computedAt : null, source: debtContext ? 'live' : 'mock' },
       },
       stageHistory: dealData.stageHistory || [],
       projectType: deal.project_type || 'existing',
@@ -203,8 +242,57 @@ router.get('/:dealId/context', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/v1/deals/:dealId/debt-context
+ *
+ * Read-only endpoint returning computed distress flags + intermediates.
+ * Computes on-demand (no cache) so callers always get fresh FRED rates.
+ */
+router.get('/:dealId/debt-context', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const estimate = await computeVintageDebtEstimate(dealId);
+    res.json({
+      success: true,
+      data: {
+        dealId: estimate.dealId,
+        computedAt: estimate.computedAt,
+        rulesetVersion: estimate.rulesetVersion,
+        dscrCurrent: estimate.dscrCurrent,
+        dscrAtRefi: estimate.dscrAtRefi,
+        proceedsGap: estimate.proceedsGap,
+        estDebtService: estimate.estDebtService,
+        flags: {
+          negativeDscr: estimate.negativeDscr,
+          thinDscr: estimate.thinDscr,
+          ioExpiryShock: estimate.ioExpiryShock,
+          underwaterEquity: estimate.underwaterEquity,
+          cashInRefi: estimate.cashInRefi,
+          negativeLeverage: estimate.negativeLeverage,
+        },
+        positions: estimate.positions.map(p => ({
+          debtId: p.debtId,
+          loanName: p.loanName,
+          lenderType: p.lenderType,
+          vintageRate: p.vintageRate,
+          currentMarketRate: p.currentMarketRate,
+          spreadBps: p.spreadBps,
+          estAnnualDebtService: p.estAnnualDebtService,
+          estRefiDebtService: p.estRefiDebtService,
+          currentBalance: p.currentBalance,
+          ioPeriodMonths: p.ioPeriodMonths,
+          monthsToIoExpiry: p.monthsToIoExpiry,
+        })),
+      },
+    });
+  } catch (error: any) {
+    logger.error('[DebtContext] GET failed', { dealId: req.params.dealId, error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to compute debt context' });
+  }
+});
+
+/**
  * PATCH /api/v1/deals/:dealId/context
- * 
+ *
  * Persist user overrides and selected path changes.
  */
 router.patch('/:dealId/context', async (req: Request, res: Response) => {
@@ -216,7 +304,7 @@ router.patch('/:dealId/context', async (req: Request, res: Response) => {
     // Update deal_data JSONB field
     await pool.query(`
       UPDATE deals
-      SET 
+      SET
         deal_data = COALESCE(deal_data, '{}'::jsonb) || $1::jsonb,
         updated_at = NOW()
       WHERE id = $2
@@ -234,7 +322,7 @@ router.patch('/:dealId/context', async (req: Request, res: Response) => {
 
 /**
  * POST /api/v1/deals/:dealId/recompute
- * 
+ *
  * Trigger downstream recomputation after keystone changes.
  * Returns updated sections (financial, strategy, scores, risk).
  */
@@ -295,8 +383,6 @@ router.post('/:dealId/recompute', async (req: Request, res: Response) => {
       jediScores = deriveScoresFromFinancials(financial, vacancy, exitCapRate);
     }
 
-    // Strategy result: derived from financials (v1 scoreAndPersist removed in Task #1251 T7.1;
-    // full v2 analysis available via GET /api/v1/deals/:dealId/strategies separately)
     const strategyResult = deriveStrategyFromFinancials(financial, vacancy, exitCapRate);
 
     const riskLevel = vacancy > 0.10 ? 'high'
