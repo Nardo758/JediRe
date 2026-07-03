@@ -30,7 +30,7 @@ export interface PeriodLayeredValue {
   resolved: number | null;
 
   /** How this value was determined at this period. */
-  resolution: 'actual' | 'derived_gap' | 'assumption_trend' | 'platform_default' | 'operator_override' | 'agent' | 'computed' | 'unresolved' | 'year1_accrual';
+  resolution: 'actual' | 'derived_gap' | 'derived_projection' | 'assumption_trend' | 'platform_default' | 'operator_override' | 'agent' | 'computed' | 'unresolved' | 'year1_accrual';
 
   /** Source tag for provenance tracking. */
   source: string | null;
@@ -99,6 +99,19 @@ export interface ProFormaPeriodicSeed {
     warnings: string[];
     fields_seeded: number;
     resolved_noi: number | null;
+    /**
+     * W-B Phase 2: resolved months_to_stabilization with full provenance
+     * (user > agent > traffic_engine > platform_default). Set whenever
+     * deriveProjectionForSeed is called with a stabilization target.
+     */
+    stabilization?: {
+      user: number | null;
+      agent: number | null;
+      traffic_engine: number | null;
+      platform_default: number;
+      resolved: number;
+      resolution: 'user' | 'agent' | 'traffic_engine' | 'platform_default';
+    };
   };
 }
 

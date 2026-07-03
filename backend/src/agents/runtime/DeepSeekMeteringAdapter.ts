@@ -21,6 +21,7 @@
 import axios, { AxiosError } from 'axios';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import { resolveOrgForUser } from '../../services/ai/orgCreditService';
 import type { MeteringMetadata } from './types';
 
 const DEEPSEEK_BASE_URL =
@@ -53,6 +54,36 @@ export function estimateDeepSeekCost(
     (cachedInputTokens / 1_000_000) * rates.cachedInput +
     (outputTokens / 1_000_000) * rates.output
   );
+}
+
+/**
+ * Standalone daily-spend-cap check, extracted so any DeepSeek call site
+ * (not just this class's own createMessage) can enforce the same cap
+ * before making a raw API call. Mirrors DeepSeekMeteringAdapter.checkDailySpendCap.
+ */
+export async function checkDeepSeekDailySpendCap(): Promise<void> {
+  const capUsd = parseFloat(process.env.DEEPSEEK_DAILY_SPEND_CAP_USD ?? '20');
+  if (isNaN(capUsd) || capUsd <= 0) return;
+
+  try {
+    const result = await query(
+      `SELECT COALESCE(SUM(cost_usd), 0)::float AS today_spend
+       FROM ai_usage_log
+       WHERE created_at >= CURRENT_DATE
+         AND model LIKE 'deepseek-%'`
+    );
+    const spent: number = result.rows[0]?.today_spend ?? 0;
+    if (spent >= capUsd) {
+      throw new Error(
+        `Daily AI spend cap reached ($${spent.toFixed(2)} of $${capUsd} limit). ` +
+        `No further DeepSeek calls until UTC midnight. ` +
+        `Raise DEEPSEEK_DAILY_SPEND_CAP_USD to increase the limit.`
+      );
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('Daily AI spend cap')) throw err;
+    logger.warn('checkDeepSeekDailySpendCap: spend-cap check failed, proceeding anyway', { err });
+  }
 }
 
 /** Conservative pre-flight: 4k in + 4k out worst case at full input price. */
@@ -154,28 +185,7 @@ export class DeepSeekMeteringAdapter {
    * first call that would breach the cap is blocked, not just the ones after.
    */
   private async checkDailySpendCap(): Promise<void> {
-    const capUsd = parseFloat(process.env.DEEPSEEK_DAILY_SPEND_CAP_USD ?? '20');
-    if (isNaN(capUsd) || capUsd <= 0) return;
-
-    try {
-      const result = await query(
-        `SELECT COALESCE(SUM(cost_usd), 0)::float AS today_spend
-         FROM ai_usage_log
-         WHERE created_at >= CURRENT_DATE
-           AND model LIKE 'deepseek-%'`
-      );
-      const spent: number = result.rows[0]?.today_spend ?? 0;
-      if (spent >= capUsd) {
-        throw new Error(
-          `Daily AI spend cap reached ($${spent.toFixed(2)} of $${capUsd} limit). ` +
-          `No further DeepSeek calls until UTC midnight. ` +
-          `Raise DEEPSEEK_DAILY_SPEND_CAP_USD to increase the limit.`
-        );
-      }
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('Daily AI spend cap')) throw err;
-      logger.warn('DeepSeekMeteringAdapter: spend-cap check failed, proceeding anyway', { err });
-    }
+    return checkDeepSeekDailySpendCap();
   }
 
   async createMessage(req: DeepSeekRequest): Promise<DeepSeekResponse> {
@@ -287,11 +297,17 @@ export class DeepSeekMeteringAdapter {
       cachedIn
     );
 
+    // T6 (TOKEN_LEAK_REMEDIATION_TRANCHE1): resolve org_id via the canonical
+    // resolveOrgForUser() helper before settlement so the ai_usage_log row
+    // carries per-org attribution (mirrors MeteringAdapter's Anthropic path).
+    const resolvedOrgId = metadata.user_id ? await resolveOrgForUser(metadata.user_id) : null;
+
     await this.settle(
       metadata,
       raw.usage,
       actualCost,
-      apiParams.model
+      apiParams.model,
+      resolvedOrgId
     );
 
     const msg = (raw.choices?.[0]?.message ?? {}) as { tool_calls?: any[]; content?: string };
@@ -337,9 +353,10 @@ export class DeepSeekMeteringAdapter {
       prompt_cache_hit_tokens?: number;
     },
     actualCost: number,
-    model: string
+    model: string,
+    orgId: string | null = null
   ): Promise<void> {
-    await this.logUsage(metadata, usage, actualCost, model);
+    await this.logUsage(metadata, usage, actualCost, model, orgId);
 
     await this.reportStripeUsage(metadata, usage, model);
     await this.reportStripeCost(metadata, actualCost);
@@ -449,18 +466,20 @@ export class DeepSeekMeteringAdapter {
       prompt_cache_hit_tokens?: number;
     },
     costUsd: number,
-    model: string
+    model: string,
+    orgId: string | null = null
   ): Promise<void> {
     try {
       await query(
         `INSERT INTO ai_usage_log (
-           user_id, deal_id, agent_id, operation_type, surface,
+           user_id, org_id, deal_id, agent_id, operation_type, surface,
            model, input_tokens, output_tokens, cache_read_tokens,
            credits_consumed, cost_usd, billable_usd, latency_ms
-         ) VALUES ($1,$2,$3,$4,'agent',$5,$6,$7,$8,$9,$10,$11,0)
+         ) VALUES ($1,$2,$3,$4,$5,'agent',$6,$7,$8,$9,$10,$11,$12,0)
          ON CONFLICT DO NOTHING`,
         [
           (metadata.user_id && metadata.user_id.trim() !== '') ? metadata.user_id : null,
+          orgId,
           metadata.deal_id ?? null,
           metadata.actor_id,
           `agent_run:${metadata.agent_run_id ?? 'unknown'}`,

@@ -14,6 +14,16 @@ import { resolveAssumptionBatch, type ModuleValueInput } from './module-wiring/c
 import { ASSUMPTION_MODULE_MAPPINGS, type AssumptionField } from './module-wiring/assumption-module-mapping.config';
 import { ASSUMPTION_EXTRACTORS, type ModuleDataSources } from './module-wiring/d-mod-extractors';
 import type { ProFormaYear1Seed } from './document-extraction/types';
+import { estimateDeepSeekCost, checkDeepSeekDailySpendCap } from '../agents/runtime/DeepSeekMeteringAdapter';
+import { resolveOrgForUser } from './ai/orgCreditService';
+
+// ── T1 (TOKEN_LEAK_REMEDIATION_TRANCHE1): F9 build-path cost table for
+// non-DeepSeek fallback providers. Approximate published rates (USD per 1M
+// tokens); refined cost modeling for these fallback paths is out of scope
+// for this mechanical remediation — DeepSeek is the primary/expected path.
+const F9_FALLBACK_COST_PER_MTK: Record<string, { input: number; output: number }> = {
+  'gpt-4o': { input: 2.50, output: 10.00 },
+};
 
 /**
  * selectLLMClient — provider-selection strategy for the financial-model build path.
@@ -488,7 +498,7 @@ export function hashAssumptions(obj: object): string {
 }
 
 export class FinancialModelEngineService {
-  async buildModel(dealId: string, assumptions: ProFormaAssumptions): Promise<{ result: FinancialModelResult; assumptionsHash: string }> {
+  async buildModel(dealId: string, assumptions: ProFormaAssumptions, userId?: string | null): Promise<{ result: FinancialModelResult; assumptionsHash: string }> {
     const pool = getPool();
 
     // Snapshot the hash BEFORE any mutation (fill-in pass, M26/M27 enhancement).
@@ -1535,7 +1545,7 @@ export class FinancialModelEngineService {
     const modelId = insertResult.rows[0].id;
 
     try {
-      const result = await this.callLLMForModel(enhancedAssumptions as any);
+      const result = await this.callLLMForModel(enhancedAssumptions as any, dealId, userId);
 
       // ── Phase 5: Server-side integrity verification (F9 wiring spec W1/W2) ──
       // Translate the ProFormaAssumptions envelope to the deterministic runner's
@@ -2049,9 +2059,76 @@ export class FinancialModelEngineService {
     };
   }
 
-  private async callLLMForModel(assumptions: ProFormaAssumptions): Promise<FinancialModelResult> {
+  /**
+   * T1 (TOKEN_LEAK_REMEDIATION_TRANCHE1): mechanical metering wrapper for the
+   * F9 build LLM call. Prior to this fix, `callLLMForModel` called the raw
+   * OpenAI/DeepSeek client with zero ai_usage_log instrumentation — every F9
+   * build was an invisible, unmetered spend. This writes the same
+   * ai_usage_log row shape as DeepSeekMeteringAdapter.logUsage (surface
+   * tagged 'f9_build' so it's distinguishable from agent-pipeline 'agent'
+   * rows), resolves org_id via the canonical resolveOrgForUser() helper
+   * (T6), and enforces the existing DeepSeek daily spend cap (does not
+   * introduce a new cap — reuses the T2/pre-existing one).
+   */
+  private async logF9BuildUsage(params: {
+    dealId: string;
+    userId?: string | null;
+    model: string;
+    providerName: string;
+    inputTokens: number;
+    outputTokens: number;
+  }): Promise<number> {
+    const { dealId, userId, model, providerName, inputTokens, outputTokens } = params;
+    const costUsd = providerName === 'deepseek' || providerName === 'ai-integrations-deepseek-compat'
+      ? estimateDeepSeekCost(model, inputTokens, outputTokens, 0)
+      : (() => {
+          const rates = F9_FALLBACK_COST_PER_MTK[model] ?? F9_FALLBACK_COST_PER_MTK['gpt-4o'];
+          return (inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output;
+        })();
+
+    try {
+      const orgId = userId ? await resolveOrgForUser(userId) : null;
+      const pool = getPool();
+      await pool.query(
+        `INSERT INTO ai_usage_log (
+           user_id, org_id, deal_id, agent_id, operation_type, surface,
+           model, input_tokens, output_tokens, credits_consumed, cost_usd, billable_usd, latency_ms
+         ) VALUES ($1,$2,$3,$4,$5,'f9_build',$6,$7,$8,0,$9,0,0)`,
+        [
+          userId && userId.trim() !== '' ? userId : null,
+          orgId,
+          dealId,
+          'financial-model-engine',
+          `financial_model_build:${providerName}`,
+          model,
+          inputTokens,
+          outputTokens,
+          costUsd,
+        ]
+      );
+      logger.info(
+        `[Financial-Model] Metered F9 build: provider=${providerName} model=${model} ` +
+        `inTok=${inputTokens} outTok=${outputTokens} cost=$${costUsd.toFixed(6)} orgId=${orgId ?? 'none'}`
+      );
+    } catch (err) {
+      logger.warn('[Financial-Model] Failed to write ai_usage_log for F9 build', { err });
+    }
+    return costUsd;
+  }
+
+  private async callLLMForModel(
+    assumptions: ProFormaAssumptions,
+    dealId: string,
+    userId?: string | null,
+  ): Promise<FinancialModelResult> {
     const { client, model, providerName } = selectLLMClient();
     logger.info(`[Financial-Model] Using provider=${providerName} model=${model} for deal build`);
+
+    // T1/T2: enforce the same DeepSeek daily spend cap that agent-pipeline
+    // calls already respect, before spending on an unbounded F9 build call.
+    if (providerName === 'deepseek' || providerName === 'ai-integrations-deepseek-compat') {
+      await checkDeepSeekDailySpendCap();
+    }
 
     const systemPrompt = this.buildSystemPrompt(assumptions.modelType);
     const userPrompt = this.buildUserPrompt(assumptions);
@@ -2064,6 +2141,15 @@ export class FinancialModelEngineService {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
+    });
+
+    await this.logF9BuildUsage({
+      dealId,
+      userId,
+      model,
+      providerName,
+      inputTokens: response.usage?.prompt_tokens ?? 0,
+      outputTokens: response.usage?.completion_tokens ?? 0,
     });
 
     const text = response.choices?.[0]?.message?.content || '';

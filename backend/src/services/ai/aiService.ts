@@ -17,6 +17,7 @@ import type {
 import { modelPreferenceService, getModelFamily, getSurfaceDefault } from './modelPreferenceService';
 import { estimateCost } from '../../agents/runtime/MeteringAdapter';
 import { calculateBillable } from './creditService';
+import { resolveOrgForUser } from './orgCreditService';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -684,15 +685,23 @@ export class JediAIService {
     latencyMs: number
   ): Promise<void> {
     try {
+      // T6 (TOKEN_LEAK_REMEDIATION_TRANCHE1): resolve org_id via the
+      // canonical resolveOrgForUser() helper (same one MeteringAdapter's
+      // Anthropic path uses) so this write site — the user-facing "flat
+      // credits per operation" surface, likely the highest-volume writer —
+      // is attributed to an org, not left null.
+      const orgId = context.userId ? await resolveOrgForUser(context.userId) : null;
+
       await query(
         `INSERT INTO ai_usage_log (
-          user_id, stripe_customer_id, deal_id,
+          user_id, org_id, stripe_customer_id, deal_id,
           agent_id, operation_type, surface, platform,
           model, input_tokens, output_tokens, cache_read_tokens,
           credits_consumed, cost_usd, billable_usd, latency_ms
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
         [
           context.userId,
+          orgId,
           context.stripeCustomerId,
           context.dealId || null,
           context.agentId,

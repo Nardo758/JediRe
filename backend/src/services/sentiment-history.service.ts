@@ -718,10 +718,24 @@ async function fetchTopDriverNews(ids: string[]): Promise<SentimentTopNews[]> {
  *   - The `written` counter only ticks when recordSentimentSnapshot returns
  *     ok=true, so failures are never silently treated as successes.
  */
+/** Hard cap: never process more than this many entities in one nightly run.
+ *  Matches nightly-event-extraction's MAX_ARTICLES_PER_RUN=50 pattern per
+ *  dispatch T9 (TOKEN_LEAK_REMEDIATION_TRANCHE1).
+ *  Note: as of this fix, this loop does NOT call any LLM —
+ *  recordSentimentSnapshot only reads already-cached commentary + DB
+ *  aggregates, so there is no per-item token spend here today. The cap is
+ *  applied anyway for parity with the event-extraction cron's guardrail
+ *  pattern, and to bound DB/knowledge-graph write volume if a future change
+ *  (e.g. live re-scoring) adds an LLM call inside this loop. Overflow
+ *  entities remain eligible for the next night's run. */
+const MAX_ENTITIES_PER_RUN = 50;
+
 export async function snapshotAllActiveEntities(): Promise<{
   written: number;
   failed: number;
   byType: { msa: number; submarket: number; property: number };
+  capped?: boolean;
+  totalEligible?: number;
 }> {
   let written = 0;
   let failed = 0;
@@ -737,7 +751,17 @@ export async function snapshotAllActiveEntities(): Promise<{
         ORDER BY entity_type, entity_id, generated_at DESC`,
     );
 
-    for (const row of r.rows) {
+    const totalEligible = r.rows.length;
+    const capped = totalEligible > MAX_ENTITIES_PER_RUN;
+    const rows = capped ? r.rows.slice(0, MAX_ENTITIES_PER_RUN) : r.rows;
+    if (capped) {
+      logger.warn('[sentiment-history] nightly snapshot run capped', {
+        totalEligible,
+        cap: MAX_ENTITIES_PER_RUN,
+      });
+    }
+
+    for (const row of rows) {
       const entityType = String(row.entity_type) as SentimentEntityType;
       const entityId = String(row.entity_id);
 

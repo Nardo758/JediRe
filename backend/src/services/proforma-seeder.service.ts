@@ -11,6 +11,7 @@ import {
   reconcileCustomMetric,
 } from './custom-metrics/derivation.service';
 import { deriveProjectionForSeed } from './proforma/gap-bridge.service';
+import { resolveMonthsToStabilization, fetchTrafficEngineMonthsToStabilization } from './proforma/stabilization.service';
 import { logger } from '../utils/logger';
 import { resolvePriorityChain } from '../utils/field-priority-miss';
 import { computeLeaseRollVelocityFromDates } from './proforma/ltl-trajectory';
@@ -1398,10 +1399,15 @@ export async function seedProFormaYear1(
     const bpRaw = bcObj?.proforma;
     const bpProforma = bpRaw && typeof bpRaw === 'object' ? bpRaw as Record<string, unknown> : null;
 
-    // Phase 1 — Boundary Facts: build boundary context from deal fields
+    // Phase 1 — Boundary Facts: build boundary context from deal fields.
+    // analysis_date is persisted, not recomputed: reuse the prior seed's value
+    // if one exists so gap/projection boundaries stay stable across reseeds
+    // (determinism requirement — W-A gap zone dispatch). Only defaults to
+    // "today" on the deal's first-ever seed under this scheme.
     const boundary = buildBoundaryContext(
       deal.actuals_through_month as string | null,
       deal.acquisition_date as string | null,
+      oldPeriodicSeed?.boundary?.analysis_date ?? null,
     );
 
     const seed = buildSeed(totalUnits, platform, t12Capsule, rrCapsule, taxBillCapsule, omCapsule, existingSeed, bpProforma, boundary);
@@ -1488,8 +1494,48 @@ export async function seedProFormaYear1(
     // buildPeriodicSeed fills projection periods with year1 annual values as placeholders.
     // When we have real actuals (T12 or portfolio), immediately re-derive projections from
     // the last actual so all periods are in consistent monthly scale before Part 1/2 comparison.
+    //
+    // W-B Phase 2: resolve months_to_stabilization (user > agent > traffic_engine >
+    // platform_default) before deriving projections, so the noi field ramps toward
+    // the stabilized level instead of pure compound-trending off a lease-up-era baseline.
+    // ONE named seam: fetchTrafficEngineMonthsToStabilization reads whatever
+    // pushTrafficToProForma already persisted — never invokes traffic computation here.
     if (periodicSeed && effectiveT12Months.length > 0) {
-      periodicSeed = deriveProjectionForSeed(periodicSeed);
+      const trafficEngineValue = await fetchTrafficEngineMonthsToStabilization(dealId);
+      const stabilizationLV = resolveMonthsToStabilization({
+        userOverride: null, // no UI seam exists yet in v1
+        agentValue: null,   // no agent tool writes this yet in v1
+        trafficEngineValue,
+      });
+      // IMPORTANT: the ramp target must be the LIVE year1 NOI, not the
+      // freshly-recomputed `seed.noi.resolved` from buildSeed(). For a deal
+      // whose `noi` field already exists in DB, the persist step below only
+      // merges EXTRACTION_SUBKEYS (t12/om/rent_roll/platform/etc.) into
+      // existing fields — `resolved`/`resolution` are deliberately preserved
+      // from the DB row (see EXTRACTION_SUBKEYS comment above) so a reseed
+      // never silently overwrites an operator/agent-influenced resolution.
+      // That means `seed.noi.resolved` (buildSeed's in-memory recomputation)
+      // is a phantom value that is NEVER actually persisted for existing
+      // deals — using it as the ramp target silently rams toward a number
+      // the live deal_assumptions.year1.noi will never itself hold.
+      // Correct read: prefer the LIVE value already in `existingSeed` (what
+      // will remain true after this reseed's DB write); only fall back to
+      // `seed.noi.resolved` for a deal's very first seed, when `noi` does
+      // not yet exist in year1 and buildSeed's fresh computation IS what
+      // gets persisted (new-field branch of the merge).
+      const liveYear1Noi = (existingSeed as Record<string, unknown> | null)?.noi as
+        | { resolved?: number | null }
+        | undefined;
+      const rampTargetNoi = liveYear1Noi?.resolved ?? seed.noi?.resolved ?? null;
+      periodicSeed._meta = {
+        ...(periodicSeed._meta ?? { warnings: [], fields_seeded: 0, resolved_noi: null }),
+        resolved_noi: rampTargetNoi ?? periodicSeed._meta?.resolved_noi ?? null,
+        stabilization: stabilizationLV,
+      } as any;
+      periodicSeed = deriveProjectionForSeed(periodicSeed, undefined, {
+        monthsToStabilization: stabilizationLV.resolved,
+        resolution: stabilizationLV.resolution,
+      });
     }
 
     // ═══════════════════════════════════════════════════════════════════════

@@ -64,6 +64,13 @@ export interface TrafficHandoff {
   rentTrajectory: RentTrajectoryPoint[];
   leasingVelocity: { weeklyLeases: number; annualized: number; confidence: number };
   leaseUpTimeline: { weeksTo95: number; weeksTo93: number; weeksTo90: number } | null;
+  /**
+   * Months from analysis date to stabilization, derived from leaseUpTimeline.weeksTo95
+   * (weeks ÷ 4.345, ceil). null when leaseUpTimeline is null — self-signals an
+   * already-stabilized property, which causes the seeder's traffic_engine layer to
+   * abstain (fall through to the next precedence layer). W-B Phase 2 (A2).
+   */
+  monthsToStabilization: number | null;
   dataWeeks: number;
   lastCalibrated: string;
   modelConfidence: number;
@@ -409,6 +416,12 @@ export class TrafficToProFormaService {
         }
       : null;
 
+    // W-B Phase 2 (A2): typed conversion lives on the traffic layer, not the seeder.
+    // weeksTo95 ÷ 4.345 (avg weeks/month) → months_to_stabilization, rounded up.
+    const monthsToStabilization = leaseUpTimeline != null
+      ? Math.ceil(leaseUpTimeline.weeksTo95 / 4.345)
+      : null;
+
     return {
       rawTraffic,
       occupancyTrajectory: occTrajectory,
@@ -419,6 +432,7 @@ export class TrafficToProFormaService {
         confidence: rawTraffic[0]?.confidence || 60,
       },
       leaseUpTimeline,
+      monthsToStabilization,
       dataWeeks,
       lastCalibrated: new Date().toISOString().slice(0, 10),
       modelConfidence: rawTraffic[0]?.confidence || 60,
@@ -706,6 +720,7 @@ export class TrafficToProFormaService {
            rent_growth_current = $3,
            absorption_current = $4,
            exit_cap_current = $5,
+           months_to_stabilization = $6,
            last_recalculation = NOW(),
            updated_at = NOW()
          WHERE deal_id = $1`,
@@ -721,6 +736,9 @@ export class TrafficToProFormaService {
           rentGrowth?.platform.values[0] ?? 2.8,
           absorption?.platform.values[0] ?? 130,
           exitCap?.platform.values[4] ?? 5.5,
+          // W-B Phase 2 (A2): null when leaseUpTimeline is null (already stabilized) —
+          // clears any stale value from a prior lease-up-era push.
+          handoff.monthsToStabilization,
         ]
       );
 
