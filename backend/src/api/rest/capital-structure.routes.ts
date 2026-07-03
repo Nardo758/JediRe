@@ -20,7 +20,7 @@ import {
 } from '../../services/capital-structure.service';
 import { fetchLiveRates, fetchRateHistory } from '../../services/rate-index.service';
 import { logger } from '../../utils/logger';
-import { getPool } from '../../database/connection';
+import { financialModelEngine } from '../../services/financial-model-engine.service';
 
 const upload = multer({
   dest: path.join(process.cwd(), 'uploads', 'rate-sheets'),
@@ -479,29 +479,43 @@ router.post('/optimal-strategy', async (req: Request, res: Response) => {
 // Deal Capital Structure Lookup (persisted deal_data)
 // ============================================================================
 
-/** GET /capital-structure/:dealId - Return capital layers stored in deal_data */
+/** GET /capital-structure/:dealId - Return capital layers from built model (Engine C) */
 router.get('/:dealId', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
-    const pool = getPool();
 
-    const result = await pool.query(
-      `SELECT deal_data FROM deals WHERE id = $1`,
-      [dealId],
-    );
+    // ── R3: Rewired from raw deals.deal_data to deal_financial_models ──────
+    const modelEnvelope = await financialModelEngine.getLatestModel(dealId);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Deal not found' });
+    if (!modelEnvelope) {
+      return res.json({
+        dealId,
+        modelNotBuilt: true,
+        layers: [],
+        summary: {
+          purchasePrice: 0,
+          loanAmount: 0,
+          equityAmount: 0,
+          mezzAmount: null,
+          ltv: 0,
+          interestRate: 0,
+          noi: 0,
+          dscr: null,
+        },
+      });
     }
 
-    const row = result.rows[0];
-    const dealData = row.deal_data || {};
+    const { assumptions, results } = modelEnvelope;
+    const acq = (assumptions as any)?.acquisition || {};
+    const fin = (assumptions as any)?.financing || {};
+    const summary = results?.summary || {};
+    const debtMetrics = results?.debtMetrics || {};
 
-    const purchasePrice: number = parseFloat(dealData.purchase_price ?? dealData.asking_price) || 0;
-    const loanAmount: number = parseFloat(dealData.loan_amount) || 0;
-    const ltv: number = parseFloat(dealData.loan_to_value ?? dealData.ltv) || 0;
-    const interestRate: number = parseFloat(dealData.interest_rate) || 0;
-    const noi: number = parseFloat(dealData.noi) || 0;
+    const purchasePrice: number = summary.purchasePrice || acq.purchasePrice || 0;
+    const loanAmount: number = summary.totalDebt || fin.loanAmount || 0;
+    const ltv: number = debtMetrics.ltv || (purchasePrice > 0 ? loanAmount / purchasePrice : 0);
+    const interestRate: number = fin.interestRate || 0;
+    const noi: number = summary.noiYear1 || results?.annualCashFlow?.[0]?.noi || 0;
     const equityAmount = Math.max(0, purchasePrice - loanAmount);
 
     const layers: any[] = [];
@@ -514,14 +528,13 @@ router.get('/:dealId', async (req: Request, res: Response) => {
         amount: loanAmount.toString(),
         rate: interestRate > 0 ? interestRate.toString() : '—',
         ltv: ltv > 0 ? `${(ltv * 100).toFixed(1)}%` : '—',
-        term: dealData.loanTerm || '5yr',
+        term: `${fin.term || 5}yr`,
       });
     }
 
+    // Mezzanine is not computed by the F9 engine; read from assumptions if present.
     const mezzAmount: number =
-      parseFloat(dealData?.capitalStack?.mezz) ||
-      parseFloat(dealData?.financing?.mezzanine) ||
-      0;
+      parseFloat((fin as any)?.mezzanine || (fin as any)?.mezz || 0) || 0;
 
     if (mezzAmount > 0) {
       layers.push({
@@ -529,8 +542,8 @@ router.get('/:dealId', async (req: Request, res: Response) => {
         name: 'Mezzanine',
         layerType: 'mezz',
         amount: mezzAmount.toString(),
-        rate: dealData?.capitalStack?.mezzRate || dealData?.financing?.mezzRate || '—',
-        term: dealData?.capitalStack?.mezzTerm || '3yr',
+        rate: (fin as any)?.mezzRate || '—',
+        term: (fin as any)?.mezzTerm || '3yr',
       });
     }
 
