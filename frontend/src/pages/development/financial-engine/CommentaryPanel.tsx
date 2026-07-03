@@ -70,7 +70,7 @@ export function CommentaryPanel({ dealId, dealName }: CommentaryPanelProps) {
       marginTop: 12,
       border: '1px solid #1e293b',
       borderRadius: 4,
-      background: '#0a0a0a',
+      background: BT.bg.panel,
       overflow: 'hidden',
     }}>
       <button

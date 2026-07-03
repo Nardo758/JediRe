@@ -1215,7 +1215,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               style={{
                 fontFamily: MONO, fontSize: 8, fontWeight: 700,
                 color: _stabYearIsOverride ? '#a78bfa' : '#34d399',
-                background: _stabYearIsOverride ? '#0f0a1c' : '#031309',
+                background: _stabYearIsOverride ? '#1a1530' : '#0a2015',
                 border: `1px solid ${_stabYearIsOverride ? '#4c1d9544' : '#065f4644'}`,
                 padding: '2px 6px', borderRadius: 2, letterSpacing: '0.06em', cursor: 'default',
               }}
@@ -2099,7 +2099,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                   {showAncillary && hasBreakdown && !showOtherIncomePatternB && (
                     <>
                       {/* Section header */}
-                      <tr style={{ background: '#030e14' }}>
+                      <tr style={{ background: '#0a1f2a' }}>
                         <td colSpan={tableColCount} style={{ padding: '3px 8px 3px 20px', borderBottom: '1px solid #0a2030' }}>
                           <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#06b6d4', letterSpacing: '0.08em' }}>
                             ANCILLARY INCOME BREAKDOWN
@@ -2288,7 +2288,7 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                       })()}
 
                       {/* User-line CRUD — panel with hideCategoryTable so categories aren't duplicated */}
-                      <tr style={{ background: '#030d16' }}>
+                      <tr style={{ background: '#0a1c2c' }}>
                         <td colSpan={tableColCount} style={{ padding: 0, borderBottom: '1px solid #0e2030' }}>
                           <AncillaryExpansionPanel
                             totalUnits={totalUnits}
@@ -2773,8 +2773,8 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
             {/* ── NOI AFTER RESERVES ────────────────────────────────────────── */}
             {noiAfterReserves != null && !isFlipTemplate && !isLandHoldTemplate && (
-              <tr style={{ background: '#031a1a', borderTop: '1px solid #0e4040', borderBottom: '2px solid #0e4040' }}>
-                <td style={{ padding: '6px 8px', fontWeight: 700, color: '#67e8f9', fontFamily: LABEL, fontSize: 9, letterSpacing: '0.05em', position: 'sticky', left: 0, background: '#031a1a' }}>
+              <tr style={{ background: '#0a2828', borderTop: '1px solid #0e4040', borderBottom: '2px solid #0e4040' }}>
+                <td style={{ padding: '6px 8px', fontWeight: 700, color: '#67e8f9', fontFamily: LABEL, fontSize: 9, letterSpacing: '0.05em', position: 'sticky', left: 0, background: '#0a2828' }}>
                   ═══ NOI AFTER RESERVES ═══
                 </td>
                 <td style={{ padding: '6px 8px', textAlign: 'right', color: viewMode === 'BROKER_VIEW' ? '#fcd34d' : '#67e8f9', fontSize: 9, fontWeight: viewMode === 'BROKER_VIEW' ? 700 : 400 }}>

@@ -21,6 +21,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { BT } from '../../../components/deal/bloomberg-ui';
 
 const MONO = "'JetBrains Mono','Fira Code',monospace";
 
@@ -196,7 +197,7 @@ export function MonthlyScheduleGrid({
       style={{
         overflowX: 'auto',
         overflowY: 'hidden',
-        background: '#0a0a0a',
+        background: BT.bg.terminal,
         borderTop: '1px solid #1e1e1e',
       }}
     >
@@ -218,7 +219,7 @@ export function MonthlyScheduleGrid({
             <th
               style={{
                 position: 'sticky', left: 0, zIndex: 3,
-                background: '#0a0a0a', width: LABEL_W,
+                background: BT.bg.header, width: LABEL_W,
                 borderBottom: '1px solid #1e1e1e', borderRight: '1px solid #1e1e1e',
                 fontFamily: MONO, fontSize: 7, color: '#334155',
                 textAlign: 'left', paddingLeft: 10,
@@ -268,7 +269,7 @@ export function MonthlyScheduleGrid({
                 <th
                   key={m}
                   style={{
-                    background: '#0a0a0a',
+                    background: BT.bg.header,
                     borderRight: '1px solid #1a1a1a',
                     borderBottom: '1px solid #1e1e1e',
                     fontFamily: MONO, fontSize: 7,
@@ -291,7 +292,7 @@ export function MonthlyScheduleGrid({
               <td
                 style={{
                   position: 'sticky', left: 0, zIndex: 2,
-                  background: '#0a0a0a',
+                  background: BT.bg.panel,
                   borderRight: '1px solid #1e1e1e',
                   borderBottom: '1px solid #141414',
                   fontFamily: MONO, fontSize: 9,

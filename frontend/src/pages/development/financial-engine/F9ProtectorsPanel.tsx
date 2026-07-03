@@ -18,6 +18,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { AlertTriangle, Check, Info, ScatterChart as ScatterIcon, X } from 'lucide-react';
+import { BT } from '../../../components/deal/bloomberg-ui';
 import { useDealStore } from '../../../stores/dealStore';
 import {
   validateGordonGrowth,
@@ -158,7 +159,7 @@ function GordonBanner({
       </button>
 
       {showChart && chart.line.length > 0 && (
-        <div className="absolute right-4 top-12 z-50 bg-[#0a0a0a] border border-[#1e1e1e] rounded p-2 w-[320px] h-[200px] shadow-xl">
+        <div className="absolute right-4 top-12 z-50 border border-[#1e1e1e] rounded p-2 w-[320px] h-[200px] shadow-xl" style={{ background: BT.bg.panel }}>
           <div className="text-[9px] text-slate-500 font-bold mb-1">
             (g, cap) — Gordon line at k = {(requiredReturn * 100).toFixed(2)}%
           </div>
@@ -182,7 +183,7 @@ function GordonBanner({
               />
               <Tooltip
                 formatter={(v: number | string) => typeof v === 'number' ? `${(v * 100).toFixed(2)}%` : v}
-                contentStyle={{ background: '#0a0a0a', border: '1px solid #1e1e1e', fontSize: 9 }}
+                contentStyle={{ background: BT.bg.panel, border: '1px solid #1e1e1e', fontSize: 9 }}
               />
               <Line type="monotone" dataKey="cap" stroke="#64748b" strokeWidth={1} dot={false} />
               {chart.user && (
@@ -404,7 +405,7 @@ export function F9ProtectorsPanel({
         noiMargin={noiMargin}
       />
       {activeFlags.length > 0 && (
-        <div className="px-2 py-1 bg-[#0a0a0a] border-b border-[#1e1e1e] flex flex-col gap-1">
+        <div className="px-2 py-1 border-b border-[#1e1e1e] flex flex-col gap-1" style={{ background: BT.bg.panel }}>
           <div className="text-[8px] font-bold tracking-widest text-slate-500" style={{ fontFamily: MONO }}>
             ACTIVE PROTECTOR FLAGS · {activeFlags.length}
           </div>
