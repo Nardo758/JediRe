@@ -428,3 +428,128 @@ export function getFieldSeries(
     zone: p.zone,
   }));
 }
+/**
+ * Overlay deterministic engine monthly cash-flow output onto the projection
+ * zone of an existing periodic seed.  Replaces year1-fallback placeholders
+ * with the engine's per-month values so the ribbon timeline reflects the
+ * actual ramp, rent-growth trajectory, and operating dynamics computed by
+ * the deterministic runner.
+ *
+ * D2 acceptance: Bishop ribbon projection matches engine output; ramp
+ * behavior preserved ($70,019.26 at m24 off live year1 = $840,231).
+ */
+export function overlayEngineMonthlyOnSeed(
+  seed: ProFormaPeriodicSeed,
+  engineMonthly: Array<Record<string, number>>,
+  unitCount: number,
+): ProFormaPeriodicSeed {
+  const anyField = Object.values(seed.fields)[0];
+  const firstProjectionPeriod = anyField?.periods.find(p => p.zone === 'projection');
+  if (!firstProjectionPeriod) return seed;
+
+  const projStartIdx = firstProjectionPeriod.periodIndex;
+
+  // Direct dollar-field mapping: engine MonthlyCashFlowRow key → seeder canonical field
+  const directMap: Record<string, string> = {
+    gpr: 'gpr',
+    baseRevenue: 'net_rental_income',
+    egi: 'egi',
+    payroll: 'payroll',
+    maintenance: 'repairs_maintenance',
+    contractServices: 'contract_services',
+    marketing: 'marketing',
+    utilities: 'utilities',
+    admin: 'g_and_a',
+    insurance: 'insurance',
+    propertyTax: 'real_estate_tax',
+    replacementReserves: 'replacement_reserves',
+    totalExpenses: 'total_opex',
+    noi: 'noi',
+  };
+
+  // Percentage fields derived from engine dollar numerators / denominators
+  const pctDerivations: Array<{
+    engineNumerator: string;
+    engineDenominator: string;
+    seederField: string;
+  }> = [
+    { engineNumerator: 'lossToLease', engineDenominator: 'gpr', seederField: 'loss_to_lease_pct' },
+    { engineNumerator: 'vacancy', engineDenominator: 'gpr', seederField: 'vacancy_pct' },
+    { engineNumerator: 'concessions', engineDenominator: 'gpr', seederField: 'concessions_pct' },
+    { engineNumerator: 'badDebt', engineDenominator: 'gpr', seederField: 'bad_debt_pct' },
+    { engineNumerator: 'managementFee', engineDenominator: 'egi', seederField: 'management_fee_pct' },
+  ];
+
+  // Helper: overlay a single value onto a specific period index
+  const overlay = (series: PeriodicFieldSeries, targetIdx: number, value: number) => {
+    const period = series.periods.find(p => p.periodIndex === targetIdx);
+    if (period && (period.zone === 'projection' || period.zone === 'gap')) {
+      period.resolved = value;
+      period.resolution = 'derived_projection';
+      period.source = 'deterministic_engine';
+      period.updated_at = new Date().toISOString();
+    }
+  };
+
+  // 1. Direct dollar fields
+  for (const [engineKey, seederField] of Object.entries(directMap)) {
+    const series = seed.fields[seederField];
+    if (!series) continue;
+    for (let i = 0; i < engineMonthly.length; i++) {
+      const v = engineMonthly[i][engineKey];
+      if (v == null || !Number.isFinite(v)) continue;
+      overlay(series, projStartIdx + i, v);
+    }
+  }
+
+  // 2. Per-unit conversion: otherIncome → other_income_per_unit
+  const oiSeries = seed.fields['other_income_per_unit'];
+  if (oiSeries && unitCount > 0) {
+    for (let i = 0; i < engineMonthly.length; i++) {
+      const v = engineMonthly[i]['otherIncome'];
+      if (v == null || !Number.isFinite(v)) continue;
+      overlay(oiSeries, projStartIdx + i, v / unitCount);
+    }
+  }
+
+  // 3. Per-unit conversion: noi → noi_per_unit
+  const noiPerUnitSeries = seed.fields['noi_per_unit'];
+  if (noiPerUnitSeries && unitCount > 0) {
+    for (let i = 0; i < engineMonthly.length; i++) {
+      const v = engineMonthly[i]['noi'];
+      if (v == null || !Number.isFinite(v)) continue;
+      overlay(noiPerUnitSeries, projStartIdx + i, v / unitCount);
+    }
+  }
+
+  // 4. Percentage derivations
+  for (const { engineNumerator, engineDenominator, seederField } of pctDerivations) {
+    const series = seed.fields[seederField];
+    if (!series) continue;
+    for (let i = 0; i < engineMonthly.length; i++) {
+      const num = engineMonthly[i][engineNumerator];
+      const den = engineMonthly[i][engineDenominator];
+      if (num == null || den == null || !Number.isFinite(num) || !Number.isFinite(den) || den === 0) continue;
+      overlay(series, projStartIdx + i, num / den);
+    }
+  }
+
+  // 5. Update fallbacks for overlaid fields to first engine value (display default)
+  for (const seederField of [
+    ...Object.values(directMap),
+    'other_income_per_unit',
+    'noi_per_unit',
+    ...pctDerivations.map(d => d.seederField),
+  ]) {
+    const series = seed.fields[seederField];
+    if (!series) continue;
+    const firstProj = series.periods.find(p => p.zone === 'projection');
+    if (firstProj?.resolved != null) {
+      series.fallbackResolved = firstProj.resolved;
+      series.fallbackResolution = 'derived_projection';
+      series.fallbackSource = 'deterministic_engine';
+    }
+  }
+
+  return seed;
+}

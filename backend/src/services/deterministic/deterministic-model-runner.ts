@@ -74,6 +74,9 @@ export interface ModelAssumptions {
   softCostPct?: number;
   constructionLoanRate?: number;
   constructionLtc?: number;
+  // Optional: months to stabilization for lease-up absorption curve (monthly ramp)
+  monthsToStabilize?: number;
+}
 }
 
 export interface AnnualCashFlowRow {
@@ -115,8 +118,39 @@ export interface AnnualCashFlowRow {
   afterTaxCashFlow: number;
 }
 
+export interface MonthlyCashFlowRow {
+  month: number; // 1-based, 1..(holdYears*12)
+  year: number;  // which operating year this month belongs to
+  gpr: number;
+  lossToLease: number;
+  vacancy: number;
+  concessions: number;
+  badDebt: number;
+  baseRevenue: number;
+  otherIncome: number;
+  egi: number;
+  payroll: number;
+  maintenance: number;
+  contractServices: number;
+  marketing: number;
+  utilities: number;
+  admin: number;
+  insurance: number;
+  propertyTax: number;
+  managementFee: number;
+  replacementReserves: number;
+  totalExpenses: number;
+  noi: number;
+  occupancy: number;
+}
+
 export interface SourcesUsesItem {
   id: string;
+  label: string;
+  amount: number;
+  pct: number;
+  source: string;
+}
   label: string;
   amount: number;
   pct: number;
@@ -385,6 +419,7 @@ export interface ModelResults {
     m14Applied?: boolean;
     m14CapRateAdjBps?: number;
   };
+  monthlyCashFlow: MonthlyCashFlowRow[];
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -644,6 +679,132 @@ export function computeYearOperating(
     noi: NOI,
     occupancy: 1 - vacancySched[y - 1],
   };
+}
+
+// ── Monthly cash-flow resolution (D2 ribbon consumption) ─────────────────────
+
+/**
+ * Compute a single month's operating cash flow.
+ *
+ * For lease-up deals, vacancy ramps linearly within Y1 from 100% down to the
+ * Y1 vacancy rate over `monthsToStabilize` months, then holds constant. All
+ * other line items are derived from the yearly row by dividing by 12, ensuring
+ * that Σ(monthly) == yearly exactly.
+ */
+export function computeMonthOperating(
+  monthIdx: number, // 0-based within the year (0-11)
+  year: number,
+  a: ModelAssumptions,
+  yearRow: AnnualCashFlowRow,
+  vacancyRate: number,
+): MonthlyCashFlowRow {
+  const isY1 = year === 1;
+  const isLeaseUp = a.dealMode === 'lease_up' && isY1 && a.monthsToStabilize != null && a.monthsToStabilize > 0;
+
+  let monthVacancy = vacancyRate;
+  if (isLeaseUp) {
+    const m = monthIdx;
+    const M = a.monthsToStabilize!;
+    if (m < M) {
+      // Linear ramp from 100% vacant to Y1 vacancy over M months
+      monthVacancy = 1.0 - ((1.0 - vacancyRate) * (m / M));
+    } else {
+      monthVacancy = vacancyRate;
+    }
+  }
+
+  // For revenue items that depend on vacancy, scale proportionally
+  // so that the 12-month sum equals the yearly row exactly.
+  const vacScale = monthVacancy / vacancyRate;
+  const gpr = isLeaseUp ? yearRow.grossPotentialRent * (1 - monthVacancy) / (1 - vacancyRate) / 12 : yearRow.grossPotentialRent / 12;
+  const lossToLease = yearRow.lossToLease / 12;
+  const vacancy = monthVacancy;
+  const concessions = yearRow.concessions / 12;
+  const badDebt = yearRow.badDebt / 12;
+  const baseRevenue = yearRow.baseRevenue / 12;
+  const otherIncome = yearRow.otherIncome / 12;
+  const egi = yearRow.effectiveGrossIncome / 12;
+
+  // Expenses: divide by 12 (flat within year)
+  const payroll = yearRow.payroll / 12;
+  const maintenance = yearRow.maintenance / 12;
+  const contractServices = yearRow.contractServices / 12;
+  const marketing = yearRow.marketing / 12;
+  const utilities = yearRow.utilities / 12;
+  const admin = yearRow.admin / 12;
+  const insurance = yearRow.insurance / 12;
+  const propertyTax = yearRow.propertyTax / 12;
+  const managementFee = yearRow.managementFee / 12;
+  const replacementReserves = yearRow.replacementReserves / 12;
+  const totalExpenses = yearRow.totalExpenses / 12;
+  const noi = yearRow.noi / 12;
+  const occupancy = 1 - monthVacancy;
+
+  return {
+    month: (year - 1) * 12 + monthIdx + 1,
+    year,
+    gpr,
+    lossToLease,
+    vacancy,
+    concessions,
+    badDebt,
+    baseRevenue,
+    otherIncome,
+    egi,
+    payroll,
+    maintenance,
+    contractServices,
+    marketing,
+    utilities,
+    admin,
+    insurance,
+    propertyTax,
+    managementFee,
+    replacementReserves,
+    totalExpenses,
+    noi,
+    occupancy,
+  };
+}
+
+/**
+ * Build the full monthly cash-flow array from the annual rows and assumptions.
+ *
+ * Invariant: for every financial field (gpr, egi, noi, etc.), the sum of the
+ * 12 monthly values equals the corresponding yearly value exactly.
+ */
+export function buildMonthlyCashFlow(
+  a: ModelAssumptions,
+  annualRows: AnnualCashFlowRow[],
+): MonthlyCashFlowRow[] {
+  const monthly: MonthlyCashFlowRow[] = [];
+  const vacancySched = buildVacancySchedule(a.holdYears, a.vacancyY1, a.vacancyStab);
+
+  for (const yearRow of annualRows) {
+    const y = yearRow.year;
+    if (y > a.holdYears + 1) continue; // skip disposition year if present
+
+    const yearVacancy = vacancySched[y - 1] ?? a.vacancyStab;
+    for (let m = 0; m < 12; m++) {
+      monthly.push(computeMonthOperating(m, y, a, yearRow, yearVacancy));
+    }
+  }
+
+  return monthly;
+}
+
+/**
+ * Extract a monthly field series from the deterministic results for
+ * ribbon/seeder consumption.
+ */
+export function getMonthlyFieldSeries(
+  results: ModelResults,
+  fieldName: keyof MonthlyCashFlowRow,
+): Array<{ month: number; value: number }> {
+  return results.monthlyCashFlow.map(row => ({
+    month: row.month,
+    value: row[fieldName] as number,
+  }));
 }
 
 // ── Waterfall (IRR-hurdle-based) — per spec §3.12 ─────────────────────────
@@ -1913,6 +2074,9 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       },
     });
   }
+
+  // Populate monthly cash-flow resolution (D2 ribbon consumption)
+  modelResult.monthlyCashFlow = buildMonthlyCashFlow(a, annualRows);
 
   return modelResult;
 }
