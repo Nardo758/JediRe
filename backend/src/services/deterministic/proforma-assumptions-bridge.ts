@@ -830,16 +830,3 @@ export function modelResultsToFinancialModelResult(det: ModelResults): Financial
     meta,
   };
 }
-  summary?: {
-    irr?: number | null;
-    equityMultiple?: number | null;
-    noiYear1?: number | null;
-    goingInCapRate?: number | null;
-    totalEquity?: number | null;
-    dscrByYear?: number[];
-  };
-  disposition?: {
-    grossSalePrice?: number | null;
-    netSaleProceeds?: number | null;
-  };
-};
