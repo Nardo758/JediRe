@@ -37,7 +37,14 @@ vi.mock('../../notifications/openclawNotifier', () => ({
 }));
 
 // Mock Anthropic SDK before importing the orchestrator
-const mockCreate = vi.fn();
+// (vi.mock factories are hoisted above all top-level statements, including
+// const declarations, so the mock fns they close over must be created via
+// vi.hoisted() to avoid a "Cannot access before initialization" TDZ error.)
+const { mockCreate, mockExecute } = vi.hoisted(() => ({
+  mockCreate: vi.fn(),
+  mockExecute: vi.fn(),
+}));
+
 vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn().mockImplementation(() => ({
     messages: { create: mockCreate },
@@ -45,7 +52,6 @@ vi.mock('@anthropic-ai/sdk', () => ({
 }));
 
 // Mock skill registry
-const mockExecute = vi.fn();
 vi.mock('../../skills/skill-registry', () => ({
   skillRegistry: {
     getToolDefinitions: vi.fn().mockReturnValue([
