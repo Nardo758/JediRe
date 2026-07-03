@@ -242,6 +242,8 @@ export function mapProFormaAssumptionsToModelAssumptions(
   // written by the Batch-6 revenue derivation pass. Falls back to 0 when unavailable
   // (pre-Batch-6 assumptions or when M05 snapshot has no concession_rate data).
   const concessions = (a.revenue as Record<string, unknown>)._concessionsPct as number ?? 0;
+  // Batch-6b M07: months to stabilization from absorption curve (lease-up ramp)
+  const monthsToStabilize = (a.revenue as Record<string, unknown>)._vacancyM07MonthsToStabilize as number ?? null;
 
   // Other income: sum perUnitMonth × penetration × 12 months → annual per unit
   let otherIncomePerUnit = 0;
@@ -389,6 +391,7 @@ export function mapProFormaAssumptionsToModelAssumptions(
     promoteSplits,
     dealType: a.modelType || 'existing',
     dealMode: a.dealMode ?? a.modelType ?? 'existing',
+    ...(monthsToStabilize != null && monthsToStabilize > 0 ? { monthsToStabilize } : {}),
   };
 }
 

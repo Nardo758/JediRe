@@ -1706,6 +1706,36 @@ export class FinancialModelEngineService {
             m11CapitalStructure,
             m14DscrConstraintBinds,
           };
+
+          // ── D2: Ribbon consumption — overlay engine monthly onto periodic seed ──
+          try {
+            const { overlayEngineMonthlyOnSeed } = await import('./proforma/periodic-seeder.service');
+            const seedRow = await pool.query(
+              `SELECT periodic_seed FROM deal_assumptions WHERE deal_id = $1`,
+              [dealId]
+            );
+            const periodicSeed = seedRow.rows[0]?.periodic_seed ?? null;
+            if (periodicSeed) {
+              const updatedSeed = overlayEngineMonthlyOnSeed(
+                periodicSeed,
+                deterministicResult.monthlyCashFlow,
+                modelAssumptions.units,
+              );
+              await pool.query(
+                `UPDATE deal_assumptions
+                 SET periodic_seed = $2::jsonb,
+                     updated_at = NOW()
+                 WHERE deal_id = $1`,
+                [dealId, JSON.stringify(updatedSeed)]
+              );
+              logger.info(
+                `[D2-Ribbon] Engine monthly output overlaid onto periodic seed for ${dealId}: ` +
+                `${deterministicResult.monthlyCashFlow.length} months, ${modelAssumptions.units} units`
+              );
+            }
+          } catch (ribbonErr: any) {
+            logger.warn(`[D2-Ribbon] Failed to overlay engine monthly onto periodic seed for ${dealId}: ${ribbonErr?.message}`);
+          }
         }
       } catch (verifyErr: any) {
         // Fail-closed: if the bridge or runner itself throws, treat as a hard failure.
