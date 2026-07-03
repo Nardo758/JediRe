@@ -153,76 +153,6 @@ export class ProFormaAdjustmentService {
     return this.mapProForma(result.rows[0]);
   }
 
-  /**
-   * Get pro forma with computed financial model results.
-   * Bridges ProFormaAssumptions -> deterministic ModelAssumptions -> runModel().
-   */
-  async getProFormaComputed(dealId: string): Promise<any> {
-    const proforma = await this.getProForma(dealId);
-    if (!proforma) return null;
-
-    const rg = parseFloat(proforma.rentGrowth.effective) || 0.03;
-    const vac = parseFloat(proforma.vacancy.effective) || 0.05;
-    const og = parseFloat(proforma.opexGrowth.effective) || 0.03;
-    const ec = parseFloat(proforma.exitCap.effective) || 0.0625;
-
-    // P3-02: use stressVacancyFloor from persisted stance to modulate year-1
-    // absorption premium instead of a flat hardcoded 0.05.
-    let vacancyY1Premium = 0.05;
-    try {
-      const stanceRow = await query(
-        `SELECT operator_stance FROM deals WHERE id = $1 LIMIT 1`,
-        [dealId],
-      );
-      const sf = stanceRow.rows[0]?.operator_stance?.stressVacancyFloor;
-      if (typeof sf === 'number' && sf > 0) {
-        vacancyY1Premium = Math.max(0.05, sf);
-      }
-    } catch { /* non-fatal — keep default 0.05 */ }
-
-    const { runModel } = require('./deterministic/deterministic-model-runner');
-    const modelAssumptions = {
-      purchasePrice: 50000000, units: 232, marketRent: 1850,
-      rentGrowth: Array(10).fill(rg),
-      lossToLease: 0.03, vacancyY1: vac + vacancyY1Premium, vacancyStab: vac,
-      concessions: 0.02, badDebt: 0.005, otherIncomePerUnit: 500,
-      expenseGrowth: og, loanAmount: 35000000, rate: 0.055,
-      term: 360, amort: 360, ioPeriod: 0, holdYears: 5,
-      lpEquity: 14000000, gpEquity: 1000000, preferredReturn: 0.08,
-      promoteTiers: [0.12, 0.15, 0.20], promoteSplits: [0.20, 0.50, 0.80],
-      exitCap: ec, saleCosts: 0.02, closingCostsPct: 0.01, isFlorida: true,
-      managementFee: 0.04, replacementReserves: 250, originationFeePct: 0.01,
-      payrollPerUnit: 2500, maintenancePerUnit: 800, contractServicesPerUnit: 400,
-      marketingPerUnit: 300, utilitiesPerUnit: 500, adminPerUnit: 200,
-      insurancePerUnit: 600,
-    };
-
-    const computed = runModel(modelAssumptions);
-
-    return {
-      ...proforma,
-      computed: {
-        irr: computed.summary.irr,
-        equityMultiple: computed.summary.equityMultiple,
-        avgCoC: computed.summary.avgCoC,
-        noiYear1: computed.summary.noiYear1,
-        goingInCapRate: computed.summary.goingInCapRate,
-        exitCapRate: computed.summary.exitCapRate,
-        dscrByYear: computed.summary.dscrByYear,
-        noiByYear: computed.summary.noiByYear,
-        cashOnCashByYear: computed.summary.cashOnCashByYear,
-        annualCashFlow: computed.annualCashFlow,
-        sensitivityMatrix: computed.sensitivityAnalysis?.matrix ?? [],
-        stressScenarios: computed.stressScenarios ?? [],
-        waterfall: computed.waterfallDistributions ?? [],
-        sourcesAndUses: computed.sourcesAndUses,
-        projections: computed.projections ?? [],
-        integrityChecks: computed.integrityChecks ?? [],
-        derivationLog: computed.reasoning?.derivationLog ?? [],
-      },
-      deterministicRunnerVersion: '1.0',
-    };
-  }
 
   /**
    * Initialize pro forma for a deal (with baseline values)
@@ -817,14 +747,14 @@ export class ProFormaAdjustmentService {
   /**
    * Get comparison: baseline vs. adjusted
    */
-  async finalize(dealId: string, debtServiceConfig?: any): Promise<any> {
-    // M09→M11 debt service integration.
-    // After capital structure engine sets debt service, re-run the deterministic model
-    // with updated loan terms and store combined result.
-    const proforma = await this.getProForma(dealId);
+  async finalize(dealId: string, debtServiceConfig?: any): Promise<ProFormaAssumptions> {
+    let proforma = await this.getProForma(dealId);
     if (!proforma) {
       throw new Error('Pro forma not found for deal ' + dealId);
     }
+
+    // Apply W-04 policy mutations (rent control, tax abatement, eviction moratorium)
+    await this.applyPolicyEventMutations(proforma.id, dealId);
 
     // If debt service config provided, merge it into stored assumptions.
     if (debtServiceConfig) {
@@ -837,8 +767,8 @@ export class ProFormaAdjustmentService {
       );
     }
 
-    // Return computed result.
-    return this.getProFormaComputed(dealId);
+    // Return updated assumptions object (re-fetch to include mutations).
+    return (await this.getProForma(dealId))!;
   }
 
   async getComparison(dealId: string): Promise<ComparisonResult> {
@@ -869,8 +799,8 @@ export class ProFormaAdjustmentService {
       dealId,
       dealName: dealInfo.rows[0]?.name || 'Unknown',
       strategy: proforma.strategy,
-      baseline: proforma,
-      adjusted: proforma,
+      baseline: { ...proforma },
+      adjusted: { ...proforma },
       differences,
       recentAdjustments: adjustments
     };

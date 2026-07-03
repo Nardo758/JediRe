@@ -10,6 +10,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware } from '../../middleware/auth';
 import { proformaAdjustmentService } from '../../services/proforma-adjustment.service';
+import { financialModelEngine } from '../../services/financial-model-engine.service';
 import { trafficToProForma } from '../../services/trafficToProFormaService';
 import { getPool } from '../../database/connection';
 import Decimal from 'decimal.js';
@@ -130,39 +131,76 @@ async function getM35ProformaAttribution(dealId: string): Promise<M35ProformaAtt
 router.get('/:dealId', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { dealId } = req.params;
-    
-    let proforma = await proformaAdjustmentService.getProFormaComputed(dealId);
-    
-    if (!proforma) {
+
+    // Ordering guarantee: apply W-04 policy mutations synchronously before
+    // querying Engine C. Engine C's stored model reflects the assumption
+    // state at the time of its last build; mutations that happen after
+    // that build will be picked up on the next upstream build cycle.
+    try {
+      await proformaAdjustmentService.finalize(dealId);
+    } catch (_finalizeErr: any) {
+      logger.error('finalize/policy-mutation failed (non-fatal):', _finalizeErr?.message ?? _finalizeErr);
+    }
+
+    // Attempt to fetch the latest real computed model from Engine C.
+    const model = await financialModelEngine.getLatestModel(dealId);
+
+    if (model) {
+      // Append M35 event attribution metadata.
+      let eventAttribution: M35ProformaAttribution | null = null;
+      try {
+        eventAttribution = await getM35ProformaAttribution(dealId);
+      } catch (attrErr: any) {
+        logger.error('M35 attribution lookup failed (non-fatal):', attrErr?.message ?? attrErr);
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          ...model.assumptions,
+          computed: model.results,
+          modelBuiltAt: model.createdAt,
+          assumptionsHash: model.assumptionsHash,
+          stale: model.stale,
+          ...(eventAttribution ? { eventAttribution } : {}),
+        },
+      });
+    }
+
+    // No model built yet — return assumptions envelope with modelNotBuilt signal.
+    let assumptions = await proformaAdjustmentService.getProForma(dealId);
+    if (!assumptions) {
       // Auto-initialize on first access: no proforma_assumptions row exists yet.
       // Default to rental strategy so the proforma surfaces render instead of blank.
       try {
         await proformaAdjustmentService.initializeProForma(dealId, 'rental');
-        proforma = await proformaAdjustmentService.getProFormaComputed(dealId);
+        assumptions = await proformaAdjustmentService.getProForma(dealId);
       } catch (initErr: any) {
         logger.error('Auto-initialize failed:', initErr?.message ?? initErr);
       }
     }
-    
-    if (!proforma) {
+
+    if (!assumptions) {
       return res.status(404).json({
         success: false,
         error: 'Pro forma not found for this deal'
       });
     }
 
-    // Append M35 event attribution metadata to each assumption value.
+    // Append M35 event attribution metadata.
     let eventAttribution: M35ProformaAttribution | null = null;
     try {
       eventAttribution = await getM35ProformaAttribution(dealId);
     } catch (attrErr: any) {
       logger.error('M35 attribution lookup failed (non-fatal):', attrErr?.message ?? attrErr);
     }
-    
+
     res.json({
       success: true,
       data: {
-        ...proforma,
+        ...assumptions,
+        computed: null,
+        modelNotBuilt: true,
         ...(eventAttribution ? { eventAttribution } : {}),
       },
     });
