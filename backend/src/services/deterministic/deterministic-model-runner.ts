@@ -77,7 +77,6 @@ export interface ModelAssumptions {
   // Optional: months to stabilization for lease-up absorption curve (monthly ramp)
   monthsToStabilize?: number;
 }
-}
 
 export interface AnnualCashFlowRow {
   year: number;
@@ -146,11 +145,6 @@ export interface MonthlyCashFlowRow {
 
 export interface SourcesUsesItem {
   id: string;
-  label: string;
-  amount: number;
-  pct: number;
-  source: string;
-}
   label: string;
   amount: number;
   pct: number;

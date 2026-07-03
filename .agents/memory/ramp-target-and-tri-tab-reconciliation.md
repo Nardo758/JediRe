@@ -1,6 +1,6 @@
 ---
 name: Stabilization ramp target field + tri-tab reconciliation architecture
-description: Which periodic-seed field is the correct ramp target for NOI stabilization, and how F9 tabs stay reconciled without a separate recompute path.
+description: Which periodic-seed field is the correct ramp target for NOI stabilization, how F9 tabs stay reconciled without a separate recompute path, and which consumer routes are NOT wired to the deterministic engine.
 ---
 
 ## Ramp target field trap
@@ -23,3 +23,10 @@ All F9 frontend consumers of periodic (month-indexed) financial data — charts,
 
 ## DeepSeek 402 "Insufficient Balance" is an environment issue, not a code bug
 F9 "BUILD MODEL" can fail with `BUILD FAILED — 402 Insufficient Balance` / `DeepSeek API error ... Insufficient Balance` in backend logs. This is the DeepSeek account running out of credit, unrelated to proforma/ramp/seeder code correctness. Don't chase this as a regression when verifying unrelated backend changes — check backend logs for the literal "Insufficient Balance" message to confirm before deep-diving.
+
+## `/api/v1/capital-structure/:dealId` GET route is NOT wired to the deterministic engine
+This route (`backend/src/api/rest/capital-structure.routes.ts`, ~line 489) reads `loan_amount`/`purchase_price`/`noi` directly off the raw `deals.deal_data` JSON column, completely bypassing `deal_financial_models` / the F9 deterministic engine (`financial-model-engine.service.ts`). It returns `loanAmount: 0`, `ltv: 0`, `dscr: null` and a stale/wrong `noi` for any deal whose real financing and NOI only exist in the built model — i.e. it disagrees with `computed.summary` from `GET /api/v1/proforma/:dealId` and `GET /api/v1/financial-model/:dealId/latest` on every deal that has ever been built.
+
+**Why:** Found during a consumer-equality audit (checking that NOI/EGI/DSCR/IRR/EM agree across every read surface) — this route is a genuine, unfixed data-consistency gap, not a stale-cache artifact.
+
+**How to apply:** Before treating this route's `summary` fields as authoritative for any deal, cross-check against `GET /api/v1/financial-model/:dealId/latest`. Any future work on capital-structure display should wire this endpoint to read from the built model (or explicitly document it as "pre-underwriting raw deal terms only").
