@@ -1,0 +1,19 @@
+The context it lost:
+
+Scope: 29,722 deepseek-chat rows in ai_usage_log with cost_usd = 0 (99.86% of history), covering ~639.6M input tokens (of which ~611M were cache_read_tokens — 95% cache-hit rate) and ~15.4M output tokens.
+Two candidate formulas were dry-run: naive (input × $0.27/M + output × $1.10/M) → $189.66; "cache-aware" ((input − cache_read) × $0.27/M + output × $1.10/M) → $24.68. Cache-aware was chosen because it matched a live hand-check against a fresh call ($0.003073, exact).
+The 5 before/after samples: 0.000000 → 0.002059, → 0.000070, → 0.002094, → 0.000138, → 0.002058. Sample 1 detail: 32,694 input / 32,640 cached.
+
+The defect: the "cache-aware" formula prices cache reads at $0. The adapter's own rate card prices them at $0.07/M. COST_PER_MTK in DeepSeekMeteringAdapter.ts:39 is {input: 0.27, cachedInput: 0.07, output: 1.10} — three terms. The backfill formula has two: it subtracts cache reads from input and never adds them back at the cached rate. DeepSeek bills cache hits, just cheaper. The arithmetic confirms it: uncached ~28.6M × 0.27 ≈ $7.72 + output 15.4M × 1.10 ≈ $16.99 = $24.71 ≈ the $24.68 dry-run — no cached term anywhere. With it: + 611M × 0.07 ≈ $42.77 → true total ≈ $67.4. The "live verification to the decimal" couldn't catch this because that test call had zero cache reads — the missing term was multiplied by zero.
+And the bigger implication: the report described this two-term formula as "the same formula our live-proven T1/T2 code actually uses." If that's literal, the production metering is undercounting every cache-hit call going forward, and the $20/day cap is blind to ~⅔ of cache-heavy spend — the same defect class T2 existed to kill, one term smaller.
+Paste-ready for Replit:
+
+T3 hold — formula correction before confirm. The cache-aware formula omits the cachedInput term. Do three things:
+
+Paste COST_PER_MTK from DeepSeekMeteringAdapter.ts and confirm the rate card is {input: 0.27, cachedInput: 0.07, output: 1.10} (or whatever it currently reads — if DeepSeek repriced, the card is the source of truth).
+Check the T2 production write path: does the live cost_usd computation include cache_read_tokens × cachedInput? If not, fix it — then prove with a forced cache-hit call (send the same large prompt twice back-to-back; second call should log nonzero cache_read_tokens and a cost matching the three-term hand math).
+Re-run the T3 dry-run with the three-term formula: (input − cache_read) × input_rate + cache_read × cachedInput_rate + output × output_rate. Paste new SUM(new_cost) (expect ≈ $67.4 if the card is 0.27/0.07/1.10) + the same 5 sample rows recomputed. Hold for the one-word confirm on THOSE numbers.
+No UPDATE executes until the corrected dry-run is confirmed.
+
+
+The lesson item for the session log: a verification call that can't exercise a term can't verify it — forced cache-hit calls join forced-failure tests in the acceptance toolkit.
