@@ -76,6 +76,11 @@ export interface ModelAssumptions {
   constructionLtc?: number;
   // Optional: months to stabilization for lease-up absorption curve (monthly ramp)
   monthsToStabilize?: number;
+  // Turn-cohort fields (W1)
+  standardTurnDowntimeDays?: number;   // days of downtime for standard turns (default 14)
+  renoTurnDowntimeWeeks?: number;     // weeks of downtime for renovation turns (overlay)
+  newLeaseConcessionMonths?: number; // months of free rent on new leases (default 1)
+  annualTurnoverRate?: number;        // fraction of units turning over per year (default 0.50)
 }
 
 export interface AnnualCashFlowRow {
@@ -428,6 +433,11 @@ const DEF_REASSESS_PCT = 0.85;
 const DEF_CAP_INCREASE = 0.10;
 const DEF_ORIGINATION_PCT = 0.01;
 const DEF_NONFL_TRANSFER_TAX_PCT = 0.005;
+
+// Turn-cohort defaults (W1)
+const DEF_STANDARD_TURN_DOWNTIME_DAYS = 14;
+const DEF_NEW_LEASE_CONCESSION_MONTHS = 1;
+const DEF_ANNUAL_TURNOVER_RATE = 0.50;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
