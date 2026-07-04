@@ -802,26 +802,6 @@ export interface TurnCohortState {
   turnEntries: number[];
   /** FIFO queue: concessionEntries[m] = units that entered concession in month m. */
   concessionEntries: number[];
-  /** Initial structural vacant count at m=0, for absorption pacing. */
-  initialVacantUnits: number;
-}
-export interface TurnCohortState {
-  /** Units still on original leases (paying in-place rent). */
-  occupiedAtInPlace: number;
-  /** Units that turned over and now pay market rent. */
-  occupiedAtMarket: number;
-  /** Units between move-out and ready-for-lease (no rent). */
-  turning: number;
-  /** Units ready for lease but not yet leased (no rent). */
-  vacant: number;
-  /** Units occupied but in free-rent concession period (no rent). */
-  concession: number;
-  /** Running rent-growth multiplier (1.0 at acquisition). */
-  cumulativeGrowth: number;
-  /** FIFO queue: turnEntries[m] = units that entered turn in month m. */
-  turnEntries: number[];
-  /** FIFO queue: concessionEntries[m] = units that entered concession in month m. */
-  concessionEntries: number[];
   /** Initial vacant count at m=0, for absorption pacing. */
   initialVacantUnits: number;
 }
@@ -841,21 +821,6 @@ export function createTurnCohortState(a: ModelAssumptions): TurnCohortState {
     turnEntries: [],
     concessionEntries: [],
     initialVacantUnits: vacantStructural,
-  };
-}
-export function createTurnCohortState(a: ModelAssumptions): TurnCohortState {
-  const occupiedAtInPlace = a.occupancyAtClose != null ? a.units * a.occupancyAtClose : a.units;
-  const vacant = a.units - occupiedAtInPlace;
-  return {
-    occupiedAtInPlace,
-    occupiedAtMarket: 0,
-    turning: 0,
-    vacant,
-    concession: 0,
-    cumulativeGrowth: 1.0,
-    turnEntries: [],
-    concessionEntries: [],
-    initialVacantUnits: vacant,
   };
 }
 
@@ -914,21 +879,15 @@ export function computeMonthTurnCohort(
   state.turnEntries[monthIdx] = totalExpiring;
 
   // STEP 2 -- Turn completion: units that entered turn `downtimeMonths` ago
-  // finish and become available for re-lease (vacantTurn — friction already modeled).
-  const completedMonth = Math.floor(monthIdx - downtimeMonths);
-  const completingTurn = completedMonth >= 0 ? (state.turnEntries[completedMonth] ?? 0) : 0;
-  state.turning -= completingTurn;
-  state.vacantTurn += completingTurn;
   // finish and become vacant
   const completedMonth = Math.floor(monthIdx - downtimeMonths);
   const completingTurn = completedMonth >= 0 ? (state.turnEntries[completedMonth] ?? 0) : 0;
   state.turning -= completingTurn;
-  state.vacant += completingTurn;
+  state.vacantTurn += completingTurn;
 
-  // STEP 3 -- New leases: two channels, never conflated
-  //   (a) Turn completions: re-lease in full — downtime IS the friction; no additional throttle.
-  //   (b) Structural vacants: lease-up stock, drained at absorption pace.
-  //   A market days-on-market throttle on turn re-leases is a v1.1 refinement; log, don't build.
+  // STEP 3 -- New leases: absorption-paced from vacant stock
+  // Constant pace: initialVacantUnits / monthsToStabilize (platform default 24mo).
+  // Traffic-derived curves can replace the constant later; never instant.
   const pace = a.monthsToStabilize != null && a.monthsToStabilize > 0
     ? Math.ceil(state.initialVacantUnits / a.monthsToStabilize)
     : Math.ceil(state.initialVacantUnits / 24);
@@ -937,15 +896,6 @@ export function computeMonthTurnCohort(
   const turnLeases = state.vacantTurn;
   state.vacantTurn = 0;
   const newLeases = structuralLeases + turnLeases;
-  state.concession += newLeases;
-  state.concessionEntries[monthIdx] = newLeases;
-  // Constant pace: initialVacantUnits / monthsToStabilize (platform default 24mo).
-  // Traffic-derived curves can replace the constant later; never instant.
-  const pace = a.monthsToStabilize != null && a.monthsToStabilize > 0
-    ? Math.ceil(state.initialVacantUnits / a.monthsToStabilize)
-    : Math.ceil(state.initialVacantUnits / 24);
-  const newLeases = Math.min(state.vacant, pace);
-  state.vacant -= newLeases;
   state.concession += newLeases;
   state.concessionEntries[monthIdx] = newLeases;
 
@@ -968,11 +918,9 @@ export function computeMonthTurnCohort(
   // Vacancy = units physically empty (turning + vacantStructural + vacantTurn).
   // Concession units are occupied-with-concession; their rent deduction lives
   // only in the `concessions` line. One deduction, one home.
-  const vacancyUnits = state.turning + state.vacantStructural + state.vacantTurn;
-  const vacancy = totalUnits > 0 ? vacancyUnits / totalUnits : 0;
   // Concession units are occupied-with-concession; their rent deduction lives
   // only in the `concessions` line. One deduction, one home.
-  const vacancyUnits = state.turning + state.vacant;
+  const vacancyUnits = state.turning + state.vacantStructural + state.vacantTurn;
   const vacancy = totalUnits > 0 ? vacancyUnits / totalUnits : 0;
 
   // Concessions = free-rent period on newly leased units
