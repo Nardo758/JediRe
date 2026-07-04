@@ -1,0 +1,85 @@
+Getting current date and executing all four corrections in sequence.
+
+Now executing all corrections. First, fix the version string:
+
+Now generate the baseline file. Running tsc with extended timeout:
+
+400 errors in baseline (not 324 — environment count differs). Let me check if any errors come from our recently touched files:
+
+One error from our files — `underwritingVacancyFloor` field mismatch. Let me fix it now, then write the new fail-closed hook:
+
+Now regenerate the baseline to confirm our fix removed the error:
+
+396 errors — 4 fewer, confirming our fix cleaned the bridge error. Now writing the new fail-closed baseline-diff hook:
+
+Now regenerate the baseline file and commit everything:
+
+Pushing the commit and providing the corrected Replit commands:
+
+Committed and pushed. Here's the corrected Replit command sequence for the Bishop live rebuild:
+
+**In Replit shell:**
+
+```bash
+cd ~/JediRe/backend && git pull origin master
+```
+
+**Get a valid auth token** (if your Replit session has one cached):
+```bash
+# Or use whatever token the Replit environment has for conditionalApiV1Auth
+TOKEN="your-bearer-token-here"
+```
+
+**The corrected build command:**
+```bash
+curl -s -X POST http://localhost:4000/api/v1/financial-model/build \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"dealId":"3f32276f-4f5a-40c9-8c8e-b1c1231b2f3a","forceRebuild":true}' \
+  | jq '{
+    opexKeys: .modelResults.assumptions // {},
+    unmatched: .modelResults.assumptions._unmatchedOpexKeys,
+    version: .modelResults.assumptions._meta.opexKeyRuleVersion,
+    noiYear1: .modelResults.summary.noiYear1,
+    inPlaceNOI: .modelResults.summary.inPlaceNOI,
+    stabilizedNOI: .modelResults.summary.stabilizedNOI,
+    vacancyLossY1: (.modelResults.monthlyCashFlow[0:12] | map(.vacancyLoss) | add),
+    firstMonth: .modelResults.monthlyCashFlow[0]
+  }'
+```
+
+**Paste-back requirements (checklist item 3):**
+
+| Field | What to verify |
+|-------|---------------|
+| **Payroll** | Nonzero $/unit/yr, or honestly flagged if absent |
+| **Repairs & Maintenance** (or `maintenance`) | Nonzero, or in `_unmatchedOpexKeys` if Bishop uses a variant not in alias ruleset |
+| **Contract Services** (or `contractServices`) | Nonzero |
+| **Marketing** | Nonzero |
+| **Utilities** | Nonzero |
+| **G&A / Administrative** (or `admin`, `g_and_a`) | Nonzero — **this is the C2+alias test**; should resolve via `Administrative` → `g_and_a` alias |
+| **Insurance** | Nonzero |
+| **Property Tax / RE Tax** (or `propertyTax`, `real_estate_tax`) | Nonzero |
+| **Replacement Reserves** | Nonzero OR `platform_default` (if absent, fallback to `capex.reservesPerUnit` — should show in reasoning) |
+| **Management Fee** | Nonzero OR `platform_default` (if absent, fallback to 5% — should show in reasoning) |
+| **`_unmatchedOpexKeys`** | Should be empty or contain only truly alien keys |
+| **`_meta.opexKeyRuleVersion`** | Should read `2026-07-04a` |
+| **`noiYear1`** | Y1 NOI (annual) |
+| **`inPlaceNOI`** | In-place endpoint |
+| **`stabilizedNOI`** | Stabilized endpoint |
+| **`vacancyLossY1`** | Sum of months 0-11 |
+
+**Evidence-block reasoning strings to check:**
+- If `managementFee` is absent from Bishop's stored assumptions, the bridge should show it resolved via `platform_default` (5% default), NOT silently zeroed
+- If `replacementReserves` is absent, should show `platform_default` (from `capex.reservesPerUnit`)
+- Any resolved key should show its source/resolution chain in the response
+
+**Acceptance criteria:**
+- All seven categories nonzero (or honestly flagged with source=platform_default)
+- `_unmatchedOpexKeys` empty or only alien keys
+- `opexKeyRuleVersion` = `2026-07-04a`
+- Opex ratio in plausible band (~35–50% of EGI for 232-unit asset)
+- `noiYear1` strictly between `inPlaceNOI` and `stabilizedNOI` endpoints
+- No category silently zeroed without a visible source flag
+
+Run it and paste the JSON back.
