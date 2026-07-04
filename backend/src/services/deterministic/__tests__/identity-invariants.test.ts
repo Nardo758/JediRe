@@ -150,7 +150,7 @@ describe('Identity Invariants — Property Tests (seeded)', () => {
       for (const yearRow of result.annualCashFlow) {
         const egr = yearRow.grossPotentialRent
           - yearRow.lossToLease
-          - yearRow.vacancy
+          - yearRow.vacancyLoss
           - yearRow.concessions
           - yearRow.badDebt;
         expect(yearRow.baseRevenue).toBeCloseTo(egr, 0);
