@@ -8,7 +8,8 @@
  * Until pinned, `expected` is null and tests skip automatically.
  */
 
-import { describe, it, expect } from 'vitest';
+import type { ProFormaAssumptions } from '../../financial-model-engine.service';
+import { mapProFormaAssumptionsToModelAssumptions } from '../proforma-assumptions-bridge';
 import { runModel } from '../deterministic-model-runner';
 import { bishopFixture } from '../__fixtures__/bishop.golden';
 import { highlandsFixture } from '../__fixtures__/highlands.golden';
@@ -20,12 +21,18 @@ const TOLERANCE = {
   multiple: 3,    // 0.001
 };
 
-describe('Golden Deal Regression — Bishop', () => {
-  const hasExpected = bishopFixture.expected != null;
+function runWithBridge(raw: ProFormaAssumptions | null) {
+  if (raw == null) throw new Error('rawAssumptions is null — fixture not captured');
+  const modelAssumptions = mapProFormaAssumptionsToModelAssumptions(raw);
+  return runModel(modelAssumptions, { skipSensitivity: true });
+}
 
-  (hasExpected ? it : it.skip)('matches pinned expected outputs', () => {
+describe('Golden Deal Regression — Bishop', () => {
+  const hasExpected = bishopFixture.expected != null && bishopFixture.rawAssumptions != null;
+
+  (hasExpected ? it : it.skip)('matches pinned expected outputs (bridge-inclusive)', () => {
     const exp = bishopFixture.expected!;
-    const result = runModel(bishopFixture.assumptions, { skipSensitivity: true });
+    const result = runWithBridge(bishopFixture.rawAssumptions);
 
     expect(result.summary.noiYear1).toBeCloseTo(exp.noiYear1, TOLERANCE.dollar);
     expect(result.summary.effectiveGrossIncome).toBeCloseTo(exp.egiYear1, TOLERANCE.dollar);
@@ -43,11 +50,11 @@ describe('Golden Deal Regression — Bishop', () => {
 });
 
 describe('Golden Deal Regression — Highlands', () => {
-  const hasExpected = highlandsFixture.expected != null;
+  const hasExpected = highlandsFixture.expected != null && highlandsFixture.rawAssumptions != null;
 
-  (hasExpected ? it : it.skip)('matches pinned expected outputs', () => {
+  (hasExpected ? it : it.skip)('matches pinned expected outputs (bridge-inclusive)', () => {
     const exp = highlandsFixture.expected!;
-    const result = runModel(highlandsFixture.assumptions, { skipSensitivity: true });
+    const result = runWithBridge(highlandsFixture.rawAssumptions);
 
     expect(result.summary.noiYear1).toBeCloseTo(exp.noiYear1, TOLERANCE.dollar);
     expect(result.summary.effectiveGrossIncome).toBeCloseTo(exp.egiYear1, TOLERANCE.dollar);
