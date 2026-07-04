@@ -4,7 +4,8 @@
 
 **Discipline (non-negotiable):**
 - **Green harness never closes a dispatch.** A passing test suite is necessary but not sufficient — live-observed acceptance (W4/W5, S1-01) is the only way to close a dispatch.
-- **Fixtures pin verified-correct values, not current values.** The Bishop + Highlands expected outputs are `null` until W4/W5 live acceptance + Excel parity confirm them. Pinning unproven numbers would freeze bugs into the suite.
+- **Fixtures pin verified-correct values, not current values.** Bishop + Highlands expected outputs are `null` until W4/W5 live acceptance + Excel parity confirm them. Pinning unproven numbers would freeze bugs into the suite.
+- **Path-bound rule:** Every gate must name the surface its expected values came from. Comparing a seed-path canary to a build-path projection is a category error, not a finding.
 
 ## Test Categories
 
@@ -21,7 +22,15 @@ Property-based tests over 100 seeded, reproducible randomized assumption sets.
 Seed: `d2b-golden-2026` (fixed LCG). Changing the seed invalidates historical comparisons.
 
 ### 2. Golden Deal Regression (`golden-deals.test.ts`)
-Pinned fixtures for Bishop (`3f32276f`) + Highlands (`eaabeb9f`). Tests skip while `expected` is `null`.
+Three fixtures, three paths:
+
+| Fixture | Path | Class | Status |
+|---|---|---|---|
+| Bishop (`3f32276f`) | Build path | `build_path` | expected: null — pending live capture |
+| Highlands (`eaabeb9f`) | Seed path | `seed_path` | expected: null — pending seed capture |
+| SyntheticDegenerate | Engine-level | `synthetic` | **Pinned** — runs now |
+
+Tests skip while `expected` is `null`.
 
 | Field | Tolerance |
 |---|---|
@@ -49,11 +58,12 @@ npm test -- deterministic/__tests__
 # Identity invariants only (fast — pure math, no DB)
 npm test -- deterministic/__tests__/identity-invariants.test.ts
 
-# Golden deals (skips until fixtures pinned)
+# Golden deals (synthetic runs; Bishop/Highlands skip until pinned)
 npm test -- deterministic/__tests__/golden-deals.test.ts
 ```
 
 ## CI Integration
+
 Add to `.github/workflows/ci.yml` or equivalent:
 ```yaml
 - name: F9 Engine Identity Invariants
@@ -62,28 +72,39 @@ Add to `.github/workflows/ci.yml` or equivalent:
 
 ## How to Pin Fixtures (post-W4/W5)
 
-1. Run W4/W5 live acceptance. Capture Bishop + Highlands actual outputs.
-2. Run Excel parity. Resolve any disagreements with operator.
-3. Edit `__fixtures__/bishop.golden.ts` and `__fixtures__/highlands.golden.ts`:
+### Bishop (build path)
+1. Run capture script in Replit with live DB.
+2. Populate `bishop.golden.ts`:
    ```typescript
-   expected: {
-     noiYear1: 2922089,   // ← paste verified-correct value
-     egiYear1: 6315308,   // ← paste verified-correct value
-     irr: 0.1847,         // ← paste verified-correct value
-     // ... etc
-   }
+   fixtureClass: 'build_path',
+   rawAssumptions: { /* ProFormaAssumptions from construct-from-DB body */ },
+   expected: { noiYear1: ..., egiYear1: ..., irr: ..., ... },
+   provenance: { source: 'live_build', buildEndpoint: '...', inputSnapshot: '...', pathBoundRule: true },
    ```
-4. Commit: `D2b-W3: Pin golden fixtures after W4/W5 acceptance + Excel parity`
-5. From that commit forward, golden-deal tests run (no longer skip).
+
+### Highlands (seed path)
+1. Hit the seed/deal-financials surface for Highlands.
+2. Populate `highlands.golden.ts`:
+   ```typescript
+   fixtureClass: 'seed_path',
+   rawAssumptions: null, // seed path has no pre-engine assumptions
+   expected: { noiYear1: ..., egiYear1: 6315308, irr: ..., ... },
+   provenance: { source: 'seed_actuals', buildEndpoint: 'seed/deal-financials', originClass: 'owned_import', pathBoundRule: true },
+   ```
+3. **Never** fabricate a deal_assumptions row for Highlands. It is `owned_import` and correctly has none.
+
+### SyntheticDegenerate
+Already pinned. Regenerate via `scripts/generate-synthetic-fixture.ts` if engine changes.
 
 ## File Map
 
 | File | Purpose |
 |---|---|
-| `__fixtures__/golden.types.ts` | Shared fixture interface |
-| `__fixtures__/bishop.golden.ts` | Bishop assumptions + expected (placeholder) |
-| `__fixtures__/highlands.golden.ts` | Highlands assumptions + expected (placeholder) |
+| `__fixtures__/golden.types.ts` | Shared fixture interface (supports build_path, seed_path, synthetic) |
+| `__fixtures__/bishop.golden.ts` | Build-path fixture (placeholder) |
+| `__fixtures__/highlands.golden.ts` | Seed-path fixture (placeholder) |
+| `__fixtures__/synthetic-degenerate.golden.ts` | Engine-level synthetic fixture (pinned) |
 | `__tests__/identity-invariants.test.ts` | Property tests (100 randomized sets) |
-| `__tests__/golden-deals.test.ts` | Pinned regression tests |
+| `__tests__/golden-deals.test.ts` | Pinned regression tests (3 fixtures) |
 | `__tests__/excel-parity.test.ts` | Operator workbook parity (skipped) |
 | `__tests__/README.md` | This file |

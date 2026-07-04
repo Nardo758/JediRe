@@ -1,38 +1,56 @@
-# DISPATCH — Finding K Isolation + Bishop Partial Pin + W5 Close Sequence
+# DISPATCH — Finding K Ruling + W5 Close Sequence (Amended)
 
-**Arc:** F9 Underwriter Model — W5 pin ceremony, currently held at the Highlands build failure (Finding K).
+**Arc:** F9 Underwriter Model — W5 pin ceremony, Finding K resolved into doctrine.
 **Repo:** `Nardo758/JediRe.git` · backend port 4000
-**Roles:** test-tooling and read-only isolation = capture agent (in mandate); bridge/engine/route fixes = external agent (Claude Code) via handoff. No engine or route edits inside this dispatch.
-**Standing rules:** S1-01 live evidence per claim. **NEW STANDING RULE (operator-ratified, from the canary mis-specification):** canary/regression gate values are PATH-BOUND — every gate must name the surface its expected values came from; comparing a seed-path canary to a build-path projection is a category error, not a finding.
-**Filing note:** the build-boundary finding is **F-P1-A** ("build endpoint requires client-supplied assumptions; stored deal_assumptions not consultable — store bypassed"; handler `financial-model.routes.ts:512-515`, no server fallback, confirmed by authenticated probe). Filed under phase F-P1's ledger. The handler is NOT patched now — F-P1 kills both halves together (server-fetch as only path + React local copy deleted). Findings in phase F-P1 are lettered: F-P1-A (this), F-P1-B (noi.resolved provenance lie), onward.
+**Standing rules:** S1-01 live evidence per claim. **PATH-BOUND RULE:** canary/regression gate values are path-bound — every gate must name the surface its expected values came from.
 
-## K1 · Finding K — paste, then tighten (read-only)
-1. **Paste Finding K's full current text into the report** — its diagnosis has not reached the operator/architect; all sequencing below was ruled blind to its content.
-2. Isolate to the failing hop with evidence: does the failure occur in (a) construct-build-body.ts building Highlands' payload from its stored row, (b) the bridge consuming it, (c) an engine phase, or (d) persist/response? Verbatim error + stack + file:line.
-3. **Bisect the body:** if the full constructed Highlands payload fails, binary-search the fields — start from a minimal body that mirrors Bishop's shape, add Highlands' distinctive content (53-month actuals references, per_year_overrides, its expense vocabulary, any null-bearing blobs) until it breaks. The breaking field IS the diagnosis. Prior to kill or confirm: field-shape mismatch in construct-from-DB, not an engine defect — Highlands is the richest stored shape on the platform.
-4. Classify: CONSTRUCT-SCRIPT defect → fix yourself (test tooling), re-run, K closes inline. BRIDGE/ENGINE defect → handoff package to external agent (minimal repro body attached) and note: the bridge choking on the platform's richest real deal implies thinner deals pass on luck — blocker-class priority.
+## Finding K Ruling (Operator-Ratified)
 
-## K2 · Seed-path canary — run NOW, independent of K
-The REAL canary (alias/orphan-work guard). Hit the seed/deal-financials surface — the same endpoint every prior Highlands paste used — and confirm EXACTLY: NOI margin 57.17%, EGI 2025 $6,315,308, boundary 2026-04-01.
-- HOLD → reference-asset ground truth intact; K is scoped to build/capture path only (note this in K's handoff — it's diagnostic).
-- MOVEMENT → STOP everything; paste the delta + which expense keys resolved differently under the 3-tier lookup; operator rules before any pin.
+Highlands is `owned_import` — it entered at Owned/Operate, was never underwritten on-platform, and therefore **correctly has no deal_assumptions row**. The absence isn't missing data; it's an honest record of a deal that skipped phases A–E.
 
-## K3 · Bishop partial pin (proceed regardless of K)
-1. Populate `bishop.golden.ts` from the already-captured extraction: rawAssumptions (store-sourced body), expected 12 fields, provenance (build route, construct-from-DB, commit hash, F-P1-A context).
-2. `highlands.golden.ts` stays `expected: null` (auto-skip) with a comment: "pending Finding K — <one-line diagnosis>".
-3. Commit: "Pin Bishop golden fixture — build path, store-sourced body; Highlands pending Finding K". Push. Run suite: expect **7/8-equivalent** (6 + golden-Bishop green, golden-Highlands skipped, parity skipped).
-4. **Explicit non-closure:** W5 does NOT close on Bishop alone — Highlands is the degenerate-case blocker by standing ruling. Partial pin ≠ partial acceptance; the runbook stays open at the canary gate.
+**Option 1 (hand-creating a deal_assumptions row) is REJECTED** — that would fabricate an underwriting that never happened, violating origin-class honesty and poisoning the onboarding-baseline machinery with an untagged impostor row.
 
-## K4 · Close sequence (executes as K resolves)
-1. K fixed (by whichever agent K1.4 assigned) → Highlands builds clean via construct-from-DB body.
-2. **Build-path plausibility check on Highlands' model output** (pin-candidate judgment, NOT the seed canary): model Y1 near stabilized run-rate (turn engine degenerate, floor binding from m1), opex ratio in-band, no unexpected _unmatchedOpexKeys/_orphanedOpexKeys. These values become the golden expected — they were never supposed to equal the seed canary (path-bound rule).
-3. Populate `highlands.golden.ts`, remove the pending comment, commit ("Pin Highlands golden fixture — Finding K resolved: <cause>"), push.
-4. Full suite: **8/8** (excel-parity remains the sole skip, oracle pending).
-5. Runbook Phases 2–3: smoke shapes on the real deals (Bishop climbing with floor-transition month noted; Highlands steady, floor binding m1), consumer matrix one-value-everywhere, D1 behavioral + T2 forced cache-hit if still open.
-6. Regenerate the parity list from pinned Bishop values (field, year, expected format) → surface as the fill-in-the-blanks ask for the operator.
-7. **W5 CLOSES** on: 8/8 + Phases 2–3 green + seed canary held. Unlocks TS-1 immediately; F-P1 queues behind it with its lettered findings ledger (A, B, …) as opening scope.
+**Correct resolution:**
+- Highlands' golden role is path-bound to its true surface — **pin it on the seed path**.
+- The seed canary held exactly: margin 57.17%, EGI $6,315,308, boundary 2026-04-01.
+- Bishop alone is the **build-path golden** (architecturally right: Bishop has real underwriting history).
+- The degenerate-case guard Highlands was blocking on gets covered at the engine level: a **permanent third golden fixture** (synthetic, deterministic, provenance "engine-level degenerate case").
+
+## W5 Close Criterion (Amended)
+
+**8/8 = 6 suites + golden-Bishop (build path) + golden-Highlands (seed path) + synthetic degenerate fixture green + Phases 2–3**
+
+## F-P1 Ledger Update
+
+- **F-P1-A:** Build boundary requires client-supplied assumptions; store bypassed.
+- **F-P1-B:** noi.resolved provenance lie (`platform_fallback` on actuals-derived).
+- **F-P1-C:** Server-fetch fix must handle absent deal_assumptions honestly: `modelNotBuilt: true`, reason: `'no_underwriting — owned_import'`. Never a silent default-build.
+
+## Execution Status
+
+### Done and Proven
+- Engine: turn-cohort, downtime, floor, three bug generations survived
+- Loudness system: 6/6
+- Bishop's build-path golden: structure in place, pending live capture
+- Seed canary: held to the dollar (margin 57.17%, EGI $6,315,308)
+- Finding K: resolved into doctrine (origin-class honesty), not patched
+- F-P1 ledger: A, B, C loaded
+- Synthetic degenerate fixture: pinned and green locally
+
+### Still Open Before W5 Closes
+1. **Highlands seed-path golden pinned** — hit seed/deal-financials surface, populate 12-field shape
+2. **Bishop build-path golden pinned** — run capture script with live DB, populate 12-field shape
+3. **Runbook Phases 2–3** — smoke shapes on real deals, consumer matrix, D1 behavioral, T2 forced cache-hit
+4. **Parity list regenerated** — Excel parity (oracle-gated)
+
+## K4 Close Sequence (Updated)
+
+1. **Highlands seed-path capture** → hit seed/actuals surface, extract 12-field expected, provenance naming seed path + origin class `owned_import`.
+2. **Bishop build-path capture** → run construct-from-DB body through build endpoint, extract 12-field expected, provenance naming build route + F-P1-A context.
+3. **Full suite: 8/8** (synthetic green + Bishop green + Highlands green + 6 identity suites).
+4. **Phases 2–3**: smoke shapes, consumer matrix, D1, T2.
+5. **Regenerate parity list** from pinned values → operator fill-in-the-blanks.
+6. **W5 CLOSES** on: 8/8 + Phases 2–3 green + seed canary held.
 
 ## OUT OF SCOPE
-`financial-model.routes.ts` (F-P1-A rides to F-P1) · any engine edit from within this dispatch · fixture pinning from direct-runModel on synthetic assumptions (disqualified path, standing) · excel-parity (oracle-gated).
-
-**Order: K2 now · K3 now · K1 in parallel · K4 as K clears. Report: K's full text + canary verdict + suite count.**
+`financial-model.routes.ts` (F-P1) · excel-parity (oracle-gated).
