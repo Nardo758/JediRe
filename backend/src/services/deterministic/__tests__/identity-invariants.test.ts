@@ -103,20 +103,39 @@ describe('Identity Invariants — Property Tests (seeded)', () => {
         const monthlyRows = result.monthlyCashFlow.filter(m => m.year === y);
         expect(monthlyRows.length).toBe(12);
 
-        const sum = (field: keyof typeof yearRow & keyof (typeof monthlyRows)[0]) =>
+        const sum = (field: keyof (typeof monthlyRows)[0]) =>
           monthlyRows.reduce((s, m) => s + (m[field] as number), 0);
 
-        // Dollar fields that must sum exactly
-        const dollarFields = [
-          'gpr', 'lossToLease', 'vacancy', 'concessions', 'badDebt',
-          'baseRevenue', 'otherIncome', 'egi', 'payroll', 'maintenance',
-          'contractServices', 'marketing', 'utilities', 'admin', 'insurance',
-          'propertyTax', 'managementFee', 'replacementReserves', 'totalExpenses', 'noi',
-        ] as const;
+        // W5 Fix A: annual (AnnualCashFlowRow) and monthly (MonthlyCashFlowRow) rows
+        // use different field names for the same quantity (gpr vs grossPotentialRent,
+        // egi vs effectiveGrossIncome). Map annual-field -> monthly-field explicitly so
+        // the comparison is actually checking real values, not silently NaN-passing.
+        const fieldMap: Record<string, keyof (typeof monthlyRows)[0]> = {
+          grossPotentialRent: 'gpr',
+          lossToLease: 'lossToLease',
+          vacancy: 'vacancy',
+          concessions: 'concessions',
+          badDebt: 'badDebt',
+          baseRevenue: 'baseRevenue',
+          otherIncome: 'otherIncome',
+          effectiveGrossIncome: 'egi',
+          payroll: 'payroll',
+          maintenance: 'maintenance',
+          contractServices: 'contractServices',
+          marketing: 'marketing',
+          utilities: 'utilities',
+          admin: 'admin',
+          insurance: 'insurance',
+          propertyTax: 'propertyTax',
+          managementFee: 'managementFee',
+          replacementReserves: 'replacementReserves',
+          totalExpenses: 'totalExpenses',
+          noi: 'noi',
+        };
 
-        for (const field of dollarFields) {
-          const annual = (yearRow as any)[field] as number;
-          const monthlySum = sum(field as any);
+        for (const [annualField, monthlyField] of Object.entries(fieldMap)) {
+          const annual = (yearRow as any)[annualField] as number;
+          const monthlySum = sum(monthlyField);
           expect(monthlySum).toBeCloseTo(annual, 0);
         }
       }
