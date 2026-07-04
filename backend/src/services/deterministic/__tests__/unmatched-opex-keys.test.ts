@@ -102,7 +102,22 @@ describe('C2: canonical-key matching loudness', () => {
     expect(result._unmatchedOpexKeys).toBeDefined();
     expect(result._unmatchedOpexKeys!.length).toBeGreaterThan(0);
 
-    // Verify expected missing keys are present in the warning list
+    // Verify expected missing keys are present in the warning list.
+    // canonicalKey() strips all non-alphanumeric chars including underscores,
+    // so "Repairs & Maintenance" → "repairsmaintenance" matches "repairs_maintenance"
+    // and "Contract Services" → "contractservices" matches "contract_services".
+    // Only "Administrative" → "administrative" has no match for "g_and_a" → "ganda".
+    const expectedMissing = ['g_and_a'];
+    for (const k of expectedMissing) {
+      expect(result._unmatchedOpexKeys).toContain(k);
+    }
+    // Verify keys that DO match via canonical normalization are NOT flagged
+    expect(result._unmatchedOpexKeys).not.toContain('repairs_maintenance');
+    expect(result._unmatchedOpexKeys).not.toContain('contract_services');
+    expect(result._unmatchedOpexKeys).not.toContain('marketing');
+    // Verify optional keys with fallbacks are NOT flagged even when absent
+    expect(result._unmatchedOpexKeys).not.toContain('management_fee');
+    expect(result._unmatchedOpexKeys).not.toContain('replacement_reserves');
     const expectedMissing = ['repairs_maintenance', 'g_and_a', 'contract_services'];
     for (const k of expectedMissing) {
       expect(result._unmatchedOpexKeys).toContain(k);
