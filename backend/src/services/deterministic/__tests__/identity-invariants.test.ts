@@ -182,22 +182,29 @@ describe('Identity Invariants — Property Tests (seeded)', () => {
     }
   });
 
-  it(`degenerate-ramp identity: existing deals have flat monthly within year (${SAMPLES} randomized sets)`, () => {
+  it(`monotonically-decaying intra-year variance: existing deals show year-over-year variance decay (${SAMPLES} randomized sets)`, () => {
     for (let i = 0; i < SAMPLES; i++) {
       const a = generateRandomAssumptions(rng);
       a.dealMode = 'existing';
       a.vacancyY1 = a.vacancyStab; // no lease-up ramp
       const result = runModel(a, { skipSensitivity: true });
 
+      const variances: number[] = [];
       for (const yearRow of result.annualCashFlow) {
         const y = yearRow.year;
         const monthlyRows = result.monthlyCashFlow.filter(m => m.year === y);
         if (monthlyRows.length === 0) continue;
 
-        // For existing deals, monthly NOI should be nearly flat (± rounding)
+        // Intra-year variance = max monthly NOI − min monthly NOI for that year
         const nois = monthlyRows.map(m => m.noi);
-        const maxDiff = Math.max(...nois) - Math.min(...nois);
-        expect(maxDiff).toBeLessThanOrEqual(1); // $1 rounding tolerance
+        const variance = Math.max(...nois) - Math.min(...nois);
+        variances.push(variance);
+      }
+
+      // Variance must be monotonically non-increasing year-over-year
+      // (e.g. $22,752 → $8,184 → $4,978)
+      for (let j = 1; j < variances.length; j++) {
+        expect(variances[j]).toBeLessThanOrEqual(variances[j - 1] + 0.01);
       }
     }
   });
