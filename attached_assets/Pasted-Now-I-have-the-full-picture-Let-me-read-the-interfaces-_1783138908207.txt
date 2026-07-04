@@ -1,0 +1,65 @@
+Now I have the full picture. Let me read the interfaces to prepare the fix.
+
+Now implementing Fix E systematically. Starting with interfaces.
+
+Now update `computeMonthTurnCohort` to write `vacancyLoss`:
+
+Now update `computeYearOperating` — `vacancy` becomes rate, `vacancyLoss` holds dollars:
+
+Now `computeMonthOperating` — add `vacancyLoss` and keep `vacancy` as rate:
+
+Now update `aggregateMonthlyToAnnual` — sum `vacancyLoss`, avg `vacancy` (rate):
+
+Now update INV-9 integrity check to use `vacancyLoss`:
+
+Now update the CSV/export projections to use `vacancyLoss`:
+
+Now update the identity test to use `vacancyLoss`:
+
+Now the bridge — update both coercion directions. Let me read both functions:
+
+Now update the Excel export service:
+
+Let me do a comprehensive census of all `.vacancy` reads in the deterministic engine to verify completeness:
+
+Now sibling check — verify `lossToLease`, `concessions`, `badDebt` are consistently dollars across all three compute paths:
+
+Fix E committed and pushed (`fdb5c3ee2`). Here's the Replit verification script to run next:
+
+## Replit Verification Commands
+
+```bash
+cd backend
+
+# 1. Compile check — 402 pre-existing errors should remain, zero new ones
+npx tsc --noEmit --skipLibCheck 2>&1 | grep -c "error TS" || true
+
+# 2. Identity suite — expect 4/4 green (GPR→EGI→NOI chain should heal)
+npx jest src/services/deterministic/__tests__/identity-invariants.test.ts --verbose
+
+# 3. Unmatched-key forced test — expect green
+npx jest src/services/deterministic/__tests__/unmatched-opex-keys.test.ts --verbose
+
+# 4. Run both test files together
+npx jest src/services/deterministic/__tests__/ --verbose
+```
+
+## Expected Results
+
+| Test | Expected | Why |
+|------|----------|-----|
+| GPR→EGI→NOI chain | ✅ Green | `yearRow.vacancyLoss` now subtracts the correct dollar amount |
+| Monotonically-decaying variance | ✅ Green | Already green from Fix D |
+| Tri-tab debt schedule | ✅ Green | Unchanged |
+| Unmatched-opex-keys (display case) | ✅ Green | `_unmatchedOpexKeys` contains 3 expected missing keys |
+| Unmatched-opex-keys (exact match) | ✅ Green | `_unmatchedOpexKeys` is `undefined` |
+
+## Bishop Live Rebuild (after jest green)
+
+Trigger `buildModel` on Bishop through the live endpoint. With the canonical-key bridge now active, real opex should map instead of silently zeroing. The Bishop expected-output fixture is **contaminated** by the pre-E bug (vacancy was a rate-sum, not dollars) and must be **re-pinned** after verification.
+
+## Pin Ceremony Rule (proven twice now)
+
+Fixes B and E were both introduced *by* fixes in this pass, not by the original audit. The rule: **fixtures pin last, after the suite is 4/4 green, every time.** The near-miss was pinning between the fix and its consequence.
+
+Ready for you to run the Replit verification. Report back the jest output and I'll prepare the re-pin if 4/4 green.
