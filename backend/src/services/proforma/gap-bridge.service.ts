@@ -180,6 +180,10 @@ function deriveProjectionSeries(
 
   const newPeriods = series.periods.map((period): PeriodLayeredValue => {
     if (period.zone !== 'projection') return period;
+    // Durable guard: engine-supplied periods are source-of-truth from the overlay.
+    // Skip them so monthly rebase doesn't overwrite deterministic monthly values
+    // with compound-trend placeholders.
+    if (period.source === 'deterministic_engine') return period;
 
     const monthsFromBaseline = monthDiff(baselineMonth, period.month);
     // W-B Phase 2: ramp only applies where a stabilization target was supplied
