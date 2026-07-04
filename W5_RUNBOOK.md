@@ -9,10 +9,13 @@ These checks decide `deriveProjectionForSeed` disposition before any downstream 
 
 - [ ] **Ribbon source tags**: Check `seed.fields.noi.periods[*].source` — expect `engine_monthly` when engine months available; `derived_projection` or `assumption_trend_ramp` means old ramp is still running
 - [ ] **Value equality seed↔engine**: Compare `seed.fields.noi.periods[i].resolved` vs `ModelResults.monthlyCashFlow[i].noi` for i = 0..35. Delta should be < 0.1% or explained
-- [ ] **Dead-code confirmation**: Confirm `deriveProjectionForSeed` is NOT called when `monthlyCashFlow` is populated from the runner. If it IS called → **fix before fixture pinning**
+- [ ] **Dead-code confirmation**: `grep -rn 'deriveProjectionForSeed'` across the repo. Verdict per call site — **ALIVE on both full reseed (`proforma-seeder.service.ts:1535`) AND monthly rebase (`reconciliation.service.ts:184`)**. Monthly cadence path is how the June divergence happened. Fix required before fixture pinning.
 - [ ] **Highlands source check**: Pull a 100% occupied deal; verify `source` tag is `engine_monthly`, not `derived_projection`
 
 ### deriveProjectionForSeed Disposition Rule
+- **Status: ALIVE on 2 call sites** — full reseed (`proforma-seeder.service.ts:1535`) and monthly rebase (`reconciliation.service.ts:184`)
+- **Fix required**: `gap-bridge.service.ts:224` — `stabilizedMonthlyNoi` must source from `year1.noi.platform` or `year1.noi.om` (stabilized endpoint), not `seed._meta.resolved_noi` (in-place). This is the ramp-target bug causing ~3.2× undershoot on lease-up.
+- **Engine months path**: When `monthlyCashFlow` is populated from the runner, seed projection periods should carry `source: 'engine_monthly'` and the old ramp should NOT overwrite them. Verify this in Phase 0+.
 - **If dead** (never called when engine months available): **Delete** the function + all call sites. Dead code with a known bug is a trap.
 - **If alive** (any path where engine months unavailable): **Fix** `gap-bridge.service.ts:224` — `stabilizedMonthlyNoi` must source from `year1.noi.platform` or `year1.noi.om` (stabilized endpoint), not `seed._meta.resolved_noi` (in-place).
 
@@ -36,6 +39,12 @@ These checks decide `deriveProjectionForSeed` disposition before any downstream 
 ## Phase 3: Two Smoke Shapes Against Real Deals
 
 ### Shape A: Lease-Up (70% occupied at close, mts=19)
+- [ ] Pull a deal with `occupancyAtClose ≈ 0.70` and `monthsToStabilize` set
+- [ ] Read **live endpoints** from blob: `inPlaceNOI = year1.noi.resolved` (actuals-derived), `stabilizedNOI = year1.noi.platform` (platform baseline) or `ModelResults.disposition.stabilizedNOI` (model-computed)
+- [ ] Paste both endpoint values alongside Y1 NOI — the "strictly between" claim must be arithmetic
+- [ ] Expected: `inPlaceNOI < Y1NOI < stabilizedNOI`
+- [ ] Monthly: NOI climbs month-over-month; vacancy floor dormant until transition month (record it), then binding
+- [ ] `effectiveVacancy` > `vacancy` in late months (floor binding visible)
 - [ ] Pull a deal with `occupancyAtClose ≈ 0.70` and `monthsToStabilize` set
 - [ ] Expected: Y1 NOI **strictly between** in-place (~$840K-class) and stabilized (~$2.7M-class)
 - [ ] Monthly: NOI climbs month-over-month; vacancy floor dormant until ~m16 then binding
@@ -68,7 +77,37 @@ These checks decide `deriveProjectionForSeed` disposition before any downstream 
 - [ ] T2 cache-hit: If not closed, document status
 - [ ] S1 acceptance: If not closed, document status
 
-## Phase 7: Fixture Pinning (ONLY ON FULL GREEN)
+## Phase 7: Fixture Pinning (ONLY ON FULL GREEN, ± PARITY-PENDING-ORACLE)
+
+Fixtures pin on everything-else-green. Parity validates the engine's self-consistency against the human oracle; these can land a day apart without violating the gate's intent.
+
+### Pre-Staged Oracle Ask (Emit at Session Start)
+
+Leon: When Phase 7 is reached, the following fields need your workbook values for Excel parity. Fill in as many as you have; the rest can be `ORACLE-PENDING`.
+
+| Field | Year | Format | Your Value |
+|---|---|---|---|
+| GPR | Y1 | Annual $ | |
+| Loss to Lease | Y1 | Annual $ | |
+| Vacancy | Y1 | Annual $ | |
+| Concessions | Y1 | Annual $ | |
+| Bad Debt | Y1 | Annual $ | |
+| Other Income | Y1 | Annual $ | |
+| Total OpEx | Y1 | Annual $ | |
+| NOI | Y1 | Annual $ | |
+| Occupancy | Y1 | % | |
+| DSCR | Y1 | Ratio | |
+| Cash on Cash | Y1 | % | |
+
+If you don't have a workbook for the test deal, state `NO-WORKBOOK` and parity will be skipped with a note.
+
+### Fixture Checklist
+- [ ] Update golden fixtures with turn-cohort values
+- [ ] Property tests: `annualRows[0].noi === sum(monthlyRows[0..11].noi)`
+- [ ] Property tests: `occupancy` is emergent, not schedule-derived
+- [ ] Property tests: `effectiveVacancy >= vacancy` for all months
+- [ ] Excel parity: Export workbook, compare values against runner output
+- [ ] **Exit code if oracle unavailable**: `PARITY-PENDING-ORACLE` — fixtures pin, parity resolves later
 
 - [ ] Update golden fixtures with turn-cohort values
 - [ ] Property tests: `annualRows[0].noi === sum(monthlyRows[0..11].noi)`
