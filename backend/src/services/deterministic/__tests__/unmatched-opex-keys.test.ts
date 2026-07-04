@@ -100,28 +100,15 @@ describe('C2: canonical-key matching loudness', () => {
 
     const result = mapProFormaAssumptionsToModelAssumptions(mock);
 
-    expect(result._unmatchedOpexKeys).toBeDefined();
-    expect(result._unmatchedOpexKeys!.length).toBeGreaterThan(0);
+    // Finding H: alias ruleset maps "Administrative" → "g_and_a", so g_and_a
+    // should NOT be in unmatched. Finding I: "Llama Grooming" is alien → orphan.
+    expect(result._unmatchedOpexKeys).toBeUndefined();
+    expect(result._orphanedOpexKeys).toBeDefined();
+    expect(result._orphanedOpexKeys!).toContain('Llama Grooming');
 
-    // Verify expected missing keys are present in the warning list.
-    // canonicalKey() strips all non-alphanumeric chars including underscores,
-    // so "Repairs & Maintenance" → "repairsmaintenance" matches "repairs_maintenance"
-    // and "Contract Services" → "contractservices" matches "contract_services".
-    // "Administrative" maps to "g_and_a" via the versioned alias ruleset (Ruling 3).
-    // Only "Llama Grooming" is a truly alien key with no canonical or alias match.
-    const expectedMissing = ['Llama Grooming'];
-    for (const k of expectedMissing) {
-      expect(result._unmatchedOpexKeys).toContain(k);
-    }
-    // Verify keys that DO match via canonical normalization are NOT flagged
-    expect(result._unmatchedOpexKeys).not.toContain('repairs_maintenance');
-    expect(result._unmatchedOpexKeys).not.toContain('contract_services');
-    expect(result._unmatchedOpexKeys).not.toContain('marketing');
-    // Verify keys that DO match via alias ruleset are NOT flagged
-    expect(result._unmatchedOpexKeys).not.toContain('g_and_a');
-    // Verify optional keys with fallbacks are NOT flagged even when absent
-    expect(result._unmatchedOpexKeys).not.toContain('management_fee');
-    expect(result._unmatchedOpexKeys).not.toContain('replacement_reserves');
+    // Verify _meta carries the ruleset version (Finding J)
+    expect(result._meta).toBeDefined();
+    expect(result._meta!.opexKeyRuleVersion).toBe('2026-07-04a');
   });
 
   it('passes silently (_unmatchedOpexKeys undefined) when expenses use exact snake_case keys', () => {

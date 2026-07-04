@@ -23,7 +23,7 @@ import type { ProFormaAssumptions } from '../financial-model-engine.service';
 import type { CollisionEntry, ModelAssumptions } from './deterministic-model-runner';
 import { DEF_UNDERWRITING_VACANCY_FLOOR } from './deterministic-model-runner';
 import type { ProFormaYear1Seed, LayeredValue } from '../document-extraction/types';
-import { resolveAlias } from './opex-key-aliases';
+import { resolveAlias, OPEX_KEY_RULESET_VERSION } from './opex-key-aliases';
 
 // §4.3 thresholds for collision detection
 const COLLISION_MATERIAL_PCT = 0.10;
@@ -288,19 +288,34 @@ export function mapProFormaAssumptionsToModelAssumptions(
   }
 
   const unmatchedOpexKeys: string[] = [];
+  // Finding I: track which raw expense keys were consumed so orphans can be detected
+  const consumedRawKeys = new Set<string>();
 
   // Alarm-fidelity principle: only REQUIRED categories trigger unmatched-key
   // warnings. Optional categories with designed fallbacks (management_fee → 5%
   // default; replacement_reserves → capex.reservesPerUnit) must not cry wolf —
   // false-positive warnings are how loudness dies. A user trained to ignore two
   // spurious flags per deal will ignore the real one.
+  //
+  // Finding H fix: alias resolution scans RAW expense keys, not the canonical target.
+  // When getExpAmt('g_and_a') is called, canonicalKey('g_and_a') → 'ganda' misses
+  // in canonicalIndex (Bishop stores 'Administrative'). We then scan Object.keys(exp)
+  // and call resolveAlias(rawKey) for each. resolveAlias('Administrative') returns
+  // 'g_and_a'; canonicalKey('g_and_a') === 'ganda' === canon, so match confirmed.
   const getExpAmt = (key: string, required = true): number => {
     const canon = canonicalKey(key);
     let raw = canonicalIndex[canon];
-    if (!raw) {
-      const aliased = resolveAlias(key);
-      if (aliased) {
-        raw = canonicalIndex[canonicalKey(aliased)];
+    if (raw) {
+      consumedRawKeys.add(raw);
+    } else {
+      // Scan raw expense keys for alias matches to this target
+      for (const rawKey of Object.keys(exp)) {
+        const aliasedTarget = resolveAlias(rawKey);
+        if (aliasedTarget && canonicalKey(aliasedTarget) === canon) {
+          raw = rawKey;
+          consumedRawKeys.add(rawKey);
+          break;
+        }
       }
     }
     if (!raw) {
@@ -315,10 +330,16 @@ export function mapProFormaAssumptionsToModelAssumptions(
   const getExpGrowth = (key: string, required = true): number => {
     const canon = canonicalKey(key);
     let raw = canonicalIndex[canon];
-    if (!raw) {
-      const aliased = resolveAlias(key);
-      if (aliased) {
-        raw = canonicalIndex[canonicalKey(aliased)];
+    if (raw) {
+      consumedRawKeys.add(raw);
+    } else {
+      for (const rawKey of Object.keys(exp)) {
+        const aliasedTarget = resolveAlias(rawKey);
+        if (aliasedTarget && canonicalKey(aliasedTarget) === canon) {
+          raw = rawKey;
+          consumedRawKeys.add(rawKey);
+          break;
+        }
       }
     }
     if (!raw) {
@@ -365,6 +386,26 @@ export function mapProFormaAssumptionsToModelAssumptions(
   const expenseGrowth = expGrowthRates.length > 0
     ? expGrowthRates.reduce((s, r) => s + r, 0) / expGrowthRates.length
     : 0.03;
+
+  // Finding I: detect orphaned/alien expense keys — money silently dropped with
+  // zero warning. After all known categories are resolved, scan raw expense keys
+  // for any that never matched a known target (via canonical or alias).
+  const orphanedOpexKeys: string[] = [];
+  const KNOWN_OPEX_TARGETS = [
+    'payroll', 'repairs_maintenance', 'contract_services', 'marketing',
+    'utilities', 'g_and_a', 'insurance', 'management_fee', 'replacement_reserves',
+    'real_estate_tax',
+  ];
+  for (const rawKey of Object.keys(exp)) {
+    if (consumedRawKeys.has(rawKey)) continue;
+    const rawCanon = canonicalKey(rawKey);
+    const aliasedTarget = resolveAlias(rawKey);
+    const isKnown = KNOWN_OPEX_TARGETS.some(target =>
+      canonicalKey(target) === rawCanon ||
+      (aliasedTarget && canonicalKey(aliasedTarget) === canonicalKey(target))
+    );
+    if (!isKnown) orphanedOpexKeys.push(rawKey);
+  }
 
   // ── Financing ─────────────────────────────────────────────────────────────
   // Source of truth: a.financing.loanAmount populated by the LLM from deal_data
@@ -461,7 +502,11 @@ export function mapProFormaAssumptionsToModelAssumptions(
     annualTurnoverRate,
     ...(occupancyAtClose != null ? { occupancyAtClose } : {}),
     underwritingVacancyFloor,
+    _meta: {
+      opexKeyRuleVersion: OPEX_KEY_RULESET_VERSION,
+    },
     _unmatchedOpexKeys: unmatchedOpexKeys.length > 0 ? unmatchedOpexKeys : undefined,
+    _orphanedOpexKeys: orphanedOpexKeys.length > 0 ? orphanedOpexKeys : undefined,
   };
 }
 
