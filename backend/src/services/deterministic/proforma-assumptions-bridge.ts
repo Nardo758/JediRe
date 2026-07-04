@@ -21,6 +21,7 @@
 
 import type { ProFormaAssumptions } from '../financial-model-engine.service';
 import type { CollisionEntry, ModelAssumptions } from './deterministic-model-runner';
+import { DEF_UNDERWRITING_VACANCY_FLOOR } from './deterministic-model-runner';
 import type { ProFormaYear1Seed, LayeredValue } from '../document-extraction/types';
 
 // §4.3 thresholds for collision detection
@@ -260,7 +261,7 @@ export function mapProFormaAssumptionsToModelAssumptions(
   const renoTurnDowntimeWeeks = (a.revenue as Record<string, unknown>)._renoTurnDowntimeWeeks as number ?? null;
   const newLeaseConcessionMonths = (a.revenue as Record<string, unknown>)._newLeaseConcessionMonths as number ?? 1;
   const annualTurnoverRate = (a.revenue as Record<string, unknown>)._annualTurnoverRate as number ?? 0.50;
-  const underwritingVacancyFloor = (a.revenue as Record<string, unknown>)._underwritingVacancyFloor as number ?? 0.05;
+  const underwritingVacancyFloor = (a.revenue as Record<string, unknown>)._underwritingVacancyFloor as number ?? DEF_UNDERWRITING_VACANCY_FLOOR;
 
   // Other income: sum perUnitMonth × penetration × 12 months → annual per unit
   let otherIncomePerUnit = 0;

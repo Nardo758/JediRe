@@ -217,19 +217,14 @@ export function deriveProjectionForSeed(
 ): ProFormaPeriodicSeed {
   const newFields: Record<string, PeriodicFieldSeries> = {};
 
-  // W-B Phase 2: stabilized_monthly = year1 stabilized NOI ÷ 12 — the ONE named
-  // location for this units conversion. `seed._meta.resolved_noi` is the
-  // ANNUAL stabilized NOI figure produced by the seeder's buildSeed(); the ramp
-  // target must be MONTHLY, hence ÷ 12.
-  const stabilizedMonthlyNoi = seed._meta?.resolved_noi != null
-    ? seed._meta.resolved_noi / 12
-    : null;
-
+  // W5 fix: Beyond the engine horizon (holdYears+1 months), projection periods
+  // use compound-trend continuation from the last known value — same pattern as
+  // gap derivation. No ramp-to-stabilized target; by horizon-end the deal is
+  // already stabilized and post-hold months are hypothetical continuation.
+  // The old ramp target (seed._meta.resolved_noi) was the in-place figure,
+  // causing a ~3.2× undershoot on lease-up and a discontinuity at m72→m73.
   for (const [fieldName, series] of Object.entries(seed.fields)) {
-    const ramp = (fieldName === 'noi' && stabilization && stabilizedMonthlyNoi != null)
-      ? { stabilizedMonthly: stabilizedMonthlyNoi, monthsToStabilization: stabilization.monthsToStabilization }
-      : undefined;
-    newFields[fieldName] = deriveProjectionSeries(series, trends, ramp);
+    newFields[fieldName] = deriveProjectionSeries(series, trends, undefined);
   }
 
   return {
