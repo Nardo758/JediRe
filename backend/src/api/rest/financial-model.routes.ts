@@ -357,7 +357,7 @@ router.get(
  * The engine expects:
  *   { dealInfo, acquisition, disposition, revenue, expenses, financing, capex, waterfall }
  */
-function normalizeToEngineFormat(raw: any): ProFormaAssumptions {
+export function normalizeToEngineFormat(raw: any): ProFormaAssumptions {
   const d = raw.dealInfo ?? {};
   const acq = raw.acquisition ?? {};
   const dsp = raw.disposition ?? {};
