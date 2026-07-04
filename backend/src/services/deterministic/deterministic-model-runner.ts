@@ -441,6 +441,9 @@ const DEF_STANDARD_TURN_DOWNTIME_DAYS = 14;
 const DEF_NEW_LEASE_CONCESSION_MONTHS = 1;
 const DEF_ANNUAL_TURNOVER_RATE = 0.50;
 
+// Underwriting vacancy floor (W4) — single source of truth, imported by bridge
+export const DEF_UNDERWRITING_VACANCY_FLOOR = 0.05;
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function isMiamiDade(county?: string): boolean {
