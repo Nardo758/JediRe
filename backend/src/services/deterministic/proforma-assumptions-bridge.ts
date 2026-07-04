@@ -381,8 +381,14 @@ export function mapProFormaAssumptionsToModelAssumptions(
     if (managementFee < 0.01 || managementFee > 0.15) managementFee = 0.05;
   }
 
-  // Expense growth: use average of all expense growthRates
-  const expGrowthRates = Object.keys(exp).map(k => getExpGrowth(k)).filter(r => r > 0);
+  // Expense growth: average of known target growth rates ONLY (not raw keys).
+  // Calling getExpGrowth on raw keys would mark them consumed, hiding orphans.
+  const OPEX_TARGETS = [
+    'payroll', 'repairs_maintenance', 'contract_services', 'marketing',
+    'utilities', 'g_and_a', 'insurance', 'management_fee', 'replacement_reserves',
+    'real_estate_tax',
+  ];
+  const expGrowthRates = OPEX_TARGETS.map(k => getExpGrowth(k)).filter(r => r > 0);
   const expenseGrowth = expGrowthRates.length > 0
     ? expGrowthRates.reduce((s, r) => s + r, 0) / expGrowthRates.length
     : 0.03;
@@ -391,11 +397,6 @@ export function mapProFormaAssumptionsToModelAssumptions(
   // zero warning. After all known categories are resolved, scan raw expense keys
   // for any that never matched a known target (via canonical or alias).
   const orphanedOpexKeys: string[] = [];
-  const KNOWN_OPEX_TARGETS = [
-    'payroll', 'repairs_maintenance', 'contract_services', 'marketing',
-    'utilities', 'g_and_a', 'insurance', 'management_fee', 'replacement_reserves',
-    'real_estate_tax',
-  ];
   for (const rawKey of Object.keys(exp)) {
     if (consumedRawKeys.has(rawKey)) continue;
     const rawCanon = canonicalKey(rawKey);

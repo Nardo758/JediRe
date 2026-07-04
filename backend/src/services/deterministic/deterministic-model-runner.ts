@@ -76,7 +76,6 @@ export interface ModelAssumptions {
   // Optional: bridge metadata (ruleset version, provenance flags)
   _meta?: { opexKeyRuleVersion?: string };
   // Optional development/ground-up fields (defaults: 18mo construction, 12mo lease-up, 60% LTC, 8% rate)
-  _unmatchedOpexKeys?: string[];
   // Optional development/ground-up fields (defaults: 18mo construction, 12mo lease-up, 60% LTC, 8% rate)
   constructionMonths?: number;
   leaseUpMonths?: number;
@@ -160,6 +159,9 @@ export interface MonthlyCashFlowRow {
   totalExpenses: number;
   noi: number;
   occupancy: number;
+  // Turn-cohort engine provenance fields (W4)
+  effectiveVacancy?: number;  // vacancy rate after underwriting floor applied (may equal physical vacancy)
+  floorBinding?: boolean;    // true when underwritingVacancyFloor > physical vacancy
 }
 
 export interface SourcesUsesItem {
