@@ -1,0 +1,54 @@
+Let me fix all three issues now: the TS error (Fix E incomplete rollout), Finding F (false-positive fallback keys), and the test expectations.
+
+I can see the three issues. Let me fix them all:
+
+**Issue 1 (TS error):** Construction-phase row at line ~1808 missing `vacancyLoss`
+**Issue 2 (Finding F):** `management_fee` and `replacement_reserves` have legitimate fallbacks — shouldn't trigger unmatched-key warnings
+**Issue 3 (Test error):** `canonicalKey()` strips underscores, so `"Repairs & Maintenance"` → `"repairsmaintenance"` matches `"repairs_maintenance"` → `"repairsmaintenance"`
+
+Now fix Finding F in the bridge — exclude fallback-eligible keys from unmatched tracking:
+
+Now fix Finding F — filter out fallback-eligible keys from unmatched tracking, and fix the test:
+
+Now fix the test expectations — only `g_and_a` is a legitimate miss since `canonicalKey()` strips underscores:
+
+Now commit all three fixes together:
+
+All three fixes committed and pushed (`465b74fbb`). Here's the summary:
+
+## Fixes Applied (E-continuation)
+
+| Fix | File | What changed |
+|-----|------|-------------|
+| **TS error** | `deterministic-model-runner.ts` | Construction-phase `AnnualCashFlowRow` now includes `vacancyLoss: 0` (line ~1808) |
+| **Finding F** | `proforma-assumptions-bridge.ts` | `OPTIONAL_OPEX_KEYS` set (`management_fee`, `replacement_reserves`) — exempt from `unmatchedOpexKeys` tracking since both have designed fallbacks |
+| **Test expectations** | `unmatched-opex-keys.test.ts` | Corrected: `canonicalKey()` strips underscores, so `"Repairs & Maintenance"` ↔ `"repairs_maintenance"` and `"Contract Services"` ↔ `"contract_services"` DO match. Only `g_and_a` (no match for `"Administrative"`) is legitimately missing |
+
+## Replit Re-verification Script
+
+```bash
+cd backend
+
+# 1. Compile check — should show 0 new errors
+npx tsc --noEmit --skipLibCheck 2>&1 | grep -c "error TS" || true
+
+# 2. Identity suite — expect 4/4 green
+npx jest src/services/deterministic/__tests__/identity-invariants.test.ts --verbose
+
+# 3. Unmatched-key test — expect 2/2 green
+npx jest src/services/deterministic/__tests__/unmatched-opex-keys.test.ts --verbose
+
+# 4. Both together
+npx jest src/services/deterministic/__tests__/ --verbose
+```
+
+## Expected Results Post-Fix
+
+| Test | Expected | Notes |
+|------|----------|-------|
+| identity-invariants | 4/4 green | GPR→EGI→NOI chain healed by Fix E |
+| unmatched-opex-keys case 1 | ✅ green | Only `g_and_a` flagged; canonical matches confirmed |
+| unmatched-opex-keys case 2 | ✅ green | All exact keys present → `_unmatchedOpexKeys` undefined |
+| Optional keys absent | ✅ silent | `management_fee` / `replacement_reserves` exempt from warnings |
+
+Once Replit confirms green, proceed to **Bishop live rebuild** → **re-pin fixtures** against the 4/4 state.

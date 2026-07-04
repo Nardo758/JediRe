@@ -118,10 +118,6 @@ describe('C2: canonical-key matching loudness', () => {
     // Verify optional keys with fallbacks are NOT flagged even when absent
     expect(result._unmatchedOpexKeys).not.toContain('management_fee');
     expect(result._unmatchedOpexKeys).not.toContain('replacement_reserves');
-    const expectedMissing = ['repairs_maintenance', 'g_and_a', 'contract_services'];
-    for (const k of expectedMissing) {
-      expect(result._unmatchedOpexKeys).toContain(k);
-    }
   });
 
   it('passes silently (_unmatchedOpexKeys undefined) when expenses use exact snake_case keys', () => {

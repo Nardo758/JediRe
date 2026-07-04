@@ -326,31 +326,6 @@ export function mapProFormaAssumptionsToModelAssumptions(
     return gr > 1 ? gr / 100 : gr;
   };
 
-  const getExpAmt = (key: string): number => {
-    const canon = canonicalKey(key);
-    const raw = canonicalIndex[canon];
-    if (!raw) {
-      if (!unmatchedOpexKeys.includes(key)) unmatchedOpexKeys.push(key);
-      return 0;
-    }
-    const e = exp[raw];
-    if (!e) return 0;
-    return e.amount ?? 0;
-  };
-
-  const getExpGrowth = (key: string): number => {
-    const canon = canonicalKey(key);
-    const raw = canonicalIndex[canon];
-    if (!raw) {
-      if (!unmatchedOpexKeys.includes(key)) unmatchedOpexKeys.push(key);
-      return 0.03;
-    }
-    const e = exp[raw];
-    if (!e) return 0.03;
-    const gr = e.growthRate ?? 0.03;
-    return gr > 1 ? gr / 100 : gr;
-  };
-
   const payrollPerUnit = getExpAmt('payroll') / units;
   const maintenancePerUnit = getExpAmt('repairs_maintenance') / units;
   const contractServicesPerUnit = getExpAmt('contract_services') / units;
