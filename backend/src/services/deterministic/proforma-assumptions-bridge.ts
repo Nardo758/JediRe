@@ -260,6 +260,7 @@ export function mapProFormaAssumptionsToModelAssumptions(
   const renoTurnDowntimeWeeks = (a.revenue as Record<string, unknown>)._renoTurnDowntimeWeeks as number ?? null;
   const newLeaseConcessionMonths = (a.revenue as Record<string, unknown>)._newLeaseConcessionMonths as number ?? 1;
   const annualTurnoverRate = (a.revenue as Record<string, unknown>)._annualTurnoverRate as number ?? 0.50;
+  const underwritingVacancyFloor = (a.revenue as Record<string, unknown>)._underwritingVacancyFloor as number ?? 0.05;
 
   // Other income: sum perUnitMonth × penetration × 12 months → annual per unit
   let otherIncomePerUnit = 0;
@@ -420,6 +421,7 @@ export function mapProFormaAssumptionsToModelAssumptions(
     newLeaseConcessionMonths,
     annualTurnoverRate,
     ...(occupancyAtClose != null ? { occupancyAtClose } : {}),
+    underwritingVacancyFloor,
   };
 }
 

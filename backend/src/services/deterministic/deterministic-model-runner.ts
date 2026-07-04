@@ -916,11 +916,18 @@ export function computeMonthTurnCohort(
   // Loss to lease = in-place units paying below market
   const lossToLease = state.occupiedAtInPlace * (marketRent - inPlaceRent);
 
-  // Vacancy = units physically empty (turning + vacant).
+  // Vacancy = units physically empty (turning + vacantStructural + vacantTurn).
   // Concession units are occupied-with-concession; their rent deduction lives
   // only in the `concessions` line. One deduction, one home.
-  const vacancyUnits = state.turning + state.vacantStructural + state.vacantTurn;
-  const vacancy = totalUnits > 0 ? vacancyUnits / totalUnits : 0;
+  const physicalVacancyUnits = state.turning + state.vacantStructural + state.vacantTurn;
+  const vacancy = totalUnits > 0 ? physicalVacancyUnits / totalUnits : 0;
+
+  // Underwriting vacancy floor (W4): revenue deduction uses effective vacancy,
+  // physical occupancy remains emergent and uncapped.
+  const floorUnits = totalUnits * (a.underwritingVacancyFloor ?? DEF_UNDERWRITING_VACANCY_FLOOR);
+  const effectiveVacancyUnits = Math.max(physicalVacancyUnits, floorUnits);
+  const floorBinding = effectiveVacancyUnits > physicalVacancyUnits;
+  const effectiveVacancy = totalUnits > 0 ? effectiveVacancyUnits / totalUnits : 0;
 
   // Concessions = free-rent period on newly leased units
   const concessions = state.concession * marketRent;
@@ -929,8 +936,8 @@ export function computeMonthTurnCohort(
   const badDebt = gpr * a.badDebt;
 
   // Base revenue = GPR - lossToLease - vacancyLoss - concessions - badDebt
-  // vacancyLoss = vacancyUnits * marketRent (those units generate $0)
-  const vacancyLoss = vacancyUnits * marketRent;
+  // vacancyLoss uses effectiveVacancyUnits (underwriting floor may bind)
+  const vacancyLoss = effectiveVacancyUnits * marketRent;
   const baseRevenue = gpr - lossToLease - vacancyLoss - concessions - badDebt;
 
   // Other income (scales with total units, not occupancy)
@@ -983,6 +990,8 @@ export function computeMonthTurnCohort(
     totalExpenses,
     noi,
     occupancy,
+    effectiveVacancy,
+    floorBinding,
   };
 }
 
@@ -1587,9 +1596,10 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     checks.push({ id: 'DSCR_BREACH', status: 'error', message: `Y${breachDscrRow.year} DSCR ${breachDscrRow.dscr!.toFixed(2)} < 1.10 — covenant breach threshold` });
   }
 
-  // SOFT-3: stabilized vacancy < 5% structural floor → AGGRESSIVE_VACANCY warn
-  if (a.vacancyStab < 0.05) {
-    checks.push({ id: 'AGGRESSIVE_VACANCY', status: 'warn', message: `Stabilized vacancy ${(a.vacancyStab * 100).toFixed(1)}% below 5% structural floor` });
+  // SOFT-3: stabilized vacancy < underwriting floor → AGGRESSIVE_VACANCY warn
+  const uwFloor = a.underwritingVacancyFloor ?? DEF_UNDERWRITING_VACANCY_FLOOR;
+  if (a.vacancyStab < uwFloor) {
+    checks.push({ id: 'AGGRESSIVE_VACANCY', status: 'warn', message: `Stabilized vacancy ${(a.vacancyStab * 100).toFixed(1)}% below underwriting floor ${(uwFloor * 100).toFixed(1)}%` });
   }
 
   // SOFT-4: rentGrowth Y1 > 6% → AGGRESSIVE_RENT_GROWTH warn
@@ -1629,9 +1639,9 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     }
   }
 
-  // SOFT-9: Y1 vacancy < 5% structural floor → VACANCY_BELOW_STRUCTURAL warn
-  if (a.vacancyY1 < 0.05) {
-    checks.push({ id: 'VACANCY_BELOW_STRUCTURAL', status: 'warn', message: `Y1 vacancy assumption ${(a.vacancyY1 * 100).toFixed(1)}% below 5% structural floor` });
+  // SOFT-9: Y1 vacancy < underwriting floor → VACANCY_BELOW_STRUCTURAL warn
+  if (a.vacancyY1 < uwFloor) {
+    checks.push({ id: 'VACANCY_BELOW_STRUCTURAL', status: 'warn', message: `Y1 vacancy assumption ${(a.vacancyY1 * 100).toFixed(1)}% below underwriting floor ${(uwFloor * 100).toFixed(1)}%` });
   }
 
   // SOFT-10: capexBudget == 0 on a non-development deal → NO_CAPEX_BUDGET_FOR_VALUE_ADD
