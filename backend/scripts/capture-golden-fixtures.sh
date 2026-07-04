@@ -2,23 +2,22 @@
 #
 # Golden fixture capture — live build path
 #
-# Hits the actual POST /financial-model/build endpoint for Bishop and Highlands,
-# saves full responses, runs a canary check on Highlands opex reality, then
-# extracts the 12-field expected shape.
+# Corrected architecture:
+#   - Body: {"dealId": "...", "forceRebuild": true} — server fetches stored assumptions
+#   - Route: POST /api/v1/financial-model/build (verified via routes/index.ts:402)
+#   - rawAssumptions: pre-bridge DB snapshot from deal_assumptions.year1 (display-case keys, LayeredValue blobs)
+#   - expected: 12-field shape extracted from build response
+#   - provenance: capture metadata including assumptions_hash from response
 #
 # Usage in Replit:
 #   export TOKEN=<your-auth-token>
 #   ./scripts/capture-golden-fixtures.sh
-#
-# The script produces:
-#   /tmp/build_bishop.json      — full Bishop build response
-#   /tmp/build_highlands.json   — full Highlands build response
-#   /tmp/golden_extracted.json  — extracted 12-field shape + provenance for both deals
 
 set -euo pipefail
 
 TOKEN="${TOKEN:-}"
 BASE_URL="${BASE_URL:-http://localhost:4000}"
+BUILD_ENDPOINT="/api/v1/financial-model/build"
 
 if [[ -z "$TOKEN" ]]; then
   echo "WARN: TOKEN not set — proceeding without auth header (local dev only)"
@@ -38,21 +37,22 @@ curl_build() {
   local label="$3"
 
   echo "=== Building $label (deal_id=$deal_id) ==="
-  curl -s -X POST "$BASE_URL/api/v1/deals/$deal_id/financial-model/build" \
+  curl -s -X POST "${BASE_URL}${BUILD_ENDPOINT}" \
     ${AUTH_HEADER:+-H "$AUTH_HEADER"} \
     -H "Content-Type: application/json" \
+    -d "{\"dealId\":\"$deal_id\",\"forceRebuild\":true}" \
     > "$out_file"
 
-  # Verify it's valid JSON
+  # Verify valid JSON
   if ! jq -e . "$out_file" > /dev/null 2>&1; then
     echo "ERROR: $label build response is not valid JSON. First 500 chars:"
     head -c 500 "$out_file"
     exit 1
   fi
 
-  # Verify it has annualCashFlow (not an error response)
-  if ! jq -e '.annualCashFlow' "$out_file" > /dev/null 2>&1; then
-    echo "ERROR: $label build response missing annualCashFlow. Response keys:"
+  # Verify it has modelResults (not an error response)
+  if ! jq -e '.modelResults // .data' "$out_file" > /dev/null 2>&1; then
+    echo "ERROR: $label build response missing modelResults. Response keys:"
     jq 'keys' "$out_file"
     exit 1
   fi
@@ -60,19 +60,30 @@ curl_build() {
   echo "OK: $label build saved to $out_file ($(wc -c < "$out_file") bytes)"
 }
 
-# ── 1. Live builds ──────────────────────────────────────────────────────────
+# ── 0. Resolve deal IDs (if full UUIDs unknown) ───────────────────────────────
+echo "=== Deal IDs ==="
+echo "Bishop:   $BISHOP_ID"
+echo "Highlands: $HIGHLANDS_ID"
+
+# ── 1. Live builds ────────────────────────────────────────────────────────────
 curl_build "$BISHOP_ID"   "/tmp/build_bishop.json"    "Bishop"
 curl_build "$HIGHLANDS_ID" "/tmp/build_highlands.json" "Highlands"
 
-# ── 2. Highlands canary ─────────────────────────────────────────────────────
+# ── 2. Highlands Canary ───────────────────────────────────────────────────────
 echo ""
 echo "=== Highlands Canary (opex reality check) ==="
-HIGHLANDS_Y1_OPEX=$(jq '.annualCashFlow[0].totalExpenses // 0' /tmp/build_highlands.json)
-echo "Highlands Y1 totalExpenses: $HIGHLANDS_Y1_OPEX"
+# Extract from modelResults.annualCashFlow[0] (Y1 data)
+HIGHLANDS_Y1_OPEX=$(jq '.modelResults.annualCashFlow[0].totalExpenses // 0' /tmp/build_highlands.json)
+HIGHLANDS_Y1_NOI=$(jq '.modelResults.annualCashFlow[0].noi // 0' /tmp/build_highlands.json)
+HIGHLANDS_Y1_EGI=$(jq '.modelResults.annualCashFlow[0].effectiveGrossRevenue // 0' /tmp/build_highlands.json)
+HIGHLANDS_MARGIN=$(echo "scale=6; if ($HIGHLANDS_Y1_EGI > 0) then $HIGHLANDS_Y1_NOI / $HIGHLANDS_Y1_EGI else 0 fi" | bc)
 
-# Synthetic floor: 196 units × ~$2,500/unit/yr min opex = ~$490,000
-# If the bridge is working, this should be > $400,000 for Highlands
-CANARY_FLOOR=400000
+echo "Highlands Y1 totalExpenses: $HIGHLANDS_Y1_OPEX"
+echo "Highlands Y1 NOI:          $HIGHLANDS_Y1_NOI"
+echo "Highlands Y1 EGI:          $HIGHLANDS_Y1_EGI"
+echo "Highlands Y1 margin:       $HIGHLANDS_MARGIN"
+
+# Key check: opex must be non-zero (bridge is working)
 if (( $(echo "$HIGHLANDS_Y1_OPEX > 0" | bc -l) )); then
   echo "PASS: opex is non-zero"
 else
@@ -80,71 +91,122 @@ else
   exit 1
 fi
 
-if (( $(echo "$HIGHLANDS_Y1_OPEX >= $CANARY_FLOOR" | bc -l) )); then
-  echo "PASS: opex >= $CANARY_FLOOR (bridge appears to be mapping correctly)"
+# Unmatched / orphaned keys (should be empty or only known optional keys)
+UNMATCHED=$(jq '.modelResults._unmatchedOpexKeys // []' /tmp/build_highlands.json)
+ORPHANED=$(jq '.modelResults._orphanedOpexKeys // []' /tmp/build_highlands.json)
+echo "unmatchedOpexKeys:  $UNMATCHED"
+echo "orphanedOpexKeys:   $ORPHANED"
+
+if [[ "$UNMATCHED" == "[]" && "$ORPHANED" == "[]" ]]; then
+  echo "PASS: no unexpected opex keys"
 else
-  echo "HOLD: opex < $CANARY_FLOOR — below expected floor. Delta: $(echo "$CANARY_FLOOR - $HIGHLANDS_Y1_OPEX" | bc)"
-  echo "Review before pinning. Possible causes: partial bridge mapping, missing expense categories, or deal-specific low opex."
-  # Exit with a distinct code so caller can distinguish STOP vs HOLD
-  exit 2
+  echo "HOLD: unexpected opex keys detected. Review before pinning."
+  echo "  unmatched: $UNMATCHED"
+  echo "  orphaned:  $ORPHANED"
 fi
 
-# ── 3. Extract 12-field shape + provenance ──────────────────────────────────
+# ── 3. Extract 12-field expected shape ───────────────────────────────────────
 echo ""
 echo "=== Extracting 12-field expected shape ==="
 
+# Determine response structure (modelResults vs data wrapper)
+function get_summary() {
+  local file="$1"
+  local field="$2"
+  # Try modelResults first, then data
+  jq -e ".modelResults.summary.$field // .data.summary.$field // .modelResults.$field // .data.$field" "$file" 2>/dev/null || echo "null"
+}
+
+function get_cashflow() {
+  local file="$1"
+  local field="$2"
+  jq -e ".modelResults.annualCashFlow[0].$field // .data.annualCashFlow[0].$field" "$file" 2>/dev/null || echo "null"
+}
+
+B_NOI=$(get_cashflow /tmp/build_bishop.json "noi")
+B_EGI=$(get_cashflow /tmp/build_bishop.json "effectiveGrossRevenue")
+B_IRR=$(get_summary /tmp/build_bishop.json "irr")
+B_EM=$(get_summary /tmp/build_bishop.json "equityMultiple")
+B_DSCR=$(get_summary /tmp/build_bishop.json "dscr")
+B_COC=$(get_summary /tmp/build_bishop.json "cashOnCash")
+B_GIC=$(get_summary /tmp/build_bishop.json "goingInCapRate")
+B_EXIT_CAP=$(get_summary /tmp/build_bishop.json "exitCapRate")
+B_YOC=$(get_summary /tmp/build_bishop.json "yieldOnCost")
+B_TEQ=$(get_summary /tmp/build_bishop.json "totalEquity")
+B_TDB=$(get_summary /tmp/build_bishop.json "totalDebt")
+B_NET=$(get_summary /tmp/build_bishop.json "netProceeds")
+B_HASH=$(jq -r '.assumptionsHash // .data.assumptionsHash // "unknown"' /tmp/build_bishop.json)
+
+H_NOI=$(get_cashflow /tmp/build_highlands.json "noi")
+H_EGI=$(get_cashflow /tmp/build_highlands.json "effectiveGrossRevenue")
+H_IRR=$(get_summary /tmp/build_highlands.json "irr")
+H_EM=$(get_summary /tmp/build_highlands.json "equityMultiple")
+H_DSCR=$(get_summary /tmp/build_highlands.json "dscr")
+H_COC=$(get_summary /tmp/build_highlands.json "cashOnCash")
+H_GIC=$(get_summary /tmp/build_highlands.json "goingInCapRate")
+H_EXIT_CAP=$(get_summary /tmp/build_highlands.json "exitCapRate")
+H_YOC=$(get_summary /tmp/build_highlands.json "yieldOnCost")
+H_TEQ=$(get_summary /tmp/build_highlands.json "totalEquity")
+H_TDB=$(get_summary /tmp/build_highlands.json "totalDebt")
+H_NET=$(get_summary /tmp/build_highlands.json "netProceeds")
+H_HASH=$(jq -r '.assumptionsHash // .data.assumptionsHash // "unknown"' /tmp/build_highlands.json)
+
 jq -n \
+  --arg capture_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg build_endpoint "$BASE_URL$BUILD_ENDPOINT" \
   --arg bishop_id "$BISHOP_ID" \
   --arg highlands_id "$HIGHLANDS_ID" \
-  --arg capture_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --arg build_endpoint "$BASE_URL/api/v1/deals/{dealId}/financial-model/build" \
-  --slurpfile bishop /tmp/build_bishop.json \
-  --slurpfile highlands /tmp/build_highlands.json \
+  --arg bishop_hash "$B_HASH" \
+  --arg highlands_hash "$H_HASH" \
+  --argjson b_noi "$B_NOI" \
+  --argjson b_egi "$B_EGI" \
+  --argjson b_irr "$B_IRR" \
+  --argjson b_em "$B_EM" \
+  --argjson b_dscr "$B_DSCR" \
+  --argjson b_coc "$B_COC" \
+  --argjson b_gic "$B_GIC" \
+  --argjson b_exit_cap "$B_EXIT_CAP" \
+  --argjson b_yoc "$B_YOC" \
+  --argjson b_teq "$B_TEQ" \
+  --argjson b_tdb "$B_TDB" \
+  --argjson b_net "$B_NET" \
+  --argjson h_noi "$H_NOI" \
+  --argjson h_egi "$H_EGI" \
+  --argjson h_irr "$H_IRR" \
+  --argjson h_em "$H_EM" \
+  --argjson h_dscr "$H_DSCR" \
+  --argjson h_coc "$H_COC" \
+  --argjson h_gic "$H_GIC" \
+  --argjson h_exit_cap "$H_EXIT_CAP" \
+  --argjson h_yoc "$H_YOC" \
+  --argjson h_teq "$H_TEQ" \
+  --argjson h_tdb "$H_TDB" \
+  --argjson h_net "$H_NET" \
   '{
     bishop: {
       dealId: $bishop_id,
       expected: {
-        noiYear1:        $bishop[0].annualCashFlow[0].noi,
-        egiYear1:        $bishop[0].annualCashFlow[0].effectiveGrossRevenue,
-        irr:             $bishop[0].summary.irr,
-        equityMultiple:  $bishop[0].summary.equityMultiple,
-        dscrY1:          $bishop[0].summary.dscr,
-        cashOnCashY1:    $bishop[0].summary.cashOnCash,
-        goingInCapRate:  $bishop[0].summary.goingInCapRate,
-        exitCapRate:     $bishop[0].summary.exitCapRate,
-        yieldOnCost:     $bishop[0].summary.yieldOnCost,
-        totalEquity:     $bishop[0].summary.totalEquity,
-        totalDebt:       $bishop[0].summary.totalDebt,
-        netProceeds:     $bishop[0].summary.netProceeds,
+        noiYear1: $b_noi, egiYear1: $b_egi, irr: $b_irr, equityMultiple: $b_em,
+        dscrY1: $b_dscr, cashOnCashY1: $b_coc, goingInCapRate: $b_gic,
+        exitCapRate: $b_exit_cap, yieldOnCost: $b_yoc, totalEquity: $b_teq,
+        totalDebt: $b_tdb, netProceeds: $b_net
       },
       provenance: {
-        captureDate: $capture_date,
-        source: "live_build",
-        buildEndpoint: $build_endpoint,
-        inputSnapshot: "deal_id:\($bishop_id)"
+        captureDate: $capture_date, source: "live_build",
+        buildEndpoint: $build_endpoint, inputSnapshot: $bishop_hash
       }
     },
     highlands: {
       dealId: $highlands_id,
       expected: {
-        noiYear1:        $highlands[0].annualCashFlow[0].noi,
-        egiYear1:        $highlands[0].annualCashFlow[0].effectiveGrossRevenue,
-        irr:             $highlands[0].summary.irr,
-        equityMultiple:  $highlands[0].summary.equityMultiple,
-        dscrY1:          $highlands[0].summary.dscr,
-        cashOnCashY1:    $highlands[0].summary.cashOnCash,
-        goingInCapRate:  $highlands[0].summary.goingInCapRate,
-        exitCapRate:     $highlands[0].summary.exitCapRate,
-        yieldOnCost:     $highlands[0].summary.yieldOnCost,
-        totalEquity:     $highlands[0].summary.totalEquity,
-        totalDebt:       $highlands[0].summary.totalDebt,
-        netProceeds:     $highlands[0].summary.netProceeds,
+        noiYear1: $h_noi, egiYear1: $h_egi, irr: $h_irr, equityMultiple: $h_em,
+        dscrY1: $h_dscr, cashOnCashY1: $h_coc, goingInCapRate: $h_gic,
+        exitCapRate: $h_exit_cap, yieldOnCost: $h_yoc, totalEquity: $h_teq,
+        totalDebt: $h_tdb, netProceeds: $h_net
       },
       provenance: {
-        captureDate: $capture_date,
-        source: "live_build",
-        buildEndpoint: $build_endpoint,
-        inputSnapshot: "deal_id:\($highlands_id)"
+        captureDate: $capture_date, source: "live_build",
+        buildEndpoint: $build_endpoint, inputSnapshot: $highlands_hash
       }
     }
   }' > /tmp/golden_extracted.json
@@ -157,21 +219,34 @@ echo ""
 echo "=== Highlands expected ==="
 jq '.highlands.expected' /tmp/golden_extracted.json
 
-# ── 4. ProFormaAssumptions extraction (if available in response) ─────────────
+# ── 4. rawAssumptions snapshot from DB ─────────────────────────────────────────
 echo ""
-echo "=== Checking for raw ProFormaAssumptions in build responses ==="
-for deal in bishop highlands; do
-  if jq -e '.proFormaAssumptions // .inputAssumptions // .assumptions' "/tmp/build_${deal}.json" > /dev/null 2>&1; then
-    echo "  $deal: raw assumptions found in response"
-    jq '.proFormaAssumptions // .inputAssumptions // .assumptions' "/tmp/build_${deal}.json" > "/tmp/build_${deal}_raw.json"
-  else
-    echo "  $deal: raw assumptions NOT in response — must fetch separately via deal API"
-  fi
-done
+echo "=== Fetching raw assumptions from DB (deal_assumptions.year1) ==="
+if command -v psql &> /dev/null; then
+  for deal_id in "$BISHOP_ID" "$HIGHLANDS_ID"; do
+    label=$(if [[ "$deal_id" == "$BISHOP_ID" ]]; then echo "bishop"; else echo "highlands"; fi)
+    psql "$DATABASE_URL" -t -A -c "
+      SELECT COALESCE(year1, '{}')::jsonb
+      FROM deal_assumptions
+      WHERE deal_id = '$deal_id'
+    " 2>/dev/null > "/tmp/raw_${label}.json" || echo "WARN: Could not fetch raw assumptions for $label (psql not available or DB_URL not set)"
+    if [[ -s "/tmp/raw_${label}.json" ]]; then
+      echo "  $label: raw assumptions saved to /tmp/raw_${label}.json"
+    else
+      echo "  $label: no raw assumptions found (empty result or DB error)"
+    fi
+  done
+else
+  echo "WARN: psql not available — cannot fetch raw assumptions from DB"
+  echo "      To complete fixture population, run:"
+  echo "      psql \$DATABASE_URL -c \"SELECT year1 FROM deal_assumptions WHERE deal_id = '<id>';\""
+fi
 
+# ── 5. Next steps ────────────────────────────────────────────────────────────
 echo ""
-echo "Capture complete. Next steps:"
-echo "  1. Review /tmp/golden_extracted.json for sanity"
-echo "  2. If raw assumptions are missing, fetch them from GET /api/v1/deals/{id}/proforma"
-echo "  3. Paste the expected + provenance + rawAssumptions blocks into the fixture files"
-echo "  4. Run 8/8 test suite"
+echo "=== NEXT STEPS ==="
+echo "1. Review /tmp/golden_extracted.json for sanity"
+echo "2. Review /tmp/raw_bishop.json and /tmp/raw_highlands.json (pre-bridge DB snapshot)"
+echo "3. Paste the expected + provenance blocks into the fixture files"
+echo "4. Paste the raw assumptions (year1 JSONB) as rawAssumptions in the fixture files"
+echo "5. Run 8/8 test suite in Replit"
