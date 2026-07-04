@@ -401,7 +401,7 @@ export function mapProFormaAssumptionsToModelAssumptions(
     if (consumedRawKeys.has(rawKey)) continue;
     const rawCanon = canonicalKey(rawKey);
     const aliasedTarget = resolveAlias(rawKey);
-    const isKnown = KNOWN_OPEX_TARGETS.some(target =>
+    const isKnown = OPEX_TARGETS.some(target =>
       canonicalKey(target) === rawCanon ||
       (aliasedTarget && canonicalKey(aliasedTarget) === canonicalKey(target))
     );
