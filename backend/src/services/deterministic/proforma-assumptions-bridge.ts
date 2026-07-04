@@ -327,7 +327,7 @@ export function mapProFormaAssumptionsToModelAssumptions(
     return e.amount ?? 0;
   };
 
-  const getExpGrowth = (key: string, required = true): number => {
+  const getExpGrowth = (key: string): number => {
     const canon = canonicalKey(key);
     let raw = canonicalIndex[canon];
     if (raw) {
@@ -343,7 +343,8 @@ export function mapProFormaAssumptionsToModelAssumptions(
       }
     }
     if (!raw) {
-      if (required && !unmatchedOpexKeys.includes(key)) unmatchedOpexKeys.push(key);
+      // Growth rate: no warning — this is a secondary concern. Only getExpAmt
+      // triggers unmatched-key warnings for required categories.
       return 0.03;
     }
     const e = exp[raw];
