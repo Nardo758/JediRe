@@ -1,0 +1,26 @@
+**6/6 — the loudness system is fully proven: alias resolution, orphan detection, required-only warnings, silent pass on clean input.** The suite is stable; the pin ceremony proceeds. Exact sequence for Replit, in order:
+
+**1. Build both deals via the live route** (backend running on :4000, Bearer token in `$TOKEN`):
+```bash
+for DEAL in 3f32276f-4f5a-40c9-8c8e-b1c1231b2f3a eaabeb9f-<full-highlands-id>; do
+  curl -s -X POST http://localhost:4000/api/v1/financial-model/build \
+    -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+    -d "{\"dealId\":\"$DEAL\",\"forceRebuild\":true}" > /tmp/build_$DEAL.json
+done
+```
+
+**2. The Highlands canary question — answer it BEFORE pinning:**
+```bash
+jq '{noiYear1: .modelResults.summary.noiYear1, egi: .modelResults.summary.egiYear1, noiMargin: (.modelResults.summary.noiYear1 / .modelResults.summary.egiYear1), unmatched: .modelResults._unmatchedOpexKeys, orphaned: .modelResults._orphanedOpexKeys}' /tmp/build_eaabeb9f*.json
+```
+Canary hold = margin 57.17%, EGI $6,315,308-class, no unexpected unmatched/orphaned keys. **Exact hold → pin those values. Any movement → STOP, paste the delta and which expense keys resolved differently under the 3-tier lookup — that's a finding for ruling, not absorbing.**
+
+**3. Pin + un-skip in one commit:** capture both deals' expected outputs from the `/tmp` payloads into the fixture files, remove the skips on `golden-deals.test.ts`, commit ("Pin golden fixtures against post-opex verified build"), push.
+
+**4. Immediately re-run the full suite — expect 8/8** (6 + 2 golden). A pin unproven against itself doesn't count.
+
+**5. Runbook Phases 2–3:** smoke shapes against the real deals (Bishop climbing, floor-binding transition month noted; Highlands steady, floor binding from m1), consumer matrix one-value-everywhere, D1 behavioral + T2 cache-hit if still open.
+
+**6. Regenerate the parity list** from the pinned Bishop values — field, year, expected format — and surface it as the fill-in-the-blanks ask for Leon.
+
+8/8 plus Phases 2–3 green closes W5 and unlocks TS-1. The only skip remaining after today should be excel-parity, waiting on exactly one person's workbook.

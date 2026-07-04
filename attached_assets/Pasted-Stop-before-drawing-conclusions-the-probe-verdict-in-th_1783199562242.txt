@@ -1,0 +1,26 @@
+Stop before drawing conclusions — **the probe verdict in that output is wrong, and the script logged a false finding.** The response was `"Unauthorized — No authentication token provided"`: your `export TOKEN=<paste it>` line was literal placeholder text (that's also the bash syntax error at the top), so the curl went out with no token and bounced off `requireAuth` **before any handler ever examined the body**. A 401 says nothing about whether assumptions are required — the script's branch logic treated *any* non-success as the F-P1 finding, which is a script bug (it must distinguish 401/403 = auth, from 400-with-assumptions-required = the actual finding). Plus the second syntax error at line 238 killed it before the canary and builds.
+
+The DB fetches worked (they only needed `DATABASE_URL`), and the ID resolution is now triple-confirmed — those artifacts stand.
+
+**Leon, resume like this — get a real token first:**
+
+Open the JediRE app in your browser (logged in) → DevTools (F12) → **Application → Local Storage → localhost:4000/your app origin** → copy the auth token value. Then:
+
+```bash
+cd ~/workspace/backend
+export TOKEN=eyJ...paste-the-actual-string-no-brackets...
+echo ${TOKEN:0:12}   # sanity check — must print characters, not nothing
+```
+
+**Then, instead of re-running the broken script, run the probe manually** — it's one command and dodges the line-238 error until the agent fixes it:
+
+```bash
+BISHOP=3f32276f-aacd-4da3-b306-317c5109b403
+curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:4000/api/v1/financial-model/build \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -d "{\"dealId\":\"$BISHOP\",\"forceRebuild\":true}"
+```
+
+Paste whatever comes back. Three possible verdicts: **200 with model** = dealId-only works, architecture holds, no F-P1 boundary finding — proceed straight to the Highlands canary; **400 demanding assumptions** = the finding, for real this time; **401 again** = token still wrong, try the localStorage copy again.
+
+For the agent, two fixes to queue regardless of the probe result: the line-238 `fi` syntax error, and the probe branch distinguishing auth failures from validation failures — a 401 must abort with "fix TOKEN," never log an architecture finding. The false-finding text already in this session's record is retracted until the authenticated probe says otherwise.
