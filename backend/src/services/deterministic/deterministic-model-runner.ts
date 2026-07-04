@@ -802,7 +802,7 @@ export interface TurnCohortState {
   turnEntries: number[];
   /** FIFO queue: concessionEntries[m] = units that entered concession in month m. */
   concessionEntries: number[];
-  /** Initial vacant count at m=0, for absorption pacing. */
+  /** Initial structural vacant count at m=0, for absorption pacing. */
   initialVacantUnits: number;
 }
 
@@ -879,15 +879,16 @@ export function computeMonthTurnCohort(
   state.turnEntries[monthIdx] = totalExpiring;
 
   // STEP 2 -- Turn completion: units that entered turn `downtimeMonths` ago
-  // finish and become vacant
+  // finish and become available for re-lease (vacantTurn — friction already modeled).
   const completedMonth = Math.floor(monthIdx - downtimeMonths);
   const completingTurn = completedMonth >= 0 ? (state.turnEntries[completedMonth] ?? 0) : 0;
   state.turning -= completingTurn;
   state.vacantTurn += completingTurn;
 
-  // STEP 3 -- New leases: absorption-paced from vacant stock
-  // Constant pace: initialVacantUnits / monthsToStabilize (platform default 24mo).
-  // Traffic-derived curves can replace the constant later; never instant.
+  // STEP 3 -- New leases: two channels, never conflated
+  //   (a) Turn completions: re-lease in full — downtime IS the friction; no additional throttle.
+  //   (b) Structural vacants: lease-up stock, drained at absorption pace.
+  //   A market days-on-market throttle on turn re-leases is a v1.1 refinement; log, don't build.
   const pace = a.monthsToStabilize != null && a.monthsToStabilize > 0
     ? Math.ceil(state.initialVacantUnits / a.monthsToStabilize)
     : Math.ceil(state.initialVacantUnits / 24);
@@ -915,9 +916,7 @@ export function computeMonthTurnCohort(
   // Loss to lease = in-place units paying below market
   const lossToLease = state.occupiedAtInPlace * (marketRent - inPlaceRent);
 
-  // Vacancy = units physically empty (turning + vacantStructural + vacantTurn).
-  // Concession units are occupied-with-concession; their rent deduction lives
-  // only in the `concessions` line. One deduction, one home.
+  // Vacancy = units physically empty (turning + vacant).
   // Concession units are occupied-with-concession; their rent deduction lives
   // only in the `concessions` line. One deduction, one home.
   const vacancyUnits = state.turning + state.vacantStructural + state.vacantTurn;
