@@ -1807,7 +1807,7 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
         // Construction phase: no revenue, capitalized interest + property tax as expenses
         annualRows.push({
           year: y,
-          grossPotentialRent: 0, lossToLease: 0, vacancy: 0, concessions: 0, badDebt: 0,
+          grossPotentialRent: 0, lossToLease: 0, vacancy: 0, vacancyLoss: 0, concessions: 0, badDebt: 0,
           baseRevenue: 0, otherIncome: 0, effectiveGrossIncome: 0,
           payroll: 0, maintenance: 0, contractServices: 0, marketing: 0,
           utilities: 0, admin: 0, insurance: 0,

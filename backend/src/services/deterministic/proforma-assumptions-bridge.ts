@@ -294,6 +294,38 @@ export function mapProFormaAssumptionsToModelAssumptions(
 
   const unmatchedOpexKeys: string[] = [];
 
+  // Keys with designed fallbacks (not silent-zero bugs when absent)
+  const OPTIONAL_OPEX_KEYS = new Set(['management_fee', 'replacement_reserves']);
+
+  const getExpAmt = (key: string): number => {
+    const canon = canonicalKey(key);
+    const raw = canonicalIndex[canon];
+    if (!raw) {
+      if (!OPTIONAL_OPEX_KEYS.has(key) && !unmatchedOpexKeys.includes(key)) {
+        unmatchedOpexKeys.push(key);
+      }
+      return 0;
+    }
+    const e = exp[raw];
+    if (!e) return 0;
+    return e.amount ?? 0;
+  };
+
+  const getExpGrowth = (key: string): number => {
+    const canon = canonicalKey(key);
+    const raw = canonicalIndex[canon];
+    if (!raw) {
+      if (!OPTIONAL_OPEX_KEYS.has(key) && !unmatchedOpexKeys.includes(key)) {
+        unmatchedOpexKeys.push(key);
+      }
+      return 0.03;
+    }
+    const e = exp[raw];
+    if (!e) return 0.03;
+    const gr = e.growthRate ?? 0.03;
+    return gr > 1 ? gr / 100 : gr;
+  };
+
   const getExpAmt = (key: string): number => {
     const canon = canonicalKey(key);
     const raw = canonicalIndex[canon];
