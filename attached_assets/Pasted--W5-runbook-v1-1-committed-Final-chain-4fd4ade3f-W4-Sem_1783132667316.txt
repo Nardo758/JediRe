@@ -1,0 +1,58 @@
+**W5 runbook v1.1 committed. Final chain:**
+
+```
+4fd4ade3f  W4: Semantics repair + compile guard + underwriting vacancy floor
+808eaa7fe  W4b: Revert inPlaceNOI mislabel; add true in-place endpoint; version hook
+cfcc31f57  W4b: Read-site enumeration for noiYear1 / noi_year1
+9891f142c  W4c addendum: deal_assumptions.year1.noi blob semantics + ramp-target verification
+f5dcf5139  W5: Re-acceptance runbook
+da227f5c5  W5 runbook v1.1: dead-code verdict, live endpoints, pre-staged oracle
+```
+
+---
+
+### Pre-Execution Summary — What's Already Known
+
+**Dead-code check: `deriveProjectionForSeed` is ALIVE on 2 call sites** (grep completed locally):
+
+| Call Site | Path | Context | Verdict |
+|---|---|---|---|
+| Full reseed | `proforma-seeder.service.ts:1535` | `seedProFormaYear1` pipeline with `stabilizationLV` | **ALIVE** |
+| Monthly rebase | `reconciliation.service.ts:184` | `reconcileSeed()` after actuals advance | **ALIVE** — this is the June divergence path |
+
+**Fix required before fixture pinning:** `gap-bridge.service.ts:224` — `stabilizedMonthlyNoi` sources `seed._meta.resolved_noi` (in-place) instead of a stabilized endpoint.
+
+---
+
+### What Leon Does in Replit
+
+1. **Pull latest:** `git pull origin master`
+2. **Pre-stage oracle:** Open `W5_RUNBOOK.md` → Phase 7 → fill the oracle table if you have workbook values
+3. **Run Phase 0+ first:** Check ribbon source tags (`engine_monthly` vs `derived_projection`) — this decides whether the old ramp is still overwriting engine months
+4. **Proceed through Phases 1–7** per runbook
+5. **Return verdict table here** — full green (± `PARITY-PENDING-ORACLE`) closes W2–W5 and triggers TS-1
+
+---
+
+### Verdict Table Template (paste back here)
+
+| Phase | Check | Result | Notes |
+|---|---|---|---|
+| 0+ | Ribbon source tags | | `engine_monthly` / `derived_projection` |
+| 0+ | deriveProjectionForSeed alive? | ✅ ALIVE (2 sites) | Already known |
+| 0+ | Gap-bridge fix applied? | YES/NO | If NO, block fixture pinning |
+| 1 | tsc --noEmit | PASS/FAIL | |
+| 1 | Deterministic tests | PASS/FAIL | |
+| 2 | Annual = ∑monthly | PASS/FAIL | Delta: |
+| 3A | Lease-up Y1 between endpoints | PASS/FAIL | In-place: $___ Y1: $___ Stabilized: $___ |
+| 3A | Floor transition month | m___ | |
+| 3B | Highlands floor binding | PASS/FAIL | Physical: ___% Eff: ___% |
+| 4 | Bishop hindcast | EXHIBIT | Paste exhibit or link |
+| 5 | Consumer matrix | PASS/FAIL | |
+| 6 | D1/T2/S1 status | OPEN/CLOSED | |
+| 7 | Fixtures pinned | YES/NO | |
+| 7 | Oracle status | FILLED/PENDING | |
+
+---
+
+**Standing by for Replit execution. The verdict table comes back here.**
