@@ -67,6 +67,8 @@ export interface ModelAssumptions {
   _evidenceHints?: Record<string, { source: string; confidence: 'HIGH' | 'MEDIUM' | 'LOW'; reasoning?: string }>;
   // Optional: collision report pre-built by the seeder bridge
   _collisionReport?: CollisionEntry[];
+  // Optional: unmatched opex keys detected by the bridge — integrity warning surfaced
+  _unmatchedOpexKeys?: string[];
   // Optional development/ground-up fields (defaults: 18mo construction, 12mo lease-up, 60% LTC, 8% rate)
   constructionMonths?: number;
   leaseUpMonths?: number;
@@ -443,6 +445,19 @@ const DEF_ANNUAL_TURNOVER_RATE = 0.50;
 
 // Underwriting vacancy floor (W4) — single source of truth, imported by bridge
 export const DEF_UNDERWRITING_VACANCY_FLOOR = 0.05;
+
+// ── Annual-per-unit to monthly conversion (C1 fix) ────────────────────────────
+// Per-unit expense inputs are ANNUAL rates ($/unit/yr). The monthly compute
+// must divide by 12 to get $/month. This is the single named location for that
+// conversion; the assertion is why there won't be a fifth appearance of this bug.
+function applyAnnualPerUnitToMonth(
+  annualPerUnit: number,
+  totalUnits: number,
+  expenseGrowthFactor: number,
+): number {
+  // assert: annualPerUnit is in $/unit/year; result is in $/month for this month
+  return (annualPerUnit * totalUnits * expenseGrowthFactor) / 12;
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -943,23 +958,23 @@ export function computeMonthTurnCohort(
   const vacancyLoss = effectiveVacancyUnits * marketRent;
   const baseRevenue = gpr - lossToLease - vacancyLoss - concessions - badDebt;
 
-  // Other income (scales with total units, not occupancy)
+  // Other income (scales with total units, not occupancy; annual per-unit rate → monthly)
   const expenseGrowthFactor = Math.pow(1 + a.expenseGrowth, year - 1);
-  const otherIncome = a.otherIncomePerUnit * totalUnits * expenseGrowthFactor;
+  const otherIncome = applyAnnualPerUnitToMonth(a.otherIncomePerUnit, totalUnits, expenseGrowthFactor);
 
   // Effective gross income
   const egi = baseRevenue + otherIncome;
 
-  // STEP 6 -- Operating expenses (flat per-unit, scaled by expense growth)
-  const payroll = a.payrollPerUnit * totalUnits * expenseGrowthFactor;
-  const maintenance = a.maintenancePerUnit * totalUnits * expenseGrowthFactor;
-  const contractServices = a.contractServicesPerUnit * totalUnits * expenseGrowthFactor;
-  const marketing = a.marketingPerUnit * totalUnits * expenseGrowthFactor;
-  const utilities = a.utilitiesPerUnit * totalUnits * expenseGrowthFactor;
-  const admin = a.adminPerUnit * totalUnits * expenseGrowthFactor;
-  const insurance = a.insurancePerUnit * totalUnits * expenseGrowthFactor;
+  // STEP 6 -- Operating expenses (flat per-unit annual rates, scaled by expense growth, converted to monthly)
+  const payroll = applyAnnualPerUnitToMonth(a.payrollPerUnit, totalUnits, expenseGrowthFactor);
+  const maintenance = applyAnnualPerUnitToMonth(a.maintenancePerUnit, totalUnits, expenseGrowthFactor);
+  const contractServices = applyAnnualPerUnitToMonth(a.contractServicesPerUnit, totalUnits, expenseGrowthFactor);
+  const marketing = applyAnnualPerUnitToMonth(a.marketingPerUnit, totalUnits, expenseGrowthFactor);
+  const utilities = applyAnnualPerUnitToMonth(a.utilitiesPerUnit, totalUnits, expenseGrowthFactor);
+  const admin = applyAnnualPerUnitToMonth(a.adminPerUnit, totalUnits, expenseGrowthFactor);
+  const insurance = applyAnnualPerUnitToMonth(a.insurancePerUnit, totalUnits, expenseGrowthFactor);
   const managementFee = egi * a.managementFee;
-  const replacementReserves = a.replacementReserves * totalUnits * expenseGrowthFactor;
+  const replacementReserves = applyAnnualPerUnitToMonth(a.replacementReserves, totalUnits, expenseGrowthFactor);
 
   const totalExpenses = payroll + maintenance + contractServices + marketing +
     utilities + admin + insurance + taxMonth + managementFee + replacementReserves;
@@ -1066,7 +1081,7 @@ export function aggregateMonthlyToAnnual(
       year: y,
       grossPotentialRent: sum('gpr'),
       lossToLease: sum('lossToLease'),
-      vacancy: sum('baseRevenue') > 0 ? sum('gpr') - sum('baseRevenue') - sum('otherIncome') : 0,
+      vacancy: sum('vacancy'),
       concessions: sum('concessions'),
       badDebt: sum('badDebt'),
       baseRevenue: sum('baseRevenue'),
@@ -1418,6 +1433,16 @@ export function computeSensitivityMatrix(
 
 export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): IntegrityCheck[] {
   const checks: IntegrityCheck[] = [];
+
+  // C2 fix: integrity warning for unmatched opex keys (loudness)
+  if (a._unmatchedOpexKeys && a._unmatchedOpexKeys.length > 0) {
+    checks.push({
+      id: 'UNMATCHED_OPEX_KEYS',
+      status: 'warn',
+      message: `Bridge could not match ${a._unmatchedOpexKeys.length} opex key(s): [${a._unmatchedOpexKeys.join(', ')}] — expenses were silently zeroed. Review ProFormaAssumptions.expenses key names.`,
+    });
+  }
+
   const cf = result.annualCashFlow;
   const hold = a.holdYears;
   // Operating rows: years 1..hold (index 0..hold-1); forward NOI year at index hold is excluded

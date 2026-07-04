@@ -279,17 +279,41 @@ export function mapProFormaAssumptionsToModelAssumptions(
     }
   }
 
-  // ── Expenses ─────────────────────────────────────────────────────────────
+  // ── Expenses (C2 fix: canonical-key matching + loudness) ───────────────────
   const exp = a.expenses || {};
 
+  // Build canonical index: lowercase, strip punctuation & whitespace
+  function canonicalKey(k: string): string {
+    return k.toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  const canonicalIndex: Record<string, string> = {};
+  for (const rawKey of Object.keys(exp)) {
+    canonicalIndex[canonicalKey(rawKey)] = rawKey;
+  }
+
+  const unmatchedOpexKeys: string[] = [];
+
   const getExpAmt = (key: string): number => {
-    const e = exp[key];
+    const canon = canonicalKey(key);
+    const raw = canonicalIndex[canon];
+    if (!raw) {
+      if (!unmatchedOpexKeys.includes(key)) unmatchedOpexKeys.push(key);
+      return 0;
+    }
+    const e = exp[raw];
     if (!e) return 0;
     return e.amount ?? 0;
   };
 
   const getExpGrowth = (key: string): number => {
-    const e = exp[key];
+    const canon = canonicalKey(key);
+    const raw = canonicalIndex[canon];
+    if (!raw) {
+      if (!unmatchedOpexKeys.includes(key)) unmatchedOpexKeys.push(key);
+      return 0.03;
+    }
+    const e = exp[raw];
     if (!e) return 0.03;
     const gr = e.growthRate ?? 0.03;
     return gr > 1 ? gr / 100 : gr;
@@ -423,6 +447,7 @@ export function mapProFormaAssumptionsToModelAssumptions(
     annualTurnoverRate,
     ...(occupancyAtClose != null ? { occupancyAtClose } : {}),
     underwritingVacancyFloor,
+    _unmatchedOpexKeys: unmatchedOpexKeys.length > 0 ? unmatchedOpexKeys : undefined,
   };
 }
 
