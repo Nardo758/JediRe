@@ -1866,6 +1866,20 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
   const em = calculateEM(cashFlows);
   const avgCoC = calculateAvgCoC(totalEquity, annualRows.slice(0, hold).map(r => r.preTaxCashFlow));
   const noiY1 = annualRows[0]?.noi ?? 0;
+  // True in-place endpoint: m0 run-rate, annualized (left edge of M09 bridge;
+  // no turn dynamics, no vacancy, no concessions — pure acquisition-state NOI).
+  const occupiedAtCloseUnits = a.units * (a.occupancyAtClose ?? 1.0);
+  const inPlaceGPR = occupiedAtCloseUnits * a.inPlaceRent * 12;
+  const inPlaceOtherIncome = a.otherIncomePerUnit * a.units;
+  const inPlaceEGI = inPlaceGPR + inPlaceOtherIncome;
+  const inPlaceMgmtFee = inPlaceEGI * a.managementFee;
+  const inPlaceTotalExpenses =
+    (a.payrollPerUnit + a.maintenancePerUnit + a.contractServicesPerUnit +
+     a.marketingPerUnit + a.utilitiesPerUnit + a.adminPerUnit + a.insurancePerUnit +
+     a.replacementReserves) * a.units +
+    inPlaceMgmtFee +
+    (annualRows[0]?.propertyTax ?? 0);
+  const inPlaceNOI = inPlaceEGI - inPlaceTotalExpenses;
   // Development deals: goingInCap = stabilizedNOI / totalProjectCost (spec §10.6)
   // stabilizedNOI = NOI from first post-lease-up year (construction + lease-up years are non-operating)
   const devStabYearIdx = devConstructionYears + devLeaseUpYears; // 0-based index
@@ -2095,6 +2109,21 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
 
   const evidenceFields: EvidenceEntry[] = [
     {
+      field: 'NOI',
+      value: noiY1,
+      source: noiSource,
+      confidence: noiConf,
+      reasoning: noiHint?.reasoning ??
+        `Y1 NOI of $${Math.round(noiY1).toLocaleString()} — emergent turn-cohort monthly aggregate (between in-place and stabilized endpoints, not either endpoint itself).`,
+    },
+    {
+      field: 'inPlaceNOI',
+      value: inPlaceNOI,
+      source: 'computed',
+      confidence: noiConf,
+      reasoning: `In-Place NOI of $${Math.round(inPlaceNOI).toLocaleString()} — m0 run-rate: ${((a.occupancyAtClose ?? 1.0) * 100).toFixed(0)}% occupied at $${Math.round(a.inPlaceRent).toLocaleString()}/unit/month, annualized. Left edge of the M09 bridge; no turn dynamics applied.`,
+    },
+    {
       field: 'inPlaceNOI',
       value: noiY1,
       source: noiSource,
@@ -2136,7 +2165,7 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       value: goingInCap,
       source: 'computed',
       confidence: goingInCapConf,
-      reasoning: `Going-in cap of ${(goingInCap * 100).toFixed(2)}% = In-Place NOI (${noiSource}) ÷ purchase price of $${Math.round(a.purchasePrice).toLocaleString()}.`,
+      reasoning: `Going-in cap of ${(goingInCap * 100).toFixed(2)}% = Y1 NOI (${noiSource}) ÷ purchase price of $${Math.round(a.purchasePrice).toLocaleString()}.`,
     },
   ];
 
@@ -2159,7 +2188,7 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
     `Gross potential rent is derived from a weighted-average market rent of ${fmtUSD(a.marketRent)}/unit/month ` +
     `(${fmtUSD(a.inPlaceRent)}/unit/month in-place) with a ${fmtPct(a.lossToLease)} loss-to-lease adjustment.`,
 
-    `In-Place NOI of ${fmtUSD(noiY1)} is derived from a monthly turn-cohort model: ` +
+    `Y1 NOI of ${fmtUSD(noiY1)} is derived from a monthly turn-cohort model: ` +
     `${a.units} units with lease-expiry turnover at ${((a.annualTurnoverRate ?? DEF_ANNUAL_TURNOVER_RATE) * 100).toFixed(0)}%/yr, ` +
     `${a.standardTurnDowntimeDays ?? DEF_STANDARD_TURN_DOWNTIME_DAYS}-day standard turns, ` +
     `and ${a.newLeaseConcessionMonths ?? DEF_NEW_LEASE_CONCESSION_MONTHS}-month new-lease concessions. ` +

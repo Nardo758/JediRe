@@ -1,0 +1,28 @@
+#!/bin/sh
+# Pre-push hook: compile guard for backend TypeScript
+# W4 addition — fails push if backend does not type-check
+
+cd backend || exit 1
+
+echo "Running TypeScript compile guard (tsc --noEmit --skipLibCheck)..."
+
+# Check if tsc is available (Replit has it; local may not)
+if command -v npx >/dev/null 2>&1; then
+  npx tsc --noEmit --skipLibCheck
+  exit_code=$?
+elif [ -f "node_modules/.bin/tsc" ]; then
+  ./node_modules/.bin/tsc --noEmit --skipLibCheck
+  exit_code=$?
+else
+  echo "WARNING: tsc not available — skipping compile guard (install Node dependencies)"
+  exit_code=0
+fi
+
+if [ $exit_code -ne 0 ]; then
+  echo "ERROR: TypeScript compile guard failed — push aborted."
+  echo "Fix type errors before pushing."
+  exit 1
+fi
+
+echo "Compile guard passed."
+exit 0
