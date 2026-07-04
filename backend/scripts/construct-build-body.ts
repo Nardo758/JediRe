@@ -70,6 +70,35 @@ async function main() {
       return null;
     };
 
+    // Helper: extract value from the flat per_year_overrides shape
+    // ({ year, field, value, resolution }) used by debt: namespaced keys.
+    // NOTE: per_year_overrides is a SEPARATE deal_assumptions column from
+    // year1 — debt:senior:* keys live here, not in year1. These are NOT
+    // LayeredValues — lv() above does not handle this shape.
+    // 'cleared' resolution means the value was explicitly unset — skip it.
+    const perYearOverrides: Record<string, any> = (assumptions.per_year_overrides as Record<string, any>) || {};
+    const debtVal = (key: string): number | null => {
+      const v = perYearOverrides[key];
+      if (!v || typeof v !== 'object') return null;
+      if (v.resolution === 'cleared') return null;
+      if (typeof v.value === 'number') return v.value;
+      return null;
+    };
+
+    // Real persisted senior loan amount (debt_advisor-sourced), if present.
+    // Some deals (e.g. Highlands) have no explicit debt:senior:* record —
+    // only an LTC ratio. Fall back to purchasePrice * ltc as an approximation
+    // of what the frontend's own debt sizing would produce, rather than
+    // silently defaulting to 0 (the INV-6 root cause for these deals).
+    // NOTE: Postgres NUMERIC columns come back from `pg` as strings, not
+    // numbers (project-wide gotcha) — parseFloat, don't rely on typeof.
+    const purchasePriceForDebt = deal.budget || 0;
+    const ltcRaw = assumptions.ltc != null ? parseFloat(assumptions.ltc) : NaN;
+    const ltcRatio = Number.isFinite(ltcRaw) ? ltcRaw : null;
+    const seniorLoanAmount =
+      debtVal('debt:senior:loanAmount') ??
+      (ltcRatio != null && purchasePriceForDebt > 0 ? Math.round(purchasePriceForDebt * ltcRatio) : null);
+
     // Extract unit mix
     const unitMixRaw = assumptions.unit_mix || deal.deal_data?.unit_mix || [];
     const unitMix = Array.isArray(unitMixRaw) ? unitMixRaw.map((u: any) => ({
@@ -157,7 +186,11 @@ async function main() {
         },
         expenses,
         debt: {
-          loanAmount: deal.deal_data?.loan_amount || 0,
+          // Prefer the real persisted senior loan (debt_advisor-sourced) over
+          // deal_data.loan_amount, which does not exist on this deal shape and
+          // was silently defaulting to 0 — the root cause of the INV-6
+          // (totalEquity != totalAcqCost - loanAmount) integrity failure.
+          loanAmount: seniorLoanAmount ?? deal.deal_data?.loan_amount ?? 0,
           interestRate: assumptions.interest_rate || 0.065,
           term: (assumptions.amortization_years || 30) * 12,
           amortization: (assumptions.amortization_years || 30) * 12,
@@ -168,7 +201,7 @@ async function main() {
         lpEquity: deal.deal_data?.lp_equity || 0,
         gpEquity: deal.deal_data?.gp_equity || 0,
         purchasePrice: deal.budget || 0,
-        loanAmount: deal.deal_data?.loan_amount || 0,
+        loanAmount: seniorLoanAmount ?? deal.deal_data?.loan_amount ?? 0,
         holdYears: assumptions.hold_period_years || 5,
       },
     };

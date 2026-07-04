@@ -83,29 +83,46 @@ echo ""
 # ── 1. PROBE (dealId-only body) ──────────────────────────────────────────────
 echo "=== PROBE: dealId-only body ==="
 PROBE_FILE="/tmp/probe_bishop.json"
-curl -s -X POST "${BASE_URL}${BUILD_ENDPOINT}" \
+PROBE_HTTP_CODE=$(curl -s -o "$PROBE_FILE" -w "%{http_code}" -X POST "${BASE_URL}${BUILD_ENDPOINT}" \
   ${AUTH_HEADER:+-H "$AUTH_HEADER"} \
   -H "Content-Type: application/json" \
-  -d "{\"dealId\":\"$BISHOP_ID\",\"forceRebuild\":true}" \
-  > "$PROBE_FILE"
+  -d "{\"dealId\":\"$BISHOP_ID\",\"forceRebuild\":true}")
 
-PROBE_HAS_RESULTS=$(jq -e '.modelResults // .data // .annualCashFlow' "$PROBE_FILE" > /dev/null 2>&1 && echo "yes" || echo "no")
-PROBE_STATUS=$(jq -r '.status // .error // "unknown"' "$PROBE_FILE" 2>/dev/null || echo "unknown")
+echo "  HTTP $PROBE_HTTP_CODE"
 
-if [[ "$PROBE_HAS_RESULTS" == "yes" ]]; then
-  echo "PASS: dealId-only body accepted. Server fetched stored assumptions."
-  echo "  (No finding — build path is server-fetching as designed)"
-  BODY_FROM_DB="no"
-  PROBE_VERDICT="server_fetched"
-else
-  echo "FINDING: dealId-only body REJECTED. Response:"
+if [[ "$PROBE_HTTP_CODE" == "401" || "$PROBE_HTTP_CODE" == "403" ]]; then
+  echo "ABORT: probe got HTTP $PROBE_HTTP_CODE — this is an auth failure, not a validation finding."
+  echo "  Response: $(cat "$PROBE_FILE" | head -c 300)"
+  echo "  Fix TOKEN (re-export a valid, non-expired dev-login token) and re-run. No finding logged."
+  exit 1
+elif [[ "$PROBE_HTTP_CODE" == "200" ]]; then
+  PROBE_HAS_RESULTS=$(jq -e '.modelResults // .data // .annualCashFlow' "$PROBE_FILE" > /dev/null 2>&1 && echo "yes" || echo "no")
+  if [[ "$PROBE_HAS_RESULTS" == "yes" ]]; then
+    echo "PASS: dealId-only body accepted (HTTP 200). Server fetched stored assumptions."
+    echo "  (No finding — build path is server-fetching as designed)"
+    BODY_FROM_DB="no"
+    PROBE_VERDICT="server_fetched"
+  else
+    echo "WARN: HTTP 200 but response has no recognizable model payload. Response:"
+    jq -c . "$PROBE_FILE" || cat "$PROBE_FILE" | head -c 500
+    echo "  Treating as inconclusive — falling back to DB-constructed body."
+    BODY_FROM_DB="yes"
+    PROBE_VERDICT="db_constructed_inconclusive_200"
+  fi
+elif [[ "$PROBE_HTTP_CODE" == "400" ]]; then
+  echo "FINDING: dealId-only body REJECTED (HTTP 400). Response:"
   jq -c . "$PROBE_FILE" || cat "$PROBE_FILE" | head -c 500
   echo ""
-  echo "FINDING CONFIRMED: build path requires client-supplied assumptions."
-  echo "  This is the F-P1 local-state leak: frontend React state ships to build."
+  echo "FINDING CONFIRMED (F-P1-A): build boundary requires client-supplied assumptions."
+  echo "  Store bypassed — persisted deal_assumptions row is not consultable by the build endpoint."
   echo "  Capture will construct body from stored DB data (same shape, store-sourced)."
   BODY_FROM_DB="yes"
   PROBE_VERDICT="db_constructed"
+else
+  echo "ABORT: probe got unexpected HTTP $PROBE_HTTP_CODE — not 200/400/401/403."
+  echo "  Response: $(cat "$PROBE_FILE" | head -c 300)"
+  echo "  Investigate before proceeding. No finding logged."
+  exit 1
 fi
 
 echo ""
@@ -217,23 +234,33 @@ curl_build() {
     local deal_file="/tmp/db_${short_label}_deal.json"
     
     if [[ -f "$db_file" && -f "$deal_file" ]]; then
-      # Use the TypeScript helper to construct the body
-      local construct_file="/tmp/construct_body_${short_label}.json"
-      npx ts-node --transpile-only scripts/construct-build-body.ts "$deal_id" > "$construct_file" 2>/dev/null || true
-      
-      if [[ -f "$construct_file" && -s "$construct_file" ]]; then
-        echo "  Using constructed body from DB"
+      # Use the TypeScript helper to construct the body.
+      # NOTE: construct-build-body.ts writes the actual JSON body to
+      # /tmp/build_body_<shortId>.json — its stdout is human-readable log
+      # lines only ("Frontend-format body: ...", "Total expenses: ..."),
+      # NOT the JSON payload. Capturing stdout here was the bug that produced
+      # "Unexpected token 'F' ... Frontend-format..." JSON parse errors.
+      local short_id="${deal_id%%-*}"
+      local construct_out_file="/tmp/build_body_${short_id}.json"
+      local construct_log="/tmp/construct_body_log_${short_label}.txt"
+      rm -f "$construct_out_file"
+      npx ts-node --transpile-only scripts/construct-build-body.ts "$deal_id" > "$construct_log" 2>&1 || true
+
+      if [[ -f "$construct_out_file" && -s "$construct_out_file" ]]; then
+        local construct_assumptions_file="/tmp/construct_assumptions_${short_label}.json"
+        jq -c '.assumptions' "$construct_out_file" > "$construct_assumptions_file"
+        echo "  Using constructed body from DB ($construct_out_file)"
         curl -s -X POST "${BASE_URL}${BUILD_ENDPOINT}" \
           ${AUTH_HEADER:+-H "$AUTH_HEADER"} \
           -H "Content-Type: application/json" \
-          -d "{\"dealId\":\"$deal_id\",\"assumptions\":$(cat "$construct_file"),\"forceRebuild\":true}" \
+          -d "{\"dealId\":\"$deal_id\",\"assumptions\":$(cat "$construct_assumptions_file"),\"forceRebuild\":true}" \
           > "$out_file"
       else
         echo "  WARN: construct-build-body.ts failed, trying direct DB data"
         curl -s -X POST "${BASE_URL}${BUILD_ENDPOINT}" \
           ${AUTH_HEADER:+-H "$AUTH_HEADER"} \
           -H "Content-Type: application/json" \
-          -d "{\"dealId\":\"$deal_id\",\"assumptions\":$(cat "$db_file\"),\"forceRebuild\":true}" \
+          -d "{\"dealId\":\"$deal_id\",\"assumptions\":$(cat "$db_file"),\"forceRebuild\":true}" \
           > "$out_file"
       fi
     else

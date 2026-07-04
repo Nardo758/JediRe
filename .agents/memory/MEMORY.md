@@ -5,3 +5,4 @@
 - [/api/v1 bypassAuth invariant](api-v1-bypass-auth-invariant.md) — any /api/v1 gate middleware MUST check res.locals.bypassAuth first; ignoring it silently 401s public allowlist routes
 - [DeepSeek metered cost_usd zero bug](deepseek-cost-zero-bug.md) — 99.86% of historical ai_usage_log DeepSeek rows logged cost_usd=0; internal $/day cap was blind to real spend for most of system's life
 - [Ramp target + tri-tab reconciliation](ramp-target-and-tri-tab-reconciliation.md) — correct NOI ramp target field, single-source-of-truth periodic API, DeepSeek 402 is an env issue not a regression
+- [deal_assumptions column shapes](deal-assumptions-column-shapes.md) — debt:* namespaced keys live in per_year_overrides column, NOT nested inside year1; easy to misattribute from a merged dump
