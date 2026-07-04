@@ -1,0 +1,25 @@
+name: TypeScript Compile Guard
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install backend dependencies
+        run: cd backend && npm ci
+
+      - name: TypeScript compile guard
+        run: cd backend && npx tsc --noEmit --skipLibCheck

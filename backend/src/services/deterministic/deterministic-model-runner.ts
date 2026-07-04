@@ -2095,12 +2095,12 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
 
   const evidenceFields: EvidenceEntry[] = [
     {
-      field: 'NOI',
+      field: 'inPlaceNOI',
       value: noiY1,
       source: noiSource,
       confidence: noiConf,
       reasoning: noiHint?.reasoning ??
-        `Year-1 NOI of $${Math.round(noiY1).toLocaleString()} derived from the turn-cohort monthly engine (lease-expiry cohorts, turn downtime, absorption pacing) aggregated to yearly.`,
+        `In-Place NOI of $${Math.round(noiY1).toLocaleString()} derived from the turn-cohort monthly engine (lease-expiry cohorts, turn downtime, absorption pacing) aggregated to yearly.`,
     },
     {
       field: 'IRR',
@@ -2136,7 +2136,7 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       value: goingInCap,
       source: 'computed',
       confidence: goingInCapConf,
-      reasoning: `Going-in cap of ${(goingInCap * 100).toFixed(2)}% = Year-1 NOI (${noiSource}) ÷ purchase price of $${Math.round(a.purchasePrice).toLocaleString()}.`,
+      reasoning: `Going-in cap of ${(goingInCap * 100).toFixed(2)}% = In-Place NOI (${noiSource}) ÷ purchase price of $${Math.round(a.purchasePrice).toLocaleString()}.`,
     },
   ];
 
@@ -2159,11 +2159,13 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
     `Gross potential rent is derived from a weighted-average market rent of ${fmtUSD(a.marketRent)}/unit/month ` +
     `(${fmtUSD(a.inPlaceRent)}/unit/month in-place) with a ${fmtPct(a.lossToLease)} loss-to-lease adjustment.`,
 
-    `Year-1 NOI of ${fmtUSD(noiY1)} is derived from a monthly turn-cohort model: ` +
+    `In-Place NOI of ${fmtUSD(noiY1)} is derived from a monthly turn-cohort model: ` +
     `${a.units} units with lease-expiry turnover at ${((a.annualTurnoverRate ?? DEF_ANNUAL_TURNOVER_RATE) * 100).toFixed(0)}%/yr, ` +
     `${a.standardTurnDowntimeDays ?? DEF_STANDARD_TURN_DOWNTIME_DAYS}-day standard turns, ` +
     `and ${a.newLeaseConcessionMonths ?? DEF_NEW_LEASE_CONCESSION_MONTHS}-month new-lease concessions. ` +
     `Vacancy emerges from turn dynamics; stabilized occupancy targets ${fmtPct(1 - a.vacancyStab)}. ` +
+    `Underwriting vacancy floor at ${fmtPct(a.underwritingVacancyFloor ?? DEF_UNDERWRITING_VACANCY_FLOOR)} ` +
+    `binds when physical vacancy falls below it. ` +
     `Operating expenses grow at ${fmtPct(a.expenseGrowth)} per year with management fee at ` +
     `${fmtPct(a.managementFee)} of EGI. Rent growth is projected at ` +
     `${fmtPct(a.rentGrowth[0])} in Year 1.`,
