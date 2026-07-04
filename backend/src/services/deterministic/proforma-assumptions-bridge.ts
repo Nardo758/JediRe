@@ -23,6 +23,7 @@ import type { ProFormaAssumptions } from '../financial-model-engine.service';
 import type { CollisionEntry, ModelAssumptions } from './deterministic-model-runner';
 import { DEF_UNDERWRITING_VACANCY_FLOOR } from './deterministic-model-runner';
 import type { ProFormaYear1Seed, LayeredValue } from '../document-extraction/types';
+import { resolveAlias } from './opex-key-aliases';
 
 // §4.3 thresholds for collision detection
 const COLLISION_MATERIAL_PCT = 0.10;
@@ -265,12 +266,6 @@ export function mapProFormaAssumptionsToModelAssumptions(
 
   // Other income: sum perUnitMonth × penetration × 12 months → annual per unit
   let otherIncomePerUnit = 0;
-
-  // Other income: sum perUnitMonth × penetration × 12 months → annual per unit
-
-  // Other income: sum perUnitMonth × penetration × 12 months → annual per unit
-
-  // Other income: sum perUnitMonth × penetration × 12 months → annual per unit
   if (a.revenue.otherIncome) {
     for (const oi of Object.values(a.revenue.otherIncome)) {
       if (oi && typeof oi === 'object') {
@@ -294,16 +289,22 @@ export function mapProFormaAssumptionsToModelAssumptions(
 
   const unmatchedOpexKeys: string[] = [];
 
-  // Keys with designed fallbacks (not silent-zero bugs when absent)
-  const OPTIONAL_OPEX_KEYS = new Set(['management_fee', 'replacement_reserves']);
-
-  const getExpAmt = (key: string): number => {
+  // Alarm-fidelity principle: only REQUIRED categories trigger unmatched-key
+  // warnings. Optional categories with designed fallbacks (management_fee → 5%
+  // default; replacement_reserves → capex.reservesPerUnit) must not cry wolf —
+  // false-positive warnings are how loudness dies. A user trained to ignore two
+  // spurious flags per deal will ignore the real one.
+  const getExpAmt = (key: string, required = true): number => {
     const canon = canonicalKey(key);
-    const raw = canonicalIndex[canon];
+    let raw = canonicalIndex[canon];
     if (!raw) {
-      if (!OPTIONAL_OPEX_KEYS.has(key) && !unmatchedOpexKeys.includes(key)) {
-        unmatchedOpexKeys.push(key);
+      const aliased = resolveAlias(key);
+      if (aliased) {
+        raw = canonicalIndex[canonicalKey(aliased)];
       }
+    }
+    if (!raw) {
+      if (required && !unmatchedOpexKeys.includes(key)) unmatchedOpexKeys.push(key);
       return 0;
     }
     const e = exp[raw];
@@ -311,13 +312,17 @@ export function mapProFormaAssumptionsToModelAssumptions(
     return e.amount ?? 0;
   };
 
-  const getExpGrowth = (key: string): number => {
+  const getExpGrowth = (key: string, required = true): number => {
     const canon = canonicalKey(key);
-    const raw = canonicalIndex[canon];
+    let raw = canonicalIndex[canon];
     if (!raw) {
-      if (!OPTIONAL_OPEX_KEYS.has(key) && !unmatchedOpexKeys.includes(key)) {
-        unmatchedOpexKeys.push(key);
+      const aliased = resolveAlias(key);
+      if (aliased) {
+        raw = canonicalIndex[canonicalKey(aliased)];
       }
+    }
+    if (!raw) {
+      if (required && !unmatchedOpexKeys.includes(key)) unmatchedOpexKeys.push(key);
       return 0.03;
     }
     const e = exp[raw];
@@ -335,14 +340,16 @@ export function mapProFormaAssumptionsToModelAssumptions(
   const insurancePerUnit = getExpAmt('insurance') / units;
 
   // Replacement reserves: prefer explicit expense line, fall back to capex.reservesPerUnit
+  // Pass required=false — fallback is designed and visible (capex.reservesPerUnit).
   const replacementReserves =
-    getExpAmt('replacement_reserves') > 0
-      ? getExpAmt('replacement_reserves') / units
+    getExpAmt('replacement_reserves', false) > 0
+      ? getExpAmt('replacement_reserves', false) / units
       : (a.capex.reservesPerUnit ?? 250);
 
   // Management fee: expressed as a fraction of EGI in the runner.
   // Compute from the expense amount or default to 5%.
-  const mgmtAmt = getExpAmt('management_fee');
+  // Pass required=false — fallback is designed and visible (5% default).
+  const mgmtAmt = getExpAmt('management_fee', false);
   let managementFee = 0.05; // default 5%
   if (mgmtAmt > 0) {
     // Estimate EGI from Y1 GPR × stabilizedOccupancy as a denominator proxy

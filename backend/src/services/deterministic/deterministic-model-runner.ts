@@ -25,6 +25,8 @@ export interface ModelAssumptions {
   lossToLease: number;
   vacancyY1: number;
   vacancyStab: number;
+  /** Minimum vacancy rate applied during underwriting (default 5%). */
+  underwritingVacancyFloor?: number;
   concessions: number;
   badDebt: number;
   otherIncomePerUnit: number;

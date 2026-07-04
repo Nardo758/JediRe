@@ -1,28 +1,84 @@
 #!/bin/sh
-# Pre-push hook: compile guard for backend TypeScript
-# W4 addition — fails push if backend does not type-check
+# Pre-push hook: TypeScript compile guard — baseline-diff mode
+# Ruling (2026-07-04): fail-closed + diff against committed baseline.
+#
+# Principles:
+#   1. No graceful skip — if tsc is unavailable, the guard FAILS with instructions.
+#   2. Baseline-diff: only NEW errors fail the push. Shrinking the baseline
+#      is allowed and celebrated; growing it is blocked.
+#   3. --no-verify is retired — with a functioning guard there is no legitimate
+#      reason to bypass it.
+#   4. CI runs the same check (enforcement layer — hooks are per-clone and
+#      cannot be trusted).
+#
+# To update the baseline after intentional cleanup:
+#   cd backend && ./node_modules/.bin/tsc --noEmit --skipLibCheck 2>&1 \
+#     | grep 'error TS[0-9]\{4\}:' | sort > ../tsc-baseline.txt
+#   git add tsc-baseline.txt && git commit -m "tsc baseline: shrank to N errors"
 
 cd backend || exit 1
 
-echo "Running TypeScript compile guard (tsc --noEmit --skipLibCheck)..."
-
-# Check if tsc is available (Replit has it; local may not)
-if command -v npx >/dev/null 2>&1; then
-  npx tsc --noEmit --skipLibCheck
-  exit_code=$?
-elif [ -f "node_modules/.bin/tsc" ]; then
-  ./node_modules/.bin/tsc --noEmit --skipLibCheck
-  exit_code=$?
-else
-  echo "WARNING: tsc not available — skipping compile guard (install Node dependencies)"
-  exit_code=0
+TSC=""
+if [ -f "node_modules/.bin/tsc" ]; then
+  TSC="./node_modules/.bin/tsc"
+elif command -v npx >/dev/null 2>&1; then
+  TSC="npx tsc"
 fi
 
-if [ $exit_code -ne 0 ]; then
-  echo "ERROR: TypeScript compile guard failed — push aborted."
-  echo "Fix type errors before pushing."
+if [ -z "$TSC" ]; then
+  echo "ERROR: TypeScript compiler not found."
+  echo "Install dependencies: npm ci"
+  echo "Push aborted."
   exit 1
 fi
 
-echo "Compile guard passed."
+BASELINE="../tsc-baseline.txt"
+if [ ! -f "$BASELINE" ]; then
+  echo "ERROR: tsc-baseline.txt not found at $BASELINE."
+  echo "Generate it: $TSC --noEmit --skipLibCheck 2>&1 | grep 'error TS[0-9]\\{4\\}:' | sort > $BASELINE"
+  echo "Push aborted."
+  exit 1
+fi
+
+echo "Running TypeScript compile guard (baseline-diff mode)..."
+
+# Run tsc, normalize to one error per line: file(line,col): error TS####: ...
+RAW_ERRORS=$(mktemp)
+$TSC --noEmit --skipLibCheck 2>&1 | grep 'error TS[0-9]\{4\}:' | sort > "$RAW_ERRORS"
+TOTAL=$(wc -l < "$RAW_ERRORS")
+BASELINE_COUNT=$(wc -l < "$BASELINE")
+
+echo "Current errors: $TOTAL | Baseline: $BASELINE_COUNT"
+
+# Compare: find lines in RAW that are not in BASELINE
+NEW_ERRORS=$(mktemp)
+comm -23 "$RAW_ERRORS" "$BASELINE" > "$NEW_ERRORS"
+NEW_COUNT=$(wc -l < "$NEW_ERRORS" | tr -d ' ')
+
+# Also find lines in BASELINE that are not in RAW (shrinkage)
+SHRUNK=$(mktemp)
+comm -13 "$RAW_ERRORS" "$BASELINE" > "$SHRUNK"
+SHRUNK_COUNT=$(wc -l < "$SHRUNK" | tr -d ' ')
+
+rm -f "$RAW_ERRORS" "$NEW_ERRORS" "$SHRUNK"
+
+if [ "$NEW_COUNT" -gt 0 ]; then
+  echo "ERROR: $NEW_COUNT new TypeScript error(s) detected — push aborted."
+  echo ""
+  echo "New errors (not in baseline):"
+  $TSC --noEmit --skipLibCheck 2>&1 | grep 'error TS[0-9]\{4\}:' | sort | comm -23 - "$BASELINE"
+  echo ""
+  echo "Fix these errors, or update the baseline if they are intentional:"
+  echo "  $TSC --noEmit --skipLibCheck 2>&1 | grep 'error TS[0-9]\\{4\\}:' | sort > $BASELINE"
+  exit 1
+fi
+
+if [ "$SHRUNK_COUNT" -gt 0 ]; then
+  echo "CELEBRATE: $SHRUNK_COUNT error(s) removed from baseline."
+  echo "Update the baseline:"
+  echo "  $TSC --noEmit --skipLibCheck 2>&1 | grep 'error TS[0-9]\\{4\\}:' | sort > $BASELINE"
+  echo "  git add tsc-baseline.txt && git commit -m \"tsc baseline: shrank to \$((BASELINE_COUNT - SHRUNK_COUNT)) errors\""
+fi
+
+echo "Compile guard passed (no new errors)."
 exit 0
