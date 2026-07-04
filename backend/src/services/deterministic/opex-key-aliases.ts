@@ -22,7 +22,7 @@
  *   4. Only if BOTH canonical AND alias miss, warn (if required).
  */
 
-export const OPEX_KEY_RULESET_VERSION = '2025-01-14a';
+export const OPEX_KEY_RULESET_VERSION = '2026-07-04a';
 
 /** Single alias entry: one or more display variants → canonical snake_case key. */
 interface AliasEntry {
