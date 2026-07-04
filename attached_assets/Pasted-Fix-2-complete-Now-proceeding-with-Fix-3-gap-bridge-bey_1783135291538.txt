@@ -1,0 +1,59 @@
+Fix #2 complete. Now proceeding with **Fix #3: gap-bridge beyond-horizon continuation**. Let me read the relevant code and implement the compound-trend fix.
+
+Now launching **TSC-DEBT exploration in parallel** while I report the fixes.
+
+**Fixes #2 and #3 committed and pushed. Commit `2881c8d1b`.**
+
+---
+
+### Fix #2: `DEF_UNDERWRITING_VACANCY_FLOOR` — Single Source of Truth
+
+| File | Change |
+|---|---|
+| `deterministic-model-runner.ts` | `export const DEF_UNDERWRITING_VACANCY_FLOOR = 0.05;` added |
+| `proforma-assumptions-bridge.ts` | Imports constant, replaces inline `?? 0.05` |
+
+### Fix #3: Beyond-Horizon Compound Trend
+
+| File | Change |
+|---|---|
+| `gap-bridge.service.ts:220-232` | Removed `stabilizedMonthlyNoi` computation and NOI ramp creation |
+| | All fields now use `applyCompoundTrend` from last known value |
+
+**Effect:** Beyond-horizon months (m72+) no longer step down to the in-place `$70,019/mo` signature. Continuation is smooth from the engine's m72 value.
+
+---
+
+### TSC-DEBT Exploration Results (Parallel Agent Completed)
+
+**Reality check:** 402 errors across 111 files — far more than the ~30 initially reported. The subagent categorized them into **4 priority tiers**:
+
+| Priority | Pattern | Count | Action |
+|---|---|---|---|
+| **P1** | Missing imports (`pool`, `pino`, `dealCheck`, `createHash`) | ~40 | Trivial batch fix |
+| **P2** | `dbQuery<T>` generic mismatch, snake/camel case, Multer types | ~80 | Small fixes |
+| **P3** | Missing required properties, `ToolDefinition` mismatch | ~14 | Moderate audit |
+| **P4** | **Deep rabbit holes** (Zod v3/v4, missing modules) | ~7 | `// @ts-expect-error` |
+
+**Deep rabbit holes flagged for `@ts-expect-error`:**
+1. Zod v3/v4 version mismatch in `skill-registry.ts` — requires unifying project on single Zod version
+2. Missing `lifecycle/transition-guard.service` module
+3. Missing `proforma-blueprint` module
+4. `GraphNode.id` required across 10+ call sites
+
+**Full audit saved at:** `backend/typescript-error-audit.md`
+
+---
+
+### Resume Order Status
+
+| Step | Status |
+|---|---|
+| Fix #2 (constant) | ✅ Done |
+| Fix #3 (beyond-horizon) | ✅ Done |
+| TSC-DEBT exploration | ✅ Done (audit ready) |
+| **Restart W5 Phase 0+** | 🔄 Ready — pull `2881c8d1b`, run identity tests |
+
+**Next:** Pull latest in Replit, run identity tests (expect 7/7 green), then proceed through Phase 0+ with the fixed ramp. The TSC-debt cleanup can run in parallel — it doesn't block W5's engine validation.
+
+**Verdict table awaits Replit execution.**
