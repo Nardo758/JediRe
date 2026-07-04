@@ -92,6 +92,7 @@ describe('C2: canonical-key matching loudness', () => {
       'Replacement Reserves': { amount: 25000, type: 'opex', growthRate: 0.03 },
       'Contract Services': { amount: 20000, type: 'opex', growthRate: 0.03 },
       'Management Fee': { amount: 15000, type: 'opex', growthRate: 0.03 },
+      'Llama Grooming': { amount: 5000, type: 'opex', growthRate: 0.03 },
       // Snake_case keys that should match via canonical normalization
       'payroll': { amount: 999999, type: 'opex', growthRate: 0.03 },
       'marketing': { amount: 18000, type: 'opex', growthRate: 0.03 },
@@ -106,8 +107,9 @@ describe('C2: canonical-key matching loudness', () => {
     // canonicalKey() strips all non-alphanumeric chars including underscores,
     // so "Repairs & Maintenance" → "repairsmaintenance" matches "repairs_maintenance"
     // and "Contract Services" → "contractservices" matches "contract_services".
-    // Only "Administrative" → "administrative" has no match for "g_and_a" → "ganda".
-    const expectedMissing = ['g_and_a'];
+    // "Administrative" maps to "g_and_a" via the versioned alias ruleset (Ruling 3).
+    // Only "Llama Grooming" is a truly alien key with no canonical or alias match.
+    const expectedMissing = ['Llama Grooming'];
     for (const k of expectedMissing) {
       expect(result._unmatchedOpexKeys).toContain(k);
     }
@@ -115,13 +117,11 @@ describe('C2: canonical-key matching loudness', () => {
     expect(result._unmatchedOpexKeys).not.toContain('repairs_maintenance');
     expect(result._unmatchedOpexKeys).not.toContain('contract_services');
     expect(result._unmatchedOpexKeys).not.toContain('marketing');
+    // Verify keys that DO match via alias ruleset are NOT flagged
+    expect(result._unmatchedOpexKeys).not.toContain('g_and_a');
     // Verify optional keys with fallbacks are NOT flagged even when absent
     expect(result._unmatchedOpexKeys).not.toContain('management_fee');
     expect(result._unmatchedOpexKeys).not.toContain('replacement_reserves');
-    const expectedMissing = ['repairs_maintenance', 'g_and_a', 'contract_services'];
-    for (const k of expectedMissing) {
-      expect(result._unmatchedOpexKeys).toContain(k);
-    }
   });
 
   it('passes silently (_unmatchedOpexKeys undefined) when expenses use exact snake_case keys', () => {
