@@ -91,7 +91,8 @@ export interface AnnualCashFlowRow {
   year: number;
   grossPotentialRent: number;
   lossToLease: number;
-  vacancy: number;
+  vacancy: number;       // vacancy rate (0–1 fraction), NOT a dollar field — rate fields never sum
+  vacancyLoss: number;   // dollar vacancy deduction (GPR × vacancy rate), dollar fields never average
   concessions: number;
   badDebt: number;
   baseRevenue: number;
@@ -131,7 +132,8 @@ export interface MonthlyCashFlowRow {
   year: number;  // which operating year this month belongs to
   gpr: number;
   lossToLease: number;
-  vacancy: number;
+  vacancy: number;       // vacancy rate (0–1 fraction), NOT a dollar field — rate fields never sum
+  vacancyLoss: number;   // dollar vacancy deduction (GPR × vacancy rate), dollar fields never average
   concessions: number;
   badDebt: number;
   baseRevenue: number;
@@ -683,7 +685,8 @@ export function computeYearOperating(
   return {
     grossPotentialRent: GPR,
     lossToLease: loss,
-    vacancy: vac,
+    vacancy: vacancySched[y - 1],
+    vacancyLoss: vac,
     concessions: conc,
     badDebt: bd,
     baseRevenue: baseRev,
@@ -770,6 +773,7 @@ export function computeMonthOperating(
     gpr,
     lossToLease,
     vacancy,
+    vacancyLoss: yearRow.vacancyLoss / 12,
     concessions,
     badDebt,
     baseRevenue,
@@ -990,6 +994,7 @@ export function computeMonthTurnCohort(
     gpr,
     lossToLease,
     vacancy,
+    vacancyLoss,
     concessions,
     badDebt,
     baseRevenue,
@@ -1077,11 +1082,14 @@ export function aggregateMonthlyToAnnual(
     const dscr = debtService > 0 ? noi / debtService : null;
     const avgOccupancy = monthRows.reduce((s, r) => s + r.occupancy, 0) / monthRows.length;
 
+    const avgVacancy = monthRows.reduce((s, r) => s + r.vacancy, 0) / monthRows.length;
+
     annual.push({
       year: y,
       grossPotentialRent: sum('gpr'),
       lossToLease: sum('lossToLease'),
-      vacancy: sum('vacancy'),
+      vacancy: avgVacancy,
+      vacancyLoss: sum('vacancyLoss'),
       concessions: sum('concessions'),
       badDebt: sum('badDebt'),
       baseRevenue: sum('baseRevenue'),
@@ -1586,7 +1594,7 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   // Skip construction rows (GPR=0) — revenue invariant is inapplicable with no revenue
   for (const row of opRows) {
     if (row.grossPotentialRent <= 0) continue;
-    const losses = row.lossToLease + row.vacancy + row.concessions + row.badDebt;
+    const losses = row.lossToLease + row.vacancyLoss + row.concessions + row.badDebt;
     if (losses >= row.grossPotentialRent - 0.01) {
       checks.push({ id: 'INV-9', status: 'error', message: `INV-9 Losses Y${row.year} (${losses.toFixed(0)}) ≥ GPR (${row.grossPotentialRent.toFixed(0)})` });
       break;
@@ -2447,7 +2455,7 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       institutionalRow: {
         gpr: row.grossPotentialRent,
         ltl: row.lossToLease,
-        vacancy: row.vacancy,
+        vacancy: row.vacancyLoss,
         concessions: row.concessions,
         bad_debt: row.badDebt,
         base_revenue: row.baseRevenue,

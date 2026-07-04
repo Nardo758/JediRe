@@ -473,35 +473,40 @@ export function mapProFormaAssumptionsToModelAssumptions(
 export function coerceFinancialModelResultToModelResultsShape(
   llm: import('../financial-model-engine.service').FinancialModelResult,
 ): import('./deterministic-model-runner').ModelResults {
-  const annualCashFlow = (llm.annualCashFlow ?? []).map((row, i) => ({
-    year: row.year ?? i + 1,
-    grossPotentialRent: row.potentialRent ?? 0,
-    lossToLease: row.lossToLease ?? 0,
-    vacancy: row.vacancy ?? 0,
-    concessions: 0,
-    badDebt: row.collectionLoss ?? 0,
-    baseRevenue: row.netRentalIncome ?? 0,
-    otherIncome: row.otherIncome ?? 0,
-    effectiveGrossIncome: row.effectiveGrossRevenue ?? 0,
-    payroll: row.operatingExpenses?.payroll ?? 0,
-    maintenance: row.operatingExpenses?.repairs_maintenance ?? 0,
-    contractServices: row.operatingExpenses?.contract_services ?? 0,
-    marketing: row.operatingExpenses?.marketing ?? 0,
-    utilities: row.operatingExpenses?.utilities ?? 0,
-    admin: row.operatingExpenses?.g_and_a ?? 0,
-    insurance: row.operatingExpenses?.insurance ?? 0,
-    propertyTax: row.operatingExpenses?.real_estate_tax ?? 0,
-    managementFee: row.operatingExpenses?.management_fee ?? 0,
-    replacementReserves: row.replacementReserves ?? 0,
-    totalExpenses: row.totalExpenses ?? 0,
-    noi: row.noi ?? 0,
-    annualInterest: 0,
-    annualPrincipal: 0,
-    debtService: row.debtService ?? 0,
-    preTaxCashFlow: row.beforeTaxCashFlow ?? row.leveredCashFlow ?? 0,
-    dscr: llm.summary?.dscr?.[i] ?? null,
-    occupancy: 1 - (row.vacancy ?? 0) / Math.max(row.potentialRent ?? 1, 1),
-  }));
+  const annualCashFlow = (llm.annualCashFlow ?? []).map((row, i) => {
+    const vacancyDollars = row.vacancy ?? 0;
+    const potentialRent = row.potentialRent ?? 1;
+    return {
+      year: row.year ?? i + 1,
+      grossPotentialRent: potentialRent,
+      lossToLease: row.lossToLease ?? 0,
+      vacancy: potentialRent > 0 ? vacancyDollars / potentialRent : 0,
+      vacancyLoss: vacancyDollars,
+      concessions: 0,
+      badDebt: row.collectionLoss ?? 0,
+      baseRevenue: row.netRentalIncome ?? 0,
+      otherIncome: row.otherIncome ?? 0,
+      effectiveGrossIncome: row.effectiveGrossRevenue ?? 0,
+      payroll: row.operatingExpenses?.payroll ?? 0,
+      maintenance: row.operatingExpenses?.repairs_maintenance ?? 0,
+      contractServices: row.operatingExpenses?.contract_services ?? 0,
+      marketing: row.operatingExpenses?.marketing ?? 0,
+      utilities: row.operatingExpenses?.utilities ?? 0,
+      admin: row.operatingExpenses?.g_and_a ?? 0,
+      insurance: row.operatingExpenses?.insurance ?? 0,
+      propertyTax: row.operatingExpenses?.real_estate_tax ?? 0,
+      managementFee: row.operatingExpenses?.management_fee ?? 0,
+      replacementReserves: row.replacementReserves ?? 0,
+      totalExpenses: row.totalExpenses ?? 0,
+      noi: row.noi ?? 0,
+      annualInterest: 0,
+      annualPrincipal: 0,
+      debtService: row.debtService ?? 0,
+      preTaxCashFlow: row.beforeTaxCashFlow ?? row.leveredCashFlow ?? 0,
+      dscr: llm.summary?.dscr?.[i] ?? null,
+      occupancy: 1 - (vacancyDollars / Math.max(potentialRent, 1)),
+    };
+  });
 
   const dscrByYear = llm.summary?.dscr ?? [];
   const noiByYear = (llm.annualCashFlow ?? []).map(r => r.noi ?? 0);
@@ -725,7 +730,7 @@ export function modelResultsToFinancialModelResult(det: ModelResults): Financial
     year: row.year,
     potentialRent: row.grossPotentialRent,
     lossToLease: row.lossToLease,
-    vacancy: row.vacancy,
+    vacancy: row.vacancyLoss,
     collectionLoss: row.badDebt,
     netRentalIncome: row.baseRevenue,
     otherIncome: row.otherIncome,
