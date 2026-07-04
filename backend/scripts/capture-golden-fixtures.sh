@@ -204,7 +204,7 @@ curl_build "$BISHOP_ID" "/tmp/build_bishop.json" "Bishop"
 echo ""
 echo "=== Highlands Seed-Path Capture ==="
 echo "  Highlands is owned_import — no deal_assumptions row. Build path skipped."
-echo "  Seed canary (confirmed): margin 57.17%, EGI $6,315,308, boundary 2026-04-01"
+echo "  Seed canary (confirmed): margin 57.17%, EGI \$6,315,308, boundary 2026-04-01"
 echo ""
 echo "  TODO in Replit: Hit the seed/actuals surface and extract the 12-field shape."
 echo "  Paste into highlands.golden.ts with provenance.source='seed_actuals' and"
@@ -217,7 +217,7 @@ echo "=== Bishop Build Canary ==="
 B_Y1_OPEX=$(jq '.modelResults.annualCashFlow[0].totalExpenses // 0' /tmp/build_bishop.json)
 B_Y1_NOI=$(jq '.modelResults.annualCashFlow[0].noi // 0' /tmp/build_bishop.json)
 B_Y1_EGI=$(jq '.modelResults.annualCashFlow[0].effectiveGrossRevenue // 0' /tmp/build_bishop.json)
-B_MARGIN=$(echo "scale=6; if ($B_Y1_EGI > 0) then $B_Y1_NOI / $B_Y1_EGI else 0 fi" | bc)
+B_MARGIN=$(awk -v noi="$B_Y1_NOI" -v egi="$B_Y1_EGI" 'BEGIN { if (egi > 0) printf "%.6f", noi/egi; else print "0" }')
 
 echo "  Y1 totalExpenses: $B_Y1_OPEX"
 echo "  Y1 NOI:          $B_Y1_NOI"
@@ -230,7 +230,7 @@ echo "  unmatchedOpexKeys:  $B_UNMATCHED"
 echo "  orphanedOpexKeys:   $B_ORPHANED"
 
 CANARY_PASS="yes"
-if (( $(echo "$B_Y1_OPEX > 0" | bc -l) )); then
+if awk -v v="$B_Y1_OPEX" 'BEGIN { exit !(v > 0) }'; then
   echo "  PASS: opex is non-zero"
 else
   echo "  STOP: opex is ZERO"
