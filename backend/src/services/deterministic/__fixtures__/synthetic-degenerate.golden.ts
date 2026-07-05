@@ -35,11 +35,11 @@ export const syntheticDegenerateFixture: GoldenFixture = {
     netProceeds: 64795605,
   },
   provenance: {
-    captureDate: '2026-07-05T00:00:00Z',
+    captureDate: '2026-07-05T12:38:00Z',
     source: 'synthetic_engine',
-    buildEndpoint: 'runFullModel() direct — run-full-model.ts (M11 cycle exercised)',
-    inputSnapshot: 'synthetic-degenerate-v2',
-    bodySource: 'Highlands-shape: fully-occupied, steady-state turnover, floor binding m1. RE-PINNED after Fix 4 (runFullModel extraction + Finding O equity recompute) — M11 cycle now exercises debt optimizer, equity recomputed to match resized loan.',
+    buildEndpoint: 'runFullModel() direct — run-full-model.ts (canonical orchestration: pass-1 -> M11 -> M14 -> equity reconcile -> pass-2)',
+    inputSnapshot: 'synthetic-degenerate-v3',
+    bodySource: 'Highlands-shape: fully-occupied, steady-state turnover, floor binding m1. RE-PINNED after Fix-4b (corrected orchestration: explicit pass-1 feeds M11 sizing, equity reconciled AFTER M14 from final loan+cost, pass-2 produces final result). Values identical to v2 — M11 was already computing NOI internally, but canonical ordering is now structurally enforced.',
     pathBoundRule: true,
   },
 };
