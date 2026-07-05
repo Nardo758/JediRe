@@ -19,7 +19,7 @@
 | Identity Suite 3 (randomized) | ✅ PASS | 100 sets |
 | Identity Suite 4 (randomized) | ✅ PASS | 100 sets |
 | SyntheticDegenerate | ✅ PASS | 1/1 — engine-level guard pinned |
-| Bishop Build-Path | ⏳ BLOCKED (Finding M, bundled with Finding O) | Finding K confirmed fixed live (`stabilizedNOI`, `exitValue`, `netProceeds` all correctly non-zero on rebuild). Finding L confirmed fixed live (Gate 0 met — see evidence table below). Pinning remains blocked because the test harness cannot exercise the M11/M14 orchestration Finding L's fix lives in (Finding M) — this requires an engine refactor (`runFullModel()` pure-function extraction), which is external-agent territory, not applied here. |
+| Bishop Build-Path | ⏳ BLOCKED (Finding M, bundled with Finding O) | Finding K confirmed fixed live (`stabilizedNOI`, `exitValue`, `netProceeds` all correctly non-zero on rebuild). Finding L confirmed fixed live (Gate 0 met — see evidence table below). **⚠️ L Gate 0 values are O-contaminated:** `$21,024,006` loan, `1.0424` DSCR, `-10.21%` IRR, `0.589` EM agree across all three surfaces, proving staleness is resolved, but `totalEquity` vs `totalAcqCost - loanAmount` divergence (~46.7%, Finding O) means equity-derived values (IRR, EM) may still be wrong even though consistent. These values must NOT be used as expected values until O closes. Pinning remains blocked because the test harness cannot exercise the M11/M14 orchestration (Finding M) — requires engine refactor (`runFullModel()` pure-function extraction), external-agent territory. |
 | Highlands Seed-Path | ✅ PASS — PINNED 2026-07-05 | Finding N resolved: `GoldenFixture` refactored to a discriminated union (`fixtureClass: 'build_path' \| 'seed_path' \| 'synthetic'`, typed `BuildExpected \| SeedExpected`). Fixture now pins a raw snapshot of `deal_monthly_actuals` rows and runs the real `aggregateSeedActuals()` aggregator over it (bridge-inclusive philosophy, seed edition). No fabricated acquisition/financing/exit values. |
 | Phases 2–3 (Excel parity) | ⏳ PENDING | Oracle-gated; runs after Bishop pinning — blocked on the same Finding M/O engine refactor |
 
@@ -54,7 +54,7 @@ const exitRow = annualRows[hold - 1];
 7. `irr = null` (negative terminal equity → no positive-root IRR)
 8. `equityMultiple ≈ 0`
 
-**Evidence:** Both Bishop and SyntheticDegenerate hit this. Bishop's model narrative explicitly states: *"Exit is underwritten at a 5.00% cap rate in Year 5, producing a gross sale price of $0 and equity proceeds of $0. The levered IRR is n/a."*
+**Evidence surface:** SyntheticDegenerate engine-level test (`deterministic-model-runner.ts`, `runModel()` direct) — before fix: `stabilizedNOI=0`, `grossSalePrice=0`, `irr=null`, `equityMultiple≈0`. After fix: `stabilizedNOI=$4,297,668`, `grossSalePrice=$66,117,965`, `irr=0.2983`, `equityMultiple=3.238`. Also observed on Bishop live HTTP POST `/api/v1/financial-model/build` (captured 2026-07-05, pre-L-fix): model narrative explicitly stated *"Exit is underwritten at a 5.00% cap rate in Year 5, producing a gross sale price of $0 and equity proceeds of $0. The levered IRR is n/a."*
 
 **Fix complexity:** One line. `annualRows[hold]` → `annualRows[hold - 1]`.
 
@@ -82,6 +82,8 @@ if (a.exitCap > 0 && disp.stabilizedNOI > 0) {
 **Ruling:** Zero/absent stabilized NOI that **corrupts disposition math** is **ERROR in every mode**. A mode-specific WARN is only valid when stabilizedNOI is plausibly zero by design (e.g. ground-up with no operations at exit), NOT when it results from an engine bug that nullifies the exit value.
 
 **Fix:** Remove the `lease_up` branch from the INV-5 downgrade. All modes should route to the `else` branch (ERROR) when `stabilizedNOI <= 0` and the exit value is structurally invalid.
+
+**Evidence tier:** Code-path analysis (the downgrade branch was structurally incorrect — it masked a bug that should have been caught as ERROR) + SyntheticDegenerate test passing post-fix (INV-5 no longer fires WARN for stabilizedNOI=0 in the synthetic degenerate case). No dedicated `lease_up`-mode test case exists; the synthetic fixture covers the `existing` mode path.
 
 **Note:** This finding was exposed by Finding K. Under normal operation, INV-5 would have fired as ERROR and the acceptance suite would have halted before any values were considered pin-worthy. The downgrade allowed corrupted output to flow silently through the narrative.
 
@@ -112,9 +114,9 @@ result.reasoning = { walkthrough: adjustedDet.reasoning.walkthrough, ... }; // �
 
 **Impact:** The API response ends up with `summary`/`debtMetrics` from Pass 1 sitting alongside `reasoning`/`evidence` from Pass 2 — two different loan sizes and two different cash-flow series describing themselves as one deal.
 
-**Live evidence — Bishop, single build response (`/tmp/build_bishop.json`), captured post-Finding-K-fix:**
+**Live evidence — Bishop, live HTTP POST `/api/v1/financial-model/build` (captured 2026-07-05, response saved as `/tmp/build_bishop.json`):**
 
-| Field | `summary`/`debtMetrics` (Pass 1, returned) | `reasoning.walkthrough` narrative (Pass 2, describes the actual M14-adjusted deal) |
+| Field | `summary`/`debtMetrics` (Pass 1, pre-L-fix) | `reasoning.walkthrough` narrative (Pass 2, describes the actual M14-adjusted deal) |
 |---|---|---|
 | Loan amount | `$39,000,000` (flat 65% LTV) | "$21,024,006" |
 | Y1 DSCR | `0.67` (`DSCR_BREACH` error fires) | "1.04" (matches `dscr_floor_binds` warning, which independently reads the Pass-2-derived `dscrActual`) |
@@ -122,6 +124,8 @@ result.reasoning = { walkthrough: adjustedDet.reasoning.walkthrough, ... }; // �
 | `equityMultiple` | `0` (`LOW_EM` warn, "0.00× < 1.5×") | "0.59x" |
 
 Both sides of this table come from the **same JSON response, same request** — not a caching or stale-process artifact (ruled out: dev token fresh, backend restarted, single request/response pair inspected directly).
+
+**⚠️ O-CONTAMINATION WARNING:** Gate 0 verification showed `$21,024,006` loan, `1.0424` DSCR, `-10.21%` IRR, `0.589` EM across all three surfaces (`summary`, `debtMetrics`, `reasoning.walkthrough`). **Agreement across surfaces proves staleness is fixed — it does NOT prove the values are correct.** Finding O (totalEquity never recomputed after M11/M14 debt resize, ~46.7% divergence from `totalAcqCost - loanAmount`) is still open. If equityMultiple and IRR were computed off stale `totalEquity`, then all three surfaces agree on numbers that embed the O bug. **These four values must NOT be used as expected values in any test or fixture until O closes.** The L verdict is: **staleness resolved; value correctness pending O.**
 
 **Why this blocks Bishop pinning:** The operator's plausibility bar (`irr>0`, `EM>1`) can't be evaluated meaningfully — the returned `summary.irr`/`equityMultiple` are not a truthful readout of the M11/M14-adjusted deal that the platform actually decided to underwrite (per its own narrative and per the `dscr_floor_binds` check, which is itself computed from `adjustedDet`). This is not evidence the deal is "actually" bad; it's evidence the response is internally self-contradictory.
 
@@ -175,6 +179,29 @@ Both loan amount figures agree (Finding L is fixed) — the divergence is specif
 
 ---
 
+### Finding DQ-1 — Highlands 2023-08 Dirty Actuals Row (data-quality, not an engine defect)
+
+**File:** `backend/src/services/deterministic/__fixtures__/highlands.golden.ts` (snapshot row 56: `report_month: '2023-08-01'`)
+**Discovered:** 2026-07-05, during evaluation of pinned Highlands snapshot data.
+
+**What happened:** One month in the 93-row snapshot shows an implausibly low opex figure that survives into the pinned fixture as as-stored source data:
+
+| Field | Value | Plausibility |
+|---|---|---|
+| `effective_gross_income` | $569,738 | ✓ Normal monthly EGI |
+| `total_opex` | $3,958 | ✗ **0.7% opex ratio** — implausibly low for multifamily (typical: 35–50%) |
+| `noi` | $565,781 | ✗ Derived from EGI − opex = $569,738 − $3,958 = $565,780; the reported $565,781 is off by $1, suggesting a rounding or data-entry anomaly |
+
+**Impact:** This row is permanently baked into the golden fixture as as-stored source data. The annual aggregator for targetYear=2025 does not include this 2023 row, so the pinned 2025 aggregates (EGI $6,315,308, NOI margin 57.17%) are not directly contaminated. However:
+1. If any future targetYear=2023 fixture is created, this row would corrupt the 2023 annual opex ratio.
+2. More importantly, **there is no actuals-plausibility validator in the underwriting engine** — a $3,958 opex month on a $570K EGI property should have been flagged during ingestion or by a data-quality gate, but wasn't.
+
+**Status:** Documented, not fixed. The row is preserved as-stored in the snapshot (the fixture faithfully represents the DB state). A separate data-quality validator should be considered for the actuals ingestion pipeline. This finding does not block W5 close.
+
+**Suggested future action:** Add an actuals-plausibility check to the ingestion pipeline: flag any month where `total_opex / EGI < 0.05` or `total_opex / EGI > 0.80` as a data-quality anomaly requiring operator review.
+
+---
+
 ## Consolidated External-Agent Handoff — Findings M + O (`runFullModel()` Extraction)
 
 **Not approved for main agent to implement.** Both findings live inside the M11/M14 multi-pass build orchestration in `financial-model-engine.service.ts` and require an engine refactor, not a fixture or harness change. Full spec in `HANDOFF-ENGINE-FIX.md`. Summary:
@@ -206,6 +233,8 @@ Both loan amount figures agree (Finding L is fixed) — the divergence is specif
 4. `golden-deals.test.ts`'s Highlands block now runs the real `aggregateSeedActuals()` over the pinned snapshot and asserts the result matches `expected` — bridge-inclusive philosophy, seed edition: the test exercises real aggregation logic (including its `is_budget`/`is_proforma` exclusion), not a hand-computed constant compared to itself.
 
 **Status:** ✅ PINNED 2026-07-05. `npm test -- deterministic/__tests__/golden-deals.test.ts` → Highlands passing, SyntheticDegenerate passing, Bishop still skipped (`expected: null`, Finding M).
+
+**Null-flag check (2026-07-05):** Verified all 93 snapshot rows have explicit `is_budget` and `is_proforma` boolean values (true/false, no NULL or undefined). The aggregator filter `!r.is_budget && !r.is_proforma` correctly excludes only rows where both flags are explicitly false; no silently-included NULL-flag rows.
 
 ---
 
