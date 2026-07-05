@@ -4,12 +4,10 @@
 **Task:** Apply K + K-2 fixes to `deterministic-model-runner.ts` (✅ done) and Finding L to `financial-model-engine.service.ts` (✅ done). **NEW, not yet applied:** Findings M + O, consolidated below — requires a `runFullModel()` pure-function extraction.  
 **Estimated time:** K + K-2 = 5 minutes (complete). L = 15 minutes (complete). M + O extraction = larger refactor, size not yet estimated by main agent (deliberately — this is engine-refactor scope, not a line-fix).
 
-**Status update (2026-07-05):** K, K-2, and L are all applied and verified live (Bishop rebuild, commit `dad7ff702` + docs `9b799ba07`).
+**Status update (2026-07-05):** K, K-2, and L are all applied and verified live (Bishop rebuild, commit `dad7ff702` + docs `9b799ba07` + dispatch amendments `c987dc477` + residuals `4feec7020`).
 - K/K-2: `stabilizedNOI`, `exitValue`/`grossSalePrice`, and `netSaleProceeds` are correctly non-zero.
-- L: `result.summary`/`debtMetrics` now rebuild from `adjustedDet` (assemble-once) after M11/M14 cycle. Live re-verification: `summary.loanAmount` = `debtMetrics.loanAmount` = `meta.m11CapitalStructure` amount = $21,024,006 (was $39M), DSCR 1.0424 (was 0.674), IRR -0.1021 (was null), equity multiple 0.589 (was 0) — all four surfaces now agree with `reasoning.walkthrough`. Gate 0 criterion met.
-- **Finding O (INV-6 divergence, not fixed, bundled below):** `totalEquity` ($21M) vs. `totalAcqCost - loanAmount` implied equity ($39.37M) diverge by ~46.7%. Both quantities are read from the same already-refreshed post-M11/M14 state (this is not a Finding-L-pattern stale-pass artifact) — it's a separate reconciliation defect.
-- **Finding M (harness-class, not an engine defect, bundled below):** `golden-deals.test.ts`'s Bishop path (`runWithBridge()`) calls `mapProFormaAssumptionsToModelAssumptions()` + a single-pass `runModel()` and never exercises the M11/M14 orchestration that Finding L's fix lives in. This means live `/build`-captured values (post-M11/M14) can never be pinned as `expected` against this harness — it's not fixable by reshaping the fixture's `rawAssumptions`.
-- **Operator ruling (2026-07-05):** Both M and O require tracing/fixing inside the same M11/M14 multi-pass pipeline. Rather than two more one-line patches to `financial-model-engine.service.ts` (the same "patch in place across passes" pattern that produced Finding L), the operator has ruled this is external-agent engine-refactor territory: extract the build pipeline into one pure `runFullModel()` function. See "Fix 4" below for the full spec. **Not applied by main agent.** Highlands (seed-path, Finding N) has been independently pinned via a discriminated fixture-type refactor and a new real seed-actuals aggregator — that work is unrelated to this handoff and already merged.
+- L: `result.summary`/`debtMetrics` now rebuild from `adjustedDet` (assemble-once) after M11/M14 cycle. Live re-verification: `summary.loanAmount` = `debtMetrics.loanAmount` = `meta.m11CapitalStructure` amount = $21,024,006 (was $39M), DSCR 1.0424 (was 0.674), IRR -0.1021 (was null), equity multiple 0.589 (was 0) — all four surfaces now agree with `reasoning.walkthrough`. Gate 0 criterion met. **Note: these L values are quarantined pending O — see `HANDOFF-M-O-DISPATCH.md`.**
+- **Findings M + O (NOT applied, external-agent territory):** Consolidated into a standalone dispatch: `HANDOFF-M-O-DISPATCH.md`. The original M+O spec in this file is now superseded by that document.
 
 ---
 
@@ -224,3 +222,7 @@ Constraints (all required, not optional):
 4. Run `golden-deals.test.ts` with `runWithBridge()` now calling `runFullModel()` — Bishop's computed output should match the live `/build` capture from step 2 (within existing `TOLERANCE` bands).
 5. Run `identity-invariants.test.ts` — expect 4/4 passing, unaffected.
 6. **Do not pin Bishop's `expected` yourself.** Once steps 1–5 pass, hand back to the operator to review, capture live values, and pin `bishop.golden.ts` — same discipline as Fixes 1–3 above.
+
+---
+
+**Superseded by:** `HANDOFF-M-O-DISPATCH.md` (consolidated dispatch, 2026-07-05). The spec above is preserved for context but the authoritative acceptance criteria, quarantined values, and verification procedure live in the standalone dispatch document.
