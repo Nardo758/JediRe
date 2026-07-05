@@ -269,22 +269,58 @@ echo "  Highlands: seed path — populate from seed/actuals surface in Replit."
 function get_field() {
   local file="$1"
   local field="$2"
-  jq -e ".modelResults.summary.$field // .data.summary.$field // .modelResults.$field // .data.$field // null" "$file" 2>/dev/null || echo "null"
+  # NOTE: no `-e` here — jq -e exits 1 when the resolved value is null/false,
+  # which would ALSO trigger the `|| echo "null"` fallback below and double-emit
+  # "null" into the output (the golden_extracted.json parse-error root cause).
+  # Plain jq exits 0 for a null result, so `// null` alone is sufficient and the
+  # fallback only fires on genuine errors (missing file, invalid JSON, etc).
+  local result
+  result=$(jq ".modelResults.summary.$field // .data.summary.$field // .modelResults.$field // .data.$field // null" "$file" 2>/dev/null)
+  if [[ -z "$result" ]]; then
+    echo "null"
+  else
+    echo "$result"
+  fi
 }
 function get_cashflow() {
   local file="$1"
   local field="$2"
-  jq -e ".modelResults.annualCashFlow[0].$field // .data.annualCashFlow[0].$field // null" "$file" 2>/dev/null || echo "null"
+  local result
+  result=$(jq ".modelResults.annualCashFlow[0].$field // .data.annualCashFlow[0].$field // null" "$file" 2>/dev/null)
+  if [[ -z "$result" ]]; then
+    echo "null"
+  else
+    echo "$result"
+  fi
+}
+function get_year1_scalar() {
+  # For fields that may be shaped as either a per-period array (take index 0)
+  # or a debtMetrics-style Year-1 scalar. Prefers the explicit scalar location.
+  local file="$1"
+  local field="$2"
+  local result
+  result=$(jq ".modelResults.debtMetrics.$field // .data.debtMetrics.$field // (.modelResults.summary.$field | if type == \"array\" then .[0] else . end) // (.data.summary.$field | if type == \"array\" then .[0] else . end) // null" "$file" 2>/dev/null)
+  if [[ -z "$result" ]]; then
+    echo "null"
+  else
+    echo "$result"
+  fi
 }
 
 B_NOI=$(get_cashflow /tmp/build_bishop.json "noi")
 B_EGI=$(get_cashflow /tmp/build_bishop.json "effectiveGrossRevenue")
 B_IRR=$(get_field /tmp/build_bishop.json "irr")
 B_EM=$(get_field /tmp/build_bishop.json "equityMultiple")
-B_DSCR=$(get_field /tmp/build_bishop.json "dscr")
-B_COC=$(get_field /tmp/build_bishop.json "cashOnCash")
-B_GIC=$(get_field /tmp/build_bishop.json "goingInCapRate")
-B_EXIT_CAP=$(get_field /tmp/build_bishop.json "exitCapRate")
+B_DSCR=$(get_year1_scalar /tmp/build_bishop.json "dscr")
+B_COC=$(get_year1_scalar /tmp/build_bishop.json "cashOnCash")
+# NOTE: the API returns going-in cap rate as "purchaseCapRate" (not
+# "goingInCapRate" — field name mismatch, not an engine defect).
+B_GIC=$(get_field /tmp/build_bishop.json "purchaseCapRate")
+# NOTE: exit cap rate is a client-supplied INPUT assumption, not a build
+# output field (the build response only has the derived $ "exitValue", not
+# the % rate that produced it). Pull it from the DB assumptions snapshot.
+B_EXIT_CAP=$(jq '.year1.exit_cap.resolved // .exit_cap // null' /tmp/db_bishop_assumptions.json 2>/dev/null)
+if [[ -z "$B_EXIT_CAP" ]]; then B_EXIT_CAP="null"; fi
 B_YOC=$(get_field /tmp/build_bishop.json "yieldOnCost")
 B_TEQ=$(get_field /tmp/build_bishop.json "totalEquity")
 B_TDB=$(get_field /tmp/build_bishop.json "totalDebt")
