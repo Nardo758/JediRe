@@ -157,6 +157,25 @@ This calls `deterministic-model-runner.ts`'s `runModel()` **directly, once**. Th
 
 ---
 
+### Finding N — Seed-Path Fixture Cannot Populate the 12-Field GoldenFixture Shape (NEW, harness/contract-class, not an engine defect)
+
+**File:** `backend/src/services/deterministic/__fixtures__/highlands.golden.ts`, `golden.types.ts`  
+**Discovered:** 2026-07-05, attempting to capture Highlands' seed-path `expected` values after the Bishop/Finding M blocker.
+
+**What happened:** Checked Highlands' (`eaabeb9f-830e-44f9-a923-56679ad0329d`) live data to source the 12-field `expected` shape. Highlands *does* have one `deal_assumptions` row (contradicts the impression in the fixture's original docstring that there is none) — but it contains **only revenue/opex platform values auto-seeded from actuals** (`egi`, `gpr`, `noi`, per-line opex, `vacancy_pct`, etc.). It has **no `purchase_price`, `exit_cap_rate`, `hold_period`, or `loan_amount`** anywhere in `year1` or `per_year_overrides`.
+
+**Root cause:** `GoldenFixture.expected` (in `golden.types.ts`) is a single required 12-field shape shared by all fixture classes: `noiYear1, egiYear1, irr, equityMultiple, dscrY1, cashOnCashY1, goingInCapRate, exitCapRate, yieldOnCost, totalEquity, totalDebt, netProceeds`. Eight of those twelve (`irr`, `equityMultiple`, `dscrY1`, `cashOnCashY1`, `goingInCapRate`, `exitCapRate`, `totalEquity`/`totalDebt` as acquisition-financing figures, `netProceeds`) are proforma/return metrics that only exist when a deal has acquisition price, financing terms, and exit assumptions. Highlands is `owned_import` — already-owned, never acquired-and-underwritten on-platform — so those inputs don't exist and (per the operator's standing ruling rejecting Option 1) must not be fabricated.
+
+**Consequence:** The seed-path fixture class, as currently typed, cannot ever be populated for a deal like Highlands without either (a) inventing acquisition/financing/exit assumptions that never happened (rejected), or (b) leaving 8 of 12 required fields as some placeholder value that would be a "known-wrong" pin (also rejected). The fixture's own docstring anticipated a *different*, narrower expected shape for the seed path (NOI margin 57.17%, EGI 2025 $6,315,308, boundary 2026-04-01) — i.e. actuals-derived metrics, not proforma/return metrics — which doesn't match what `golden.types.ts` actually requires today.
+
+**Options for the external agent / operator to decide (not applied here):**
+1. Give `seed_path` fixtures their own narrower `expected` shape (e.g. NOI margin, EGI, occupancy, opex ratios — values that genuinely exist on the actuals surface) instead of reusing the 12-field proforma/return shape, and update `golden-deals.test.ts`'s Highlands block to assert against that shape instead of `expect(highlandsFixture.expected).not.toBeNull()`.
+2. Decide the 12-field regression contract only ever applies to `build_path` and `synthetic` fixture classes, and drop Highlands from the "3 fixtures must pin" W5 acceptance criterion — seed-path deals get a different (lighter) verification story.
+
+**Status:** Highlands fixture left as-is (`expected: null`, unpinned). No fabricated values written. This — combined with Finding M — means **neither remaining fixture (Bishop, Highlands) can currently be pinned** under the existing test contract; only SyntheticDegenerate is pinned. This changes the shape of what "W5 close" can mean today and needs an operator decision before further pinning work continues.
+
+---
+
 ### Finding F-P1-A — Body Diff (noiYear1 delta)
 
 **Context:** F-P1 (Build Boundary Provenance) finding cluster  
