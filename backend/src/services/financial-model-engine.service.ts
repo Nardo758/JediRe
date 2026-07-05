@@ -6,7 +6,8 @@ import { logger } from '../utils/logger';
 import { applyFullAnchorInterceptor, normalizeExpensesForInterceptor, rekeyExpensesFromInterceptor } from './sigma/anchor-interceptor.service';
 import { mapProFormaAssumptionsToModelAssumptions, buildEvidenceHintsFromSeed, modelResultsToFinancialModelResult } from './deterministic/proforma-assumptions-bridge';
 import { runModel, runIntegrityChecks } from './deterministic/deterministic-model-runner';
-import { runM11Cycle, applyM14RiskAdjustments, writeM11ToFinancing, type M11CapitalStructureSummary } from './module-wiring/capital-structure-adapter';
+import { runFullModel, type M14DataInput } from './deterministic/run-full-model';
+import { writeM11ToFinancing, type M11CapitalStructureSummary } from './module-wiring/capital-structure-adapter';
 import { evaluatePipeline, enforceStageGates } from './module-wiring/reasoning-pipeline';
 import { resolveAssumptionBatch, type ModuleValueInput } from './module-wiring/conflict-resolution.service';
 import { ASSUMPTION_MODULE_MAPPINGS, type AssumptionField } from './module-wiring/assumption-module-mapping.config';
@@ -1573,19 +1574,24 @@ export class FinancialModelEngineService {
         const deterministicResult = runModel(modelAssumptions, { skipSensitivity: true });
         result = modelResultsToFinancialModelResult(deterministicResult);
 
-        const checks = runIntegrityChecks(modelAssumptions, deterministicResult);
-        const hardFailures = checks.filter(c => c.status === 'error' && c.id.startsWith('INV-'));
+        // Pre-optimization integrity check: validates the raw deal_assumptions BEFORE
+        // M11 debt optimization and M14 risk adjustments. The authoritative integrity
+        // verdict lives in runFullModel(), which runs checks on the FINAL result.
+        // This early check is relabeled so nothing downstream mistakes it for validation
+        // of the shipped result (Finding O forensic).
+        const preOptimizationChecks = runIntegrityChecks(modelAssumptions, deterministicResult);
+        const hardFailures = preOptimizationChecks.filter(c => c.status === 'error' && c.id.startsWith('INV-'));
 
         if (hardFailures.length > 0) {
           verificationPassed = false;
           verificationDiagnostics = hardFailures.map(c => `${c.id}: ${c.message}`).join('; ');
-          logger.error(`[F9-Verifier] Hard invariant failures for ${dealId}: ${verificationDiagnostics}`);
+          logger.error(`[F9-Verifier] Pre-optimization invariant failures for ${dealId}: ${verificationDiagnostics}`);
         } else {
           const cd = deterministicResult.evidence?.confidence_distribution;
           const cdSummary = cd ? `evidence confidence: H=${cd.high} M=${cd.medium} L=${cd.low}` : 'evidence: n/a';
           logger.info(
-            `[F9-Verifier] All invariants pass for ${dealId} ` +
-            `(${checks.filter(c => c.status === 'warn').length} warnings, ${cdSummary})`
+            `[F9-Verifier] Pre-optimization invariants pass for ${dealId} ` +
+            `(${preOptimizationChecks.filter(c => c.status === 'warn').length} warnings, ${cdSummary})`
           );
           result.evidence = deterministicResult.evidence;
           result.reasoning = {
@@ -1594,65 +1600,45 @@ export class FinancialModelEngineService {
           };
           result.integrityChecks = deterministicResult.integrityChecks;
 
-          // ── M11 Debt Optimizer Cycle ──────────────────────────────────────
+          // ── M11 + M14 + Final Model (runFullModel) ────────────────────────
           let adjustedAssumptions = modelAssumptions;
+          let m11CapitalStructure: M11CapitalStructureSummary | undefined;
+          let m14DscrConstraintBinds = false;
           let m11Converged = false;
           let m11Iterations = 0;
-          let m11CapitalStructure: M11CapitalStructureSummary | undefined;
-          try {
-            const m11 = runM11Cycle(adjustedAssumptions);
-            adjustedAssumptions = m11.assumptions;
-            m11Converged = m11.converged;
-            m11Iterations = m11.iterations;
-            if (!m11Converged) {
-              result.integrityChecks = [
-                ...(result.integrityChecks ?? []),
-                { id: 'capital_stack_unconverged', status: 'warn' as const, message: `M11 debt optimizer did not converge after ${m11Iterations} iterations` },
-              ];
-            }
-            logger.info(`[M11] Cycle done for ${dealId}: iterations=${m11Iterations} converged=${m11Converged}`);
-          } catch (m11Err: any) {
-            logger.warn(`[M11] Cycle skipped for ${dealId}: ${m11Err?.message}`);
-          }
-
-          // ── M14 Risk Dashboard Cycle ──────────────────────────────────────
           let m14Applied = false;
           let m14CapRateAdjBps = 0;
           let m14DscrFloor = 1.25;
-          try {
-            const m14 = await applyM14RiskAdjustments(dealId, adjustedAssumptions);
-            adjustedAssumptions = m14.assumptions;
-            m14Applied = m14.applied;
-            m14CapRateAdjBps = m14.capRateAdjBps;
-            m14DscrFloor = m14.dscrFloor;
-            if (m14Applied) {
-              logger.info(`[M14] Risk adjustments applied for ${dealId}: capRateAdjBps=${m14CapRateAdjBps} dscrFloor=${m14DscrFloor}`);
-            }
-          } catch (m14Err: any) {
-            logger.warn(`[M14] Adjustment skipped for ${dealId}: ${m14Err?.message}`);
-          }
 
-          // Re-run deterministic model with M11/M14-adjusted assumptions and
-          // rebuild the entire response from the final adjustedDet so persisted
-          // result reflects the cycle. Assemble-once (Finding L fix).
-          let m14DscrConstraintBinds = false;
           try {
-            const adjustedDet = runModel(adjustedAssumptions, { skipSensitivity: true });
-            // Assemble-once: rebuild the entire response from the final adjustedDet.
-            // Preserve any M11-specific warnings that were added before this point.
-            const m11Warnings = (result.integrityChecks ?? []).filter(
-              c => c.id === 'capital_stack_unconverged'
-            );
-            result = modelResultsToFinancialModelResult(adjustedDet);
-            result.integrityChecks = [...(result.integrityChecks ?? []), ...m11Warnings];
+            // Fetch M14 data from DB (impure — stays in service layer)
+            const m14Raw = dataFlowRouter.getModuleData('M14', dealId)?.data;
+            const m14Data: M14DataInput | undefined = m14Raw ? {
+              capRateAdjBps: typeof m14Raw.cap_rate_adjustment_bps === 'number' ? m14Raw.cap_rate_adjustment_bps : undefined,
+              reserveOverrides: m14Raw.reserve_overrides ?? undefined,
+              dscrFloor: typeof m14Raw.dscr_floor === 'number' && m14Raw.dscr_floor > 0 ? m14Raw.dscr_floor : undefined,
+            } : undefined;
+
+            const full = runFullModel(modelAssumptions, {
+              skipSensitivity: true,
+              maxM11Iter: 3,
+              m14Data,
+            });
+
+            adjustedAssumptions = full.adjustedAssumptions;
+            m11Converged = full.m11Converged;
+            m11Iterations = full.m11Iterations;
+            m14Applied = full.m14Applied;
+            m14CapRateAdjBps = full.m14CapRateAdjBps;
+            m14DscrFloor = full.m14DscrFloor;
+
+            // Assemble result from final model run
+            result = modelResultsToFinancialModelResult(full.result);
+            result.integrityChecks = [...(result.integrityChecks ?? []), ...full.integrityChecks, ...full.m11Warnings];
 
             // ── M11 financing write-back (Task #1412) ─────────────────────
-            // Map the M11-optimized ModelAssumptions fields back into the
-            // ProFormaAssumptions.financing envelope so the persisted model
-            // carries the sourced debt terms rather than the original inputs.
-            // Also compute the 7-field capital structure summary for result.meta.
             try {
-              const dscrActual: number | null = adjustedDet.debtMetrics?.coverage?.dscrY1 ?? null;
+              const dscrActual: number | null = full.result.debtMetrics?.coverage?.dscrY1 ?? null;
               const capexBudget = adjustedAssumptions.capexBudget ?? 0;
               const { financing: updatedFinancing, summary } = writeM11ToFinancing(
                 adjustedAssumptions,
@@ -1669,8 +1655,6 @@ export class FinancialModelEngineService {
               m11CapitalStructure = summary;
               m14DscrConstraintBinds = summary.constraintBinds;
 
-              // Surface a warning when the DSCR floor is binding so F9 operators
-              // can see the deal is tight on debt service coverage.
               if (m14DscrConstraintBinds) {
                 result.integrityChecks = [
                   ...(result.integrityChecks ?? []),
@@ -1697,8 +1681,8 @@ export class FinancialModelEngineService {
             } catch (writeBackErr: any) {
               logger.warn(`[M11] Financing write-back skipped for ${dealId}: ${writeBackErr?.message}`);
             }
-          } catch (reRunErr: any) {
-            logger.warn(`[M11/M14] Post-cycle re-run skipped for ${dealId}: ${reRunErr?.message}`);
+          } catch (fullErr: any) {
+            logger.warn(`[runFullModel] failed for ${dealId}: ${fullErr?.message}`);
           }
 
           result.meta = {

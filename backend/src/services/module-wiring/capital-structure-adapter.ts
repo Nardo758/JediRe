@@ -13,6 +13,7 @@ import { moduleEventBus, ModuleEventType } from './module-event-bus';
 import { executeFormula } from './formula-engine';
 import { logger } from '../../utils/logger';
 import type { ModelAssumptions } from '../deterministic/deterministic-model-runner';
+import { runModel } from '../deterministic/deterministic-model-runner';
 
 // Lazy-loaded service to avoid circular dependencies
 function getCapitalStructureService() {
@@ -543,10 +544,10 @@ export interface M11CycleResult {
  * Lazy-requires runModel to avoid a circular import with the deterministic runner.
  */
 export function runM11Cycle(assumptions: ModelAssumptions, maxIter = 3): M11CycleResult {
-  const { runModel } = require('../deterministic/deterministic-model-runner') as typeof import('../deterministic/deterministic-model-runner');
   let current: ModelAssumptions = { ...assumptions };
   let prevDscr: number | null = null;
   let iterations = 0;
+  let converged = false;
 
   for (let i = 0; i < maxIter; i++) {
     iterations++;
@@ -554,7 +555,8 @@ export function runM11Cycle(assumptions: ModelAssumptions, maxIter = 3): M11Cycl
     const dscrY1 = modelResult.debtMetrics.coverage.dscrY1;
 
     if (prevDscr !== null && dscrY1 !== null && Math.abs(dscrY1 - prevDscr) < 0.01) {
-      return { assumptions: current, iterations, converged: true };
+      converged = true;
+      break;
     }
     prevDscr = dscrY1;
 
@@ -570,7 +572,37 @@ export function runM11Cycle(assumptions: ModelAssumptions, maxIter = 3): M11Cycl
     };
   }
 
-  return { assumptions: current, iterations, converged: false };
+  // ── Finding O fix: recompute equity to match resized loan ───────────────
+  // After M11 converges (or exhausts iterations), totalEquity must satisfy:
+  // totalEquity = totalAcqCost - loanAmount.
+  // LP/GP split rule: preserve the ORIGINAL ratio from the input assumptions.
+  //   If original total equity > 0: lpEquity' = newTotalEquity * (lpEquity / originalTotalEquity)
+  //   Otherwise (seeded-zero case): assign all to LP.
+  // Rationale: the capital structure (who puts in what %) is a deal-level decision;
+  // debt resizing should not alter it. Only the absolute dollars change.
+  {
+    const finalResult = runModel(current, { skipSensitivity: true });
+    const totalAcqCost = finalResult.capital.metrics.totalCost;
+    const newTotalEquity = Math.max(0, totalAcqCost - current.loanAmount);
+    const originalTotalEquity = assumptions.lpEquity + assumptions.gpEquity;
+    if (originalTotalEquity > 0) {
+      const lpRatio = assumptions.lpEquity / originalTotalEquity;
+      current = {
+        ...current,
+        lpEquity: newTotalEquity * lpRatio,
+        gpEquity: newTotalEquity * (1 - lpRatio),
+      };
+    } else {
+      current = {
+        ...current,
+        lpEquity: newTotalEquity,
+        gpEquity: 0,
+      };
+    }
+  }
+  // ── end Finding O fix ──────────────────────────────────────────────────
+
+  return { assumptions: current, iterations, converged };
 }
 
 // ============================================================================

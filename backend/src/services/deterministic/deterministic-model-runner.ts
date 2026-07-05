@@ -1541,24 +1541,19 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     checks.push({ id: 'INV-5', status: 'error', message: `INV-5 stabilizedNOI (${disp.stabilizedNOI?.toFixed(0)}) ≤ 0 [mode=${resolvedMode}] with exitCap=${(a.exitCap * 100).toFixed(2)}% — stabilised acquisitions must produce positive exit-year NOI` });
   }
 
-  // INV-6: totalEquity ≈ totalAcquisitionCost − loanAmount  (5% relative tolerance)
-  // A strict $1 tolerance was too tight because closing costs, reserves, and
-  // origination fees create a gap between cash equity and calculated residual.
-  // 5% relative tolerance accommodates realistic acquisition cost structures
-  // while flagging genuinely broken capital stacks (e.g. equity > 2x residual).
-  // All-zero special case: when purchasePrice, loanAmount, and equity are all
-  // zero the capital stack is simply unseeded — Math.max(1, 0-0) would produce
-  // a phantom residual of 1 and guarantee a 100% diff. Downgrade to warn so
-  // the build succeeds; Task #545 covers seeding purchasePrice/loanAmount.
+  // INV-6: totalEquity = totalAcquisitionCost − loanAmount  ($1 absolute tolerance, ERROR)
+  // Finding O forensic: this check was previously positioned before the M11 debt
+  // optimizer, so it validated pre-resize state and was blind to post-resize divergence.
+  // Repositioned into runFullModel() to run on the FINAL result. The $1 absolute
+  // tolerance replaces the 5% relative tolerance that masked a $39.4M vs $21M gap.
   {
     const totalAcqCost = result.capital.metrics.totalCost;
     if (totalAcqCost === 0 && a.loanAmount === 0 && sum.totalEquity === 0) {
       checks.push({ id: 'INV-6', status: 'warn', message: `INV-6 capital stack not seeded (purchasePrice=0, loanAmount=0, equity=0) — seed values to enable this check` });
     } else {
-      const expectedResidual = Math.max(1, totalAcqCost - a.loanAmount);
-      const relDiff = Math.abs(sum.totalEquity - expectedResidual) / expectedResidual;
-      if (relDiff > 0.05) {
-        checks.push({ id: 'INV-6', status: 'error', message: `INV-6 totalEquity ${sum.totalEquity.toFixed(0)} ≠ totalAcqCost (${totalAcqCost.toFixed(0)}) − loanAmount (${a.loanAmount.toFixed(0)}) = ${expectedResidual.toFixed(0)} (diff ${(relDiff * 100).toFixed(1)}%)` });
+      const expectedResidual = totalAcqCost - a.loanAmount;
+      if (Math.abs(sum.totalEquity - expectedResidual) > 1) {
+        checks.push({ id: 'INV-6', status: 'error', message: `INV-6 totalEquity ${sum.totalEquity.toFixed(0)} ≠ totalAcqCost (${totalAcqCost.toFixed(0)}) − loanAmount (${a.loanAmount.toFixed(0)}) = ${expectedResidual.toFixed(0)} (diff ${Math.abs(sum.totalEquity - expectedResidual).toFixed(0)})` });
       }
     }
   }

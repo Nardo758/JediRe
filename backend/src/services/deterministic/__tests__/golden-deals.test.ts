@@ -12,7 +12,8 @@
 
 import type { ProFormaAssumptions } from '../../financial-model-engine.service';
 import { mapProFormaAssumptionsToModelAssumptions } from '../proforma-assumptions-bridge';
-import { runModel } from '../deterministic-model-runner';
+import type { ModelResults } from '../deterministic-model-runner';
+import { runFullModel } from '../run-full-model';
 import { aggregateSeedActuals } from '../seed-actuals-aggregator';
 import { bishopFixture } from '../__fixtures__/bishop.golden';
 import { highlandsFixture } from '../__fixtures__/highlands.golden';
@@ -28,12 +29,12 @@ const TOLERANCE = {
 function runWithBridge(raw: ProFormaAssumptions | null) {
   if (raw == null) throw new Error('rawAssumptions is null — fixture not captured');
   const modelAssumptions = mapProFormaAssumptionsToModelAssumptions(raw);
-  return runModel(modelAssumptions, { skipSensitivity: true });
+  return runFullModel(modelAssumptions, { skipSensitivity: true }).result;
 }
 
 function assertGolden(
   label: string,
-  result: ReturnType<typeof runModel>,
+  result: ModelResults,
   exp: NonNullable<typeof bishopFixture.expected>,
 ) {
   expect(result.summary.noiYear1).toBeCloseTo(exp.noiYear1, TOLERANCE.dollar);
@@ -148,7 +149,7 @@ describe('Golden Deal Regression — SyntheticDegenerate (engine-level)', () => 
       newLeaseConcessionMonths: 1,
     };
 
-    const result = runModel(modelAssumptions, { skipSensitivity: true });
+    const result = runFullModel(modelAssumptions, { skipSensitivity: true }).result;
     assertGolden('SyntheticDegenerate', result, syntheticDegenerateFixture.expected!);
 
     // Degenerate-case specific assertions
@@ -165,5 +166,150 @@ describe('Golden Deal Regression — SyntheticDegenerate (engine-level)', () => 
 
     expect(result._unmatchedOpexKeys ?? []).toHaveLength(0);
     expect(result._orphanedOpexKeys ?? []).toHaveLength(0);
+  });
+});
+
+// ── Finding K-2: lease_up forced-failure test ───────────────────────────────
+
+describe('Finding K-2 — INV-5 lease_up forced-failure', () => {
+  it('stabilizedNOI <= 0 under mode lease_up produces INV-5 ERROR', () => {
+    const assumptions = {
+      units: 50,
+      avgUnitSf: 850,
+      marketRent: 500,
+      inPlaceRent: 500,
+      purchasePrice: 50_000_000,
+      closingCostsPct: 0.015,
+      isFlorida: false,
+      docStampsPct: 0,
+      intangibleTaxPct: 0,
+      titleInsurancePct: 0,
+      capexBudget: 0,
+      rentGrowth: [0.0, 0.0, 0.0, 0.0, 0.0],
+      lossToLease: 0,
+      vacancyY1: 0.10,
+      vacancyStab: 0.10,
+      underwritingVacancyFloor: 0.10,
+      concessions: 0,
+      badDebt: 0.02,
+      otherIncomePerUnit: 0,
+      expenseGrowth: 0.02,
+      payrollPerUnit: 5000,
+      maintenancePerUnit: 2000,
+      contractServicesPerUnit: 1000,
+      marketingPerUnit: 500,
+      utilitiesPerUnit: 2000,
+      adminPerUnit: 1000,
+      insurancePerUnit: 1500,
+      managementFee: 0.03,
+      replacementReserves: 1000,
+      loanAmount: 35_000_000,
+      ltv: 0.70,
+      term: 360,
+      amort: 360,
+      ioPeriod: 0,
+      rate: 0.065,
+      originationFeePct: 0.01,
+      prepayPenalty: 0,
+      exitCap: 0.065,
+      saleCosts: 0.02,
+      holdYears: 5,
+      lpEquity: 14_250_000,
+      gpEquity: 750_000,
+      preferredReturn: 0.08,
+      promoteTiers: [0.08, 0.12, 0.15] as [number, number, number],
+      promoteSplits: [0.20, 0.30, 0.50] as [number, number, number],
+      dealType: 'lease_up',
+      dealMode: 'lease_up' as const,
+      occupancyAtClose: 0.50,
+      standardTurnDowntimeDays: 14,
+      annualTurnoverRate: 0.50,
+      newLeaseConcessionMonths: 1,
+    };
+
+    const full = runFullModel(assumptions, { skipSensitivity: true });
+
+    // The model must surface an INV-5 error (not warn) for stabilizedNOI <= 0 in lease_up mode
+    const inv5 = full.integrityChecks.find(c => c.id === 'INV-5');
+    expect(inv5).toBeDefined();
+    expect(inv5!.status).toBe('error');
+    expect(inv5!.message).toContain('stabilizedNOI');
+    expect(inv5!.message).toContain('lease_up');
+  });
+});
+
+// ── Determinism proof: runFullModel twice, byte-identical ────────────────────
+
+describe('Determinism proof — runFullModel()', () => {
+  it('produces byte-identical results on identical inputs', () => {
+    const assumptions = {
+      units: 100,
+      avgUnitSf: 850,
+      marketRent: 1200,
+      inPlaceRent: 1200,
+      purchasePrice: 15_000_000,
+      closingCostsPct: 0.015,
+      isFlorida: false,
+      docStampsPct: 0,
+      intangibleTaxPct: 0,
+      titleInsurancePct: 0,
+      capexBudget: 200_000,
+      rentGrowth: [0.025, 0.025, 0.025, 0.025, 0.025],
+      lossToLease: 0,
+      vacancyY1: 0.05,
+      vacancyStab: 0.05,
+      underwritingVacancyFloor: 0.05,
+      concessions: 0.01,
+      badDebt: 0.015,
+      otherIncomePerUnit: 150,
+      expenseGrowth: 0.025,
+      payrollPerUnit: 600,
+      maintenancePerUnit: 350,
+      contractServicesPerUnit: 150,
+      marketingPerUnit: 75,
+      utilitiesPerUnit: 250,
+      adminPerUnit: 120,
+      insurancePerUnit: 180,
+      managementFee: 0.03,
+      replacementReserves: 150,
+      loanAmount: 10_500_000,
+      ltv: 0.70,
+      term: 360,
+      amort: 360,
+      ioPeriod: 0,
+      rate: 0.065,
+      originationFeePct: 0.01,
+      prepayPenalty: 0,
+      exitCap: 0.065,
+      saleCosts: 0.02,
+      holdYears: 5,
+      lpEquity: 4_185_000,
+      gpEquity: 315_000,
+      preferredReturn: 0.08,
+      promoteTiers: [0.08, 0.12, 0.15] as [number, number, number],
+      promoteSplits: [0.20, 0.30, 0.50] as [number, number, number],
+      dealType: 'existing',
+      dealMode: 'existing' as const,
+      occupancyAtClose: 1.0,
+      standardTurnDowntimeDays: 14,
+      annualTurnoverRate: 0.50,
+      newLeaseConcessionMonths: 1,
+    };
+
+    const run1 = runFullModel(assumptions, { skipSensitivity: true });
+    const run2 = runFullModel(assumptions, { skipSensitivity: true });
+
+    // Deep equality via JSON serialization (byte-identical for deterministic output).
+    // computedAt timestamps are stripped because they vary by milliseconds between runs.
+    const stripComputedAt = (s: string) => s.replace(/"computedAt":"[^"]+"/g, '"computedAt":""');
+    expect(stripComputedAt(JSON.stringify(run1.result))).toBe(stripComputedAt(JSON.stringify(run2.result)));
+    expect(JSON.stringify(run1.adjustedAssumptions)).toBe(JSON.stringify(run2.adjustedAssumptions));
+    expect(JSON.stringify(run1.integrityChecks)).toBe(JSON.stringify(run2.integrityChecks));
+    expect(run1.m11Iterations).toBe(run2.m11Iterations);
+    expect(run1.m11Converged).toBe(run2.m11Converged);
+    expect(run1.m14Applied).toBe(run2.m14Applied);
+    expect(run1.m14CapRateAdjBps).toBe(run2.m14CapRateAdjBps);
+    expect(run1.m14DscrFloor).toBe(run2.m14DscrFloor);
+    expect(JSON.stringify(run1.m11Warnings)).toBe(JSON.stringify(run2.m11Warnings));
   });
 });
