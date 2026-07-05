@@ -1633,15 +1633,18 @@ export class FinancialModelEngineService {
           }
 
           // Re-run deterministic model with M11/M14-adjusted assumptions and
-          // overwrite evidence + reasoning so persisted result reflects the cycle.
+          // rebuild the entire response from the final adjustedDet so persisted
+          // result reflects the cycle. Assemble-once (Finding L fix).
           let m14DscrConstraintBinds = false;
           try {
             const adjustedDet = runModel(adjustedAssumptions, { skipSensitivity: true });
-            result.evidence = adjustedDet.evidence;
-            result.reasoning = {
-              walkthrough: adjustedDet.reasoning.walkthrough,
-              collisionReport: adjustedDet.reasoning.collisionReport,
-            };
+            // Assemble-once: rebuild the entire response from the final adjustedDet.
+            // Preserve any M11-specific warnings that were added before this point.
+            const m11Warnings = (result.integrityChecks ?? []).filter(
+              c => c.id === 'capital_stack_unconverged'
+            );
+            result = modelResultsToFinancialModelResult(adjustedDet);
+            result.integrityChecks = [...(result.integrityChecks ?? []), ...m11Warnings];
 
             // ── M11 financing write-back (Task #1412) ─────────────────────
             // Map the M11-optimized ModelAssumptions fields back into the
