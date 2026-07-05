@@ -1537,8 +1537,6 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     }
   } else if (a.exitCap <= 0) {
     checks.push({ id: 'INV-5', status: 'error', message: `INV-5 exitCap (${a.exitCap}) ≤ 0 [mode=${resolvedMode}] — bridge always provides a default; this indicates a model defect` });
-  } else if (isNonStabilizedMode) {
-    checks.push({ id: 'INV-5', status: 'warn', message: `INV-5 cannot verify grossSalePrice: stabilizedNOI (${disp.stabilizedNOI?.toFixed(0)}) ≤ 0 [mode=${resolvedMode}] — expected during construction/lease-up; will resolve once deal reaches stabilisation` });
   } else {
     checks.push({ id: 'INV-5', status: 'error', message: `INV-5 stabilizedNOI (${disp.stabilizedNOI?.toFixed(0)}) ≤ 0 [mode=${resolvedMode}] with exitCap=${(a.exitCap * 100).toFixed(2)}% — stabilised acquisitions must produce positive exit-year NOI` });
   }
@@ -1889,7 +1887,7 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
   }
 
   // ── Phase 6: Disposition ────────────────────────────────────────────────
-  const exitRow = annualRows[hold]; // forward NOI = NOI at hold+1 (index = hold)
+  const exitRow = annualRows[hold - 1]; // exit-year NOI = last operating year (index hold-1)
   const stabilizedNOI = exitRow?.noi ?? 0;
   const grossSalePrice = a.exitCap > 0 ? stabilizedNOI / a.exitCap : 0;
   const saleCostsValue = grossSalePrice * a.saleCosts;
