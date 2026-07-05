@@ -4,9 +4,11 @@
 **Task:** Apply K + K-2 fixes to `deterministic-model-runner.ts` (✅ done) and Finding L to `financial-model-engine.service.ts` (✅ done)  
 **Estimated time:** K + K-2 = 5 minutes (complete). L = 15 minutes (complete).
 
-**Status update (2026-07-05):** K, K-2, and L are all applied and verified.
+**Status update (2026-07-05):** K, K-2, and L are all applied and verified live (Bishop rebuild, commit `dad7ff702` + docs `9b799ba07`).
 - K/K-2: `stabilizedNOI`, `exitValue`/`grossSalePrice`, and `netSaleProceeds` are correctly non-zero.
-- L: `result.summary`/`debtMetrics` now rebuild from `adjustedDet` (assemble-once) after M11/M14 cycle.
+- L: `result.summary`/`debtMetrics` now rebuild from `adjustedDet` (assemble-once) after M11/M14 cycle. Live re-verification: `summary.loanAmount` = `debtMetrics.loanAmount` = `meta.m11CapitalStructure` amount = $21,024,006 (was $39M), DSCR 1.0424 (was 0.674), IRR -0.1021 (was null), equity multiple 0.589 (was 0) — all four surfaces now agree with `reasoning.walkthrough`. Gate 0 criterion met.
+- Separate pre-existing anomaly flagged (not caused by L, not fixed): INV-6 warning — `totalEquity` ($21M) vs. `totalAcqCost - loanAmount` implied equity ($39.37M) diverge by ~46.7%. Needs its own investigation; out of scope for this handoff.
+- **New finding (M, harness-class, not an engine defect):** `golden-deals.test.ts`'s Bishop path (`runWithBridge()`) calls `mapProFormaAssumptionsToModelAssumptions()` + a single-pass `runModel()` and never exercises the M11/M14 orchestration that Finding L's fix lives in. This means live `/build`-captured values (post-M11/M14) can never be pinned as `expected` against this harness — it's not fixable by reshaping the fixture's `rawAssumptions`. See "Finding M" in `W5-DISPATCH.md` for full detail and the two remediation options. Bishop fixture remains unpinned (`expected: null`) pending a decision on which path this test is meant to validate.
 
 ---
 

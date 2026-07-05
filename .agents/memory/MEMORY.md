@@ -6,3 +6,4 @@
 - [DeepSeek metered cost_usd zero bug](deepseek-cost-zero-bug.md) — 99.86% of historical ai_usage_log DeepSeek rows logged cost_usd=0; internal $/day cap was blind to real spend for most of system's life
 - [Ramp target + tri-tab reconciliation](ramp-target-and-tri-tab-reconciliation.md) — correct NOI ramp target field, single-source-of-truth periodic API, DeepSeek 402 is an env issue not a regression
 - [deal_assumptions column shapes](deal-assumptions-column-shapes.md) — debt:* namespaced keys live in per_year_overrides column, NOT nested inside year1; easy to misattribute from a merged dump
+- [Golden test harness M11/M14 gap](golden-test-harness-m11-gap.md) — Bishop build-path harness runs single-pass runModel, never M11/M14; live /build captures can't be pinned against it

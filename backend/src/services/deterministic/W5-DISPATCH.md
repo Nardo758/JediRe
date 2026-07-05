@@ -129,6 +129,34 @@ Both sides of this table come from the **same JSON response, same request** — 
 
 ---
 
+### Finding M — Golden Test Harness Cannot Validate M11/M14 Path (NEW, harness-class, not an engine defect)
+
+**File:** `backend/src/services/deterministic/__tests__/golden-deals.test.ts`  
+**Discovered:** 2026-07-05, during first pin attempt after Finding L was verified fixed live.
+
+**What happened:** After confirming Finding L's fix live (see evidence table above — `summary`/`debtMetrics`/`reasoning.walkthrough` all agree: $21,024,006 loan, 1.04 DSCR, -10.21% IRR, 0.59x EM), I captured those values and attempted to pin `bishop.golden.ts`. The pin attempt was reverted before merge — do not repeat it without addressing this finding first.
+
+**Root cause:** `runWithBridge()` in `golden-deals.test.ts` does:
+
+```typescript
+const modelAssumptions = mapProFormaAssumptionsToModelAssumptions(raw);
+return runModel(modelAssumptions, { skipSensitivity: true }); // single pass, no M11/M14
+```
+
+This calls `deterministic-model-runner.ts`'s `runModel()` **directly, once**. The M11 debt-optimizer / M14 DSCR-floor two-pass cycle — where Finding L's bug (and fix) lives — only exists inside `financial-model-engine.service.ts`'s build orchestration, which the live `POST /api/v1/financial-model/build` endpoint calls. `runWithBridge()` never reaches that orchestration code at all.
+
+**Consequence:** For any deal where M11/M14 actually adjusts the capital stack (i.e. exactly the deals Finding L was about), the bridge-only harness will **always** produce different numbers than the live `/build` endpoint — using the raw pre-M11 requested loan amount (Bishop: $39,000,000, DSCR ~0.67) instead of the M11/M14-resolved one ($21,024,006, DSCR 1.04). This is structural, not a data or shape bug: no amount of reshaping `rawAssumptions` can make `runWithBridge()`'s output match a live `/build` capture when M11/M14 binds.
+
+**Why this matters for W5 close:** The stated Bishop acceptance criterion (pin `expected` from a live build, verify via `golden-deals.test.ts`) is currently unsatisfiable as designed. Pinning live `/build`-captured values against `runWithBridge()` would either (a) fail every run, or (b) require silently accepting a permanent regression baseline drift between the fixture and the harness that's supposed to validate it — both unacceptable.
+
+**Options for the external agent / operator to decide (not applied here):**
+1. Redesign `runWithBridge()` (or add a second harness path) to call the same build-orchestration entry point `financial-model-engine.service.ts` exposes to the `/build` route, so the M11/M14 cycle is actually exercised.
+2. Explicitly scope this fixture to validate ONLY the bridge + single-pass `runModel()` path (pre-M11/M14) — in which case `expected` must be captured by running `runWithBridge()` locally against `rawAssumptions`, not from the live `/build` endpoint, and the fixture's docstring/tests must say so unambiguously so it's never mistaken for end-to-end validation of the M11/M14 cycle (or of Finding L).
+
+**Status:** Bishop fixture reverted to `expected: null` / unpinned. Not blocking Highlands (seed-path, no `runWithBridge()` involvement) or SyntheticDegenerate (already validates the correct single-pass path by design).
+
+---
+
 ### Finding F-P1-A — Body Diff (noiYear1 delta)
 
 **Context:** F-P1 (Build Boundary Provenance) finding cluster  
