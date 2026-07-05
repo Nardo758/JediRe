@@ -236,6 +236,8 @@ Both loan amount figures agree (Finding L is fixed) — the divergence is specif
 
 **Null-flag check (2026-07-05):** Verified all 93 snapshot rows have explicit `is_budget` and `is_proforma` boolean values (true/false, no NULL or undefined). The aggregator filter `!r.is_budget && !r.is_proforma` correctly excludes only rows where both flags are explicitly false; no silently-included NULL-flag rows.
 
+**Schema confirmation (2026-07-05):** `deal_monthly_actuals` migration (`20260421_deal_monthly_actuals.sql`) declares both `is_budget` and `is_proforma` as `BOOLEAN NOT NULL DEFAULT false` (lines 17–18). The schema guarantees NULL cannot exist in production data. The aggregator's `!r.is_budget && !r.is_proforma` filter is safe for the live table.
+
 ---
 
 ### Finding F-P1-A — Body Diff (noiYear1 delta)
@@ -326,3 +328,4 @@ Both loan amount figures agree (Finding L is fixed) — the divergence is specif
 - [ ] Bishop fixture has `expected` + `rawAssumptions` + `provenance` with F-P1-A documented
 - [x] Highlands fixture has `expected` (`SeedExpected`) + `snapshotRows` + `provenance` with `originClass: 'owned_import'`
 - [ ] Excel parity report generated (Phase 2–3)
+- [ ] K-2 test gap: dedicated `lease_up`-mode test case (no test currently exercises INV-5 in lease_up mode; SyntheticDegenerate covers `existing` only)
