@@ -1,0 +1,35 @@
+Three mechanical failures, no engine news yet — the build never ran. In order:
+
+1. **The token extraction failed** — that first `jq: parse error` was the dev-login response not being JSON (backend mid-restart, or the route path differs from my guess), so `$TOKEN` is empty.
+2. **The body path was my bad assumption** — the script wrote `/tmp/build_body_3f32276f.json`; my curl pointed at `/tmp/build_body_bishop.json`, hence the `-d` file error.
+3. Make sure the **backend workflow actually got restarted** after the pull — the comment in my block was an instruction, not a command; if the process predates the pull it serves pre-4b code.
+
+Corrected sequence:
+
+```bash
+cd ~/workspace/backend
+
+# 1. Token — see the raw response first so we know the real shape:
+curl -s -X POST http://localhost:4000/api/v1/auth/dev-login -H "Content-Type: application/json" -d '{}'
+# If that prints JSON with a token field, extract with the right field name:
+TOKEN=$(curl -s -X POST http://localhost:4000/api/v1/auth/dev-login -H "Content-Type: application/json" -d '{}' | jq -r '.token // .accessToken // .data.token')
+echo ${TOKEN:0:12}
+# If the raw response was HTML/error: the backend isn't up yet (restart the workflow, wait, retry),
+# or ask the bot which exact dev-login path it used — it got one working two sessions ago.
+
+# 2. Build — correct body path this time:
+curl -s -X POST http://localhost:4000/api/v1/financial-model/build \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -d @/tmp/build_body_3f32276f.json > /tmp/bishop_4b.json
+
+# 3. Verdict:
+jq '{loan: .data.summary.totalDebt, equity: .data.summary.totalEquity,
+    irr: .data.summary.irr, em: .data.summary.equityMultiple,
+    dscr_summary: .data.summary.dscrY1, dscr_debtMetrics: .data.debtMetrics.coverage.dscrY1,
+    inv6: [.data.integrityChecks[]? | select(.id=="INV-6")],
+    orphaned: .data._orphanedOpexKeys}' /tmp/bishop_4b.json
+```
+
+I added `orphaned` to the extraction deliberately: the construct script's log revealed the stored expenses dict contains **non-expense keys** — `egi`, `gpr`, `noi`, `ltv_pct`, equity splits — living alongside the real opex lines (that's why its "Total expenses: $19.3M" log line is nonsense; it naively summed metrics as if they were costs). The bridge's canonical matching should ignore them and the orphan detector should *name* them — if `orphaned` comes back listing `egi/gpr/noi/...`, the loudness system is working exactly as designed and we also just learned the stored shape needs a hygiene note for F-P1. If any of those metrics leaked *into* opex instead, the expense ratio will be absurd and that's a STOP.
+
+Pass criteria unchanged: loan **$21,024,006**, equity **≈ $39.37M**, IRR **worse than −10.21%**, EM **below 0.589**, INV-6 **passing in-payload**. Paste the output — still the last gate.
