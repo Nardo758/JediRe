@@ -82,7 +82,15 @@ export function applyM14AdjustmentsPure(
 
 /**
  * Pure full-model runner: M11 debt optimizer + optional M14 adjustments +
- * final model run + integrity checks.
+ * equity reconciliation + final model run + integrity checks.
+ *
+ * Canonical orchestration (single mutation zone):
+ *   pass-1 runModel() → M11 cycle (sized from pass-1 NOI) → M14 pure adjustments
+ *   → equity reconciliation from FINAL loan+cost → pass-2 runModel()
+ *   → assemble once → runIntegrityChecks on final result.
+ *
+ * One mutation zone. One reconciliation after it. One validation after that.
+ * Anything derived from mutable state is computed after the LAST mutation.
  *
  * No DB reads. Deterministic: same input → same output.
  */
@@ -92,8 +100,15 @@ export function runFullModel(
 ): RunFullModelResult {
   const { skipSensitivity = false, maxM11Iter = 3, m14Data } = options;
 
-  // ── M11 Debt Optimizer ─────────────────────────────────────────────────
-  const m11: M11CycleResult = runM11Cycle(assumptions, maxM11Iter);
+  // ── pass-1: initial model run ──────────────────────────────────────────
+  // M11 sizes debt from computed NOI. Without pass-1, getRecommendedTerms is
+  // starved and the constraint never binds, so the initial loan passes through
+  // unchanged (Defect A).
+  const pass1: ModelResults = runModel(assumptions, { skipSensitivity });
+
+  // ── M11 Debt Optimizer (sized from pass-1 computed NOI) ──────────────
+  const noiY1 = pass1.summary.noiYear1;
+  const m11: M11CycleResult = runM11Cycle(assumptions, noiY1, maxM11Iter);
   let adjusted: ModelAssumptions = m11.assumptions;
   const m11Warnings: IntegrityCheck[] = [];
   if (!m11.converged) {
@@ -104,7 +119,7 @@ export function runFullModel(
     });
   }
 
-  // ── M14 Risk Adjustments (pure, data passed as parameter) ────────────────
+  // ── M14 Risk Adjustments (pure, data passed as parameter) ──────────────
   let m14Applied = false;
   let m14CapRateAdjBps = 0;
   let m14DscrFloor = 1.25;
@@ -116,14 +131,36 @@ export function runFullModel(
     m14DscrFloor = m14.dscrFloor;
   }
 
-  // ── Final deterministic run ────────────────────────────────────────────
+  // ── Equity reconciliation from FINAL loan + FINAL cost ───────────────
+  // After all mutations (M11 loan resize + M14 cost adjustments), derive
+  // totalEquity from totalAcqCost − loanAmount so staleness is structurally
+  // impossible. The residual must be zero by construction, not tolerance.
+  // LP/GP split rule: preserve the ORIGINAL ratio from the input assumptions.
+  {
+    const costResult: ModelResults = runModel(adjusted, { skipSensitivity: true });
+    const totalAcqCost = costResult.capital.metrics.totalCost;
+    const newTotalEquity = totalAcqCost - adjusted.loanAmount;
+    const originalTotalEquity = assumptions.lpEquity + assumptions.gpEquity;
+    if (originalTotalEquity > 0) {
+      const lpRatio = assumptions.lpEquity / originalTotalEquity;
+      adjusted = {
+        ...adjusted,
+        lpEquity: newTotalEquity * lpRatio,
+        gpEquity: newTotalEquity * (1 - lpRatio),
+      };
+    } else {
+      adjusted = {
+        ...adjusted,
+        lpEquity: newTotalEquity,
+        gpEquity: 0,
+      };
+    }
+  }
+
+  // ── pass-2: final model run with fully adjusted assumptions ────────────
   const result: ModelResults = runModel(adjusted, { skipSensitivity });
 
-  // ── Integrity checks on the FINAL result (post-M11/M14) ────────────────
-  // Forensic: previously runIntegrityChecks was called only on the pre-M11
-  // result, so post-M11 equity divergence (Finding O) was never evaluated.
-  // Moving the check here ensures the resized loan + recomputed equity are
-  // validated.
+  // ── Integrity checks on the FINAL result (post-M11/M14/reconciliation) ──
   const integrityChecks: IntegrityCheck[] = runIntegrityChecks(adjusted, result);
 
   return {
