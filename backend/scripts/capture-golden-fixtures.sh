@@ -214,23 +214,36 @@ echo "  provenance.originClass='owned_import'."
 echo ""
 echo "=== Bishop Build Canary ==="
 
-B_Y1_OPEX=$(jq '.modelResults.annualCashFlow[0].totalExpenses // 0' /tmp/build_bishop.json)
-B_Y1_NOI=$(jq '.modelResults.annualCashFlow[0].noi // 0' /tmp/build_bishop.json)
-B_Y1_EGI=$(jq '.modelResults.annualCashFlow[0].effectiveGrossRevenue // 0' /tmp/build_bishop.json)
-B_MARGIN=$(echo "scale=6; if ($B_Y1_EGI > 0) then $B_Y1_NOI / $B_Y1_EGI else 0 fi" | bc)
+# Helpers with fallback: the endpoint may return data.* or modelResults.*
+function canary_cashflow() {
+  local field="$1"
+  jq -e ".modelResults.annualCashFlow[0].$field // .data.annualCashFlow[0].$field // 0" /tmp/build_bishop.json 2>/dev/null || echo "0"
+}
+function canary_meta() {
+  local field="$1"
+  jq -e ".modelResults.$field // .data.$field // []" /tmp/build_bishop.json 2>/dev/null || echo "[]"
+}
+
+B_Y1_OPEX=$(canary_cashflow "totalExpenses")
+B_Y1_NOI=$(canary_cashflow "noi")
+B_Y1_EGI=$(canary_cashflow "effectiveGrossRevenue")
+# awk replaces bc (not available in all environments)
+B_MARGIN=$(awk "BEGIN {print ($B_Y1_EGI > 0) ? $B_Y1_NOI / $B_Y1_EGI : 0}")
 
 echo "  Y1 totalExpenses: $B_Y1_OPEX"
 echo "  Y1 NOI:          $B_Y1_NOI"
 echo "  Y1 EGI:          $B_Y1_EGI"
 echo "  Y1 margin:       $B_MARGIN"
 
-B_UNMATCHED=$(jq '.modelResults._unmatchedOpexKeys // []' /tmp/build_bishop.json)
-B_ORPHANED=$(jq '.modelResults._orphanedOpexKeys // []' /tmp/build_bishop.json)
+B_UNMATCHED=$(canary_meta "_unmatchedOpexKeys")
+B_ORPHANED=$(canary_meta "_orphanedOpexKeys")
 echo "  unmatchedOpexKeys:  $B_UNMATCHED"
 echo "  orphanedOpexKeys:   $B_ORPHANED"
 
 CANARY_PASS="yes"
-if (( $(echo "$B_Y1_OPEX > 0" | bc -l) )); then
+# awk replaces bc for the opex-nonzero check
+OPEX_GT_ZERO=$(awk "BEGIN {print ($B_Y1_OPEX > 0) ? 1 : 0}")
+if [[ "$OPEX_GT_ZERO" == "1" ]]; then
   echo "  PASS: opex is non-zero"
 else
   echo "  STOP: opex is ZERO"
