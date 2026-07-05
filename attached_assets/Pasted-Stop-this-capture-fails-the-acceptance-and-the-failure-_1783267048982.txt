@@ -1,0 +1,16 @@
+Stop — this capture fails the acceptance, and the failure is the pre-registered one. Read the four values against the prediction:
+
+IRR −10.21%, EM 0.589 — identical to the decimal to the pre-fix quarantined values. The dispatch's own hard rule: "If IRR comes back unchanged to the decimal, the fix failed regardless of green tests."
+totalEquity $21,000,000 — the phantom. The entire point of Finding O was that this number must become ~$39.4M (totalAcqCost − $21M loan). It didn't move.
+
+The bot read "matches previously-verified live values — consistent and reproducible" as success; it is the textbook failure signature — it reproduced the bug, consistently.
+And the cause is almost certainly not the engine fix — it's the same environment gap as the last message, still unresolved: the Fix-4 commits were never confirmed pushed, pulled, and served. The last verified HEAD was 2b5e7feee (docs only), and this session's log shows no push/pull/restart step before the capture. A build served by a pre-fix process produces pre-fix values — exactly these.
+Send back to the bot, verbatim:
+
+Capture rejected — IRR/EM/equity are the pre-fix values to the decimal, which the dispatch defines as fix-failure. Before any diagnosis of the engine, prove the environment:
+
+git log --oneline -5 in the workspace — paste it. The Fix-4 implementation commits (run-full-model.ts, adapter O-fix, INV-6, thin-shell service, golden test, synthetic re-pin) must be at HEAD. If they are not on origin/master, commit and push them first — the prior instruction to do so is still unexecuted.
+Prove the running backend serves that code: restart the backend workflow after pulling, then grep -n "runFullModel" src/services/financial-model-engine.service.ts — the thin-shell call must exist in the serving tree.
+Re-run the identical capture (assumptions payload fine — that's F-P1-A's known contract). Pass = loan $21,024,006 holds, totalEquity ≈ $39.4M, IRR worse than −10.21%, EM below 0.589, INV-6 present and green in the payload.
+If — and only if — the environment is proven current and the values STILL come back unchanged, that's a real engine finding: the recompute isn't wired into the path /build executes. Then trace where the service's runFullModel call gets its equity, file:line, and report. Do not pin anything under any outcome until the diff passes.
+Also: dscrY1 null on summary — check debtMetrics.dscr per the W5 notes and report which path carries it; if summary is supposed to carry it post-assemble-once and doesn't, that's a small L-regression to flag.
