@@ -13,6 +13,7 @@
 import type { ProFormaAssumptions } from '../../financial-model-engine.service';
 import { mapProFormaAssumptionsToModelAssumptions } from '../proforma-assumptions-bridge';
 import { runModel } from '../deterministic-model-runner';
+import { aggregateSeedActuals } from '../seed-actuals-aggregator';
 import { bishopFixture } from '../__fixtures__/bishop.golden';
 import { highlandsFixture } from '../__fixtures__/highlands.golden';
 import { syntheticDegenerateFixture } from '../__fixtures__/synthetic-degenerate.golden';
@@ -67,14 +68,22 @@ describe('Golden Deal Regression — Bishop (build path)', () => {
 // ── Highlands: seed path ────────────────────────────────────────────────────
 
 describe('Golden Deal Regression — Highlands (seed path)', () => {
-  const hasExpected = highlandsFixture.expected != null;
+  const hasExpected = highlandsFixture.expected != null && highlandsFixture.snapshotRows != null;
 
-  (hasExpected ? it : it.skip)('matches pinned seed-path expected values', () => {
-    // Seed path: we do NOT run the engine from rawAssumptions (there are none).
-    // Instead, the fixture's expected values were captured from the seed/actuals
-    // surface and must be verified against that same surface in Replit.
-    // For the test harness, we skip when expected is null.
-    expect(highlandsFixture.expected).not.toBeNull();
+  (hasExpected ? it : it.skip)('matches pinned seed-path expected values (bridge-inclusive, seed edition)', () => {
+    // Seed path: there is no rawAssumptions/runModel() to exercise (Highlands
+    // has no acquisition/financing/exit terms — see Finding K/N). Instead we
+    // run the REAL production aggregator over a pinned snapshot of raw
+    // deal_monthly_actuals rows, so the test exercises real aggregation logic
+    // (including its is_budget/is_proforma exclusion) rather than comparing
+    // two hand-computed constants to each other.
+    const exp = highlandsFixture.expected!;
+    const result = aggregateSeedActuals(highlandsFixture.snapshotRows!, exp.targetYear);
+
+    expect(result.egiAnnual).toBeCloseTo(exp.egiAnnual, TOLERANCE.dollar);
+    expect(result.noiMargin).toBeCloseTo(exp.noiMargin, TOLERANCE.rate);
+    expect(result.opexRatio).toBeCloseTo(exp.opexRatio, TOLERANCE.rate);
+    expect(result.boundary).toBe(exp.boundary);
   });
 });
 

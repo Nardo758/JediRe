@@ -1,6 +1,6 @@
 # W5 Dispatch — Deterministic Engine Golden Fixture Pinning
 
-**Status:** BLOCKED on engine defect (Finding K — fixed and verified live; Finding L — newly found, still open)  
+**Status:** Highlands + SyntheticDegenerate PINNED. Bishop BLOCKED — requires external-agent engine refactor (Finding M, bundled with Finding O). Not fixed by main agent per operator ruling (M is engine-refactor territory).  
 **Date:** 2026-07-05  
 **Repo:** Nardo758/JediRe · backend port 4000 · master branch  
 **Baseline:** 319 pre-existing TypeScript errors (unchanged by our changes)  
@@ -19,9 +19,9 @@
 | Identity Suite 3 (randomized) | ✅ PASS | 100 sets |
 | Identity Suite 4 (randomized) | ✅ PASS | 100 sets |
 | SyntheticDegenerate | ✅ PASS | 1/1 — engine-level guard pinned |
-| Bishop Build-Path | ⏳ BLOCKED (new: Finding L) | Finding K confirmed fixed live (`stabilizedNOI`, `exitValue`, `netProceeds` all correctly non-zero on rebuild). `irr`/`equityMultiple` still wrong — traced to a **new, separate** defect (Finding L), not a K regression. |
-| Highlands Seed-Path | ⏳ NOT BLOCKED by L | Confirmed out of scope for Finding L (no financing data at all — see Finding L scope note). Still needs seed/actuals capture + 12-field extraction. |
-| Phases 2–3 (Excel parity) | ⏳ PENDING | Oracle-gated; runs after fixture pinning |
+| Bishop Build-Path | ⏳ BLOCKED (Finding M, bundled with Finding O) | Finding K confirmed fixed live (`stabilizedNOI`, `exitValue`, `netProceeds` all correctly non-zero on rebuild). Finding L confirmed fixed live (Gate 0 met — see evidence table below). Pinning remains blocked because the test harness cannot exercise the M11/M14 orchestration Finding L's fix lives in (Finding M) — this requires an engine refactor (`runFullModel()` pure-function extraction), which is external-agent territory, not applied here. |
+| Highlands Seed-Path | ✅ PASS — PINNED 2026-07-05 | Finding N resolved: `GoldenFixture` refactored to a discriminated union (`fixtureClass: 'build_path' \| 'seed_path' \| 'synthetic'`, typed `BuildExpected \| SeedExpected`). Fixture now pins a raw snapshot of `deal_monthly_actuals` rows and runs the real `aggregateSeedActuals()` aggregator over it (bridge-inclusive philosophy, seed edition). No fabricated acquisition/financing/exit values. |
+| Phases 2–3 (Excel parity) | ⏳ PENDING | Oracle-gated; runs after Bishop pinning — blocked on the same Finding M/O engine refactor |
 
 ---
 
@@ -149,15 +149,44 @@ This calls `deterministic-model-runner.ts`'s `runModel()` **directly, once**. Th
 
 **Why this matters for W5 close:** The stated Bishop acceptance criterion (pin `expected` from a live build, verify via `golden-deals.test.ts`) is currently unsatisfiable as designed. Pinning live `/build`-captured values against `runWithBridge()` would either (a) fail every run, or (b) require silently accepting a permanent regression baseline drift between the fixture and the harness that's supposed to validate it — both unacceptable.
 
-**Options for the external agent / operator to decide (not applied here):**
-1. Redesign `runWithBridge()` (or add a second harness path) to call the same build-orchestration entry point `financial-model-engine.service.ts` exposes to the `/build` route, so the M11/M14 cycle is actually exercised.
-2. Explicitly scope this fixture to validate ONLY the bridge + single-pass `runModel()` path (pre-M11/M14) — in which case `expected` must be captured by running `runWithBridge()` locally against `rawAssumptions`, not from the live `/build` endpoint, and the fixture's docstring/tests must say so unambiguously so it's never mistaken for end-to-end validation of the M11/M14 cycle (or of Finding L).
+**Ruling (operator, 2026-07-05):** NOT approved for main agent to fix. This requires an engine refactor (`runFullModel()` pure-function extraction — see consolidated handoff below), which is explicitly external-agent territory. Bundled with Finding O (below) into a single handoff spec, `HANDOFF-ENGINE-FIX.md`.
 
-**Status:** Bishop fixture reverted to `expected: null` / unpinned. Not blocking Highlands (seed-path, no `runWithBridge()` involvement) or SyntheticDegenerate (already validates the correct single-pass path by design).
+**Status:** Bishop fixture reverted to `expected: null` / unpinned. Not blocking Highlands (seed-path, no `runWithBridge()` involvement, now pinned — see Finding N) or SyntheticDegenerate (already validates the correct single-pass path by design, pinned).
 
 ---
 
-### Finding N — Seed-Path Fixture Cannot Populate the 12-Field GoldenFixture Shape (NEW, harness/contract-class, not an engine defect)
+### Finding O — INV-6 totalEquity vs. Implied-Equity Divergence (NEW, blocker-class, bundled with Finding M)
+
+**File:** `backend/src/services/financial-model-engine.service.ts` (same M11/M14 build orchestration as Finding L/M)  
+**Discovered:** 2026-07-05, during Finding L live re-verification on Bishop (flagged in `HANDOFF-ENGINE-FIX.md` as "separate pre-existing anomaly, not caused by L, not fixed").
+
+**What happened:** On the same Bishop build response used to confirm Finding L's fix, the `INV-6` invariant check compares two equity figures that should reconcile and found they diverge by ~46.7%:
+
+| Quantity | Value | Source |
+|---|---|---|
+| `summary.totalEquity` (post-M11/M14, matches `debtMetrics`/`meta.m11CapitalStructure`/narrative — Gate 0 confirmed) | $21,024,006 loan implies... | `result.summary` |
+| `totalAcqCost - loanAmount` (implied equity from acquisition cost minus the same $21,024,006 loan) | ~$39.37M | Computed from `totalAcqCost` and `loanAmount` |
+
+Both loan amount figures agree (Finding L is fixed) — the divergence is specifically between `summary.totalEquity` and what `totalAcqCost - loanAmount` implies equity should be, a ~46.7% gap. This is not a stale-Pass-1-vs-Pass-2 artifact (Finding L pattern) — both quantities are read from the same, already-refreshed post-M11/M14 state. It's a separate reconciliation defect in how `totalEquity` is derived vs. how the acquisition-cost/loan/equity identity is expected to hold.
+
+**Why this is bundled with Finding M, not treated standalone:** Diagnosing Finding O properly requires tracing `totalEquity` and `totalAcqCost` through the same multi-pass M11/M14 pipeline that Finding L lived in and Finding M's harness gap prevents testing. Fixing L and O independently, one call site at a time, is exactly the "patch in place across two passes" pattern that produced Finding L. Both should be fixed as part of the same structural remediation, not two more one-line patches to `financial-model-engine.service.ts`.
+
+**Status:** Documented, not applied. Bundled into the consolidated external-agent handoff below (`HANDOFF-ENGINE-FIX.md`) alongside Finding M's `runFullModel()` extraction requirement — INV-6 reconciliation should be re-checked as part of that refactor's verification steps, not patched ahead of it.
+
+---
+
+## Consolidated External-Agent Handoff — Findings M + O (`runFullModel()` Extraction)
+
+**Not approved for main agent to implement.** Both findings live inside the M11/M14 multi-pass build orchestration in `financial-model-engine.service.ts` and require an engine refactor, not a fixture or harness change. Full spec in `HANDOFF-ENGINE-FIX.md`. Summary:
+
+- **Requirement:** Extract the deal-build pipeline (Pass 1 `runModel()` → M11 debt optimizer / M14 DSCR-floor cycle → Pass 2 `runModel()` on adjusted assumptions → single result assembly) into one pure function, e.g. `runFullModel(assumptions): FinancialModelResult`, with **no DB reads** inside it — all inputs passed in, all outputs returned, assembled exactly once at the end of the cycle.
+- **Why this fixes Finding M:** Once `runFullModel()` exists as a pure, DB-free function, `golden-deals.test.ts`'s Bishop harness (`runWithBridge()`) can call it directly instead of the current single-pass `runModel()` — the test would then exercise the actual M11/M14 cycle Finding L's fix (and Bishop's real underwriting behavior) lives in, closing the structural gap that currently makes the fixture unpinnable.
+- **Why this fixes Finding O (or at least makes it fixable):** A single assemble-once result, built from one pure function with fully-traced inputs, makes it possible to add an INV-6-style equity-identity check (`totalEquity` == `totalAcqCost - loanAmount`, to reconciliation tolerance) as part of that same assembly step, catching the ~46.7% divergence deterministically rather than needing separate forensic reconstruction from two live-build field readouts.
+- **Verification after the refactor:** Re-run `golden-deals.test.ts` and confirm (a) Bishop's `runWithBridge()` output matches a live `/build` capture (Gate 0, already independently confirmed live — $21,024,006 loan, 1.0424 DSCR, -0.1021 IRR, 0.589 EM), and (b) INV-6 no longer flags a divergence between `totalEquity` and `totalAcqCost - loanAmount`. Only then pin Bishop's `expected` — do not pin known-corrupted or reconciliation-broken values as an interim baseline.
+
+---
+
+### Finding N — Seed-Path Fixture Cannot Populate the 12-Field GoldenFixture Shape (RESOLVED, PINNED 2026-07-05)
 
 **File:** `backend/src/services/deterministic/__fixtures__/highlands.golden.ts`, `golden.types.ts`  
 **Discovered:** 2026-07-05, attempting to capture Highlands' seed-path `expected` values after the Bishop/Finding M blocker.
@@ -168,11 +197,15 @@ This calls `deterministic-model-runner.ts`'s `runModel()` **directly, once**. Th
 
 **Consequence:** The seed-path fixture class, as currently typed, cannot ever be populated for a deal like Highlands without either (a) inventing acquisition/financing/exit assumptions that never happened (rejected), or (b) leaving 8 of 12 required fields as some placeholder value that would be a "known-wrong" pin (also rejected). The fixture's own docstring anticipated a *different*, narrower expected shape for the seed path (NOI margin 57.17%, EGI 2025 $6,315,308, boundary 2026-04-01) — i.e. actuals-derived metrics, not proforma/return metrics — which doesn't match what `golden.types.ts` actually requires today.
 
-**Options for the external agent / operator to decide (not applied here):**
-1. Give `seed_path` fixtures their own narrower `expected` shape (e.g. NOI margin, EGI, occupancy, opex ratios — values that genuinely exist on the actuals surface) instead of reusing the 12-field proforma/return shape, and update `golden-deals.test.ts`'s Highlands block to assert against that shape instead of `expect(highlandsFixture.expected).not.toBeNull()`.
-2. Decide the 12-field regression contract only ever applies to `build_path` and `synthetic` fixture classes, and drop Highlands from the "3 fixtures must pin" W5 acceptance criterion — seed-path deals get a different (lighter) verification story.
+**Ruling (operator, 2026-07-05):** Option 1 — give `seed_path` fixtures their own narrower shape. Explicitly REJECTED: making `expected` a `Partial<BuildExpected>` for seed_path so the test "only asserts fields that are present." That is the partial-pin pattern wearing a type signature and was ruled out as a disguised known-wrong pin. Implemented instead as a true discriminated union.
 
-**Status:** Highlands fixture left as-is (`expected: null`, unpinned). No fabricated values written. This — combined with Finding M — means **neither remaining fixture (Bishop, Highlands) can currently be pinned** under the existing test contract; only SyntheticDegenerate is pinned. This changes the shape of what "W5 close" can mean today and needs an operator decision before further pinning work continues.
+**Resolution:**
+1. `GoldenFixture` (`golden.types.ts`) is now a discriminated union on `fixtureClass`: `BuildPathFixture | SyntheticFixture | SeedPathFixture`, with `expected: BuildExpected | null` for the first two and `expected: SeedExpected | null` for the third. `SeedExpected` = `{ targetYear, egiAnnual, noiMargin, opexRatio, boundary }` — only fields that genuinely exist on the actuals surface for an `owned_import` deal.
+2. New real (non-test-only) production module `seed-actuals-aggregator.ts` exports `aggregateSeedActuals(rows, targetYear)`, which filters `is_budget`/`is_proforma` rows and computes annual EGI/NOI/opex sums and margins/ratios, plus the actuals→projection boundary date (latest real month). This did not exist before — the closest prior art (`fetch_owned_asset_opex_ratios.ts`, `portfolio.routes.ts`) only did TTM per-unit averages or single-latest-row lookups, not annual aggregation.
+3. `highlands.golden.ts` now pins a raw snapshot of all 93 `deal_monthly_actuals` rows for this deal (budget and proforma rows included exactly as stored, copied programmatically from a live query — not hand-typed) alongside `expected` aggregates for calendar year 2025 (EGI $6,315,308.53, NOI margin 57.1674%, opex ratio 42.8326%, boundary 2026-04-01).
+4. `golden-deals.test.ts`'s Highlands block now runs the real `aggregateSeedActuals()` over the pinned snapshot and asserts the result matches `expected` — bridge-inclusive philosophy, seed edition: the test exercises real aggregation logic (including its `is_budget`/`is_proforma` exclusion), not a hand-computed constant compared to itself.
+
+**Status:** ✅ PINNED 2026-07-05. `npm test -- deterministic/__tests__/golden-deals.test.ts` → Highlands passing, SyntheticDegenerate passing, Bishop still skipped (`expected: null`, Finding M).
 
 ---
 
@@ -219,11 +252,12 @@ This calls `deterministic-model-runner.ts`'s `runModel()` **directly, once**. Th
 
 | File | Change | Status |
 |------|--------|--------|
-| `golden.types.ts` | Added `fixtureClass`, `pathBoundRule`, `originClass`, `bodySource` | ✅ Merged |
+| `golden.types.ts` | Refactored to discriminated union: `BuildPathFixture \| SyntheticFixture \| SeedPathFixture`, typed `BuildExpected \| SeedExpected` (Finding N) | ✅ Merged |
+| `seed-actuals-aggregator.ts` (new) | Real production aggregator `aggregateSeedActuals()` for seed-path annual EGI/NOI/opex metrics | ✅ Merged |
 | `synthetic-degenerate.golden.ts` | Pinned with 12-field expected shape | ✅ Merged |
-| `bishop.golden.ts` | Placeholder (fixtureClass='build_path') | ⏳ Pending capture |
-| `highlands.golden.ts` | Placeholder (fixtureClass='seed_path') | ⏳ Pending capture |
-| `golden-deals.test.ts` | Three-fixture regression harness | ✅ Merged |
+| `bishop.golden.ts` | Placeholder (fixtureClass='build_path') | ⏳ BLOCKED — Finding M/O, external agent |
+| `highlands.golden.ts` | Pinned: raw snapshot of 93 `deal_monthly_actuals` rows + `SeedExpected` aggregates (Finding N) | ✅ PINNED 2026-07-05 |
+| `golden-deals.test.ts` | Three-fixture regression harness; Highlands block now runs real `aggregateSeedActuals()` over the pinned snapshot | ✅ Merged |
 | `capture-golden-fixtures.sh` | Updated for seed-path architecture, bc→awk, jq fallback paths | ✅ Fixed |
 | `identity-invariants.test.ts` | 4 suites × 100 randomized sets | ✅ Merged |
 
@@ -233,31 +267,33 @@ This calls `deterministic-model-runner.ts`'s `runModel()` **directly, once**. Th
 |------|-------|---------|-----|--------|
 | `deterministic-model-runner.ts` | 1892 | K — off-by-one | `annualRows[hold]` → `annualRows[hold - 1]` | ✅ Applied, verified live on Bishop rebuild |
 | `deterministic-model-runner.ts` | 1530–1543 | K-2 — INV-5 severity mask | Remove `lease_up` downgrade branch | ✅ Applied |
-| `financial-model-engine.service.ts` | 1573–1644 | **L — stale summary/debtMetrics after M11/M14 re-run (NEW)** | Rebuild `result.summary`/`result.debtMetrics` from `adjustedDet`, same point `evidence`/`reasoning` are refreshed | ✅ Applied — assemble-once rebuild with m11Warnings preservation |
+| `financial-model-engine.service.ts` | 1573–1644 | **L — stale summary/debtMetrics after M11/M14 re-run** | Rebuild `result.summary`/`result.debtMetrics` from `adjustedDet`, same point `evidence`/`reasoning` are refreshed | ✅ Applied — assemble-once rebuild with m11Warnings preservation. Verified live: Gate 0 met. |
+| `financial-model-engine.service.ts` + `golden-deals.test.ts` | n/a — cross-cutting | **M + O — bundled: `runFullModel()` extraction** (M: harness can't exercise M11/M14 cycle; O: INV-6 totalEquity/implied-equity ~46.7% divergence) | Extract build pipeline into a pure `runFullModel(assumptions): FinancialModelResult` with no DB reads, assembled once. See consolidated handoff above and `HANDOFF-ENGINE-FIX.md`. | ⏳ NOT approved for main agent — external-agent engine-refactor territory |
 
 ---
 
 ## Next Steps (Sequence-Locked)
 
 1. ~~External agent fixes engine (K + K-2) → commit~~ ✅ Done, verified live
-2. **External agent fixes Finding L** in `financial-model-engine.service.ts` → commit
-3. **Compile guard** — verify no new TypeScript errors
-4. **Clean rebuild both deals** in Replit:
-   - Bishop: construct-from-DB body → build endpoint → 12-field extraction
-   - Highlands: seed/actuals surface → 12-field extraction (unaffected by L — confirmed no financing data in DB for this deal)
-5. **Verify all 12 fields are plausible** (noiYear1 > 0, irr > 0, equityMultiple > 1, netProceeds > 0)
-6. **Document F-P1-A body diff** in Bishop provenance
-7. **Pin Bishop + Highlands fixtures** — not before now; do not pin known-corrupted `irr`/`equityMultiple` values as an interim baseline (would invert the golden suite into a bug-preservation mechanism against L's own future fix)
-8. **Run full golden suite** → expect 3/3 passing
-9. **Excel parity (Phases 2–3)** — oracle-gated comparison
+2. ~~External agent fixes Finding L~~ ✅ Done, verified live (Gate 0 met)
+3. ~~Pin Highlands (Finding N resolved via discriminated union + real seed aggregator)~~ ✅ Done 2026-07-05
+4. **External agent implements `runFullModel()` extraction** (Findings M + O, consolidated handoff in `HANDOFF-ENGINE-FIX.md`) → commit
+5. **Compile guard** — verify no new TypeScript errors
+6. **Re-run Bishop's `runWithBridge()` against `runFullModel()`**, confirm it matches a live `/build` capture (Gate 0 values already known: $21,024,006 loan, 1.0424 DSCR, -0.1021 IRR, 0.589 EM)
+7. **Confirm INV-6 no longer flags** `totalEquity` vs. `totalAcqCost - loanAmount` divergence
+8. **Pin Bishop fixture** — not before now; do not pin known-corrupted or reconciliation-broken values as an interim baseline
+9. **Run full golden suite** → expect 3/3 passing
+10. **Excel parity (Phases 2–3)** — oracle-gated comparison
 
 ---
 
 ## Acceptance Criteria (W5 Close)
 
+- [x] Highlands + SyntheticDegenerate pinned and passing (2/3)
+- [ ] Bishop pinned and passing — blocked on external-agent `runFullModel()` extraction (Findings M + O)
 - [ ] `npm test -- deterministic/__tests__/golden-deals.test.ts` → 3/3 passing
 - [ ] `npm test -- deterministic/__tests__/identity-invariants.test.ts` → 4/4 passing
 - [ ] `npx tsc --noEmit --skipLibCheck` → 319 errors (no new)
 - [ ] Bishop fixture has `expected` + `rawAssumptions` + `provenance` with F-P1-A documented
-- [ ] Highlands fixture has `expected` + `provenance` with `originClass: 'owned_import'`
+- [x] Highlands fixture has `expected` (`SeedExpected`) + `snapshotRows` + `provenance` with `originClass: 'owned_import'`
 - [ ] Excel parity report generated (Phase 2–3)
