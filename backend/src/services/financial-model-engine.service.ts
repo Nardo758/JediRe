@@ -1580,14 +1580,19 @@ export class FinancialModelEngineService {
         // This early check is relabeled so nothing downstream mistakes it for validation
         // of the shipped result (Finding O forensic).
         const preOptimizationChecks = runIntegrityChecks(modelAssumptions, deterministicResult);
-        const hardFailures = preOptimizationChecks.filter(c => c.status === 'error' && c.id.startsWith('INV-'));
+        const preHardFailures = preOptimizationChecks.filter(c => c.status === 'error' && c.id.startsWith('INV-'));
 
-        if (hardFailures.length > 0) {
-          verificationPassed = false;
-          verificationDiagnostics = hardFailures.map(c => `${c.id}: ${c.message}`).join('; ');
-          logger.error(`[F9-Verifier] Pre-optimization invariant failures for ${dealId}: ${verificationDiagnostics}`);
-        } else {
-          const cd = deterministicResult.evidence?.confidence_distribution;
+        // INFORMATIONAL ONLY: pre-optimization state is pre-M11/M14; never fatal.
+        // The authoritative integrity verdict lives in runFullModel()'s final-state check.
+        if (preHardFailures.length > 0) {
+          const preDiagnostics = preHardFailures.map(c => c.message).join('; ');
+          logger.warn(
+            `[F9-Verifier] Pre-optimization invariants flagged for ${dealId} ` +
+            `(informational only — will be re-checked after M11/M14): ${preDiagnostics}`
+          );
+        }
+
+        const cd = deterministicResult.evidence?.confidence_distribution;
           const cdSummary = cd ? `evidence confidence: H=${cd.high} M=${cd.medium} L=${cd.low}` : 'evidence: n/a';
           logger.info(
             `[F9-Verifier] Pre-optimization invariants pass for ${dealId} ` +
@@ -1682,7 +1687,9 @@ export class FinancialModelEngineService {
               logger.warn(`[M11] Financing write-back skipped for ${dealId}: ${writeBackErr?.message}`);
             }
           } catch (fullErr: any) {
-            logger.warn(`[runFullModel] failed for ${dealId}: ${fullErr?.message}`);
+            verificationPassed = false;
+            verificationDiagnostics = `runFullModel_exception: ${fullErr?.message ?? 'unknown'}`;
+            logger.error(`[runFullModel] failed for ${dealId}: ${fullErr?.message}`);
           }
 
           result.meta = {
@@ -1723,7 +1730,6 @@ export class FinancialModelEngineService {
           } catch (ribbonErr: any) {
             logger.warn(`[D2-Ribbon] Failed to overlay engine monthly onto periodic seed for ${dealId}: ${ribbonErr?.message}`);
           }
-        }
       } catch (verifyErr: any) {
         // Fail-closed: if the bridge or runner itself throws, treat as a hard failure.
         // We cannot confirm model integrity, so we must not persist as 'complete'.

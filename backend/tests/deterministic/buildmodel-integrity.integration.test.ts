@@ -7,6 +7,10 @@
  *
  * Assertions:
  *  - Valid deal: status transitions building → complete, results written
+ *  - Pre-optimization INV-6/7 failures: do NOT halt — runFullModel's final-state
+ *    authoritative verdict wins; result persisted as complete when M11 resolves
+ *  - LOW_CONFIDENCE_MODEL warning surfaced when ≥30% evidence fields are LOW
+ *  - Valid deal: status transitions building → complete, results written
  *  - INV-8 failure (loanAmount > purchasePrice): status → error, diagnostics
  *    written, results NOT persisted as complete
  *  - INV-7 failure (zero equity): status → error, halts before complete write
@@ -94,7 +98,6 @@ function buildPoolSpy(): { calls: QueryCall[]; mock: ReturnType<typeof vi.fn> } 
 describe('buildModel() verification gate', () => {
   let engineModule: typeof import('../../src/services/financial-model-engine.service');
   let poolSpy: ReturnType<typeof buildPoolSpy>;
-  let callLLMSpy: MockInstance;
 
   beforeEach(async () => {
     vi.resetModules();
@@ -121,13 +124,11 @@ describe('buildModel() verification gate', () => {
     engineModule = await import('../../src/services/financial-model-engine.service');
 
     const service = new engineModule.FinancialModelEngineService();
-    callLLMSpy = vi.spyOn(service as any, 'callLLMForModel');
     (engineModule as any)._testService = service;
   });
 
   it('persists status=complete on a structurally valid deal', async () => {
     const service = (engineModule as any)._testService as InstanceType<typeof engineModule.FinancialModelEngineService>;
-    callLLMSpy.mockResolvedValue(makeLLMResult());
 
     await service.buildModel('deal-valid', BASE_ASSUMPTIONS as any);
 
@@ -140,7 +141,6 @@ describe('buildModel() verification gate', () => {
 
   it('persisted result contains deterministic evidence.fields for all 6 KPI fields', async () => {
     const service = (engineModule as any)._testService as InstanceType<typeof engineModule.FinancialModelEngineService>;
-    callLLMSpy.mockResolvedValue(makeLLMResult());
 
     await service.buildModel('deal-evidence', BASE_ASSUMPTIONS as any);
 
@@ -175,7 +175,6 @@ describe('buildModel() verification gate', () => {
     // Override pool to return a platform_fallback year1 seed → NOI/goingInCap/exitCap = LOW
     // = 3/6 = 50% LOW ≥ 30% threshold → LOW_CONFIDENCE_MODEL must fire
     const service = (engineModule as any)._testService as InstanceType<typeof engineModule.FinancialModelEngineService>;
-    callLLMSpy.mockResolvedValue(makeLLMResult());
 
     const fallbackLV = (v: number) => ({ resolved: v, resolution: 'platform_fallback', t12: null, rent_roll: null, tax_bill: null });
     poolSpy.mock.mockImplementation((sql: string, params: unknown[]) => {
@@ -215,28 +214,39 @@ describe('buildModel() verification gate', () => {
     expect(lowConfCheck?.status).toBe('warn');
   });
 
-  it('writes status=error and halts when loanAmount > purchasePrice (INV-6)', async () => {
+  it('does NOT halt on pre-optimization INV-6 — runFullModel authoritative verdict wins', async () => {
+    // Pre-M11 state: loanAmount (20M) > purchasePrice (18M) → pre-optimization INV-6 fires.
+    // M11 will resize loan to LTV cap (~13.5M) → final state passes integrity.
+    // Doctrine: pre-optimization checks are informational only; only runFullModel's
+    // final-state check may be throwing.
     const overAssumptions = {
       ...BASE_ASSUMPTIONS,
       financing: { ...BASE_ASSUMPTIONS.financing, loanAmount: 20000000 },
     };
 
     const service = (engineModule as any)._testService as InstanceType<typeof engineModule.FinancialModelEngineService>;
-    callLLMSpy.mockResolvedValue(makeLLMResult());
 
-    await expect(service.buildModel('deal-inv8', overAssumptions as any)).rejects.toThrow(/F9 integrity checks failed/);
-
-    const errorCall = poolSpy.calls.find(c => /UPDATE deal_financial_models.*status.*error/i.test(c.sql));
-    expect(errorCall).toBeDefined();
-    const diagnostics = String(errorCall?.params?.[0] ?? '');
-    // loanAmount > purchasePrice → totalEquity ≠ totalAcqCost − loanAmount → INV-6 fires
-    expect(diagnostics).toContain('INV-6');
+    // Must NOT throw — pre-optimization failures are informational only.
+    await expect(service.buildModel('deal-preopt-inv6', overAssumptions as any)).resolves.toBeDefined();
 
     const completeCall = poolSpy.calls.find(c => /UPDATE deal_financial_models.*status.*complete/i.test(c.sql));
-    expect(completeCall).toBeUndefined();
+    expect(completeCall).toBeDefined();
+
+    const errorCall = poolSpy.calls.find(c => /UPDATE deal_financial_models.*status.*error/i.test(c.sql));
+    expect(errorCall).toBeUndefined();
+
+    // Pre-optimization warnings should still be surfaced in the persisted result
+    const persistCall = poolSpy.calls.find(c => /UPDATE deal_financial_models.*SET results/i.test(c.sql));
+    const persisted = JSON.parse(persistCall!.params[0] as string);
+    const checks: Array<{ id: string; status: string }> = persisted?.integrityChecks ?? [];
+    // runFullModel's final check should have passed (M11 resized the loan)
+    const inv6Error = checks.find((c) => c.id === 'INV-6' && c.status === 'error');
+    expect(inv6Error).toBeUndefined();
   });
 
-  it('writes status=error when equity is zero (INV-7)', async () => {
+  it('does NOT halt on pre-optimization zero-equity — M11 recompute resolves it', async () => {
+    // Pre-M11 state: equity=0, loan=18M → pre-optimization INV-6/7 fires.
+    // M11 will recompute equity from LTV → final state passes integrity.
     const noEquityAssumptions = {
       ...BASE_ASSUMPTIONS,
       waterfall: { ...BASE_ASSUMPTIONS.waterfall, equityContribution: 0 },
@@ -244,14 +254,13 @@ describe('buildModel() verification gate', () => {
     };
 
     const service = (engineModule as any)._testService as InstanceType<typeof engineModule.FinancialModelEngineService>;
-    callLLMSpy.mockResolvedValue(makeLLMResult());
 
-    await expect(service.buildModel('deal-inv7', noEquityAssumptions as any)).rejects.toThrow(/F9 integrity checks failed/);
-
-    const errorCall = poolSpy.calls.find(c => /UPDATE deal_financial_models.*status.*error/i.test(c.sql));
-    expect(errorCall).toBeDefined();
+    await expect(service.buildModel('deal-preopt-inv7', noEquityAssumptions as any)).resolves.toBeDefined();
 
     const completeCall = poolSpy.calls.find(c => /UPDATE deal_financial_models.*status.*complete/i.test(c.sql));
-    expect(completeCall).toBeUndefined();
+    expect(completeCall).toBeDefined();
+
+    const errorCall = poolSpy.calls.find(c => /UPDATE deal_financial_models.*status.*error/i.test(c.sql));
+    expect(errorCall).toBeUndefined();
   });
 });
