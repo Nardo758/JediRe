@@ -186,7 +186,7 @@ Both sides of this table come from the **same JSON response, same request** — 
 |------|-------|---------|-----|--------|
 | `deterministic-model-runner.ts` | 1892 | K — off-by-one | `annualRows[hold]` → `annualRows[hold - 1]` | ✅ Applied, verified live on Bishop rebuild |
 | `deterministic-model-runner.ts` | 1530–1543 | K-2 — INV-5 severity mask | Remove `lease_up` downgrade branch | ✅ Applied |
-| `financial-model-engine.service.ts` | 1573–1644 | **L — stale summary/debtMetrics after M11/M14 re-run (NEW)** | Rebuild `result.summary`/`result.debtMetrics` from `adjustedDet`, same point `evidence`/`reasoning` are refreshed | ⏳ Not yet applied — needs external agent |
+| `financial-model-engine.service.ts` | 1573–1644 | **L — stale summary/debtMetrics after M11/M14 re-run (NEW)** | Rebuild `result.summary`/`result.debtMetrics` from `adjustedDet`, same point `evidence`/`reasoning` are refreshed | ✅ Applied — assemble-once rebuild with m11Warnings preservation |
 
 ---
 

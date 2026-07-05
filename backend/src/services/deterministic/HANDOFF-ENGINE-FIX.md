@@ -1,10 +1,12 @@
 # External Agent Handoff — Engine Fix (Finding K + K-2 + L)
 
 **Agent:** Claude Code (authorized by operator ratification)  
-**Task:** Apply K + K-2 fixes to `deterministic-model-runner.ts` (✅ done, verified live) and Finding L to `financial-model-engine.service.ts` (⏳ open)  
-**Estimated time:** K + K-2 = 5 minutes (complete). L = 15-30 minutes (open, requires understanding the M11/M14 re-run flow).
+**Task:** Apply K + K-2 fixes to `deterministic-model-runner.ts` (✅ done) and Finding L to `financial-model-engine.service.ts` (✅ done)  
+**Estimated time:** K + K-2 = 5 minutes (complete). L = 15 minutes (complete).
 
-**Status update (2026-07-05):** K and K-2 were applied and verified against a live Bishop rebuild — `stabilizedNOI`, `exitValue`/`grossSalePrice`, and `netSaleProceeds` are all correctly non-zero now. That verification surfaced a **new, separate** defect (Finding L, below) in the caller that wraps `runModel()` — not a regression of K. L is what's now blocking Bishop fixture pinning.
+**Status update (2026-07-05):** K, K-2, and L are all applied and verified.
+- K/K-2: `stabilizedNOI`, `exitValue`/`grossSalePrice`, and `netSaleProceeds` are correctly non-zero.
+- L: `result.summary`/`debtMetrics` now rebuild from `adjustedDet` (assemble-once) after M11/M14 cycle.
 
 ---
 
