@@ -62,6 +62,24 @@ describe('Golden Deal Regression — Bishop (build path)', () => {
   const hasExpected = bishopFixture.expected != null && bishopFixture.rawAssumptions != null;
 
   (hasExpected ? it : it.skip)('matches pinned expected outputs (bridge-inclusive)', () => {
+    const raw = bishopFixture.rawAssumptions;
+    if (raw == null) throw new Error('Bishop rawAssumptions is null');
+    const modelAssumptions = mapProFormaAssumptionsToModelAssumptions(raw);
+    const full = runFullModel(modelAssumptions, { skipSensitivity: true });
+
+    // Finding P: capture effective assumptions at the runFullModel boundary
+    // (post-M11 loan resize + M14 adjustments + equity reconciliation)
+    if (bishopFixture.effectiveAssumptions == null) {
+      // First verified run: log the effective assumptions for manual pinning
+      console.log('[Finding P] Bishop effectiveAssumptions (copy into fixture):');
+      console.log(JSON.stringify(full.adjustedAssumptions, null, 2));
+    } else {
+      // Subsequent runs: verify effective assumptions are byte-identical
+      expect(full.adjustedAssumptions).toEqual(bishopFixture.effectiveAssumptions);
+    }
+
+    assertGolden('Bishop', full.result, bishopFixture.expected!);
+  });
     assertGolden('Bishop', runWithBridge(bishopFixture.rawAssumptions), bishopFixture.expected!);
   });
 });

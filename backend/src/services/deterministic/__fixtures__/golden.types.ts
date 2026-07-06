@@ -20,6 +20,8 @@
 
 import type { ProFormaAssumptions } from '../../financial-model-engine.service';
 import type { SeedActualsRow } from '../seed-actuals-aggregator';
+import type { ModelAssumptions } from '../deterministic-model-runner';
+import type { SeedActualsRow } from '../seed-actuals-aggregator';
 
 export type { SeedActualsRow } from '../seed-actuals-aggregator';
 
@@ -77,6 +79,14 @@ interface GoldenFixtureBase {
 }
 
 export interface BuildPathFixture extends GoldenFixtureBase {
+  fixtureClass: 'build_path';
+  /** Pre-bridge input assumptions — the exact ProFormaAssumptions fed to the engine, captured from a live POST /build with store-sourced body. */
+  rawAssumptions: ProFormaAssumptions | null;
+  /** Post-runFullModel effective assumptions — what actually produced the output after M11 resize + M14 adjustments + equity reconciliation. Captured for debuggability and reproducibility. */
+  effectiveAssumptions: ModelAssumptions | null;
+  expected: BuildExpected | null;
+  provenance: GoldenProvenance | null;
+}
   fixtureClass: 'build_path';
   /** Pre-bridge input assumptions — the exact ProFormaAssumptions fed to the engine, captured from a live POST /build with store-sourced body. */
   rawAssumptions: ProFormaAssumptions | null;
