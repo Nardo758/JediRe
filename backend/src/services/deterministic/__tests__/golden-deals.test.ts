@@ -80,8 +80,6 @@ describe('Golden Deal Regression — Bishop (build path)', () => {
 
     assertGolden('Bishop', full.result, bishopFixture.expected!);
   });
-    assertGolden('Bishop', runWithBridge(bishopFixture.rawAssumptions), bishopFixture.expected!);
-  });
 });
 
 // ── Highlands: seed path ────────────────────────────────────────────────────

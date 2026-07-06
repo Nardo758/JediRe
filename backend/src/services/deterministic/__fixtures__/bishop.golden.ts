@@ -133,12 +133,3 @@ export const bishopFixture: BuildPathFixture = {
   // actually did to the inputs. Null until first verified run produces it.
   effectiveAssumptions: null,
 };
-    captureDate: '2026-07-05T13:50:19Z',
-    source: 'live_build',
-    buildEndpoint: 'POST /api/v1/financial-model/build',
-    inputSnapshot: 'store-sourced-deal_assumptions-row-3f32276f',
-    bodySource: 'deal_assumptions.year1 + construct-from-DB body (F-P1-A contract)',
-    originClass: 'on_platform_underwrite',
-    pathBoundRule: true,
-  },
-};
