@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "."
+  },
+  "include": [
+    "src/services/deterministic/**/*.ts",
+    "tests/deterministic/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

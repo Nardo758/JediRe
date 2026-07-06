@@ -1,10 +1,10 @@
 # W5 Dispatch — Deterministic Engine Golden Fixture Pinning
 
-**Status:** Highlands + SyntheticDegenerate PINNED. Bishop BLOCKED — requires external-agent engine refactor (Finding M, bundled with Finding O). Not fixed by main agent per operator ruling (M is engine-refactor territory).  
-**Date:** 2026-07-05  
-**Repo:** Nardo758/JediRe · backend port 4000 · master branch  
-**Baseline:** 319 pre-existing TypeScript errors (unchanged by our changes)  
-**Compile guard:** `npx tsc --noEmit --skipLibCheck` — no new errors introduced  
+**Status:** Highlands + SyntheticDegenerate PINNED. Bishop UNPINNED (`expected: null`) — reverted 2026-07-06 after forensic review found the prior pin partially reflected stale pre-fix values (see Bishop fixture provenance comment). Still blocked pending external-agent engine refactor (Finding M, bundled with Finding O). Not fixed by main agent per operator ruling (M is engine-refactor territory).
+**Date:** 2026-07-05 (original); amended 2026-07-06 (W5 Re-Acceptance Runbook — see "2026-07-06 Amendment" section below)
+**Repo:** Nardo758/JediRe · backend port 4000 · master branch
+**Baseline:** 319 pre-existing TypeScript errors (unchanged by our changes; scoped separately from the new deterministic-engine type guard — see amendment)
+**Compile guard:** `npx tsc --noEmit --skipLibCheck` — no new errors introduced. **NEW (2026-07-06):** `node backend/scripts/check-deterministic-types.js`, wired into `.github/workflows/typecheck.yml`, additionally compiles the test/fixture files under `src/services/deterministic/` and `tests/deterministic/` (previously outside `tsconfig.json`'s `include` — see Finding T).
 
 ---
 
@@ -277,6 +277,119 @@ Both loan amount figures agree (Finding L is fixed) — the divergence is specif
 
 ---
 
+## 2026-07-06 Amendment — W5 Re-Acceptance Runbook Findings (Q, R, S, T)
+
+Produced during the multi-round W5 Re-Acceptance Runbook (external reviewer "Leon"). Scope was strictly test/fixture/tooling/guard-config authority — no engine code was touched. Three genuine engine-side test failures (Q, R, S) were confirmed via direct probe to be real, current, reproducible behavior — not stale fixtures or test bugs — and were **left failing on purpose** rather than adjusted to pass. A fourth item (T) is a guard-scope closure, not an engine finding.
+
+### Finding Q — `isExitYear` Regression (engine, blocker-class for this flag only)
+
+**File:** `backend/src/services/deterministic/deterministic-model-runner.ts` (annual cash flow row assembly)
+**Test:** `backend/tests/deterministic/proforma-assumptions-bridge.test.ts` — `AnnualCashFlowRow.isExitYear is false for operating rows and true for exit row`
+
+**Reproduction:**
+```
+$ npx vitest run tests/deterministic/proforma-assumptions-bridge.test.ts -t "isExitYear"
+ FAIL  ... AnnualCashFlowRow.isExitYear is false for operating rows and true for exit row
+AssertionError: expected false to be true
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:223:32
+    221|       expect(row.isExitYear).toBe(false);
+    222|     }
+    223|     expect(exitRow.isExitYear).toBe(true);
+```
+
+**What this means:** `result.annualCashFlow[last].isExitYear` is `false` for the final (exit) year row on the default test deal — it should be `true`. All prior operating-year rows correctly report `false`. This is a boolean-flag regression on the last row of `annualCashFlow`, not a fixture/expectation problem — the test's own logic (loop over all-but-last = false, last = true) is correct and matches the field's documented contract (task #486). Root cause not diagnosed further here (out of test-fix authority); the flag itself, not the underlying disposition math, appears to be mis-set. Worth checking for an off-by-one similar in shape to Finding K (`annualRows[hold]` vs `annualRows[hold-1]`) at whatever call site sets `isExitYear`, though this was not verified against the source — flagged as a hypothesis for the external agent, not a confirmed root cause.
+
+**Status:** Left failing. Not a test bug — verified via direct probe that current engine output has this flag wrong. Reported to F5/external-agent for engine-side fix.
+
+---
+
+### Finding R — INV-10 Fires on a Valid Development Deal (engine, blocker-class for this invariant)
+
+**File:** `backend/src/services/deterministic/deterministic-model-runner.ts` (`INV-10`, ~line 1607–1619)
+**Test:** `backend/tests/deterministic/proforma-assumptions-bridge.test.ts` — `development deal goingInCap (task #491 §10.6) > valid dev deal has no INV-* hard errors (INV-9 and INV-10 skip construction rows)`
+
+**Reproduction:**
+```
+$ npx vitest run tests/deterministic/proforma-assumptions-bridge.test.ts -t "development deal goingInCap"
+ FAIL  ... valid dev deal has no INV-* hard errors (INV-9 and INV-10 skip construction rows)
+AssertionError: expected [ { id: 'INV-10', …(2) } ] to have a length of +0 but got 1
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:1338:27
+    1336|     const checks = runIntegrityChecks(m, r);
+    1337|     const hardInvErrors = checks.filter(c => c.status === 'error' && c.id.startsWith('INV-'));
+    1338|     expect(hardInvErrors).toHaveLength(0);
+```
+
+**What this means:** `INV-10` ("annual occupancy == month-weighted aggregate of monthly series") fires as a hard `error` on a plain, otherwise-valid `dealType: 'development'` deal (12mo construction, 12mo lease-up, no other overrides). The test's own docstring and the invariant's stated design ("INV-9 and INV-10 skip construction rows") indicate construction-year rows should be excluded from this check — either that exclusion isn't implemented for INV-10, or the exclusion has an edge case this deal's month/year boundary hits. Not diagnosed further (engine internals, out of authority). This is the same construction-row-handling surface as Finding K (exit-year off-by-one) and may share a root cause class (year-index boundary handling around construction/lease-up periods), but that is a hypothesis, not confirmed.
+
+**Status:** Left failing. Not a test bug — the test's construction (`makeRunModelAssumptions({ dealType: 'development', constructionMonths: 12, leaseUpMonths: 12 })`) is a plausible, unexceptional dev deal shape; there is no fixture staleness or wrong-assertion issue here. Reported to F5/external-agent — classified as ENGINE GAP (invariant doesn't do what its own docstring says).
+
+---
+
+### Finding S — Westshore Commons IRR Ripple, ~2.27pp Off Spec Tolerance (engine-side, non-blocker for this dispatch but real)
+
+**File:** `backend/src/services/deterministic/deterministic-model-runner.ts` (disposition/IRR calculation)
+**Test:** `backend/tests/deterministic/proforma-assumptions-bridge.test.ts` — `Westshore Commons runModel — spec §12 tolerance check`
+
+**Reproduction:**
+```
+$ npx vitest run tests/deterministic/proforma-assumptions-bridge.test.ts -t "Westshore Commons runModel"
+ FAIL  ... summary.irr ≈ 24.3% (within ±1% absolute) and summary.equityMultiple > 3.4
+AssertionError: expected 0.022706252480428124 to be less than 0.01
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:791:46
+    789|     expect(r.summary.equityMultiple).not.toBeNull();
+    790|     // IRR within ±1% of spec's 24.3%
+    791|     expect(Math.abs(r.summary.irr! - 0.243)).toBeLessThan(0.01);
+```
+
+**What this means:** The spec (task §12) expects `summary.irr` within ±1 percentage point of 24.3% for this fixture (rentGrowth tuned to 4.8% specifically to hit that target — see comment at test line 762). Current engine output diverges by ~2.27 percentage points (i.e. ~22.0% or ~26.6% actual, sign not resolved here — only the absolute delta was asserted). This is downstream of the same disposition/IRR code paths Findings K/L/M/O already touch; most likely explanation is ripple from one of those fixes shifting this fixture's IRR without the test's tolerance/tuning comment being re-validated against current engine output. Not diagnosed further — could be a genuine engine regression, or could mean the spec-tuning comment (`rentGrowth=4.8% chosen so the deterministic model hits the spec's IRR≈24.3%`) is now stale and needs re-tuning once M/O closes. Re-tuning the rentGrowth constant to re-hit the target would be in test-fixture authority, but doing so *now*, before Finding M/O closes, risks re-tuning against a still-buggy engine and needing to re-tune again later — so it was left as-is rather than masked.
+
+**Status:** Left failing. Reported as an engine-side ripple, likely tied to the M/O disposition/equity refactor already tracked above. Re-evaluate whether this needs re-tuning (test authority) or is a genuine new regression (engine authority) after Finding M/O closes — not resolved definitively by this dispatch.
+
+---
+
+### Finding T — Guard-Scope Hole: Test/Fixture Files Were Never Type-Checked by CI (tooling, RESOLVED 2026-07-06)
+
+**File:** `.github/workflows/typecheck.yml`, `backend/tsconfig.json`
+**Discovered:** 2026-07-06, while auditing why 4 separate instances of merge-corruption (duplicate blocks, wrong imports, wide/narrow type mismatches) reached `master` undetected in `__fixtures__/` and `__tests__/` files.
+
+**Root cause:** CI's typecheck step is `cd backend && npx tsc --noEmit --skipLibCheck` with no `-p` flag, so it uses `backend/tsconfig.json`'s default `include`, which lists only 2 entry files. Every file under `src/services/deterministic/__fixtures__/`, `src/services/deterministic/__tests__/`, and `tests/deterministic/` was structurally outside CI's compiled surface — a broken import, a duplicated block, or a wrong type annotation in any of those files could reach `master` with a green typecheck.
+
+**Fix (in guard-config authority, applied):**
+1. New `backend/tsconfig.test.json` — scoped `include` covering the deterministic src + test surface only (`rootDir: "."`).
+2. New `backend/scripts/check-deterministic-types.js` — runs `tsc -p tsconfig.test.json --noEmit --skipLibCheck`, diffs errors against a pre-registered baseline (`backend/tsconfig.test.baseline.json`, 7 unique pre-existing production-file errors — see below), and fails only on errors NOT in that baseline. This lets the guard catch new regressions immediately without blocking on unrelated pre-existing bugs that are out of test-guard authority to fix.
+3. New CI step in `.github/workflows/typecheck.yml`: "Deterministic engine type guard (test/fixture surface)" — runs the script above, in addition to (not replacing) the existing repo-wide `tsc --noEmit --skipLibCheck` step.
+4. Forced-failure proof: a synthetic type error was injected into `tests/deterministic/proforma-assumptions-bridge.test.ts`, the guard correctly failed (exit code 1, named the exact new error), the file was restored, and the guard passed clean again — confirming the guard actually detects regressions rather than always passing.
+
+**Baseline contents (7 unique pre-existing errors, 10 raw error lines, none newly introduced, all in production engine/service files out of test-guard authority):**
+- `financial-model-engine.service.ts`: `Cannot find name 'ProvenancedValue'` (×3 sites), `Cannot find name 'totalUnits'`, `MonthlyCashFlowRow[]` not assignable to `Record<string, number>[]`
+- `proforma/event-deltas.service.ts`: `classifyMsaTier` not exported from `m35-playbook.service`
+- `proforma/opex-anchors.service.ts`: duplicate object-literal property (TS1117)
+- `proforma/position-adjustment.service.ts`: `Property 'count'/'sum' does not exist on type 'unknown'` (×2 sites)
+
+**Also fixed while closing this hole (in fixture/test-file authority, not engine):**
+- 4th instance of the recurring merge-corruption pattern in `golden.types.ts` (duplicate tail block + duplicate import).
+- `highlands.golden.ts` / `synthetic-degenerate.golden.ts`: fixtures were typed as the wide `GoldenFixture` union instead of their specific discriminated-union members (`SeedPathFixture`, `SyntheticFixture` respectively) — narrowed, resolving 11 downstream type errors in `golden-deals.test.ts` that were masking the real production-file errors above.
+- `golden-deals.test.ts`: SyntheticDegenerate block was reading `_unmatchedOpexKeys`/`_orphanedOpexKeys` off `ModelResults` (wrong object — those fields live on `ModelAssumptions`/bridge output), so the assertion was a silent no-op (`result._unmatchedOpexKeys ?? []` always resolved to `[]`). Fixed to read from `full.adjustedAssumptions` instead.
+- `unmatched-opex-keys.test.ts`: wrong relative import depth.
+
+**Verification after fix:**
+```
+$ cd backend && node scripts/check-deterministic-types.js
+Deterministic engine type guard: PASS (10 error(s), all pre-registered in tsconfig.test.baseline.json).
+
+$ npx vitest run src/services/deterministic/__tests__/golden-deals.test.ts
+ ✓ src/services/deterministic/__tests__/golden-deals.test.ts (5 tests | 1 skipped) 59ms
+
+$ npx vitest run tests/deterministic/proforma-assumptions-bridge.test.ts
+ Test Files  1 failed | 2 passed (3)
+      Tests  3 failed | 148 passed | 1 skipped (152)
+```
+(The 3 failures are Findings Q, R, S above — real, left failing on purpose, not masked.)
+
+**Status:** RESOLVED. Guard is live in CI as of this commit.
+
+---
+
 ## Code State
 
 ### Files Modified by This Work
@@ -318,7 +431,7 @@ Both loan amount figures agree (Finding L is fixed) — the divergence is specif
 
 ---
 
-## Acceptance Criteria (W5 Close)
+## Acceptance Criteria (W5 Close) — ORIGINAL (2026-07-05), superseded by amended gate below
 
 - [x] Highlands + SyntheticDegenerate pinned and passing (2/3)
 - [ ] Bishop pinned and passing — blocked on external-agent `runFullModel()` extraction (Findings M + O)
@@ -329,3 +442,53 @@ Both loan amount figures agree (Finding L is fixed) — the divergence is specif
 - [x] Highlands fixture has `expected` (`SeedExpected`) + `snapshotRows` + `provenance` with `originClass: 'owned_import'`
 - [ ] Excel parity report generated (Phase 2–3)
 - [ ] K-2 test gap: dedicated `lease_up`-mode test case (no test currently exercises INV-5 in lease_up mode; SyntheticDegenerate covers `existing` only)
+
+---
+
+## Amended Close-Out Gate (2026-07-06, W5 Re-Acceptance Runbook)
+
+This gate reflects what was actually verified in this round of work (main-agent, test/fixture/tooling authority only) and names every open item explicitly — no criterion is marked closed unless a pasted command output above supports it, and no residual is silently dropped.
+
+### Closed this round (main-agent authority, verified)
+
+- [x] Bishop fixture unpinned to `expected: null` with full provenance/incoherence writeup (U2) — was NOT strike-four fabrication (forensic finding, U1), but was a genuinely incoherent partial-fix state that should not have been pinned.
+- [x] `__fixtures__/README.md` rewritten with pin-discipline enforcement language (U2).
+- [x] Golden fixture suite green: `npx vitest run src/services/deterministic/__tests__/golden-deals.test.ts` → 4 passed, 1 skipped (Bishop, intentionally unpinned).
+- [x] Bridge suite test-bug fixes applied (INV-5 regex, CAP_RATE_COMPRESSION stale hardcode, dscrAtStabilization Y1-vs-Y2): `npx vitest run tests/deterministic/proforma-assumptions-bridge.test.ts` improved from 6 failing → 3 failing (all 3 remaining are real engine findings, not test bugs — see below).
+- [x] Guard-scope hole closed (Finding T): test/fixture files under `src/services/deterministic/` and `tests/deterministic/` are now compiled by CI via `backend/scripts/check-deterministic-types.js` + `backend/tsconfig.test.json`, wired into `.github/workflows/typecheck.yml`. Forced-failure proof confirmed the guard actually catches regressions (injected synthetic error → guard failed with exit 1 and named it → reverted → guard passed clean).
+- [x] 4th instance of the recurring merge-corruption pattern fixed in `golden.types.ts` (duplicate tail block + duplicate import) — same class as the Bishop/golden-deals.test.ts corruption found in U1/prior rounds.
+- [x] `highlands.golden.ts` / `synthetic-degenerate.golden.ts` fixture type-narrowing (`GoldenFixture` union → specific `SeedPathFixture`/`SyntheticFixture` members), resolving 11 tsc errors that were masking real production-file errors.
+- [x] `golden-deals.test.ts` SyntheticDegenerate block fixed to read `_unmatchedOpexKeys`/`_orphanedOpexKeys` from the correct object (`full.adjustedAssumptions`, not `result`) — previous assertion was a silent no-op.
+- [x] `unmatched-opex-keys.test.ts` import-depth fix.
+
+### Named residuals — explicitly NOT closed, NOT fixed, NOT masked (engine/F5 authority)
+
+These three are the entire remaining gap between "148 passing" and "151 passing" in the bridge suite. Each was verified via direct probe to be genuine current engine behavior, not a stale fixture or wrong test assertion — see Findings Q, R, S above for full repro output.
+
+1. **Finding Q — `isExitYear` regression.** `AnnualCashFlowRow.isExitYear` is `false` on the exit-year row when it should be `true`. Suspected off-by-one in the same family as Finding K, unverified.
+2. **Finding R — INV-10 fires on a valid development deal.** The invariant's own docstring says construction rows should be skipped for INV-10; a plain dev-deal fixture (12mo construction, 12mo lease-up) still trips it as a hard error.
+3. **Finding S — Westshore Commons IRR off spec tolerance by ~2.27pp.** Likely a ripple from the M/O disposition/equity work already tracked in this doc; could alternatively mean the fixture's `rentGrowth` tuning constant needs re-calibration once M/O closes. Not resolved either way in this round.
+
+**Why these were not "fixed" to pass:** All three are engine-code changes (`deterministic-model-runner.ts` internals) — explicitly outside this runbook's fix authority (F5/external-agent territory only). Adjusting the test tolerance, expected value, or assertion to make them pass would have been a disguised known-wrong pin of exactly the kind Findings M/N already ruled out. They are reported, not silenced.
+
+### Still blocked from the original gate (unchanged)
+
+- [ ] Bishop pinned and passing — blocked on external-agent `runFullModel()` extraction (Findings M + O), tracked in `HANDOFF-M-O-DISPATCH.md`.
+- [ ] Excel parity report (Phases 2–3) — oracle-gated, blocked on Bishop pin.
+- [ ] K-2 `lease_up`-mode dedicated test case — blocked on the same M+O dispatch (listed as an acceptance criterion there).
+
+### Full acceptance table (amended)
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| Bishop unpinned with provenance | ✅ Done | U1/U2, this session |
+| Golden fixture suite (Highlands + SyntheticDegenerate) | ✅ 4/5 (1 skip = Bishop, intentional) | pasted vitest output above |
+| Bridge suite test-bug fixes | ✅ Done (3 fixed, 3 real residuals remain) | 142→148 passing, all deltas explained |
+| Guard-scope closure (Finding T) | ✅ Done, forced-failure-proven | pasted guard output above |
+| Findings Q/R/S reported, not masked | ✅ Done | this document |
+| Bishop pin | ⏳ Blocked — external-agent M+O | `HANDOFF-M-O-DISPATCH.md` |
+| Excel parity (Phase 2–3) | ⏳ Blocked on Bishop pin | — |
+| K-2 lease_up test | ⏳ Blocked on M+O dispatch | — |
+| Findings Q, R, S fixes | ⏳ Not started — engine authority, new since 2026-07-05 | this document |
+
+**W5 is NOT closed by this round.** This round's scope was re-acceptance verification (capture-and-report), not engine remediation. Three new engine findings (Q, R, S) are now queued alongside the pre-existing M+O blocker for the external agent. Recommend bundling Q/R/S into the next `runFullModel()`/disposition-math handoff, since Q and R both touch construction/exit-year boundary handling in the same code region as K, and S is plausibly a ripple of the same M/O work already scheduled.

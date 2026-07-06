@@ -139,3 +139,19 @@ W5 close criterion: 8/8 green = 6 identity suites + Bishop + Highlands + Synthet
 | K-2 lease_up test | ⏳ BLOCKED on this dispatch | External agent (acceptance criterion) |
 
 **After this dispatch closes:** Bishop pins → full suite 3/3 → Phases 2–3 → W5 closes → TS-1 unlocks → F-P1 queues (A: build-boundary, B: noi.resolved, C: owned_import absence).
+
+---
+
+## 2026-07-06 Addendum — Three New Engine Findings From the Bridge Suite (Q, R, S)
+
+Discovered during the W5 Re-Acceptance Runbook (test/fixture-authority round, no engine code touched). Full repro commands + output in `W5-DISPATCH.md`'s "2026-07-06 Amendment" section — summarized here so they travel with the M+O handoff since they touch overlapping engine surface (disposition math, construction/exit-year boundary handling).
+
+| Finding | Symptom | Suspected relation to M+O |
+|---|---|---|
+| **Q** | `AnnualCashFlowRow.isExitYear` is `false` on the exit-year row (should be `true`) | Possibly independent — a boundary-flag bug, not necessarily disposition-math. Check whatever sets this flag for a Finding-K-shaped off-by-one. |
+| **R** | `INV-10` fires as a hard error on a plain, valid `dealType: 'development'` deal, contradicting its own docstring ("INV-9 and INV-10 skip construction rows") | Same construction/exit-year boundary-handling surface as Finding K; possibly a missing or incomplete skip-condition for INV-10 specifically. |
+| **S** | Westshore Commons fixture's IRR is ~2.27 percentage points off the spec's 24.3% target (tolerance ±1pp) | Most likely a direct ripple of the M/O disposition/equity work already scoped in this dispatch — recommend re-checking this fixture's IRR as part of the Bishop pin verification steps below, before assuming it needs separate re-tuning. |
+
+**Recommendation:** Verify Q and R while tracing `annualRows`/exit-year indexing for the `runFullModel()` extraction (constraint 2, single-assembly-point work) — both are in the same code region. Re-check S's IRR delta after `runFullModel()` lands; if it closes on its own, it was an M/O ripple (no separate action needed); if it persists, it needs its own diagnosis.
+
+**Not bundled as a hard blocker for this dispatch's acceptance criteria** (Bishop pin does not depend on Q/R/S closing) — but do not close them out silently; each needs its own resolution or an explicit "verified unrelated" note before W5 fully closes.

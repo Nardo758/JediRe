@@ -10,6 +10,7 @@
  * Until pinned, `expected` is null and tests skip automatically.
  */
 
+import { describe, it, expect } from 'vitest';
 import type { ProFormaAssumptions } from '../../financial-model-engine.service';
 import { mapProFormaAssumptionsToModelAssumptions } from '../proforma-assumptions-bridge';
 import type { ModelResults } from '../deterministic-model-runner';
@@ -165,7 +166,8 @@ describe('Golden Deal Regression — SyntheticDegenerate (engine-level)', () => 
       newLeaseConcessionMonths: 1,
     };
 
-    const result = runFullModel(modelAssumptions, { skipSensitivity: true }).result;
+    const full = runFullModel(modelAssumptions, { skipSensitivity: true });
+    const result = full.result;
     assertGolden('SyntheticDegenerate', result, syntheticDegenerateFixture.expected!);
 
     // Degenerate-case specific assertions
@@ -180,8 +182,15 @@ describe('Golden Deal Regression — SyntheticDegenerate (engine-level)', () => 
     const variance = Math.max(...y1Nois) - Math.min(...y1Nois);
     expect(variance).toBeLessThan(50_000); // small intra-year variance for existing deal
 
-    expect(result._unmatchedOpexKeys ?? []).toHaveLength(0);
-    expect(result._orphanedOpexKeys ?? []).toHaveLength(0);
+    // TEST-BUG (triaged 2026-07-06): these two opex-key-integrity fields live on
+    // ModelAssumptions (bridge output, see proforma-assumptions-bridge.ts), not on
+    // ModelResults — the test was reading them off the wrong object (always
+    // undefined, so `?? []` silently made this assertion a no-op). This fixture
+    // builds ModelAssumptions inline rather than via the bridge, so the fields are
+    // legitimately absent here; reading them from the correct object for clarity
+    // and so this doesn't silently no-op again if the fixture is ever bridge-sourced.
+    expect(full.adjustedAssumptions?._unmatchedOpexKeys ?? []).toHaveLength(0);
+    expect(full.adjustedAssumptions?._orphanedOpexKeys ?? []).toHaveLength(0);
   });
 });
 

@@ -7,3 +7,4 @@
 - [Ramp target + tri-tab reconciliation](ramp-target-and-tri-tab-reconciliation.md) — correct NOI ramp target field, single-source-of-truth periodic API, DeepSeek 402 is an env issue not a regression
 - [deal_assumptions column shapes](deal-assumptions-column-shapes.md) — debt:* namespaced keys live in per_year_overrides column, NOT nested inside year1; easy to misattribute from a merged dump
 - [Golden test harness M11/M14 gap](golden-test-harness-m11-gap.md) — Bishop build-path harness runs single-pass runModel, never M11/M14; live /build captures can't be pinned against it
+- [TypeScript CI guard scope](tsc-ci-guard-scope.md) — backend tsc CI check only compiles a narrow include; use scoped tsconfig + baseline-diff to extend coverage without blocking on pre-existing errors

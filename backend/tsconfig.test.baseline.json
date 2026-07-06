@@ -1,0 +1,12 @@
+{
+  "description": "Known pre-existing TypeScript errors on the deterministic-engine surface (backend/tsconfig.test.json), discovered 2026-07-06 while closing the guard-scope hole that let test/fixture merge-corruption go undetected (see backend/src/services/deterministic/__fixtures__/README.md and F5 handoff doc). These are real bugs in production engine/service files, out of test-guard fix authority — tracked here so the new guard can catch NEW regressions without being blocked on unrelated pre-existing fixes. Do not add to this list to silence a new failure; only pre-registered baseline entries belong here. Match is by file + error code + message text, ignoring line/column (so unrelated line-number drift elsewhere in the file doesn't false-negative the guard).",
+  "knownErrors": [
+    "src/services/financial-model-engine.service.ts: error TS2304: Cannot find name 'ProvenancedValue'.",
+    "src/services/financial-model-engine.service.ts: error TS2304: Cannot find name 'totalUnits'.",
+    "src/services/financial-model-engine.service.ts: error TS2345: Argument of type 'MonthlyCashFlowRow[]' is not assignable to parameter of type 'Record<string, number>[]'.",
+    "src/services/proforma/event-deltas.service.ts: error TS2459: Module '\"../m35-playbook.service\"' declares 'classifyMsaTier' locally, but it is not exported.",
+    "src/services/proforma/opex-anchors.service.ts: error TS1117: An object literal cannot have multiple properties with the same name.",
+    "src/services/proforma/position-adjustment.service.ts: error TS2339: Property 'count' does not exist on type 'unknown'.",
+    "src/services/proforma/position-adjustment.service.ts: error TS2339: Property 'sum' does not exist on type 'unknown'."
+  ]
+}

@@ -12,9 +12,9 @@
  * Engine version: deterministic-model-runner.ts @ HEAD (post Finding K fix)
  */
 
-import type { GoldenFixture } from './golden.types';
+import type { SyntheticFixture } from './golden.types';
 
-export const syntheticDegenerateFixture: GoldenFixture = {
+export const syntheticDegenerateFixture: SyntheticFixture = {
   dealId: 'synthetic-degenerate-001',
   dealIdFull: null,
   dealName: 'SyntheticDegenerate',

@@ -399,11 +399,21 @@ describe('runModel() new output fields (task #486)', () => {
   });
 
   // ── dscrAtStabilization dynamics ─────────────────────────────────────────
-  it('debtMetrics.coverage.dscrAtStabilization uses Y2 when vacancyY1 > vacancyStab', () => {
-    // vacancyY1=0.10, vacancyStab=0.05 → stabilization at Y2 (index 1)
+  // TEST-BUG (triaged 2026-07-06): this test's Y2 assumption predates the
+  // engine's monthly-crossing stabilization logic (see deterministic-model-runner.ts,
+  // "Stabilization year" comment: for acquisitions with monthly data, the actual
+  // month the occupancy series crosses the stabilized band is used — it only
+  // falls back to the naive annual vacancyY1-vs-vacancyStab heuristic for dev
+  // deals without monthly rows). Verified via direct probe against this exact
+  // fixture: monthly occupancy already crosses the stabilized band inside Y1,
+  // so dscrAtStabilization === Y1 dscr (2.366495671270274), not Y2
+  // (2.4588164590149435). Updated to match documented, intentional behavior.
+  it('debtMetrics.coverage.dscrAtStabilization uses the monthly-crossing year (Y1 here) when vacancyY1 > vacancyStab', () => {
+    // vacancyY1=0.10, vacancyStab=0.05 — monthly occupancy ramp crosses the
+    // stabilized band within Y1 for this fixture, so stabilization is Y1, not Y2.
     const stabDscr = result.debtMetrics.coverage.dscrAtStabilization;
-    const row2Dscr = result.annualCashFlow[1]?.dscr ?? null;
-    expect(stabDscr).toBe(row2Dscr);
+    const row1Dscr = result.annualCashFlow[0]?.dscr ?? null;
+    expect(stabDscr).toBe(row1Dscr);
   });
 
   it('debtMetrics.coverage.dscrAtStabilization uses Y1 when already stabilized', () => {
@@ -949,12 +959,15 @@ describe('runIntegrityChecks — complete spec §6.1 + §6.2 coverage', () => {
     expect(checks.find(c => c.id === 'INV-5')?.status).toBe('error');
   });
 
+  // TEST-BUG (triaged 2026-07-06): K-2 rewrote INV-5's message to name it a model
+  // defect ("bridge always provides a default") rather than "cannot verify"; this
+  // regex predates that ruling. Matching on a stable substring, not full text.
   it('INV-5 fires (fail-closed) when exitCap is 0', () => {
     const m = makeRunModelAssumptions({ exitCap: 0 });
     const r = runModel(m, { skipSensitivity: true });
     const checks = runIntegrityChecks(m, r);
     expect(checks.find(c => c.id === 'INV-5')?.status).toBe('error');
-    expect(checks.find(c => c.id === 'INV-5')?.message).toMatch(/cannot verify/i);
+    expect(checks.find(c => c.id === 'INV-5')?.message).toMatch(/exitCap \(0\) ≤ 0/);
   });
 
   // ── INV-6: totalEquity = totalAcqCost − loanAmount ─────────────────────
@@ -1084,8 +1097,16 @@ describe('runIntegrityChecks — complete spec §6.1 + §6.2 coverage', () => {
   });
 
   it('SOFT-5 CAP_RATE_COMPRESSION absent when exit cap within 50bps of going-in cap', () => {
-    // goingInCap ≈ 13.15% with makeRunModelAssumptions defaults; use exitCap = 13% (15bps below)
-    const m2 = makeRunModelAssumptions({ exitCap: 0.13 });
+    // TEST-BUG (triaged 2026-07-06): this test hardcoded goingInCap ≈ 13.15% and
+    // set exitCap = 0.13 assuming a 15bps gap (inside the 50bps tolerance). Live
+    // engine goingInCap on makeRunModelAssumptions() defaults is actually 13.87%,
+    // so exitCap=0.13 was 87bps below going-in — outside tolerance, tripping the
+    // very warning this test asserts is absent. Deriving goingInCap live and
+    // placing exitCap 20bps below it (inside the 50bps band) instead of a
+    // hardcoded guess, so this test can't silently drift again.
+    const probe = runModel(makeRunModelAssumptions(), { skipSensitivity: true });
+    const goingInCap = probe.summary.goingInCapRate!;
+    const m2 = makeRunModelAssumptions({ exitCap: goingInCap - 0.002 });
     const r2 = runModel(m2, { skipSensitivity: true });
     const checks = runIntegrityChecks(m2, r2);
     expect(checks.find(c => c.id === 'CAP_RATE_COMPRESSION')).toBeUndefined();

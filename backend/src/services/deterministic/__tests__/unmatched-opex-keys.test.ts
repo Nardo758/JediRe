@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { mapProFormaAssumptionsToModelAssumptions } from '../proforma-assumptions-bridge';
-import type { ProFormaAssumptions } from '../financial-model-engine.service';
+import type { ProFormaAssumptions } from '../../financial-model-engine.service';
 
 function baseMock(): ProFormaAssumptions {
   return {

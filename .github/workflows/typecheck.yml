@@ -23,3 +23,6 @@ jobs:
 
       - name: TypeScript compile guard
         run: cd backend && npx tsc --noEmit --skipLibCheck
+
+      - name: Deterministic engine type guard (test/fixture surface)
+        run: cd backend && node scripts/check-deterministic-types.js

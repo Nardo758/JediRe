@@ -45,7 +45,7 @@
    * build-path golden (separately blocked by Finding M, W5-DISPATCH.md).
    */
 
-  import type { GoldenFixture, SeedActualsRow } from './golden.types';
+  import type { SeedPathFixture, SeedActualsRow } from './golden.types';
 
   const snapshotRows: SeedActualsRow[] = [
   { report_month: '2021-12-01', effective_gross_income: 507107, noi: 379895, total_opex: 127212, is_budget: true, is_proforma: false },
@@ -143,7 +143,7 @@
   { report_month: '2026-04-01', effective_gross_income: 774155, noi: 557322, total_opex: 216833, is_budget: true, is_proforma: false },
   ];
 
-  export const highlandsFixture: GoldenFixture = {
+  export const highlandsFixture: SeedPathFixture = {
     dealId: 'eaabeb9f',
     dealIdFull: 'eaabeb9f-830e-44f9-a923-56679ad0329d',
     dealName: 'Highlands',

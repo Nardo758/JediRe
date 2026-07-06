@@ -103,26 +103,19 @@ export const bishopFixture: BuildPathFixture = {
     },
   },
 
-  expected: {
-    noiYear1: 2_161_807,       // Engine-computed from reconstructed assumptions (not LayeredValue platform figure)
-    // egiYear1 corrected 2026-07-06 — original value (4,500,000) was an unverified estimate (pin-discipline
-    // violation, never should have entered the fixture as a guess). Captured from runFullModel() on the
-    // Finding-P pinned effective assumptions, post-M11/M14/reconcile boundary; test-path output is
-    // deterministic across runs. Sanity: NOI/EGI margin = 2,161,807 / 4,833,796.45 = 44.72% (opex ratio
-    // 55.28%) — in-band for a Class-A existing multifamily deal. Note: dispatch-suggested sanity figure of
-    // 54.4% was arithmetically wrong; 44.72% is the verified value from this exact pair.
-    egiYear1: 4833796.45,
-    irr: -0.20951109331483128,
-    equityMultiple: 0.31437540358207805,
-    dscrY1: 1.0424,
-    cashOnCashY1: 0.025,
-    goingInCapRate: 0.05,
-    exitCapRate: 0.055,
-    yieldOnCost: 0.043,
-    totalEquity: 39_365_994,
-    totalDebt: 21_024_006,
-    netProceeds: 55_000_000,   // Approximate — will be verified by test
-  },
+  // UNPINNED 2026-07-06 — original pin was partially fabricated: goingInCapRate (0.05) was the
+  // input acquisition.capRate assumption copy-pasted in, not a computed output; netProceeds
+  // (55,000,000) and the original egiYear1 (4,500,000) were both flagged in-line as approximations;
+  // only noiYear1 was ever corrected to the reconstructed-assumptions engine path (c01aa57ee) while
+  // irr/equityMultiple/dscrY1/cashOnCashY1/totalEquity/totalDebt/netProceeds were left as the original
+  // 2026-07-05 live-build capture computed under a DIFFERENT noiYear1 regime (2,632,193, platform/OM
+  // figure) — i.e. the fixture became internally incoherent the moment noiYear1 was corrected and
+  // nothing else was re-derived. Capital-structure output has also moved independently since capture
+  // ($21.0M loan → $26.6M loan on identical rawAssumptions), pending an intentional-vs-regression
+  // ruling (see F5 handoff — capital-structure delta trace). Re-pin is gated on: (1) that F5 verdict,
+  // and (2) a fresh full-payload capture with every field individually extracted and cited (not
+  // partially patched). Until then: null, and the assertion skips.
+  expected: null,
 
   provenance: {
     captureDate: '2026-07-05T13:50:19Z',
