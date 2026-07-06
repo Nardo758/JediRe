@@ -390,6 +390,34 @@ $ npx vitest run tests/deterministic/proforma-assumptions-bridge.test.ts
 
 ---
 
+### Finding U — Capital-Structure Route: `summary.dscr` Off By ~100x (engine/API, NEW, blocker-class for this field only)
+
+**File:** `backend/src/api/rest/capital-structure.routes.ts`, line ~572
+**Discovered:** 2026-07-06, during W5-FINAL Runbook Phase 2-3 consumer-matrix live capture (`GET /api/v1/capital-structure/:dealId`, live Replit backend, both deals).
+
+**What happened:** The route computes `dscr` as:
+
+```ts
+dscr: noi > 0 && loanAmount > 0 && interestRate > 0
+  ? noi / (loanAmount * (interestRate / 100))
+  : null,
+```
+
+`fin.interestRate` is already stored as a decimal fraction (e.g. `0.065`), not a whole-number percent — dividing by `100` a second time shrinks the implied annual debt service by ~100x, inflating the reported DSCR by the same factor. Live capture on both deals:
+
+| Deal | `capital-structure` route `summary.dscr` | Correct DSCR (F9 `/financial-model/:dealId/latest` → `results.debtMetrics.dscr`) | Ratio |
+|---|---|---|---|
+| Bishop (`3f32276f-…`) | `125.00000286212722` | `1.0424476138210286` | 119.91x |
+| Highlands (`eaabeb9f-…`) | `188.75517942109437` | `1.8875517942109443` | 100.00x (exact) |
+
+Highlands' ratio is exactly 100x, confirming the `/100` double-division as the mechanism. Bishop's ratio (119.9x) is close but not exact 100x — the residual ~20% gap is unexplained here (not diagnosed further; possibly a second, smaller discrepancy in how `loanAmount`/`interestRate` are sourced for Bishop's M11/M14-resolved state vs. Highlands' simpler capital stack — flagged as a hypothesis only, not confirmed).
+
+**What this means:** Any UI or downstream consumer reading `summary.dscr` from the capital-structure route gets a wildly wrong figure (three-digit DSCR instead of a normal ~1.0–2.0x range) — trivially implausible on inspection, but nothing in the route or its consumers currently guards against it.
+
+**Status:** Reported, not fixed. This is a live API/engine-code defect (`backend/src/api/rest/capital-structure.routes.ts`), outside main-agent's fix authority (test/fixture/tooling/guard-config only) per this dispatch's operating rules. Queued for the same external-agent handoff as Findings Q/R/S — one-line fix candidate (`interestRate` already a decimal, drop the `/100`) but must be verified against how `fin.interestRate` is populated across all deal types before applying, since a wrong assumption here previously caused Findings L/O.
+
+---
+
 ## Code State
 
 ### Files Modified by This Work
@@ -492,3 +520,39 @@ These three are the entire remaining gap between "148 passing" and "151 passing"
 | Findings Q, R, S fixes | ⏳ Not started — engine authority, new since 2026-07-05 | this document |
 
 **W5 is NOT closed by this round.** This round's scope was re-acceptance verification (capture-and-report), not engine remediation. Three new engine findings (Q, R, S) are now queued alongside the pre-existing M+O blocker for the external agent. Recommend bundling Q/R/S into the next `runFullModel()`/disposition-math handoff, since Q and R both touch construction/exit-year boundary handling in the same code region as K, and S is plausibly a ripple of the same M/O work already scheduled.
+
+---
+
+## W5-FINAL Runbook (2026-07-06) — Live Evidence + Closing Declaration
+
+### C1 — Runbook Phases 2–3 Live Evidence
+
+**1. Smoke shapes.** Highlands canary (57.17% NOI margin / $6,315,308.53 EGI / 2026-04-01 boundary) does **not** surface in the live `/financial-model/:dealId/periodic` API — it lives only in the golden fixture (`highlands.golden.ts` + `golden-deals.test.ts`), re-confirmed via `npx vitest run src/services/deterministic/__tests__/golden-deals.test.ts` → **4 passed, 1 skipped** (Bishop, intentional). Bishop's live periodic NOI series (actuals 2017–2018 negative baseline → gap → projection ramping from ~$130K/mo starting 2026-07) was captured but has no independent canary to check against.
+
+**2. Consumer matrix.** All 4 real consumer paths curled live for both deals — `GET /proforma/:dealId`, `GET /financial-model/:dealId/latest`, `GET /financial-model/:dealId/periodic`, `GET /capital-structure/:dealId` — all HTTP 200:
+
+| Quantity | Bishop | Highlands | Agreement |
+|---|---|---|---|
+| NOI | $1,576,800 | $3,808,324.50 | ✅ Consistent across all paths |
+| IRR | −20.95% | 18.19% | ✅ Consistent across all paths |
+| Equity Multiple | 0.314× | 2.08× | ✅ Consistent across all paths |
+| Loan Amount | $21,024,006 | $31,525,000 | ✅ Consistent across all paths |
+| `capital-structure` `summary.dscr` | 125.00 (wrong) | 188.76 (wrong) | ❌ NEW — Finding U, ~100x inflated vs. correct `debtMetrics.dscr` (1.0424 / 1.8876) |
+
+**3. D1 behavioral (ninth session — CLOSED, PASS).** `ai_usage_log` count before = 29,873. Ran navigation-equivalent GETs across deal-detail, F9-latest, periodic, proforma, and capital-structure for both deals. Count after = 29,873. Verified via `WHERE created_at > '2026-07-06T21:42:05Z'` → **0 rows**. Zero LLM provider calls from pure navigation, confirmed live.
+
+**4. T2 forced cache-hit — NAMED BLOCKER (R-4).** Sent an identical large prompt (536 chars) twice through `POST /api/v1/agents/chat` (`agentCode: "CASH"`, Bishop dealId), 2 seconds apart. Both calls returned HTTP 200 with a fallback "limited mode" response — the underlying DeepSeek call failed both times with **`402 Insufficient Balance`** (confirmed in backend logs: `DeepSeek API error … status: 402 … "Insufficient Balance"`, twice, once per call). Zero rows were written to `ai_usage_log` for either call (confirmed: `SELECT COUNT(*) FROM ai_usage_log WHERE created_at > '2026-07-06 21:44:00+00'` → 0). **This is an account-funding/billing blocker, not a code or test defect** — outside main-agent fix authority. T2 cannot be executed live until the DeepSeek account balance is topped up; the cache-hit mechanism and cost formula (`estimateDeepSeekCost()` in `DeepSeekMeteringAdapter.ts`) were traced and confirmed present in code, but could not be exercised end-to-end against a real API response in this session.
+
+### C2 — Excel Parity List
+
+Regenerated `docs/EXCEL_PARITY_ORACLE_REQUEST.md` as **PROVISIONAL**: Highlands seed-path values (pinned, verified) populated in full; Bishop limited to the five 2026-07-05 live-captured values (loan/equity/IRR/EM/DSCR), each marked "subject to F5 re-pin"; every other Bishop field marked PENDING-RE-PIN with no number.
+
+### New Finding This Round
+
+**Finding U** (see above) — `capital-structure.routes.ts` `summary.dscr` inflated ~100x by a double `/100` division on an already-decimal `interestRate`. Reported, not fixed (API/engine-code, outside test/fixture/tooling/guard-config authority). Queued for the same external-agent handoff as Q/R/S.
+
+---
+
+> **W5 CLOSED — 2026-07-06, operator-declared, with named residuals.**
+> Closed with evidence: deterministic turn-cohort engine (Findings A–P diagnosed/fixed/doctrine'd); one-NOI-truth across consumer surfaces; loudness system (canonical/alias/orphan, required-only); INV-6 hard invariant + assemble-once + pre-optimization demotion; canonical orchestration (pass-1 → M11 → M14 → equity reconcile → pass-2 → assemble → verdict); golden framework (Highlands seed-path + SyntheticDegenerate pinned/green; K-2; determinism); guard coverage extended to test surfaces with forced-failure proof; fixtures discipline (payload-sourced provenance mandatory).
+> **Residuals (owners assigned):** R-1 F5 engine package [external agent] — effective-assumptions hypothesis (lead), Findings Q/R/S, Finding U (new), 10 pre-existing production type errors, Bishop re-pin on verdict. R-2 Excel parity [operator] — final list post-re-pin. R-3 CI-run-history verification [parked — needs gh auth]. R-4 D1/T2 — D1 closed PASS this session; T2 named-blocker: DeepSeek account `402 Insufficient Balance`, not a code defect, requires operator/billing action before it can be executed.

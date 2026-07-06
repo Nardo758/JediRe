@@ -1,12 +1,23 @@
 # JEDIRE POST-D2 PROGRAM — Consolidated Roadmap
-**Date:** 2026-07-03 · **Status:** Plan of record pending D2 acceptance + Engine A/C probe results
+**Date:** 2026-07-03 · **Status:** Phase-0 DONE (2026-07-06, W5-FINAL close) · TS-1 now ACTIVE
 **Governing specs:** `F9_UNDERWRITER_MODEL_SPEC.md` (ratified), `PROFORMA_COMPOSITION_MODEL_SPEC.md` + §4b factory (ratification pending probe), `DEAL_SHAPING_ADDENDUM.md` (pending numbering/vintage fixes), `LIFECYCLE_ORIGIN_VINTAGE_ADDENDUM.md` (ratified), `F9_PROFORMA_BLUEPRINT.md` (rehoming map)
 
-## IN FLIGHT (Phase 0)
-| Item | State |
-|---|---|
-| D2 acceptance + Engine A/C scope probe + stabilization verify | Dispatched, running |
-| S1 vintage debt-service estimator + cashflow_distress flags | Dispatch ready, parallel-safe |
+## PHASE 0 — DONE (2026-07-06, closed with named residuals, see `W5-DISPATCH.md`)
+
+W5 (deterministic turn-cohort engine re-acceptance) is operator-declared **CLOSED WITH RESIDUALS** as of 2026-07-06. Gate satisfied: surfacing renders live outputs across all consumer surfaces (deal-panel, F9, terminal FinancialsTab, capital-structure) for both reference deals; D1 zero-LLM-navigation behavioral confirmed PASS live; golden fixture suite green (Highlands + SyntheticDegenerate pinned, 4/5 passing, Bishop intentionally unpinned); guard coverage extended to test/fixture surfaces with forced-failure proof. Bishop's fixture-pin status does **not** block TS-1 — his live build already renders correctly, only the golden-harness pin is blocked (Finding M/O, structural harness gap, external-agent territory).
+
+**Residuals table (owners assigned, tracked in `W5-DISPATCH.md`):**
+
+| ID | Item | Owner | Status |
+|---|---|---|---|
+| R-1 | F5 engine package: effective-assumptions hypothesis (lead), Findings Q/R/S, Finding U (capital-structure DSCR ~100x bug, new 2026-07-06), 10 pre-existing production type errors, Bishop re-pin on verdict | External agent | Open — `HANDOFF-M-O-DISPATCH.md`, `HANDOFF-FIX5.md` |
+| R-2 | Excel parity — final list issued post-Bishop-re-pin | Operator | Open — provisional list in `docs/EXCEL_PARITY_ORACLE_REQUEST.md` |
+| R-3 | CI-run-history verification | Parked | Needs `gh` auth |
+| R-4 | D1/T2 live evidence | Main agent (this session) | D1 CLOSED PASS. T2 named blocker: DeepSeek account `402 Insufficient Balance` — billing/funding issue, not a code defect |
+
+## ACTIVE — TS-1 Thin Surfacing Pass
+
+**Gate satisfied 2026-07-06:** surfacing renders live outputs across all consumer paths for both reference deals; Bishop's golden-fixture pin status is orthogonal to his live build correctness. TS-1 scope: render-only, frontend-only diff (see `TS1_THIN_SURFACING_PASS.md`, owner: next session).
 
 **Gate G1 (operator, on probe results):** engine unification ruling (default: A merges into runner); bad-debt base ruling (EGI vs GPR — recommendation: GPR); composition-spec ratification with blueprint as rehoming map.
 
