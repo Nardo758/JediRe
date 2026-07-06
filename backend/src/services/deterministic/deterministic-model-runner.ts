@@ -1483,6 +1483,13 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   for (const row of opRows) {
     const expected = row.noi - row.debtService;
     if (Math.abs(row.cfads - expected) > 0.01) {
+      checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${(row.cfads ?? 0).toFixed(2)}, expected ${(expected ?? 0).toFixed(2)}` });
+      break;
+    }
+  }
+  for (const row of opRows) {
+    const expected = row.noi - row.debtService;
+    if (Math.abs(row.cfads - expected) > 0.01) {
       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}` });
       break;
     }

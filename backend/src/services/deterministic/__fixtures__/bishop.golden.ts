@@ -104,7 +104,7 @@ export const bishopFixture: BuildPathFixture = {
   },
 
   expected: {
-    noiYear1: 2_632_193,       // From OM diagnostic: platform-derived NOI
+    noiYear1: 2_161_807,       // Engine-computed from reconstructed assumptions (not LayeredValue platform figure)
     egiYear1: 4_500_000,       // Estimated from rent roll (will be verified by test)
     irr: -0.20951109331483128,
     equityMultiple: 0.31437540358207805,
