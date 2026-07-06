@@ -1405,6 +1405,50 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
               <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: '#e2e8f0' }}>{k.v}</span>
             </div>
           ))}
+
+          {/* TS-1 T1 — Three-quantity NOI-endpoint pills. Sourced strictly from the
+              live model payload (modelData.summary.noiYear1 / .noiStabilized,
+              modelData.evidence.fields[].value for the 'inPlaceNOI' entry). Tooltip is
+              that evidence entry's `reasoning` string verbatim — no new copy is written
+              here. When an entry is absent for the current deal (observed: Highlands'
+              latest model has no `inPlaceNOI` evidence entry, unlike Bishop's), the pill
+              renders '—' with no tooltip rather than fabricating a value or reasoning. */}
+          {(() => {
+            const md: any = modelData;
+            const summary = md?.summary ?? {};
+            const evidenceFields: any[] = md?.evidence?.fields ?? [];
+            const inPlaceEntry = evidenceFields.find((e) => e?.field === 'inPlaceNOI');
+            const noiEntry = evidenceFields.find((e) => e?.field === 'NOI');
+            const y1Val = typeof summary.noiYear1 === 'number' ? summary.noiYear1 : null;
+            const stabVal = typeof summary.noiStabilized === 'number' ? summary.noiStabilized : null;
+            const inPlaceVal = typeof inPlaceEntry?.value === 'number' ? inPlaceEntry.value : null;
+            if (y1Val == null && stabVal == null && inPlaceVal == null) return null;
+            const pills: { l: string; v: number | null; tip?: string }[] = [
+              { l: 'IN-PLACE NOI', v: inPlaceVal, tip: inPlaceEntry?.reasoning },
+              { l: 'Y1 NOI', v: y1Val, tip: noiEntry?.reasoning },
+              { l: 'STABILIZED', v: stabVal },
+            ];
+            return (
+              <>
+                {pills.map(p => (
+                  <div
+                    key={p.l}
+                    title={p.tip ?? undefined}
+                    style={{
+                      display: 'flex', alignItems: 'baseline', gap: 4, padding: '2px 8px',
+                      borderRadius: 2, border: '1px solid #27272a', background: '#111827',
+                      cursor: p.tip ? 'help' : 'default',
+                    }}
+                  >
+                    <span style={{ fontFamily: LABEL, fontSize: 9, color: '#64748b' }}>{p.l}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: '#e2e8f0' }}>
+                      {p.v != null ? fmt$(p.v) : '—'}
+                    </span>
+                  </div>
+                ))}
+              </>
+            );
+          })()}
         </div>
 
 
