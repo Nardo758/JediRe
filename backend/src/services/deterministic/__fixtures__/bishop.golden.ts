@@ -105,7 +105,13 @@ export const bishopFixture: BuildPathFixture = {
 
   expected: {
     noiYear1: 2_161_807,       // Engine-computed from reconstructed assumptions (not LayeredValue platform figure)
-    egiYear1: 4_500_000,       // Estimated from rent roll (will be verified by test)
+    // egiYear1 corrected 2026-07-06 — original value (4,500,000) was an unverified estimate (pin-discipline
+    // violation, never should have entered the fixture as a guess). Captured from runFullModel() on the
+    // Finding-P pinned effective assumptions, post-M11/M14/reconcile boundary; test-path output is
+    // deterministic across runs. Sanity: NOI/EGI margin = 2,161,807 / 4,833,796.45 = 44.72% (opex ratio
+    // 55.28%) — in-band for a Class-A existing multifamily deal. Note: dispatch-suggested sanity figure of
+    // 54.4% was arithmetically wrong; 44.72% is the verified value from this exact pair.
+    egiYear1: 4833796.45,
     irr: -0.20951109331483128,
     equityMultiple: 0.31437540358207805,
     dscrY1: 1.0424,
