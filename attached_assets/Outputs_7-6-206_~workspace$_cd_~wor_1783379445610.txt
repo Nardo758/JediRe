@@ -1,0 +1,797 @@
+Outputs 7-6-206 ~/workspace$ cd ~/workspace
+git pull origin master
+
+# Verify you have c01aa57ee
+git log --oneline -1
+
+# Re-run the failing tests
+cd backend
+npx vitest run src/services/deterministic/__tests__/golden-deals.test.ts
+npx vitest run tests/deterministic/proforma-assumptions-bridge.test.ts
+remote: Enumerating objects: 17, done.
+remote: Counting objects: 100% (17/17), done.
+remote: Compressing objects: 100% (1/1), done.
+remote: Total 9 (delta 8), reused 9 (delta 8), pack-reused 0 (from 0)
+Unpacking objects: 100% (9/9), 936 bytes | 6.00 KiB/s, done.
+From https://github.com/Nardo758/JediRe
+ * branch                master     -> FETCH_HEAD
+   455e04caa..c01aa57ee  master     -> origin/master
+fatal: update_ref failed for ref 'ORIG_HEAD': cannot lock ref 'ORIG_HEAD': Unable to create '/home/runner/workspace/.git/ORIG_HEAD.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.
+d9315bd95 (HEAD -> master) Update documentation for model execution and verification steps
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /home/runner/workspace/backend
+
+ ❯ src/services/deterministic/__tests__/golden-deals.test.ts (5)
+   ❯ Golden Deal Regression — Bishop (build path) (1)
+     × matches pinned expected outputs (bridge-inclusive)
+   ✓ Golden Deal Regression — Highlands (seed path) (1)
+     ✓ matches pinned seed-path expected values (bridge-inclusive, seed edition)
+   ✓ Golden Deal Regression — SyntheticDegenerate (engine-level) (1)
+     ✓ matches pinned synthetic expected outputs
+   ✓ Finding K-2 — INV-5 lease_up forced-failure (1)
+     ✓ stabilizedNOI <= 0 under mode lease_up produces INV-5 ERROR
+   ✓ Determinism proof — runFullModel() (1)
+     ✓ produces byte-identical results on identical inputs
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/services/deterministic/__tests__/golden-deals.test.ts > Golden Deal Regression — Bishop (build path) > matches pinned expected outputs (bridge-inclusive)
+AssertionError: expected 2161806.623862773 to be close to 2632193, received difference is 470386.3761372268, but expected 0.5
+ ❯ assertGolden src/services/deterministic/__tests__/golden-deals.test.ts:40:35
+     38|   exp: NonNullable<typeof bishopFixture.expected>,
+     39| ) {
+     40|   expect(result.summary.noiYear1).toBeCloseTo(exp.noiYear1, TOLERANCE.dollar);
+       |                                   ^
+     41|   expect(result.annualCashFlow[0].effectiveGrossIncome).toBeCloseTo(exp.egiYear1, TOLERANCE.dollar);
+     42|   expect(result.summary.irr).toBeCloseTo(exp.irr, TOLERANCE.rate);
+ ❯ src/services/deterministic/__tests__/golden-deals.test.ts:65:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  19:43:46
+   Duration  1.54s (transform 697ms, setup 0ms, collect 1.05s, tests 66ms, environment 0ms, prepare 234ms)
+
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /home/runner/workspace/backend
+
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts (145) 356ms
+   ✓ mapProFormaAssumptionsToModelAssumptions (15)
+     ✓ converts financing term and amortization from years to months
+     ✓ maps purchase price directly
+     ✓ maps loan amount directly
+     ✓ maps hold years from holdPeriod
+     ✓ converts stabilizedOccupancy to vacancy (1 - occupancy)
+     ✓ converts payroll from total $/yr to $/unit/yr
+     ✓ converts management fee from total $/yr to fraction of EGI
+     ✓ splits waterfall equityContribution by lpShare/gpShare
+     ✓ handles zero-unit edge case without throwing
+     ✓ handles empty unitMix with safe fallback rent
+     ✓ handles empty expenses object without throwing
+     ✓ produces runnable ModelAssumptions (runModel does not throw)
+     ✓ valid deal passes all hard invariants (INV-* status=error)
+     ✓ loan > purchasePrice triggers INV-6 hard failure (totalEquity mismatch)
+     ✓ zero equity triggers INV-7 hard failure
+   ❯ runModel() new output fields (task #486) (38)
+     ✓ AnnualCashFlowRow.cfads equals preTaxCashFlow for every row
+     × AnnualCashFlowRow.debtYield is NOI / loanAmount for every row
+     × AnnualCashFlowRow.capRateOnCost is NOI / totalAcqCost for every row
+     × AnnualCashFlowRow.isExitYear is false for operating rows and true for exit row
+     × summary.egiByYear has one entry per hold year, all positive
+     ✓ summary.debtServiceCoverageByYear is identical to dscrByYear
+     × summary.debtYieldByYear has one entry per hold year, all positive
+     × summary.stabilizedCapRate is stabilizedNOI / purchasePrice
+     × summary.unleveredIrr is defined and positive for a profitable deal
+     × summary.yieldOnCost.untrended is noiY1 / totalAcqCost
+     × summary.lpTotalDistributions and gpTotalDistributions are positive
+     × summary.lpProfit + gpProfit === totalProfit
+     × summary.gpPromoteEarned is a defined non-negative number
+     ✓ debtMetrics.coverage.dscrY1 matches annualCashFlow[0].dscr
+     × debtMetrics.coverage.dscrMin is <= dscrY1
+     × debtMetrics.coverage.breakEvenOccupancy is between 0 and 1
+     ✓ debtMetrics.structural.loanAmount equals ModelAssumptions.loanAmount
+     ✓ debtMetrics.structural.loanType is "perm" for 30-year term
+     ✓ debtMetrics.leverage.ltvAtClose equals a.ltv
+     ✓ debtMetrics.leverage.positiveLeverage is true when cap rate > rate
+     ✓ valuation.perUnit.goingIn is purchasePrice / units
+     × valuation.perUnit.atExit is grossSalePrice / units
+     ✓ valuation.multiples.grm is purchasePrice / annualGPR and positive
+     × valuation.multiples.nim is purchasePrice / noiY1 and positive
+     × valuation.multiples.capRate matches summary.goingInCapRate
+     ✓ sourcesAndUses.sources[0] has id, pct, and source fields
+     ✓ sourcesAndUses sources pct values sum to 1
+     ✓ sourcesAndUses uses pct values sum to 1
+     ✓ sourcesAndUses.benchmarks.totalCostPerUnit is positive
+     ✓ sourcesAndUses.benchmarks.debtPct + equityPct ≈ 1
+     ✓ capital.tranches has exactly one senior debt tranche
+     ✓ capital.metrics.totalCost equals totalAcqCost (purchasePrice + fees)
+     ✓ capital.metrics.debtPct + equityPct ≤ 1 + epsilon
+     ✓ disposition.exitYear equals holdYears
+     ✓ disposition.dispositionDocStamps is 0 for non-Florida deals
+     × disposition.dispositionDocStamps is positive for Florida deals
+     ✓ debtMetrics.coverage.dscrAtStabilization uses Y2 when vacancyY1 > vacancyStab
+     ✓ debtMetrics.coverage.dscrAtStabilization uses Y1 when already stabilized
+   ✓ crossCheckLLMVsDeterministic (5)
+     ✓ returns zero material divergences when LLM and deterministic match
+     ✓ flags material divergence when LLM IRR is wildly different
+     ✓ returns correct deltaPct calculation
+     ✓ handles null LLM fields without throwing
+     ✓ skips comparison when both sides are null
+   ✓ bisectDistribution (6)
+     ✓ returns maxLPAmount for Infinity hurdle (catch-all tier)
+     ✓ returns 0 when maxLPAmount is 0
+     ✓ returns maxLPAmount when even full allocation does not bring LP to hurdle
+     ✓ returns 0 when LP running IRR already at or above hurdle
+     ✓ bisects to correct amount for 8% hurdle over 5 years
+     ✓ accounts for lpAlreadyThisYear when bisecting
+   ✓ computeWaterfall — structure and tier fields (21)
+     ✓ returns exactly 5 tiers
+     ✓ tier names are correct in order
+     ✓ each tier has hurdleRate, lpSplit, gpSplit, promotePctEarned fields
+     ✓ T1 lpSplit + gpSplit ≈ 1 (pro-rata)
+     ✓ T2 lpSplit = 1.0 and gpSplit = 0.0 (LP gets all pref, GP gets none)
+     ✓ T1 promotePctEarned = 0 (no promote in ROC tier)
+     ✓ T2 promotePctEarned = 0 (no promote in pref tier)
+     ✓ T3 promotePctEarned ≈ promoteSplits[0] - gpEquity/totalEquity
+     ✓ T2 gpDistribution = 0 (GP receives nothing in pref tier)
+     ✓ T1 total distribution ≈ totalEquity (both LP and GP get ROC)
+     ✓ T1 LP distribution ≈ lpEquity
+     ✓ T1 GP distribution ≈ gpEquity
+     ✓ promotes T3-T5 have positive GP distributions (promote earned on high-return deal)
+     ✓ total LP + GP distributions ≈ total available cash (conservation)
+     ✓ aggregate LP CF vector starts with -lpEquity
+     ✓ aggregate GP CF vector starts with -gpEquity
+     ✓ aggregate LP CF vector has holdYears+2 entries (outlay + N operating + exit)
+     ✓ summary lpIrr and gpIrr are non-null for profitable deal
+     ✓ GP IRR > LP IRR on high-return deal (promote lifts GP returns)
+     ✓ pref hurdle: T2 hurdleRate equals preferredReturn
+     ✓ promote T3 hurdleRate equals promoteTiers[0]
+   ✓ computeWaterfall — zero-profit deal (equity proceeds = totalEquity only) (1)
+     ✓ LP and GP each receive exactly their equity back (no pref, no promote)
+   ✓ computeWaterfall — negative CFADS year lowers running LP IRR (3)
+     ✓ LP IRR is lower when year-3 has a deficit than when it has zero
+     ✓ LP aggregate CF vector has a negative entry in the deficit year
+     ✓ tier distributions conserve only available positive cash (deficit not double-counted)
+   ❯ Westshore Commons runModel — spec §12 tolerance check (1)
+     × summary.irr ≈ 24.3% (within ±1% absolute) and summary.equityMultiple > 3.4
+   ✓ Westshore Commons regression (spec §12) (10)
+     ✓ spec §12 total-equity IRR ≈ 24.3% (within 1%)
+     ✓ spec §12 total-equity EM ≈ 3.93× (within 2%)
+     ✓ waterfall mechanics on Westshore cash flows (8)
+       ✓ total distributed = total available cash (conservation)
+       ✓ T1 LP distribution ≈ lpEquity (LP gets capital back)
+       ✓ T1 GP distribution ≈ gpEquity (GP gets capital back)
+       ✓ T2 GP distribution = 0 (GP earns no preferred return per spec)
+       ✓ T2 LP distribution > 0 (LP earns preferred return)
+       ✓ GP earns a promote (T3-T5 GP distributions > 0) on 24% IRR deal
+       ✓ LP aggregate IRR > preferredReturn (LP exceeds 8% pref)
+       ✓ GP aggregate IRR > LP aggregate IRR (promote lifts GP)
+   ❯ runIntegrityChecks — complete spec §6.1 + §6.2 coverage (33)
+     × ALL_INVARIANTS passes on a structurally valid deal
+     × INV-1 fires when annualCashFlow NOI is tampered
+     × INV-2 fires when annualCashFlow cfads is tampered
+     × INV-3 fires when DSCR field is inconsistent with NOI/DS
+     × INV-3 fires (fail-closed) when dscr is null with positive debtService
+     × INV-4 fires when disposition.equityProceeds is tampered
+     × INV-5 fires when grossSalePrice deviates > 0.1% from NOI/cap
+     × INV-5 fires (fail-closed) when exitCap is 0
+     ✓ INV-6 fires when loanAmount > purchasePrice (equity mismatch)
+     × INV-7 fires when totalEquity is patched to 0
+     × INV-8 fires when waterfall tier distributions are tampered
+     ✓ INV-8 passes (not error) when deal is deeply underwater and nothing is distributed
+     ✓ INV-8 fires when distributions are non-zero but pool is deeply underwater
+     × INV-9 fires when lossToLease exceeds GPR
+     × INV-10 fires when occupancy field is inconsistent with vacancy
+     × SOFT-1 TIGHT_DSCR fires when any year DSCR is between 1.10 and 1.20
+     × SOFT-2 DSCR_BREACH fires when any year DSCR < 1.10
+     ✓ SOFT-3 AGGRESSIVE_VACANCY fires when vacancyStab < 5%
+     ✓ SOFT-3 AGGRESSIVE_VACANCY absent when vacancyStab >= 5%
+     ✓ SOFT-4 AGGRESSIVE_RENT_GROWTH fires when Y1 rent growth > 6%
+     × SOFT-5 CAP_RATE_COMPRESSION fires when exit cap is >50bps below going-in
+     ✓ SOFT-5 CAP_RATE_COMPRESSION absent when exit cap within 50bps of going-in cap
+     × SOFT-6 LOW_IRR fires when IRR < 12%
+     × SOFT-6 LOW_IRR absent when IRR >= 12%
+     × SOFT-7 LOW_EM fires when equity multiple < 1.5
+     ✓ SOFT-8 AFFORDABILITY_CEILING fires when Y5 monthly rent > 35% of $4,500 wage
+     ✓ SOFT-8 AFFORDABILITY_CEILING absent when rent-to-wage <= 35%
+     ✓ SOFT-9 VACANCY_BELOW_STRUCTURAL fires when Y1 vacancy < 5%
+     ✓ SOFT-9 VACANCY_BELOW_STRUCTURAL absent when Y1 vacancy >= 5%
+     ✓ SOFT-10 NO_CAPEX_BUDGET_FOR_VALUE_ADD fires on non-development deal with capex=0
+     ✓ SOFT-10 NO_CAPEX_BUDGET_FOR_VALUE_ADD absent on development deal with capex=0
+     ✓ SOFT-10 NO_CAPEX_BUDGET_FOR_VALUE_ADD absent when capexBudget > 0
+     × DSCR_BREACH (SOFT-2 error) does NOT suppress ALL_INVARIANTS
+   ✓ buildVacancySchedule() linear midpoint ramp (task #491) (3)
+     ✓ Y1=vacancyY1, Y2=midpoint, Y3+=vacancyStab when vacancyY1 > vacancyStab
+     ✓ no ramp when vacancyY1 === vacancyStab
+     ✓ no ramp when vacancyY1 < vacancyStab (stab floor applies)
+   ✓ calculateIRR() negative-guess retry (task #491) (3)
+     ✓ returns a valid IRR for standard positive-return cash flows
+     ✓ returns non-null via negative-guess retry for near-zero-return cash flows
+     ✓ returns null when cash flows genuinely have no real IRR solution
+   ❯ irr_not_computable integrity check (task #491 SOFT-11) (2)
+     × irr_not_computable warn fires when summary.irr is null
+     × irr_not_computable absent when summary.irr is a valid number
+   ❯ development deal goingInCap (task #491 §10.6) (4)
+     ✓ goingInCap = stabilizedNOI / totalProjectCost for dealType=development
+     × goingInCap = Y1 NOI / purchasePrice for dealType=existing (unchanged)
+     ✓ construction rows have zero occupancy and negative NOI for dev deal
+     × valid dev deal has no INV-* hard errors (INV-9 and INV-10 skip construction rows)
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯ Failed Tests 41 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > AnnualCashFlowRow.debtYield is NOI / loanAmount for every row
+AssertionError: expected NaN to be close to NaN, received difference is NaN, but expected 5e-7
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:207:29
+    205|     for (const row of result.annualCashFlow) {
+    206|       expect(row.debtYield).not.toBeNull();
+    207|       expect(row.debtYield).toBeCloseTo(row.noi / 7000000, 6);
+       |                             ^
+    208|     }
+    209|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > AnnualCashFlowRow.capRateOnCost is NOI / totalAcqCost for every row
+AssertionError: expected NaN to be greater than 0
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:214:34
+    212|     for (const row of result.annualCashFlow) {
+    213|       expect(row.capRateOnCost).not.toBeNull();
+    214|       expect(row.capRateOnCost!).toBeGreaterThan(0);
+       |                                  ^
+    215|     }
+    216|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > AnnualCashFlowRow.isExitYear is false for operating rows and true for exit row
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:224:32
+    222|       expect(row.isExitYear).toBe(false);
+    223|     }
+    224|     expect(exitRow.isExitYear).toBe(true);
+       |                                ^
+    225|   });
+    226| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > summary.egiByYear has one entry per hold year, all positive
+AssertionError: expected NaN to be greater than 0
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:231:44
+    229|     const s = result.summary;
+    230|     expect(s.egiByYear).toHaveLength(5);
+    231|     for (const v of s.egiByYear) expect(v).toBeGreaterThan(0);
+       |                                            ^
+    232|   });
+    233| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > summary.debtYieldByYear has one entry per hold year, all positive
+AssertionError: expected NaN to be greater than 0
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:242:50
+    240|     const s = result.summary;
+    241|     expect(s.debtYieldByYear).toHaveLength(5);
+    242|     for (const v of s.debtYieldByYear) expect(v).toBeGreaterThan(0);
+       |                                                  ^
+    243|   });
+    244| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > summary.stabilizedCapRate is stabilizedNOI / purchasePrice
+AssertionError: expected NaN to be close to NaN, received difference is NaN, but expected 5e-7
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:248:33
+    246|     const s = result.summary;
+    247|     const expected = result.disposition.stabilizedNOI / 10000000;
+    248|     expect(s.stabilizedCapRate).toBeCloseTo(expected, 6);
+       |                                 ^
+    249|   });
+    250| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > summary.unleveredIrr is defined and positive for a profitable deal
+AssertionError: expected null not to be null
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:253:32
+    251|   it('summary.unleveredIrr is defined and positive for a profitable deal', () => {
+    252|     const s = result.summary;
+    253|     expect(s.unleveredIrr).not.toBeNull();
+       |                                ^
+    254|     expect(s.unleveredIrr!).toBeGreaterThan(0);
+    255|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > summary.yieldOnCost.untrended is noiY1 / totalAcqCost
+AssertionError: expected NaN to be greater than 0
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:259:37
+    257|   it('summary.yieldOnCost.untrended is noiY1 / totalAcqCost', () => {
+    258|     const s = result.summary;
+    259|     expect(s.yieldOnCost.untrended).toBeGreaterThan(0);
+       |                                     ^
+    260|     expect(s.yieldOnCost.trended).toBeGreaterThanOrEqual(s.yieldOnCost.untrended);
+    261|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > summary.lpTotalDistributions and gpTotalDistributions are positive
+AssertionError: expected NaN to be greater than 0
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:265:36
+    263|   it('summary.lpTotalDistributions and gpTotalDistributions are positive', () => {
+    264|     const s = result.summary;
+    265|     expect(s.lpTotalDistributions).toBeGreaterThan(0);
+       |                                    ^
+    266|     expect(s.gpTotalDistributions).toBeGreaterThan(0);
+    267|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > summary.lpProfit + gpProfit === totalProfit
+AssertionError: expected NaN to be close to NaN, received difference is NaN, but expected 0.5
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:272:27
+    270|     const s = result.summary;
+    271|     // gpProfit = gpTotalDistributions − gpEquity (365000 = 10% of 3650000 default equity)
+    272|     expect(s.totalProfit).toBeCloseTo(s.lpProfit + (s.gpTotalDistributions - 365000), 0);
+       |                           ^
+    273|   });
+    274| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > summary.gpPromoteEarned is a defined non-negative number
+AssertionError: expected NaN to be greater than or equal to 0
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:276:44
+    274| 
+    275|   it('summary.gpPromoteEarned is a defined non-negative number', () => {
+    276|     expect(result.summary.gpPromoteEarned).toBeGreaterThanOrEqual(0);
+       |                                            ^
+    277|   });
+    278| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > debtMetrics.coverage.dscrMin is <= dscrY1
+AssertionError: expected NaN to be less than or equal to NaN
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:287:23
+    285|     const { dscrMin, dscrY1 } = result.debtMetrics.coverage;
+    286|     if (dscrMin !== null && dscrY1 !== null) {
+    287|       expect(dscrMin).toBeLessThanOrEqual(dscrY1 + 1e-6);
+       |                       ^
+    288|     }
+    289|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > debtMetrics.coverage.breakEvenOccupancy is between 0 and 1
+AssertionError: expected NaN to be greater than 0
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:294:19
+    292|     const beo = result.debtMetrics.coverage.breakEvenOccupancy;
+    293|     if (beo !== null) {
+    294|       expect(beo).toBeGreaterThan(0);
+       |                   ^
+    295|       expect(beo).toBeLessThanOrEqual(1);
+    296|     }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > valuation.perUnit.atExit is grossSalePrice / units
+AssertionError: expected NaN to be close to NaN, received difference is NaN, but expected 0.5
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:324:45
+    322| 
+    323|   it('valuation.perUnit.atExit is grossSalePrice / units', () => {
+    324|     expect(result.valuation.perUnit.atExit).toBeCloseTo(result.disposition.grossSalePrice / 100, 0);
+       |                                             ^
+    325|   });
+    326| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > valuation.multiples.nim is purchasePrice / noiY1 and positive
+AssertionError: expected null not to be null
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:333:48
+    331| 
+    332|   it('valuation.multiples.nim is purchasePrice / noiY1 and positive', () => {
+    333|     expect(result.valuation.multiples.nim).not.toBeNull();
+       |                                                ^
+    334|     expect(result.valuation.multiples.nim!).toBeGreaterThan(0);
+    335|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > valuation.multiples.capRate matches summary.goingInCapRate
+AssertionError: expected NaN to be close to NaN, received difference is NaN, but expected 5e-7
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:338:48
+    336| 
+    337|   it('valuation.multiples.capRate matches summary.goingInCapRate', () => {
+    338|     expect(result.valuation.multiples.capRate).toBeCloseTo(result.summary.goingInCapRate, 6);
+       |                                                ^
+    339|   });
+    340| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runModel() new output fields (task #486) > disposition.dispositionDocStamps is positive for Florida deals
+AssertionError: expected NaN to be greater than 0
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:399:49
+    397|   it('disposition.dispositionDocStamps is positive for Florida deals', () => {
+    398|     const fl = runModel(makeRunModelAssumptions({ isFlorida: true }), { skipSensitivity: true });
+    399|     expect(fl.disposition.dispositionDocStamps).toBeGreaterThan(0);
+       |                                                 ^
+    400|   });
+    401| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > Westshore Commons runModel — spec §12 tolerance check > summary.irr ≈ 24.3% (within ±1% absolute) and summary.equityMultiple > 3.4
+AssertionError: expected null not to be null
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:779:31
+    777|     };
+    778|     const r = runModel(a, { skipSensitivity: true });
+    779|     expect(r.summary.irr).not.toBeNull();
+       |                               ^
+    780|     expect(r.summary.equityMultiple).not.toBeNull();
+    781|     // IRR within ±1% of spec's 24.3%
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > ALL_INVARIANTS passes on a structurally valid deal
+AssertionError: expected undefined to be 'pass' // Object.is equality
+
+- Expected: 
+"pass"
+
++ Received: 
+undefined
+
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:894:65
+    892|     const { m, r } = baseResult();
+    893|     const checks = runIntegrityChecks(m, r);
+    894|     expect(checks.find(c => c.id === 'ALL_INVARIANTS')?.status).toBe('pass');
+       |                                                                 ^
+    895|     const hardErrors = checks.filter(c => c.status === 'error' && c.id.startsWith('INV-'));
+    896|     expect(hardErrors).toHaveLength(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > INV-1 fires when annualCashFlow NOI is tampered
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:904:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > INV-2 fires when annualCashFlow cfads is tampered
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1510:104
+    1508|     const expected = disp.netSaleProceeds - disp.loanBalance;
+    1509|     if (Math.abs(disp.equityProceeds - expected) > 1) {
+    1510|       checks.push({ id: 'INV-4', status: 'error', message: `INV-4 equityProceeds ${disp.equityProceeds.toFixed(0)} ≠ netSaleProceeds − loanBal (${expect…
+       |                                                                                                        ^
+    1511|     }
+    1512|   }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:913:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > INV-3 fires when DSCR field is inconsistent with NOI/DS
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:922:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > INV-3 fires (fail-closed) when dscr is null with positive debtService
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:930:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > INV-4 fires when disposition.equityProceeds is tampered
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:940:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > INV-5 fires when grossSalePrice deviates > 0.1% from NOI/cap
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:949:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > INV-5 fires (fail-closed) when exitCap is 0
+AssertionError: expected 'INV-5 exitCap (0) ≤ 0 [mode=existing]…' to match /cannot verify/i
+
+- Expected: 
+/cannot verify/i
+
++ Received: 
+"INV-5 exitCap (0) ≤ 0 [mode=existing] — bridge always provides a default; this indicates a model defect"
+
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:958:57
+    956|     const checks = runIntegrityChecks(m, r);
+    957|     expect(checks.find(c => c.id === 'INV-5')?.status).toBe('error');
+    958|     expect(checks.find(c => c.id === 'INV-5')?.message).toMatch(/cannot verify/i);
+       |                                                         ^
+    959|   });
+    960| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[26/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > INV-7 fires when totalEquity is patched to 0
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:973:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[27/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > INV-8 fires when waterfall tier distributions are tampered
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:984:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[28/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > INV-9 fires when lossToLease exceeds GPR
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:1024:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[29/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > INV-10 fires when occupancy field is inconsistent with vacancy
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:1033:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[30/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > SOFT-1 TIGHT_DSCR fires when any year DSCR is between 1.10 and 1.20
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:1042:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[31/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > SOFT-2 DSCR_BREACH fires when any year DSCR < 1.10
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:1051:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[32/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > SOFT-5 CAP_RATE_COMPRESSION fires when exit cap is >50bps below going-in
+AssertionError: expected undefined to be 'warn' // Object.is equality
+
+- Expected: 
+"warn"
+
++ Received: 
+undefined
+
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:1084:71
+    1082|     const checks = runIntegrityChecks(m, r);
+    1083|     // goingInCap from makeRunModelAssumptions is NOI/10M ≈ 0.07+
+    1084|     expect(checks.find(c => c.id === 'CAP_RATE_COMPRESSION')?.status).toBe('warn');
+       |                                                                       ^
+    1085|   });
+    1086| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[33/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > SOFT-6 LOW_IRR fires when IRR < 12%
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:1100:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[34/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > SOFT-6 LOW_IRR absent when IRR >= 12%
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:1108:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[35/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > SOFT-7 LOW_EM fires when equity multiple < 1.5
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:1117:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[36/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > runIntegrityChecks — complete spec §6.1 + §6.2 coverage > DSCR_BREACH (SOFT-2 error) does NOT suppress ALL_INVARIANTS
+AssertionError: expected undefined to be 'error' // Object.is equality
+
+- Expected: 
+"error"
+
++ Received: 
+undefined
+
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:1182:62
+    1180|     const r = runModel(m, { skipSensitivity: true });
+    1181|     const checks = runIntegrityChecks(m, r);
+    1182|     expect(checks.find(c => c.id === 'DSCR_BREACH')?.status).toBe('error');
+       |                                                              ^
+    1183|     // ALL_INVARIANTS still passes — it only gates on INV-* hard errors
+    1184|     expect(checks.find(c => c.id === 'ALL_INVARIANTS')?.status).toBe('pass');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[37/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > irr_not_computable integrity check (task #491 SOFT-11) > irr_not_computable warn fires when summary.irr is null
+TypeError: Cannot read properties of null (reading 'toFixed')
+ ❯ Module.runIntegrityChecks src/services/deterministic/deterministic-model-runner.ts:1486:109
+    1484|     const expected = row.noi - row.debtService;
+    1485|     if (Math.abs(row.cfads - expected) > 0.01) {
+    1486|       checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}…
+       |                                                                                                             ^
+    1487|       break;
+    1488|     }
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:1247:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[38/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > irr_not_computable integrity check (task #491 SOFT-11) > irr_not_computable absent when summary.irr is a valid number
+AssertionError: expected { id: 'irr_not_computable', …(2) } to be undefined
+
+- Expected: 
+undefined
+
++ Received: 
+Object {
+  "id": "irr_not_computable",
+  "message": "IRR could not be computed with either positive or negative initial guess — deal may have non-standard cash flow pattern",
+  "status": "warn",
+}
+
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:1255:61
+    1253|     const r = runModel(m, { skipSensitivity: true });
+    1254|     const checks = runIntegrityChecks(m, r);
+    1255|     expect(checks.find(c => c.id === 'irr_not_computable')).toBeUndefined();
+       |                                                             ^
+    1256|   });
+    1257| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[39/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > development deal goingInCap (task #491 §10.6) > goingInCap = Y1 NOI / purchasePrice for dealType=existing (unchanged)
+AssertionError: expected NaN to be close to NaN, received difference is NaN, but expected 0.000049999999999999996
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:1287:38
+    1285|     const r = runModel(m, { skipSensitivity: true });
+    1286|     const noiY1 = r.annualCashFlow[0].noi;
+    1287|     expect(r.summary.goingInCapRate).toBeCloseTo(noiY1 / 10_000_000, 4);
+       |                                      ^
+    1288|   });
+    1289| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[40/41]⎯
+
+ FAIL  tests/deterministic/proforma-assumptions-bridge.test.ts > development deal goingInCap (task #491 §10.6) > valid dev deal has no INV-* hard errors (INV-9 and INV-10 skip construction rows)
+AssertionError: expected [ { id: 'INV-10', …(2) } ] to have a length of +0 but got 1
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/deterministic/proforma-assumptions-bridge.test.ts:1318:27
+    1316|     const checks = runIntegrityChecks(m, r);
+    1317|     const hardInvErrors = checks.filter(c => c.status === 'error' && c.id.startsWith('INV-'));
+    1318|     expect(hardInvErrors).toHaveLength(0);
+       |                           ^
+    1319|     expect(checks.find(c => c.id === 'ALL_INVARIANTS')?.status).toBe('pass');
+    1320|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[41/41]⎯
+
+ Test Files  1 failed (1)
+      Tests  41 failed | 104 passed (145)
+   Start at  19:43:48
+   Duration  1.17s (transform 394ms, setup 0ms, collect 449ms, tests 356ms, environment 0ms, prepare 110ms)
+
+~/workspace/backend$ 
