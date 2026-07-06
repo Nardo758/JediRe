@@ -169,7 +169,7 @@ describe('mapProFormaAssumptionsToModelAssumptions', () => {
 // ── Helper: minimal runModel assumptions ────────────────────────────────────
 function makeRunModelAssumptions(overrides: Partial<import('../../src/services/deterministic/deterministic-model-runner').ModelAssumptions> = {}) {
   return {
-    purchasePrice: 10000000, units: 100, marketRent: 1500, loanAmount: 7000000,
+    purchasePrice: 10000000, units: 100, marketRent: 1500, inPlaceRent: 1455, loanAmount: 7000000,
     rate: 0.065, holdYears: 5, lpEquity: 3285000, gpEquity: 365000,
     exitCap: 0.055, avgUnitSf: 850, ltv: 0.7, closingCostsPct: 0.01,
     isFlorida: false, docStampsPct: 0, intangibleTaxPct: 0, titleInsurancePct: 0,
@@ -189,7 +189,6 @@ function makeRunModelAssumptions(overrides: Partial<import('../../src/services/d
 
 describe('runModel() new output fields (task #486)', () => {
   let result: ReturnType<typeof runModel>;
-
   beforeAll(() => {
     result = runModel(makeRunModelAssumptions(), { skipSensitivity: true });
   });

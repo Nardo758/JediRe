@@ -896,7 +896,7 @@ export function computeMonthTurnCohort(
   }
 
   const marketRent = a.marketRent * state.cumulativeGrowth;
-  const inPlaceRent = a.inPlaceRent * state.cumulativeGrowth;
+  const inPlaceRent = (a.inPlaceRent ?? a.marketRent) * state.cumulativeGrowth;
 
   // STEP 1 -- Lease expiries: draw proportionally from both pools
   // In-place turns burn off LTL; market→market turns incur downtime+concession
@@ -1474,7 +1474,7 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   for (const row of opRows) {
     const expected = row.effectiveGrossIncome - row.totalExpenses;
     if (Math.abs(row.noi - expected) > 0.01) {
-      checks.push({ id: 'INV-1', status: 'error', message: `INV-1 NOI mismatch Y${row.year}: got ${row.noi.toFixed(2)}, expected ${expected.toFixed(2)}` });
+      checks.push({ id: 'INV-1', status: 'error', message: `INV-1 NOI mismatch Y${row.year}: got ${(row.noi ?? 0).toFixed(2)}, expected ${(expected ?? 0).toFixed(2)}` });
       break; // report first violation only
     }
   }
@@ -1483,7 +1483,7 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   for (const row of opRows) {
     const expected = row.noi - row.debtService;
     if (Math.abs(row.cfads - expected) > 0.01) {
-      checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${row.cfads.toFixed(2)}, expected ${expected.toFixed(2)}` });
+      checks.push({ id: 'INV-2', status: 'error', message: `INV-2 CF mismatch Y${row.year}: got ${(row.cfads ?? 0).toFixed(2)}, expected ${(expected ?? 0).toFixed(2)}` });
       break;
     }
   }
@@ -1492,12 +1492,12 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   for (const row of opRows) {
     if (row.debtService > 0.01) {
       if (row.dscr === null || !isFinite(row.dscr)) {
-        checks.push({ id: 'INV-3', status: 'error', message: `INV-3 DSCR is null/non-finite Y${row.year} with debtService ${row.debtService.toFixed(0)}` });
+        checks.push({ id: 'INV-3', status: 'error', message: `INV-3 DSCR is null/non-finite Y${row.year} with debtService ${(row.debtService ?? 0).toFixed(0)}` });
         break;
       }
       const expected = row.noi / row.debtService;
       if (Math.abs(row.dscr - expected) > 0.001) {
-        checks.push({ id: 'INV-3', status: 'error', message: `INV-3 DSCR mismatch Y${row.year}: got ${row.dscr.toFixed(4)}, expected ${expected.toFixed(4)}` });
+        checks.push({ id: 'INV-3', status: 'error', message: `INV-3 DSCR mismatch Y${row.year}: got ${(row.dscr ?? 0).toFixed(4)}, expected ${expected.toFixed(4)}` });
         break;
       }
     }
@@ -1507,7 +1507,7 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   {
     const expected = disp.netSaleProceeds - disp.loanBalance;
     if (Math.abs(disp.equityProceeds - expected) > 1) {
-      checks.push({ id: 'INV-4', status: 'error', message: `INV-4 equityProceeds ${disp.equityProceeds.toFixed(0)} ≠ netSaleProceeds − loanBal (${expected.toFixed(0)})` });
+      checks.push({ id: 'INV-4', status: 'error', message: `INV-4 equityProceeds ${(disp.equityProceeds ?? 0).toFixed(0)} ≠ netSaleProceeds − loanBal (${(expected ?? 0).toFixed(0)})` });
     }
   }
 
@@ -1533,7 +1533,7 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     const expected = disp.stabilizedNOI / a.exitCap;
     const relErr = Math.abs(disp.grossSalePrice - expected) / expected;
     if (relErr > 0.001) {
-      checks.push({ id: 'INV-5', status: 'error', message: `INV-5 grossSalePrice ${disp.grossSalePrice.toFixed(0)} ≠ stabilizedNOI/exitCap (${expected.toFixed(0)}, err=${(relErr * 100).toFixed(3)}%)` });
+      checks.push({ id: 'INV-5', status: 'error', message: `INV-5 grossSalePrice ${(disp.grossSalePrice ?? 0).toFixed(0)} ≠ stabilizedNOI/exitCap (${expected.toFixed(0)}, err=${(relErr * 100).toFixed(3)}%)` });
     }
   } else if (a.exitCap <= 0) {
     checks.push({ id: 'INV-5', status: 'error', message: `INV-5 exitCap (${a.exitCap}) ≤ 0 [mode=${resolvedMode}] — bridge always provides a default; this indicates a model defect` });
@@ -1553,7 +1553,7 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     } else {
       const expectedResidual = totalAcqCost - a.loanAmount;
       if (Math.abs(sum.totalEquity - expectedResidual) > 1) {
-        checks.push({ id: 'INV-6', status: 'error', message: `INV-6 totalEquity ${sum.totalEquity.toFixed(0)} ≠ totalAcqCost (${totalAcqCost.toFixed(0)}) − loanAmount (${a.loanAmount.toFixed(0)}) = ${expectedResidual.toFixed(0)} (diff ${Math.abs(sum.totalEquity - expectedResidual).toFixed(0)})` });
+        checks.push({ id: 'INV-6', status: 'error', message: `INV-6 totalEquity ${(sum.totalEquity ?? 0).toFixed(0)} ≠ totalAcqCost (${(totalAcqCost ?? 0).toFixed(0)}) − loanAmount (${(a.loanAmount ?? 0).toFixed(0)}) = ${(expectedResidual ?? 0).toFixed(0)} (diff ${Math.abs(sum.totalEquity - expectedResidual).toFixed(0)})` });
       }
     }
   }
@@ -1568,9 +1568,9 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   //     populated capital stack must have positive equity.
   if (sum.totalEquity <= 0) {
     if (isNonStabilizedMode) {
-      checks.push({ id: 'INV-7', status: 'warn', message: `INV-7 Total equity ${sum.totalEquity.toFixed(0)} ≤ 0 [mode=${resolvedMode}] — capital stack not yet seeded; seed purchasePrice/loanAmount to enable this check` });
+      checks.push({ id: 'INV-7', status: 'warn', message: `INV-7 Total equity ${(sum.totalEquity ?? 0).toFixed(0)} ≤ 0 [mode=${resolvedMode}] — capital stack not yet seeded; seed purchasePrice/loanAmount to enable this check` });
     } else {
-      checks.push({ id: 'INV-7', status: 'error', message: `INV-7 Total equity ${sum.totalEquity.toFixed(0)} ≤ 0 [mode=${resolvedMode}] — structural capital stack defect; check lpEquity + gpEquity vs purchase price` });
+      checks.push({ id: 'INV-7', status: 'error', message: `INV-7 Total equity ${(sum.totalEquity ?? 0).toFixed(0)} ≤ 0 [mode=${resolvedMode}] — structural capital stack defect; check lpEquity + gpEquity vs purchase price` });
     }
   }
 
@@ -1583,12 +1583,12 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     const availCash = posOpCFs + Math.max(0, disp.equityProceeds);
     if (availCash <= 1) {
       if (totalTierDist > 1) {
-        checks.push({ id: 'INV-8', status: 'error', message: `INV-8 Waterfall distributed ${totalTierDist.toFixed(0)} from empty pool (availCash=${availCash.toFixed(0)})` });
+        checks.push({ id: 'INV-8', status: 'error', message: `INV-8 Waterfall distributed ${(totalTierDist ?? 0).toFixed(0)} from empty pool (availCash=${(availCash ?? 0).toFixed(0)})` });
       }
     } else {
       const relErr = Math.abs(totalTierDist - availCash) / availCash;
       if (relErr > 0.001) {
-        checks.push({ id: 'INV-8', status: 'error', message: `INV-8 Waterfall imbalance: distributed ${totalTierDist.toFixed(0)} ≠ Σmax(0,cfads)+max(0,equityProceeds) ${availCash.toFixed(0)} (${(relErr * 100).toFixed(3)}% error)` });
+        checks.push({ id: 'INV-8', status: 'error', message: `INV-8 Waterfall imbalance: distributed ${(totalTierDist ?? 0).toFixed(0)} ≠ Σmax(0,cfads)+max(0,equityProceeds) ${(availCash ?? 0).toFixed(0)} (${(relErr * 100).toFixed(3)}% error)` });
       }
     }
   }
@@ -1599,7 +1599,7 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     if (row.grossPotentialRent <= 0) continue;
     const losses = row.lossToLease + row.vacancyLoss + row.concessions + row.badDebt;
     if (losses >= row.grossPotentialRent - 0.01) {
-      checks.push({ id: 'INV-9', status: 'error', message: `INV-9 Losses Y${row.year} (${losses.toFixed(0)}) ≥ GPR (${row.grossPotentialRent.toFixed(0)})` });
+      checks.push({ id: 'INV-9', status: 'error', message: `INV-9 Losses Y${row.year} (${(losses ?? 0).toFixed(0)}) ≥ GPR (${(row.grossPotentialRent ?? 0).toFixed(0)})` });
       break;
     }
   }
@@ -1616,7 +1616,7 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     if (yearMonthly.length === 0) continue;
     const expectedOcc = yearMonthly.reduce((s, m) => s + m.occupancy, 0) / yearMonthly.length;
     if (Math.abs(row.occupancy - expectedOcc) > 0.0001) {
-      checks.push({ id: 'INV-10', status: 'error', message: `INV-10 Occupancy Y${row.year}: annual ${row.occupancy.toFixed(4)} ≠ monthly avg ${expectedOcc.toFixed(4)}` });
+      checks.push({ id: 'INV-10', status: 'error', message: `INV-10 Occupancy Y${row.year}: annual ${(row.occupancy ?? 0).toFixed(4)} ≠ monthly avg ${(expectedOcc ?? 0).toFixed(4)}` });
       break;
     }
   }
@@ -1626,13 +1626,13 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   // SOFT-1: Any year DSCR < 1.20 → TIGHT_DSCR warn
   const tightDscrRow = opRows.find(r => r.dscr !== null && r.dscr < 1.20);
   if (tightDscrRow) {
-    checks.push({ id: 'TIGHT_DSCR', status: 'warn', message: `Y${tightDscrRow.year} DSCR ${tightDscrRow.dscr!.toFixed(2)} < 1.20` });
+    checks.push({ id: 'TIGHT_DSCR', status: 'warn', message: `Y${tightDscrRow.year} DSCR ${(tightDscrRow.dscr ?? 0).toFixed(2)} < 1.20` });
   }
 
   // SOFT-2: Any year DSCR < 1.10 → DSCR_BREACH error
   const breachDscrRow = opRows.find(r => r.dscr !== null && r.dscr < 1.10);
   if (breachDscrRow) {
-    checks.push({ id: 'DSCR_BREACH', status: 'error', message: `Y${breachDscrRow.year} DSCR ${breachDscrRow.dscr!.toFixed(2)} < 1.10 — covenant breach threshold` });
+    checks.push({ id: 'DSCR_BREACH', status: 'error', message: `Y${breachDscrRow.year} DSCR ${(breachDscrRow.dscr ?? 0).toFixed(2)} < 1.10 — covenant breach threshold` });
   }
 
   // SOFT-3: stabilized vacancy < underwriting floor → AGGRESSIVE_VACANCY warn
@@ -1643,23 +1643,23 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
 
   // SOFT-4: rentGrowth Y1 > 6% → AGGRESSIVE_RENT_GROWTH warn
   if (a.rentGrowth.length > 0 && a.rentGrowth[0] > 0.06) {
-    checks.push({ id: 'AGGRESSIVE_RENT_GROWTH', status: 'warn', message: `Y1 rent growth ${(a.rentGrowth[0] * 100).toFixed(1)}% > 6%` });
+    checks.push({ id: 'AGGRESSIVE_RENT_GROWTH', status: 'warn', message: `Y1 rent growth ${((a.rentGrowth[0] ?? 0) * 100).toFixed(1)}% > 6%` });
   }
 
   // SOFT-5: exitCap < goingInCap by > 50bps → CAP_RATE_COMPRESSION warn
   const goingInCap = sum.goingInCapRate;
   if (goingInCap > 0 && a.exitCap < goingInCap - 0.005) {
-    checks.push({ id: 'CAP_RATE_COMPRESSION', status: 'warn', message: `Exit cap ${(a.exitCap * 100).toFixed(2)}% is >50bps below going-in cap ${(goingInCap * 100).toFixed(2)}%` });
+    checks.push({ id: 'CAP_RATE_COMPRESSION', status: 'warn', message: `Exit cap ${(a.exitCap * 100).toFixed(2)}% is >50bps below going-in cap ${((goingInCap ?? 0) * 100).toFixed(2)}%` });
   }
 
   // SOFT-6: IRR < 12% → LOW_IRR warn
   if (sum.irr !== null && sum.irr < 0.12) {
-    checks.push({ id: 'LOW_IRR', status: 'warn', message: `IRR ${(sum.irr * 100).toFixed(1)}% < 12% threshold` });
+    checks.push({ id: 'LOW_IRR', status: 'warn', message: `IRR ${((sum.irr ?? 0) * 100).toFixed(1)}% < 12% threshold` });
   }
 
   // SOFT-7: equityMultiple < 1.5 → LOW_EM warn
   if (sum.equityMultiple !== null && sum.equityMultiple < 1.5) {
-    checks.push({ id: 'LOW_EM', status: 'warn', message: `Equity multiple ${sum.equityMultiple.toFixed(2)}× < 1.5× threshold` });
+    checks.push({ id: 'LOW_EM', status: 'warn', message: `Equity multiple ${(sum.equityMultiple ?? 0).toFixed(2)}× < 1.5× threshold` });
   }
 
   // SOFT-11: IRR could not be computed with either guess → irr_not_computable warn
@@ -1674,7 +1674,7 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
     const monthlyRentPerUnit = y5Row.grossPotentialRent / a.units / 12;
     const rentToWage = monthlyRentPerUnit / 4500;
     if (rentToWage > 0.35) {
-      checks.push({ id: 'AFFORDABILITY_CEILING', status: 'warn', message: `Y5 rent-to-wage proxy ${(rentToWage * 100).toFixed(1)}% > 35% (monthly rent $${monthlyRentPerUnit.toFixed(0)})` });
+      checks.push({ id: 'AFFORDABILITY_CEILING', status: 'warn', message: `Y5 rent-to-wage proxy ${((rentToWage ?? 0) * 100).toFixed(1)}% > 35% (monthly rent $${(monthlyRentPerUnit ?? 0).toFixed(0)})` });
     }
   }
 
