@@ -1,0 +1,41 @@
+I'll execute this in sequence. Let me start by loading the relevant skill and verifying the current state.
+
+Used 8 tools · ran 6 commands
+Now I'll implement Finding P — effective-assumptions capture at the runFullModel boundary. This lets the fixture document both what went in (raw) and what actually produced the output (effective, post-M11/M14/reconcile).
+
+Used 10 tools · ran 6 commands
+All 6 steps executed. Here's the close-out summary:
+Commit Ancestry (Local ↔ GitHub aligned)
+plain
+Copy
+8d52513d5  docs(W5): 41-failure triage table with three-way verdicts
+87c307c36  feat(W5): Finding P — effective-assumptions capture at runFullModel boundary
+4ed709d28  fix(W5): resolve 41 bridge test crashes — remove dup INV-2 blocks, guard toFixed(), add inPlaceRent fallback
+c01aa57ee  fix: Bishop noiYear1 + runIntegrityChecks null crash
+All three environments now aligned at 8d52513d5 on master.
+What Was Fixed
+Table
+Finding	File	Fix
+Dup INV-2 blocks	deterministic-model-runner.ts	Removed 2 duplicate INV-2 blocks (merge artifact); kept 1 guarded block
+Unguarded .toFixed()	deterministic-model-runner.ts	Null-coalesced all crash-prone .toFixed() calls in runIntegrityChecks (INV-7, INV-8, LOW_IRR, LOW_EM, etc.)
+Missing inPlaceRent	proforma-assumptions-bridge.test.ts	Added inPlaceRent: 1455 to makeRunModelAssumptions() defaults; removed duplicate function body
+NaN propagation	deterministic-model-runner.ts	Added defensive fallback (a.inPlaceRent ?? a.marketRent) in computeMonthTurnCohort
+Finding P	golden.types.ts + bishop.golden.ts + golden-deals.test.ts	BuildPathFixture now captures effectiveAssumptions (post-M11/M14/reconcile) at the runFullModel boundary
+Replit Execution Instructions
+Run in Replit Shell:
+bash
+Copy
+# 1. Lock cleanup + pull
+rm -f ~/workspace/.git/ORIG_HEAD.lock
+git pull origin master
+
+# 2. Bridge suite (the 41 failures)
+cd ~/workspace/backend
+npx vitest run tests/deterministic/proforma-assumptions-bridge.test.ts --reporter=verbose
+
+# 3. Golden suite (Bishop + determinism proof + K-2)
+npx vitest run src/services/deterministic/__tests__/golden-deals.test.ts --reporter=verbose
+Expected: 145 bridge tests pass (0 failed). Bishop golden passes. Determinism proof passes.
+W5 stays open until you confirm golden is 3/3 against the corrected input contract.
+Document Delivered
+[W5_41_FAILURE_TRIAGE.md](C:\Users\Leons' Computer 2\Documents\JediRe\docs\W5_41_FAILURE_TRIAGE.md) — full three-way verdict table (Local / GitHub / Replit) with cross-category impact map.
