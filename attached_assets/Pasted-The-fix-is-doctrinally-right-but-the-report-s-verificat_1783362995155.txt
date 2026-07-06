@@ -1,0 +1,37 @@
+The fix is doctrinally right — but the report's verification section changed *tests to match the fix* without the one proof that matters, and Leon's capture is the only arbiter that counts. One item in the report needs a rider before the capture, though: **the rewritten integration tests assert the wrong strength.** `resolves.toBeDefined()` + `status: complete` proves the pipeline doesn't throw — it doesn't prove the M11 resize actually *happened* in the service path. The test that would have caught this whole saga asserts the **output state**: response's loan ≈ resized value, equity == acqCost − loan, INV-6 present-and-passing in the returned checks. Note it for the bot's cleanup list; it shouldn't block the capture.
+
+**Leon — final capture. Note the bot rebased, so the sync sequence matters:**
+
+```bash
+cd ~/workspace
+rm -f .git/refs/remotes/origin/HEAD.lock .git/index.lock   # preempt the gremlin
+git pull origin master
+git log --oneline -3     # expect 66c13f8f5 at or near HEAD
+# PANEL-RESTART the backend workflow, wait for startup to finish (it seeds agents — give it a minute)
+
+cd backend
+TOKEN=$(curl -s http://localhost:4000/api/v1/auth/dev-login | jq -r '.token // .accessToken // .data.token')
+curl -s -X POST http://localhost:4000/api/v1/financial-model/build \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -d @build_body_3f32276f.json > /tmp/bishop_final.json
+jq '{loan: .data.summary.totalDebt, equity: .data.summary.totalEquity, irr: .data.summary.irr,
+    em: .data.summary.equityMultiple, dscr_summary: .data.summary.dscrY1,
+    dscr_debtMetrics: .data.debtMetrics.coverage.dscrY1,
+    inv6: [.data.integrityChecks[]? | select(.id=="INV-6")], error: .error}' /tmp/bishop_final.json
+```
+
+(If the pull reports a merge because of the rebase, take it and re-check the log — the tip should contain both `66c13f8f5` and `2671b5657` in its history.)
+
+The pre-registered verdict, one last time:
+
+| Field | Pass |
+|---|---|
+| loan | **$21,024,006** |
+| equity | **≈ $39,366,000** |
+| irr | **worse than −10.21%** |
+| em | **below 0.589** |
+| inv6 | **present, passing, in-payload** |
+
+Real numbers matching → Bishop pins from this payload, golden 3/3, engine arc **over** — remaining W5 is Phases 2–3 and your parity list. Numbers present but off-prediction → we read them here before anything pins (a moved loan means equity entered M11's objective; unchanged IRR means the reconcile still isn't propagating). Another throw → the error text now names a different culprit by construction, since the pre-M11 thrower is dead.
+
+Paste the output.
