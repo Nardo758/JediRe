@@ -332,26 +332,25 @@ router.post('/:dealId/compute-returns', requireAuth, async (req: AuthenticatedRe
     });
     
     if (assumptionsResult.rows.length > 0) {
+      // R9: irr_levered, equity_multiple, noi_stabilized retired as output-scalar
+      // columns per F-P1 Phase 2 operator ruling. These are derivable from
+      // deal_financial_models.results and must not be denormalized into deal_assumptions.
+      // tdc, tdc_per_unit, yield_on_cost, stabilized_value, profit_margin are
+      // development-deal output scalars (not in R9 retirement list) and remain.
       await pool.query(`
         UPDATE deal_assumptions SET
           tdc = $2,
           tdc_per_unit = $3,
-          noi_stabilized = $4,
-          yield_on_cost = $5,
-          irr_levered = $6,
-          equity_multiple = $7,
-          stabilized_value = $8,
-          profit_margin = $9,
+          yield_on_cost = $4,
+          stabilized_value = $5,
+          profit_margin = $6,
           last_computed_at = NOW()
         WHERE deal_id = $1
       `, [
         dealId,
         returns.tdc,
         returns.tdcPerUnit,
-        returns.noiStabilized,
         returns.yieldOnCost,
-        returns.irrLevered,
-        returns.equityMultiple,
         returns.stabilizedValue,
         returns.profitMargin
       ]);

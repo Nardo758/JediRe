@@ -906,6 +906,21 @@ export function modelResultsToFinancialModelResult(det: ModelResults): Financial
     m14DscrConstraintBinds: false,
   };
 
+  // ── M-L serialization (R5): 7-field monthly slice ────────────────────────
+  // Fields: {month, year, occupancy, effectiveVacancy, floorBinding, vacancyLoss, noi}
+  // Only the 7 canonical R5 fields are stored; full MonthlyCashFlowRow is not
+  // persisted (would bloat deal_financial_models.results for a 60-month hold).
+  const monthlyProjection: FinancialModelResult['monthlyProjection'] =
+    (det.monthlyCashFlow ?? []).map(m => ({
+      month: m.month,
+      year: m.year,
+      occupancy: m.occupancy,
+      effectiveVacancy: m.effectiveVacancy ?? m.vacancy,
+      floorBinding: m.floorBinding ?? false,
+      vacancyLoss: m.vacancyLoss,
+      noi: m.noi,
+    }));
+
   return {
     summary: {
       irr: det.summary.irr,
@@ -943,6 +958,7 @@ export function modelResultsToFinancialModelResult(det: ModelResults): Financial
     },
     waterfallDistributions,
     developmentSchedule: undefined,
+    monthlyProjection: monthlyProjection.length > 0 ? monthlyProjection : undefined,
     evidence: det.evidence,
     reasoning: {
       walkthrough: det.reasoning.walkthrough,

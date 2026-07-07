@@ -195,12 +195,29 @@ router.get('/:dealId', authMiddleware.requireAuth, async (req: Request, res: Res
       logger.error('M35 attribution lookup failed (non-fatal):', attrErr?.message ?? attrErr);
     }
 
+    // R2 (F-P1 Phase 2): owned_import deals that have no build should return
+    // an honest absence signal, not a fabricated baseline.  User-triggered
+    // builds on owned assets remain legal — those are already handled in the
+    // `if (model)` branch above and are returned normally.
+    let ownedImportReason: string | undefined;
+    try {
+      const pool = getPool();
+      const archRes = await pool.query<{ deal_archetype: string | null }>(
+        `SELECT deal_archetype FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+        [dealId]
+      );
+      if (archRes.rows[0]?.deal_archetype === 'owned_import') {
+        ownedImportReason = 'no_underwriting — owned_import';
+      }
+    } catch (_archErr) { /* non-fatal — absence of reason is safe */ }
+
     res.json({
       success: true,
       data: {
         ...assumptions,
         computed: null,
         modelNotBuilt: true,
+        ...(ownedImportReason ? { reason: ownedImportReason } : {}),
         ...(eventAttribution ? { eventAttribution } : {}),
       },
     });

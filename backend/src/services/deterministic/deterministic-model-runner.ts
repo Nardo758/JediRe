@@ -8,6 +8,17 @@
 // Wiring: docs/agent-f9-wiring-spec-v1.0.txt
 // =========================================================================
 
+// R6 extract (F-P1 Phase 2): tax schedule helpers moved to the shared seam.
+// Imported here with their canonical extract names; const aliases in the
+// constants block below map them to the DEF_* names used throughout this file.
+import {
+  computeFloridaTax,
+  computeNonFloridaTax,
+  FL_REASSESS_PCT,
+  FL_CAP_INCREASE,
+  FL_DEF_MILLAGE,
+} from '../tax/tax-schedule-extract';
+
 export interface ModelAssumptions {
   units: number;
   avgUnitSf: number;
@@ -444,9 +455,12 @@ const DEF_FL_DOC_PCT = 0.007;
 const DEF_FL_MIA_DOC_PCT = 0.006;
 const DEF_FL_INTANGIBLE_PCT = 0.002;
 const DEF_FL_TITLE_PCT = 0.003;
-const DEF_MILLAGE = 0.0218;
-const DEF_REASSESS_PCT = 0.85;
-const DEF_CAP_INCREASE = 0.10;
+// R6 extract: DEF_MILLAGE, DEF_REASSESS_PCT, DEF_CAP_INCREASE moved to
+// ../../services/tax/tax-schedule-extract.ts (F-P1 Phase 2 arc, R6).
+// Const aliases map canonical extract names → legacy DEF_* names used below.
+const DEF_REASSESS_PCT   = FL_REASSESS_PCT;
+const DEF_CAP_INCREASE   = FL_CAP_INCREASE;
+const DEF_MILLAGE        = FL_DEF_MILLAGE;
 const DEF_ORIGINATION_PCT = 0.01;
 const DEF_NONFL_TRANSFER_TAX_PCT = 0.005;
 
@@ -504,37 +518,9 @@ export function cumulativeRentGrowth(rentGrowth: number[], holdYears: number): n
   return cg;
 }
 
-export function computeFloridaTax(
-  purchasePrice: number,
-  holdYears: number,
-  millageRate: number = DEF_MILLAGE,
-  capRate: number = DEF_CAP_INCREASE,
-  reassessPct: number = DEF_REASSESS_PCT
-): { perYear: number[]; assessedValues: number[] } {
-  const base = purchasePrice * reassessPct;
-  const perYear: number[] = [];
-  const assessedValues: number[] = [];
-  for (let y = 1; y <= holdYears + 1; y++) {
-    const av = base * Math.pow(1 + capRate, y - 1);
-    assessedValues.push(av);
-    perYear.push(av * millageRate);
-  }
-  return { perYear, assessedValues };
-}
-
-export function computeNonFloridaTax(
-  baseTax: number,
-  expenseGrowth: number,
-  holdYears: number
-): { perYear: number[]; assessedValues: number[] } {
-  const perYear: number[] = [];
-  const assessedValues: number[] = [];
-  for (let y = 1; y <= holdYears + 1; y++) {
-    perYear.push(baseTax * Math.pow(1 + expenseGrowth, y - 1));
-    assessedValues.push(0);
-  }
-  return { perYear, assessedValues };
-}
+// computeFloridaTax and computeNonFloridaTax are imported at the top of this
+// file from '../tax/tax-schedule-extract' (R6 extract seam). They are used
+// below in Phase 3: Tax schedule. No re-export needed — no external consumers.
 
 export function computeAmortization(
   loanAmount: number,

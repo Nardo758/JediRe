@@ -268,6 +268,21 @@ export interface FinancialModelResult {
     occupiedUnits: number;
     revenue: number;
   }>;
+  /**
+   * M-L serialization (R5 7-field slice): one entry per operating month.
+   * Fields: month (1-based absolute), year (operating year 1..holdYears),
+   * occupancy, effectiveVacancy (post-floor), floorBinding, vacancyLoss ($), noi ($).
+   * Absent on models built before F-P1 Phase 2.
+   */
+  monthlyProjection?: Array<{
+    month: number;
+    year: number;
+    occupancy: number;
+    effectiveVacancy: number;
+    floorBinding: boolean;
+    vacancyLoss: number;
+    noi: number;
+  }>;
 }
 
 // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Tier-2 ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§12 wiring: Agent fill-in registry + assumption helpers ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
@@ -1768,7 +1783,9 @@ export class FinancialModelEngineService {
 
         const updates: Array<{ col: string; val: any }> = [];
         if (computedRentGrowth && computedRentGrowth.length > 0) {
-          updates.push({ col: 'rent_growth_yr1', val: computedRentGrowth[0] });
+          // R9: rent_growth_yr1 retired as output-scalar column — now lives only
+          // in deal_assumptions.year1.rent_growth_yr1 (LayeredValue, via scenario
+          // trigger below). Do not write back to the top-level scalar column.
           updates.push({ col: 'rent_growth_stabilized', val: computedRentGrowth[computedRentGrowth.length - 1] });
         }
         if (computedExitCap != null && computedExitCap > 0) {

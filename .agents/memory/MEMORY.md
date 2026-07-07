@@ -9,3 +9,4 @@
 - [Golden test harness M11/M14 gap](golden-test-harness-m11-gap.md) — Bishop build-path harness runs single-pass runModel, never M11/M14; live /build captures can't be pinned against it
 - [TypeScript CI guard scope](tsc-ci-guard-scope.md) — backend tsc CI check only compiles a narrow include; use scoped tsconfig + baseline-diff to extend coverage without blocking on pre-existing errors
 - [Git push workaround in this env](git-push-workaround.md) — bash tool blocks writes under .git/; code_execution has no process.env; relay GH token via a temp file bash writes and code_execution reads/deletes
+- [F-P1 Phase 2 arc decisions](fp1-phase2-arc.md) — R9 scalar retirement writes removed (not dropped yet); R6 extract seam at tax-schedule-extract.ts; runner re-exports removed (no external consumers)

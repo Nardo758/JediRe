@@ -507,14 +507,74 @@ export function normalizeToEngineFormat(raw: any): ProFormaAssumptions {
   };
 }
 
+// ── F-P1-A: Server-fetch path ────────────────────────────────────────────────
+// Fetches the latest stored ProFormaAssumptions from deal_financial_models for a
+// given dealId.  This is the "server-fetch" path: identical data to what the
+// client had on its last successful build, without requiring the client to resend
+// the full assumptions blob.
+//
+// Equivalence proof: running /build with the result of this function should
+// produce identical model outputs to a /build call with the same assumptions blob
+// the client originally supplied — because it IS that blob (deal_financial_models
+// stores the ProFormaAssumptions verbatim in the `assumptions` column).
+//
+// Phase 2 gate: server-fetch path runs BESIDE the client path (both active).
+// Retire client path is T003, blocked until equivalence proof is pasted.
+async function buildAssumptionsFromStore(
+  dealId: string,
+  pool: ReturnType<typeof getPool>
+): Promise<ProFormaAssumptions> {
+  const result = await pool.query(
+    `SELECT assumptions FROM deal_financial_models
+     WHERE deal_id = $1 AND status = 'complete'
+     ORDER BY created_at DESC LIMIT 1`,
+    [dealId]
+  );
+  if (result.rows.length === 0) {
+    throw new Error(
+      `F-P1-A server-fetch: no completed model found for deal ${dealId}. ` +
+      `Cannot reconstruct assumptions — client must supply assumptions body for first build.`
+    );
+  }
+  const raw = result.rows[0].assumptions;
+  return (typeof raw === 'string' ? JSON.parse(raw) : raw) as ProFormaAssumptions;
+}
+
 router.post('/build', async (req: Request, res: Response) => {
   try {
-    const { dealId, assumptions, sensitivityOverrides } = req.body;
-    if (!dealId || !assumptions) {
-      return res.status(400).json({ error: 'dealId and assumptions are required' });
+    const { dealId, assumptions, sensitivityOverrides, serverFetch } = req.body;
+
+    // F-P1-A: if assumptions is absent (or serverFetch flag set), fetch from store.
+    // The serverFetch flag is a diagnostic aid for the equivalence proof — it lets
+    // the caller explicitly request the server-fetch path even when assumptions is
+    // provided, so both paths can be run back-to-back for comparison.
+    let resolvedAssumptions: ProFormaAssumptions;
+    let assumptionsSource: 'client' | 'server_store' = 'client';
+
+    if (!dealId) {
+      return res.status(400).json({ error: 'dealId is required' });
     }
 
-    const normalized = normalizeToEngineFormat(assumptions);
+    if (serverFetch || !assumptions) {
+      // Server-fetch path (F-P1-A)
+      try {
+        const pool = getPool();
+        resolvedAssumptions = await buildAssumptionsFromStore(dealId, pool);
+        assumptionsSource = 'server_store';
+      } catch (sfErr: any) {
+        // If server-fetch fails and client also didn't supply assumptions, hard error.
+        if (!assumptions) {
+          return res.status(400).json({ error: sfErr.message });
+        }
+        // Client supplied assumptions — fall through to client path.
+        resolvedAssumptions = normalizeToEngineFormat(assumptions);
+        assumptionsSource = 'client';
+      }
+    } else {
+      resolvedAssumptions = normalizeToEngineFormat(assumptions);
+    }
+
+    const normalized = resolvedAssumptions;
 
     const idempKey = req.headers['idempotency-key'] as string | undefined;
     if (idempKey) {
@@ -551,7 +611,7 @@ router.post('/build', async (req: Request, res: Response) => {
     }
 
     const { result, assumptionsHash } = await financialModelEngine.buildModel(dealId, normalized, (req as AuthenticatedRequest).user?.userId);
-    return res.json({ success: true, data: result, assumptionsHash });
+    return res.json({ success: true, data: result, assumptionsHash, assumptionsSource });
   } catch (error: any) {
     console.error('Financial model build error:', error.message);
     // T7 (TOKEN_LEAK_REMEDIATION_TRANCHE1): propagate the real upstream

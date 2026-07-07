@@ -1988,7 +1988,11 @@ async function aggregateFromToolCalls(
 function mapSourceLabel(source: string): SourceType {
   const s = source.toLowerCase();
   if (s.includes('rent_roll') || s.includes('rentroll') || s.includes('rent roll')) return 'rent_roll';
-  if (s.includes('t12') || s.includes('t-12') || s.includes('t 12') || s.includes('trailing')) return 't12';
+  // R1: actuals-derived values (source = 'actuals', 'actual', 'historical_actuals', etc.) map to
+  // 't12' — the correct existing enum value for trailing-12-month operating data. Never mint
+  // a new 'actuals' tag; t12 is the canonical vocabulary for actuals-sourced NOI/revenue fields.
+  if (s.includes('t12') || s.includes('t-12') || s.includes('t 12') || s.includes('trailing')
+      || s === 'actuals' || s.includes('historical_actual') || s.includes('actual_data')) return 't12';
   if (s.includes('user_override') || s.includes('override')) return 'user_override';
   // 'computed' must be checked before 'om' — 'computed' contains the substring 'om'
   // and would be incorrectly mapped to the lower-priority 'om' source if order were reversed.
