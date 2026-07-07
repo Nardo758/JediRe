@@ -2231,7 +2231,7 @@ export async function getDealFinancials(
     ),
     pool.query(
       `SELECT year1, total_units, updated_at,
-              exit_cap, rent_growth_yr1, rent_growth_stabilized, hold_period_years,
+              exit_cap, rent_growth_stabilized, hold_period_years,
               interest_rate, ltc, avg_lease_term_months, per_year_overrides,
               io_period_months, amortization_years, dscr_min, origination_fee_pct,
               unit_mix, unit_mix_overrides, avg_rent_per_unit, vacancy_pct,
@@ -3113,7 +3113,18 @@ export async function getDealFinancials(
   // ── Assumptions scalar + per-year grid seeded from platform findings ────────
   const assumptionsRow = assumptionsRes.rows[0];
   const exitCap = assumptionsRow?.exit_cap != null ? +parseFloat(assumptionsRow.exit_cap).toFixed(3) : null;
-  const rentGrowthYr1 = assumptionsRow?.rent_growth_yr1 != null ? +(parseFloat(assumptionsRow.rent_growth_yr1) / 100).toFixed(4) : null;
+  // B7 (F-P1): rent_growth_yr1 scalar retired. Read from year1Seed JSONB (decimal: 0.03 = 3%).
+  // No /100 needed — year1 JSONB already stores decimal form.
+  const _rgLv = year1Seed['rent_growth_yr1'] as Record<string, unknown> | number | undefined;
+  let rentGrowthYr1: number | null = null;
+  if (typeof _rgLv === 'number') rentGrowthYr1 = _rgLv;
+  else if (_rgLv && typeof _rgLv === 'object') {
+    for (const slot of ['resolved', 'override', 'agent', 'platform', 'broker']) {
+      const v = (_rgLv as Record<string, unknown>)[slot];
+      if (typeof v === 'number') { rentGrowthYr1 = v; break; }
+      if (typeof v === 'string' && !isNaN(Number(v))) { rentGrowthYr1 = Number(v); break; }
+    }
+  }
   const rentGrowthStab = assumptionsRow?.rent_growth_stabilized != null ? +(parseFloat(assumptionsRow.rent_growth_stabilized) / 100).toFixed(4) : null;
   const calibVacancy = trafficProjection?.calibrated.vacancyPct ?? null;
   const calibRentGrowth = trafficProjection?.calibrated.rentGrowthPct ?? null;

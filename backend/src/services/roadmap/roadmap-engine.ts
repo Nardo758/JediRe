@@ -181,7 +181,15 @@ function snapshotField(
 }
 
 export interface RoadmapFinancials {
+  /** Underwritten Year-1 NOI — the stabilized-path Y1 anchor for roadmap math. */
   baseNoi: number;
+  /**
+   * B6 (F-P1): In-place NOI from the runner's evidenceItems — current run-rate
+   * NOI at close, BEFORE lease-up / stabilization gains.  Null when the snapshot
+   * pre-dates the runner's inPlaceNOI output.  Used for gap-to-target display only;
+   * the roadmap growth path still compounds off baseNoi (underwritten Y1).
+   */
+  inPlaceNoi: number | null;
   purchasePrice: number;
   loanAmount: number;
   annualDebtService: number;
@@ -242,7 +250,8 @@ async function loadDealFinancials(dealId: string): Promise<RoadmapFinancials> {
       [dealId]
     ),
     query(
-      `SELECT da.exit_cap, da.rent_growth_yr1, da.selling_costs_pct
+      // B7 (F-P1): rent_growth_yr1 scalar retired — replaced by da.year1 JSONB read below.
+      `SELECT da.exit_cap, da.year1, da.selling_costs_pct
        FROM deal_assumptions da WHERE da.deal_id = $1 LIMIT 1`,
       [dealId]
     ),
@@ -269,6 +278,8 @@ async function loadDealFinancials(dealId: string): Promise<RoadmapFinancials> {
 
   const noiYear1 = snapshotField(pf, 'noi_year1', 'noi', 'revenue.noi');
   const noiYear2 = snapshotField(pf, 'noi_year2');
+  // B6 (F-P1): In-place NOI — current run-rate at close.  May be null on older snapshots.
+  const inPlaceNoi = snapshotField(pf, 'in_place_noi', 'noi_in_place', 'inPlaceNOI');
 
   if (!noiYear1 || noiYear1 <= 0) {
     throw new Error(
@@ -290,8 +301,20 @@ async function loadDealFinancials(dealId: string): Promise<RoadmapFinancials> {
   const resolvedLoanAmount = loanAmountSnap ?? purchasePrice * 0.65;
   const resolvedDebtService = snapshotField(pf, 'annual_debt_service') ?? resolvedLoanAmount * 0.065;
 
-  // NOI growth: Y1→Y2 slope from snapshot; fall back to deal_assumptions.rent_growth_yr1
-  const rentGrowthFromDA = safeFloat(da.rent_growth_yr1, 0);
+  // NOI growth: Y1→Y2 slope from snapshot; fall back to deal_assumptions.year1 JSONB.
+  // B7 (F-P1): rent_growth_yr1 scalar retired — read from year1 JSONB (decimal: 0.03 = 3%).
+  const _daYear1 = (da.year1 ?? {}) as Record<string, unknown>;
+  const _rgLvDA = _daYear1['rent_growth_yr1'] as Record<string, unknown> | number | undefined;
+  let _rgFromDA = 0;
+  if (typeof _rgLvDA === 'number') _rgFromDA = _rgLvDA;
+  else if (_rgLvDA && typeof _rgLvDA === 'object') {
+    for (const slot of ['resolved', 'override', 'agent', 'platform', 'broker']) {
+      const v = (_rgLvDA as Record<string, unknown>)[slot];
+      if (typeof v === 'number') { _rgFromDA = v; break; }
+      if (typeof v === 'string' && !isNaN(Number(v))) { _rgFromDA = Number(v); break; }
+    }
+  }
+  const rentGrowthFromDA = _rgFromDA;
   const noiGrowthPct = (noiYear2 && noiYear2 > 0)
     ? (noiYear2 - noiYear1) / noiYear1
     : (rentGrowthFromDA > 0 ? rentGrowthFromDA : 0.03);
@@ -320,6 +343,7 @@ async function loadDealFinancials(dealId: string): Promise<RoadmapFinancials> {
 
   return {
     baseNoi: noiYear1,
+    inPlaceNoi,
     purchasePrice: purchasePrice || 5_000_000,
     loanAmount: resolvedLoanAmount,
     annualDebtService: resolvedDebtService,

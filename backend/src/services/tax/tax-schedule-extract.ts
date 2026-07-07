@@ -65,12 +65,28 @@ export function computeFloridaTax(
  * assessedValues is always 0 — caller provides baseTax directly.
  *
  * See R6b comment above re: NC millage_unit conversion requirement.
+ *
+ * B9 guard: Pass millageUnit when the source data specifies one.
+ * If 'per_100', this function throws — the caller MUST multiply the raw
+ * NC rate by 10 before passing as baseTax (per_100 → per_1000 conversion).
+ * A per_100 rate passed unconverted produces a 10× tax underestimate.
  */
 export function computeNonFloridaTax(
   baseTax: number,
   expenseGrowth: number,
   holdYears: number,
+  millageUnit?: 'per_100' | 'per_1000',
 ): { perYear: number[]; assessedValues: number[] } {
+  // B9 (F-P1): Runtime guard — NC per_100 rates must be converted before reaching this seam.
+  if (millageUnit === 'per_100') {
+    throw new Error(
+      'F-P1-B9: computeNonFloridaTax received millageUnit="per_100". ' +
+      'North Carolina assessors report millage in per-$100 AV; the caller MUST ' +
+      'multiply the raw rate by 10 to convert to per-$1000 before passing baseTax. ' +
+      'Passing unconverted produces a 10× tax underestimate. ' +
+      'Fix: baseTax = rawMillageRate * 10 * assessedValue / 1000.'
+    );
+  }
   const perYear: number[] = [];
   const assessedValues: number[] = [];
   for (let y = 1; y <= holdYears + 1; y++) {
@@ -79,3 +95,23 @@ export function computeNonFloridaTax(
   }
   return { perYear, assessedValues };
 }
+
+/**
+ * B9 finding record — NC millage blast radius (F-P1 arc):
+ *
+ * Finding: North Carolina assessors report millage in per-$100 AV (millage_unit='per_100').
+ * The computeNonFloridaTax seam expects baseTax as an absolute dollar amount, not a rate.
+ * The current proforma-assumptions-bridge does NOT populate basePropertyTax from millage
+ * data for any deal — it defaults to purchasePrice × 0.012 for all non-FL deals.
+ *
+ * Blast radius: ZERO for all current production deals.
+ * - No NC deals have millage data flowing through the bridge into basePropertyTax.
+ * - All non-FL deals use the purchasePrice × 1.2% default, which is state-agnostic
+ *   and does not involve a per_100 rate at all.
+ * - The 10× drift described in R6b is a POTENTIAL future failure (if a pipeline adds
+ *   NC millage rate → basePropertyTax without ×10 conversion), not a historical one.
+ *
+ * Guard installed above prevents the drift from ever reaching production silently.
+ * Future NC millage pipeline work must call: baseTax = rawPer100Rate * 10 * assessedValue / 1000.
+ */
+export const NC_MILLAGE_BLAST_RADIUS_NOTE = 'zero_current_production_deals' as const;

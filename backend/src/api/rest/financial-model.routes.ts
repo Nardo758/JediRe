@@ -517,9 +517,7 @@ export function normalizeToEngineFormat(raw: any): ProFormaAssumptions {
 // produce identical model outputs to a /build call with the same assumptions blob
 // the client originally supplied — because it IS that blob (deal_financial_models
 // stores the ProFormaAssumptions verbatim in the `assumptions` column).
-//
-// Phase 2 gate: server-fetch path runs BESIDE the client path (both active).
-// Retire client path is T003, blocked until equivalence proof is pasted.
+// B1 (F-P1): client path retired — server-fetch is the only build path.
 async function buildAssumptionsFromStore(
   dealId: string,
   pool: ReturnType<typeof getPool>
@@ -542,36 +540,32 @@ async function buildAssumptionsFromStore(
 
 router.post('/build', async (req: Request, res: Response) => {
   try {
-    const { dealId, assumptions, sensitivityOverrides, serverFetch } = req.body;
-
-    // F-P1-A: if assumptions is absent (or serverFetch flag set), fetch from store.
-    // The serverFetch flag is a diagnostic aid for the equivalence proof — it lets
-    // the caller explicitly request the server-fetch path even when assumptions is
-    // provided, so both paths can be run back-to-back for comparison.
-    let resolvedAssumptions: ProFormaAssumptions;
-    let assumptionsSource: 'client' | 'server_store' = 'client';
+    // B1 (F-P1): client-supplied assumptions body retired. Server-fetch is now the
+    // ONLY build path. If a caller supplies `assumptions`, reject with a named error
+    // so integrations learn to remove it. The `serverFetch` flag is also retired.
+    const { dealId, assumptions, sensitivityOverrides } = req.body;
 
     if (!dealId) {
       return res.status(400).json({ error: 'dealId is required' });
     }
 
-    if (serverFetch || !assumptions) {
-      // Server-fetch path (F-P1-A)
-      try {
-        const pool = getPool();
-        resolvedAssumptions = await buildAssumptionsFromStore(dealId, pool);
-        assumptionsSource = 'server_store';
-      } catch (sfErr: any) {
-        // If server-fetch fails and client also didn't supply assumptions, hard error.
-        if (!assumptions) {
-          return res.status(400).json({ error: sfErr.message });
-        }
-        // Client supplied assumptions — fall through to client path.
-        resolvedAssumptions = normalizeToEngineFormat(assumptions);
-        assumptionsSource = 'client';
-      }
-    } else {
-      resolvedAssumptions = normalizeToEngineFormat(assumptions);
+    if (assumptions !== undefined) {
+      return res.status(400).json({
+        error:
+          'F-P1-B1: client-supplied assumptions body is rejected. ' +
+          'This endpoint now fetches assumptions from the server store exclusively. ' +
+          'Remove the `assumptions` field from the request body.',
+      });
+    }
+
+    // Server-fetch path (F-P1-A — now the only path)
+    let resolvedAssumptions: ProFormaAssumptions;
+    const assumptionsSource = 'server_store';
+    try {
+      const pool = getPool();
+      resolvedAssumptions = await buildAssumptionsFromStore(dealId, pool);
+    } catch (sfErr: any) {
+      return res.status(400).json({ error: sfErr.message });
     }
 
     const normalized = resolvedAssumptions;

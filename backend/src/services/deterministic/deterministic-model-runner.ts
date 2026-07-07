@@ -74,6 +74,10 @@ export interface ModelAssumptions {
   dealMode?: string;
   // Optional: non-FL base property tax (for computing non-FL tax schedule)
   basePropertyTax?: number;
+  // B9 (F-P1): NC millage unit — 'per_100' triggers guard in computeNonFloridaTax.
+  // Caller MUST convert per_100 rates by ×10 before passing baseTax; passing 'per_100'
+  // here causes a deliberate throw to prevent silent 10× tax underestimation.
+  millageUnit?: 'per_100' | 'per_1000';
   // Optional: apply bonus depreciation in Y1 (spec §11; defaults true when omitted)
   useBonusDepreciation?: boolean;
   // Optional: per-field evidence hints from the seeder's LayeredValue metadata
@@ -1750,7 +1754,7 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
     log.push(`Phase 3: FL tax schedule (FL non-homestead 10% NHCap, assessed base=${a.purchasePrice * DEF_REASSESS_PCT})`);
   } else {
     const baseTax = a.basePropertyTax ?? (a.purchasePrice * 0.012); // ~1.2% of purchase as default
-    taxSchedule = computeNonFloridaTax(baseTax, a.expenseGrowth, hold);
+    taxSchedule = computeNonFloridaTax(baseTax, a.expenseGrowth, hold, a.millageUnit);
     log.push(`Phase 3: Non-FL tax schedule, base=${baseTax}, growth=${(a.expenseGrowth * 100).toFixed(1)}%`);
   }
 

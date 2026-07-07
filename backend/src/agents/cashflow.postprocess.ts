@@ -1481,9 +1481,12 @@ export async function cashflowPostProcess(
         if (!hasOptimization) {
           // Extract current NOI from proforma_fields
           const pf = output.proforma_fields as Record<string, Record<string, unknown>> | undefined;
+          // B6 (F-P1): 'in_place_noi' added to fallback chain — runner emits it as an evidenceItem
+          // under the proforma_fields key 'in_place_noi'. It represents the run-rate NOI at close,
+          // before stabilization gains, and serves as the left-edge anchor for gap analysis.
           const noiPaths = [
             'revenue.noi', 'income.noi', 'noi', 'net_operating_income',
-            'revenue.net_operating_income',
+            'revenue.net_operating_income', 'in_place_noi',
           ];
           let noiYear1: number | null = null;
           for (const p of noiPaths) {
@@ -1501,7 +1504,7 @@ export async function cashflowPostProcess(
           // a row from the deals table — we can still optimize using deal_data
           // fields (purchase_price, strategy) even without a year1 snapshot.
           const dealRow = await query(
-            `SELECT da.year1, da.noi_stabilized, d.deal_category, d.deal_data,
+            `SELECT da.year1, d.deal_category, d.deal_data,
                     d.strategy, d.project_type, d.development_type
                FROM deals d
                LEFT JOIN deal_assumptions da ON da.deal_id = d.id
@@ -1575,13 +1578,7 @@ export async function cashflowPostProcess(
                   }
                 }
               }
-              // 3. Try da.noi_stabilized direct column
-              if (!noiYear1 || noiYear1 <= 0) {
-                const daNoiStab = dealRow.rows[0].noi_stabilized;
-                const daNoiStabNum = typeof daNoiStab === 'string' ? parseFloat(daNoiStab)
-                  : typeof daNoiStab === 'number' ? daNoiStab : NaN;
-                if (!isNaN(daNoiStabNum) && daNoiStabNum > 0) noiYear1 = daNoiStabNum;
-              }
+              // 3. (B7 F-P1: da.noi_stabilized scalar retired — step removed)
               // 4. Misc direct year1 keys
               if (!noiYear1 || noiYear1 <= 0) {
                 for (const k of ['broker_stabilized_noi', 'stabilized_noi', 'noi_stabilized']) {

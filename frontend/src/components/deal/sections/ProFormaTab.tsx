@@ -66,6 +66,16 @@ interface FieldDef {
   showFor?: 'existing' | 'development' | 'both';
 }
 
+interface MonthlyProjectionRow {
+  month: number;
+  year: number;
+  occupancy: number;
+  effectiveVacancy: number;
+  floorBinding: boolean;
+  vacancyLoss: number;
+  noi: number;
+}
+
 interface ModelResults {
   summary: any;
   annualCashFlow: any[];
@@ -73,6 +83,8 @@ interface ModelResults {
   debtMetrics: any;
   sensitivityAnalysis: any;
   waterfallDistributions: any[];
+  /** TS-2 (B8): Monthly projection slice — 7-field R5 payload (occupancy, floorBinding, etc.). */
+  monthlyProjection?: MonthlyProjectionRow[];
 }
 
 interface ProFormaTabProps {
@@ -743,15 +755,15 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     setBuilding(true);
     setModelResults(null);
     try {
-      const assumptions = buildAssumptionsPayload();
+      // B1 (F-P1): assumptions blob removed from request body.
+      // Server fetches assumptions from store (deal_financial_models.assumptions).
       // T8 (TOKEN_LEAK_REMEDIATION_TRANCHE1): stable Idempotency-Key so a
-      // double-click or effect-retriggered rebuild for the same deal +
-      // assumptions hits the server's idempotency cache instead of
-      // re-running the LLM.
-      const idempotencyKey = buildFinancialModelIdempotencyKey(id, assumptions);
+      // double-click or effect-retriggered rebuild for the same deal
+      // hits the server's idempotency cache instead of re-running the LLM.
+      const idempotencyKey = buildFinancialModelIdempotencyKey(id, {});
       const res = await apiClient.post(
         '/api/v1/financial-model/build',
-        { dealId: id, assumptions },
+        { dealId: id },
         { headers: { 'Idempotency-Key': idempotencyKey } },
       );
       const data = (res as any)?.data;
@@ -2193,6 +2205,17 @@ const ModelResultsSummary: React.FC<{ results: ModelResults }> = ({ results }) =
   const s = results.summary;
   if (!s) return null;
 
+  // TS-2 (B8): T2 floor badge + T3 occupancy row derived from monthlyProjection (R5 payload).
+  const mp = results.monthlyProjection ?? [];
+  const floorActive = mp.some(m => m.floorBinding);
+  const annualOcc: (number | null)[] = (results.annualCashFlow ?? []).map((cf: any, i: number) => {
+    const yr = (cf.year as number) || i + 1;
+    const yrMonths = mp.filter(m => m.year === yr);
+    if (yrMonths.length === 0) return null;
+    return yrMonths.reduce((acc, m) => acc + (m.occupancy ?? 0), 0) / yrMonths.length;
+  });
+  const hasOcc = annualOcc.some(v => v != null);
+
   return (
     <div className="bg-white rounded-xl border border-emerald-200 overflow-hidden">
       <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-200">
@@ -2218,16 +2241,33 @@ const ModelResultsSummary: React.FC<{ results: ModelResults }> = ({ results }) =
                 <thead>
                   <tr className="text-stone-500 border-b border-stone-200">
                     <th className="text-left py-1.5 px-2">Year</th>
-                    {results.annualCashFlow.map((cf, i) => (
+                    {results.annualCashFlow.map((cf: any, i: number) => (
                       <th key={i} className="text-right py-1.5 px-2">Y{cf.year || i + 1}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  <CashFlowRow label="EGR" values={results.annualCashFlow.map(y => y.effectiveGrossRevenue)} />
-                  <CashFlowRow label="NOI" values={results.annualCashFlow.map(y => y.noi)} bold />
-                  <CashFlowRow label="Debt Service" values={results.annualCashFlow.map(y => y.debtService)} negative />
-                  <CashFlowRow label="Levered CF" values={results.annualCashFlow.map(y => y.leveredCashFlow)} bold highlight />
+                  {/* T3 (TS-2 B8): Occupancy row — annual avg from monthlyProjection R5 payload */}
+                  {hasOcc && (
+                    <tr className="border-b border-stone-100">
+                      <td className="py-1 px-2 text-stone-600">
+                        Occupancy
+                        {/* T2 (TS-2 B8): Floor badge — shown when vacancyFloor bound any month */}
+                        {floorActive && (
+                          <span className="ml-1.5 text-[8px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-1 py-0.5 rounded leading-none tracking-wide">⚑ FLOOR</span>
+                        )}
+                      </td>
+                      {annualOcc.map((v, i) => (
+                        <td key={i} className="text-right py-1 px-2">
+                          {v != null ? `${(v * 100).toFixed(1)}%` : '—'}
+                        </td>
+                      ))}
+                    </tr>
+                  )}
+                  <CashFlowRow label="EGR" values={results.annualCashFlow.map((y: any) => y.effectiveGrossRevenue)} />
+                  <CashFlowRow label="NOI" values={results.annualCashFlow.map((y: any) => y.noi)} bold />
+                  <CashFlowRow label="Debt Service" values={results.annualCashFlow.map((y: any) => y.debtService)} negative />
+                  <CashFlowRow label="Levered CF" values={results.annualCashFlow.map((y: any) => y.leveredCashFlow)} bold highlight />
                 </tbody>
               </table>
             </div>

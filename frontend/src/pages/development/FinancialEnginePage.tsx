@@ -998,19 +998,21 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   }, [fetchF9Financials]);
 
   const handleBuildModel = useCallback(async () => {
-    if (!resolvedDealId || !assumptions) return;
+    if (!resolvedDealId) return;
     setBuilding(true);
     setBuildError(null);
     try {
       // The build endpoint calls Claude and can take >30 s — override the global 30 s timeout.
       // T8 (TOKEN_LEAK_REMEDIATION_TRANCHE1): stable Idempotency-Key so a
-      // double-click or re-render-triggered re-call for the same deal +
-      // assumptions hits the server's idempotency cache instead of
-      // re-running the LLM.
-      const idempotencyKey = buildFinancialModelIdempotencyKey(resolvedDealId, assumptions);
+      // double-click or re-render-triggered re-call for the same deal
+      // hits the server's idempotency cache instead of re-running the LLM.
+      // B1 (F-P1): assumptions blob no longer sent — server fetches from store.
+      // Idempotency key is deal-scoped; display-state assumptions kept in component
+      // state for rendering until F-P2 retires the working copy entirely.
+      const idempotencyKey = buildFinancialModelIdempotencyKey(resolvedDealId, assumptions ?? {});
       const res = await apiClient.post(
         '/api/v1/financial-model/build',
-        { dealId: resolvedDealId, assumptions },
+        { dealId: resolvedDealId },
         { timeout: 120_000, headers: { 'Idempotency-Key': idempotencyKey } },
       );
       // Response envelope: { success: true, data: { summary, annualCashFlow, ... } }

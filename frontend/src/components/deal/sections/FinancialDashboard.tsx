@@ -382,7 +382,8 @@ function AssView({ model }: { model: any }) {
           <tr><td>Total Acquisition Cost</td><td className="thl">{fmt$(c.totalCost)}</td></tr>
           <tr><td>Loan Proceeds ({c.loan.name})</td><td className="tv">{fmt$(c.loan.proceeds)}</td></tr>
           <tr><td>Required Equity</td><td className="tgr">{fmt$(c.equity)}</td></tr>
-          <tr><td>Stabilized NOI (Y2)</td><td className="tgr">{fmt$(c.stabilizedNOI)}</td></tr>
+          {/* B6 (F-P1): label fix — "Stabilized NOI (Y2)" → "NOI — Yr1 Underwritten" to distinguish from in-place */}
+          <tr><td>NOI — Yr 1 (Underwritten)</td><td className="tgr">{fmt$(c.stabilizedNOI)}</td></tr>
           <tr><td>DSCR (Stabilized)</td><td className="tgr">{c.dscr.toFixed(2)}x</td></tr>
           <tr><td>Exit Value ({model.exit?.holdYears || 7}yr @ {fmtPct(model.exit?.exitCapRate || 0.055)})</td><td className="thl">{fmt$(c.exitValue)}</td></tr>
         </tbody>

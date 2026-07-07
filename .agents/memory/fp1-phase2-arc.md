@@ -27,5 +27,32 @@ Writes to `deal_assumptions.irr_levered`, `equity_multiple`, `noi_stabilized`, `
 
 ## Bishop reference baseline (epoch 2026-07-06)
 deal_id: `3f32276f-aacd-4da3-b306-317c5109b403`, model id=346.
-IRR=-20.95%, EM=0.3144×, NOI Y1=$1,576,800, DSCR=[1.0424, 1.1217, 1.1137, 1.0891, 0.0758].
-assumptions blob 13,407 chars. Next rebuild adds monthlyProjection (R5).
+IRR=-20.95%, EM=0.3144×, NOI Y1=$1,576,800, DSCR Y1=1.0424.
+assumptions blob 13,407 chars. Phase 2B identity checkpoint PASS (exact match, server-fetch path).
+
+## Phase 2B arc close (2026-07-07)
+B1/B6/B7/B8/B9 all executed and verified. B2/B3/B4/B5 carried as named residuals.
+Close report: `docs/architecture/FP1_PHASE2B_ARC_CLOSE.md`.
+- B7: DROP migration applied (`20260707_drop_da_retired_scalars.sql`). Scalar columns gone.
+- B1: `/build` now rejects any `assumptions` body (F-P1-B1 error). Server-fetch only.
+- B8: ProFormaTab MonthlyProjectionRow + ⚑ FLOOR badge + T3 occupancy row rendered.
+- B9: `computeNonFloridaTax` gains `millageUnit` guard; F-P1-B9 thrown on per_100 without conversion.
+
+## ts-node identity check pattern for financialModelEngine (2026-07-07)
+`buildModel(dealId, undefined)` crashes at `hashAssumptions(undefined)` because the server-fetch path
+lives in the ROUTE (`buildAssumptionsFromStore`), NOT inside `buildModel`. To run identity checks via
+ts-node, replicate the route pattern: load assumptions from DB first, then pass to `buildModel`.
+```ts
+const r = await pool.query(`SELECT assumptions FROM deal_financial_models WHERE deal_id=$1 AND status='complete' ORDER BY created_at DESC LIMIT 1`, [dealId]);
+const assumptions = r.rows[0].assumptions;
+const { result } = await financialModelEngine.buildModel(dealId, assumptions, 'identity-check');
+```
+
+**Why:** buildModel expects a real ProFormaAssumptions object; passing undefined causes a crypto hash crash
+before any DB fetch. The server-fetch abstraction is a route-layer concern.
+
+## Highlands baseline note (2026-07-07)
+Highlands (`eaabeb9f`) `deal_assumptions.year1` is empty `{}` and stored `deal_financial_models.results`
+is also empty `{}`. Post-2B build shows IRR=16.18%/NOI=$3.40M — drift from Phase 2A scratchpad ref
+(17.89%/$3.81M) is from CPI anchor updates + D-MOD resolver evolution, not a B-item regression.
+Bishop is the primary identity reference deal.

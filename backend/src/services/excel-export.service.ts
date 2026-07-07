@@ -412,7 +412,10 @@ export class ExcelExportService {
     data.push(['Equity', Math.round(totalDevCost * (1 - dev.constructionLoanLTC))]);
 
     data.push([]);
-    data.push(['NOI (Year 1 Stabilized)', r.summary.noiYear1]);
+    // B6 (F-P1): three-quantity NOI naming — in-place / year-1 underwritten / stabilized.
+    data.push(['NOI — In-Place (Run-Rate)', r.summary.inPlaceNOI ?? r.summary.noiInPlace ?? null]);
+    data.push(['NOI — Year 1 (Underwritten)', r.summary.noiYear1]);
+    data.push(['NOI — Stabilized', r.summary.noiStabilized ?? null]);
     data.push(['Exit Value', r.summary.exitValue]);
 
     const ws = XLSX.utils.aoa_to_sheet(data);

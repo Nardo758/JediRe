@@ -96,7 +96,6 @@ export const fetchAssumptionsTool: ToolDefinition<
            da.ltv, da.interest_rate, da.loan_term_years, da.amortization_years,
            da.vacancy_pct,
            da.management_fee_pct AS mgmt_fee,
-           da.rent_growth_yr1,
            da.exit_cap,
            da.hold_period_years,
            da.total_units AS da_units,
@@ -134,6 +133,11 @@ export const fetchAssumptionsTool: ToolDefinition<
       const mgmtFeeLegacy = n(row.mgmt_fee);
       const mgmtFeePct = mgmtFeeY1 != null ? Math.round(mgmtFeeY1 * 100 * 100) / 100 : mgmtFeeLegacy;
 
+      // B7 (F-P1): rent_growth_yr1 scalar column retired. Read from year1 JSONB (decimal: 0.03 = 3%).
+      // Return in percent form to stay consistent with vacancy_pct and management_fee_pct output format.
+      const rgY1 = y1Val(year1, 'rent_growth_yr1');
+      const annualRentGrowthPct = rgY1 != null ? Math.round(rgY1 * 100 * 100) / 100 : null;
+
       logger.info(`[fetch_assumptions] Returning for deal ${dealId}: vacancy=${vacancyPct}, mgmtFee=${mgmtFeePct}, units=${n(row.da_units) || n(row.d_units) || y1Val(year1, '_unit_count')}`);
 
       return {
@@ -146,7 +150,7 @@ export const fetchAssumptionsTool: ToolDefinition<
         amortization_years: n(row.amortization_years),
         vacancy_rate_pct: vacancyPct,
         management_fee_pct: mgmtFeePct,
-        annual_rent_growth_pct: n(row.rent_growth_yr1),
+        annual_rent_growth_pct: annualRentGrowthPct,
         exit_cap_rate_pct: n(row.exit_cap) != null ? Number(row.exit_cap) * 100 : null,
         hold_period_years: n(row.hold_period_years),
         total_units: n(row.da_units) || n(row.d_units) || y1Val(year1, '_unit_count'),
