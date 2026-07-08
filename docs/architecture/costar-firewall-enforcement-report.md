@@ -164,9 +164,9 @@ intentional, now documented.**
 | Item | Description | Verdict |
 |---|---|---|
 | I1 | Deal-scope CoStar correlation inputs | **PASS** — leak closed, owning-deal feature preserved, value identity stable |
-| I2 | Fine-tuning / prompt-logging firewall | **PASS** — no active/latent path found; documented for future feature work |
+| I2 | Fine-tuning / prompt-logging firewall | **REOPEN** — see I2-REOPEN finding below |
 | I3 | Structural restriction-tag wiring in read path | **PASS** — predicate-level, not post-hoc |
-| I4 | Calibration-job trace | **PASS** — correctly excludes restricted rows by design; documented |
+| I4 | Calibration-job trace | **PASS (scoped)** — clean by current scope; future-guard noted below |
 
 No licensed CoStar content was viewed, logged, or persisted during this work — all proof used
 synthetic, clearly-fake data (`ZzTestFirewallCity`) that was deleted immediately after the test run.
@@ -187,3 +187,122 @@ synthetic, clearly-fake data (`ZzTestFirewallCity`) that was deleted immediately
 dead code (geography_id key mismatch) — it cannot currently move CoStar data into
 `market_snapshots`, so COR-23/24/25/28/29/30 (which read `market_snapshots`) were out of scope for
 this dispatch. Worth a follow-up if that bridge is ever revived.
+
+---
+
+## TIER 1 CLOSE — Real DB Pass (2026-07-08)
+
+### C1 — CoStar-lineage row counts (real queries, S1-01)
+
+```
+Query run: SELECT ... UNION ALL ... (6 tables)
+```
+
+| Table | CoStar-lineage rows | Total rows |
+|---|---|---|
+| costar_market_metrics | **0** | 0 |
+| costar_submarket_stats | **125** | 125 |
+| vendor_market_observations (vendor_id='costar') | **1** | 553 |
+| market_snapshots (data_sources ILIKE '%costar%') | **40** | 40 |
+| historical_observations (vendor_source ILIKE '%costar%') | **0** | 1,315 |
+| metric_time_series (source ILIKE '%costar%') | **23,488** | 599,278 |
+
+**Verdict: NOT all zero — ESCALATE. The operator's historical-purge legal question is LIVE, not
+moot.** Four tables contain CoStar-lineage rows. Row counts are pasted above; content was NOT
+inspected. Purge decision is for operator/counsel only — nothing was deleted here. Specific items
+for review:
+- `costar_submarket_stats` — 125 rows (all rows are CoStar-lineage; this table has no other source)
+- `market_snapshots` — all 40 rows appear to have CoStar lineage in `data_sources`
+- `metric_time_series` — 23,488 of 599,278 rows (3.9%) carry CoStar `source` tag
+- `vendor_market_observations` — 1 CoStar row among 553 total
+
+`costar_market_metrics` and `historical_observations` are clean (0 CoStar-lineage rows).
+
+Note: `metric_time_series` is the direct input to `correlationEngine.service.ts` COR-23/24/25/28/
+29/30 (the `market_snapshots`-reading CORs). These 23,488 rows are the output of the CoStar
+submarket pipeline (`costar_submarket_stats` → `market_snapshots` → `metric_time_series`). The I1
+fix scoped `costar_market_metrics` only; these rows feed a separate, currently-unscoped read path
+(COR-23/24/25/28/29/30 query `market_snapshots` via city-name LIKE with no deal_id filter). This
+is the same structural gap as pre-I1 `costar_market_metrics` — just a different table set. Flagged
+for the follow-up I3-extension dispatch.
+
+---
+
+### C2 — Bishop `year_built` drift root-cause
+
+**Before (pre-patch):** `deal_data->>'year_built'` = `null`
+**After (post-patch, 2026-07-08):** `deal_data->>'year_built'` = `"2014"`
+
+**Root-cause verdict: `never-persisted`.**
+
+Grep of all `deals.deal_data` write paths confirms no code path has ever written a top-level
+`year_built` key into `deals.deal_data` for this deal. The primary year_built write paths in the
+codebase target `properties.year_built` (the properties table column, via
+`subject-population.service.ts:611`) or nested JSONB paths (`deal_data->'broker_claims'->'property'->
+'year_built'` in `cashflow.config.ts:440`) — neither is the top-level `deal_data->>'year_built'`
+key that the golden fixture expected.
+
+The golden fixture comment (`bishop.golden.ts`, line 15–17) explicitly states:
+> "rawAssumptions: best-effort reconstruction from deal DB row + capture context."
+
+`rawAssumptions.dealInfo.vintage: 2014` was a reconstructed value (Bishop at 464 Bishop St NW,
+Atlanta GA 30318 is a known 2014-vintage property), not a value read verbatim from `deal_data`.
+It was never persisted to `deals.deal_data` before this patch.
+
+**Classification: expected, low concern.** The golden fixture reconstruction was correct; the DB
+simply never had this field populated. The backfill (`jsonb_set ... '{year_built}' ... '"2014"'`)
+is the right fix. No other deals are at blast-radius risk from this specific gap (it is a
+`deal_data` top-level field that nothing in the extraction pipeline ever wrote).
+
+---
+
+### C3 — I2-REOPEN: chat-content storage carries potential CoStar lineage unfiltered
+
+**`sanitizeTrainingCharacteristics` exact scope** (`training.routes.ts:24–36`):
+- Strips keys from `deal_characteristics` (a flat `Record<string, unknown>` feature dict) whose
+  key name matches a restricted vendorId pattern (e.g. `costar_*`, `costar *`).
+- Protects the `training_examples` INSERT path only (`POST /api/training/examples` and
+  `POST /api/training/bulk`).
+- Does **not** inspect nested `vendor_source` annotations — these are stripped before
+  characteristics reach it.
+- Does **not** touch `skill_chat_messages` in any way.
+
+**Readers of `skill_chat_messages.content`** (grep result):
+
+```
+src/api/rest/skill-chat.routes.ts:159        SELECT role, content, skill_calls … (history endpoint → frontend)
+src/services/skills/skill-chat.service.ts:273 SELECT role, content, skill_calls … (loadConversationHistory → next AI prompt)
+src/services/skills/skill-chat.service.ts:283  content: row.content  (row mapping)
+```
+
+`loadConversationHistory` (skill-chat.service.ts:270–291) reads the stored conversation verbatim
+and injects it as prior message context into the next Anthropic API call. There is no sanitization
+step between `skill_chat_messages.content` and the AI prompt.
+
+**Finding I2-REOPEN:** Chat-content storage (`skill_chat_messages.content`) carries potential
+CoStar lineage unfiltered. If an operator/assistant exchange references CoStar-derived values
+(e.g. a skill response that surfaces submarket vacancy from `costar_submarket_stats`), those values
+are persisted verbatim in `skill_chat_messages.content` and replayed unfiltered into every
+subsequent AI prompt for that conversation via `loadConversationHistory`. The `training_examples`
+path is correctly firewalled by `sanitizeTrainingCharacteristics`. The raw chat-content storage and
+prompt-context replay path is not.
+
+**Remediation:** license-field-on-logging (the original I2 intent) — tag AI responses that derive
+from restricted-vendor sources at generation time so the storage/replay path can strip or gate
+them. This is its own dispatch, operator-prioritized. Not built here.
+
+---
+
+### C4 (I4 scope extension) — Future-guard note
+
+**I4 is clean by current scope.** The calibration job (`portfolio-correlation.service.ts`) reads
+`deals.deal_data->>'extraction_t12'` only (confirmed in replit.md) and does not touch
+`costar_submarket_stats`, `market_snapshots`, or `metric_time_series`.
+
+**However:** COR-23/24/25/28/29/30 in `correlationEngine.service.ts` query `market_snapshots`
+(which feeds from `metric_time_series`) via city-name `LIKE` with no deal_id/restriction filter —
+structurally identical to the pre-I1 `costar_market_metrics` gap. The 23,488 CoStar-lineage
+`metric_time_series` rows confirmed in C1 flow through this unscoped read path today. This is
+the I3-extension target: apply the same `is_restricted`/`deal_id` scoping to `market_snapshots`
+and `metric_time_series` when that dispatch is executed. Do not expand any calibration job to read
+these tables before that scoping is in place.
