@@ -12,3 +12,9 @@ id = "wVfb3_R-PUGkSQ4J584WR"
 uri = "file://docs/operations/UNIT_MIX_OTHER_INCOME_INVESTIGATION.md"
 type = "text"
 title = "Unit Mix + Other Income — Investigation & Design Spec"
+
+[[outputs]]
+id = "keQiz4Oi3yYB5Kj_6KqtE"
+uri = "file://docs/audits/CAPSULE_FILL_LANE_AUDIT.md"
+type = "text"
+title = "Capsule Data-Fill Lane Audit"
