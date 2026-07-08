@@ -311,6 +311,48 @@ CU plans to unify the `cashflow agent tools/` directory and `skill-registry.ts` 
 
 ---
 
+## Operator Rulings — RECEIVED 2026-07-08
+
+| # | Verdict | Operator reasoning |
+|---|---|---|
+| **R1** | **(c) — `agent_confirmed` flag promotes agent value above Engine A; below explicit user override.** Reject (a) and (b). | (a) making agent writes operator-permanent is too strong — the agent is a considered input, not a locked decision; the user must still override without "clearing" anything. (b) teaching Engine A to skip is a silent-conditional-behavior pattern this program has been burned by. (c) is explicit: a flagged agent value ranks above engine defaults. |
+| **R2** | **(a) — real `reasoning TEXT` + `evidence_refs JSONB` columns. Migration required, worth it.** | (b) is lossy; (c)'s FK to `agent_run_steps` makes provenance ephemeral (steps get pruned — the audit trail for a written value can't live in a transient table). The full provenance contract was a founding invariant — pay the migration. |
+| **R3** | **(b) — reuse `deal_financial_models.assumptions_hash`, stored per overlay row written during that run.** | Lowest-cost, reuses existing machinery. Build-level granularity is sufficient — the hash answers "what data snapshot did this write see," which is a per-run fact, not per-field. |
+| **R4** | **(a) — `confidence='low'` + note, surfaced in the F9 assumption audit trail.** | Zero-migration, reuses the LOW_CONFIDENCE display surface already in the engine, and puts the escalation exactly where a reviewer looks. Escalate-don't-reject, landed. |
+| **R5** | **(a) preferred, sequence-aware: reconciliation lives in F-P1t's tax-engine acceptance. If F-P1t hasn't landed when D3 Phase 2 reaches this item, ship (b) the standalone Inngest cron as the interim, migrating into (a) when F-P1t lands.** | (a) is the right home; (b) as a bridge avoids blocking D3 on F-P1t. Not either/or — (a) is the destination, (b) is the on-ramp. |
+| **R6** | **(c) — agent flags the field via overlay seam (`real_estate_tax.broker_flag`-style), never touches `deal_data` directly.** | Keeps every agent write inside the provenance'd overlay path — the whole point of D3. (a) bypasses provenance; (b) is a bigger migration than the flag warrants. (c) is lowest-friction and architecturally pure. |
+| **R7** | **(a) — replace `update_assumption` in-place with the overlay-routing version.** | Two write paths (b) will diverge (this program has that scar), and CU's registry merge needs exactly one write-action skill. Kill the raw write, keep the name and signature. |
+| **R8** | **F5-gated items: any Phase 2 work that writes `evidence_refs` pointing at `inPlaceNOI`-class evidence, OR that reconciles against effective-assumptions. R1, R7, R2/R4 schema migration, and R6 broker-flag are NOT F5-gated — they go first. Sequence evidence-citing items behind F5's Finding-V fix.** | A ref pointing at a duplicated/missing evidence row has no referential integrity. Write the seam before writing the citations. |
+
+### R1 Implementation Note (Phase 2 encoding)
+
+The `agent_confirmed` slot inserts between Engine A and per-year overrides. Complete `resolveLayeredValue()` order after Phase 2:
+
+```
+storedResolved  <  Engine A (computed)  <  agent_confirmed  <  perYearOverride  <  override
+```
+
+"Below explicit user override" covers both `perYearOverride` (per-year column) and `override` (LV slot) — both are user-originated. `agent_confirmed` must be coded between Engine A and `perYearOverride`, not between `perYearOverride` and `override`.
+
+### Phase 2 Build Sequence (operator-derived)
+
+```
+1. R1  — resolution-order fix: add agent_confirmed slot to resolveLayeredValue()
+          and LayeredValue<T> type  [live-defect keystone, no F5 gate]
+2. R7  — update_assumption in-place reroute to overlay API  [no F5 gate]
+3. R2/R4 — schema migration: add reasoning TEXT + evidence_refs JSONB + confidence
+             write path to deal_assumption_overlays  [no F5 gate]
+4. R6  — broker-flag overlay (real_estate_tax.broker_flag-style)  [no F5 gate]
+5. R3  — assumptions_hash stamping per overlay row written during a run  [no F5 gate]
+── F5 must land here ──────────────────────────────────────────────────────────────
+6. Evidence-citing items: evidence_refs pointing at inPlaceNOI-class rows,
+   effective-assumptions reconciliation  [F5-gated]
+── F-P1t state check here ─────────────────────────────────────────────────────────
+7. R5  — (a) if F-P1t landed; (b) standalone Inngest cron as bridge if not
+```
+
+---
+
 ## Summary — The Gap at a Glance
 
 ```

@@ -10,6 +10,21 @@ The agent `resolved` slot is below Engine A computed in the read-time resolution
 
 **How to apply:** When an agent writes via `writeAgentFieldToActiveScenario()`, assume the value will be overwritten on the next model build unless an operator override is also set. For durable agent-authored assumptions, Phase 2 must either write to the `override` slot or modify Engine A to skip overwriting when the `agent` slot is present.
 
+## Operator Rulings — RECEIVED 2026-07-08
+
+| R | Verdict |
+|---|---|
+| R1 | **(c)** `agent_confirmed` flag. Order: storedResolved < Engine A < **agent_confirmed** < perYearOverride < override |
+| R2 | **(a)** `reasoning TEXT` + `evidence_refs JSONB` columns in overlays. Migration required. |
+| R3 | **(b)** Store `deal_financial_models.assumptions_hash` per overlay row at write time. |
+| R4 | **(a)** `confidence='low'` + `note` in overlays, surfaced in F9 audit trail. |
+| R5 | **(a)** preferred (F-P1t home); **(b)** Inngest cron as bridge if F-P1t not yet landed. |
+| R6 | **(c)** Agent flags via overlay seam (`real_estate_tax.broker_flag`-style). Never touches `deal_data`. |
+| R7 | **(a)** Replace `update_assumption` in-place. Kill raw SQL write, keep name/signature. |
+| R8 | F5-gated = evidence_refs citing `inPlaceNOI`-class rows. R1/R7/R2/R4/R6 NOT F5-gated. |
+
+**Phase 2 sequence:** R1 → R7 → R2/R4 → R6 → R3 → [F5] → evidence-citing → [F-P1t check] → R5.
+
 ## Key findings (2026-07-08)
 
 - **`update_assumption` skill** (`skills/index.ts:440`): raw `UPDATE deal_assumptions SET field = $1` — bypasses overlays, no trigger, no provenance beyond `updated_by`. F-P1-flagged defect. 9 hardcoded scalar fields (not LayeredValue fields — outside the year1/overlay chain entirely).
