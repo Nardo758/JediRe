@@ -1,0 +1,15 @@
+Yes — walk me through the three action lists, but the summary already surfaced two findings that jump ahead of everything, so let me flag what I need and why:
+Paste the three lists verbatim — PROVISION, FIX, FREE-WINS — because those are the only parts that convert to action, and the summary describes their existence without their contents. Upload the audit .md as a .txt if it's long (chat-paste has failed six times this session; file upload works). Those lists are the whole point of the exercise.
+Two findings in your summary are already actionable and I want them called out sharply:
+
+"Two dead-route tool calls" — this is likely the real root of CREATE-1's "subscription restrictions" mystery. If Research/Supply agents are calling tools that route to dead endpoints, then "returned no data" wasn't a subscription problem at all for those — it was calls going nowhere. That reclassifies part of the dry-faucet story from PROVISION (buy a subscription) to FIX (repair the route), which is a much cheaper fix and changes your buy list. I need to know: which tools, and does fixing the route make an already-provisioned source start returning data? That could be the highest-leverage item in the whole audit.
+"Never-populated market_inventory fallback table" — a fallback table that's never been populated means something is silently falling back to empty and calling it a day. That's an honest-absence-adjacent risk: is anything reading market_inventory, getting nothing, and either (a) correctly reporting absence, or (b) silently degrading? Worth one line on which.
+
+And confirm the CoStar re-confirmation came back clean — you said it's in the report; I just want the explicit verdict (no source routes CoStar data, four leak vectors intact), because that's a standing constraint and "re-confirmed" should mean "verified clean," not "checked and found a problem."
+So: paste/upload the three lists + the CoStar verdict, and give me the specifics on the two dead-route tools and the market_inventory reader. My read of what the board becomes after that:
+
+PROVISION list → your desk (buy decisions for launch markets).
+FIX list → likely a small dispatch, and the dead-route tools may be the cheapest win in the batch — a wired, credentialed source returning nothing because its route is broken is a code fix, not a purchase.
+FREE-WINS → probably the first dispatch to cut, because free sources that should return data and don't are pure upside (FRED/Census/county GIS filling capsules at zero marginal cost).
+
+The dead-route finding is the one I'm most curious about — if it means a source you're already paying for is returning empty because of a broken endpoint, that's the difference between "the pipeline needs subscriptions" and "the pipeline had a bug hiding as a subscription problem." Which would be a very CREATE-1-arc kind of discovery. Show me the lists.
