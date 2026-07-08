@@ -878,6 +878,13 @@ export class PortfolioCorrelationService {
         //    vacancy_rate, concessions_prevalence per month) before the engine executes.
         //    This gives each property its own per-property execution path — not a
         //    shared city-level result with selective post-hoc overrides.
+        //
+        //    CoStar-firewall (I4): this is a platform-wide calibration job (owned
+        //    portfolio, no single deal owner) — dealId is deliberately left undefined
+        //    so no deal's licensed CoStar upload can bias shared calibration
+        //    coefficients. costar_market_metrics rows are `is_restricted` by default
+        //    and require a matching dealId to be read; omitting it here is the correct,
+        //    structural exclusion, not an oversight.
         const report = await this.engine.computeCorrelationsWithPropertyData(
           prop.city, prop.state, {
             avgOccupancy: avgOcc,

@@ -14,3 +14,14 @@ Full report: `docs/audits/CAPSULE_FILL_LANE_AUDIT.md`.
 - No fine-tuning/prompt-logging firewall exists anywhere: `ai_usage_log`, `skill_chat_messages`, and the pattern-training extraction pipeline (`pattern-extractor.ts`) log/consume all LLM content indiscriminately with no license-source field to even filter on.
 
 **How to apply:** when auditing any "restricted data" claim in this codebase, grep for actual read-side `WHERE`/filter usage of the flag column, not just where it's set. A stored-but-unread flag is the default state here, not the exception.
+
+**Remediation status (2026-07-08):** `costar_market_metrics` (the table actually read by
+COR-21/22/26/27 via city-name `LIKE`, not `market_snapshots` as originally suspected) was fixed:
+added `deal_id`/`is_restricted` columns; every read now requires `AND (is_restricted = FALSE OR
+deal_id = $dealId)`, with restricted rows excluded entirely when no `dealId` is supplied (safe
+default). See `docs/architecture/costar-firewall-enforcement-report.md` for full proof. The
+`market_snapshots` CoStar bridge described above was separately confirmed to be **dead code**
+(geography_id key mismatch) — it doesn't currently move CoStar data anywhere, so it was
+deprioritized rather than fixed. I2 (fine-tuning/prompt-logging firewall) re-audited and found
+`ai_usage_log` is metadata-only (no prompt/completion text column) — no fix needed there; only a
+future agent-tool integration of correlation output would need to apply this same scoping.

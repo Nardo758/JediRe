@@ -169,10 +169,13 @@ export async function synthesizeRepricingCourse(dealId: string, userId?: string)
   let bearishSignals = 0;
   try {
     const engine = new CorrelationEngineService(getPool());
+    // CoStar-firewall (I1): pass the owning dealId so this deal's own CoStar
+    // upload (if any) can feed its own correlation context without leaking to,
+    // or receiving from, any other deal in the same city.
     const report = await engine.computeCorrelationsWithPropertyData(city, state, {
       avgOccupancy:    avgOccupancy ?? undefined,
       avgEffRent:      avgEffRent   ?? undefined,
-    });
+    }, dealId);
     bullishSignals = report.summary.bullishSignals;
     bearishSignals = report.summary.bearishSignals;
   } catch (err) {

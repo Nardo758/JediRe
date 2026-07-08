@@ -180,9 +180,9 @@ async function routeCoStarSubmarket(
            (id, geography_type, geography_id, geography_name, as_of_date,
             avg_asking_rent, avg_occupancy_pct, vacancy_rate,
             net_absorption_units, avg_cap_rate, avg_price_per_unit,
-            units_under_construction, source)
+            units_under_construction, source, deal_id, is_restricted)
          VALUES (gen_random_uuid(), 'submarket', $1, $2, $3::date,
-                 $4, $5, $6, $7, $8, $9, $10, 'costar_extraction')
+                 $4, $5, $6, $7, $8, $9, $10, 'costar_extraction', $1::uuid, TRUE)
          ON CONFLICT (geography_type, geography_id, as_of_date) DO UPDATE SET
            geography_name           = EXCLUDED.geography_name,
            avg_asking_rent          = EXCLUDED.avg_asking_rent,
@@ -191,7 +191,9 @@ async function routeCoStarSubmarket(
            net_absorption_units     = EXCLUDED.net_absorption_units,
            avg_cap_rate             = EXCLUDED.avg_cap_rate,
            avg_price_per_unit       = EXCLUDED.avg_price_per_unit,
-           units_under_construction = EXCLUDED.units_under_construction`,
+           units_under_construction = EXCLUDED.units_under_construction,
+           deal_id                  = EXCLUDED.deal_id,
+           is_restricted            = TRUE`,
         [dealId, submarketLabel, periodDate, askingRentPerUnit, occupancyPct,
          vacancyRate, absorption12mo, capRate, salePricePerUnit, underConstructionUnits],
       );

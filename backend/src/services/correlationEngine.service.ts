@@ -129,7 +129,7 @@ export class CorrelationEngineService {
     this.pool = pool;
   }
 
-  async computeCorrelations(city: string = 'Atlanta', state: string = 'GA'): Promise<CorrelationReport> {
+  async computeCorrelations(city: string = 'Atlanta', state: string = 'GA', dealId?: string): Promise<CorrelationReport> {
     const snapshot = await this.getLatestSnapshot(city, state);
     const trends = await this.getTrendObservations(city);
     const submarkets = await this.getSubmarketData(city);
@@ -159,13 +159,13 @@ export class CorrelationEngineService {
     correlations.push(this.computeCOR20());
 
     const [cor21, cor22, cor23, cor24, cor25, cor26, cor27, cor28, cor29, cor30] = await Promise.all([
-      this.computeCOR21(city),
-      this.computeCOR22(city),
+      this.computeCOR21(city, dealId),
+      this.computeCOR22(city, dealId),
       this.computeCOR23(city),
       this.computeCOR24(city),
       this.computeCOR25(city),
-      this.computeCOR26(city),
-      this.computeCOR27(city),
+      this.computeCOR26(city, dealId),
+      this.computeCOR27(city, dealId),
       this.computeCOR28(city),
       this.computeCOR29(city),
       this.computeCOR30(city),
@@ -204,8 +204,8 @@ export class CorrelationEngineService {
     };
   }
 
-  async computeForProperty(propertyId: string, city: string = 'Atlanta', state: string = 'GA'): Promise<CorrelationReport> {
-    return this.computeCorrelations(city, state);
+  async computeForProperty(propertyId: string, city: string = 'Atlanta', state: string = 'GA', dealId?: string): Promise<CorrelationReport> {
+    return this.computeCorrelations(city, state, dealId);
   }
 
   /**
@@ -238,7 +238,8 @@ export class CorrelationEngineService {
         vacancy_rate: number;           // 0–1 fractional (1 − occupancy_rate)
         concessions_prevalence: number; // 0 or 1 (concession present in month)
       }>;
-    }
+    },
+    dealId?: string
   ): Promise<CorrelationReport> {
     const baseSnapshot = await this.getLatestSnapshot(city, state);
     const baseTrends   = await this.getTrendObservations(city);
@@ -327,13 +328,13 @@ export class CorrelationEngineService {
     correlations.push(this.computeCOR20());
 
     const [cor21, cor22, cor23, cor24, cor25, cor26, cor27, cor28, cor29, cor30] = await Promise.all([
-      this.computeCOR21(city),
-      this.computeCOR22(city),
+      this.computeCOR21(city, dealId),
+      this.computeCOR22(city, dealId),
       this.computeCOR23(city),
       this.computeCOR24(city),
       this.computeCOR25(city),
-      this.computeCOR26(city),
-      this.computeCOR27(city),
+      this.computeCOR26(city, dealId),
+      this.computeCOR27(city, dealId),
       this.computeCOR28(city),
       this.computeCOR29(city),
       this.computeCOR30(city),
@@ -387,7 +388,9 @@ export class CorrelationEngineService {
     opts: { strict?: boolean } = {}
   ): Promise<CorrelationReport & { adjustmentsPersisted: number }> {
     const strict = opts.strict !== false;
-    const report = await this.computeCorrelations(city, state);
+    // CoStar-firewall (I1): this IS the legitimate deal-scoped path — pass dealId
+    // so the deal's own CoStar upload (if any) feeds its own correlation context.
+    const report = await this.computeCorrelations(city, state, dealId);
     const { persistCorrelationsForDeal } = await import('./correlation-adjustments.service');
     try {
       const { persisted } = await persistCorrelationsForDeal(
@@ -1852,7 +1855,7 @@ export class CorrelationEngineService {
     };
   }
 
-  private async computeCOR21(city: string): Promise<CorrelationResult> {
+  private async computeCOR21(city: string, dealId?: string): Promise<CorrelationResult> {
     const base: CorrelationResult = {
       id: 'COR-21',
       name: 'Permit Volume → Rent Growth (18mo lag)',
@@ -1893,23 +1896,31 @@ export class CorrelationEngineService {
       // per spec: yValue = costar_market_metrics.avg_asking_rent time-delta
       interface RentRow { current_rent: string; prior_rent: string }
       let rentGrowthPct: number | null = null;
-      try {
-        const cmRes = await this.pool.query<RentRow>(
-          `SELECT
-             FIRST_VALUE(avg_asking_rent) OVER (ORDER BY as_of_date DESC) AS current_rent,
-             FIRST_VALUE(avg_asking_rent) OVER (ORDER BY as_of_date ASC)  AS prior_rent
-           FROM costar_market_metrics
-           WHERE LOWER(geography_name) LIKE LOWER($1)
-             AND avg_asking_rent IS NOT NULL
-           LIMIT 1`,
-          [`%${city}%`]
-        );
-        if (cmRes.rows.length > 0) {
-          const cur = parseFloat(cmRes.rows[0].current_rent);
-          const prior = parseFloat(cmRes.rows[0].prior_rent);
-          if (prior > 0) rentGrowthPct = parseFloat(((cur - prior) / prior * 100).toFixed(1));
-        }
-      } catch { /* costar_market_metrics not present */ }
+      // CoStar-firewall (I1): costar_market_metrics rows are licensed and deal-scoped
+      // (is_restricted=TRUE). Only the owning deal may read its own rows; without a
+      // dealId, restricted rows are excluded entirely rather than matched by city name.
+      if (dealId) {
+        try {
+          const cmRes = await this.pool.query<RentRow>(
+            `SELECT
+               FIRST_VALUE(avg_asking_rent) OVER (ORDER BY as_of_date DESC) AS current_rent,
+               FIRST_VALUE(avg_asking_rent) OVER (ORDER BY as_of_date ASC)  AS prior_rent
+             FROM costar_market_metrics
+             WHERE LOWER(geography_name) LIKE LOWER($1)
+               AND avg_asking_rent IS NOT NULL
+               AND (is_restricted = FALSE OR deal_id = $2)
+             LIMIT 1`,
+            [`%${city}%`, dealId]
+          );
+          if (cmRes.rows.length > 0) {
+            const cur = parseFloat(cmRes.rows[0].current_rent);
+            const prior = parseFloat(cmRes.rows[0].prior_rent);
+            if (prior > 0) rentGrowthPct = parseFloat(((cur - prior) / prior * 100).toFixed(1));
+          }
+        } catch { /* costar_market_metrics not present */ }
+      } else {
+        base.missingData.push('costar_market_metrics: skipped — licensed/deal-restricted rows require an owning dealId, none provided');
+      }
 
       if (rentGrowthPct === null) {
         base.missingData.push('costar_market_metrics.avg_asking_rent not populated — cannot compute rent growth yValue; confidence insufficient');
@@ -1938,7 +1949,7 @@ export class CorrelationEngineService {
     }
   }
 
-  private async computeCOR22(city: string): Promise<CorrelationResult> {
+  private async computeCOR22(city: string, dealId?: string): Promise<CorrelationResult> {
     const base: CorrelationResult = {
       id: 'COR-22',
       name: 'Job Growth → Absorption (6mo lag)',
@@ -1960,19 +1971,25 @@ export class CorrelationEngineService {
       interface SnapRow { job_growth_yoy: string; net_absorption_units: string; snapshot_date: string }
       let snapRows: SnapRow[] = [];
       let sourceTable = 'costar_market_metrics';
-      try {
-        const costarRes = await this.pool.query<SnapRow>(
-          `SELECT job_growth_yoy, net_absorption_units, as_of_date AS snapshot_date
-           FROM costar_market_metrics
-           WHERE LOWER(geography_name) LIKE LOWER($1)
-             AND job_growth_yoy IS NOT NULL
-             AND net_absorption_units IS NOT NULL
-           ORDER BY as_of_date ASC`,
-          [`%${city}%`]
-        );
-        snapRows = costarRes.rows;
-      } catch {
-        // costar_market_metrics not yet present; fall back to market_snapshots
+      // CoStar-firewall (I1): restricted rows only readable by their owning dealId.
+      if (dealId) {
+        try {
+          const costarRes = await this.pool.query<SnapRow>(
+            `SELECT job_growth_yoy, net_absorption_units, as_of_date AS snapshot_date
+             FROM costar_market_metrics
+             WHERE LOWER(geography_name) LIKE LOWER($1)
+               AND job_growth_yoy IS NOT NULL
+               AND net_absorption_units IS NOT NULL
+               AND (is_restricted = FALSE OR deal_id = $2)
+             ORDER BY as_of_date ASC`,
+            [`%${city}%`, dealId]
+          );
+          snapRows = costarRes.rows;
+        } catch {
+          // costar_market_metrics not yet present; fall back to market_snapshots
+        }
+      } else {
+        base.missingData.push('costar_market_metrics: skipped — licensed/deal-restricted rows require an owning dealId, none provided');
       }
       if (snapRows.length < 2) {
         if (sourceTable === 'costar_market_metrics') {
@@ -2366,7 +2383,7 @@ export class CorrelationEngineService {
     }
   }
 
-  private async computeCOR26(city: string): Promise<CorrelationResult> {
+  private async computeCOR26(city: string, dealId?: string): Promise<CorrelationResult> {
     const base: CorrelationResult = {
       id: 'COR-26',
       name: 'Employer HQ Move → Submarket Absorption',
@@ -2431,27 +2448,34 @@ export class CorrelationEngineService {
       let postAbsorption: number | null = null;
       if (oldestEventDate) {
         let absRows: AbsRow[] = [];
-        try {
-          const [preCm, postCm] = await Promise.all([
-            this.pool.query<AbsRow>(
-              `SELECT ROUND(AVG(net_absorption_units)::numeric, 0) AS avg_absorption, COUNT(*) AS row_count
-               FROM costar_market_metrics
-               WHERE LOWER(geography_name) LIKE LOWER($1) AND as_of_date < $2`,
-              [`%${city}%`, oldestEventDate]
-            ),
-            this.pool.query<AbsRow>(
-              `SELECT ROUND(AVG(net_absorption_units)::numeric, 0) AS avg_absorption, COUNT(*) AS row_count
-               FROM costar_market_metrics
-               WHERE LOWER(geography_name) LIKE LOWER($1) AND as_of_date >= $2`,
-              [`%${city}%`, oldestEventDate]
-            ),
-          ]);
-          if (parseInt(preCm.rows[0]?.row_count ?? '0', 10) > 0 || parseInt(postCm.rows[0]?.row_count ?? '0', 10) > 0) {
-            absRows = [preCm.rows[0], postCm.rows[0]];
-            preAbsorption = parseFloat(preCm.rows[0]?.avg_absorption ?? 'NaN');
-            postAbsorption = parseFloat(postCm.rows[0]?.avg_absorption ?? 'NaN');
-          }
-        } catch { /* costar_market_metrics not present */ }
+        // CoStar-firewall (I1): restricted rows only readable by their owning dealId.
+        if (dealId) {
+          try {
+            const [preCm, postCm] = await Promise.all([
+              this.pool.query<AbsRow>(
+                `SELECT ROUND(AVG(net_absorption_units)::numeric, 0) AS avg_absorption, COUNT(*) AS row_count
+                 FROM costar_market_metrics
+                 WHERE LOWER(geography_name) LIKE LOWER($1) AND as_of_date < $2
+                   AND (is_restricted = FALSE OR deal_id = $3)`,
+                [`%${city}%`, oldestEventDate, dealId]
+              ),
+              this.pool.query<AbsRow>(
+                `SELECT ROUND(AVG(net_absorption_units)::numeric, 0) AS avg_absorption, COUNT(*) AS row_count
+                 FROM costar_market_metrics
+                 WHERE LOWER(geography_name) LIKE LOWER($1) AND as_of_date >= $2
+                   AND (is_restricted = FALSE OR deal_id = $3)`,
+                [`%${city}%`, oldestEventDate, dealId]
+              ),
+            ]);
+            if (parseInt(preCm.rows[0]?.row_count ?? '0', 10) > 0 || parseInt(postCm.rows[0]?.row_count ?? '0', 10) > 0) {
+              absRows = [preCm.rows[0], postCm.rows[0]];
+              preAbsorption = parseFloat(preCm.rows[0]?.avg_absorption ?? 'NaN');
+              postAbsorption = parseFloat(postCm.rows[0]?.avg_absorption ?? 'NaN');
+            }
+          } catch { /* costar_market_metrics not present */ }
+        } else {
+          base.missingData.push('costar_market_metrics: skipped — licensed/deal-restricted rows require an owning dealId, none provided');
+        }
 
         if (absRows.length === 0) {
           // Fall back to market_snapshots
@@ -2509,7 +2533,7 @@ export class CorrelationEngineService {
     }
   }
 
-  private async computeCOR27(city: string): Promise<CorrelationResult> {
+  private async computeCOR27(city: string, dealId?: string): Promise<CorrelationResult> {
     const base: CorrelationResult = {
       id: 'COR-27',
       name: 'Interest Rate → Cap Rate (3mo lag)',
@@ -2554,18 +2578,24 @@ export class CorrelationEngineService {
       // yValue: costar_market_metrics.avg_cap_rate (primary per spec); fall back to market_snapshots
       interface CostarCapRow { avg_cap_rate: string; period_date: string }
       let currentCap: number | null = null;
-      try {
-        const costarRes = await this.pool.query<CostarCapRow>(
-          `SELECT avg_cap_rate, as_of_date
-           FROM costar_market_metrics
-           WHERE LOWER(geography_name) LIKE LOWER($1)
-             AND avg_cap_rate IS NOT NULL
-           ORDER BY as_of_date DESC
-           LIMIT 1`,
-          [`%${city}%`]
-        );
-        if (costarRes.rows.length > 0) currentCap = parseFloat(costarRes.rows[0].avg_cap_rate);
-      } catch { /* costar_market_metrics does not exist */ }
+      // CoStar-firewall (I1): restricted rows only readable by their owning dealId.
+      if (dealId) {
+        try {
+          const costarRes = await this.pool.query<CostarCapRow>(
+            `SELECT avg_cap_rate, as_of_date
+             FROM costar_market_metrics
+             WHERE LOWER(geography_name) LIKE LOWER($1)
+               AND avg_cap_rate IS NOT NULL
+               AND (is_restricted = FALSE OR deal_id = $2)
+             ORDER BY as_of_date DESC
+             LIMIT 1`,
+            [`%${city}%`, dealId]
+          );
+          if (costarRes.rows.length > 0) currentCap = parseFloat(costarRes.rows[0].avg_cap_rate);
+        } catch { /* costar_market_metrics does not exist */ }
+      } else {
+        base.missingData.push('costar_market_metrics: skipped — licensed/deal-restricted rows require an owning dealId, none provided');
+      }
 
       if (currentCap === null) {
         base.missingData.push('costar_market_metrics.avg_cap_rate not populated — trying market_snapshots.avg_cap_rate');

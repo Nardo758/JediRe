@@ -838,9 +838,12 @@ router.get('/:dealId/beat-plan', requireAuth, async (req: AuthenticatedRequest, 
     } else {
       try {
         const engine = new CorrelationEngineService(getPool());
+        // CoStar-firewall (I1): pass the owning dealId so this deal's own CoStar
+        // upload (if any) can feed its own correlation context — without leaking
+        // it to, or receiving it from, any other deal in the same city.
         const report = propertyId
-          ? await engine.computeForProperty(propertyId, city, state)
-          : await engine.computeCorrelations(city, state);
+          ? await engine.computeForProperty(propertyId, city, state, dealId)
+          : await engine.computeCorrelations(city, state, dealId);
 
         const corrs = report.correlations;
         const cor04 = corrs.find((c) => c.id === 'COR-04');
