@@ -47,6 +47,19 @@ router.get('/deals/:dealId/supply', async (req, res) => {
       // Get supply pipeline for this trade area
       const pipeline = await supplySignalService.getSupplyPipeline(tradeAreaId);
       
+      // Handle honest-absence gracefully
+      if ('dataAvailable' in pipeline && !pipeline.dataAvailable) {
+        return res.json({
+          success: true,
+          dealId,
+          tradeAreaId,
+          data: {
+            dataAvailable: false,
+            reason: pipeline.reason
+          }
+        });
+      }
+      
       res.json({
         success: true,
         dealId,
@@ -75,6 +88,17 @@ router.get('/trade-area/:id', async (req, res) => {
     
     const pipeline = await supplySignalService.getSupplyPipeline(tradeAreaId);
     
+    // Handle honest-absence gracefully
+    if ('dataAvailable' in pipeline && !pipeline.dataAvailable) {
+      return res.json({
+        success: true,
+        data: {
+          dataAvailable: false,
+          reason: pipeline.reason
+        }
+      });
+    }
+    
     res.json({
       success: true,
       data: pipeline
@@ -96,6 +120,18 @@ router.get('/trade-area/:id/risk', async (req, res) => {
   try {
     const tradeAreaId = req.params.id;
     const quarter = req.query.quarter as string || '2028-Q1';
+    
+    // Check pipeline availability first
+    const pipelineCheck = await supplySignalService.getSupplyPipeline(tradeAreaId);
+    if ('dataAvailable' in pipelineCheck && !pipelineCheck.dataAvailable) {
+      return res.json({
+        success: true,
+        data: {
+          dataAvailable: false,
+          reason: pipelineCheck.reason
+        }
+      });
+    }
     
     // Get demand data for this trade area/quarter (if available)
     let demandUnits: number | undefined;
@@ -947,6 +983,20 @@ router.get('/market-dynamics/:tradeAreaId', async (req, res) => {
   try {
     const tradeAreaId = req.params.tradeAreaId;
     const quarter = req.query.quarter as string || '2028-Q1';
+    
+    // Check pipeline availability first
+    const pipelineCheck = await supplySignalService.getSupplyPipeline(tradeAreaId);
+    if ('dataAvailable' in pipelineCheck && !pipelineCheck.dataAvailable) {
+      return res.json({
+        success: true,
+        data: {
+          tradeAreaId,
+          quarter,
+          dataAvailable: false,
+          reason: pipelineCheck.reason
+        }
+      });
+    }
     
     // Get demand forecast
     let demandForecast: any = null;

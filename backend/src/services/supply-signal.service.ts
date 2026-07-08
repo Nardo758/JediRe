@@ -266,7 +266,7 @@ class SupplySignalService {
   /**
    * Get supply pipeline for trade area
    */
-  async getSupplyPipeline(tradeAreaId: string | number): Promise<SupplyPipeline> {
+  async getSupplyPipeline(tradeAreaId: string | number): Promise<SupplyPipeline | { dataAvailable: false; reason: string }> {
     // Update pipeline first
     await query(`SELECT update_supply_pipeline($1)`, [tradeAreaId]);
     
@@ -277,22 +277,10 @@ class SupplySignalService {
     );
     
     if (result.rows.length === 0) {
-      // Return empty pipeline
+      // Honest absence — no supply_pipeline row exists for this trade area
       return {
-        tradeAreaId,
-        permittedProjects: 0,
-        permittedUnits: 0,
-        permittedWeightedUnits: 0,
-        constructionProjects: 0,
-        constructionUnits: 0,
-        constructionWeightedUnits: 0,
-        delivered12moProjects: 0,
-        delivered12moUnits: 0,
-        totalPipelineProjects: 0,
-        totalPipelineUnits: 0,
-        totalWeightedUnits: 0,
-        existingUnits: 10000,
-        lastUpdated: new Date()
+        dataAvailable: false,
+        reason: 'no_supply_pipeline_for_trade_area'
       };
     }
     
@@ -303,6 +291,19 @@ class SupplySignalService {
    * Calculate supply risk score for trade area
    */
   async calculateSupplyRisk(
+    tradeAreaId: string | number,
+    quarter: string,
+    demandUnits?: number
+  ): Promise<SupplyRiskScore> {
+    // Get pipeline
+    const pipeline = await this.getSupplyPipeline(tradeAreaId);
+    
+    // Guard against honest-absence
+    if ('dataAvailable' in pipeline && !pipeline.dataAvailable) {
+      throw new Error(`Supply pipeline data unavailable for trade area ${tradeAreaId}: ${pipeline.reason}`);
+    }
+    
+    // Calculate supply risk score: (pipeline ÷ existing) × 100
     tradeAreaId: string | number,
     quarter: string,
     demandUnits?: number

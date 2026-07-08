@@ -129,7 +129,17 @@ export const fetchCostarMetricsTool: ToolDefinition<
         err: err instanceof Error ? err.message : String(err),
       });
 
-      // Return stub so model can handle gracefully
+      // Return honest-absence so model knows data is unavailable, not empty
+      return {
+        msa_id: msaLabel,
+        source_path: 'unavailable',
+        dataAvailable: false,
+        metrics: Object.fromEntries(
+          input.metric_types.map(t => [t, { value: null, unit: null }])
+        ),
+        fetched_at: now,
+        error: err instanceof Error ? err.message : String(err),
+      };
       return {
         msa_id: msaLabel,
         source_path: 'unavailable',
