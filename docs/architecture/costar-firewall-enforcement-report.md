@@ -306,3 +306,126 @@ structurally identical to the pre-I1 `costar_market_metrics` gap. The 23,488 CoS
 the I3-extension target: apply the same `is_restricted`/`deal_id` scoping to `market_snapshots`
 and `metric_time_series` when that dispatch is executed. Do not expand any calibration job to read
 these tables before that scoping is in place.
+
+---
+
+## I1-EXTENSION — Scope the Populated Tables (2026-07-08)
+
+### Why I1 missed this
+
+I1 closed `costar_market_metrics` preventively — that table was **empty** (0 rows). The same
+structural defect (no deal_id / redistribution_restricted enforcement) existed on `metric_time_series`
+and `market_snapshots`, but those tables had data. A 23,488-row live leak hid behind an empty
+sibling table. **Lesson: verify with queries, never code review.** The Tier-1-close real-query pass
+(C1) is what surfaced it.
+
+### E0 — Lineage probe (read-only)
+
+| Table | CoStar rows | deal_id populated? | Verdict |
+|---|---|---|---|
+| costar_submarket_stats | 125 | YES — all → deal `3f32276f` (Bishop) | LINEAGE-RECOVERABLE |
+| metric_time_series | 23,488 | NO (before fix) — scope_id='GLOBAL', redistribution_restricted=false | LINEAGE-RECOVERABLE (Bishop is only CoStar-uploading deal on platform) |
+| market_snapshots | 40 listing 'costar_market_metrics' in data_sources | NO | FALSE POSITIVE — costar_market_metrics had 0 rows; no actual CoStar values in these snapshots (avg_occupancy_pct=null; asking_rent from apartment_locator_properties fallback) |
+| vendor_market_observations | 1 (CoStar) | NO — deal_id=null | CI test artifact (file_id='`__costar-integration-test-ci-*`'); quarantine as restricted |
+
+All 23,488 metric_time_series CoStar rows are attributable to Bishop (deal `3f32276f`) — it is the
+only deal with a CoStar upload on this platform. **LINEAGE-RECOVERABLE across all tables.**
+
+### E1 — Structural fix
+
+**Migration:** `backend/src/database/migrations/20260708_i1_extension_deal_scope.sql`
+
+- `metric_time_series`: added `deal_id UUID REFERENCES deals(id) ON DELETE SET NULL` + index
+- `market_snapshots`: added `deal_id UUID` + `is_restricted BOOLEAN NOT NULL DEFAULT FALSE` + index
+- `metric_time_series` write-path guard trigger (`trg_mts_restricted_source_guard`): any row with
+  `source ILIKE '%costar%'` MUST have `redistribution_restricted = TRUE` AND `deal_id IS NOT NULL`
+  or the INSERT/UPDATE raises an exception. Derivations that cannot resolve a single owning deal
+  must not write a restricted-derived row at all (derivation-chain rule, operator-ratified).
+
+**correlationEngine.service.ts read-path fix:**
+- `computeTimeSeriesCorrelations` and `computePairCorrelation` both accept an optional `dealId?`
+  parameter (additive, all existing callers unaffected).
+- GLOBAL scope (no dealId): scopeClause adds `AND redistribution_restricted = FALSE` — CoStar rows
+  are invisible to platform-wide correlation computation.
+- Deal scope (with dealId): scopeClause adds `AND (redistribution_restricted = FALSE OR deal_id =
+  $N::uuid)` — owning deal sees its own CoStar rows; all others see nothing.
+
+### E2 — Row dispositions
+
+```
+UPDATE metric_time_series
+SET redistribution_restricted = TRUE, deal_id = '3f32276f-aacd-4da3-b306-317c5109b403'
+WHERE source ILIKE '%costar%';
+```
+
+| Table | Attributed | Quarantined | Deleted |
+|---|---|---|---|
+| metric_time_series | 23,488 → deal 3f32276f | 0 | 0 |
+| costar_submarket_stats | already attributed (no action) | 0 | 0 |
+| market_snapshots | 0 (false positives — no actual CoStar values) | 0 | 0 |
+| vendor_market_observations | 0 (CI artifact, no owning deal) | stays deal_id=null, vendor_license_posture='restricted' already set | 0 |
+
+Nothing deleted. Purge decision remains with counsel.
+
+### E3 — Proof (both halves, S1-01 pasted output)
+
+**E3.1 — Backfill verification (live query output):**
+```
+total_costar: "23488"
+correctly_restricted: "23488"   ← all 23,488 now redistribution_restricted=TRUE
+still_unrestricted: "0"         ← none remaining unguarded
+has_deal_id: "23488"            ← all attributed to Bishop
+missing_deal_id: "0"            ← no unattributed CoStar rows
+```
+
+**E3.2 — Leak closed (GLOBAL query, Midtown Atlanta submarket apt-1-10119):**
+```
+CoStar rows visible to GLOBAL scope query: 0  (expect 0) ✓
+```
+A non-owning deal / anonymous query for any Atlanta geography sees zero CoStar-derived rows.
+
+**E3.3 — Feature preserved (Bishop's rows still accessible):**
+```
+Bishop-owned CoStar rows retrievable: 23488  (expect 23488) ✓
+```
+When `deal_id = '3f32276f-...'` is passed to the compute path, all 23,488 rows are included
+unchanged — owning deal's correlation signal is unmodified.
+
+**E3.4 — Quarantine effective:**
+```
+Unattributed/unrestricted CoStar rows remaining: 0  (expect 0) ✓
+```
+
+**E3.5 — Write-path guard fires (three scenarios):**
+```
+1. INSERT source='costar', redistribution_restricted=FALSE, deal_id=NULL
+   → PASS: guard fired: "CoStar-sourced metric_time_series rows must set
+     redistribution_restricted=TRUE (metric_id=CS_TEST, source=costar)"
+
+2. INSERT source='costar', redistribution_restricted=TRUE, deal_id=NULL
+   → PASS: guard fired: "CoStar-sourced metric_time_series rows must have deal_id set —
+     unattributed restricted data is prohibited (metric_id=CS_TEST, ...)"
+
+3. INSERT source='costar', redistribution_restricted=TRUE, deal_id='3f32276f-...'
+   → PASS: valid insert accepted (guard allows correctly-attributed restricted rows)
+```
+
+### E4 — Standing lesson
+
+**Verify with queries, never code review.** The original I1 pass reviewed `costar_market_metrics`
+(empty — 0 rows; preventive fix was complete). `metric_time_series` and `market_snapshots` were
+not queried. A 23,488-row live leak was invisible in code review because the vector was a different
+table, and the sibling table's emptiness created false confidence. The Tier-1 real-query pass
+(C1) caught it in one query.
+
+**Structural rule now enforced:** `deal_id` from birth + derivation-chain inheritance + DB-level
+write-path guard. A CoStar-derived row that cannot name its owning deal cannot be written to
+`metric_time_series`. Cross-deal CoStar aggregates are prohibited by the guard.
+
+**Future extension:** `computeTimeSeriesCorrelationsAsOf` (line ~3502 in correlationEngine.service.ts)
+uses the same scopeClause pattern and should receive the same `redistribution_restricted` filter
+when CoStar historical data is ever added. Tag in that dispatch.
+
+### Files changed (I1-EXTENSION)
+- `backend/src/database/migrations/20260708_i1_extension_deal_scope.sql` (new)
+- `backend/src/services/correlationEngine.service.ts` — `computeTimeSeriesCorrelations` + `computePairCorrelation`

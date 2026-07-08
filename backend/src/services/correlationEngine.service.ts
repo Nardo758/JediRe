@@ -418,13 +418,31 @@ export class CorrelationEngineService {
     geographyType: string,
     geographyId: string,
     windowMonths: number = 36,
-    scope: string = 'GLOBAL'
+    scope: string = 'GLOBAL',
+    dealId?: string
   ): Promise<void> {
     try {
-      const scopeClause = scope === 'GLOBAL'
-        ? "AND scope_id = 'GLOBAL'"
-        : "AND scope_id IN ('GLOBAL', $3)";
-      const scopeParam = scope === 'GLOBAL' ? [] : [scope];
+      // I1-EXTENSION: exclude redistribution_restricted rows from GLOBAL scope.
+      // When dealId is provided, also include that deal's own restricted rows.
+      let scopeClause: string;
+      let scopeParam: string[];
+      if (scope === 'GLOBAL') {
+        if (dealId) {
+          scopeClause = `AND scope_id = 'GLOBAL' AND (redistribution_restricted = FALSE OR deal_id = $3::uuid)`;
+          scopeParam = [dealId];
+        } else {
+          scopeClause = `AND scope_id = 'GLOBAL' AND redistribution_restricted = FALSE`;
+          scopeParam = [];
+        }
+      } else {
+        if (dealId) {
+          scopeClause = `AND scope_id IN ('GLOBAL', $3) AND (redistribution_restricted = FALSE OR deal_id = $4::uuid)`;
+          scopeParam = [scope, dealId];
+        } else {
+          scopeClause = `AND scope_id IN ('GLOBAL', $3) AND redistribution_restricted = FALSE`;
+          scopeParam = [scope];
+        }
+      }
 
       // Step 1: Get all metrics with sufficient data for this geography
       const metricsRes = await this.pool.query(
@@ -457,7 +475,8 @@ export class CorrelationEngineService {
             geographyType,
             geographyId,
             windowMonths,
-            scope
+            scope,
+            dealId
           );
 
           if (correlation) {
@@ -488,14 +507,33 @@ export class CorrelationEngineService {
     geographyType: string,
     geographyId: string,
     windowMonths: number,
-    scope: string = 'GLOBAL'
+    scope: string = 'GLOBAL',
+    dealId?: string
   ): Promise<boolean> {
     const [metricA, metricB] = [rawMetricA, rawMetricB].sort();
     try {
-      const scopeClause = scope === 'GLOBAL'
-        ? "AND scope_id = 'GLOBAL'"
-        : "AND scope_id IN ('GLOBAL', $5)";
-      const scopeParam = scope === 'GLOBAL' ? [] : [scope];
+      // I1-EXTENSION: exclude redistribution_restricted rows from GLOBAL scope.
+      // Base params: $1=metricA, $2=geographyType, $3=geographyId, $4=metricB.
+      // scopeParam starts at $5.
+      let scopeClause: string;
+      let scopeParam: string[];
+      if (scope === 'GLOBAL') {
+        if (dealId) {
+          scopeClause = `AND scope_id = 'GLOBAL' AND (redistribution_restricted = FALSE OR deal_id = $5::uuid)`;
+          scopeParam = [dealId];
+        } else {
+          scopeClause = `AND scope_id = 'GLOBAL' AND redistribution_restricted = FALSE`;
+          scopeParam = [];
+        }
+      } else {
+        if (dealId) {
+          scopeClause = `AND scope_id IN ('GLOBAL', $5) AND (redistribution_restricted = FALSE OR deal_id = $6::uuid)`;
+          scopeParam = [scope, dealId];
+        } else {
+          scopeClause = `AND scope_id IN ('GLOBAL', $5) AND redistribution_restricted = FALSE`;
+          scopeParam = [scope];
+        }
+      }
 
       const windowClause = windowMonths > 0
         ? `AND ts_a.period_date >= (NOW() - INTERVAL '${windowMonths} months')`
