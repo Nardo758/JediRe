@@ -44,9 +44,11 @@
  *
  * ─── Resolution chain (in priority order) ────────────────────────────────────
  *   1. Operator override   (year1[field].override  — user-pinned value)
- *   2. Engine A computed   (for aggregate fields: EGI−total_opex etc.)
- *   3. Agent layer         (year1[field].agent — agent-written intermediate)
- *   4. Stored resolved     (year1[field].resolved — seeder's best value, already
+ *   2. Per-year override   (deal_assumptions.per_year_overrides)
+ *   3. Agent confirmed     (year1[field].agent_confirmed — D3 seam, operator-verified)
+ *   4. Engine A computed   (for aggregate fields: EGI−total_opex etc.)
+ *   5. Agent layer         (year1[field].agent — legacy pre-D3 agent writes)
+ *   6. Stored resolved     (year1[field].resolved — seeder's best value, already
  *                           incorporates the seeder's own t12 > om > broker pass)
  *
  * ─── Computed aggregate fields ───────────────────────────────────────────────
@@ -86,7 +88,7 @@ import { recordDivergenceObservation } from './divergence-ledger.stub';
  * Surfaced in the Validation Grid under the "CONTESTED" badge.
  */
 export interface DivergencePoint {
-  layer: 'override' | 'computedValue' | 'agent' | 't12' | 'om' | 'broker' | 'storedResolved';
+  layer: 'override' | 'computedValue' | 'agentConfirmed' | 'agent' | 't12' | 'om' | 'broker' | 'storedResolved';
   label: string;
   value: number;
   /**
@@ -160,7 +162,9 @@ export interface LayeredFieldValue {
   perYearOverride: number | null;
   /** Layer 2 (Engine A): computed aggregate value (noi, noi_after_reserves). */
   computedValue: number | null;
-  /** Layer 3: agent-written value. */
+  /** Layer 2b: agent-confirmed value (D3 seam — above Engine A, below overrides). */
+  agentConfirmed: number | null;
+  /** Layer 3: legacy agent-written value (below Engine A for backward compat). */
   agent: number | null;
   /** Individual source layers (for transparency / audit). */
   t12: number | null;
@@ -277,6 +281,7 @@ function extractNum(v: unknown): number | null {
 const LAYER_LABELS: Record<string, string> = {
   override:       'Operator Override',
   computedValue:  'Engine A Computed',
+  agentConfirmed: 'Agent Confirmed',
   agent:          'Agent Derived',
   t12:            'T-12 Document',
   om:             'OM Narrative',
@@ -340,6 +345,7 @@ function buildDivergenceSignature(
     override: number | null;
     perYearOverride: number | null;
     computedValue: number | null;
+    agentConfirmed: number | null;
     agent: number | null;
     t12: number | null;
     om: number | null;
@@ -356,6 +362,7 @@ function buildDivergenceSignature(
 
   push('override', layers.override);
   push('computedValue', layers.computedValue);
+  push('agentConfirmed', layers.agentConfirmed);
   push('agent', layers.agent);
   push('t12', layers.t12);
   push('om', layers.om);
@@ -425,7 +432,7 @@ function parseLv(raw: unknown): Record<string, unknown> | null {
  * plus any pre-computed Engine A value.
  *
  * Resolution priority:
- *   override > computed (Engine A) > agent > storedResolved
+ *   override > perYearOverride > agent_confirmed > computed (Engine A) > agent > storedResolved
  */
 function resolveLayeredValue(
   lv: Record<string, unknown>,
@@ -435,6 +442,7 @@ function resolveLayeredValue(
 ): Pick<LayeredFieldValue, 'resolved' | 'resolution' | 'source'> {
   const override      = extractNum(lv.override);
   const agent         = extractNum(lv.agent);
+  const agentConfirmed = extractNum(lv.agent_confirmed);
   const storedResolved = extractNum(lv.resolved);
   const storedSource  = typeof lv.source === 'string' ? lv.source : null;
   const storedRes     = typeof lv.resolution === 'string' ? lv.resolution : null;
@@ -444,21 +452,28 @@ function resolveLayeredValue(
   let resolution: string | null = storedRes;
   let source: string | null = storedSource;
 
-  // Agent layer overrides seeder's stored value
+  // Legacy agent layer — below Engine A (backward compat for pre-D3 data)
   if (agent != null) {
     resolved   = agent;
     resolution = storedRes && storedRes.startsWith('agent') ? storedRes : 'agent:cashflow';
     source     = storedSource && storedSource.startsWith('agent') ? storedSource : 'agent:cashflow';
   }
 
-  // Engine A computed overrides agent (unless operator override present)
+  // Engine A computed overrides legacy agent (unless operator override present)
   if (computedValue != null && override == null) {
     resolved   = computedValue;
     resolution = 'engine:cashflow';
     source     = 'engine:cashflow';
   }
 
-  // Per-year override from deal_assumptions.per_year_overrides overrides computed/agent
+  // D3 seam: agent_confirmed layer — ABOVE Engine A, below perYearOverride/override
+  if (agentConfirmed != null && override == null) {
+    resolved   = agentConfirmed;
+    resolution = 'agent_confirmed';
+    source     = storedSource && storedSource.startsWith('agent') ? storedSource : 'agent_confirmed';
+  }
+
+  // Per-year override from deal_assumptions.per_year_overrides overrides agent_confirmed
   if (perYearOverride != null && override == null) {
     resolved   = perYearOverride;
     resolution = 'per_year_override';
@@ -548,6 +563,7 @@ export async function getFieldValue(
 
   const override       = extractNum(lv.override);
   const agent          = extractNum(lv.agent);
+  const agentConfirmed = extractNum(lv.agent_confirmed);
   const t12            = extractNum(lv.t12);
   const om             = extractNum(lv.om);
   const broker         = extractNum(lv.broker);
@@ -557,8 +573,8 @@ export async function getFieldValue(
 
   // Compute Engine A formula if applicable.
   // Dependency resolution: each dep is resolved through its own layered chain
-  // (override > agent > storedResolved) so operator overrides on egi/total_opex
-  // propagate correctly into the NOI computation.
+  // (override > agent_confirmed > computed > agent > storedResolved) so operator
+  // overrides on egi/total_opex propagate correctly into the NOI computation.
   // Skip formula if using a legacy alias — aliases store scalar resolved only.
   // DC-30: Preserve OM-extracted values (storedSource === 'om') unless the user
   // explicitly overrides the field itself. This prevents the computed formula
@@ -594,7 +610,7 @@ export async function getFieldValue(
   const { resolved, resolution, source } = resolveLayeredValue(lv, computedValue, computedAs, perYearOverride);
 
   const divergenceSignature = buildDivergenceSignature(fieldName, {
-    override, perYearOverride, computedValue, agent, t12, om, broker, storedResolved,
+    override, perYearOverride, computedValue, agentConfirmed, agent, t12, om, broker, storedResolved,
   }, resolved);
 
   return {
@@ -604,6 +620,7 @@ export async function getFieldValue(
     override,
     perYearOverride,
     computedValue,
+    agentConfirmed,
     agent,
     t12,
     om,
@@ -730,6 +747,7 @@ export async function getFieldValues(
 
     const override      = extractNum(lv.override);
     const agent         = extractNum(lv.agent);
+    const agentConfirmed = extractNum(lv.agent_confirmed);
     const t12           = extractNum(lv.t12);
     const om            = extractNum(lv.om);
     const broker        = extractNum(lv.broker);
@@ -776,7 +794,7 @@ export async function getFieldValues(
     );
 
     const divergenceSignature = buildDivergenceSignature(fieldName, {
-      override, perYearOverride, computedValue, agent, t12, om, broker, storedResolved,
+      override, perYearOverride, computedValue, agentConfirmed, agent, t12, om, broker, storedResolved,
     }, resolved);
 
     // Piece D: emit ledger observation at divergence-detection time so any
@@ -795,7 +813,7 @@ export async function getFieldValues(
     }
 
     result[fieldName] = {
-      fieldName, year, resolved, override, perYearOverride, computedValue, agent,
+      fieldName, year, resolved, override, perYearOverride, computedValue, agentConfirmed, agent,
       t12, om, broker, storedResolved, resolution, source, computedAs,
       divergenceSignature,
     };

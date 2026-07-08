@@ -551,6 +551,16 @@ export interface LayeredValue<T = number> {
   aged_ar?: T | null;
   om?: T | null;
   override: T | null;
+  /**
+   * Agent-written value that has been CONFIRMED by the operator or
+   * system.  This layer sits ABOVE Engine A computed values and BELOW
+   * per-year / operator overrides.  It is the canonical slot for agent
+   * assumption writes (D3 seam).
+   *
+   * Resolution order: storedResolved < Engine A < agent_confirmed < perYearOverride < override
+   */
+  agent_confirmed?: T | null;
+  resolved: T | null;
   resolved: T | null;
   resolution:
     | 'platform'
