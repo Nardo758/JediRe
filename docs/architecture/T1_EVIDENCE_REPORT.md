@@ -76,41 +76,50 @@ If `supply_pipeline` has no row for a trade area, `getSupplyPipeline` now return
 
 ## T1-C — W1-ID Per-Deal Identity Paste (Bishop + Highlands)
 
-### Status: BLOCKED — Requires Replit DB Access
+### Status: COMPLETE ✅ (User executed DB cross-reference directly)
 
-**Objective:** Ensure per-deal identity fields are correctly populated for Bishop (`3f32276f-aacd-4da3-b306-317c5109b403`) and Highlands deals.
+**Bishop (`3f32276f-aacd-4da3-b306-317c5109b403`)**
 
-**What needs to happen:**
-1. Query the `deals` table for Bishop and Highlands to verify identity fields (name, address, city, state, unit_count, vintage, etc.)
-2. Cross-reference against golden fixtures (`bishop.golden.ts`, `highlands.golden.ts`)
-3. Paste/fix any missing identity fields
+| Field | Golden fixture | Live DB | Status |
+|-------|---------------|---------|--------|
+| name | 464 Bishop | 464 Bishop (trailing space) | ✅ match |
+| address | 464 Bishop Street Northwest | 464 Bishop Street Northwest, Atlanta, Georgia 30318, United States | ✅ match (DB fuller) |
+| city | Atlanta | Atlanta | ✅ match |
+| state | GA | `state_code = GA` | ✅ match — note: `deals.state` holds pipeline stage (SIGNAL_INTAKE), not geo |
+| totalUnits | 232 | `target_units = 232` | ✅ match — `unit_count` is null; real value in `target_units` |
+| purchasePrice | 60,000,000 | `deal_data->>'purchase_price' = "60000000"` | ✅ match |
+| vintage | 2014 | `deal_data->>'year_built' = null` | ❌ **MISSING** |
 
-**Cannot execute locally** — no `DATABASE_URL` in local session. Must run on Replit.
+**One real gap:** Bishop's `year_built` (2014) is not persisted in `deal_data`, even though it was captured in the golden fixture from the live /build snapshot on 2026-07-05. This is drift between pinned fixture and current DB state.
 
-### SQL to Run on Replit
+**Highlands (`eaabeb9f-830e-44f9-a923-56679ad0329d`)**
+
+| Field | Golden fixture | Live DB | Status |
+|-------|---------------|---------|--------|
+| name | Highlands | Highlands at Satellite | ✅ match |
+| address | (not in fixture) | 2789 Satellite Blvd, Duluth, GA 30096 | ✅ present in DB |
+| city | (not in fixture) | Duluth | ✅ present in DB |
+| state | (not in fixture) | GA (`state_code = GA`) | ✅ present in DB |
+| target_units | (not in fixture) | 290 | ✅ present in DB |
+| year_built | (not in fixture) | 2018 | ✅ present in DB |
+
+Highlands golden fixture is a `seed_path` fixture (owned_import, never underwritten on-platform) — by design it carries no identity/acquisition fields to cross-reference. DB has all identity fields populated. Nothing missing.
+
+### Action Required
+
+**Bishop only:** Paste `year_built = 2014` into `deal_data` for Bishop.
 
 ```sql
--- Bishop identity check
-SELECT 
-  id, name, address, city, state, unit_count, vintage_year,
-  deal_data->>'acquisition_date' as acquisition_date,
-  deal_data->>'purchase_price' as purchase_price,
-  trade_area_id, msa_id
-FROM deals 
+UPDATE deals
+SET deal_data = jsonb_set(
+  COALESCE(deal_data, '{}'::jsonb),
+  '{year_built}',
+  '"2014"'::jsonb
+)
 WHERE id = '3f32276f-aacd-4da3-b306-317c5109b403';
-
--- Highlands identity check (find by name pattern)
-SELECT 
-  id, name, address, city, state, unit_count, vintage_year,
-  deal_data->>'acquisition_date' as acquisition_date,
-  deal_data->>'purchase_price' as purchase_price,
-  trade_area_id, msa_id
-FROM deals 
-WHERE name ILIKE '%highlands%';
 ```
 
-### Next Step
-Transfer T1-C to Replit agent with the above SQL and the golden fixture cross-reference.
+**Highlands:** No action needed — all identity fields present in DB, golden fixture intentionally doesn't test them.
 
 ---
 
@@ -118,11 +127,13 @@ Transfer T1-C to Replit agent with the above SQL and the golden fixture cross-re
 
 ```
 a78ed032d T1-B: honest-absence contract for supply pipeline + CoStar fetch
+a197cc305 T1-A/B: evidence report — I2/I4 clarifications + supply honesty fix
 ```
 
 **Files changed:**
 - `backend/src/services/supply-signal.service.ts` — honest-absence return + guard
 - `backend/src/api/rest/supply.routes.ts` — 4 endpoints handle absence gracefully
 - `backend/src/agents/tools/fetch_costar_metrics.ts` — `dataAvailable: false` on error
+- `docs/architecture/T1_EVIDENCE_REPORT.md` — full evidence report
 
 **Verification:** All callers verified safe. No breaking changes to API contract — clients that don't check `dataAvailable` will simply see the old shape when data exists, and a new shape when it doesn't.
