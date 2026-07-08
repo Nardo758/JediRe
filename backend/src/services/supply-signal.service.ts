@@ -302,17 +302,10 @@ class SupplySignalService {
     if ('dataAvailable' in pipeline && !pipeline.dataAvailable) {
       throw new Error(`Supply pipeline data unavailable for trade area ${tradeAreaId}: ${pipeline.reason}`);
     }
-    
+    const p = pipeline as SupplyPipeline;
+
     // Calculate supply risk score: (pipeline ÷ existing) × 100
-    tradeAreaId: string | number,
-    quarter: string,
-    demandUnits?: number
-  ): Promise<SupplyRiskScore> {
-    // Get pipeline
-    const pipeline = await this.getSupplyPipeline(tradeAreaId);
-    
-    // Calculate supply risk score: (pipeline ÷ existing) × 100
-    const supplyRiskScore = (pipeline.totalWeightedUnits / pipeline.existingUnits) * 100;
+    const supplyRiskScore = (p.totalWeightedUnits / p.existingUnits) * 100;
     
     // Determine risk level
     let riskLevel: 'low' | 'medium' | 'high' | 'critical' = 'low';
@@ -321,26 +314,26 @@ class SupplySignalService {
     else if (supplyRiskScore >= 10) riskLevel = 'medium';
     
     // Calculate absorption metrics
-    const historicalMonthlyAbsorption = pipeline.existingUnits * 0.015; // 1.5% per month (placeholder)
-    const monthsToAbsorb = pipeline.totalWeightedUnits / historicalMonthlyAbsorption;
-    
+    const historicalMonthlyAbsorption = p.existingUnits * 0.015; // 1.5% per month (placeholder)
+    const monthsToAbsorb = p.totalWeightedUnits / historicalMonthlyAbsorption;
+
     let absorptionRisk: 'low' | 'medium' | 'high' | 'critical' = 'low';
     if (monthsToAbsorb > 36) absorptionRisk = 'critical';
     else if (monthsToAbsorb > 24) absorptionRisk = 'high';
     else if (monthsToAbsorb > 12) absorptionRisk = 'medium';
-    
+
     // Demand-supply gap (if demand data provided)
     let demandSupplyGap: number | undefined;
     let netMarketPressure: number | undefined;
-    
+
     if (demandUnits !== undefined) {
-      demandSupplyGap = demandUnits - pipeline.totalWeightedUnits;
-      netMarketPressure = (demandSupplyGap / pipeline.existingUnits) * 100;
+      demandSupplyGap = demandUnits - p.totalWeightedUnits;
+      netMarketPressure = (demandSupplyGap / p.existingUnits) * 100;
     }
-    
+
     // Parse quarter dates
     const quarterDates = this.parseQuarter(quarter);
-    
+
     // Upsert supply risk score
     await query(
       `INSERT INTO supply_risk_scores (
@@ -364,9 +357,9 @@ class SupplySignalService {
       [
         tradeAreaId,
         quarter,
-        pipeline.totalPipelineUnits,
-        pipeline.totalWeightedUnits,
-        pipeline.existingUnits,
+        p.totalPipelineUnits,
+        p.totalWeightedUnits,
+        p.existingUnits,
         supplyRiskScore,
         riskLevel,
         historicalMonthlyAbsorption,
@@ -377,7 +370,7 @@ class SupplySignalService {
         netMarketPressure
       ]
     );
-    
+
     logger.info('Supply risk calculated', {
       tradeAreaId,
       quarter,
@@ -385,13 +378,13 @@ class SupplySignalService {
       riskLevel,
       monthsToAbsorb
     });
-    
+
     return {
       tradeAreaId,
       quarter,
-      pipelineUnits: pipeline.totalPipelineUnits,
-      weightedPipelineUnits: pipeline.totalWeightedUnits,
-      existingUnits: pipeline.existingUnits,
+      pipelineUnits: p.totalPipelineUnits,
+      weightedPipelineUnits: p.totalWeightedUnits,
+      existingUnits: p.existingUnits,
       supplyRiskScore: parseFloat(supplyRiskScore.toFixed(2)),
       riskLevel,
       monthsToAbsorb: parseFloat(monthsToAbsorb.toFixed(2)),
