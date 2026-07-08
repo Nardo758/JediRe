@@ -11,3 +11,4 @@
 - [Git push workaround in this env](git-push-workaround.md) — bash tool blocks writes under .git/; code_execution has no process.env; relay GH token via a temp file bash writes and code_execution reads/deletes
 - [F-P1 Phase 2 arc decisions](fp1-phase2-arc.md) — R9 scalar retirement writes removed (not dropped yet); R6 extract seam at tax-schedule-extract.ts; runner re-exports removed (no external consumers)
 - [Scenario decomposition skip-key contract](scenario-decomp-skip-keys.md) — decomposer and verifier must share DECOMP_SKIP_KEYS; all _-prefixed keys are metadata and must be excluded from overlays
+- [D3 agent seam audit findings](d3-seam-audit.md) — agent slot < Engine A in resolution; update_assumption bypasses overlays; Evidence not persisted; 8 rulings pending
