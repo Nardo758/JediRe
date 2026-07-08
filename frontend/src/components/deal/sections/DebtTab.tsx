@@ -69,7 +69,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<TabId>('exit-overview');
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('rental_value_add');
-  const [layers, setLayers] = useState<CapitalLayer[]>(defaultCapitalStack.layers);
+  const [layers, setLayers] = useState<CapitalLayer[]>([]);
 
   const [liveDebtProducts, setLiveDebtProducts] = useState<any>(null);
   const [liveRateData, setLiveRateData] = useState<any>(null);
@@ -99,13 +99,13 @@ export const DebtTab: React.FC<DebtTabProps> = ({
     financial,
     capitalStructure,
     updateCapitalStructure,
+    debtTerms,
     strategy: strategyCtx,
     emitEvent,
     lastEvent,
   } = useDealModule();
 
   const template = strategyTemplates[selectedStrategy];
-  const stack = defaultCapitalStack;
 
   // W-10 (CE-12): Fetch M35 supply pressure + JEDI demand score for the
   // Exit Windows / Sensitivity tabs on mount.  Results flow into exitConfig
@@ -279,7 +279,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
       const incoming = lastEvent.payload.strategy as StrategyType;
       if (incoming !== selectedStrategy && strategyTemplates[incoming]) {
         setSelectedStrategy(incoming);
-        setLayers(strategyTemplates[incoming].defaultStack?.layers || defaultCapitalStack.layers);
+        setLayers(strategyTemplates[incoming].defaultStack?.layers || []);
       }
     }
   // hook intentionally captures selectedStrategy via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
@@ -414,7 +414,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
             key={key}
             onClick={() => {
               setSelectedStrategy(key);
-              setLayers(strategyTemplates[key].defaultStack?.layers || defaultCapitalStack.layers);
+              setLayers(strategyTemplates[key].defaultStack?.layers || []);
               emitEvent({
                 source: 'M11-capital-structure',
                 type: 'strategy-selected',
@@ -1013,21 +1013,28 @@ export const DebtTab: React.FC<DebtTabProps> = ({
 
       <div className="bg-white rounded-lg border border-gray-200 p-6">
         <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Debt Output for Financial Dashboard</h4>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {[
-            { label: 'Annual Debt Service', value: fmtM(stack.metrics.totalDebt * (layers.find(l => l.layerType === 'senior')?.rate || 0) / 100) },
-            { label: 'WACC', value: fmtPct(stack.metrics.weightedAvgCostOfCapital) },
-            { label: 'Equity Required', value: fmtM(stack.metrics.equityRequired) },
-            { label: 'Senior Rate', value: fmtPct(layers.find(l => l.layerType === 'senior')?.rate || 0) },
-            { label: 'Senior Term', value: `${layers.find(l => l.layerType === 'senior')?.term || 0} months` },
-            { label: 'Structure', value: `${(stack.metrics.ltv ?? 0).toFixed(0)}% LTV` },
-          ].map((item) => (
-            <div key={item.label} className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-              <div className="text-xs text-gray-500 uppercase">{item.label}</div>
-              <div className="text-sm font-semibold text-gray-900 mt-1">{item.value}</div>
-            </div>
-          ))}
-        </div>
+        {!capitalStructure ? (
+          <div className="py-6 text-center border border-dashed border-gray-200 rounded-lg">
+            <div className="text-sm text-gray-500 mb-1">No model data</div>
+            <div className="text-xs text-gray-400">Build the financial model to populate financing metrics.</div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {[
+              { label: 'Annual Debt Service', value: fmtM(capitalStructure.annualDebtService) },
+              { label: 'WACC', value: fmtPct(capitalStructure.weightedCostOfCapital) },
+              { label: 'Equity Required', value: fmtM(capitalStructure.totalEquity) },
+              { label: 'Senior Rate', value: fmtPct(debtTerms?.interestRate ?? layers.find(l => l.layerType === 'senior')?.rate ?? 0) },
+              { label: 'Senior Term', value: `${debtTerms?.term ?? layers.find(l => l.layerType === 'senior')?.term ?? 0} months` },
+              { label: 'Structure', value: `${(capitalStructure.ltv ?? 0).toFixed(0)}% LTV` },
+            ].map((item) => (
+              <div key={item.label} className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                <div className="text-xs text-gray-500 uppercase">{item.label}</div>
+                <div className="text-sm font-semibold text-gray-900 mt-1">{item.value}</div>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
           These values are consumed by the Financial Dashboard to build Base/Best/Worst model variations.
         </div>

@@ -86,7 +86,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
 }) => {
   const [activeTab, setActiveTab] = useState<TabId>('debt');
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('rental_value_add');
-  const [layers, setLayers] = useState<CapitalLayer[]>(defaultCapitalStack.layers);
+  const [layers, setLayers] = useState<CapitalLayer[]>([]);
 
   const [liveStack, setLiveStack] = useState<any>(null);
   const [liveDebtProducts, setLiveDebtProducts] = useState<any>(null);
@@ -113,7 +113,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   } = useDealModule();
 
   const template = strategyTemplates[selectedStrategy];
-  const stack = liveStack || defaultCapitalStack;
+  const stack = liveStack;
 
   const markTabLoading = useCallback((tab: TabId, loading: boolean) => {
     setTabLoading(prev => ({ ...prev, [tab]: loading }));
@@ -317,7 +317,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       const incoming = lastEvent.payload.strategy as StrategyType;
       if (incoming !== selectedStrategy && strategyTemplates[incoming]) {
         setSelectedStrategy(incoming);
-        setLayers(strategyTemplates[incoming].defaultStack?.layers || defaultCapitalStack.layers);
+        setLayers(strategyTemplates[incoming].defaultStack?.layers || []);
       }
     }
   }, [lastEvent, selectedStrategy]);
@@ -387,7 +387,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
 
   // Sources = Uses validation
   const totalSources = useMemo(() => layers.reduce((s, l) => s + l.amount, 0), [layers]);
-  const balance = useMemo(() => calcSourcesEqualsUses(totalSources, stack.uses.total), [totalSources, stack.uses.total]);
+  const balance = useMemo(() => calcSourcesEqualsUses(totalSources, stack?.uses.total ?? 0), [totalSources, stack?.uses.total]);
 
   // Filter debt products by strategy
   const filteredProducts = useMemo(
@@ -419,7 +419,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
             key={key}
             onClick={() => {
               setSelectedStrategy(key);
-              setLayers(strategyTemplates[key].defaultStack?.layers || defaultCapitalStack.layers);
+              setLayers(strategyTemplates[key].defaultStack?.layers || []);
               emitEvent({
                 source: 'M11-capital-structure',
                 type: 'strategy-selected',
@@ -444,6 +444,20 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   // ========================================================================
 
   const renderCapitalStack = () => {
+    if (!stack) {
+      return (
+        <div className="py-10 text-center border border-dashed border-neutral-700 rounded-lg">
+          {(tabLoading as Record<string, boolean>)['stack'] ? (
+            <span className="text-neutral-400 text-sm">Loading capital structure…</span>
+          ) : (
+            <>
+              <div className="text-neutral-400 text-sm mb-1">No model data</div>
+              <div className="text-xs text-neutral-600">Build the financial model to populate capital structure.</div>
+            </>
+          )}
+        </div>
+      );
+    }
     const totalHeight = stack.uses.total;
     return (
       <div className="space-y-6">
