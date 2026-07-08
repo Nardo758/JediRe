@@ -12,8 +12,17 @@ Legend: 🔴 blocks/urgent · 🟡 queued · 🟢 spec-only/parked · [DB] needs
 - 🔴 **[DB] Supply-stub honesty fix**: `supplySignalService.getSupplyPipeline` returns fabricated `existingUnits:10000 / pipeline:0` when no data → make it honest-absence (`dataAvailable:false`). Same for `fetch_costar_metrics` empty-`{}`-reads-as-success. *Correctness/trust bug — a fabricated underwriting signal.*
 
 ### Verification that unblocks big arcs
-- 🔴 **[DB] F-P1 confidence window**: rebuild Bishop/Highlands toward build-10 (or 7 days from 2026-07-08), shadow-read alarm-free → auto-fires writer-path + trigger retirement → **unblocks D3-W2**. *Mostly passive — just run builds in normal use.*
-- 🟡 **[DB] D3-W2+ agent seam** (GATED: F-P1 window clear AND CREATE-1 done ✅): reroute `update_assumption` through overlay seam, provenance schema (reasoning/evidence_refs), escalation surface, broker-flag, hash-stamp. F5-gated sub-items wait on F5. `DISPATCH_D3_W2_RESUME.md`.
+- ✅ **[DB] F-P1 confidence window — CLOSED** (10/10 clean shadow-read, 2026-07-08; deterministic hash, 0 alarms; writer-path + trigger retirement auto-fired). **F-P1 now FULLY closed.**
+- 🟡 **[DB] D3-W2+ agent seam** (UNBLOCKED — window closed; CREATE-1 done ✅). Source: `DISPATCH_D3_PHASE2_GO.md` (full R1–R8 rulings) + `DISPATCH_D3_W2_RESUME.md` (gate-confirmation). **W-item breakdown (matches bot's list):**
+  - ✅ **W1 · R1** agent_confirmed layer — DONE + ratified (commit `44e1d0338`).
+  - 🔴 **W1-ID** — per-deal identity checkpoint (Bishop + Highlands: resolution byte-identical pre/post-W1, PASTED). *Owed since W1 — described but never shown per-deal. Cheap now window's open. Do with Tier-1 DB session.*
+  - 🟡 **W2 · R7** — `update_assumption` reroute through overlay seam.
+  - 🟡 **W3 · R2+R4** — provenance schema (reasoning/evidence_refs) + escalation surface.
+  - 🟡 **W4 · R6** — broker-claim flag via overlay seam (post-W3).
+  - 🟡 **W5 · R3** — hash-stamping per overlay row (post-W3).
+  - ⏸️ **W6** — evidence-citing items (F5-GATED — waits on F5 Finding-V fix).
+  - ⏸️ **W7** — tax reconciliation (F-P1t state check: (a) in F-P1t if landed, else (b) Inngest cron interim).
+  - **Two design additions required before W2 coding (from window-close findings):** (1) overlay-prune retention ruling — superseded rows grow ~143/build; they're the attribution/undo trail, so DON'T auto-prune — retain most-recent-superseded-per-field, tail-prune only; (2) no-active-scenario write contract — Highlands + fresh CREATE-1 deals have no active scenario; define whether agent write creates a default scenario or writes deal-level overlay.
 
 ### New audits you asked to open
 - 🟡 **[DB] Capsule Gap-Fill Path audit** (read-only): does an uploaded value (OM/rent-roll/T-12/CoStar) actually land in the mapped empty `deal_assumptions`/`deal_monthly_actuals` field, deal-scoped, provenance-tagged, survive the firewall's new `dealId` gate, and become readable by agents + model? *Answers "can users fill their own gaps with their own uploads." The payoff-path check.*
@@ -70,8 +79,68 @@ W5 engine arc (Findings A–U + throw) · F-P1 store consolidation (closed-pendi
 
 ---
 
-## SUGGESTED NEXT 3 (priority order)
-1. 🔴 [DB] CoStar I2/I4 clarifications + empty-table confirm → *close security clean, dissolve purge question.*
-2. 🔴 [DB] Supply-stub honesty fix → *kill the fabricated signal.*
-3. 🟡 [DB] Capsule Gap-Fill Path audit → *answer the "users fill their own gaps" question you just raised.*
-(Meanwhile, passively: rebuild Bishop/Highlands to tick the F-P1 window toward D3-W2.)
+## D. SOURCE-FILE INDEX (to-do item → its MD dispatch/spec)
+*Dispatches/specs in archive `JEDIRE_ALL_DISPATCHES_2026-07-08.tar.gz`. UI design corpus is in the repo project files (Section E).*
+| Item | Source MD |
+|------|-----------|
+| D3 rulings (R1–R8) + W1–W7 | `DISPATCH_D3_PHASE2_GO.md`, `DISPATCH_D3_W2_RESUME.md` |
+| D3 audit (seam map) | `DISPATCH_D3_PHASE1_AUDIT.md` |
+| CoStar firewall (I1–I4) | `DISPATCH_COSTAR_FIREWALL_ENFORCEMENT.md` |
+| Capsule gap-fill audit | `DISPATCH_CAPSULE_FILL_LANE_AUDIT.md` |
+| Data-source provisioning | `DISPATCH_DATA_SOURCE_PROVISIONING_AUDIT.md` |
+| Pipeline remediation index | `MASTER_SEQUENCE_PIPELINE_REMEDIATION.md` |
+| QW-1/QW-2/CREATE-1 | `DISPATCH_QW1_*`, `DISPATCH_QW2_*`, `DISPATCH_CREATE1_*` |
+| TS-1/TS-2 | `DISPATCH_TS1_EXECUTION.md`, `TS1_THIN_SURFACING_PASS.md` |
+| OM extraction build | `SPEC_OM_EXTRACTION.md` |
+| Multi-year history build | `SPEC_MULTIYEAR_HISTORY_CAPTURE.md` |
+| Composition / product-type | `PROFORMA_COMPOSITION_MODEL_SPEC.md` |
+| Underwriter model (D3/tax roots) | `F9_UNDERWRITER_MODEL_SPEC.md` |
+| Roadmap (repo canonical) | `POST_D2_PROGRAM_ROADMAP.md` |
+
+---
+
+## E. UI DESIGN CORPUS (reference for TIER-5 F-P2 — read these before design sign-off)
+*The design layer that predates the engine work. When F-P2 wakes, these are the vision inputs Claude synthesizes into final specs. All in repo project files.*
+| Design artifact | What it defines |
+|-----------------|-----------------|
+| `FEATURE_EXPANSION.md` | The F-key feature map — every designed-but-unbuilt feature → its Portfolio(F1–9)/Deal(F1–12) home, backend readiness, effort, priority (Waves 1–4). The master UI build-order doc. |
+| `jedi_re_wireframe_blueprint.jsx` | Core design principle (WHAT/WHY/WHAT-should-I-do; Raw→Signal→Verdict→Action) + per-module enhanced-state specs (JEDI Score hero, collision analysis, etc.). |
+| `jedi-bloomberg-integrated.jsx` | The Bloomberg-terminal integrated layout (F-key nav, dark aesthetic, T-token system). |
+| `jedi_re_wireframe_blueprint.jsx` + `jedi_re_ui_audit.jsx` | Current-vs-enhanced audit per page; what's mock vs wired. |
+| `jedi_re_audit_vs_progress.jsx` | Design-vs-implementation progress tracker (which designs are prototype/mapped/spec-only). |
+| `exit_timing_dashboard.jsx` | Exit-timing UI (ties to exit-basis + debt-event work). |
+| `traffic-fusion-v2.jsx`, `competitive-intelligence-opportunity-engine.jsx`, `ci-engine-frontend-integration-map.jsx`, `correlation-metrics-engine.jsx` | CI-engine / traffic / correlation frontend designs. |
+| `jedi_re_palantir_map.jsx` | Map-layer intelligence design. |
+| `PROFORMA_COMPOSITION_MODEL_SPEC.md` | Product-type physics × strategy × situation composition (the ProForma factory — drives F-P2's dynamic tabs). |
+| `PROFORMA_TIMELINE_MODEL_SPEC.md`, `Event_Visualization_Placement_Spec.md` | Periodic timeline + event-viz placement (the ribbon UI). |
+
+**F-P2 design-gate process (binding):** when F-P2 wakes → Claude synthesizes this corpus + the composition spec + the rehoming ledger into ONE final design spec → Leon reviews/signs off → THEN implementation. No building from the raw corpus directly; no executor drift.
+
+---
+
+## EXECUTION SEQUENCE (recommended, 2026-07-08)
+*Principle: legal exposure > data-integrity bugs > feature progress > polish. Ordered by cost-of-leaving-broken.*
+
+**TIER 1 — close what's actively wrong (one short DB session, do first):**
+1. 🔴 [DB] CoStar I2/I4 clarifications + empty-table confirm → security arc clean-verified.
+2. 🔴 [DB] Supply-stub honesty fix → kill the fabricated `10000/0` signal.
+*After Tier 1: nothing in the platform is actively lying or leaking.*
+
+**TIER 2 — highest-leverage feature progress:**
+3. 🟡 [DB] D3-W2/W3 (UNBLOCKED — F-P1 window closed 2026-07-08). *Needs 2 design additions first (see D3 line).* The payoff arc: agent authors through the seam.
+
+**TIER 3 — capability + data (nothing breaks while waiting):**
+4. 🟡 [DB] Capsule Gap-Fill audit (read-only) — run BEFORE OM/history builds; tells you what's wired.
+5. 🟡 [DB] FREE-WINS wiring.
+6. 🟡 [DB] Zoning (source-routing) · T2 cache-hit close.
+
+**TIER 4 — spec builds (depend on Tier 3 findings):** OM Extraction · Multi-Year History.
+
+**TIER 5 — UI, LAST (all gated: refer to Claude for final design specs BEFORE any implementation):**
+7. 🟡 [DB] **TS-2** floor badge + occupancy row — small render-only surfacing (design-light, but still confirm with Claude first).
+8. 🟢 **F-P2 chassis migration** — the real UI arc (11→4 tabs + dynamic, Opus console, dual views, rehoming ledger). **HARD DESIGN GATE: Leon + Claude sign off on full design specs before a single line is built.** F-P2 is where an executor can drift furthest from the vision — spec-first, no exceptions. Design corpus in Section E.
+*Rationale for UI-last: the engine/data/agent layers must be true before surfacing them — a beautiful UI over wrong numbers is worse than no UI. Everything below the glass gets correct first.*
+
+**YOUR DESK (parallel to everything):** F5 handoff (highest-leverage desk item — gates Bishop re-pin + parity + D3-W6) · ATTOM provision · CoStar legal-purge Q (likely moot post-I2/I4).
+
+**Background:** ~~F-P1 window~~ ✅ CLOSED 10/10.
