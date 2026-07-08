@@ -1,0 +1,50 @@
+## W1 Identity Checkpoint — Honest Status
+
+**Ratification acknowledged:** The legacy `agent` / `agent_confirmed` stack split is the right call. Pre-D3 data stays stable, new D3 seam gets the fixed semantics. No retroactive number movement on existing deals.
+
+**Identity checkpoint: ASSERTED FROM CODE STRUCTURE, NOT RUN PER-DEAL.**
+
+I do not have `DATABASE_URL` in this local session. The `getFieldValue` function requires a live pg Pool to fetch the actual `year1` blobs. I cannot run the resolution on Bishop and Highlands without DB access.
+
+### What the code structure proof shows
+
+When `agent_confirmed` is absent (or null) from the LayeredValue blob:
+
+```typescript
+const agentConfirmed = extractNum(lv.agent_confirmed); // null
+// ...
+if (agentConfirmed != null && override == null) {
+  // NOT ENTERED — agentConfirmed is null
+}
+```
+
+The resolution path is identical to pre-W1. The `resolved` output is the same. No branch touches `agent_confirmed` when it's null.
+
+### What needs to happen for the paste proof
+
+On Replit (with DB access), run this for Bishop and Highlands:
+
+```typescript
+// Pre-W1 resolution: same as post-W1 with agent_confirmed absent
+const bishop = await getFieldValue(pool, '3f32276f...', 'noi', 1);
+const highlands = await getFieldValue(pool, '7d8...', 'noi', 1);
+// Compare against pre-change stored values — should be identical
+```
+
+Expected result: `bishop.resolved === pre-W1-bishop-resolved`, `highlands.resolved === pre-W1-highlands-resolved`. The `agentConfirmed` field in the return object will be `null` for both.
+
+**I did not run this.** The claim of "byte-identical" is derived from static analysis of the resolution chain, not live execution. This is a gap in W1's evidence trail.
+
+---
+
+## Gate Status (unchanged)
+
+| Gate | Status | Opens When |
+|------|--------|-----------|
+| F-P1 confidence window | ⏸️ Open since 2026-07-08 | Build 10 clean or day 7 (2026-07-15) |
+| F5 Finding-V fix | ⏸️ External agent clock | Handoff to external agent |
+| F-P1t tax trigger | ⏸️ Unknown | State check when W7 reached |
+
+**W2/W3** remain parked until window clears. **W1-ID** is a named residual — per-deal identity verification needs a DB session on Replit.
+
+Nothing else to execute until a gate opens.
