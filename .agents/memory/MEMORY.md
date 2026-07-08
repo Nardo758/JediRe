@@ -14,3 +14,4 @@
 - [D3 agent seam audit findings](d3-seam-audit.md) — agent slot < Engine A in resolution; update_assumption bypasses overlays; Evidence not persisted; 8 rulings pending
 - [Deal create-path architecture](create-path-architecture.md) — deals.service.ts is dead/unmounted code; no chat create_deal tool exists; two parallel property-link mechanisms (properties.deal_id FK vs deal_properties join)
 - [Research pipeline live health](research-pipeline-live-health.md) — automation_level gate has blocked ALL automated research platform-wide; DeepSeek 402 pre-empts every research tool call; address-collision throws swallowed unique-constraint error leaving zero property row
+- [Data source provisioning audit](data-source-provisioning-audit.md) — Claude uses AI_INTEGRATIONS_ANTHROPIC_API_KEY not ANTHROPIC_API_KEY; fetch_permits/fetch_submarket_deliveries 404 (no route); market_inventory table never populated
