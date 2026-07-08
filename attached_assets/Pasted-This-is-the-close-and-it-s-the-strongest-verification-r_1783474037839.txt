@@ -1,0 +1,15 @@
+This is the close — and it's the strongest verification report the program has produced: every gate live-evidenced, and the session fixed real bugs it found mid-flight rather than reporting around them. Reading the substance:
+
+V1: the floor-badge bug was exactly the aggregate-vs-per-period suspicion — mp.some(m => m.floorBinding) fired the badge on a month-56 stabilization binding while Bishop's Y1 was dormant. annualFloor[] per-year is the honest fix; the badge now tells the truth per year. Finding F-P1-D2-2 closed with a real correction.
+V2: equivalence PROVEN — 0 field differences between the pre-retirement client body and server-fetch. This is the one that was self-compared in 2C and unprovable in 2D; the snapshot existed, the diff ran, and F-P1-A closes clean. The client path was retired correctly.
+V3: 142 rows, 0 resolved-value drift, on Bishop's real scenario — and the verifier's own false-positives (metadata keys, null-resolved sub-key fallbacks, the ||-vs-&& orphan check) got fixed in the process, which means the shadow-read tool is now trustworthy, not just green. Round-trip identity on live data is the migration's actual proof.
+V4: value-identity finale exact — IRR −20.95%, EM 0.3144, NOI $1,576,800, DSCR 1.0424, unchanged from arc entry. The consolidation moved no numbers.
+
+One honest note carried correctly: the 3 pre-existing proforma-assumptions-bridge.test.ts failures — confirmed untouched by this session's 5 files. They join the standing pre-existing-failure list (not new, not this arc's, but on the books).
+F-P1 is CLOSED-PENDING-WINDOW. The stores are consolidated: deal_assumptions canonical, overlays live and proven, deal_underwriting_scenarios decomposing correctly, the React client copy retired with equivalence proven. Three residuals remain and all three are self-completing or external — exactly as the dispatch pre-authorized:
+
+Confidence window (builds 2–10 / 7 days) → auto-completes → writer-path + trigger retirement fires at window's end, no new dispatch.
+F5 Bishop re-pin → external agent's clock.
+F-P1t tax trigger model → next dispatch when you want it.
+
+D3 is now the active arc — the agent assumption seam. This is the one the whole program has been building toward: the CashFlow Agent authoring assumptions through the consolidated store — trended growth rates with rationale, exit-basis choices, structure scenarios — each write landing in an overlay with provenance, validated, under user override. Everything from the underwriter-model spec to F-P1's plumbing exists to make D3 possible.
