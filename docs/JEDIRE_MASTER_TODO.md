@@ -100,7 +100,16 @@ W5 engine arc (Findings A–U + throw) · F-P1 store consolidation (closed-pendi
 ---
 
 ## E. UI DESIGN CORPUS (reference for TIER-5 F-P2 — read these before design sign-off)
-*The design layer that predates the engine work. When F-P2 wakes, these are the vision inputs Claude synthesizes into final specs. All in repo project files.*
+*The design layer that predates the engine work PLUS the session-native F-P2 designs. When F-P2 wakes, these are the vision inputs Claude synthesizes into final specs.*
+
+### E-1. SESSION-NATIVE F-P2 DESIGNS (newest — made in this chat, live in the transcript; Claude regenerates on request)
+| Artifact | What it defines |
+|----------|-----------------|
+| **Factory chassis mockup** (1200 Westshore distressed deal) | The full F-P2 reference frame: CHART · PRO FORMA · ASSUMPTIONS · RETURNS chassis tabs + summoned FLIP/NOTE-PURCHASE (·S) + SHAPE tabs; 15-yr ribbon with actual/gap/projection zones + M35 pins; assumptions panel with provenance chips (agent·COR-14 violet, traffic teal, you neutral, T1-unverified amber); AGENT PROPOSES queue with activate/dismiss; 3/6 working-set counter; "the situation itself built the model." |
+| **PRO FORMA interior mockup** | The underwriter's working document: Current-T12 → Stabilized bridge with Δ column; per-line source badges (doc-verified green / agent·peer-set violet / broker-claim ⚠ red); inline LENDER RECOVERY module summoned by negative_dscr; SOLVE PRICE footer (max @ target IRR, binding constraint named, ±band honest about unverified inputs, 4 anchors). |
+| **Ratified interior definitions** (from the mockup discussion) | CHART = ribbon + GRID (the PeriodicGrid IS the projections view); PRO FORMA = **dual view: RESOLUTION** (the existing Broker/T-12/Platform/Resolved columns — preserved intact) **+ BRIDGE** (current→stabilized); RETURNS = yearly table + IRR-by-exit sawtooth + sensitivity + waterfall + debt-schedule section; S&U = PRO FORMA section; **OVERVIEW decomposes into headers; Opus panel PROMOTED to persistent underwriting console** with free-vs-billable command signaling. "Four tabs, ever, plus what the deal summons." |
+
+### E-2. PRE-EXISTING DESIGN LAYER (repo project files)
 | Design artifact | What it defines |
 |-----------------|-----------------|
 | `FEATURE_EXPANSION.md` | The F-key feature map — every designed-but-unbuilt feature → its Portfolio(F1–9)/Deal(F1–12) home, backend readiness, effort, priority (Waves 1–4). The master UI build-order doc. |
