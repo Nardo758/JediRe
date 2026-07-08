@@ -3,7 +3,7 @@ import {
   decomposeYear1ToOverlays,
   recomposeYear1FromOverlays,
   verifyOverlayEquivalence,
-} from '../src/services/deterministic/scenario-decomposition';
+} from '../../src/services/deterministic/scenario-decomposition';
 
 describe('scenario-decomposition — C6 round-trip identity', () => {
   const sampleYear1: Record<string, any> = {

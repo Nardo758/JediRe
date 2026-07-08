@@ -2081,7 +2081,7 @@ export function projectProformaForDeal(
     assetClass: string;
     holdYears: number;
     totalUnits: number;
-    /** From deal_assumptions.rent_growth_yr1 (decimal). Used as Y1 momentum signal. */
+    /** From deal_assumptions.year1.rent_growth_yr1 LayeredValue (decimal). Used as Y1 momentum signal. B7: scalar column retired, now read from year1 JSONB. */
     rentGrowthYr1: number | null;
     /** From M07 calibrated rent growth (decimal). Secondary momentum fallback. */
     calibRentGrowth: number | null;
@@ -2119,7 +2119,7 @@ export function projectProformaForDeal(
         opts.rentGrowthYr1 != null ? 0.75 : 0.65,
         'derived',
         opts.rentGrowthYr1 != null
-          ? 'user-set Y1 rent growth assumption (deal_assumptions.rent_growth_yr1)'
+          ? 'user-set Y1 rent growth assumption (deal_assumptions.year1.rent_growth_yr1)'
           : 'M07 calibrated rent growth (proforma_assumptions.rent_growth_current)',
       )
     : null;

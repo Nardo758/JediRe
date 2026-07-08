@@ -70,14 +70,19 @@ export function decomposeYear1ToOverlays(
         // Metadata objects — skip (not financial assumptions)
         continue;
       } else if (key === 'other_income_user_lines') {
-        // Array of user lines — skip for now (complex shape, not numeric)
+        // Array of user lines — skip (complex shape, not numeric)
         continue;
       } else {
-        // Unknown nested object — store as JSONB with null numeric value
+        // Unknown nested object. Skip underscore-prefixed metadata keys
+        // (e.g. _capital_structure_defaults, _boundary_context) — keep
+        // overlays to financial assumptions only.
+        if (key.startsWith('_')) continue;
         addRow(key, null, 'unknown', val);
       }
     } else if (typeof val === 'number') {
-      // Plain numeric (e.g. _unit_count)
+      // Plain numeric financial fields only. Underscore-prefixed keys are metadata
+      // (e.g. _unit_count) — skip them to keep overlays to financial assumptions only.
+      if (key.startsWith('_')) continue;
       addRow(key, val, 'plain', val);
     } else if (typeof val === 'string') {
       // String (e.g. last_seeded_at) — skip
@@ -154,6 +159,20 @@ export function recomposeYear1FromOverlays(
  * @param overlays     The decomposed overlay rows
  * @returns            Match result + list of mismatches
  */
+// Keys the decomposer intentionally skips — must be excluded from verification
+// so the verifier mirrors exactly what decomposeYear1ToOverlays produces.
+const DECOMP_SKIP_KEYS = new Set([
+  'source_docs',
+  '_boundary_context',
+  'other_income_user_lines',
+  'last_seeded_at', // decomposer skips all strings; kept explicit for clarity
+  // Underscore-prefixed keys are metadata (not financial assumptions):
+  // decomposer skips them via key.startsWith('_') guard on plain numbers,
+  // and unknown-object path stores them as value=null — skip verification too.
+  '_unit_count',
+  '_capital_structure_defaults',
+]);
+
 export function verifyOverlayEquivalence(
   year1Blob: Record<string, any>,
   overlays: Array<{
@@ -173,45 +192,74 @@ export function verifyOverlayEquivalence(
 } {
   const mismatches: ReturnType<typeof verifyOverlayEquivalence>['mismatches'] = [];
 
-  // Check 1: every blob key has a matching overlay
+  // Check 1: every non-skipped blob key has a matching overlay
   for (const [key, val] of Object.entries(year1Blob)) {
-    const overlay = overlays.find(o => o.field_path === key || o.field_path.startsWith(`${key}.`));
-    if (!overlay) {
-      mismatches.push({
-        field: key,
-        blobValue: val,
-        overlayValue: null,
-        reason: 'missing_overlay',
-      });
+    // Mirror decomposer: skip metadata keys and bare strings
+    if (DECOMP_SKIP_KEYS.has(key)) continue;
+    if (typeof val === 'string') continue;
+
+    const directOverlay = overlays.find(o => o.field_path === key);
+    // Immediate children only (depth 1 below key)
+    const subOverlays = overlays.filter(
+      o => o.field_path.startsWith(`${key}.`) && !o.field_path.slice(key.length + 1).includes('.')
+    );
+
+    if (!directOverlay && subOverlays.length === 0) {
+      mismatches.push({ field: key, blobValue: val, overlayValue: null, reason: 'missing_overlay' });
       continue;
     }
 
-    // Compare resolved value
+    // Nested object with sub-overlays (e.g. other_income_breakdown) — verify sub-keys
+    if (subOverlays.length > 0 && !directOverlay) {
+      if (typeof val === 'object' && val != null) {
+        for (const [subKey, subVal] of Object.entries(val)) {
+          const subOverlay = subOverlays.find(o => o.field_path === `${key}.${subKey}`);
+          if (!subOverlay) {
+            mismatches.push({ field: `${key}.${subKey}`, blobValue: subVal, overlayValue: null, reason: 'missing_overlay' });
+            continue;
+          }
+          const blobSub =
+            typeof subVal === 'object' && subVal != null && 'resolved' in subVal
+              ? subVal.resolved
+              : subVal;
+          // Compare numeric resolved values only. Both null means null-resolved LV → match.
+          const ovSub = subOverlay.value;
+          if (blobSub !== ovSub) {
+            mismatches.push({ field: `${key}.${subKey}`, blobValue: blobSub, overlayValue: ovSub, reason: 'value_mismatch' });
+          }
+        }
+      }
+      continue;
+    }
+
+    // Direct overlay — compare resolved value, falling back to value_jsonb for unknown-object fields
     const blobResolved =
       typeof val === 'object' && val != null && 'resolved' in val
         ? val.resolved
         : val;
+    const ovNumeric = directOverlay!.value;
+    const ovJsonb   = directOverlay!.value_jsonb;
 
-    if (blobResolved !== overlay.value) {
+    const numMatch  = ovNumeric != null && blobResolved === ovNumeric;
+    const jsonbMatch = ovNumeric == null && JSON.stringify(ovJsonb) === JSON.stringify(val);
+
+    if (!numMatch && !jsonbMatch) {
       mismatches.push({
         field: key,
         blobValue: blobResolved,
-        overlayValue: overlay.value,
+        overlayValue: ovNumeric ?? ovJsonb,
         reason: 'value_mismatch',
       });
     }
   }
 
-  // Check 2: every overlay has a matching blob key (no orphaned overlays)
+  // Check 2: every overlay has a matching blob key — no orphaned overlays.
+  // Skipped keys never produce overlays in the decomposer, so they won't appear here;
+  // but defensively, don't flag them as orphaned even if somehow present.
   for (const o of overlays) {
     const topKey = o.field_path.split('.')[0];
-    if (!(topKey in year1Blob)) {
-      mismatches.push({
-        field: o.field_path,
-        blobValue: null,
-        overlayValue: o.value,
-        reason: 'orphaned_overlay',
-      });
+    if (!(topKey in year1Blob) && !DECOMP_SKIP_KEYS.has(topKey) && !topKey.startsWith('_')) {
+      mismatches.push({ field: o.field_path, blobValue: null, overlayValue: o.value, reason: 'orphaned_overlay' });
     }
   }
 

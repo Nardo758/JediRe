@@ -2205,14 +2205,25 @@ const ModelResultsSummary: React.FC<{ results: ModelResults }> = ({ results }) =
   const s = results.summary;
   if (!s) return null;
 
-  // TS-2 (B8): T2 floor badge + T3 occupancy row derived from monthlyProjection (R5 payload).
+  // TS-2 (B8 / V1-fix): T2 floor badge + T3 occupancy row from monthlyProjection (R5 payload).
+  // V1-fix: floor badge is per-year — shown inside each annual cell where the vacancy floor
+  // actually bound during that year's months.  The former aggregate mp.some() fired for ANY
+  // month across the entire hold (including late stabilisation months), making it appear the
+  // floor was active in Y1 for lease-up deals where early physical vacancy >> 5% floor.
   const mp = results.monthlyProjection ?? [];
-  const floorActive = mp.some(m => m.floorBinding);
   const annualOcc: (number | null)[] = (results.annualCashFlow ?? []).map((cf: any, i: number) => {
     const yr = (cf.year as number) || i + 1;
     const yrMonths = mp.filter(m => m.year === yr);
     if (yrMonths.length === 0) return null;
     return yrMonths.reduce((acc, m) => acc + (m.occupancy ?? 0), 0) / yrMonths.length;
+  });
+  // Per-year floor binding: true only for years where the floor constrained ≥1 month.
+  // Lease-up deal: early years dormant (physical vacancy >> floor), late years binding.
+  // Stabilised deal: all years binding.
+  const annualFloor: boolean[] = (results.annualCashFlow ?? []).map((cf: any, i: number) => {
+    const yr = (cf.year as number) || i + 1;
+    const yrMonths = mp.filter(m => m.year === yr);
+    return yrMonths.length > 0 && yrMonths.some(m => m.floorBinding);
   });
   const hasOcc = annualOcc.some(v => v != null);
 
@@ -2252,14 +2263,18 @@ const ModelResultsSummary: React.FC<{ results: ModelResults }> = ({ results }) =
                     <tr className="border-b border-stone-100">
                       <td className="py-1 px-2 text-stone-600">
                         Occupancy
-                        {/* T2 (TS-2 B8): Floor badge — shown when vacancyFloor bound any month */}
-                        {floorActive && (
-                          <span className="ml-1.5 text-[8px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-1 py-0.5 rounded leading-none tracking-wide">⚑ FLOOR</span>
+                        {/* T2 (TS-2 B8 / V1-fix): per-year floor badge; ⚑ legend in header */}
+                        {annualFloor.some(Boolean) && (
+                          <span className="ml-1 text-[7px] text-amber-500 opacity-70" title="⚑ = vacancy floor binds that year">⚑</span>
                         )}
                       </td>
                       {annualOcc.map((v, i) => (
                         <td key={i} className="text-right py-1 px-2">
                           {v != null ? `${(v * 100).toFixed(1)}%` : '—'}
+                          {/* Per-year floor indicator — truthful to that year's monthlyProjection */}
+                          {annualFloor[i] && (
+                            <span className="ml-0.5 text-[7px] font-bold text-amber-600" title="Vacancy floor binding this year">⚑</span>
+                          )}
                         </td>
                       ))}
                     </tr>
