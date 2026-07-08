@@ -468,13 +468,22 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
     const boundaryGeom = boundary.type === 'Point'
       ? `ST_Buffer(ST_GeomFromGeoJSON($3)::geography, 200)::geometry`
       : `ST_GeomFromGeoJSON($3)`;
+    // CREATE-1/T002: origin_class classifies HOW this deal entered the platform
+    // (never touched for existing deals — Bishop/Highlands were classified
+    // historically and this only applies to newly-INSERTed rows going forward).
+    // Portfolio-category creates follow the same doctrine as Highlands
+    // (owned_import); everything else created through this live web route is
+    // platform_underwritten (the platform originated + will underwrite it).
+    const originClass = (deal_category === 'portfolio') ? 'owned_import' : 'platform_underwritten';
+
     const result = await client.query(`
       INSERT INTO deals (
         user_id, name, boundary, project_type, project_intent,
         target_units, budget, timeline_start, timeline_end, tier, status,
-        deal_category, development_type, address, description, org_id, strategy
+        deal_category, development_type, address, description, org_id, strategy,
+        origin_class
       )
-      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'PROSPECT', $11, $12, $13, $14, $15, $16)
+      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'PROSPECT', $11, $12, $13, $14, $15, $16, $17)
       RETURNING *
     `, [
       req.user!.userId,
@@ -493,6 +502,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       description || null,
       userOrgId,
       resolvedStrategy,
+      originClass,
     ]);
 
     const row = result.rows[0];
@@ -586,17 +596,53 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
         linked = (updateRes.rowCount ?? 0) > 0;
       }
 
-      // Step B: insert stub row if no address match linked anything
+      // Step B: insert stub row if no address match linked anything.
+      // CREATE-1/T003 fix: previously wrote address_line1 = NULL unconditionally,
+      // even when the deal itself had a real `address` string — leaving the
+      // subject property permanently unidentified until a separate enrichment
+      // pass ran. Now populate address_line1/city/state from the deal's own
+      // address (same parse used by DealPropertyLinkerService.createPropertyFromDeal)
+      // whenever one is available; only fall back to NULL when the deal truly
+      // has no address (e.g. boundary-only/polygon draws).
+      let stateCode: string | null = null;
+      let city: string | null = null;
+      if (address) {
+        const stateMatch = address.match(/,\s*([A-Z]{2})\s+\d{5}/);
+        stateCode = stateMatch ? stateMatch[1] : null;
+        const parts = address.split(',').map((p: string) => p.trim());
+        city = parts.length >= 2 ? (parts[parts.length - 2] || null) : null;
+      }
+
       if (!linked) {
         await client.query(
           `INSERT INTO properties (
-             deal_id, address_line1, units, acquisition_price,
+             deal_id, address_line1, city, state_code, units, acquisition_price,
              lat, lng, latitude, longitude, created_by, ownership_status
            )
-           SELECT $1, NULL, $2, $3, $4, $5, $4, $5, $6, 'pipeline'
+           SELECT $1, $7, $8, $9, $2, $3, $4, $5, $4, $5, $6, 'pipeline'
            WHERE NOT EXISTS (SELECT 1 FROM properties WHERE deal_id = $1)`,
-          [row.id, targetUnits || null, budget || null, propLat, propLng, req.user!.userId]
+          [row.id, targetUnits || null, budget || null, propLat, propLng, req.user!.userId, address || null, city, stateCode]
         );
+      }
+
+      // CREATE-1/T003: keep the `deal_properties` join table (used by
+      // zoning-triangulation and other consumers) in sync with the
+      // `properties.deal_id` FK link established above. Best-effort,
+      // fire-and-forget — never blocks or fails deal creation. Does NOT
+      // replace the FK mechanism above; the two are intentionally kept
+      // running in parallel until they are unified in a later dispatch.
+      if (address) {
+        (async () => {
+          try {
+            const { DealPropertyLinkerService } = await import('../../services/deal-property-linker.service');
+            const linker = new DealPropertyLinkerService();
+            await linker.autoLinkDeal(row.id);
+          } catch (linkErr) {
+            logger.warn(`[DealCreation] CREATE-1/T003: autoLinkDeal join-table sync failed for deal ${row.id}`, {
+              err: linkErr instanceof Error ? linkErr.message : String(linkErr),
+            });
+          }
+        })();
       }
     } catch (propErr) {
       // Log as error (not warn) — linkage failure means Valuation Grid will degrade.

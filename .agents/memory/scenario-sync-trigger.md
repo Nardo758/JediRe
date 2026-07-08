@@ -31,3 +31,7 @@ Do the scenario update **before** the explicit `deal_assumptions` update in the 
 ## Canonical example
 
 `mutateUserLines` (deal-assumptions.routes.ts) — writes `other_income_user_lines` to both the scenario (`jsonb_set`) and `deal_assumptions` (full year1 write) within the same transaction.
+
+## Related trap: first-scenario creation on a deal with no active scenario yet
+
+`UnderwritingScenariosService.createScenario()` seeds `sourceYear1` from the active scenario when one exists. Before the CREATE-1 fix (2026-07-08), if NO scenario existed yet (true for every fresh deal between creation and first scenario), it silently fell back to `sourceYear1 = {}`. Activating that first scenario then fired the trigger above and overwrote `deal_assumptions.year1` with an empty object — erasing any pre-scenario writes (agent-confirmed fields, platform-seeded fields) that had landed directly on `deal_assumptions` before a scenario ever existed. Fixed to read current `deal_assumptions.year1` as the fallback seed instead of `{}` when no active scenario exists. Verified live: an agent-style NOI write to `deal_assumptions.year1` survived first-scenario creation + activation after the fix.

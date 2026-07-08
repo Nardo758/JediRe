@@ -91,12 +91,15 @@ export async function createDealDraft(
     ...(fields.asking_price != null && { asking_price: fields.asking_price }),
   };
 
+  // CREATE-1/T002: email-intake drafts are platform-originated (never
+  // archive_import or owned_import — those classifications are reserved for
+  // historical/portfolio deals, not fresh broker-email opportunities).
   const result = await query(
     `INSERT INTO deals (
        user_id, name, status, deal_category,
        address, property_address, city, state_code,
-       unit_count, strategy, deal_data
-     ) VALUES ($1, $2, 'awaiting_review', 'pipeline', $3, $4, $5, $6, $7, $8, $9)
+       unit_count, strategy, deal_data, origin_class
+     ) VALUES ($1, $2, 'awaiting_review', 'pipeline', $3, $4, $5, $6, $7, $8, $9, 'platform_underwritten')
      RETURNING id, name`,
     [
       userId,

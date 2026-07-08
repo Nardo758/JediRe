@@ -176,6 +176,21 @@ export class UWScenarioService {
       if (active) {
         sourceYear1 = active.year1;
         parentId = active.id;
+      } else {
+        // CREATE-1/T005 fix: this is the FIRST scenario ever created for this
+        // deal (no active scenario exists yet). Previously this fell through
+        // to sourceYear1 = {} (the initializer above), which meant activating
+        // this scenario would have the trigger overwrite deal_assumptions.year1
+        // with an EMPTY object — silently erasing any agent-confirmed writes
+        // (D3) or platform-seeded fields (proforma-seeder) that already landed
+        // on deal_assumptions before any scenario existed. Seed from the
+        // deal's current deal_assumptions.year1 instead, so the pre-scenario
+        // state is carried forward rather than wiped.
+        const current = await this.pool.query<{ year1: Record<string, unknown> | null }>(
+          `SELECT year1 FROM deal_assumptions WHERE deal_id = $1`,
+          [dealId]
+        );
+        sourceYear1 = current.rows[0]?.year1 ?? {};
       }
     }
 
