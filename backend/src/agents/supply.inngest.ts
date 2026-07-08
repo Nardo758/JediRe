@@ -17,10 +17,11 @@
  */
 
 import { inngest, type DealCreatedEvent, type JediEvents } from '../lib/inngest';
-import { supplyRuntime } from './supply.config';
+import { supplyRuntime, SUPPLY_AGENT_CONFIG } from './supply.config';
 import type { SupplyAgentOutput } from './supply.config';
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
+import { resolveOrgForUser } from '../services/ai/orgCreditService';
 import type { RunContext } from './runtime/types';
 
 // ── Tier gating ─────────────────────────────────────────────────────────────
@@ -55,25 +56,52 @@ export const supplyOnDealCreated = inngest.createFunction(
     const { dealId, userId, userTier, triggeredBy } = (event as unknown as DealCreatedEvent).data;
 
     // ── Step 1: Tier gate ───────────────────────────────────────────
-    const tierCheckResult = await step.run('tier-gate', async () => {
+    const tierCheckResult = await step.run('tier-gate', async (): Promise<{ allowed: boolean; reason?: 'no_credits' }> => {
       if (!isTierAllowed(userTier)) {
         logger.info('Supply Agent: tier gate blocked automated run', { dealId, userId, userTier });
         return { allowed: false };
       }
-      // A5-F5: automation_level read-time enforcement. Level 1 = manual only.
-      const autoRes = await query(
-        `SELECT automation_level FROM user_credit_balances WHERE user_id = $1`,
-        [userId]
+      // C1 (CREATE-1 completion dispatch): automation_level integer gate
+      // retired as the trigger — see research.inngest.ts for full rationale.
+      // Trigger is now ORG CREDIT BALANCE with an explicit skip reason.
+      const orgId = await resolveOrgForUser(userId);
+      if (!orgId) {
+        logger.info('Supply Agent: no org credit pool — allowing through', { dealId, userId });
+        return { allowed: true };
+      }
+      const creditRes = await query(
+        `SELECT credits_remaining FROM org_credit_balances WHERE org_id = $1`,
+        [orgId]
       );
-      const automationLevel = autoRes.rows[0]?.automation_level ?? 1;
-      if (automationLevel < 2) {
-        logger.info('Supply Agent: automation_level gate blocked', { dealId, automationLevel });
-        return { allowed: false };
+      const creditsRemaining = creditRes.rows[0]?.credits_remaining;
+      if (creditsRemaining !== undefined && Number(creditsRemaining) <= 0) {
+        logger.info('Supply Agent: org credit gate blocked — no credits', {
+          dealId, orgId, creditsRemaining,
+        });
+        return { allowed: false, reason: 'no_credits' as const };
       }
       return { allowed: true };
     });
 
     if (!tierCheckResult.allowed) {
+      if (tierCheckResult.reason === 'no_credits') {
+        await step.run('record-credit-skip', async () => {
+          await query(
+            `INSERT INTO agent_runs
+               (agent_id, agent_version, prompt_version, deal_id, user_id,
+                triggered_by, trigger_context, status, error, started_at, completed_at)
+             VALUES ('supply', $1, $2, $3, $4, 'event', $5, 'budget_exceeded',
+                      'supply skipped — no credits', NOW(), NOW())`,
+            [
+              SUPPLY_AGENT_CONFIG.agentVersion,
+              SUPPLY_AGENT_CONFIG.promptVersion,
+              dealId,
+              userId,
+              JSON.stringify({ source: 'deal.created', skip_reason: 'no_credits' }),
+            ]
+          );
+        });
+      }
       return { runId: '', confidence_score: 0 };
     }
 

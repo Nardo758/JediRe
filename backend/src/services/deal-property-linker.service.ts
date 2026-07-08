@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 import { getPool } from '../database/connection';
 
-function normalizeAddress(addr: string): string {
+export function normalizeAddress(addr: string): string {
   return addr
     .toUpperCase()
     .replace(/[.,#]/g, '')

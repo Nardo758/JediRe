@@ -10,6 +10,7 @@ import { requireCapability } from '../../middleware/rbac';
 import { refreshAllDqaAlerts } from '../../services/data-quality-agent.service';
 import { validate, createDealSchema, updateDealSchema } from './validation';
 import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
+import { normalizeAddress } from '../../services/deal-property-linker.service';
 import { processDocument, processDealDocuments } from '../../services/document-extraction/extraction-pipeline';
 import { computeAndPersistTrafficSnapshot } from '../../services/traffic-analytics.service';
 import { getDealFinancials } from '../../services/proforma-adjustment.service';
@@ -613,16 +614,55 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
         city = parts.length >= 2 ? (parts[parts.length - 2] || null) : null;
       }
 
+      // CREATE-1/C2 fix: Step A only claims a property that is still unowned
+      // (deal_id IS NULL). If a DIFFERENT deal already owns the exact same
+      // address, Step A links nothing and the old code fell through straight
+      // to INSERT — which THROWS on the idx_properties_address unique index,
+      // and the throw was swallowed by the outer catch, leaving this deal
+      // with ZERO property rows and ZERO deal_properties link. Fixed by
+      // checking for an existing (already-owned) address match FIRST: if
+      // found, LINK this deal to it via the deal_properties join table
+      // (properties.deal_id is exclusively 1:1 and can't be reassigned
+      // without stealing it from the deal that owns it) instead of
+      // attempting an insert that is guaranteed to violate the constraint.
       if (!linked) {
-        await client.query(
-          `INSERT INTO properties (
-             deal_id, address_line1, city, state_code, units, acquisition_price,
-             lat, lng, latitude, longitude, created_by, ownership_status
-           )
-           SELECT $1, $7, $8, $9, $2, $3, $4, $5, $4, $5, $6, 'pipeline'
-           WHERE NOT EXISTS (SELECT 1 FROM properties WHERE deal_id = $1)`,
-          [row.id, targetUnits || null, budget || null, propLat, propLng, req.user!.userId, address || null, city, stateCode]
-        );
+        let ownedElsewhere: { id: string } | null = null;
+        if (address) {
+          const collisionRes = await client.query(
+            `SELECT id FROM properties
+             WHERE UPPER(REPLACE(REPLACE(REPLACE(address_line1, ',', ''), '.', ''), '#', '')) = $1
+             LIMIT 1`,
+            [normalizeAddress(address)]
+          );
+          ownedElsewhere = collisionRes.rows[0] ?? null;
+        }
+
+        if (ownedElsewhere) {
+          // Address already claimed by another deal's properties row (the
+          // idx_properties_address unique index prevents a second row for
+          // the same address). Link via deal_properties (many-to-many) so
+          // this deal still resolves a subject property instead of getting
+          // none at all.
+          await client.query(
+            `INSERT INTO deal_properties (deal_id, property_id, relationship, linked_by, confidence_score)
+             VALUES ($1, $2, 'subject', 'auto', 1.0)
+             ON CONFLICT (deal_id, property_id) DO NOTHING`,
+            [row.id, ownedElsewhere.id]
+          );
+          logger.info(`[DealCreation] C2: address collision — linked deal ${row.id} to existing property ${ownedElsewhere.id} via deal_properties`, {
+            dealId: row.id, propertyId: ownedElsewhere.id, address,
+          });
+        } else {
+          await client.query(
+            `INSERT INTO properties (
+               deal_id, address_line1, city, state_code, units, acquisition_price,
+               lat, lng, latitude, longitude, created_by, ownership_status
+             )
+             SELECT $1, $7, $8, $9, $2, $3, $4, $5, $4, $5, $6, 'pipeline'
+             WHERE NOT EXISTS (SELECT 1 FROM properties WHERE deal_id = $1)`,
+            [row.id, targetUnits || null, budget || null, propLat, propLng, req.user!.userId, address || null, city, stateCode]
+          );
+        }
       }
 
       // CREATE-1/T003: keep the `deal_properties` join table (used by

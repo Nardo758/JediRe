@@ -21,9 +21,10 @@
  */
 
 import { inngest, type DealCreatedEvent, type JediEvents } from '../lib/inngest';
-import { researchRuntime } from './research.config';
+import { researchRuntime, RESEARCH_AGENT_CONFIG } from './research.config';
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
+import { resolveOrgForUser } from '../services/ai/orgCreditService';
 import type { RunContext } from './runtime/types';
 import type { ResearchOutput } from './research.config';
 
@@ -61,7 +62,7 @@ export const researchOnDealCreated = inngest.createFunction(
     const { dealId, userId, userTier, triggeredBy } = (event as unknown as DealCreatedEvent).data;
 
     // ── Step 1: Tier gate ───────────────────────────────────────────
-    const tierCheckResult = await step.run('tier-gate', async () => {
+    const tierCheckResult = await step.run('tier-gate', async (): Promise<{ allowed: boolean; reason?: 'no_credits' }> => {
       if (!isTierAllowed(userTier)) {
         logger.info('Research Agent: tier gate blocked automated run', {
           dealId,
@@ -70,20 +71,58 @@ export const researchOnDealCreated = inngest.createFunction(
         });
         return { allowed: false };
       }
-      // A5-F5: automation_level read-time enforcement. Level 1 = manual only.
-      const autoRes = await query(
-        `SELECT automation_level FROM user_credit_balances WHERE user_id = $1`,
-        [userId]
+      // C1 (CREATE-1 completion dispatch): the automation_level integer gate
+      // is RETIRED as the research trigger. The old `automation_level >= 2`
+      // check blocked 100% of platform users forever (no user ever had that
+      // value set) — automated research never fired for anyone. The trigger
+      // is now ORG CREDIT BALANCE: research fires whenever the org has
+      // credits, and leaves an explicit, queryable skip reason (never a
+      // silent skip) when it doesn't. `automation_level` is preserved as a
+      // column (other readers: cashflow/commentary/zoning .inngest.ts,
+      // creditService.ts, sessionStore.ts — untouched, out of scope here)
+      // but is no longer read by this gate.
+      const orgId = await resolveOrgForUser(userId);
+      if (!orgId) {
+        // No org pool record (bridge user / bot fixture) — allow through,
+        // matching the existing "no pool → allow through" convention used
+        // elsewhere in the credit system (orgCreditService.reserveOrgCredits).
+        logger.info('Research Agent: no org credit pool — allowing through', { dealId, userId });
+        return { allowed: true };
+      }
+      const creditRes = await query(
+        `SELECT credits_remaining FROM org_credit_balances WHERE org_id = $1`,
+        [orgId]
       );
-      const automationLevel = autoRes.rows[0]?.automation_level ?? 1;
-      if (automationLevel < 2) {
-        logger.info('Research Agent: automation_level gate blocked', { dealId, automationLevel });
-        return { allowed: false };
+      const creditsRemaining = creditRes.rows[0]?.credits_remaining;
+      if (creditsRemaining !== undefined && Number(creditsRemaining) <= 0) {
+        logger.info('Research Agent: org credit gate blocked — no credits', {
+          dealId, orgId, creditsRemaining,
+        });
+        return { allowed: false, reason: 'no_credits' as const };
       }
       return { allowed: true };
     });
 
     if (!tierCheckResult.allowed) {
+      // C1: never a silent skip — record an explicit, queryable reason.
+      if (tierCheckResult.reason === 'no_credits') {
+        await step.run('record-credit-skip', async () => {
+          await query(
+            `INSERT INTO agent_runs
+               (agent_id, agent_version, prompt_version, deal_id, user_id,
+                triggered_by, trigger_context, status, error, started_at, completed_at)
+             VALUES ('research', $1, $2, $3, $4, 'event', $5, 'budget_exceeded',
+                      'research skipped — no credits', NOW(), NOW())`,
+            [
+              RESEARCH_AGENT_CONFIG.agentVersion,
+              RESEARCH_AGENT_CONFIG.promptVersion,
+              dealId,
+              userId,
+              JSON.stringify({ source: 'deal.created', skip_reason: 'no_credits' }),
+            ]
+          );
+        });
+      }
       return { runId: '', confidence_score: 0 };
     }
 
