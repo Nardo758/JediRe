@@ -398,6 +398,31 @@ describe('runModel() new output fields (task #486)', () => {
     expect(fl.disposition.dispositionDocStamps).toBeGreaterThan(0);
   });
 
+  // ── C3 (F-P1 Phase 2C): exit-basis ruling (operator, 2026-07-06) ─────────
+  it('disposition.exitValuationBasis defaults to forward_12 (identity check)', () => {
+    // Default: no exitValuationBasis set → 'forward_12', preserving current behavior
+    expect(result.disposition.exitValuationBasis).toBe('forward_12');
+    // forward_12 NOI = exit-year NOI (same as pre-change behavior)
+    expect(result.disposition.forward12NOI).toBe(result.disposition.stabilizedNOI);
+  });
+
+  it('disposition computes both forward_12 and trailing_12 NOIs', () => {
+    // Both values must be present regardless of which basis is selected
+    expect(typeof result.disposition.forward12NOI).toBe('number');
+    expect(typeof result.disposition.trailing12NOI).toBe('number');
+    // forward_12 = exit-year NOI (single-year annualized)
+    expect(result.disposition.forward12NOI).toBeGreaterThan(0);
+    // trailing_12 = sum of last 12 monthly NOIs (may differ from forward_12)
+    expect(result.disposition.trailing12NOI).toBeGreaterThan(0);
+  });
+
+  it('trailing_12 basis selects trailing12NOI as stabilizedNOI', () => {
+    const m = makeRunModelAssumptions({ exitValuationBasis: 'trailing_12' });
+    const r = runModel(m, { skipSensitivity: true });
+    expect(r.disposition.exitValuationBasis).toBe('trailing_12');
+    expect(r.disposition.stabilizedNOI).toBe(r.disposition.trailing12NOI);
+  });
+
   // ── dscrAtStabilization dynamics ─────────────────────────────────────────
   // TEST-BUG (triaged 2026-07-06): this test's Y2 assumption predates the
   // engine's monthly-crossing stabilization logic (see deterministic-model-runner.ts,

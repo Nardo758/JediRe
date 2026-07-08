@@ -98,8 +98,24 @@ export interface ModelAssumptions {
   softCostPct?: number;
   constructionLoanRate?: number;
   constructionLtc?: number;
-  // Optional: months to stabilization for lease-up absorption curve (monthly ramp)
-  monthsToStabilize?: number;
+  // Exit-basis ruling (operator, 2026-07-06): forward_12 | trailing_12
+  // Default 'forward_12' preserves current behavior (exit-year NOI).
+  exitValuationBasis?: 'forward_12' | 'trailing_12';
+  // Trending schema (B4): per-category expense growth rates.
+  // Each category defaults to flat expenseGrowth when absent — identity-neutral.
+  expenseGrowthRates?: {
+    insurance?: number;
+    payroll?: number;
+    utilities?: number;
+    repairsMaintenance?: number;
+    contractServices?: number;
+    marketing?: number;
+    gAndA?: number;
+    other?: number;
+  };
+  // Trending schema (B4): other-income growth rate.
+  // Defaults to expenseGrowth when absent — identity-neutral.
+  otherIncomeGrowthRate?: number;
   // Turn-cohort fields (W1)
   standardTurnDowntimeDays?: number;   // days of downtime for standard turns (default 14)
   renoTurnDowntimeWeeks?: number;     // weeks of downtime for renovation turns (overlay)
@@ -346,7 +362,10 @@ export interface ModelResults {
   annualCashFlow: AnnualCashFlowRow[];
   sourcesAndUses: SourcesUsesPayload;
   disposition: {
+    exitValuationBasis: 'forward_12' | 'trailing_12';
     stabilizedNOI: number;
+    forward12NOI: number;
+    trailing12NOI: number;
     grossSalePrice: number;
     saleCosts: number;
     netSaleProceeds: number;
@@ -1873,7 +1892,23 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
 
   // ── Phase 6: Disposition ────────────────────────────────────────────────
   const exitRow = annualRows[hold - 1]; // exit-year NOI = last operating year (index hold-1)
-  const stabilizedNOI = exitRow?.noi ?? 0;
+  const forward12NOI = exitRow?.noi ?? 0;
+
+  // Exit-basis ruling (operator, 2026-07-06): compute both forward_12 and trailing_12
+  // T12 = sum of NOI from last 12 operating months (months m-11..m where m = exit month)
+  let trailing12NOI = 0;
+  if (monthlyRows.length >= 12) {
+    const last12 = monthlyRows.slice(-12);
+    trailing12NOI = last12.reduce((sum, m) => sum + m.noi, 0);
+  } else if (monthlyRows.length > 0) {
+    // Fewer than 12 months: sum all available (partial T12 for short hold periods)
+    trailing12NOI = monthlyRows.reduce((sum, m) => sum + m.noi, 0);
+  }
+
+  // Select basis per assumption; default 'forward_12' preserves current behavior
+  const basis = a.exitValuationBasis ?? 'forward_12';
+  const stabilizedNOI = basis === 'trailing_12' ? trailing12NOI : forward12NOI;
+
   const grossSalePrice = a.exitCap > 0 ? stabilizedNOI / a.exitCap : 0;
   const saleCostsValue = grossSalePrice * a.saleCosts;
   const dispositionDocStamps = a.isFlorida ? grossSalePrice * 0.007 : 0;
@@ -1881,7 +1916,7 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
   const netSaleProceeds = grossSalePrice - saleCostsValue - dispositionDocStamps;
   const equityProceeds = netSaleProceeds - loanBalance;
 
-  log.push(`Phase 6: Disposition — stabilized NOI=${stabilizedNOI}, exit cap=${(a.exitCap * 100).toFixed(1)}%, sale price=${grossSalePrice}`);
+  log.push(`Phase 6: Disposition — basis=${basis}, forward12NOI=${forward12NOI}, trailing12NOI=${trailing12NOI}, selectedNOI=${stabilizedNOI}, exit cap=${(a.exitCap * 100).toFixed(1)}%, sale price=${grossSalePrice}`);
   log.push(`  Sale costs=${saleCostsValue}, loan bal=${loanBalance}, equity proceeds=${equityProceeds}`);
 
   // Fill capRateOnCost now that totalAcqCost is known
@@ -2302,7 +2337,10 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       },
     },
     disposition: {
+      exitValuationBasis: a.exitValuationBasis ?? 'forward_12',
       stabilizedNOI,
+      forward12NOI,
+      trailing12NOI,
       grossSalePrice,
       saleCosts: saleCostsValue,
       netSaleProceeds,
