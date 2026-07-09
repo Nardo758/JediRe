@@ -338,3 +338,203 @@ describe('Determinism proof — runFullModel()', () => {
     expect(JSON.stringify(run1.m11Warnings)).toBe(JSON.stringify(run2.m11Warnings));
   });
 });
+
+// ── F5-3: isExitYear integrity — exactly one exit row per model ─────────────
+
+describe('F5-3 — isExitYear integrity', () => {
+  it('acquisition path (existing deal): exactly one exit row', () => {
+    const assumptions = {
+      units: 100,
+      avgUnitSf: 850,
+      marketRent: 1200,
+      inPlaceRent: 1200,
+      purchasePrice: 15_000_000,
+      closingCostsPct: 0.015,
+      isFlorida: false,
+      docStampsPct: 0,
+      intangibleTaxPct: 0,
+      titleInsurancePct: 0,
+      capexBudget: 200_000,
+      rentGrowth: [0.025, 0.025, 0.025, 0.025, 0.025],
+      lossToLease: 0,
+      vacancyY1: 0.05,
+      vacancyStab: 0.05,
+      underwritingVacancyFloor: 0.05,
+      concessions: 0.01,
+      badDebt: 0.015,
+      otherIncomePerUnit: 150,
+      expenseGrowth: 0.025,
+      payrollPerUnit: 600,
+      maintenancePerUnit: 350,
+      contractServicesPerUnit: 150,
+      marketingPerUnit: 75,
+      utilitiesPerUnit: 250,
+      adminPerUnit: 120,
+      insurancePerUnit: 180,
+      managementFee: 0.03,
+      replacementReserves: 150,
+      loanAmount: 10_500_000,
+      ltv: 0.70,
+      term: 360,
+      amort: 360,
+      ioPeriod: 0,
+      rate: 0.065,
+      originationFeePct: 0.01,
+      prepayPenalty: 0,
+      exitCap: 0.065,
+      saleCosts: 0.02,
+      holdYears: 5,
+      lpEquity: 4_185_000,
+      gpEquity: 315_000,
+      preferredReturn: 0.08,
+      promoteTiers: [0.08, 0.12, 0.15] as [number, number, number],
+      promoteSplits: [0.20, 0.30, 0.50] as [number, number, number],
+      dealType: 'existing',
+      dealMode: 'existing' as const,
+      occupancyAtClose: 1.0,
+      standardTurnDowntimeDays: 14,
+      annualTurnoverRate: 0.50,
+      newLeaseConcessionMonths: 1,
+    };
+
+    const full = runFullModel(assumptions, { skipSensitivity: true });
+    const exitRows = full.result.annualCashFlow.filter(r => r.isExitYear);
+    expect(exitRows.length).toBe(1);
+    expect(exitRows[0].year).toBe(5); // holdYears = 5, exit is year 5
+  });
+
+  it('dev path: exactly one exit row', () => {
+    const assumptions = {
+      units: 100,
+      avgUnitSf: 850,
+      marketRent: 1200,
+      inPlaceRent: 1200,
+      purchasePrice: 15_000_000,
+      closingCostsPct: 0.015,
+      isFlorida: false,
+      docStampsPct: 0,
+      intangibleTaxPct: 0,
+      titleInsurancePct: 0,
+      capexBudget: 200_000,
+      rentGrowth: [0.025, 0.025, 0.025, 0.025, 0.025],
+      lossToLease: 0,
+      vacancyY1: 0.05,
+      vacancyStab: 0.05,
+      underwritingVacancyFloor: 0.05,
+      concessions: 0.01,
+      badDebt: 0.015,
+      otherIncomePerUnit: 150,
+      expenseGrowth: 0.025,
+      payrollPerUnit: 600,
+      maintenancePerUnit: 350,
+      contractServicesPerUnit: 150,
+      marketingPerUnit: 75,
+      utilitiesPerUnit: 250,
+      adminPerUnit: 120,
+      insurancePerUnit: 180,
+      managementFee: 0.03,
+      replacementReserves: 150,
+      loanAmount: 10_500_000,
+      ltv: 0.70,
+      term: 360,
+      amort: 360,
+      ioPeriod: 0,
+      rate: 0.065,
+      originationFeePct: 0.01,
+      prepayPenalty: 0,
+      exitCap: 0.065,
+      saleCosts: 0.02,
+      holdYears: 5,
+      lpEquity: 4_185_000,
+      gpEquity: 315_000,
+      preferredReturn: 0.08,
+      promoteTiers: [0.08, 0.12, 0.15] as [number, number, number],
+      promoteSplits: [0.20, 0.30, 0.50] as [number, number, number],
+      dealType: 'development',
+      dealMode: 'development' as const,
+      occupancyAtClose: 1.0,
+      standardTurnDowntimeDays: 14,
+      annualTurnoverRate: 0.50,
+      newLeaseConcessionMonths: 1,
+      constructionMonths: 18,
+      constructionLoanRate: 0.08,
+      softCostPct: 0.15,
+      constructionLtc: 0.60,
+    };
+
+    const full = runFullModel(assumptions, { skipSensitivity: true });
+    const exitRows = full.result.annualCashFlow.filter(r => r.isExitYear);
+    expect(exitRows.length).toBe(1);
+    expect(exitRows[0].year).toBe(5); // holdYears = 5, exit is year 5
+  });
+});
+
+// ── F5-6: evidence-block inPlaceNOI integrity — exactly one, never duplicate ──
+
+describe('F5-6 — evidence block inPlaceNOI integrity', () => {
+  it('build path: exactly one inPlaceNOI entry, never duplicate', () => {
+    const assumptions = {
+      units: 100,
+      avgUnitSf: 850,
+      marketRent: 1200,
+      inPlaceRent: 1200,
+      purchasePrice: 15_000_000,
+      closingCostsPct: 0.015,
+      isFlorida: false,
+      docStampsPct: 0,
+      intangibleTaxPct: 0,
+      titleInsurancePct: 0,
+      capexBudget: 200_000,
+      rentGrowth: [0.025, 0.025, 0.025, 0.025, 0.025],
+      lossToLease: 0,
+      vacancyY1: 0.05,
+      vacancyStab: 0.05,
+      underwritingVacancyFloor: 0.05,
+      concessions: 0.01,
+      badDebt: 0.015,
+      otherIncomePerUnit: 150,
+      expenseGrowth: 0.025,
+      payrollPerUnit: 600,
+      maintenancePerUnit: 350,
+      contractServicesPerUnit: 150,
+      marketingPerUnit: 75,
+      utilitiesPerUnit: 250,
+      adminPerUnit: 120,
+      insurancePerUnit: 180,
+      managementFee: 0.03,
+      replacementReserves: 150,
+      loanAmount: 10_500_000,
+      ltv: 0.70,
+      term: 360,
+      amort: 360,
+      ioPeriod: 0,
+      rate: 0.065,
+      originationFeePct: 0.01,
+      prepayPenalty: 0,
+      exitCap: 0.065,
+      saleCosts: 0.02,
+      holdYears: 5,
+      lpEquity: 4_185_000,
+      gpEquity: 315_000,
+      preferredReturn: 0.08,
+      promoteTiers: [0.08, 0.12, 0.15] as [number, number, number],
+      promoteSplits: [0.20, 0.30, 0.50] as [number, number, number],
+      dealType: 'existing',
+      dealMode: 'existing' as const,
+      occupancyAtClose: 1.0,
+      standardTurnDowntimeDays: 14,
+      annualTurnoverRate: 0.50,
+      newLeaseConcessionMonths: 1,
+    };
+
+    const full = runFullModel(assumptions, { skipSensitivity: true });
+    const evidence = full.result.evidence;
+    expect(evidence).toBeDefined();
+
+    const inPlaceNOIEntries = evidence.fields.filter((f: any) => f.field === 'inPlaceNOI');
+    expect(inPlaceNOIEntries.length).toBe(1); // exactly one, never zero, never duplicate
+
+    const noiEntries = evidence.fields.filter((f: any) => f.field === 'NOI');
+    expect(noiEntries.length).toBe(1); // the Y1 NOI entry is separate
+  });
+});
