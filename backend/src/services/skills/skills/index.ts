@@ -17,6 +17,7 @@ import { skillRegistry, SkillDefinition, SkillContext, SkillResult } from '../sk
 import { query } from '../../../database/connection';
 import { logger } from '../../../utils/logger';
 import { registerAdvisorPersonas } from './personas';
+import { writeAgentConfirmedOverlay } from '../../deterministic/agent-overlay-writer';
 
 // ============================================================================
 // DATA SKILLS (5)
@@ -407,19 +408,26 @@ const parseEnvironmentalReport: SkillDefinition = {
 const updateAssumption: SkillDefinition = {
   id: 'update_assumption',
   name: 'Update Assumption',
-  description: 'Change an underwriting input like cap rate, exit year, rent growth, or OpEx ratio. Always confirm with the user before executing.',
+  description: 'Change an underwriting input like cap rate, exit year, rent growth, or OpEx ratio. Writes through the agent_confirmed overlay seam (D3-W2). Always confirm with the user before executing.',
   category: 'action',
   parameters: z.object({
     field: z.enum([
-      'cap_rate', 'exit_cap_rate', 'exit_year', 'rent_growth', 
+      'cap_rate', 'exit_cap_rate', 'exit_year', 'rent_growth',
       'expense_growth', 'vacancy_rate', 'management_fee_pct',
       'capex_per_unit', 'renovation_budget'
     ]),
     value: z.number().describe('New value for the field'),
     confirmed: z.boolean().describe('Whether the user has confirmed this change'),
+    reasoning: z.string().optional().describe('Why the agent is proposing this value'),
+    evidence_refs: z.array(z.object({
+      kind: z.enum(['correlation', 'comp', 'doc', 'observation']),
+      ref_id: z.string(),
+      data_kind: z.enum(['actual', 'forecast']),
+    })).optional().describe('Evidence backing the proposed value'),
+    confidence: z.enum(['HIGH', 'MEDIUM', 'LOW']).optional().describe('Agent confidence level (overridden to LOW if value is out-of-bounds)'),
   }),
   execute: async (params, context): Promise<SkillResult> => {
-    const { field, value, confirmed } = params;
+    const { field, value, confirmed, reasoning, evidence_refs, confidence } = params;
     const { dealId, userId } = context;
 
     if (!confirmed) {
@@ -436,16 +444,36 @@ const updateAssumption: SkillDefinition = {
     }
 
     try {
-      await query(
-        `UPDATE deal_assumptions SET ${field} = $1, updated_at = NOW(), updated_by = $2 WHERE deal_id = $3`,
-        [value, userId, dealId]
-      );
+      // D3-W2: route through the agent_confirmed overlay seam.
+      // No direct UPDATE deal_assumptions scalars — all writes go through
+      // deal_assumption_overlays with full provenance (W3) and build-hash stamp (W5).
+      const result = await writeAgentConfirmedOverlay({
+        dealId,
+        fieldKey: field,
+        value,
+        userId,
+        scenarioId: null,   // base scope per R1c ruling — no auto-create scenario
+        confidence: confidence ?? 'MEDIUM',
+        reasoning,
+        evidenceRefs: evidence_refs,
+      });
 
       return {
         success: true,
-        data: { message: `Updated ${field} to ${value}` },
+        data: {
+          message: `Wrote ${field}=${value} to agent_confirmed overlay (id: ${result.overlayId})`,
+          overlayId: result.overlayId,
+          confidence: result.confidence,
+          outOfBounds: result.outOfBounds,
+          year1Patched: result.year1Patched,
+          buildHash: result.buildHash,
+          note: result.outOfBounds
+            ? `Value ${value} is outside plausibility bounds for ${field} — written with LOW confidence per R4 escalation policy.`
+            : undefined,
+        },
       };
     } catch (error: any) {
+      logger.error('[update_assumption] overlay write failed', { dealId, field, error: error.message });
       return { success: false, error: error.message };
     }
   },

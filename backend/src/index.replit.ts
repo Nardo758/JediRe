@@ -424,6 +424,7 @@ import { googleRealtimeRefreshCron } from './inngest/functions/google-realtime-r
 import { spyfuMissingDataCron } from './inngest/functions/spyfu-missing-data-cron';
 import { m35ConnectorsNightlyCron } from './inngest/functions/m35-connectors-nightly';
 import { verasetNightlyIngest } from './inngest/functions/veraset-nightly';
+import { taxReconCron } from './inngest/functions/taxReconCron';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -514,6 +515,9 @@ app.use(
       // When active, ingests foot-traffic data into historical_observations
       // mobility_* columns. See veraset-mobility.service.ts for API wiring.
       verasetNightlyIngest,
+      // D3 W7 layer-(b): nightly OM-vs-platform tax reconciliation (02:30 UTC)
+      // Flags divergences >20% via broker_claim overlay. Migrate to F-P1t acceptance on landing.
+      taxReconCron,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,
