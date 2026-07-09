@@ -185,7 +185,45 @@ Fields in `deal_assumptions` that are NULL, zeroed/defaulted, or likely platform
 
 ---
 
+---
+
+## X3 — Design Note: `data_kind` on Every `evidence_ref` (2026-07-08)
+
+**Status:** Design note only — not built in this dispatch.
+
+When D3's agent constructs an `evidence_ref` (a citation that backs an assumption proposal), each reference must carry a `data_kind` discriminator indicating whether the cited observation is historical fact or a forward projection. This is required because:
+
+1. **CoStar time series mix actuals and forecasts.** CS_RENT_GROWTH (25yr) contains historical actuals back to ~2000 and CoStar-modeled forward estimates from the present. An agent citing "rent growth 3.2% per CS_RENT_GROWTH" without a `data_kind` annotation is ambiguous — the operator cannot tell whether that figure is a trailing 5yr average (an actual) or a CoStar forecast projection.
+
+2. **License exposure differs by kind.** Historical actuals are licensed differently from CoStar's proprietary forecast models. Forecast values carry additional redistribution constraints under the CoStar enterprise license.
+
+3. **Confidence signals differ.** An `actual` citation should increase operator confidence; a `forecast` citation should trigger scrutiny and possibly a discount in the agent's proposed value.
+
+**Required shape for every `evidence_ref` in D3:**
+
+```typescript
+interface EvidenceRef {
+  metric_id: string;           // e.g. 'CS_RENT_GROWTH'
+  geography_id: string;        // e.g. 'west_midtown_atlanta'
+  period: string;              // ISO date or range, e.g. '2019-01/2024-12'
+  value: number;
+  data_kind: 'actual' | 'forecast';  // ← REQUIRED; no default allowed
+  source: string;              // vendor or platform series label
+  redistribution_restricted?: boolean;
+}
+```
+
+**Implementation rule (for when D3 is built):**
+- CoStar observations with an `as_of_date` in the past AND no forecast-flag annotation → `data_kind: 'actual'`
+- CoStar observations with `as_of_date` beyond the vendor's data-as-of date in `historical_observations.vendor_data_as_of` → `data_kind: 'forecast'`
+- When ambiguous, prefer `'forecast'` (conservative — the operator can override; a missed forecast flag cannot be recalled)
+- D3's agent prompt must instruct Claude to always emit `data_kind` and never omit it
+
+**Note on current data:** Bishop's upload has `vendor_data_as_of` stored in `historical_observations.vendor_data_as_of`. Any time-series observations beyond that date are CoStar forecasts, not actuals. The 25yr CS_RENT_GROWTH series is mostly actuals (pre-2025); the forward growth tail beyond 2025 is a forecast.
+
+---
+
 ## Files changed by this dispatch
 
-- `docs/architecture/costar-bishop-coverage-map.md` (this file — new)
+- `docs/architecture/costar-bishop-coverage-map.md` (this file — new; X3 design note appended 2026-07-08)
 - `metric_correlations` — 270 rows added (scope `deal:3f32276f-...`, restricted=true); 106 stale pre-fix rows deleted

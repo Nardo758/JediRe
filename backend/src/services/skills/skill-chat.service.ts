@@ -270,9 +270,16 @@ export async function skillChat(request: ChatRequest): Promise<ChatResponse> {
 async function loadConversationHistory(conversationId: string, limit: number): Promise<ChatMessage[]> {
   try {
     const result = await query(
+      // I2 — Chat-Content License Firewall: exclude contains_restricted rows from AI replay.
+      // Rows where contains_restricted = TRUE were saved in a deal context that carries
+      // restricted-vendor lineage (e.g. CoStar metric_time_series). Re-injecting them into
+      // future AI prompts would propagate restricted values through the replay chain.
+      // The frontend display endpoints read all rows (including restricted); only this
+      // replay path is gated.
       `SELECT role, content, skill_calls, created_at
        FROM skill_chat_messages
        WHERE conversation_id = $1
+         AND contains_restricted = FALSE
        ORDER BY created_at ASC
        LIMIT $2`,
       [conversationId, limit]
@@ -290,6 +297,31 @@ async function loadConversationHistory(conversationId: string, limit: number): P
   }
 }
 
+/**
+ * I2 — Chat-Content License Firewall
+ * Returns true if the given deal has any metric_time_series rows marked
+ * redistribution_restricted = TRUE (i.e. CoStar or other restricted-vendor lineage).
+ * Used by saveConversationMessage to flag assistant responses for exclusion from replay.
+ */
+async function hasDealRestrictedLineage(dealId: string): Promise<boolean> {
+  try {
+    const result = await query(
+      `SELECT EXISTS(
+         SELECT 1 FROM metric_time_series
+         WHERE deal_id = $1 AND redistribution_restricted = TRUE
+         LIMIT 1
+       ) AS has_restricted`,
+      [dealId]
+    );
+    return result.rows[0]?.has_restricted === true;
+  } catch {
+    // If metric_time_series is unavailable, fail open (do not flag).
+    // Fail-open is safer here: a missed flag means one un-gated replay; a false-flag
+    // would permanently exclude every turn for a deal.
+    return false;
+  }
+}
+
 async function saveConversationMessage(
   conversationId: string,
   dealId: string,
@@ -299,10 +331,27 @@ async function saveConversationMessage(
   skillCalls?: SkillCallInfo[]
 ): Promise<void> {
   try {
+    // I2 — Chat-Content License Firewall: flag assistant turns for deals with restricted lineage.
+    // User turns are never flagged (they contain no AI-generated restricted derivations).
+    // Scope-don't-strip: the live response is served unchanged; only the stored row is flagged.
+    let containsRestricted = false;
+    if (role === 'assistant') {
+      containsRestricted = await hasDealRestrictedLineage(dealId);
+    }
+
     await query(
-      `INSERT INTO skill_chat_messages (conversation_id, deal_id, user_id, role, content, skill_calls)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [conversationId, dealId, userId, role, content, skillCalls ? JSON.stringify(skillCalls) : null]
+      `INSERT INTO skill_chat_messages
+         (conversation_id, deal_id, user_id, role, content, skill_calls, contains_restricted)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        conversationId,
+        dealId,
+        userId,
+        role,
+        content,
+        skillCalls ? JSON.stringify(skillCalls) : null,
+        containsRestricted,
+      ]
     );
   } catch (error) {
     // Log but don't fail - conversation persistence is nice-to-have

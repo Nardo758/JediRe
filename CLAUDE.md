@@ -514,3 +514,75 @@ Portfolio actuals scoping must JOIN `deal_properties dp ON dp.deal_id = dma.deal
 `dp.property_id = dma.property_id`). Two orgs can share the same public `property_id`; joining
 on `property_id` leaks cross-org rows through the shared key. **Any new portfolio read must
 use the `deal_id`-based JOIN path.** (B4b-fix, proven live.)
+
+---
+
+## ORB-01 — Orphan-Sweep Rule (2026-07-08)
+
+**Rule:** A deletion path that only cleans what it re-computes cannot clean what it can no longer see. Any schema change that alters a job's read visibility requires a post-deploy orphan sweep of rows the job can no longer reach.
+
+**Why:** The I1-EXTENSION migration marked `metric_time_series` CS_ rows as `redistribution_restricted = TRUE`, which removed them from the GLOBAL sweep's read set. The nightly `sweepAllGeographies` (correlationEngine.service.ts) only deletes pairs it is about to re-compute. After the schema change, those pairs were no longer re-computed, so their old `metric_correlations` output rows (GLOBAL scope, CoStar-derived) survived until the I2 reader census. They had to be purged manually.
+
+**How to apply:** Whenever you change a filter predicate, column visibility, or join condition that narrows a job's input set, ask: "Are there rows in the output table that this job previously wrote but can no longer see?" If yes, write and run a one-time cleanup query immediately after the schema migration, before the next job run.
+
+**Applies to:** Any scheduled sweep, ETL, or background job that both reads from a source table and writes/deletes to an output table. Especially correlation jobs, aggregation jobs, and any job that deletes-before-recompute.
+
+---
+
+## LIC-01 — Restricted Vendor Derivation Chain (2026-07-08)
+
+**Rule:** Any output derived from a restricted-vendor source (CoStar, or any vendor with `redistribution_restricted = TRUE` in the vendor registry) must itself be marked restricted. This applies across all storage tiers: `metric_time_series` → `metric_correlations` → `skill_chat_messages`.
+
+**Why:** Restriction must propagate through derivation. A correlation computed from CoStar data is a CoStar-derived artifact, even if the metric IDs involved look like platform metrics. Without chain enforcement, restricted values leak through aggregation and replay paths silently.
+
+**How to apply:**
+- **Write path:** check `deal_id` for restricted lineage before storing any derived output. Canonical check: `SELECT EXISTS(SELECT 1 FROM metric_time_series WHERE deal_id = $1 AND redistribution_restricted = TRUE LIMIT 1)`.
+- **Read/replay path:** filter `WHERE contains_restricted = FALSE` (or `WHERE redistribution_restricted = FALSE`) to exclude restricted rows from AI prompt replay, training corpora, and any cross-deal aggregation.
+- **Storage shape:** output tables must carry a `redistribution_restricted` or `contains_restricted` column from birth — not added retroactively.
+- **Training corpus:** `sanitizeTrainingCharacteristics` in `training.routes.ts` already strips restricted-vendor field names; `broker_rent` fields come from broker pro-forma (not CoStar), so they survive the filter correctly.
+
+---
+
+## I2 — Chat-Content License Firewall (2026-07-08)
+
+### Firewall design: flag-and-exclude
+
+- **scope-don't-strip strategy:** live AI context in the current turn is NOT sanitized. The response is served to the user as normal. The firewall applies only at the persistence boundary.
+- **Write path** (`saveConversationMessage` in `skill-chat.service.ts`): for every assistant turn, check whether the deal has any `metric_time_series` rows with `redistribution_restricted = TRUE`. If yes, save the row with `contains_restricted = TRUE`.
+- **Replay path** (`loadConversationHistory`): `WHERE contains_restricted = FALSE` — restricted rows are never re-injected into future AI prompts.
+- **Frontend display path** (`skill-chat.routes.ts` GET endpoints): reads all rows including restricted — display is safe; only LLM re-ingestion is the risk.
+- **Log table** (`ai_usage_log`): stores metadata only (no content column) — confirmed clean.
+- **Training corpus** (`training_examples`): `sanitizeTrainingCharacteristics` strips restricted vendor fields — confirmed not a corpus harvest path for chat messages.
+
+### Reader census (all tables that may surface restricted content to AI prompts)
+
+| Table | Reader | Replay-gated? |
+|-------|--------|---------------|
+| `skill_chat_messages` | `skill-chat.service.ts:loadConversationHistory` | YES — `WHERE contains_restricted = FALSE` |
+| `skill_chat_messages` | `skill-chat.routes.ts` GET /conversations | NO (display only) |
+| `skill_chat_messages` | `skill-chat.routes.ts` GET /conversations/:id | NO (display only) |
+| `agent_conversations` | `agent-orchestrator.ts:loadConversationHistory` | NO restricted data flows through this path |
+| `agent_chat_logs` | write-only in `agent-chat.service.ts` | N/A |
+| `opus_messages` | `opus.service.ts` — Opus flow, separate surface | separate audit needed |
+| `chat_sessions.conversation_history` | `sessionStore.ts` — WhatsApp/Twilio surface | separate audit needed |
+
+### I2-D historical backlog
+
+Bishop deal (`3f32276f-aacd-4da3-b306-317c5109b403`) at time of firewall deployment:
+- `agent_chat_logs`: 0 rows
+- `opus_messages`: 0 rows
+- `skill_chat_messages`: 0 rows (table did not exist before 2026-07-08 migration)
+
+No retroactive purge required. All future Bishop assistant turns will be flagged at write time.
+
+### X2 — sweepAllGeographies gap (proposal, not yet built)
+
+`sweepAllGeographies()` (correlationEngine.service.ts:860) iterates `DISTINCT geography_type, geography_id` from `metric_time_series` with NO `deal_id` filter. This produces GLOBAL-scope correlations only. Deal-scoped correlations (e.g. Bishop's `deal_id`-partitioned rows) are re-computed by deal-scoped callers but are not swept by the nightly job — they go stale silently.
+
+**Proposed minimal fix (gate for next dispatch):**
+1. After the GLOBAL sweep loop, add a deal-scoped pass: `SELECT DISTINCT deal_id FROM metric_time_series WHERE deal_id IS NOT NULL AND redistribution_restricted = TRUE`.
+2. For each `deal_id`, call `computeTimeSeriesCorrelations(geoType, geoId, dealId)` with `dealId` set.
+3. Store resulting correlations with `scope = 'deal'` and `restricted = TRUE`.
+4. Apply ORB-01: purge any stale `metric_correlations` rows for those `(geoType, geoId, dealId)` tuples before recomputing.
+
+Do not build this until the sweep change is formally dispatched. The gap is logged here to prevent it from being lost.

@@ -233,4 +233,15 @@ export interface MeteringMetadata {
   /** B2a: resolved org_id for the spending member (user_id → org_members → org_credit_balances). */
   org_id?: string;
   triggered_by?: TriggerBucket;
+  /**
+   * I2 — Chat-Content License Firewall.
+   * Set to 'restricted' when the AI call operates in a context where the deal
+   * carries restricted-vendor lineage (e.g. CoStar-sourced metric_time_series rows).
+   * Downstream log writers (skill-chat.service.ts saveConversationMessage) use this
+   * to mark stored responses `contains_restricted = true` so they are excluded from
+   * conversation-history replay into future AI prompts (scope-don't-strip: live
+   * context is untouched; only the LOG loses the replay path).
+   * Source of truth for restriction status: metric_time_series.redistribution_restricted.
+   */
+  license_context?: 'restricted' | 'unrestricted';
 }
