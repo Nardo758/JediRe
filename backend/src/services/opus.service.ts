@@ -73,6 +73,10 @@ export interface OpusMessage {
   content: string;
   metadata: any;
   created_at: Date;
+  /** J1 CoStar firewall: TRUE if this turn was generated while the deal had
+   *  redistribution_restricted rows in metric_time_series.  streamChat() excludes
+   *  these rows from the message array sent to anthropic.messages.stream(). */
+  contains_restricted?: boolean;
 }
 
 export interface ProformaVersion {
@@ -131,9 +135,38 @@ export class OpusService {
   }
 
   async saveMessage(conversationId: number, role: string, content: string, metadata: any = {}): Promise<OpusMessage> {
+    // J1 CoStar firewall: flag assistant turns for deals that have redistribution_restricted
+    // rows in metric_time_series.  The flag is checked at replay time (streamChat) to exclude
+    // the turn from the message array sent to anthropic.messages.stream().
+    let containsRestricted = false;
+    if (role === 'assistant') {
+      try {
+        const convRes = await this.pool.query(
+          `SELECT deal_id FROM opus_conversations WHERE id = $1 LIMIT 1`,
+          [conversationId]
+        );
+        const dealId = convRes.rows[0]?.deal_id as string | null;
+        if (dealId) {
+          const restrictedRes = await this.pool.query(
+            `SELECT EXISTS(
+               SELECT 1 FROM metric_time_series
+               WHERE deal_id = $1::uuid AND redistribution_restricted = TRUE
+               LIMIT 1
+             ) AS has_restricted`,
+            [dealId]
+          );
+          containsRestricted = restrictedRes.rows[0]?.has_restricted === true;
+        }
+      } catch {
+        // Fail open — a lineage check failure must never block the user's save.
+        // The turn is stored un-flagged; the next sweep will mark it if needed.
+      }
+    }
+
     const result = await this.pool.query(
-      `INSERT INTO opus_messages (conversation_id, role, content, metadata) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [conversationId, role, content, JSON.stringify(metadata)]
+      `INSERT INTO opus_messages (conversation_id, role, content, metadata, contains_restricted)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [conversationId, role, content, JSON.stringify(metadata), containsRestricted]
     );
     await this.pool.query(
       `UPDATE opus_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
@@ -492,8 +525,12 @@ ${comparableData}`;
     const systemPrompt = this.buildSystemPrompt(dealContext, comparableData, dealMeta);
 
     const history = await this.getMessages(conversationId);
+    // J1 CoStar firewall: exclude turns flagged contains_restricted=TRUE from the LLM
+    // message array.  This prevents redistribution of CoStar-licensed content via the
+    // replay path.  The display endpoint (getMessages) is unfiltered intentionally —
+    // users can still read their own history; only the LLM replay is gated.
     const chatMessages = history
-      .filter(m => m.role !== 'system')
+      .filter(m => m.role !== 'system' && !m.contains_restricted)
       .map(m => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,

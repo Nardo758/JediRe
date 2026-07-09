@@ -563,8 +563,9 @@ use the `deal_id`-based JOIN path.** (B4b-fix, proven live.)
 | `skill_chat_messages` | `skill-chat.routes.ts` GET /conversations/:id | NO (display only) |
 | `agent_conversations` | `agent-orchestrator.ts:loadConversationHistory` | NO restricted data flows through this path |
 | `agent_chat_logs` | write-only in `agent-chat.service.ts` | N/A |
-| `opus_messages` | `opus.service.ts` — Opus flow, separate surface | separate audit needed |
-| `chat_sessions.conversation_history` | `sessionStore.ts` — WhatsApp/Twilio surface | separate audit needed |
+| `opus_messages` | `opus.service.ts:streamChat` — `getMessages()` → `anthropic.messages.stream()` | YES — `!m.contains_restricted` filter (J1, 2026-07-09) |
+| `opus_messages` | `opus.service.ts` GET routes (display) | NO (display only) |
+| `chat_sessions.conversation_history` | `unified-orchestrator.ts:intentClassifier.classify()` | EXEMPT — only `.length` count injected, content never passed to LLM |
 
 ### I2-D historical backlog
 
@@ -575,14 +576,60 @@ Bishop deal (`3f32276f-aacd-4da3-b306-317c5109b403`) at time of firewall deploym
 
 No retroactive purge required. All future Bishop assistant turns will be flagged at write time.
 
-### X2 — sweepAllGeographies gap (proposal, not yet built)
+### X2 — sweepAllGeographies gap (BUILT 2026-07-09, J3)
 
-`sweepAllGeographies()` (correlationEngine.service.ts:860) iterates `DISTINCT geography_type, geography_id` from `metric_time_series` with NO `deal_id` filter. This produces GLOBAL-scope correlations only. Deal-scoped correlations (e.g. Bishop's `deal_id`-partitioned rows) are re-computed by deal-scoped callers but are not swept by the nightly job — they go stale silently.
+`sweepAllGeographies()` now runs two passes:
 
-**Proposed minimal fix (gate for next dispatch):**
-1. After the GLOBAL sweep loop, add a deal-scoped pass: `SELECT DISTINCT deal_id FROM metric_time_series WHERE deal_id IS NOT NULL AND redistribution_restricted = TRUE`.
-2. For each `deal_id`, call `computeTimeSeriesCorrelations(geoType, geoId, dealId)` with `dealId` set.
-3. Store resulting correlations with `scope = 'deal'` and `restricted = TRUE`.
-4. Apply ORB-01: purge any stale `metric_correlations` rows for those `(geoType, geoId, dealId)` tuples before recomputing.
+**Pass 1 — GLOBAL (unchanged):** iterates all `DISTINCT geography_type, geography_id` from `metric_time_series` and calls `computeTimeSeriesCorrelations(geoType, geoId)` with default scope='GLOBAL'. Restricted rows are excluded by the scopeClause predicate.
 
-Do not build this until the sweep change is formally dispatched. The gap is logged here to prevent it from being lost.
+**Orphan guard (new):** `DELETE FROM metric_correlations WHERE redistribution_restricted = TRUE AND scope_id = 'GLOBAL'`. Purges any pre-fix stale rows that the GLOBAL pass can no longer re-compute. Expected rowCount: 0 on healthy systems; >0 logged as WARN.
+
+**Pass 2 — Deal-scoped (new):** queries `SELECT DISTINCT deal_id, geography_type, geography_id FROM metric_time_series WHERE redistribution_restricted = TRUE AND deal_id IS NOT NULL` and for each combination calls `computeTimeSeriesCorrelations(geoType, geoId, 36, 'deal:<dealId>', dealId)`. Resulting `metric_correlations` rows stored with `scope_id = 'deal:<dealId>'` and `redistribution_restricted = TRUE` — never visible to other deals or anonymous callers.
+
+**Key insight (Bishop's scope_id):** Bishop's restricted `metric_time_series` rows use `scope_id = 'GLOBAL'` (not `'deal:<id>'`). The deal-scoped sweep reads them via the scopeClause `AND (redistribution_restricted = FALSE OR deal_id = $N::uuid)` and outputs to `metric_correlations` with the deal scope. There is no conflict.
+
+---
+
+## J1 — opus_messages Chat-Content Firewall (2026-07-09)
+
+### Audit verdict
+
+| Surface | Finding | Action |
+|---------|---------|--------|
+| `agent_chat_logs` | **EXEMPT** — INSERT-only in `agent-chat.service.ts`. No SELECT reader feeds an LLM. Stores user_message + agent_response but no replay path exists. | No change |
+| `opus_messages` | **NEEDS-FIREWALL** — `getMessages(conversationId)` at line 494 loads all messages → passed as `messages: chatMessages` to `anthropic.messages.stream()`. Zero rows today but path is live. | Firewalled (below) |
+| `chat_sessions.conversation_history` | **EXEMPT** — `unified-orchestrator.ts` passes `conversationHistory` to `intentClassifier.classify()`. Classifier injects only `.length` count into its LLM prompt (line 262: `Conversation has ${N} prior messages`). Content is never replayed. | No change |
+
+### Implementation
+
+**Migration:** `backend/src/database/migrations/20260709_j1_opus_messages_firewall.sql`
+- `ALTER TABLE opus_messages ADD COLUMN IF NOT EXISTS contains_restricted BOOLEAN NOT NULL DEFAULT FALSE`
+- Index on `(conversation_id, contains_restricted)`
+
+**Write path** (`opus.service.ts:saveMessage`): for every `role='assistant'` save, look up `deal_id` from `opus_conversations`, then `SELECT EXISTS(... FROM metric_time_series WHERE deal_id = $1 AND redistribution_restricted = TRUE ...)`. If TRUE, insert with `contains_restricted = TRUE`. Fail-open: lineage check errors never block the save.
+
+**Replay path** (`opus.service.ts:streamChat`): `.filter(m => m.role !== 'system' && !m.contains_restricted)` applied to history before building `chatMessages` array for `anthropic.messages.stream()`.
+
+**Display path** (`getMessages`): unfiltered — users can read their own history; only LLM re-ingestion is gated.
+
+---
+
+## J2 — Ghost Migration Root Cause (2026-07-09)
+
+### Finding
+
+`schema_migrations.migration_name` contains `20260422_skill_chat_messages.sql` (recorded as applied) but the `skill_chat_messages` table did not exist. The runner's `loadAppliedSet()` treats any name in `schema_migrations` as "already applied" — it does not verify the migration's effect is present in the actual schema.
+
+**The runner cannot distinguish "tracked-and-present" from "tracked-only."** This IS the finding. The 326 "skipped" entries at startup cannot be individually classified without per-table schema assertions. The tracking ledger alone provides no integrity guarantee.
+
+**How the ghost was created:** The April 2026 migrations were recorded in `schema_migrations` as a batch (most likely during environment initialization). The `skill_chat_messages` DDL was either never run in this environment or the table was subsequently dropped. After that, every startup saw the name in the ledger and skipped the file — silently. `skill-chat.service.ts:loadConversationHistory` caught the error and returned `[]`, masking the missing table.
+
+**Resolution:** The I2 dispatch (`20260708_i2_chat_firewall.sql`) re-created `skill_chat_messages` with `CREATE TABLE IF NOT EXISTS`. The ghost is resolved. The `20260422_skill_chat_messages.sql` tracking record remains in `schema_migrations` — the table now actually exists, so the ledger is no longer lying.
+
+### Fail-loudly fix
+
+`REQUIRED_COLUMNS` in `run-migrations.ts` extended with:
+- `skill_chat_messages.contains_restricted` — startup WARN if missing (catches future ghost migrations on this table)
+- `opus_messages.contains_restricted` — startup WARN if missing (catches J1 firewall column drift)
+
+Any future ghost on these tables will surface as a named SCHEMA DRIFT warning at startup instead of a silent `[]` return.

@@ -407,6 +407,18 @@ const REQUIRED_COLUMNS: RequiredColumn[] = [
     reason: 'F9 cache staleness check (Task #493 / #511)' },
   { table: 'deal_financial_models', column: 'error_message',
     reason: 'engine writes failure reason (Task #511)' },
+  // J2 — ghost-migration canary. 20260422_skill_chat_messages.sql was recorded in
+  // schema_migrations as "applied" but the table did not exist (effect-missing ghost).
+  // The runner cannot distinguish "tracked-and-present" from "tracked-only", so this
+  // startup check surfaces the drift loudly instead of silently returning [] from
+  // loadConversationHistory.  Migration that creates this column: 20260708_i2_chat_firewall.sql
+  { table: 'skill_chat_messages', column: 'contains_restricted',
+    reason: 'I2/J2 CoStar chat-content firewall — loadConversationHistory replay gate' },
+  // J1 — opus_messages replay gate. streamChat() filters rows where contains_restricted=TRUE
+  // before building the message array passed to anthropic.messages.stream().
+  // Migration: 20260709_j1_opus_messages_firewall.sql
+  { table: 'opus_messages', column: 'contains_restricted',
+    reason: 'J1 CoStar chat-content firewall — streamChat LLM-replay exclusion gate' },
 ];
 
 export interface SchemaCheckResult {

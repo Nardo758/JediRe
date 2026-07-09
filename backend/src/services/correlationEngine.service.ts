@@ -862,13 +862,16 @@ export class CorrelationEngineService {
     let failed = 0;
 
     try {
+      // ── Pass 1: GLOBAL (unrestricted) correlations ──────────────────────────
+      // computeTimeSeriesCorrelations with default scope='GLOBAL' excludes all
+      // redistribution_restricted=TRUE rows via its scopeClause predicate.
       const geoRes = await this.pool.query(
         `SELECT DISTINCT geography_type, geography_id
          FROM metric_time_series
          ORDER BY geography_type, geography_id`
       );
 
-      logger.info(`[CorrelationSweep] Starting sweep across ${geoRes.rows.length} geographies`);
+      logger.info(`[CorrelationSweep] Pass 1 (GLOBAL): ${geoRes.rows.length} geographies`);
 
       for (const row of geoRes.rows) {
         const geoType = row.geography_type as string;
@@ -877,7 +880,65 @@ export class CorrelationEngineService {
           await this.computeTimeSeriesCorrelations(geoType, geoId);
           processed++;
         } catch (err) {
-          logger.error(`[CorrelationSweep] Failed for ${geoType}:${geoId}: ${String(err)}`);
+          logger.error(`[CorrelationSweep] Pass 1 failed for ${geoType}:${geoId}: ${String(err)}`);
+          failed++;
+        }
+      }
+
+      // ── Orphan guard ────────────────────────────────────────────────────────
+      // Delete any GLOBAL-scope rows in metric_correlations that are flagged
+      // redistribution_restricted=TRUE.  These are stale pre-fix entries that
+      // the GLOBAL pass can no longer re-compute (restricted inputs are excluded),
+      // so they would persist indefinitely without this explicit cleanup.
+      // Expected count: 0 on healthy systems; >0 signals a historical drift.
+      const orphanRes = await this.pool.query(
+        `DELETE FROM metric_correlations
+         WHERE redistribution_restricted = TRUE AND scope_id = 'GLOBAL'`
+      );
+      if ((orphanRes.rowCount ?? 0) > 0) {
+        logger.warn(
+          `[CorrelationSweep] Orphan guard: deleted ${orphanRes.rowCount} stale ` +
+          `GLOBAL-scope restricted correlation row(s). Investigate how they were written.`
+        );
+      }
+
+      // ── Pass 2: Deal-scoped (restricted) correlations ───────────────────────
+      // For each deal that owns redistribution_restricted rows in metric_time_series,
+      // compute correlations combining GLOBAL unrestricted rows with that deal's own
+      // restricted rows.  Results stored with scope_id='deal:<id>' and
+      // redistribution_restricted=TRUE so they are never returned to other deals or
+      // anonymous callers.  Bishop (deal 3f32276f) is the only deal on this platform
+      // with CoStar-uploaded rows; this loop is designed to handle future deals too.
+      const dealGeoRes = await this.pool.query(
+        `SELECT DISTINCT deal_id, geography_type, geography_id
+         FROM metric_time_series
+         WHERE redistribution_restricted = TRUE
+           AND deal_id IS NOT NULL
+         ORDER BY deal_id, geography_type, geography_id`
+      );
+
+      if (dealGeoRes.rows.length > 0) {
+        logger.info(
+          `[CorrelationSweep] Pass 2 (deal-scoped): ` +
+          `${dealGeoRes.rows.length} deal-geography combination(s)`
+        );
+      }
+
+      for (const row of dealGeoRes.rows) {
+        const dealId   = row.deal_id       as string;
+        const geoType  = row.geography_type as string;
+        const geoId    = row.geography_id   as string;
+        const scope    = `deal:${dealId}`;
+        try {
+          // scope !== 'GLOBAL' → computePairCorrelation stores redistribution_restricted=TRUE
+          // dealId passed → scopeClause admits this deal's own restricted rows
+          await this.computeTimeSeriesCorrelations(geoType, geoId, 36, scope, dealId);
+          processed++;
+        } catch (err) {
+          logger.error(
+            `[CorrelationSweep] Pass 2 failed for deal:${dealId} ` +
+            `${geoType}:${geoId}: ${String(err)}`
+          );
           failed++;
         }
       }
