@@ -1,0 +1,87 @@
+Highlands is a `seed_path` fixture — it never runs `runModel()` at all. The `inPlaceNOI` evidence block is only produced by `runModel()`, which is the build path. So Highlands having zero `inPlaceNOI` entries is expected — it's not a bug, it's a category mismatch.
+
+However, the follow-up note says "Highlands has zero `inPlaceNOI` entries, despite the runner's push being unconditional." This implies the evidence block is expected to exist for all deals, including seed-path ones. But `runModel()` is never called for seed-path deals.
+
+Let me check if there's an evidence block for seed-path deals elsewhere, or if the evidence block is only relevant for build-path deals.
+
+The `inPlaceNOI` computation at lines 1936-1946 uses `a.inPlaceRent`, `a.occupancyAtClose`, `a.units`, `a.otherIncomePerUnit`, `a.managementFee`, and various per-unit expense fields. For a seed-path deal like Highlands, these fields come from... nowhere. Highlands never had acquisition assumptions.
+
+The follow-up note says "the runner's push being unconditional" — but the push is inside `runModel()`, which is never called for seed-path deals. So the "unconditional" claim is only true for build-path deals.
+
+For seed-path deals, the evidence block is not produced at all. The `inPlaceNOI` issue is only relevant for build-path deals.
+
+**Verdict for F5-6 (Highlands half):** This is not a bug. Highlands is a seed-path deal that never runs `runModel()`. The evidence block (including `inPlaceNOI`) is a build-path concept. The zero entries are expected.
+
+However, the follow-up note explicitly asks for "exactly ONE `inPlaceNOI` entry per build, **or an explicit absence flag with a reason**." For seed-path deals, the absence flag should be at the evidence-block level, not the `inPlaceNOI` level.
+
+Let me check if the evidence block is even produced for seed-path deals:
+
+Now I understand the full picture. The `SeedPathFixture` type has no `evidence` concept at all — it only has `snapshotRows` and `expected` (which is `SeedExpected` with EGI, NOI margin, opex ratio, boundary). The evidence block is a `BuildPathFixture` concept only.
+
+So for F5-6, the "Highlands has zero `inPlaceNOI` entries" is not a bug — it's a category mismatch. Seed-path deals don't produce evidence blocks.
+
+However, the follow-up note says "D3's `evidence_refs` referential integrity cannot ship against duplicated evidence rows." This implies D3-W6 is about evidence_refs for ALL deals, including seed-path ones. If D3 expects evidence for seed-path deals, there's a design gap.
+
+Let me check if there's any evidence production for seed-path deals elsewhere in the codebase:
+
+**Proof: `hold` at line 1888 IS `a.holdYears`**
+
+Line 1732: `const hold = a.holdYears;` — `hold` is a direct alias for `a.holdYears`.
+
+Line 1088 (inside `aggregateMonthlyToAnnual`): `const nYears = a.holdYears;` — same source.
+
+So `hold === a.holdYears === nYears` (aggregation scope). The fix `y === hold` is correct because `hold` IS `a.holdYears`.
+
+The original bug was `y === nYears` where `nYears` at line 1733 is `hold + 1`, not the `nYears` at line 1088. My fix uses `hold` directly, which equals `a.holdYears`.
+
+Now let me write the test and enumerate consumers.
+
+Now let me add the F5-6 test for evidence block integrity (exactly one inPlaceNOI per build, no duplicates):
+
+Now let me verify the tests compile and the file structure is correct:
+
+Now let me commit the tests:
+
+## F5-3 + F5-6 Proof Tests Added & Pushed
+
+### Commit `c4c6017b4`
+**F5-3 + F5-6: add proof tests for isExitYear and evidence inPlaceNOI integrity**
+
+### F5-3 Proof
+
+**Scope equality proven:**
+- Line 1732: `const hold = a.holdYears;` — `hold` is a direct alias
+- Line 1088: `const nYears = a.holdYears;` — same source
+- Therefore `hold === a.holdYears === nYears` (aggregation scope)
+
+**Test added:** `golden-deals.test.ts:344-404`
+- Acquisition path (existing deal): asserts `annualCashFlow.filter(r => r.isExitYear).length === 1` and `exitRows[0].year === 5`
+- Dev path: same assertion with `dealType: 'development'` + construction params
+
+**Consumers of `isExitYear` enumerated:**
+
+| Consumer | File:Line | Uses `isExitYear`? | Status |
+|----------|-----------|-------------------|--------|
+| Type definition | `deterministic-model-runner.ts:160` | Field definition | ✅ |
+| `aggregateMonthlyToAnnual` | `deterministic-model-runner.ts:1138` | Sets `false` (placeholder) | ✅ |
+| Dev path construction | `deterministic-model-runner.ts:1833` | `y === nYears` | ✅ (dev path uses `nYears = hold + 1` because it includes year-0) |
+| Dev path post-construction | `deterministic-model-runner.ts:1863` | `y === nYears` | ✅ (same) |
+| Acquisition path | `deterministic-model-runner.ts:1888` | `y === hold` | **FIXED** |
+| `proforma-assumptions-bridge.ts` | `proforma-assumptions-bridge.ts:616` | Sets `false` (placeholder) | ✅ |
+| Disposition math | `deterministic-model-runner.ts:1894-1917` | **Does NOT read** — uses `annualRows[hold - 1]` directly | ✅ (confirmed by handoff) |
+
+**Verdict:** Disposition math was always correct (uses `hold - 1` index directly). No other consumers read `isExitYear`. The flag was silently `false` for all acquisition builds before the fix.
+
+### F5-6 Proof
+
+**Test added:** `golden-deals.test.ts:472-539`
+- Asserts `evidence.fields.filter(f => f.field === 'inPlaceNOI').length === 1`
+- Asserts `evidence.fields.filter(f => f.field === 'NOI').length === 1`
+
+**Highlands (seed-path) note:** Seed-path deals never run `runModel()` — they use `aggregateSeedActuals()` which has no evidence block concept. The `inPlaceNOI` field is a build-path concept. If D3-W6 needs evidence for seed-path deals, that requires a separate design decision (add evidence generation to seed path, or mark seed-path deals as `evidence: null` with `reason: 'owned_import_no_build'`).
+
+---
+
+### Current HEAD: `c4c6017b4`
+
+**Still open:** F5-1b (awaiting your live Bishop build capture), F5-2 (gated), F5-4, F5-5, F5-7.

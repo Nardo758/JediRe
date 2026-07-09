@@ -31,7 +31,7 @@ async function main() {
         [dealId]
       ),
       pool.query(
-        `SELECT year1, total_units, exit_cap, rent_growth_yr1, rent_growth_stabilized,
+        `SELECT year1, total_units, exit_cap, rent_growth_stabilized,
                 hold_period_years, interest_rate, ltc, avg_lease_term_months,
                 per_year_overrides, io_period_months, amortization_years,
                 dscr_min, origination_fee_pct, unit_mix, unit_mix_overrides,
@@ -176,7 +176,7 @@ async function main() {
         },
         revenue: {
           rentGrowth: [
-            assumptions.rent_growth_yr1 || proforma.rent_growth_current || 0.03,
+            assumptions.rent_growth_stabilized || proforma.rent_growth_current || 0.03,
             assumptions.rent_growth_stabilized || proforma.rent_growth_current || 0.03,
           ],
           lossToLease: lv('loss_to_lease') || 0.03,
