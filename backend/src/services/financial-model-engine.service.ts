@@ -1639,11 +1639,24 @@ export class FinancialModelEngineService {
               dscrFloor: typeof m14Raw.dscr_floor === 'number' && m14Raw.dscr_floor > 0 ? m14Raw.dscr_floor : undefined,
             } : undefined;
 
+            // F5-1 instrumentation: capture effective assumptions at runFullModel boundary
+            // for golden-fixture re-pin. Log to console when dealId matches Bishop.
+            const isBishop = dealId === '3f32276f-aacd-4da3-b306-317c5109b403';
+            if (isBishop) {
+              console.log('[F5-1] Bishop effectiveAssumptions at runFullModel boundary:');
+              console.log(JSON.stringify(modelAssumptions, null, 2));
+            }
+
             const full = runFullModel(modelAssumptions, {
               skipSensitivity: true,
               maxM11Iter: 3,
               m14Data,
             });
+
+            if (isBishop) {
+              console.log('[F5-1] Bishop adjustedAssumptions post-runFullModel:');
+              console.log(JSON.stringify(full.adjustedAssumptions, null, 2));
+            }
 
             adjustedAssumptions = full.adjustedAssumptions;
             m11Converged = full.m11Converged;
