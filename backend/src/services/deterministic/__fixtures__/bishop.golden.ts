@@ -133,7 +133,10 @@ export const bishopFixture: BuildPathFixture = {
   // Post-enhancement-phases, PRE-M11 — the model's true input contract.
   // Rate: 6.0% (confirms enhancement-phase hypothesis; raw store had 6.5%).
   // Loan: $39,000,000 (raw 65% LTV; M11 will DSCR-size to ~$33.1M).
-  // Note: term=4320/amort=4320 is a bridge units bug; M11 hardcodes 60/360.
+  // EPOCH RETIRED 2026-07-09 (D0): Bishop stored assumptions corrupted by session writes. July-5 values no longer reproducible.
+  // Finding W: term=4320/amort=4320 reflect bridge treating store months as years.
+  // Finding X ruled (b): M11 hardcodes 60/360 as intended platform defaults.
+  // See DISPATCH_DEBT_LAYER_FINDINGS_W_X.
 
   effectiveAssumptions: {
     units: 232,
