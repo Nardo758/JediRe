@@ -128,11 +128,13 @@ export const bishopFixture: BuildPathFixture = {
   },
 
   // Finding P: effective assumptions captured at runFullModel boundary.
-  // Captured 2026-07-09 via F5-1 live-build instrumentation (financialModelEngine.buildModel()
-  // called directly through the service singleton — real buildModel() path, not a raw
-  // runFullModel() test call). Source: /tmp/bishop_effective_assumptions.json,
-  // adjustedAssumptions block (post-M11/M14/reconcile). Debt rate reads 0.06 (matches
-  // F5-1 hypothesis: enhancement phases set 6.0%, raw store assumptions had 6.5%).
+
+  // Populated 2026-07-09 from live buildModel() capture (commit c4c6017b4).
+  // Post-enhancement-phases, PRE-M11 — the model's true input contract.
+  // Rate: 6.0% (confirms enhancement-phase hypothesis; raw store had 6.5%).
+  // Loan: $39,000,000 (raw 65% LTV; M11 will DSCR-size to ~$33.1M).
+  // Note: term=4320/amort=4320 is a bridge units bug; M11 hardcodes 60/360.
+
   effectiveAssumptions: {
     units: 232,
     avgUnitSf: 800,
@@ -162,19 +164,23 @@ export const bishopFixture: BuildPathFixture = {
     insurancePerUnit: 0,
     managementFee: 0.05,
     replacementReserves: 250,
-    loanAmount: 33076993,
+
+    loanAmount: 39000000,
     ltv: 0.65,
-    term: 60,
-    amort: 360,
-    ioPeriod: 0,
+    term: 4320,
+    amort: 4320,
+    ioPeriod: 36,
+
     rate: 0.06,
     originationFeePct: 1,
     prepayPenalty: 0,
     exitCap: 0.05,
     saleCosts: 0.02,
     holdYears: 5,
-    lpEquity: 27039876.93,
-    gpEquity: 273130.07000000024,
+
+    lpEquity: 20790000,
+    gpEquity: 210000,
+
     preferredReturn: 0.08,
     promoteTiers: [0.08, 0.12, 0.15],
     promoteSplits: [0.2, 0.3, 0.5],
@@ -189,5 +195,7 @@ export const bishopFixture: BuildPathFixture = {
     _unmatchedOpexKeys: ['payroll', 'repairs_maintenance', 'contract_services', 'marketing', 'utilities', 'g_and_a', 'insurance'],
     _evidenceHints: {},
     _collisionReport: [],
-  } as any,
+
+  },
+
 };

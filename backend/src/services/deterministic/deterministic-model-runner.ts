@@ -2188,14 +2188,6 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       reasoning: `In-Place NOI of $${Math.round(inPlaceNOI).toLocaleString()} — m0 run-rate: ${((a.occupancyAtClose ?? 1.0) * 100).toFixed(0)}% occupied at $${Math.round(a.inPlaceRent).toLocaleString()}/unit/month, annualized. Left edge of the M09 bridge; no turn dynamics applied.`,
     },
     {
-      field: 'NOI',
-      value: noiY1,
-      source: noiSource,
-      confidence: noiConf,
-      reasoning: noiHint?.reasoning ??
-        `Y1 NOI of $${Math.round(noiY1).toLocaleString()} derived from the turn-cohort monthly engine (lease-expiry cohorts, turn downtime, absorption pacing) aggregated to yearly.`,
-    },
-    {
       field: 'IRR',
       value: irr,
       source: 'computed',
