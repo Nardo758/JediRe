@@ -9,6 +9,7 @@ import type { ProFormaAssumptions } from '../../services/financial-model-engine.
 import { parseSummaryMetrics, computeAnnualDebtService } from './financial-model.snapshot-parser';
 import { getFieldSeries } from '../../services/proforma/periodic-seeder.service';
 import type { ProFormaPeriodicSeed } from '../../services/proforma/periodic-field.types';
+import { getFieldValue } from '../../services/field-access/get-field-value.service';
 
 // ──────────────────────────────────────────────────────────────────────────
 // Agent Version Helpers
@@ -535,7 +536,28 @@ async function buildAssumptionsFromStore(
     );
   }
   const raw = result.rows[0].assumptions;
-  return (typeof raw === 'string' ? JSON.parse(raw) : raw) as ProFormaAssumptions;
+  const assumptions = (typeof raw === 'string' ? JSON.parse(raw) : raw) as ProFormaAssumptions;
+
+  // ── B1: R6 — One rate, one arbiter ────────────────────────────────────────
+  // Resolve financing.rate from deal_assumptions.year1 via LayeredValue chain.
+  // Arbiter order: user override > agent_confirmed > platform > bridge default.
+  // If year1->rate is null/missing, fall back to the stored assumptions rate
+  // (backward compatibility with pre-B1 deals).
+  try {
+    const rateField = await getFieldValue(pool, dealId, 'interest_rate', 1);
+    const resolvedRate = rateField?.resolved ?? null;
+    if (resolvedRate != null && !isNaN(resolvedRate)) {
+      // The resolved rate WINS over the stored assumptions rate — this is the arbiter
+      assumptions.financing = {
+        ...assumptions.financing,
+        interestRate: resolvedRate,
+      };
+    }
+  } catch {
+    // Non-blocking: if getFieldValue fails (e.g. DB unavailable), keep stored rate
+  }
+
+  return assumptions;
 }
 
 router.post('/build', async (req: Request, res: Response) => {

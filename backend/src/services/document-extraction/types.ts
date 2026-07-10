@@ -561,7 +561,6 @@ export interface LayeredValue<T = number> {
    */
   agent_confirmed?: T | null;
   resolved: T | null;
-  resolved: T | null;
   resolution:
     | 'platform'
     | 't12'
@@ -694,6 +693,10 @@ export interface ProFormaYear1Seed {
   total_opex: LayeredValue<number>;
   noi: LayeredValue<number>;
   noi_per_unit: LayeredValue<number>;
+  /** Interest rate for debt financing — LayeredValue-resolved from deal_assumptions.year1.
+   *  Arbiter: user override > agent_confirmed > platform > bridge default (R6).
+   *  Added in B1 (DEBT_LAYER_PHASE2_GO). */
+  rate: LayeredValue<number>;
   source_docs: {
     t12_doc_id?: string;
     rent_roll_doc_id?: string;

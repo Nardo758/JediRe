@@ -129,6 +129,45 @@ describe('mapProFormaAssumptionsToModelAssumptions', () => {
     expect(() => runModel(m, { skipSensitivity: true })).not.toThrow();
   });
 
+  // ── B1: R6 — One rate, one arbiter ────────────────────────────────────────
+  it('arbiter: user override (0.045) wins over platform default (0.065) — rate field', () => {
+    // Simulate what buildAssumptionsFromStore does: merge resolved LayeredValue
+    // into assumptions.financing.interestRate BEFORE calling the bridge.
+    const withPlatformRate = mapProFormaAssumptionsToModelAssumptions(BASE_ASSUMPTIONS as any);
+    expect(withPlatformRate.rate).toBeCloseTo(0.065, 6); // platform default
+
+    // User override via LayeredValue resolution (simulating buildAssumptionsFromStore)
+    const overriddenAssumptions = {
+      ...BASE_ASSUMPTIONS,
+      financing: {
+        ...BASE_ASSUMPTIONS.financing,
+        interestRate: 0.045, // user override wins
+      },
+    };
+    const withOverride = mapProFormaAssumptionsToModelAssumptions(overriddenAssumptions as any);
+    expect(withOverride.rate).toBeCloseTo(0.045, 6); // override wins
+  });
+
+  it('arbiter: bridge falls back to stored assumptions rate when year1 resolution is null', () => {
+    // When deal_assumptions.year1->rate is null/missing, buildAssumptionsFromStore
+    // leaves the stored assumptions rate intact. The bridge then uses that rate.
+    const assumptionsWithStoredRate = {
+      ...BASE_ASSUMPTIONS,
+      financing: { ...BASE_ASSUMPTIONS.financing, interestRate: 0.055 },
+    };
+    const m = mapProFormaAssumptionsToModelAssumptions(assumptionsWithStoredRate as any);
+    expect(m.rate).toBeCloseTo(0.055, 6);
+  });
+
+  it('arbiter: bridge falls back to 0.065 hardcoded default when no rate is provided anywhere', () => {
+    const noRateAssumptions = {
+      ...BASE_ASSUMPTIONS,
+      financing: { ...BASE_ASSUMPTIONS.financing, interestRate: undefined as any },
+    };
+    const m = mapProFormaAssumptionsToModelAssumptions(noRateAssumptions as any);
+    expect(m.rate).toBeCloseTo(0.065, 6); // bridge hardcoded default
+  });
+
   it('valid deal passes all hard invariants (INV-* status=error)', () => {
     const m = mapProFormaAssumptionsToModelAssumptions(BASE_ASSUMPTIONS as any);
     const r = runModel(m, { skipSensitivity: true });

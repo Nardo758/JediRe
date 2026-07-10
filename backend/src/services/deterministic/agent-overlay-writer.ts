@@ -37,6 +37,7 @@ const YEAR1_FIELD_MAP: Record<string, string> = {
   vacancy_rate:      'vacancy_pct',
   management_fee_pct: 'management_fee_pct',
   capex_per_unit:    'replacement_reserves',
+  interest_rate:     'rate',
 };
 
 // ── Plausibility bounds (W3) ──────────────────────────────────────────────────
@@ -53,6 +54,7 @@ const PLAUSIBILITY_BOUNDS: Record<string, [min: number, max: number]> = {
   management_fee_pct: [0.00, 0.20],
   capex_per_unit:     [0,    50000],
   renovation_budget:  [0,    100_000_000],
+  interest_rate:      [0.01, 0.20],
 };
 
 // ── Public types ──────────────────────────────────────────────────────────────
