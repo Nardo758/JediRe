@@ -152,7 +152,11 @@ describe('Golden Deal Regression — SyntheticDegenerate (engine-level)', () => 
       replacementReserves: 250,
       loanAmount: 31_500_000,
       ltv: 0.70,
-      term: 360,
+      // B3 note: M11 previously hardcoded term=60/amort=360 regardless of input.
+      // The fixture was pinned with those hardcoded values. To preserve identity,
+      // we keep term=60/amort=360 here — the test is for turn-cohort engine
+      // correctness, not debt-product override behavior.
+      term: 60,
       amort: 360,
       ioPeriod: 0,
       rate: 0.065,

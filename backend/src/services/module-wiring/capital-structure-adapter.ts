@@ -14,6 +14,7 @@ import { executeFormula } from './formula-engine';
 import { logger } from '../../utils/logger';
 import type { ModelAssumptions } from '../deterministic/deterministic-model-runner';
 import { runModel } from '../deterministic/deterministic-model-runner';
+import { resolveLoanProduct } from '../debt-advisor/rulesets/loan-product.ruleset';
 
 // Lazy-loaded service to avoid circular dependencies
 function getCapitalStructureService() {
@@ -488,10 +489,10 @@ export interface RecommendedTerms {
 /**
  * Derive loan terms that satisfy DSCR ≥ 1.25 given NOI and LTV cap.
  *
- * Term/amort conventions (Task #1412 audit fix):
- *   - termMonths: 60  (5-year balloon — standard commercial/agency product)
- *   - amortMonths: 360 (30-year amortization schedule)
- *   - ioPeriod:    derived from LTV tier:
+ * Term/amort conventions (B3 — R2 M11 accepts terms + loan-product ruleset):
+ *   - When caller supplies termMonths/amortMonths: use them directly (user/agent override wins)
+ *   - When absent: resolve from loan-product ruleset (agency 5/30 default)
+ *   - ioPeriod: derived from LTV tier when caller does not supply an override
  *       LTV > 0.75 → 24 months (bridge/value-add products with higher leverage)
  *       LTV > 0.65 → 12 months (moderate leverage with short I/O)
  *       LTV ≤ 0.65 → 0 months  (low-leverage fully-amortizing from day 1)
@@ -504,14 +505,44 @@ export function getRecommendedTerms(params: {
   purchasePrice: number;
   ltv: number;
   rate?: number;
+  /** Override term (months). When supplied, skips ruleset resolution. */
+  termMonths?: number;
+  /** Override amortization (months). When supplied, skips ruleset resolution. */
+  amortMonths?: number;
   /** Override computed I/O period (months). When supplied, skips LTV-tier derivation. */
   ioPeriodMonths?: number;
+  /** Optional deal context for ruleset resolution (lenderType, assetClass). */
+  dealContext?: { lenderType?: string; assetClass?: string };
 }): RecommendedTerms {
-  const { noiY1, purchasePrice, ltv, rate = 0.065, ioPeriodMonths } = params;
+  const { noiY1, purchasePrice, ltv, rate = 0.065, termMonths, amortMonths, ioPeriodMonths, dealContext } = params;
   const maxByLtv = Math.round(purchasePrice * ltv);
   const loanByDscr = rate > 0 ? Math.round(noiY1 / (1.25 * rate)) : maxByLtv;
   const recommendedLoanAmount = Math.max(0, Math.min(maxByLtv, loanByDscr));
   const debtService = recommendedLoanAmount * rate;
+
+  // Resolve term/amort from ruleset when caller does not supply overrides
+  let resolvedTermMonths: number;
+  let resolvedAmortMonths: number;
+  let termProvenance: string;
+
+  if (termMonths !== undefined && termMonths > 0) {
+    resolvedTermMonths = termMonths;
+    termProvenance = 'user_or_agent_override';
+  } else {
+    const product = resolveLoanProduct(dealContext);
+    resolvedTermMonths = product.termYears * 12;
+    termProvenance = product.provenance;
+  }
+
+  if (amortMonths !== undefined && amortMonths > 0) {
+    resolvedAmortMonths = amortMonths;
+  } else {
+    const product = resolveLoanProduct(dealContext);
+    resolvedAmortMonths = product.amortYears * 12;
+    if (!termProvenance) {
+      termProvenance = product.provenance;
+    }
+  }
 
   // Derive I/O period from LTV tier when caller does not supply an override
   let ioPeriod: number;
@@ -527,7 +558,7 @@ export function getRecommendedTerms(params: {
 
   return {
     recommendedLoanAmount,
-    loanTerms: { termMonths: 60, amortMonths: 360, ioPeriod },
+    loanTerms: { termMonths: resolvedTermMonths, amortMonths: resolvedAmortMonths, ioPeriod },
     debtService,
     effectiveRate: rate,
   };
@@ -542,12 +573,33 @@ export interface M11CycleResult {
 /**
  * Iteratively converge debt terms until DSCR change < 0.01 (max maxIter passes).
  * Sized from an externally-computed pass-1 NOI (supplied by runFullModel).
+ *
+ * B3 — R2: M11 now accepts term/amort/ioPeriod from deal assumptions.
+ * Only overwrites if the deal's values are non-zero and within a sensible range
+ * (12–600 months for term/amort); otherwise uses loan-product ruleset defaults.
+ * This preserves identity for legacy deals with corrupted bridge values (e.g.
+ * Bishop's term=4320/amort=4320 from the months-as-years bridge bug).
  */
 export function runM11Cycle(assumptions: ModelAssumptions, noiY1: number, maxIter = 3): M11CycleResult {
   let current: ModelAssumptions = { ...assumptions };
   let prevDscr: number | null = null;
   let iterations = 0;
   let converged = false;
+
+  // Sanity bounds for term/amort (months). Values outside this range are treated
+  // as corrupted bridge output and fall back to ruleset defaults.
+  const SANE_MIN_MONTHS = 12;
+  const SANE_MAX_MONTHS = 600; // 50 years
+
+  const dealTerm = assumptions.term > 0 && assumptions.term <= SANE_MAX_MONTHS && assumptions.term >= SANE_MIN_MONTHS
+    ? assumptions.term
+    : undefined;
+  const dealAmort = assumptions.amort > 0 && assumptions.amort <= SANE_MAX_MONTHS && assumptions.amort >= SANE_MIN_MONTHS
+    ? assumptions.amort
+    : undefined;
+  const dealIoPeriod = assumptions.ioPeriod > 0 && assumptions.ioPeriod <= SANE_MAX_MONTHS
+    ? assumptions.ioPeriod
+    : undefined;
 
   for (let i = 0; i < maxIter; i++) {
     iterations++;
@@ -560,7 +612,15 @@ export function runM11Cycle(assumptions: ModelAssumptions, noiY1: number, maxIte
     }
     prevDscr = dscrY1;
 
-    const terms = getRecommendedTerms({ noiY1, purchasePrice: current.purchasePrice, ltv: current.ltv, rate: current.rate });
+    const terms = getRecommendedTerms({
+      noiY1,
+      purchasePrice: current.purchasePrice,
+      ltv: current.ltv,
+      rate: current.rate,
+      termMonths: dealTerm,
+      amortMonths: dealAmort,
+      ioPeriodMonths: dealIoPeriod,
+    });
     current = {
       ...current,
       loanAmount: terms.recommendedLoanAmount,
