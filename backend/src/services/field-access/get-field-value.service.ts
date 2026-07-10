@@ -211,6 +211,9 @@ const ALLOWED_FIELDS = new Set([
   // Capital & deal fields
   'purchase_price', 'equity_at_close', 'loan_amount', 'interest_rate',
   'ltc_pct', 'exit_cap', 'rent_growth_yr1', 'hold_period_years',
+  // Financing fields (B2: R9 — Build the rail)
+  'ltv_pct', 'loan_term_years', 'amortization_years', 'io_period_months',
+  'dscr_floor', 'debt_yield_floor',
   // Dependency alt keys
   'year1_noi',
 ]);

@@ -11,6 +11,23 @@ import { getFieldSeries } from '../../services/proforma/periodic-seeder.service'
 import type { ProFormaPeriodicSeed } from '../../services/proforma/periodic-field.types';
 import { getFieldValue } from '../../services/field-access/get-field-value.service';
 
+// ── Helper: safely coerce a value to number (mirrors bridge's toNumber) ────
+function toNumber(v: unknown, fallback: number): number {
+  if (v === null || v === undefined) return fallback;
+  if (typeof v === 'number') return isFinite(v) ? v : fallback;
+  if (typeof v === 'object') {
+    const lv = v as Record<string, unknown>;
+    if (typeof lv['resolved'] === 'number' && isFinite(lv['resolved'] as number)) {
+      return lv['resolved'] as number;
+    }
+    if (typeof lv['override'] === 'number' && isFinite(lv['override'] as number)) {
+      return lv['override'] as number;
+    }
+  }
+  const n = Number(v);
+  return isFinite(n) ? n : fallback;
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Agent Version Helpers
 //
@@ -543,18 +560,99 @@ async function buildAssumptionsFromStore(
   // Arbiter order: user override > agent_confirmed > platform > bridge default.
   // If year1->rate is null/missing, fall back to the stored assumptions rate
   // (backward compatibility with pre-B1 deals).
+  //
+  // ── B2: R9 — Build the rail ─────────────────────────────────────────────────
+  // Resolve all financing fields from deal_assumptions.year1 via inline SQL.
+  // The year1 keys (term, ltv, amort, io_period, dscr_floor, debt_yield_floor)
+  // differ from the field-access registry names, so we query deal_assumptions
+  // directly and apply the LayeredValue resolution chain inline.
+  //
+  // ltv → loanAmount (recompute: ltv * purchasePrice)
+  // term → financing.term (years, bridge converts to months)
+  // amort → financing.amortization (years, bridge converts to months)
+  // io_period → financing.ioPeriod (months, passed through)
+  // dscr_floor / debt_yield_floor → pass through for M11 sizing (B3/B4)
+  // If any year1 field is null/missing, fall back to stored assumptions (backward compat).
   try {
-    const rateField = await getFieldValue(pool, dealId, 'interest_rate', 1);
-    const resolvedRate = rateField?.resolved ?? null;
+    // Inline SQL: fetch all financing LayeredValues in one query
+    const year1Res = await pool.query(
+      `SELECT year1->'rate' as rate,
+              year1->'ltv' as ltv,
+              year1->'term' as term,
+              year1->'amort' as amort,
+              year1->'io_period' as io_period,
+              year1->'dscr_floor' as dscr_floor,
+              year1->'debt_yield_floor' as debt_yield_floor
+       FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+      [dealId]
+    );
+    const y1 = year1Res.rows[0] ?? {};
+
+    // Helper: resolve a LayeredValue blob through the canonical chain:
+    // override > agent_confirmed > platform > stored resolved
+    const resolveLv = (blob: any): number | null => {
+      if (!blob || typeof blob !== 'object') return null;
+      if (blob.override != null) return Number(blob.override);
+      if (blob.agent_confirmed != null) return Number(blob.agent_confirmed);
+      if (blob.platform != null) return Number(blob.platform);
+      if (blob.resolved != null) return Number(blob.resolved);
+      return null;
+    };
+
+    const resolvedRate = resolveLv(y1.rate);
     if (resolvedRate != null && !isNaN(resolvedRate)) {
-      // The resolved rate WINS over the stored assumptions rate — this is the arbiter
       assumptions.financing = {
         ...assumptions.financing,
         interestRate: resolvedRate,
       };
     }
+
+    const resolvedLtv = resolveLv(y1.ltv);
+    if (resolvedLtv != null && !isNaN(resolvedLtv)) {
+      const purchasePrice = toNumber(assumptions.acquisition?.purchasePrice, 0);
+      assumptions.financing = {
+        ...assumptions.financing,
+        loanAmount: purchasePrice > 0 ? Math.round(resolvedLtv * purchasePrice) : assumptions.financing?.loanAmount ?? 0,
+      };
+    }
+
+    const resolvedTerm = resolveLv(y1.term);
+    if (resolvedTerm != null && !isNaN(resolvedTerm)) {
+      assumptions.financing = {
+        ...assumptions.financing,
+        term: resolvedTerm,
+      };
+    }
+
+    const resolvedAmort = resolveLv(y1.amort);
+    if (resolvedAmort != null && !isNaN(resolvedAmort)) {
+      assumptions.financing = {
+        ...assumptions.financing,
+        amortization: resolvedAmort,
+      };
+    }
+
+    const resolvedIo = resolveLv(y1.io_period);
+    if (resolvedIo != null && !isNaN(resolvedIo)) {
+      assumptions.financing = {
+        ...assumptions.financing,
+        ioPeriod: resolvedIo,
+      };
+    }
+
+    const resolvedDscr = resolveLv(y1.dscr_floor);
+    if (resolvedDscr != null && !isNaN(resolvedDscr)) {
+      // Log for now — M11 will use this in B3/B4 sizing
+      console.log(`[buildAssumptionsFromStore] dscr_floor resolved: ${resolvedDscr} (deal ${dealId})`);
+    }
+
+    const resolvedDy = resolveLv(y1.debt_yield_floor);
+    if (resolvedDy != null && !isNaN(resolvedDy)) {
+      // Log for now — M11 will use this in B3/B4 sizing
+      console.log(`[buildAssumptionsFromStore] debt_yield_floor resolved: ${resolvedDy} (deal ${dealId})`);
+    }
   } catch {
-    // Non-blocking: if getFieldValue fails (e.g. DB unavailable), keep stored rate
+    // Non-blocking: if DB query fails, keep stored values
   }
 
   return assumptions;

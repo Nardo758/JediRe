@@ -38,6 +38,12 @@ const YEAR1_FIELD_MAP: Record<string, string> = {
   management_fee_pct: 'management_fee_pct',
   capex_per_unit:    'replacement_reserves',
   interest_rate:     'rate',
+  ltv_pct:           'ltv',
+  loan_term_years:   'term',
+  amortization_years: 'amort',
+  io_period_months:  'io_period',
+  dscr_floor:        'dscr_floor',
+  debt_yield_floor:  'debt_yield_floor',
 };
 
 // ── Plausibility bounds (W3) ──────────────────────────────────────────────────
@@ -55,6 +61,12 @@ const PLAUSIBILITY_BOUNDS: Record<string, [min: number, max: number]> = {
   capex_per_unit:     [0,    50000],
   renovation_budget:  [0,    100_000_000],
   interest_rate:      [0.01, 0.20],
+  ltv_pct:            [0.0,  1.0],
+  loan_term_years:    [1,    40],
+  amortization_years: [1,    50],
+  io_period_months:   [0,    120],
+  dscr_floor:         [1.0,  3.0],
+  debt_yield_floor:   [0.05, 0.20],
 };
 
 // ── Public types ──────────────────────────────────────────────────────────────

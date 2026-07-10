@@ -411,10 +411,12 @@ export function mapProFormaAssumptionsToModelAssumptions(
 
   // ── Financing ─────────────────────────────────────────────────────────────
   // B1 (R6): rate is now LayeredValue-resolved from deal_assumptions.year1.
-  // The arbiter in buildAssumptionsFromStore() merges the resolved rate into
-  // a.financing.interestRate BEFORE the bridge is called.  If resolution fails
-  // or returns null, the bridge falls back to the stored assumptions rate and
-  // ultimately to the 6.5% platform default.
+  // B2 (R9): ltv, term, amort, io_period, dscr_floor, debt_yield_floor are
+  //   also LayeredValue-resolved from deal_assumptions.year1.
+  // The arbiter in buildAssumptionsFromStore() merges all resolved financing
+  // fields into a.financing.* BEFORE the bridge is called.  If resolution fails
+  // or returns null, the bridge falls back to the stored assumptions value and
+  // ultimately to the platform defaults.
   //
   // Source of truth: a.financing.loanAmount populated by the LLM from deal_data
   // or by the analyst directly.  When unseeded (loanAmount === 0) the engine's

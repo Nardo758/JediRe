@@ -697,6 +697,30 @@ export interface ProFormaYear1Seed {
    *  Arbiter: user override > agent_confirmed > platform > bridge default (R6).
    *  Added in B1 (DEBT_LAYER_PHASE2_GO). */
   rate: LayeredValue<number>;
+  /** Loan-to-Value ratio (decimal, e.g. 0.65 = 65%) — LayeredValue-resolved from deal_assumptions.year1.
+   *  Arbiter: user override > agent_confirmed > platform > bridge default (R9).
+   *  Added in B2 (DEBT_LAYER_PHASE2_GO). */
+  ltv: LayeredValue<number>;
+  /** Loan term in years — LayeredValue-resolved from deal_assumptions.year1.
+   *  Arbiter: user override > agent_confirmed > platform > bridge default (R9).
+   *  Added in B2 (DEBT_LAYER_PHASE2_GO). */
+  term: LayeredValue<number>;
+  /** Amortization period in years — LayeredValue-resolved from deal_assumptions.year1.
+   *  Arbiter: user override > agent_confirmed > platform > bridge default (R9).
+   *  Added in B2 (DEBT_LAYER_PHASE2_GO). */
+  amort: LayeredValue<number>;
+  /** Interest-Only period in months — LayeredValue-resolved from deal_assumptions.year1.
+   *  Arbiter: user override > agent_confirmed > platform > bridge default (R9).
+   *  Added in B2 (DEBT_LAYER_PHASE2_GO). */
+  io_period: LayeredValue<number>;
+  /** DSCR floor constraint — LayeredValue-resolved from deal_assumptions.year1.
+   *  Used by M11 for sizing in future B3/B4 steps.
+   *  Added in B2 (DEBT_LAYER_PHASE2_GO). */
+  dscr_floor: LayeredValue<number>;
+  /** Debt yield floor constraint — LayeredValue-resolved from deal_assumptions.year1.
+   *  Used by M11 for sizing in future B3/B4 steps.
+   *  Added in B2 (DEBT_LAYER_PHASE2_GO). */
+  debt_yield_floor: LayeredValue<number>;
   source_docs: {
     t12_doc_id?: string;
     rent_roll_doc_id?: string;
