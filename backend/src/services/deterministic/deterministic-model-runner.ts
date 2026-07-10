@@ -621,6 +621,101 @@ export function computeAmortization(
   return { interestByYear, principalByYear, debtServiceByYear, balanceByYear };
 }
 
+// ── B4: R1 — Amortizing sizing helpers ─────────────────────────────────────
+
+/**
+ * Compute year-1 debt service using true amortizing P+I (not IO proxy).
+ * Accounts for IO period — if IO covers all of year 1, returns IO only.
+ */
+export function computeYear1DebtService(
+  loanAmount: number,
+  annualRate: number,
+  _termMonths: number,
+  amortMonths: number,
+  ioPeriodMonths: number
+): number {
+  const monthlyRate = annualRate / 12;
+  const monthlyIO = loanAmount * monthlyRate;
+
+  // P+I payment
+  let monthlyPMT = 0;
+  if (amortMonths > 0 && monthlyRate > 0) {
+    const factor = Math.pow(1 + monthlyRate, amortMonths);
+    monthlyPMT = loanAmount * (monthlyRate * factor) / (factor - 1);
+  } else if (amortMonths > 0) {
+    monthlyPMT = loanAmount / amortMonths;
+  }
+
+  // Year 1 = months 1-12
+  const ioMonthsInYear1 = Math.min(ioPeriodMonths, 12);
+  const amortMonthsInYear1 = 12 - ioMonthsInYear1;
+
+  const year1DebtService = ioMonthsInYear1 * monthlyIO + amortMonthsInYear1 * monthlyPMT;
+  return year1DebtService;
+}
+
+/**
+ * Compute DSCR for a given loan amount using true amortizing debt service.
+ */
+export function computeDscrWithAmortizing(
+  noiY1: number,
+  loanAmount: number,
+  annualRate: number,
+  termMonths: number,
+  amortMonths: number,
+  ioPeriodMonths: number
+): number {
+  const debtService = computeYear1DebtService(loanAmount, annualRate, termMonths, amortMonths, ioPeriodMonths);
+  if (debtService <= 0) return Infinity;
+  return noiY1 / debtService;
+}
+
+/**
+ * Find the maximum loan amount where DSCR >= dscrFloor using binary search.
+ * Returns the loan amount that produces DSCR exactly at the floor (within tolerance).
+ */
+export function computeMaxLoanByDscr(
+  noiY1: number,
+  dscrFloor: number,
+  annualRate: number,
+  termMonths: number,
+  amortMonths: number,
+  ioPeriodMonths: number,
+  maxLoan: number
+): number {
+  if (dscrFloor <= 0 || noiY1 <= 0) return 0;
+  if (annualRate <= 0) return maxLoan; // no interest constraint
+
+  // Edge case: if IO covers full year 1, debt service = loan * rate, so
+  // DSCR = noi / (loan * rate) => loan = noi / (dscr * rate)
+  // This is the same as the old formula, so no change needed.
+  if (ioPeriodMonths >= 12) {
+    return Math.round(noiY1 / (dscrFloor * annualRate));
+  }
+
+  let lo = 0;
+  let hi = maxLoan;
+  const tolerance = 1; //  tolerance
+  const maxIterations = 30;
+
+  for (let i = 0; i < maxIterations; i++) {
+    const mid = Math.round((lo + hi) / 2);
+    if (mid === lo || mid === hi) break;
+
+    const dscr = computeDscrWithAmortizing(noiY1, mid, annualRate, termMonths, amortMonths, ioPeriodMonths);
+
+    if (dscr >= dscrFloor) {
+      // Can borrow more
+      lo = mid;
+    } else {
+      // Borrow less
+      hi = mid;
+    }
+  }
+
+  return lo;
+}
+
 export function calculateIRR(
   cashFlows: number[],
   maxIter: number = 30,

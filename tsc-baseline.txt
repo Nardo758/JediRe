@@ -266,12 +266,12 @@ src/services/debt-advisor/rulesets/amort-profile.ruleset.ts(41,5): error TS2322:
 src/services/design/design-massing.service.ts(107,77): error TS2339: Property 'errors' does not exist on type 'ZodError<unknown>'.
 src/services/design/design-massing.service.ts(63,56): error TS2554: Expected 2 arguments, but got 1.
 src/services/design/design-massing.service.ts(83,52): error TS2554: Expected 2 arguments, but got 1.
-src/services/deterministic/deterministic-model-runner.ts(748,60): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
-src/services/deterministic/deterministic-model-runner.ts(748,91): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
-src/services/deterministic/deterministic-model-runner.ts(753,17): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
-src/services/deterministic/deterministic-model-runner.ts(933,18): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
-src/services/deterministic/deterministic-model-runner.ts(933,49): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
-src/services/deterministic/deterministic-model-runner.ts(934,46): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
+src/services/deterministic/deterministic-model-runner.ts(1028,18): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
+src/services/deterministic/deterministic-model-runner.ts(1028,49): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
+src/services/deterministic/deterministic-model-runner.ts(1029,46): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
+src/services/deterministic/deterministic-model-runner.ts(843,60): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
+src/services/deterministic/deterministic-model-runner.ts(843,91): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
+src/services/deterministic/deterministic-model-runner.ts(848,17): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
 src/services/discovery/scheduled-discovery.ts(374,9): error TS2322: Type '"weekly_update"' is not assignable to type '"supply" | "cap_rates" | "rents" | "rates"'.
 src/services/discovery/scheduled-discovery.ts(40,15): error TS2339: Property 'sofr' does not exist on type 'unknown'.
 src/services/discovery/scheduled-discovery.ts(40,29): error TS2339: Property 'fedFunds' does not exist on type 'unknown'.

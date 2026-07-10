@@ -14,6 +14,10 @@ import { executeFormula } from './formula-engine';
 import { logger } from '../../utils/logger';
 import type { ModelAssumptions } from '../deterministic/deterministic-model-runner';
 import { runModel } from '../deterministic/deterministic-model-runner';
+import {
+  computeYear1DebtService,
+  computeMaxLoanByDscr,
+} from '../deterministic/deterministic-model-runner';
 import { resolveLoanProduct } from '../debt-advisor/rulesets/loan-product.ruleset';
 
 // Lazy-loaded service to avoid circular dependencies
@@ -505,22 +509,16 @@ export function getRecommendedTerms(params: {
   purchasePrice: number;
   ltv: number;
   rate?: number;
-  /** Override term (months). When supplied, skips ruleset resolution. */
   termMonths?: number;
-  /** Override amortization (months). When supplied, skips ruleset resolution. */
   amortMonths?: number;
-  /** Override computed I/O period (months). When supplied, skips LTV-tier derivation. */
   ioPeriodMonths?: number;
-  /** Optional deal context for ruleset resolution (lenderType, assetClass). */
   dealContext?: { lenderType?: string; assetClass?: string };
 }): RecommendedTerms {
   const { noiY1, purchasePrice, ltv, rate = 0.065, termMonths, amortMonths, ioPeriodMonths, dealContext } = params;
   const maxByLtv = Math.round(purchasePrice * ltv);
-  const loanByDscr = rate > 0 ? Math.round(noiY1 / (1.25 * rate)) : maxByLtv;
-  const recommendedLoanAmount = Math.max(0, Math.min(maxByLtv, loanByDscr));
-  const debtService = recommendedLoanAmount * rate;
 
-  // Resolve term/amort from ruleset when caller does not supply overrides
+  // ── B4: Step 1 — Resolve term/amort/IO BEFORE sizing ─────────────────────
+
   let resolvedTermMonths: number;
   let resolvedAmortMonths: number;
   let termProvenance: string;
@@ -544,7 +542,6 @@ export function getRecommendedTerms(params: {
     }
   }
 
-  // Derive I/O period from LTV tier when caller does not supply an override
   let ioPeriod: number;
   if (ioPeriodMonths !== undefined) {
     ioPeriod = ioPeriodMonths;
@@ -554,6 +551,37 @@ export function getRecommendedTerms(params: {
     ioPeriod = 12;
   } else {
     ioPeriod = 0;
+  }
+
+  // ── B4: Step 2 — Size debt using true amortizing debt service ────────────
+
+  const dscrFloor = 1.25;
+  let recommendedLoanAmount: number;
+  let debtService: number;
+
+  if (rate <= 0) {
+    recommendedLoanAmount = maxByLtv;
+    debtService = 0;
+  } else {
+    const loanByDscr = computeMaxLoanByDscr(
+      noiY1,
+      dscrFloor,
+      rate,
+      resolvedTermMonths,
+      resolvedAmortMonths,
+      ioPeriod,
+      maxByLtv
+    );
+
+    recommendedLoanAmount = Math.max(0, Math.min(maxByLtv, loanByDscr));
+
+    debtService = computeYear1DebtService(
+      recommendedLoanAmount,
+      rate,
+      resolvedTermMonths,
+      resolvedAmortMonths,
+      ioPeriod
+    );
   }
 
   return {

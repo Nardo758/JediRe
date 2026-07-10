@@ -129,6 +129,13 @@ export const bishopFixture: BuildPathFixture = {
 
   // Finding P: effective assumptions captured at runFullModel boundary.
 
+  // B4 NEW EPOCH (2026-07-10): M11 now sizes against true amortizing debt service.
+  //   Before (IO proxy): loan = noi / (1.25 * rate) = 9,000,000
+  //   After (amortizing): 2,524,364 (30yr term, 30yr amort, no IO)
+  //   Delta: -,475,636
+  //   Cause: true P+I debt service > IO-only proxy; same DSCR floor (1.25) requires smaller loan.
+  //   Verified by: b4-amortizing-sizing.test.ts (7 tests, all pass)
+
   // Populated 2026-07-09 from live buildModel() capture (commit c4c6017b4).
   // Post-enhancement-phases, PRE-M11 — the model's true input contract.
   // Rate: 6.0% (confirms enhancement-phase hypothesis; raw store had 6.5%).
