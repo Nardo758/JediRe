@@ -1,12 +1,12 @@
 src/agents/cashflow.config.ts(719,31): error TS2322: Type 'string' is not assignable to type 'ModelName'.
-src/agents/cashflow.postprocess.ts(1655,60): error TS2345: Argument of type '{ gpr_year1?: number; noi_year1: number; purchase_price: number; hold_years: number; exit_cap_rate: number; noi_growth_rate: number; deal_strategy: string; selling_costs_pct: number; }' is not assignable to parameter of type '{ noi_year1: number; purchase_price: number; hold_years: number; exit_cap_rate: number; noi_growth_rate: number; deal_strategy: string; selling_costs_pct: number; platform_role: "lender" | "sponsor" | "lp"; ... 4 more ...; bundle_filter?: string[]; }'.
+src/agents/cashflow.postprocess.ts(1652,60): error TS2345: Argument of type '{ gpr_year1?: number; noi_year1: number; purchase_price: number; hold_years: number; exit_cap_rate: number; noi_growth_rate: number; deal_strategy: string; selling_costs_pct: number; }' is not assignable to parameter of type '{ noi_year1: number; purchase_price: number; hold_years: number; exit_cap_rate: number; noi_growth_rate: number; deal_strategy: string; selling_costs_pct: number; platform_role: "lender" | "sponsor" | "lp"; ... 4 more ...; bundle_filter?: string[]; }'.
 src/agents/cashflow.postprocess.ts(677,46): error TS2304: Cannot find name 'field'.
 src/agents/research.config.ts(101,5): error TS2322: Type '{ name: string; description: string; inputSchema: z.ZodObject<{ deal_name: z.ZodString; address: z.ZodOptional<z.ZodString>; city: z.ZodOptional<z.ZodString>; state: z.ZodOptional<z.ZodString>; ... 7 more ...; body_text: z.ZodOptional<...>; }, z.core.$strip>; outputSchema: z.ZodObject<...>; execute: (fields: Extract...' is not assignable to type 'ToolDefinition<unknown, unknown>'.
 src/agents/research.config.ts(103,5): error TS2322: Type '{ name: string; description: string; inputSchema: z.ZodObject<{ address: z.ZodOptional<z.ZodString>; city: z.ZodOptional<z.ZodString>; state: z.ZodOptional<z.ZodString>; asking_price: z.ZodOptional<...>; units: z.ZodOptional<...>; asset_class: z.ZodOptional<...>; deal_type: z.ZodOptional<...>; }, z.core.$strip>; out...' is not assignable to type 'ToolDefinition<unknown, unknown>'.
 src/agents/research.config.ts(105,5): error TS2322: Type '{ name: string; description: string; inputSchema: z.ZodObject<{ content_base64: z.ZodString; filename: z.ZodOptional<z.ZodString>; mime_type: z.ZodOptional<z.ZodString>; }, z.core.$strip>; outputSchema: z.ZodString; execute: (base64Content: string, mimeType: string, filename: string) => Promise<string>; }' is not assignable to type 'ToolDefinition<unknown, unknown>'.
 src/agents/research.config.ts(98,5): error TS2741: Property 'outputSchema' is missing in type '{ name: string; description: string; inputSchema: ZodObject<{ geography: ZodOptional<ZodObject<{ level: ZodDefault<ZodEnum<{ national: "national"; county: "county"; msa: "msa"; }>>; name: ZodDefault<ZodString>; fipsCode: ZodOptional<...>; }, $strip>>; ... 4 more ...; includeForecasts: ZodDefault<...>; }, $strip>; ex...' but required in type 'ToolDefinition<unknown, unknown>'.
-src/api/rest/admin-api-key.routes.ts(296,13): error TS2339: Property 'ingestBuildingPermits' does not exist on type 'typeof import("C:/Users/Leons' Computer 2/OneDrive - Myers Apartment Group/Documents/JediRe/backend/src/services/ingestion/census-permits-ingest.service")'.
-src/api/rest/admin.routes.ts(1300,15): error TS2339: Property 'ingestBuildingPermits' does not exist on type 'typeof import("C:/Users/Leons' Computer 2/OneDrive - Myers Apartment Group/Documents/JediRe/backend/src/services/ingestion/census-permits-ingest.service")'.
+src/api/rest/admin-api-key.routes.ts(296,13): error TS2339: Property 'ingestBuildingPermits' does not exist on type 'typeof import("C:/Users/Leons' Computer 2/Documents/JediRe/backend/src/services/ingestion/census-permits-ingest.service")'.
+src/api/rest/admin.routes.ts(1300,15): error TS2339: Property 'ingestBuildingPermits' does not exist on type 'typeof import("C:/Users/Leons' Computer 2/Documents/JediRe/backend/src/services/ingestion/census-permits-ingest.service")'.
 src/api/rest/admin.routes.ts(1669,11): error TS2304: Cannot find name 'StubMeteringAdapter'.
 src/api/rest/archive.routes.ts(1426,51): error TS2694: Namespace 'global.Express' has no exported member 'Multer'.
 src/api/rest/archive.routes.ts(778,51): error TS2694: Namespace 'global.Express' has no exported member 'Multer'.
@@ -52,28 +52,28 @@ src/api/rest/data-upload.routes.ts(39,62): error TS2339: Property 'file' does no
 src/api/rest/data-upload.routes.ts(73,14): error TS2339: Property 'file' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
 src/api/rest/data-upload.routes.ts(79,45): error TS2339: Property 'file' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
 src/api/rest/data-upload.routes.ts(79,62): error TS2339: Property 'file' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
-src/api/rest/deal-assumptions.routes.ts(1270,39): error TS2339: Property 'occ' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(1272,55): error TS2339: Property 'total_budget' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(1273,29): error TS2339: Property 'total_units' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(1273,55): error TS2339: Property 'total_units' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(1277,37): error TS2339: Property 'construction_months' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(1277,82): error TS2339: Property 'construction_months' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(1668,14): error TS2448: Block-scoped variable 'res' used before its declaration.
-src/api/rest/deal-assumptions.routes.ts(1668,18): error TS2339: Property 'status' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(1679,30): error TS2339: Property 'year1' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(1680,24): error TS2339: Property 'year1' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(1681,13): error TS2339: Property 'year1' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(1809,81): error TS2339: Property 'error' does not exist on type '{ ok: true; adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number; }; } | { ok: false; error: string; }'.
-src/api/rest/deal-assumptions.routes.ts(1850,99): error TS2339: Property 'error' does not exist on type '{ ok: true; adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number; }; } | { ok: false; error: string; }'.
-src/api/rest/deal-assumptions.routes.ts(1909,28): error TS2339: Property 'adoption' does not exist on type '{ ok: true; adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number; }; } | { ok: false; error: string; }'.
-src/api/rest/deal-assumptions.routes.ts(1910,48): error TS2339: Property 'adoption' does not exist on type '{ ok: true; adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number; }; } | { ok: false; error: string; }'.
-src/api/rest/deal-assumptions.routes.ts(1984,33): error TS2339: Property 'year1' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(1985,27): error TS2339: Property 'year1' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(1986,16): error TS2339: Property 'year1' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(2270,36): error TS2339: Property 'narrative_text' does not exist on type 'QueryResult<{ narrative_text: string; narrative_generated_at: Date; }>'.
-src/api/rest/deal-assumptions.routes.ts(2271,38): error TS2339: Property 'narrative_generated_at' does not exist on type 'QueryResult<{ narrative_text: string; narrative_generated_at: Date; }>'.
-src/api/rest/deal-assumptions.routes.ts(2783,44): error TS2304: Cannot find name 'dealCheck'.
-src/api/rest/deal-assumptions.routes.ts(2784,16): error TS2304: Cannot find name 'dealCheck'.
+src/api/rest/deal-assumptions.routes.ts(1269,39): error TS2339: Property 'occ' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(1271,55): error TS2339: Property 'total_budget' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(1272,29): error TS2339: Property 'total_units' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(1272,55): error TS2339: Property 'total_units' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(1276,37): error TS2339: Property 'construction_months' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(1276,82): error TS2339: Property 'construction_months' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(1667,14): error TS2448: Block-scoped variable 'res' used before its declaration.
+src/api/rest/deal-assumptions.routes.ts(1667,18): error TS2339: Property 'status' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(1678,30): error TS2339: Property 'year1' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(1679,24): error TS2339: Property 'year1' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(1680,13): error TS2339: Property 'year1' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(1808,81): error TS2339: Property 'error' does not exist on type '{ ok: true; adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number; }; } | { ok: false; error: string; }'.
+src/api/rest/deal-assumptions.routes.ts(1849,99): error TS2339: Property 'error' does not exist on type '{ ok: true; adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number; }; } | { ok: false; error: string; }'.
+src/api/rest/deal-assumptions.routes.ts(1908,28): error TS2339: Property 'adoption' does not exist on type '{ ok: true; adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number; }; } | { ok: false; error: string; }'.
+src/api/rest/deal-assumptions.routes.ts(1909,48): error TS2339: Property 'adoption' does not exist on type '{ ok: true; adoption: { ramp_start_period: number; ramp_duration_months: number; steady_state_monthly: number; probability_adopted: number; }; } | { ok: false; error: string; }'.
+src/api/rest/deal-assumptions.routes.ts(1983,33): error TS2339: Property 'year1' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(1984,27): error TS2339: Property 'year1' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(1985,16): error TS2339: Property 'year1' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(2269,36): error TS2339: Property 'narrative_text' does not exist on type 'QueryResult<{ narrative_text: string; narrative_generated_at: Date; }>'.
+src/api/rest/deal-assumptions.routes.ts(2270,38): error TS2339: Property 'narrative_generated_at' does not exist on type 'QueryResult<{ narrative_text: string; narrative_generated_at: Date; }>'.
+src/api/rest/deal-assumptions.routes.ts(2782,44): error TS2304: Cannot find name 'dealCheck'.
+src/api/rest/deal-assumptions.routes.ts(2783,16): error TS2304: Cannot find name 'dealCheck'.
 src/api/rest/deal-assumptions.routes.ts(309,33): error TS2551: Property 'total_units' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'totalUnits'?
 src/api/rest/deal-assumptions.routes.ts(309,59): error TS2339: Property 'target_units' does not exist on type 'QueryResult<any>'.
 src/api/rest/deal-assumptions.routes.ts(317,31): error TS2551: Property 'land_cost' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'landCost'?
@@ -88,18 +88,18 @@ src/api/rest/deal-assumptions.routes.ts(327,32): error TS2551: Property 'opex_ra
 src/api/rest/deal-assumptions.routes.ts(328,35): error TS2551: Property 'interest_rate' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'interestRate'?
 src/api/rest/deal-assumptions.routes.ts(330,30): error TS2551: Property 'exit_cap' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'exitCap'?
 src/api/rest/deal-assumptions.routes.ts(331,38): error TS2551: Property 'hold_period_years' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'holdPeriodYears'?
-src/api/rest/deal-assumptions.routes.ts(364,33): error TS2551: Property 'land_cost' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'landCost'?
-src/api/rest/deal-assumptions.routes.ts(365,30): error TS2551: Property 'total_units' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'totalUnits'?
-src/api/rest/deal-assumptions.routes.ts(365,50): error TS2339: Property 'target_units' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(366,34): error TS2551: Property 'avg_unit_sf' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'avgUnitSf'?
-src/api/rest/deal-assumptions.routes.ts(367,36): error TS2551: Property 'hard_cost_psf' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'hardCostPsf'?
-src/api/rest/deal-assumptions.routes.ts(368,39): error TS2551: Property 'avg_rent_per_unit' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'avgRentPerUnit'?
-src/api/rest/deal-assumptions.routes.ts(369,32): error TS2551: Property 'exit_cap' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'exitCap'?
-src/api/rest/deal-assumptions.routes.ts(373,30): error TS2339: Property 'lot_size_acres' does not exist on type '{}'.
-src/api/rest/deal-assumptions.routes.ts(374,28): error TS2339: Property 'zoning_code' does not exist on type '{}'.
-src/api/rest/deal-assumptions.routes.ts(375,26): error TS2339: Property 'max_units' does not exist on type '{}'.
-src/api/rest/deal-assumptions.routes.ts(399,35): error TS2339: Property 'property_id' does not exist on type 'QueryResult<any>'.
-src/api/rest/deal-assumptions.routes.ts(780,33): error TS2339: Property 'per_year_overrides' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(363,33): error TS2551: Property 'land_cost' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'landCost'?
+src/api/rest/deal-assumptions.routes.ts(364,30): error TS2551: Property 'total_units' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'totalUnits'?
+src/api/rest/deal-assumptions.routes.ts(364,50): error TS2339: Property 'target_units' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(365,34): error TS2551: Property 'avg_unit_sf' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'avgUnitSf'?
+src/api/rest/deal-assumptions.routes.ts(366,36): error TS2551: Property 'hard_cost_psf' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'hardCostPsf'?
+src/api/rest/deal-assumptions.routes.ts(367,39): error TS2551: Property 'avg_rent_per_unit' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'avgRentPerUnit'?
+src/api/rest/deal-assumptions.routes.ts(368,32): error TS2551: Property 'exit_cap' does not exist on type '{ landCost?: number; hardCostPsf?: number; softCostPct?: number; contingencyPct?: number; developerFeePct?: number; totalUnits?: number; avgUnitSf?: number; efficiency?: number; stories?: number; constructionType?: string; ... 56 more ...; updatedAt?: Date; }'. Did you mean 'exitCap'?
+src/api/rest/deal-assumptions.routes.ts(372,30): error TS2339: Property 'lot_size_acres' does not exist on type '{}'.
+src/api/rest/deal-assumptions.routes.ts(373,28): error TS2339: Property 'zoning_code' does not exist on type '{}'.
+src/api/rest/deal-assumptions.routes.ts(374,26): error TS2339: Property 'max_units' does not exist on type '{}'.
+src/api/rest/deal-assumptions.routes.ts(398,35): error TS2339: Property 'property_id' does not exist on type 'QueryResult<any>'.
+src/api/rest/deal-assumptions.routes.ts(779,33): error TS2339: Property 'per_year_overrides' does not exist on type 'QueryResult<any>'.
 src/api/rest/deal-shares.routes.ts(25,54): error TS2339: Property 'id' does not exist on type '{ userId: string; email: string; role: string; user_type?: "human" | "agent" | "human_sponsor" | "human_lp" | "human_lender" | "system"; agent_id?: string; capabilities?: string[]; }'.
 src/api/rest/deal-shares.routes.ts(81,54): error TS2339: Property 'id' does not exist on type '{ userId: string; email: string; role: string; user_type?: "human" | "agent" | "human_sponsor" | "human_lp" | "human_lender" | "system"; agent_id?: string; capabilities?: string[]; }'.
 src/api/rest/deal-validation.routes.ts(33,18): error TS2304: Cannot find name 'dealCheck'.
@@ -130,26 +130,26 @@ src/api/rest/financial-models.routes.ts(320,18): error TS2304: Cannot find name 
 src/api/rest/financial-models.routes.ts(504,18): error TS2304: Cannot find name 'dealCheck'.
 src/api/rest/grid.routes.ts(290,17): error TS2304: Cannot find name 'sc2'.
 src/api/rest/grid.routes.ts(299,10): error TS2304: Cannot find name 'sp2'.
-src/api/rest/inline-deals.routes.ts(1816,14): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1834,42): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1834,58): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1834,81): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1841,17): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1842,17): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1843,17): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1844,17): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1850,42): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1854,106): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1854,27): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1854,42): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1858,51): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1906,31): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1908,31): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1920,70): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1975,14): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1985,46): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1985,61): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
-src/api/rest/inline-deals.routes.ts(1990,23): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1902,14): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1920,42): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1920,58): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1920,81): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1927,17): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1928,17): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1929,17): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1930,17): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1936,42): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1940,106): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1940,27): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1940,42): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1944,51): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1992,31): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(1994,31): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(2006,70): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(2061,14): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(2071,46): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(2071,61): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
+src/api/rest/inline-deals.routes.ts(2076,23): error TS2339: Property 'file' does not exist on type 'AuthenticatedRequest'.
 src/api/rest/investor-capital.routes.ts(102,65): error TS2345: Argument of type 'QueryResult<any>' is not assignable to parameter of type 'Record<string, unknown>'.
 src/api/rest/investor-capital.routes.ts(116,53): error TS2345: Argument of type 'QueryResult<any>' is not assignable to parameter of type 'Record<string, unknown>'.
 src/api/rest/investor-capital.routes.ts(142,53): error TS2345: Argument of type 'QueryResult<any>' is not assignable to parameter of type 'Record<string, unknown>'.
@@ -186,6 +186,11 @@ src/api/rest/pst-upload.routes.ts(65,14): error TS2339: Property 'file' does not
 src/api/rest/pst-upload.routes.ts(70,24): error TS2339: Property 'file' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
 src/api/rest/pst-upload.routes.ts(71,26): error TS2339: Property 'file' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
 src/api/rest/sigma-full.routes.ts(135,19): error TS2304: Cannot find name 'buildHeuristicSigma'.
+src/api/rest/supply.routes.ts(1036,33): error TS2339: Property 'totalPipelineUnits' does not exist on type 'SupplyPipeline | { dataAvailable: false; reason: string; }'.
+src/api/rest/supply.routes.ts(1037,41): error TS2339: Property 'totalWeightedUnits' does not exist on type 'SupplyPipeline | { dataAvailable: false; reason: string; }'.
+src/api/rest/supply.routes.ts(1038,34): error TS2339: Property 'permittedUnits' does not exist on type 'SupplyPipeline | { dataAvailable: false; reason: string; }'.
+src/api/rest/supply.routes.ts(1039,37): error TS2339: Property 'constructionUnits' does not exist on type 'SupplyPipeline | { dataAvailable: false; reason: string; }'.
+src/api/rest/supply.routes.ts(1040,38): error TS2339: Property 'delivered12moUnits' does not exist on type 'SupplyPipeline | { dataAvailable: false; reason: string; }'.
 src/api/rest/traffic-data.routes.ts(25,22): error TS2339: Property 'file' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
 src/api/rest/upload.routes.ts(45,14): error TS2339: Property 'file' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
 src/api/rest/upload.routes.ts(49,26): error TS2339: Property 'file' does not exist on type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>'.
@@ -211,7 +216,7 @@ src/api/rest/valuation-grid.routes.ts(432,9): error TS2367: This comparison appe
 src/api/rest/valuation-grid.routes.ts(456,9): error TS2367: This comparison appears to be unintentional because the types 'boolean' and 'string' have no overlap.
 src/api/rest/valuation-grid.routes.ts(482,9): error TS2367: This comparison appears to be unintentional because the types 'boolean' and 'string' have no overlap.
 src/api/rest/valuation-grid.routes.ts(72,9): error TS2367: This comparison appears to be unintentional because the types 'boolean' and 'string' have no overlap.
-src/index.replit.ts(1045,16): error TS2339: Property 'syncBackfill' does not exist on type 'StripeSync'.
+src/index.replit.ts(1049,16): error TS2339: Property 'syncBackfill' does not exist on type 'StripeSync'.
 src/index.replit.ts(294,22): error TS2345: Argument of type 'Request<ParamsDictionary, any, any, ParsedQs, Record<string, any>>' is not assignable to parameter of type 'AuthenticatedRequest'.
 src/inngest/functions/bls-qcew-monthly.ts(14,28): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
 src/inngest/functions/calibrationRealizationCron.ts(117,36): error TS2558: Expected 0 type arguments, but got 1.
@@ -241,7 +246,7 @@ src/services/building-profiles/building-profile.service.ts(153,3): error TS1117:
 src/services/building-profiles/building-profile.service.ts(410,21): error TS2304: Cannot find name 'rows'.
 src/services/building-profiles/building-profile.service.ts(442,80): error TS2304: Cannot find name 'rows'.
 src/services/cloud-storage/cloud-storage.service.ts(309,27): error TS2345: Argument of type '{ type: "Document"; externalId: string; name: string; properties: { documentType: string; jobId: string; filesProcessed: number; foldersParsed: number; syncedAt: Date; }; }' is not assignable to parameter of type 'Omit<GraphNode, "updatedAt" | "createdAt" | "staleness"> & { externalId?: string; }'.
-src/services/correlationEngine.service.ts(3326,12): error TS2304: Cannot find name 'createHash'.
+src/services/correlationEngine.service.ts(3455,12): error TS2304: Cannot find name 'createHash'.
 src/services/custom-metrics/derivation.service.ts(177,13): error TS2322: Type '{ periodIndex: number; month: string; resolved: number; resolution: "input"; source: string; zone: "override" | "gap" | "actual" | "projection"; updated_at: string; }[]' is not assignable to type 'PeriodLayeredValue[]'.
 src/services/custom-metrics/derivation.service.ts(210,11): error TS2322: Type 'string' is not assignable to type '"agent" | "platform_default" | "computed" | "actual" | "derived_gap" | "derived_projection" | "assumption_trend" | "operator_override" | "unresolved" | "year1_accrual"'.
 src/services/custom-metrics/formula-evaluator.service.ts(179,66): error TS2339: Property 'value' does not exist on type 'Token'.
@@ -261,13 +266,18 @@ src/services/debt-advisor/rulesets/amort-profile.ruleset.ts(41,5): error TS2322:
 src/services/design/design-massing.service.ts(107,77): error TS2339: Property 'errors' does not exist on type 'ZodError<unknown>'.
 src/services/design/design-massing.service.ts(63,56): error TS2554: Expected 2 arguments, but got 1.
 src/services/design/design-massing.service.ts(83,52): error TS2554: Expected 2 arguments, but got 1.
-src/services/deterministic/deterministic-model-runner.ts(1018,5): error TS2353: Object literal may only specify known properties, and 'effectiveVacancy' does not exist in type 'MonthlyCashFlowRow'.
+src/services/deterministic/deterministic-model-runner.ts(748,60): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
+src/services/deterministic/deterministic-model-runner.ts(748,91): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
+src/services/deterministic/deterministic-model-runner.ts(753,17): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
+src/services/deterministic/deterministic-model-runner.ts(933,18): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
+src/services/deterministic/deterministic-model-runner.ts(933,49): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
+src/services/deterministic/deterministic-model-runner.ts(934,46): error TS2339: Property 'monthsToStabilize' does not exist on type 'ModelAssumptions'.
 src/services/discovery/scheduled-discovery.ts(374,9): error TS2322: Type '"weekly_update"' is not assignable to type '"supply" | "cap_rates" | "rents" | "rates"'.
 src/services/discovery/scheduled-discovery.ts(40,15): error TS2339: Property 'sofr' does not exist on type 'unknown'.
 src/services/discovery/scheduled-discovery.ts(40,29): error TS2339: Property 'fedFunds' does not exist on type 'unknown'.
 src/services/discovery/sources/cre-rss.ts(28,20): error TS2307: Cannot find module 'rss-parser' or its corresponding type declarations.
 src/services/document-extraction/broker-sentiment.service.ts(177,25): error TS2345: Argument of type '{ type: "Event"; externalId: string; name: string; properties: { eventType: string; fileId: number; sentimentLabel: AgentSentimentLabel; sentimentScore: 0 | 1 | -1; rationale: string; targets: { ...; }[]; }; }' is not assignable to parameter of type 'Omit<GraphNode, "updatedAt" | "createdAt" | "staleness"> & { externalId?: string; }'.
-src/services/document-extraction/data-router.ts(1135,40): error TS2352: Conversion of type 'OMBrokerProforma' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+src/services/document-extraction/data-router.ts(1137,40): error TS2352: Conversion of type 'OMBrokerProforma' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
 src/services/document-extraction/parsers/costar-parser.ts(427,27): error TS2349: This expression is not callable.
 src/services/document-extraction/parsers/leasing-stats-parser.ts(677,13): error TS2353: Object literal may only specify known properties, and 'floorPlanGroup' does not exist in type 'LeasingStatsActivity'.
 src/services/document-extraction/parsers/leasing-stats-parser.ts(688,31): error TS2551: Property 'moveIns' does not exist on type 'LeasingStatsActivity'. Did you mean 'move_ins'?
@@ -283,11 +293,13 @@ src/services/document-extraction/vendor-registry/costar.vendor.ts(201,11): error
 src/services/document-extraction/vendor-registry/costar.vendor.ts(264,11): error TS2322: Type 'string' is not assignable to type 'number'.
 src/services/documentsFiles.service.ts(50,17): error TS2694: Namespace 'global.Express' has no exported member 'Multer'.
 src/services/dot-temporal-profiles.service.ts(275,7): error TS2322: Type '"default" | "state_profile"' is not assignable to type '"default" | "fdot_profile"'.
-src/services/financial-model-engine.service.ts(1721,17): error TS2345: Argument of type 'MonthlyCashFlowRow[]' is not assignable to parameter of type 'Record<string, number>[]'.
-src/services/financial-model-engine.service.ts(590,31): error TS2304: Cannot find name 'ProvenancedValue'.
-src/services/financial-model-engine.service.ts(593,81): error TS2304: Cannot find name 'totalUnits'.
-src/services/financial-model-engine.service.ts(603,24): error TS2304: Cannot find name 'ProvenancedValue'.
-src/services/financial-model-engine.service.ts(616,21): error TS2304: Cannot find name 'ProvenancedValue'.
+src/services/excel-export.service.ts(416,55): error TS2339: Property 'inPlaceNOI' does not exist on type '{ irr: number; equityMultiple: number; cashOnCash: number[]; noiYear1: number; noiStabilized: number; purchaseCapRate: number; yieldOnCost: number; exitValue: number; netProceeds: number; totalEquity: number; ... 14 more ...; totalProfit?: number; }'.
+src/services/excel-export.service.ts(416,79): error TS2339: Property 'noiInPlace' does not exist on type '{ irr: number; equityMultiple: number; cashOnCash: number[]; noiYear1: number; noiStabilized: number; purchaseCapRate: number; yieldOnCost: number; exitValue: number; netProceeds: number; totalEquity: number; ... 14 more ...; totalProfit?: number; }'.
+src/services/financial-model-engine.service.ts(1743,17): error TS2345: Argument of type 'MonthlyCashFlowRow[]' is not assignable to parameter of type 'Record<string, number>[]'.
+src/services/financial-model-engine.service.ts(606,31): error TS2304: Cannot find name 'ProvenancedValue'.
+src/services/financial-model-engine.service.ts(609,81): error TS2304: Cannot find name 'totalUnits'.
+src/services/financial-model-engine.service.ts(619,24): error TS2304: Cannot find name 'ProvenancedValue'.
+src/services/financial-model-engine.service.ts(632,21): error TS2304: Cannot find name 'ProvenancedValue'.
 src/services/gmail-sync.service.ts(507,20): error TS2307: Cannot find module '../../services/agents/platform-hooks' or its corresponding type declarations.
 src/services/gmail-sync.service.ts(767,31): error TS2345: Argument of type '{ type: "Event"; externalId: string; name: string; properties: { eventType: string; emailId: string; subject: string; from: string; classification: EmailClassification; confidence: number; receivedAt: string; }; }' is not assignable to parameter of type 'Omit<GraphNode, "updatedAt" | "createdAt" | "staleness"> & { externalId?: string; }'.
 src/services/gmail-sync.service.ts(786,31): error TS2345: Argument of type '{ type: "Event"; externalId: string; name: string; properties: { eventType: string; emailId: string; subject: string; from: string; receivedAt: string; }; }' is not assignable to parameter of type 'Omit<GraphNode, "updatedAt" | "createdAt" | "staleness"> & { externalId?: string; }'.
@@ -342,22 +354,23 @@ src/services/neural-network/knowledge-graph.service.ts(899,26): error TS2339: Pr
 src/services/neural-network/knowledge-graph.service.ts(911,5): error TS2322: Type 'string' is not assignable to type 'GraphNode'.
 src/services/news-connections/rss-feeds.ts(12,20): error TS2307: Cannot find module 'rss-parser' or its corresponding type declarations.
 src/services/news/newsletter-parser.service.ts(338,31): error TS2345: Argument of type '{ type: "Document"; externalId: string; name: string; properties: { documentType: string; source: string; url: string; summary: string; category: string; relevanceToRE: "none" | "low" | "medium" | "high"; keyTopics: string[]; author: string; }; }' is not assignable to parameter of type 'Omit<GraphNode, "updatedAt" | "createdAt" | "staleness"> & { externalId?: string; }'.
-src/services/opus.service.ts(492,78): error TS2345: Argument of type '{ dealType?: string; strategy?: string; }' is not assignable to parameter of type '{ dealType?: "development" | "existing" | "redevelopment"; strategy?: string; }'.
-src/services/opus.service.ts(942,78): error TS2345: Argument of type '{ dealType?: string; strategy?: string; }' is not assignable to parameter of type '{ dealType?: "development" | "existing" | "redevelopment"; strategy?: string; }'.
+src/services/opus.service.ts(525,78): error TS2345: Argument of type '{ dealType?: string; strategy?: string; }' is not assignable to parameter of type '{ dealType?: "development" | "existing" | "redevelopment"; strategy?: string; }'.
+src/services/opus.service.ts(979,78): error TS2345: Argument of type '{ dealType?: string; strategy?: string; }' is not assignable to parameter of type '{ dealType?: "development" | "existing" | "redevelopment"; strategy?: string; }'.
 src/services/orchestrator/agent-delegator.ts(100,39): error TS2558: Expected 0 type arguments, but got 1.
 src/services/proforma-adjustment.service.ts(2105,33): error TS2307: Cannot find module '../blueprint/proforma-blueprint' or its corresponding type declarations.
 src/services/proforma-adjustment.service.ts(2195,7): error TS2353: Object literal may only specify known properties, and 'position' does not exist in type 'Omit<RentGrowthInputs, "year" | "position">'.
 src/services/proforma-adjustment.service.ts(2272,9): error TS2881: This expression is never nullish.
-src/services/proforma-adjustment.service.ts(3176,76): error TS2448: Block-scoped variable 'resolvedCounty' used before its declaration.
-src/services/proforma-adjustment.service.ts(3180,35): error TS2307: Cannot find module '../blueprint/proforma-blueprint' or its corresponding type declarations.
-src/services/proforma-adjustment.service.ts(5265,5): error TS2353: Object literal may only specify known properties, and 'userOverrideRationales' does not exist in type 'DealFinancials'.
-src/services/proforma-adjustment.service.ts(6023,33): error TS2322: Type 'string | number | boolean' is not assignable to type 'string | number'.
-src/services/proforma-adjustment.service.ts(6078,41): error TS2322: Type 'string | number | boolean' is not assignable to type 'string | number'.
-src/services/proforma-adjustment.service.ts(6104,41): error TS2322: Type 'string | number | boolean' is not assignable to type 'string | number'.
-src/services/proforma-adjustment.service.ts(6130,41): error TS2322: Type 'string | number | boolean' is not assignable to type 'string | number'.
-src/services/proforma-adjustment.service.ts(6157,41): error TS2322: Type 'string | number | boolean' is not assignable to type 'string | number'.
-src/services/proforma-adjustment.service.ts(6172,31): error TS2322: Type 'string | number | boolean' is not assignable to type 'string | number'.
-src/services/proforma-adjustment.service.ts(6348,5): error TS2322: Type 'string | number | boolean' is not assignable to type 'string | number'.
+src/services/proforma-adjustment.service.ts(3187,76): error TS2448: Block-scoped variable 'resolvedCounty' used before its declaration.
+src/services/proforma-adjustment.service.ts(3191,35): error TS2307: Cannot find module '../blueprint/proforma-blueprint' or its corresponding type declarations.
+src/services/proforma-adjustment.service.ts(5276,5): error TS2353: Object literal may only specify known properties, and 'userOverrideRationales' does not exist in type 'DealFinancials'.
+src/services/proforma-adjustment.service.ts(6034,33): error TS2322: Type 'string | number | boolean' is not assignable to type 'string | number'.
+src/services/proforma-adjustment.service.ts(6089,41): error TS2322: Type 'string | number | boolean' is not assignable to type 'string | number'.
+src/services/proforma-adjustment.service.ts(6115,41): error TS2322: Type 'string | number | boolean' is not assignable to type 'string | number'.
+src/services/proforma-adjustment.service.ts(6141,41): error TS2322: Type 'string | number | boolean' is not assignable to type 'string | number'.
+src/services/proforma-adjustment.service.ts(6168,41): error TS2322: Type 'string | number | boolean' is not assignable to type 'string | number'.
+src/services/proforma-adjustment.service.ts(6183,31): error TS2322: Type 'string | number | boolean' is not assignable to type 'string | number'.
+src/services/proforma-adjustment.service.ts(6359,5): error TS2322: Type 'string | number | boolean' is not assignable to type 'string | number'.
+src/services/proforma-seeder.service.ts(1084,3): error TS2740: Type '{ gpr: LayeredValue<number>; loss_to_lease_pct: LayeredValue<number>; vacancy_pct: LayeredValue<number>; concessions_pct: LayeredValue<number>; ... 32 more ...; _boundary_context: BoundaryContext; }' is missing the following properties from type 'ProFormaYear1Seed': rate, ltv, term, amort, and 3 more.
 src/services/proforma/event-deltas.service.ts(29,3): error TS2459: Module '"../m35-playbook.service"' declares 'classifyMsaTier' locally, but it is not exported.
 src/services/proforma/opex-anchors.service.ts(224,3): error TS1117: An object literal cannot have multiple properties with the same name.
 src/services/proforma/position-adjustment.service.ts(67,24): error TS2339: Property 'count' does not exist on type 'unknown'.
@@ -391,6 +404,6 @@ src/services/sigma/spatial-kernel.ts(22,29): error TS2307: Cannot find module 'p
 src/services/skills/skill-registry.ts(104,47): error TS2339: Property 'errors' does not exist on type 'ZodError<unknown>'.
 src/services/skills/skill-registry.ts(147,63): error TS2345: Argument of type '$ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>' is not assignable to parameter of type 'ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>'.
 src/services/skills/skill-registry.ts(153,39): error TS2345: Argument of type '$ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>' is not assignable to parameter of type 'ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>'.
-src/services/skills/skills/index.ts(548,48): error TS2307: Cannot find module '../../../lifecycle/transition-guard.service' or its corresponding type declarations.
+src/services/skills/skills/index.ts(576,48): error TS2307: Cannot find module '../../../lifecycle/transition-guard.service' or its corresponding type declarations.
 src/services/traffic-data-sources.service.ts(526,11): error TS2741: Property 'state' is missing in type '{ property_id: any; primary_adt_station_id: any; primary_adt: any; primary_adt_distance_m: any; primary_road_name: any; primary_road_classification: any; secondary_adt_station_id: any; ... 7 more ...; last_updated: any; }' but required in type 'PropertyTrafficContext'.
 src/services/trafficPredictionEngine.ts(2176,19): error TS2339: Property 'current_occupancy' does not exist on type 'Property'.
