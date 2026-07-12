@@ -488,6 +488,16 @@ export interface RecommendedTerms {
   loanTerms: { termMonths: number; amortMonths: number; ioPeriod: number };
   debtService: number;
   effectiveRate: number;
+  /**
+   * B5: Which constraint bound the sizing decision.
+   *   - 'ltv'     : Loan capped by LTV ceiling (DSCR was comfortable)
+   *   - 'dscr'    : Loan reduced below LTV cap to satisfy DSCR floor
+   *   - 'io'      : IO period constrained by lease-up profile or product maxIOYears
+   *   - 'user_override' : Caller supplied explicit loanAmount/ioPeriod/term
+   */
+  bindingConstraint: 'ltv' | 'dscr' | 'io' | 'user_override';
+  /** B5: Human-readable description of why the constraint bound. */
+  constraintDetails: string;
 }
 
 /**
@@ -502,6 +512,12 @@ export interface RecommendedTerms {
  *       LTV ≤ 0.65 → 0 months  (low-leverage fully-amortizing from day 1)
  *     Caller may override via `ioPeriodMonths`.
  *
+ *   B5 — monthsToStabilize: When dealMode is 'lease_up', the IO period is
+ *   derived from the lease-up profile (min(monthsToStabilize, maxIOYears*12))
+ *   rather than the LTV tier. This prevents IO expiry before stabilization.
+ *   Falls back to LTV tier when monthsToStabilize is absent or deal is not
+ *   lease-up. User override via ioPeriodMonths still wins.
+ *
  * Pure function, no I/O.
  */
 export function getRecommendedTerms(params: {
@@ -512,9 +528,10 @@ export function getRecommendedTerms(params: {
   termMonths?: number;
   amortMonths?: number;
   ioPeriodMonths?: number;
-  dealContext?: { lenderType?: string; assetClass?: string };
+  monthsToStabilize?: number; // B5: lease-up profile → IO derivation
+  dealContext?: { lenderType?: string; assetClass?: string; dealMode?: string };
 }): RecommendedTerms {
-  const { noiY1, purchasePrice, ltv, rate = 0.065, termMonths, amortMonths, ioPeriodMonths, dealContext } = params;
+  const { noiY1, purchasePrice, ltv, rate = 0.065, termMonths, amortMonths, ioPeriodMonths, monthsToStabilize, dealContext } = params;
   const maxByLtv = Math.round(purchasePrice * ltv);
 
   // ── B4: Step 1 — Resolve term/amort/IO BEFORE sizing ─────────────────────
@@ -542,15 +559,37 @@ export function getRecommendedTerms(params: {
     }
   }
 
+  // ── B5: IO derivation — lease-up profile → LTV tier fallback → user override ─
   let ioPeriod: number;
-  if (ioPeriodMonths !== undefined) {
+  let ioProvenance: string;
+  let bindingConstraint: RecommendedTerms['bindingConstraint'] = 'dscr';
+  let constraintDetails = '';
+
+  if (ioPeriodMonths !== undefined && ioPeriodMonths > 0) {
     ioPeriod = ioPeriodMonths;
-  } else if (ltv > 0.75) {
-    ioPeriod = 24;
-  } else if (ltv > 0.65) {
-    ioPeriod = 12;
+    ioProvenance = 'user_or_agent_override';
+    bindingConstraint = 'user_override';
+    constraintDetails = `IO period set by caller override at ${ioPeriod} months`;
+  } else if (dealContext?.dealMode === 'lease_up' && monthsToStabilize != null && monthsToStabilize > 0) {
+    // B5: Lease-up deals — IO must cover stabilization period (capped by product maxIO)
+    const product = resolveLoanProduct(dealContext);
+    const maxIO = product.maxIOYears * 12;
+    ioPeriod = Math.min(monthsToStabilize, maxIO);
+    ioProvenance = `lease_up_profile: monthsToStabilize=${monthsToStabilize}, maxIO=${maxIO} (product: ${product.name})`;
+    bindingConstraint = 'io';
+    constraintDetails = `IO period derived from lease-up profile: ${monthsToStabilize} months to stabilize, capped at product maxIO ${maxIO} months → ${ioPeriod} months`;
   } else {
-    ioPeriod = 0;
+    // B4: LTV tier fallback (non-lease-up deals)
+    if (ltv > 0.75) {
+      ioPeriod = 24;
+      ioProvenance = 'ltv_tier: >0.75 → 24mo (bridge/value-add)';
+    } else if (ltv > 0.65) {
+      ioPeriod = 12;
+      ioProvenance = 'ltv_tier: >0.65 → 12mo (moderate leverage)';
+    } else {
+      ioPeriod = 0;
+      ioProvenance = 'ltv_tier: ≤0.65 → 0mo (fully amortizing)';
+    }
   }
 
   // ── B4: Step 2 — Size debt using true amortizing debt service ────────────
@@ -562,6 +601,8 @@ export function getRecommendedTerms(params: {
   if (rate <= 0) {
     recommendedLoanAmount = maxByLtv;
     debtService = 0;
+    bindingConstraint = 'ltv';
+    constraintDetails = 'Zero or negative rate — LTV ceiling is the only binding constraint';
   } else {
     const loanByDscr = computeMaxLoanByDscr(
       noiY1,
@@ -582,6 +623,17 @@ export function getRecommendedTerms(params: {
       resolvedAmortMonths,
       ioPeriod
     );
+
+    // B5: Determine binding constraint (preserve user_override and io from IO block)
+    if (bindingConstraint !== 'user_override' && bindingConstraint !== 'io') {
+      if (recommendedLoanAmount < maxByLtv) {
+        bindingConstraint = 'dscr';
+        constraintDetails = `DSCR floor ${dscrFloor} bound the loan at $${recommendedLoanAmount.toLocaleString()} vs LTV ceiling $${maxByLtv.toLocaleString()}`;
+      } else {
+        bindingConstraint = 'ltv';
+        constraintDetails = `LTV ceiling at ${(ltv * 100).toFixed(0)}% bound the loan at $${maxByLtv.toLocaleString()}; DSCR was comfortable`;
+      }
+    }
   }
 
   return {
@@ -589,6 +641,8 @@ export function getRecommendedTerms(params: {
     loanTerms: { termMonths: resolvedTermMonths, amortMonths: resolvedAmortMonths, ioPeriod },
     debtService,
     effectiveRate: rate,
+    bindingConstraint,
+    constraintDetails,
   };
 }
 
@@ -648,6 +702,8 @@ export function runM11Cycle(assumptions: ModelAssumptions, noiY1: number, maxIte
       termMonths: dealTerm,
       amortMonths: dealAmort,
       ioPeriodMonths: dealIoPeriod,
+      monthsToStabilize: current.monthsToStabilize,
+      dealContext: { lenderType: current.dealType, assetClass: 'multifamily', dealMode: current.dealMode },
     });
     current = {
       ...current,
@@ -656,6 +712,9 @@ export function runM11Cycle(assumptions: ModelAssumptions, noiY1: number, maxIte
       term: terms.loanTerms.termMonths,
       amort: terms.loanTerms.amortMonths,
       ioPeriod: terms.loanTerms.ioPeriod,
+      // B5: persist binding constraint for writeM11ToFinancing
+      _m11BindingConstraint: terms.bindingConstraint,
+      _m11ConstraintDetails: terms.constraintDetails,
     };
   }
 
@@ -804,7 +863,7 @@ export interface M11CapitalStructureSummary {
   termYears: number;
   /** Amortization period in years (e.g. 30). Source: M11 product defaults. */
   amortYears: number;
-  /** Interest-only period in months. Source: M11 LTV-tier derivation. */
+  /** Interest-only period in months. Source: M11 LTV-tier or lease-up derivation. */
   ioPeriodMonths: number;
   /**
    * M14 DSCR floor that constrained sizing (default 1.25).
@@ -815,6 +874,13 @@ export interface M11CapitalStructureSummary {
   constraintBinds: boolean;
   /** Year-1 DSCR produced by the final optimized debt terms. */
   dscrActual: number | null;
+  /**
+   * B5: Which constraint bound the sizing decision.
+   * 'ltv' | 'dscr' | 'io' | 'user_override'
+   */
+  bindingConstraint: string;
+  /** B5: Human-readable description of why the constraint bound. */
+  constraintDetails: string;
 }
 
 /**
@@ -864,6 +930,10 @@ export function writeM11ToFinancing(
   const amortYears = adjusted.amort / 12;
   const constraintBinds = dscrActual !== null && dscrActual < dscrFloor;
 
+  // B5: binding constraint from the last M11 cycle (stored in meta if available)
+  const bindingConstraint = (adjusted as any)._m11BindingConstraint ?? 'dscr';
+  const constraintDetails = (adjusted as any)._m11ConstraintDetails ?? '';
+
   return {
     financing: {
       ...financing,
@@ -884,6 +954,8 @@ export function writeM11ToFinancing(
       dscrFloor,
       constraintBinds,
       dscrActual,
+      bindingConstraint,
+      constraintDetails,
     },
   };
 }

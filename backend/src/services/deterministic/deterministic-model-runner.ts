@@ -123,6 +123,11 @@ export interface ModelAssumptions {
   annualTurnoverRate?: number;        // fraction of units turning over per year (default 0.50)
   // Initial occupancy from rent roll (provenance document; absent → platform_default with surfaced flag)
   occupancyAtClose?: number;
+  // B5: months to stabilize for lease-up deals (drives IO period derivation)
+  monthsToStabilize?: number;
+  // B5: internal fields for binding constraint tracking (set by M11 cycle, consumed by writeM11ToFinancing)
+  _m11BindingConstraint?: string;
+  _m11ConstraintDetails?: string;
 }
 
 export interface AnnualCashFlowRow {

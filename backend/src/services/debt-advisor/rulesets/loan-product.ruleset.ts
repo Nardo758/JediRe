@@ -49,6 +49,14 @@ export const LOAN_PRODUCT_RULESET = {
       provenance: 'Long-term match for insurance liability duration',
       lenderType: 'life_co' as LenderType,
     },
+    {
+      name: 'Bridge',
+      termYears: 3,
+      amortYears: 30,
+      maxIOYears: 3,
+      provenance: 'Bridge loan for value-add or lease-up deals, 3-year term with full IO',
+      lenderType: 'bridge' as LenderType,
+    },
   ] as LoanProduct[],
   fallback: {
     name: 'Agency Standard Multifamily (fallback)',

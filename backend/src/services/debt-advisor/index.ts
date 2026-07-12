@@ -26,3 +26,26 @@ export {
 export {
   DISTRESS_THRESHOLD_RULESET,
 } from './rulesets/distress-threshold.ruleset';
+
+// B6: Debt Context
+export type {
+  DebtContext,
+  DebtContextInput,
+  InPlaceLoan,
+  DistressFlags,
+  MarketRates,
+  M11Sizing,
+  LoanProductContext,
+  LoanQuote,
+} from './debt-context';
+
+export { assembleDebtContext } from './debt-context-assembler';
+
+export { computeDistressFlags } from './s1-distress-calculator';
+
+export {
+  readDealContextFinancials,
+  readInPlaceLoan,
+  readMarketRates,
+  readM11Sizing,
+} from './deal-context-financials-reader';
