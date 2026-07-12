@@ -32,9 +32,10 @@ export interface FinancialsReaderInput {
  */
 export async function readDealContextFinancials(
   _input: FinancialsReaderInput,
-): Promise<Partial<DebtContextInput>> {
-  // Stub: returns empty partial — caller must fill in required fields
-  return {};
+): Promise<Partial<DebtContextInput> | null> {
+  // Stub: returns null (honest absence) — caller must fill in required fields
+  // TODO: wire to actual DB table deal_context_financials when schema is ready
+  return null;
 }
 
 /**
