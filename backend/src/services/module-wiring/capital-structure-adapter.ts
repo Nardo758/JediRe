@@ -565,7 +565,7 @@ export function getRecommendedTerms(params: {
   let bindingConstraint: RecommendedTerms['bindingConstraint'] = 'dscr';
   let constraintDetails = '';
 
-  if (ioPeriodMonths !== undefined && ioPeriodMonths > 0) {
+  if (ioPeriodMonths !== undefined && ioPeriodMonths >= 0) {
     ioPeriod = ioPeriodMonths;
     ioProvenance = 'user_or_agent_override';
     bindingConstraint = 'user_override';
