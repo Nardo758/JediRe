@@ -569,9 +569,9 @@ router.get('/:dealId', async (req: Request, res: Response) => {
         ltv,
         interestRate,
         noi,
-        dscr: noi > 0 && loanAmount > 0 && interestRate > 0
-          ? noi / (loanAmount * (interestRate / 100))
-          : null,
+        // U: canonical amortizing DSCR from stored model (same formula as engine).
+        // Prior formula noi/(loan×rate÷100) was IO-only AND double-divided rate.
+        dscr: (debtMetrics as any).coverage?.dscrY1 ?? null,
       },
     });
   } catch (error: any) {

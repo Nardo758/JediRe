@@ -567,9 +567,9 @@ export function getRecommendedTerms(params: {
 
   if (ioPeriodMonths !== undefined && ioPeriodMonths >= 0) {
     ioPeriod = ioPeriodMonths;
-    ioProvenance = 'user_or_agent_override';
+    ioProvenance = ioPeriodMonths === 0 ? 'caller_explicit_zero: fully amortizing' : 'user_or_agent_override';
     bindingConstraint = 'user_override';
-    constraintDetails = `IO period set by caller override at ${ioPeriod} months`;
+    constraintDetails = `IO period set by caller at ${ioPeriod} months`;
   } else if (dealContext?.dealMode === 'lease_up' && monthsToStabilize != null && monthsToStabilize > 0) {
     // B5: Lease-up deals — IO must cover stabilization period (capped by product maxIO)
     const product = resolveLoanProduct(dealContext);

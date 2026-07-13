@@ -106,9 +106,39 @@ export function runFullModel(
   // unchanged (Defect A).
   const pass1: ModelResults = runModel(assumptions, { skipSensitivity });
 
+  // ── Z: wire monthsToStabilize from pass-1 actual stabilization profile ──
+  // For lease-up deals, B5 IO derivation keys on this field.  When absent
+  // (M07 data not available), derive it from pass-1 annual occupancy rows so
+  // the IO period reflects the true lease-up profile rather than a silent
+  // platform default.  Log loudly when neither source produces a value.
+  let stabAssumptions: ModelAssumptions = assumptions;
+  if (assumptions.dealMode === 'lease_up' &&
+      (assumptions.monthsToStabilize == null || assumptions.monthsToStabilize <= 0)) {
+    const stabOcc = 1 - assumptions.vacancyStab;
+    // pass-1 annualCashFlow rows carry per-year occupancy; find first year at/
+    // above the stabilized band (same -0.01 tolerance used by the monthly path).
+    const stabYearIdx = pass1.annualCashFlow.findIndex(r => r.occupancy >= stabOcc - 0.01);
+    let derived: number;
+    if (stabYearIdx >= 0) {
+      // Convert year-index (0-based) to months: first full 12-month block that
+      // contains or follows the stabilization crossing. IO periods are sized in
+      // 12-month increments, so rounding up is conservative and safe.
+      derived = (stabYearIdx + 1) * 12;
+    } else {
+      // True fallback — pass-1 never crossed the stabilized band within the hold.
+      derived = 12;
+      console.warn(
+        '[Z] monthsToStabilize defaulted to 12 — no stabilization month from engine ' +
+        '(pass-1 annual rows never reached stabilized occupancy target of ' +
+        `${(stabOcc * 100).toFixed(1)}%). IO period may be understated for lease-up deal.`
+      );
+    }
+    stabAssumptions = { ...assumptions, monthsToStabilize: derived };
+  }
+
   // ── M11 Debt Optimizer (sized from pass-1 computed NOI) ──────────────
   const noiY1 = pass1.summary.noiYear1;
-  const m11: M11CycleResult = runM11Cycle(assumptions, noiY1, maxM11Iter);
+  const m11: M11CycleResult = runM11Cycle(stabAssumptions, noiY1, maxM11Iter);
   let adjusted: ModelAssumptions = m11.assumptions;
   const m11Warnings: IntegrityCheck[] = [];
   if (!m11.converged) {
