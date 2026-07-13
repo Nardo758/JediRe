@@ -1719,10 +1719,15 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   // aggregation correctly reflects the monthly series — an internal-consistency
   // check stronger than the old schedule-echo check.
   //
-  // Skip: (a) construction rows (GPR=0 ∧ occ=0); (b) dev-deal lease-up ramp
-  // years — the annual occupancy field reflects the stabilized target while the
-  // monthly series correctly shows the ramp from 0→stab.  These are structurally
-  // different (target vs. realized), not an aggregation error.
+  // Skip: (a) construction rows (GPR=0 ∧ occ=0); (b) dev-deal ramp years.
+  // For (b): after Finding AA, annual occ for lease-up years correctly reflects
+  // the year-AVERAGE of the linear ramp (e.g. ~47.5% for a 1yr 0→95% ramp).
+  // The monthly series for dev deals is produced by buildMonthlyCashFlow, which
+  // uses acquisition-model vacancy logic (vacancyY1/vacStab schedule) — it has
+  // no knowledge of the dev construction phase.  These two series are structurally
+  // incomparable for ramp years; INV-10 would always fire even on a correct model.
+  // This skip is NOT a tolerance: it removes a false positive caused by the
+  // monthly-builder's simplification for dev deals, not by an aggregation error.
   const isDev = a.dealType === 'development' || a.dealType === 'ground_up';
   const devConstructionYears = isDev ? Math.ceil((a.constructionMonths ?? 18) / 12) : 0;
   const devLeaseUpYears      = isDev ? Math.ceil((a.leaseUpMonths ?? 12) / 12) : 0;
@@ -1947,9 +1952,19 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       } else {
         // Post-construction: lease-up linear absorption then stabilized operating
         const phaseY = y - devConstructionYears;
-        const vacForYear = phaseY <= devLeaseUpYears
+        // Finding AA: use year-AVERAGE vacancy (midpoint of linear ramp), not year-END target.
+        // Old formula `1 - (phaseY/devLeaseUpYears)*(1-vacStab)` returns the ramp ENDPOINT —
+        // pinning the whole year at full-stabilized occupancy.  A 1-year lease-up that ramps
+        // from 0% → 95% occupancy averages ~47.5%, not 95%.  Using the endpoint inflates
+        // annual NOI, DSCR, preTaxCashFlow, and IRR for every lease-up year.
+        // Fix: average the year-start and year-end vacancy rates of the linear ramp.
+        const vacEnd   = phaseY <= devLeaseUpYears
           ? 1 - (phaseY / devLeaseUpYears) * (1 - a.vacancyStab)
           : a.vacancyStab;
+        const vacStart = phaseY <= devLeaseUpYears
+          ? 1 - ((phaseY - 1) / devLeaseUpYears) * (1 - a.vacancyStab)
+          : a.vacancyStab;
+        const vacForYear = phaseY <= devLeaseUpYears ? (vacStart + vacEnd) / 2 : a.vacancyStab;
         // Build flat vacancy schedule at this year's rate (computeYearOperating uses vacSched[y-1])
         const devVacSched = new Array<number>(nYears + 2).fill(vacForYear);
         const expCum = Math.pow(1 + a.expenseGrowth, y - 1);
