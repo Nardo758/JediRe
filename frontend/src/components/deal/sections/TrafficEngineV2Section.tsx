@@ -978,7 +978,8 @@ export default function TrafficEngineV2Section({ deal, propertyId }: TrafficEngi
                     netLeases: h.expected_leases || 0,
                     occPct: details?.occupancy ? details.occupancy * 100 : baseOcc,
                     effRent: details?.avg_rent || baseRent,
-                    closingRatio: h.weekly_traffic > 0 ? Math.round((h.expected_leases / h.weekly_traffic) * 1000) / 10 : 0,
+                    // P0 FIX: closingRatio = tours→leases (was: visits→leases, ~2× over-reported)
+                    closingRatio: h.weekly_tours > 0 ? Math.round((h.expected_leases / h.weekly_tours) * 1000) / 10 : 0,
                   },
                   a: null,
                 });
@@ -1006,7 +1007,8 @@ export default function TrafficEngineV2Section({ deal, propertyId }: TrafficEngi
                   netLeases: pred.expected_leases || 0,
                   occPct: baseOcc,
                   effRent: baseRent,
-                  closingRatio: pred.weekly_traffic > 0 ? Math.round((pred.expected_leases / pred.weekly_traffic) * 1000) / 10 : 0,
+                  // P0 FIX: closingRatio = tours→leases (was: visits→leases, ~2× over-reported)
+                  closingRatio: pred.weekly_tours > 0 ? Math.round((pred.expected_leases / pred.weekly_tours) * 1000) / 10 : 0,
                 },
                 actual: { traffic: 0, tours: 0, apps: 0, netLeases: 0, occPct: 0, effRent: 0, closingRatio: 0 },
               },

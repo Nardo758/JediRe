@@ -4,6 +4,16 @@
  * Pinned baselines (see BASELINE_DATA in
  * backend/src/services/multifamilyTrafficService.ts):
  *   - 290 units, 0.90 occupancy → baseline_weekly_traffic = 11
+ *   - visit_to_tour_ratio = 0.50 (P0 FIX — was 0.99, erasing the visit→tour stage)
+ *   - closing_ratio is now DYNAMIC, computed by
+ *     calculateClosingRatio(occupancy, month) — base 0.204, modulated by
+ *     occupancy bucket and a per-month seasonal close-rate table
+ *   - seasonality multiplier varies wildly by month (Sep=0.59, Dec=0.49,
+ *     Jun=1.50) and holiday weeks override it (see BASELINE_DATA.holiday_weeks)
+ *   - occupancy multiplier interpolates between anchors in
+ *     calculateOccupancyMultiplier (0.80→1.60 down to 1.00→0.70)
+ * backend/src/services/multifamilyTrafficService.ts):
+ *   - 290 units, 0.90 occupancy → baseline_weekly_traffic = 11
  *   - tour_conversion_rate = 0.99 (still constant)
  *   - closing ratio is now DYNAMIC, computed by
  *     calculateClosingRatio(occupancy, month) — base 0.204, modulated by
@@ -70,8 +80,10 @@ describe('Multifamily Traffic Prediction - Baseline Validation', () => {
     expect(prediction.weekly_traffic).toBeGreaterThanOrEqual(12);
     expect(prediction.weekly_traffic).toBeLessThanOrEqual(16);
 
-    // Tour conversion is still a constant 0.99.
-    expect(prediction.tour_conversion).toBe(0.99);
+    // P0 FIX: visit_to_tour_ratio is now 0.50 (was 0.99, erasing the visit→tour stage).
+    // This is a platform default; the absorption engine will calibrate it empirically.
+    expect(prediction.visit_to_tour_ratio).toBe(0.50);
+    expect(prediction.tour_conversion).toBe(0.50); // deprecated alias
 
     // Closing ratio is now dynamic (calculateClosingRatio: base 0.204 ×
     // occupancy bucket × seasonal close-rate). For occ=0.90 in April:
@@ -79,11 +91,13 @@ describe('Multifamily Traffic Prediction - Baseline Validation', () => {
     expect(prediction.closing_ratio).toBeGreaterThanOrEqual(0.20);
     expect(prediction.closing_ratio).toBeLessThanOrEqual(0.40);
 
-    // Tours follow tour_conversion exactly.
-    const expectedTours = Math.round(prediction.weekly_traffic * prediction.tour_conversion);
+    // P0 FIX: Tours now follow the real visit→tour ratio (was: traffic × 0.99).
+    // With visit_to_tour_ratio = 0.50, tours = traffic × 0.50 (roughly half the traffic).
+    const expectedTours = Math.round(prediction.weekly_traffic * prediction.visit_to_tour_ratio);
     expect(prediction.weekly_tours).toBe(expectedTours);
 
-    // Leases follow the dynamic closing ratio, rounded to 1 decimal.
+    // P0 FIX: Leases now reflect the two-stage funnel: visits × 0.50 × closing_ratio.
+    // The corrected number is ~50% lower than before (the old bug over-projected by ~2×).
     const expectedLeases = Math.round(prediction.weekly_tours * prediction.closing_ratio * 10) / 10;
     expect(prediction.expected_leases).toBeCloseTo(expectedLeases, 1);
   });
