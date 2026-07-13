@@ -1718,9 +1718,19 @@ export function runIntegrityChecks(a: ModelAssumptions, result: ModelResults): I
   // downtime), not schedule-derived.  This check verifies that the annual
   // aggregation correctly reflects the monthly series — an internal-consistency
   // check stronger than the old schedule-echo check.
+  //
+  // Skip: (a) construction rows (GPR=0 ∧ occ=0); (b) dev-deal lease-up ramp
+  // years — the annual occupancy field reflects the stabilized target while the
+  // monthly series correctly shows the ramp from 0→stab.  These are structurally
+  // different (target vs. realized), not an aggregation error.
+  const isDev = a.dealType === 'development' || a.dealType === 'ground_up';
+  const devConstructionYears = isDev ? Math.ceil((a.constructionMonths ?? 18) / 12) : 0;
+  const devLeaseUpYears      = isDev ? Math.ceil((a.leaseUpMonths ?? 12) / 12) : 0;
+  const devRampEndYear = devConstructionYears + devLeaseUpYears; // inclusive
   const monthlyCF = result.monthlyCashFlow;
   for (const row of opRows) {
     if (row.grossPotentialRent <= 0 && row.occupancy === 0) continue;
+    if (isDev && row.year <= devRampEndYear) continue; // skip construction + lease-up ramp
     const yearMonthly = monthlyCF.filter(m => m.year === row.year);
     if (yearMonthly.length === 0) continue;
     const expectedOcc = yearMonthly.reduce((s, m) => s + m.occupancy, 0) / yearMonthly.length;
