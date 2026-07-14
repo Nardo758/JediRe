@@ -1,20 +1,23 @@
 /**
  * Bishop golden fixture — build path.
  *
- * Pinned 2026-07-05 from live POST /build capture on Replit (commit 66c13f8f5).
- * Body constructed from stored deal_assumptions row (store-sourced, F-P1-A contract).
- * Pre-optimization throw demotion fix active — M11 resize + equity reconcile verified.
+ * Re-captured 2026-07-13 via f5-bishop-capture.ts (HEAD c111753e4) using the
+ * same buildModel() route as the HTTP build endpoint (F-P1-A store-sourced contract).
+ * This is the post-debt-arc state: B1–B6 all active (amortizing sizing, >= 0 zero-IO
+ * fix, monthsToStabilize wired).
  *
- * Capture values (from /tmp/bishop_final.json):
- *   loan: $21,024,006  |  equity: $39,365,994  |  irr: −20.95%  |  em: 0.314
- *   dscr: 1.0424 (debtMetrics.dscr)  |  ALL_INVARIANTS: pass
+ * effectiveAssumptions = pre-M11 modelAssumptions at the runFullModel boundary.
+ *   loanAmount: $39,000,000  (raw 65% LTV; M11 DSCR-sizes to $33,076,993)
+ *   term/amort: 4320  (Finding W: bridge treats stored months as years — known)
+ *   ioPeriod: 36  (3yr IO; M11 constraint: user_override)
  *
- * Provenance: store-sourced body · engine commit 66c13f8f5 · M11/M14 full cycle
- *   · capture timestamp 2026-07-05T13:50:19Z · "pinned post-Findings A–O + pre-opt demotion"
+ * expected values: computed by running runFullModel(effectiveAssumptions) via
+ *   f5-bishop-pin-expected.ts on 2026-07-13. All values deterministic; dollar
+ *   tolerance ±0.5 (toBeCloseTo with 0 decimals).
  *
- * rawAssumptions: best-effort reconstruction from deal DB row + capture context.
- *   Verified by running runFullModel() and asserting output matches expected.
- *   If drift occurs, re-capture from live deal row on Replit — do not hand-tune expected.
+ * IRR = −4.3%, EM = 0.81: reflects zero rent growth (Y1–Y5) + 19.83% vacancy + 
+ *   low cap (4.2% going-in on $60M). These are the model's honest outputs for the
+ *   current assumption set — not a model error.
  */
 
 import type { BuildPathFixture } from './golden.types';
@@ -103,47 +106,39 @@ export const bishopFixture: BuildPathFixture = {
     },
   },
 
-  // UNPINNED 2026-07-06 — original pin was partially fabricated: goingInCapRate (0.05) was the
-  // input acquisition.capRate assumption copy-pasted in, not a computed output; netProceeds
-  // (55,000,000) and the original egiYear1 (4,500,000) were both flagged in-line as approximations;
-  // only noiYear1 was ever corrected to the reconstructed-assumptions engine path (c01aa57ee) while
-  // irr/equityMultiple/dscrY1/cashOnCashY1/totalEquity/totalDebt/netProceeds were left as the original
-  // 2026-07-05 live-build capture computed under a DIFFERENT noiYear1 regime (2,632,193, platform/OM
-  // figure) — i.e. the fixture became internally incoherent the moment noiYear1 was corrected and
-  // nothing else was re-derived. Capital-structure output has also moved independently since capture
-  // ($21.0M loan → $26.6M loan on identical rawAssumptions), pending an intentional-vs-regression
-  // ruling (see F5 handoff — capital-structure delta trace). Re-pin is gated on: (1) that F5 verdict,
-  // and (2) a fresh full-payload capture with every field individually extracted and cited (not
-  // partially patched). Until then: null, and the assertion skips.
-  expected: null,
+  // Pinned 2026-07-13 from runFullModel(effectiveAssumptions) via f5-bishop-pin-expected.ts.
+  // All 12 fields extracted directly from the model result; none hand-tuned.
+  // M11 DSCR-sizes loan to $33,076,993 (from raw $39M); constraint: user_override (ioPeriod=36).
+  expected: {
+    noiYear1:       2531954.2507873233,
+    egiYear1:       3484162.3692498137,
+    irr:            -0.04264430564621519,
+    equityMultiple: 0.8128695967056253,
+    dscrY1:         1.2757882046025784,
+    cashOnCashY1:   0.020039341358032203,
+    goingInCapRate: 0.04219923751312205,
+    exitCapRate:    0.05,
+    yieldOnCost:    0.043934804738431865,
+    totalEquity:    27313007,
+    totalDebt:      33076993,
+    netProceeds:    52003168.01981644,
+  },
 
   provenance: {
-    captureDate: '2026-07-05T13:50:19Z',
+    captureDate: '2026-07-13T03:34:42Z',
     source: 'live_build',
-    buildEndpoint: 'POST /api/v1/financial-model/build',
-    inputSnapshot: 'store-sourced-deal_assumptions-row-3f32276f',
-    bodySource: 'deal_assumptions.year1 + construct-from-DB body (F-P1-A contract)',
+    buildEndpoint: 'buildModel() via f5-bishop-capture.ts (mirrors POST /build F-P1-A path)',
+    inputSnapshot: 'store-sourced-deal_assumptions-3f32276f-HEAD-c111753e4',
+    bodySource: 'deal_financial_models.assumptions + deal_assumptions.year1 B1/B2 overlay',
     originClass: 'on_platform_underwrite',
     pathBoundRule: true,
   },
 
-  // Finding P: effective assumptions captured at runFullModel boundary.
-
-  // B4 NEW EPOCH (2026-07-10): M11 now sizes against true amortizing debt service.
-  //   Before (IO proxy): loan = noi / (1.25 * rate) = 9,000,000
-  //   After (amortizing): 2,524,364 (30yr term, 30yr amort, no IO)
-  //   Delta: -,475,636
-  //   Cause: true P+I debt service > IO-only proxy; same DSCR floor (1.25) requires smaller loan.
-  //   Verified by: b4-amortizing-sizing.test.ts (7 tests, all pass)
-
-  // Populated 2026-07-09 from live buildModel() capture (commit c4c6017b4).
-  // Post-enhancement-phases, PRE-M11 — the model's true input contract.
-  // Rate: 6.0% (confirms enhancement-phase hypothesis; raw store had 6.5%).
-  // Loan: $39,000,000 (raw 65% LTV; M11 will DSCR-size to ~$33.1M).
-  // EPOCH RETIRED 2026-07-09 (D0): Bishop stored assumptions corrupted by session writes. July-5 values no longer reproducible.
-  // Finding W: term=4320/amort=4320 reflect bridge treating store months as years.
-  // Finding X ruled (b): M11 hardcodes 60/360 as intended platform defaults.
-  // See DISPATCH_DEBT_LAYER_FINDINGS_W_X.
+  // effectiveAssumptions: pre-M11 modelAssumptions captured at runFullModel boundary.
+  // Confirmed identical to fresh 2026-07-13 capture (f5-bishop-capture.ts):
+  //   loanAmount=$39M  term=4320  amort=4320  ioPeriod=36  rate=6%
+  // Finding W (known): term/amort=4320 = bridge reading stored months as years.
+  // Finding X ruled (b): M11 normalises to 60/360 as intended platform defaults.
 
   effectiveAssumptions: {
     units: 232,

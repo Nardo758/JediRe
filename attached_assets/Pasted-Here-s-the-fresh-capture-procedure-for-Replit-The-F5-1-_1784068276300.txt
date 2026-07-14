@@ -1,0 +1,22 @@
+Here's the fresh-capture procedure for Replit. The F5-1 instrumentation is already committed, so this is just triggering a build and grabbing the console output.
+Step 1 — make sure you're current and the backend's up:
+bashcd ~/workspace
+rm -f .git/*.lock 2>/dev/null
+git pull origin master
+git log --oneline -1   # confirm you're at the latest debt-arc commit
+Step 2 — trigger a live Bishop build. The instrumentation logs only for Bishop (3f32276f-aacd-4da3-b306-317c5109b403). Either route works:
+
+Via the app UI: open Bishop → F9 / Build Model.
+Via the build route (whatever the F-P1-A path was — scripts/construct-build-body.ts then POST to the build endpoint).
+
+The one requirement: it must go through the service's buildModel(), not a direct runFullModel() call — the instrumentation logs at the runFullModel() boundary inside buildModel, so a direct call bypasses it. That's the whole reason this capture exists.
+Step 3 — capture BOTH logged blocks to a file (so you can see them and the bot gets a clean copy):
+bash# watch the backend console during the build; it prints two blocks.
+# redirect the build's stdout to a file, or copy the console output into:
+cat > /tmp/bishop_capture_fresh.json
+# (paste the console output, Ctrl-D to close)
+Step 4 — the critical check before you paste anything to the bot. The console prints two objects. You want the modelAssumptions block (pre-M11 input), NOT adjustedAssumptions (post-M11 output). Verify by these tells:
+FieldmodelAssumptions (WANT)adjustedAssumptions (do NOT use)rate0.060.06 (same — not a distinguisher)loanAmount~39,000,000 (raw 65% LTV)~32,524,364 (DSCR-sized)term4320 (the Finding-W bridge value)60ioPeriod360
+The loan amount is the fastest tell: ~$39M = the one you want; ~$32.5M = the wrong one. If you paste the $32.5M object, we re-make the exact mistake F5-2 exists to fix.
+Step 5 — paste the modelAssumptions block here. The bot then does P1 (swap it into the fixture, replacing the current wrongly-pinned adjustedAssumptions) in the sandbox, plus P5 (the verdict doc). P2/P3/P4 stay in Replit as the live batch afterward.
+One note worth saying: capture this from the current HEAD (post debt-arc). A build now reflects B1–B6 — the amortizing sizing, the >= 0 zero-IO fix, the wired monthsToStabilize. That's the state the fixture should pin, and it's why re-capturing beats hunting for the stale /tmp file. If the numbers look different from the F5-1-era capture, that's expected and correct — the debt layer moved.
