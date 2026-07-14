@@ -11,13 +11,31 @@
  *   term/amort: 4320  (Finding W: bridge treats stored months as years — known)
  *   ioPeriod: 36  (3yr IO; M11 constraint: user_override)
  *
- * expected values: computed by running runFullModel(effectiveAssumptions) via
- *   f5-bishop-pin-expected.ts on 2026-07-13. All values deterministic; dollar
- *   tolerance ±0.5 (toBeCloseTo with 0 decimals).
+ * DETERMINISM PIN — not oracle-validated.
+ *   These values were produced by running runFullModel(effectiveAssumptions) and
+ *   recording the output. The test verifies that the model still produces the same
+ *   numbers on a future run — it does NOT verify that those numbers are correct.
+ *   External-oracle validation (Excel parity, analyst sign-off) is the eventual
+ *   correctness check. That is why F5-2 (fixture capture from the live build path)
+ *   matters for this desk: the captured input contract must be right before the
+ *   determinism pin is meaningful.
  *
- * IRR = −4.3%, EM = 0.81: reflects zero rent growth (Y1–Y5) + 19.83% vacancy + 
- *   low cap (4.2% going-in on $60M). These are the model's honest outputs for the
- *   current assumption set — not a model error.
+ *   Per-field provenance (result accessor → pinned value):
+ *     noiYear1       → result.summary.noiYear1
+ *     egiYear1       → result.annualCashFlow[0].effectiveGrossIncome
+ *     irr            → result.summary.irr
+ *     equityMultiple → result.summary.equityMultiple
+ *     dscrY1         → result.summary.dscrByYear[0]
+ *     cashOnCashY1   → result.summary.cashOnCashByYear[0]
+ *     goingInCapRate → result.summary.goingInCapRate
+ *     exitCapRate    → result.summary.exitCapRate   (input passthrough; 0.05)
+ *     yieldOnCost    → result.summary.yieldOnCost   (number branch; .trended fallback unused)
+ *     totalEquity    → result.summary.totalEquity   (M11-adjusted: purchasePrice − DSCR-sized loan)
+ *     totalDebt      → result.summary.loanAmount    (M11 DSCR-sized: $33,076,993)
+ *     netProceeds    → result.disposition.netSaleProceeds
+ *
+ * IRR = −4.3%, EM = 0.81: reflects zero rent growth (Y1–Y5) + 19.83% vacancy +
+ *   4.2% going-in cap on a $60M purchase. Model output, not a model error.
  */
 
 import type { BuildPathFixture } from './golden.types';
@@ -106,22 +124,21 @@ export const bishopFixture: BuildPathFixture = {
     },
   },
 
-  // Pinned 2026-07-13 from runFullModel(effectiveAssumptions) via f5-bishop-pin-expected.ts.
-  // All 12 fields extracted directly from the model result; none hand-tuned.
-  // M11 DSCR-sizes loan to $33,076,993 (from raw $39M); constraint: user_override (ioPeriod=36).
+  // DETERMINISM PIN — 2026-07-13. Source: f5-bishop-pin-expected.ts → runFullModel(effectiveAssumptions).
+  // All 12 fields payload-traced from result accessors listed in the header. None estimated.
   expected: {
-    noiYear1:       2531954.2507873233,
-    egiYear1:       3484162.3692498137,
-    irr:            -0.04264430564621519,
-    equityMultiple: 0.8128695967056253,
-    dscrY1:         1.2757882046025784,
-    cashOnCashY1:   0.020039341358032203,
-    goingInCapRate: 0.04219923751312205,
-    exitCapRate:    0.05,
-    yieldOnCost:    0.043934804738431865,
-    totalEquity:    27313007,
-    totalDebt:      33076993,
-    netProceeds:    52003168.01981644,
+    noiYear1:       2531954.2507873233,   // result.summary.noiYear1
+    egiYear1:       3484162.3692498137,   // result.annualCashFlow[0].effectiveGrossIncome
+    irr:            -0.04264430564621519, // result.summary.irr
+    equityMultiple: 0.8128695967056253,   // result.summary.equityMultiple
+    dscrY1:         1.2757882046025784,   // result.summary.dscrByYear[0]
+    cashOnCashY1:   0.020039341358032203, // result.summary.cashOnCashByYear[0]
+    goingInCapRate: 0.04219923751312205,  // result.summary.goingInCapRate
+    exitCapRate:    0.05,                 // result.summary.exitCapRate  (input passthrough)
+    yieldOnCost:    0.043934804738431865, // result.summary.yieldOnCost  (number branch)
+    totalEquity:    27313007,             // result.summary.totalEquity  (M11-adjusted)
+    totalDebt:      33076993,             // result.summary.loanAmount   (M11 DSCR-sized from $39M)
+    netProceeds:    52003168.01981644,    // result.disposition.netSaleProceeds
   },
 
   provenance: {

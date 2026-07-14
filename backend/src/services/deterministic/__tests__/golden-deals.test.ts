@@ -549,4 +549,75 @@ describe('F5-6 — evidence block inPlaceNOI integrity', () => {
     const noiEntries = evidence.fields.filter((f: any) => f.field === 'NOI');
     expect(noiEntries.length).toBe(1); // the Y1 NOI entry is separate
   });
+
+  // D3-W6: zero-inPlaceRent path — must emit absence entry, never a false negative number.
+  // Root cause: inPlaceRent=0 → inPlaceGPR=0 → inPlaceEGI=0 → inPlaceNOI = -propertyTax
+  // (negative, not absent). The fix emits value:null / source:'absent' instead.
+  it('absent inPlaceRent: emits one absence entry (value:null, source:absent), not a negative number', () => {
+    const assumptionsNoRent = {
+      units: 100,
+      avgUnitSf: 850,
+      marketRent: 1200,
+      inPlaceRent: 0,          // ← no acquisition-state rent (owned_import / seed path)
+      purchasePrice: 15_000_000,
+      closingCostsPct: 0.015,
+      isFlorida: false,
+      docStampsPct: 0,
+      intangibleTaxPct: 0,
+      titleInsurancePct: 0,
+      capexBudget: 200_000,
+      rentGrowth: [0.025, 0.025, 0.025, 0.025, 0.025],
+      lossToLease: 0,
+      vacancyY1: 0.05,
+      vacancyStab: 0.05,
+      underwritingVacancyFloor: 0.05,
+      concessions: 0.01,
+      badDebt: 0.015,
+      otherIncomePerUnit: 150,
+      expenseGrowth: 0.025,
+      payrollPerUnit: 600,
+      maintenancePerUnit: 350,
+      contractServicesPerUnit: 150,
+      marketingPerUnit: 75,
+      utilitiesPerUnit: 250,
+      adminPerUnit: 120,
+      insurancePerUnit: 180,
+      managementFee: 0.03,
+      replacementReserves: 150,
+      loanAmount: 10_500_000,
+      ltv: 0.70,
+      term: 360,
+      amort: 360,
+      ioPeriod: 0,
+      rate: 0.065,
+      originationFeePct: 0.01,
+      prepayPenalty: 0,
+      exitCap: 0.065,
+      saleCosts: 0.02,
+      holdYears: 5,
+      lpEquity: 4_185_000,
+      gpEquity: 315_000,
+      preferredReturn: 0.08,
+      promoteTiers: [0.08, 0.12, 0.15] as [number, number, number],
+      promoteSplits: [0.20, 0.30, 0.50] as [number, number, number],
+      dealType: 'existing',
+      dealMode: 'existing' as const,
+      occupancyAtClose: 1.0,
+      standardTurnDowntimeDays: 14,
+      annualTurnoverRate: 0.50,
+      newLeaseConcessionMonths: 1,
+    };
+
+    const full = runFullModel(assumptionsNoRent, { skipSensitivity: true });
+    const evidence = full.result.evidence;
+    expect(evidence).toBeDefined();
+
+    const inPlaceNOIEntries = evidence.fields.filter((f: any) => f.field === 'inPlaceNOI');
+    expect(inPlaceNOIEntries.length).toBe(1);                    // exactly one entry still emitted
+
+    const entry = inPlaceNOIEntries[0];
+    expect(entry.value).toBeNull();                              // absence — not a computed negative
+    expect(entry.source).toBe('absent');                         // clean absence signal for M09 bridge
+    expect(entry.confidence).toBe('LOW');
+  });
 });

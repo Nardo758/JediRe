@@ -2305,13 +2305,26 @@ export function runModel(a: ModelAssumptions, opts?: { skipSensitivity?: boolean
       reasoning: noiHint?.reasoning ??
         `Y1 NOI of $${Math.round(noiY1).toLocaleString()} — emergent turn-cohort monthly aggregate (between in-place and stabilized endpoints, not either endpoint itself).`,
     },
-    {
-      field: 'inPlaceNOI',
-      value: inPlaceNOI,
-      source: 'computed',
-      confidence: noiConf,
-      reasoning: `In-Place NOI of $${Math.round(inPlaceNOI).toLocaleString()} — m0 run-rate: ${((a.occupancyAtClose ?? 1.0) * 100).toFixed(0)}% occupied at $${Math.round(a.inPlaceRent).toLocaleString()}/unit/month, annualized. Left edge of the M09 bridge; no turn dynamics applied.`,
-    },
+    // D3-W6: inPlaceRent=0 means no acquisition state was provided (e.g. owned_import or
+    // seed-path deal). In that case inPlaceGPR=0 → inPlaceEGI=0 → inPlaceNOI = -propertyTax
+    // (negative, not zero-and-correct). A false negative would corrupt the M09 bridge left
+    // edge. Emit an absence entry (value:null, source:'absent') instead so downstream
+    // consumers get a clean signal rather than a plausible-but-wrong number.
+    ...(a.inPlaceRent > 0
+      ? [{
+          field: 'inPlaceNOI',
+          value: inPlaceNOI,
+          source: 'computed' as const,
+          confidence: noiConf,
+          reasoning: `In-Place NOI of $${Math.round(inPlaceNOI).toLocaleString()} — m0 run-rate: ${((a.occupancyAtClose ?? 1.0) * 100).toFixed(0)}% occupied at $${Math.round(a.inPlaceRent).toLocaleString()}/unit/month, annualized. Left edge of the M09 bridge; no turn dynamics applied.`,
+        }]
+      : [{
+          field: 'inPlaceNOI',
+          value: null,
+          source: 'absent' as const,
+          confidence: 'LOW' as const,
+          reasoning: 'inPlaceRent not provided — deal has no acquisition-state rent data (e.g. owned_import or seed path). M09 bridge left edge is absent; downstream must treat as no-anchor.',
+        }]),
     {
       field: 'IRR',
       value: irr,
