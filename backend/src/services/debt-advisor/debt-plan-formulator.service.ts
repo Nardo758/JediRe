@@ -19,6 +19,7 @@ import { applyDebtAdvisorPlatformDefault } from '../proforma-adjustment.service'
 import { getDealFinancialContext } from '../deal-financial-context.service';
 import { cycleIntelligenceService } from '../cycle-intelligence.service';
 import { logger } from '../../utils/logger';
+import { computeExitWindows } from './exit-window-calculator';
 import strategyDebtMapping from './strategy-debt-mapping.json';
 
 /**
@@ -172,6 +173,12 @@ export interface DebtAdvisorResponse {
    * m28_cycle_snapshots is unpopulated or the MSA is not tracked.
    */
   cyclePhase?: string | null;
+  /**
+   * LQ-5: Exit window analysis — optimal refinancing windows from
+   * curve troughs + M35 event overlays. Null when curve is stale/missing
+   * or no actionable windows exist.
+   */
+  exitWindows?: import('./exit-window-calculator').ExitWindowAnalysis | null;
 }
 
 interface CacheEntry {
@@ -902,6 +909,72 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
     }
   }
 
+  // LQ-5: Compute exit windows (curve troughs + M35 events) — non-fatal.
+  // Requires a LoanQuote to function; skip if no quotes available yet.
+  let exitWindows: import('./exit-window-calculator').ExitWindowAnalysis | null = null;
+  try {
+    if (phase1 && phase1.loanAmountEst > 0) {
+      const syntheticQuote: import('../loan-quotes/loan-quote.types').LoanQuote = {
+        id: `synthetic_${dealId}`,
+        orgId: 'platform',
+        lender: phase1.lenders[0]?.lender?.name ?? 'Advisor',
+        program: phase1.product,
+        quoteDate: new Date().toISOString().split('T')[0],
+        expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        indexBasis: 'treasury_10yr',
+        rateType: phase1.rateType.toLowerCase() as 'fixed' | 'floating',
+        spreadMatrix: {
+          program: phase1.product,
+          grid: {
+            'Tier-3': {
+              [phase1.termYears]: { min: 0.0125, max: 0.0150 },
+            },
+          },
+        },
+        adjustments: [],
+        prepayStructure: { type: phase1.prepayType as any, terms: {} },
+        brokerClaims: {
+          source: 'debt_advisor_synthetic',
+          date: new Date().toISOString().split('T')[0],
+          confidence: 0.5,
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      exitWindows = await computeExitWindows({
+        dealId,
+        msaId: dealCtx.msaId ?? undefined,
+        currentQuote: syntheticQuote,
+        curve: {
+          tenorPoints: [
+            { tenorYears: 5, rate: rateEnv.treasury10y - 0.0004, seriesCode: 'DGS5' },
+            { tenorYears: 7, rate: rateEnv.treasury10y - 0.0007, seriesCode: 'DGS7' },
+            { tenorYears: 10, rate: rateEnv.treasury10y, seriesCode: 'DGS10' },
+            { tenorYears: 30, rate: rateEnv.treasury10y + 0.0014, seriesCode: 'DGS30' },
+          ],
+          source: 'FRED_DGS_SYNTHETIC',
+          fetchedAt: new Date().toISOString(),
+          staleThresholdHours: 24,
+          indexBasis: 'treasury',
+        },
+        dealFinancials: {
+          noiAnnual: estimatedAnnualNOI,
+          loanAmount: phase1.loanAmountEst,
+          holdMonths,
+        },
+        prepayPenaltyPct: phase1.prepayType === 'yield_maintenance' ? 0.02 : 0.01,
+        originationFeePct: phase1.origFee,
+      });
+    }
+  } catch (exitWindowErr: any) {
+    logger.warn('[DebtAdvisor] Exit window computation failed — continuing without', {
+      dealId,
+      error: exitWindowErr.message,
+    });
+    exitWindows = null;
+  }
+
   const result: DebtAdvisorResponse = {
     dealId,
     computedAt: new Date().toISOString(),
@@ -947,6 +1020,7 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
     ...(divergence !== undefined ? { divergence } : {}),
     ...(platformDefaultsApplied !== undefined ? { platformDefaultsApplied } : {}),
     cyclePhase: cyclePhaseSnapshot?.lag_phase ?? null,
+    exitWindows,
   };
 
   advisorCache.set(dealId, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
@@ -959,6 +1033,8 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
     contextNotes: contextMods.narrativeNotes.length,
     platformDefaultsApplied: platformDefaultsApplied?.applied ?? 0,
     platformDefaultsSkipped: platformDefaultsApplied?.skipped.length ?? 0,
+    exitWindowsFound: exitWindows?.windows?.length ?? 0,
+    exitWindowsBest: exitWindows?.bestWindow?.month ?? null,
   });
   return result;
 }

@@ -170,6 +170,56 @@ export interface DebtAdvisorResponse {
     phaseIndex: number;
     fieldsApplied: string[];
   };
+  /**
+   * LQ-5: Exit window analysis — optimal refinancing windows from
+   * curve troughs + M35 event overlays. Null when curve is stale/missing
+   * or no actionable windows exist.
+   */
+  exitWindows?: {
+    dealId: string;
+    windows: Array<{
+      month: number;
+      label: string;
+      source: 'curve_trough' | 'm35_event' | 'm35_rate_move';
+      projectedRate: number;
+      currentRate: number;
+      rateImprovementBps: number;
+      dscrImprovement: number | null;
+      refiCostPct: number;
+      netBenefitBps: number;
+      isActionable: boolean;
+      confidence: number;
+    }>;
+    bestWindow: {
+      month: number;
+      label: string;
+      source: 'curve_trough' | 'm35_event' | 'm35_rate_move';
+      projectedRate: number;
+      currentRate: number;
+      rateImprovementBps: number;
+      dscrImprovement: number | null;
+      refiCostPct: number;
+      netBenefitBps: number;
+      isActionable: boolean;
+      confidence: number;
+    } | null;
+    nextWindow: {
+      month: number;
+      label: string;
+      source: 'curve_trough' | 'm35_event' | 'm35_rate_move';
+      projectedRate: number;
+      currentRate: number;
+      rateImprovementBps: number;
+      dscrImprovement: number | null;
+      refiCostPct: number;
+      netBenefitBps: number;
+      isActionable: boolean;
+      confidence: number;
+    } | null;
+    computedAt: string;
+    narrative: string;
+    absenceReason?: string;
+  } | null;
 }
 
 interface UseDebtAdvisorState {

@@ -1,0 +1,50 @@
+~/workspace$ # Pull latest (includes all 8 LQ components)
+git pull origin master
+
+# Verify all commits landed
+git log --oneline -10
+
+# Optional: verify key files exist
+ls -la backend/src/services/loan-quotes/loan-quote-store.ts
+ls -la backend/src/services/debt-advisor/term-optimizer.ts
+ls -la backend/src/services/debt-advisor/exit-window-calculator.ts
+ls -la backend/src/api/rest/loan-quotes.routes.ts
+ls -la frontend/src/pages/development/financial-engine/DebtTab.tsx
+remote: Enumerating objects: 118, done.
+remote: Counting objects: 100% (118/118), done.
+remote: Compressing objects: 100% (30/30), done.
+remote: Total 83 (delta 63), reused 73 (delta 53), pack-reused 0 (from 0)
+Unpacking objects: 100% (83/83), 54.48 KiB | 33.00 KiB/s, done.
+From https://github.com/Nardo758/JediRe
+ * branch                master     -> FETCH_HEAD
+   ea526a7c7..71af1c5b1  master     -> origin/master
+error: could not write index
+fatal: stash failed
+7d6e67438 (HEAD -> master) Merge branch 'master' of https://github.com/Nardo758/JediRe
+ea526a7c7 TS-2: Floor badge + occupancy ramp on vacancy_loss row
+2074efef4 Merge branch 'master' of https://github.com/Nardo758/JediRe
+5cc18408a F5-2: P4 verdict fix — recognize null+absent as correct signal for seed-path
+89a6da2a7 Merge branch 'master' of https://github.com/Nardo758/JediRe
+cab265e78 F5-2: P3 re-pin Bishop expected outputs (post-B3/B4/B5/B6 debt fixes)
+b95c4d4a1 resolve merge: keep remote bishop.golden.ts (P1 fix)
+ab9e126aa F5-2: P4 fix — RunFullModelResult has .result.evidence, not .evidence
+44894be3c F5-2: P4 Highlands inPlaceNOI trace script
+b9b814b7b F5-2: P1 fixture comment fix + P2/P3 scripts for Bishop re-pin
+ls: cannot access 'backend/src/services/loan-quotes/loan-quote-store.ts': No such file or directory
+ls: cannot access 'backend/src/services/debt-advisor/term-optimizer.ts': No such file or directory
+ls: cannot access 'backend/src/services/debt-advisor/exit-window-calculator.ts': No such file or directory
+ls: cannot access 'backend/src/api/rest/loan-quotes.routes.ts': No such file or directory
+-rw-r--r-- 1 runner runner 85713 May  5 21:33 frontend/src/pages/development/financial-engine/DebtTab.tsx
+~/workspace$ psql $DATABASE_URL -f backend/src/database/migrations/20260716_loan_quotes.sql
+psql: error: backend/src/database/migrations/20260716_loan_quotes.sql: No such file or directory
+~/workspace$ git pull
+error: cannot lock ref 'refs/remotes/origin/HEAD': Unable to create '/home/runner/workspace/.git/refs/remotes/origin/HEAD.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.
+error: could not write index
+fatal: stash failed
+~/workspace$
