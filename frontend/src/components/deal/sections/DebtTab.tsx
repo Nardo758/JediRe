@@ -6,7 +6,7 @@ import type {
   MetricInsight,
 } from '../../../types/capital-structure.types';
 import { useDealModule } from '../../../contexts/DealModuleContext';
-import { apiClient } from '@/services/api.client';
+import { api, apiClient } from '@/services/api.client';
 import {
   strategyTemplates,
   defaultCapitalStack,
@@ -1126,9 +1126,312 @@ export const DebtTab: React.FC<DebtTabProps> = ({
       {activeTab === 'metrics' && renderKeyMetrics()}
       {activeTab === 'exit' && <ExitWindowsTab config={exitConfig} />}
       {activeTab === 'sensitivity' && <SensitivityTab config={exitConfig} />}
+      {activeTab === 'quotes' && (tabLoading.quotes ? renderTabLoading() : <LoanQuoteComparisonPanel deal={deal} />)}
       {activeTab === 'monitor' && <MonitorTab dealStatus={dealStatus || 'pipeline'} />}
     </div>
   );
 };
 
 export default DebtTab;
+
+// ─── LQ-8: Loan Quote Comparison Panel ───────────────────────────────────────
+// Price-my-deal across lenders — Bloomberg Terminal dark theme
+
+import { BT, Bd, AlertBanner, TableHeader, TableRow } from '@/components/deal/bloomberg-ui';
+
+interface LoanQuoteComparisonPanelProps {
+  deal: any;
+}
+
+type ComparisonObjective = 'lowest_all_in' | 'max_proceeds' | 'best_levered_irr' | 'best_dscr_headroom';
+
+interface RankedQuote {
+  rank: number;
+  rankScore: number;
+  quote: {
+    id: string;
+    lender: string;
+    program: string;
+    quoteDate: string;
+    expires: string;
+    indexBasis: string;
+    rateType: string;
+    spreadMatrix: any;
+    adjustments: any[];
+    prepayStructure: any;
+    brokerClaims: any;
+    notes?: string;
+  };
+  pricing: {
+    allInRate: number | null;
+    termIndex: number | null;
+    spread: number | null;
+    adjustments: any[];
+    totalBps: number;
+    provenanceChain: any[];
+    resolvedTier: string;
+    resolvedTerm: number;
+    failureReason?: string;
+  };
+}
+
+interface QuoteComparisonData {
+  rankedQuotes: RankedQuote[];
+  staleQuotes: any[];
+  failedQuotes: Array<{ quote: any; reason: string }>;
+  objective: ComparisonObjective;
+  comparedAt: string;
+}
+
+function LoanQuoteComparisonPanel({ deal }: LoanQuoteComparisonPanelProps) {
+  const [orgId, setOrgId] = useState<string>('');
+  const [quotes, setQuotes] = useState<any[]>([]);
+  const [comparison, setComparison] = useState<QuoteComparisonData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>('');
+  const [objective, setObjective] = useState<ComparisonObjective>('lowest_all_in');
+  const [selectedQuoteIds, setSelectedQuoteIds] = useState<Set<string>>(new Set());
+  const [showStale, setShowStale] = useState(false);
+  const [showFailed, setShowFailed] = useState(false);
+
+  // Resolve orgId from localStorage jedi_user or auth context
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('jedi_user');
+      if (raw) {
+        const user = JSON.parse(raw);
+        if (user?.orgId) setOrgId(user.orgId);
+        else if (user?.organizationId) setOrgId(user.organizationId);
+        else if (user?.id) setOrgId(user.id); // fallback: user id as org proxy
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Fetch quotes list when orgId available
+  useEffect(() => {
+    if (!orgId) return;
+    setLoading(true);
+    api.quotes.list(orgId)
+      .then(res => {
+        const list = res.data?.data || [];
+        setQuotes(list);
+        setSelectedQuoteIds(new Set(list.map((q: any) => q.id)));
+      })
+      .catch(err => {
+        setError(err.response?.data?.error || 'Failed to load quotes');
+      })
+      .finally(() => setLoading(false));
+  }, [orgId]);
+
+  const runComparison = useCallback(async () => {
+    if (!orgId || !deal) return;
+    setLoading(true);
+    setError('');
+    try {
+      const purchasePrice = deal.purchasePrice || deal.budget || 0;
+      const noiY1 = deal.noi || deal.financial?.noi || 0;
+      const targetLtv = deal.targetLtv || deal.capitalStructure?.ltv || 0.65;
+      const body = {
+        deal: { purchasePrice, noiY1, targetLtv },
+        objective,
+        quoteIds: selectedQuoteIds.size > 0 ? Array.from(selectedQuoteIds) : undefined,
+      };
+      const res = await api.quotes.compare(orgId, body);
+      setComparison(res.data?.data || null);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Comparison failed');
+    } finally {
+      setLoading(false);
+    }
+  }, [orgId, deal, objective, selectedQuoteIds]);
+
+  const toggleQuoteSelection = (id: string) => {
+    setSelectedQuoteIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const fmtRate = (v: number | null) => v != null ? `${(v * 100).toFixed(3)}%` : '—';
+  const fmtBps = (v: number) => v > 0 ? `+${(v * 10000).toFixed(0)}bps` : `${(v * 10000).toFixed(0)}bps`;
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const isStale = (expires: string) => new Date(expires).getTime() < Date.now();
+
+  return (
+    <div style={{ background: BT.bg.terminal, color: BT.text.primary, fontFamily: BT.font.mono, minHeight: 400 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: BT.text.white, letterSpacing: 0.8 }}>PRICE MY DEAL</span>
+          <span style={{ fontSize: 9, color: BT.text.secondary }}>Across {quotes.length} lender quote{quotes.length !== 1 ? 's' : ''}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <select
+            value={objective}
+            onChange={e => setObjective(e.target.value as ComparisonObjective)}
+            style={{ background: BT.bg.input, color: BT.text.primary, border: `1px solid ${BT.border.medium}`, fontSize: 9, fontFamily: BT.font.mono, padding: '3px 6px' }}
+          >
+            <option value="lowest_all_in">Lowest All-In Rate</option>
+            <option value="max_proceeds">Max Proceeds</option>
+            <option value="best_levered_irr">Best Levered IRR</option>
+            <option value="best_dscr_headroom">Best DSCR Headroom</option>
+          </select>
+          <button
+            onClick={runComparison}
+            disabled={loading || quotes.length === 0}
+            style={{
+              background: BT.text.cyan, color: BT.bg.terminal, border: 'none',
+              fontSize: 9, fontWeight: 700, fontFamily: BT.font.mono,
+              padding: '4px 10px', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.6 : 1,
+            }}
+          >
+            {loading ? 'RUNNING…' : 'RUN COMPARE'}
+          </button>
+        </div>
+      </div>
+
+      {/* Error banner */}
+      {error && (
+        <AlertBanner label="ERROR" text={error} color={BT.text.red} onDismiss={() => setError('')} />
+      )}
+
+      {/* Quote selector */}
+      {quotes.length > 0 && (
+        <div style={{ padding: '6px 12px', borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.panel }}>
+          <div style={{ fontSize: 9, color: BT.text.muted, marginBottom: 4, letterSpacing: 0.5 }}>SELECT QUOTES TO COMPARE</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {quotes.map(q => (
+              <label key={q.id} style={{
+                display: 'flex', alignItems: 'center', gap: 3,
+                background: selectedQuoteIds.has(q.id) ? `${BT.text.cyan}15` : BT.bg.panelAlt,
+                border: `1px solid ${selectedQuoteIds.has(q.id) ? BT.text.cyan : BT.border.subtle}`,
+                padding: '2px 6px', fontSize: 9, color: selectedQuoteIds.has(q.id) ? BT.text.cyan : BT.text.secondary,
+                cursor: 'pointer', fontFamily: BT.font.mono,
+              }}>
+                <input
+                  type="checkbox"
+                  checked={selectedQuoteIds.has(q.id)}
+                  onChange={() => toggleQuoteSelection(q.id)}
+                  style={{ accentColor: BT.text.cyan, width: 10, height: 10 }}
+                />
+                {q.lender} · {q.program}
+                {isStale(q.expires) && <span style={{ color: BT.text.red, fontSize: 8 }}> (STALE)</span>}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading && !comparison && (
+        <div style={{ padding: 40, textAlign: 'center' }}>
+          <div style={{ width: 20, height: 20, border: `2px solid ${BT.border.medium}`, borderTopColor: BT.text.cyan, borderRadius: '50%', animation: 'bt-spin 1s linear infinite', margin: '0 auto 12px' }} />
+          <span style={{ fontSize: 9, color: BT.text.muted }}>Pricing deal across lenders…</span>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && quotes.length === 0 && !error && (
+        <div style={{ padding: 40, textAlign: 'center' }}>
+          <span style={{ fontSize: 9, color: BT.text.muted }}>No quotes found for this organization.</span>
+          <div style={{ fontSize: 9, color: BT.text.secondary, marginTop: 8 }}>
+            Upload rate sheets or manually enter quotes via Settings → Loan Quotes.
+          </div>
+        </div>
+      )}
+
+      {/* Results */}
+      {comparison && (
+        <div>
+          {/* Ranked table */}
+          {comparison.rankedQuotes.length > 0 && (
+            <div>
+              <TableHeader cols={[
+                { label: 'RANK', flex: '0 0 40px' },
+                { label: 'LENDER', flex: 1.2 },
+                { label: 'PROGRAM', flex: 1 },
+                { label: 'ALL-IN', flex: '0 0 80px', color: BT.text.amber },
+                { label: 'SPREAD', flex: '0 0 70px' },
+                { label: 'INDEX', flex: '0 0 60px' },
+                { label: 'TERM', flex: '0 0 50px' },
+                { label: 'TYPE', flex: '0 0 50px' },
+                { label: 'EXPIRES', flex: '0 0 70px' },
+                { label: 'SCORE', flex: '0 0 60px', color: BT.text.green },
+              ]} />
+              {comparison.rankedQuotes.map((rq, idx) => {
+                const isBest = rq.rank === 1;
+                return (
+                  <TableRow
+                    key={rq.quote.id}
+                    index={idx}
+                    cells={[
+                      { value: <span style={{ color: isBest ? BT.text.green : BT.text.secondary, fontWeight: 700 }}>#{rq.rank}</span>, flex: '0 0 40px' },
+                      { value: <span style={{ color: BT.text.primary, fontWeight: 600 }}>{rq.quote.lender}</span>, flex: 1.2 },
+                      { value: rq.quote.program, flex: 1 },
+                      { value: <span style={{ color: BT.text.amber, fontWeight: 700 }}>{fmtRate(rq.pricing.allInRate)}</span>, flex: '0 0 80px' },
+                      { value: rq.pricing.spread != null ? fmtBps(rq.pricing.spread) : '—', flex: '0 0 70px' },
+                      { value: rq.pricing.termIndex != null ? fmtRate(rq.pricing.termIndex) : '—', flex: '0 0 60px' },
+                      { value: `${rq.pricing.resolvedTerm}yr`, flex: '0 0 50px' },
+                      { value: <Bd c={rq.quote.rateType === 'fixed' ? BT.text.cyan : BT.text.purple}>{rq.quote.rateType.toUpperCase()}</Bd>, flex: '0 0 50px' },
+                      { value: fmtDate(rq.quote.expires), flex: '0 0 70px' },
+                      { value: <span style={{ color: isBest ? BT.text.green : BT.text.secondary }}>{rq.rankScore.toFixed(4)}</span>, flex: '0 0 60px' },
+                    ]}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {/* Stale quotes */}
+          {comparison.staleQuotes.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div
+                onClick={() => setShowStale(s => !s)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px', background: BT.bg.header, cursor: 'pointer', borderBottom: `1px solid ${BT.border.subtle}` }}
+              >
+                <span style={{ fontSize: 9, color: BT.text.red, fontWeight: 700 }}>STALE</span>
+                <span style={{ fontSize: 9, color: BT.text.secondary }}>{comparison.staleQuotes.length} quote(s) expired — excluded from ranking</span>
+                <span style={{ marginLeft: 'auto', fontSize: 9, color: BT.text.muted }}>{showStale ? '▾' : '▸'}</span>
+              </div>
+              {showStale && comparison.staleQuotes.map((q, idx) => (
+                <div key={q.id} style={{ display: 'flex', padding: '3px 12px', background: idx % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}`, fontSize: 9, color: BT.text.muted, fontFamily: BT.font.mono }}>
+                  <span style={{ flex: 1.2 }}>{q.lender}</span>
+                  <span style={{ flex: 1 }}>{q.program}</span>
+                  <span style={{ flex: '0 0 80px', color: BT.text.red }}>Expired {fmtDate(q.expires)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Failed quotes */}
+          {comparison.failedQuotes.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div
+                onClick={() => setShowFailed(s => !s)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px', background: BT.bg.header, cursor: 'pointer', borderBottom: `1px solid ${BT.border.subtle}` }}
+              >
+                <span style={{ fontSize: 9, color: BT.text.orange, fontWeight: 700 }}>FAILED</span>
+                <span style={{ fontSize: 9, color: BT.text.secondary }}>{comparison.failedQuotes.length} quote(s) could not be priced</span>
+                <span style={{ marginLeft: 'auto', fontSize: 9, color: BT.text.muted }}>{showFailed ? '▾' : '▸'}</span>
+              </div>
+              {showFailed && comparison.failedQuotes.map((fq, idx) => (
+                <div key={idx} style={{ display: 'flex', padding: '3px 12px', background: idx % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}`, fontSize: 9, color: BT.text.muted, fontFamily: BT.font.mono }}>
+                  <span style={{ flex: 1.2 }}>{fq.quote.lender}</span>
+                  <span style={{ flex: 1 }}>{fq.quote.program}</span>
+                  <span style={{ flex: 2, color: BT.text.orange }}>{fq.reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Comparison meta */}
+          <div style={{ padding: '4px 12px', fontSize: 9, color: BT.text.muted, textAlign: 'right', fontFamily: BT.font.mono }}>
+            Compared at {new Date(comparison.comparedAt).toLocaleString()} · Objective: {comparison.objective.replace(/_/g, ' ')}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
