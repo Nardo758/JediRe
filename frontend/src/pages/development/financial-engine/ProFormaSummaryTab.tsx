@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { CheckCircle2, AlertTriangle, Pencil, RotateCcw, RefreshCw, Loader2, XCircle, ChevronDown, ChevronRight, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
-import type { FinancialEngineTabProps, EvidenceFieldMeta, F9ConcessionMonthlyDetail } from './types';
+import type { FinancialEngineTabProps, EvidenceFieldMeta, F9ConcessionMonthlyDetail, MonthlyCashFlowRow } from './types';
 import { ConcessionDrilldownModal, aggregateConcessionDetail } from './ConcessionDrilldownModal';
 import { CommentaryPanel } from './CommentaryPanel';
 import { SourceBadge } from './SourceBadge';
@@ -333,6 +333,75 @@ function fmtVal(row: OperatingStatementRow, val: number | null): string {
   if (PCT_FIELDS.has(row.field)) return fmtPct(val);
   if (PER_UNIT_FIELDS.has(row.field)) return `$${val}/unit`;
   return fmt$(val);
+}
+
+// ─── TS-2: Floor badge + occupancy ramp helpers ───────────────────────────────
+
+interface FloorBindingInfo {
+  binding: boolean;
+  /** 1-based month indices where floorBinding is true */
+  months: number[];
+  /** The floor rate (effectiveVacancy) when binding, null otherwise */
+  floorRate: number | null;
+  /** The physical vacancy rate when binding, null otherwise */
+  physicalVacancy: number | null;
+}
+
+function computeFloorBindingInfo(monthlyRows: MonthlyCashFlowRow[] | undefined): FloorBindingInfo | null {
+  if (!monthlyRows || monthlyRows.length === 0) return null;
+  const boundMonths = monthlyRows.filter(m => m.floorBinding === true);
+  if (boundMonths.length === 0) return null;
+  return {
+    binding: true,
+    months: boundMonths.map(m => m.month),
+    floorRate: boundMonths[0]?.effectiveVacancy ?? null,
+    physicalVacancy: boundMonths[0]?.vacancy ?? null,
+  };
+}
+
+function formatMonthRange(months: number[]): string {
+  if (months.length === 0) return '';
+  if (months.length === 1) return `M${months[0]}`;
+  // Find contiguous ranges
+  const ranges: string[] = [];
+  let start = months[0];
+  let prev = months[0];
+  for (let i = 1; i <= months.length; i++) {
+    if (i < months.length && months[i] === prev + 1) {
+      prev = months[i];
+    } else {
+      ranges.push(start === prev ? `M${start}` : `M${start}-M${prev}`);
+      if (i < months.length) { start = months[i]; prev = months[i]; }
+    }
+  }
+  return ranges.join(', ');
+}
+
+interface OccupancyRamp {
+  avgOccupancy: number;
+  months: { month: number; occupancy: number; effectiveVacancy: number | undefined; floorBinding: boolean | undefined }[];
+  stabilizedTarget: number | null;
+}
+
+function computeOccupancyRamp(
+  monthlyRows: MonthlyCashFlowRow[] | undefined,
+  stabilizedVacancyPct: number | null
+): OccupancyRamp | null {
+  if (!monthlyRows || monthlyRows.length === 0) return null;
+  // Y1 = first 12 months (or fewer if hold period < 1 year)
+  const y1Months = monthlyRows.slice(0, 12);
+  if (y1Months.length === 0) return null;
+  const avgOccupancy = y1Months.reduce((s, m) => s + m.occupancy, 0) / y1Months.length;
+  return {
+    avgOccupancy,
+    months: y1Months.map(m => ({
+      month: m.month,
+      occupancy: m.occupancy,
+      effectiveVacancy: m.effectiveVacancy,
+      floorBinding: m.floorBinding,
+    })),
+    stabilizedTarget: stabilizedVacancyPct != null ? 1 - stabilizedVacancyPct : null,
+  };
 }
 
 // ─── Correction state ─────────────────────────────────────────────────────────
@@ -701,6 +770,11 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
   const toggleRegimeExpand = useCallback((field: string) => {
     setRegimeExpandOpen(prev => ({ ...prev, [field]: !prev[field] }));
   }, []);
+  // TS-2 — occupancy ramp expand under vacancy_loss row
+  const [occupancyExpandOpen, setOccupancyExpandOpen] = useState(false);
+  const toggleOccupancyExpand = useCallback(() => {
+    setOccupancyExpandOpen(prev => !prev);
+  }, []);
   // Lifted from AncillaryExpansionPanel so the inline P&L rows can edit category overrides
   const [ancillaryCatEdit, setAncillaryCatEdit] = useState<{ cat: string; val: string } | null>(null);
   const [ancillaryCatBusy, setAncillaryCatBusy] = useState(false);
@@ -747,6 +821,17 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
 
   // Prefer model results from the build pipeline; fall back to composer fetch.
   const modelData = modelResults ?? null;
+
+  // TS-2: compute floor binding and occupancy ramp from monthly cash flow
+  // NOTE: modelData is typed as ModelResults but at runtime carries the full
+  // RunFullModelResult shape (same as TS-1's `const md: any = modelData`).
+  const monthlyRows = (modelData as any)?.monthlyCashFlow as MonthlyCashFlowRow[] | undefined;
+  const floorInfo = useMemo(() => computeFloorBindingInfo(monthlyRows), [monthlyRows]);
+  const occupancyRamp = useMemo(() => {
+    const stabVacancy = data?.assumptions?.perYear?.[0]?.vacancyPct ?? null;
+    return computeOccupancyRamp(monthlyRows, stabVacancy);
+  }, [monthlyRows, data?.assumptions?.perYear]);
+  const hasModelMonthlyData = !!monthlyRows && monthlyRows.length > 0;
 
   const load = useCallback(async () => {
     // Always fetch the composer financials — this populates data.proforma.year1
@@ -2016,6 +2101,9 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                 : r;
               const showPreNriPatternB = isPatternB(r.field, dealType);
               const preNriBOpen = !!regimeExpandOpen[r.field];
+              // TS-2: vacancy row gets floor badge + occupancy expand (when model monthly data exists)
+              const isVacancyRow = r.field === 'vacancy_loss';
+              const showOccupancyExpand = isVacancyRow && hasModelMonthlyData;
               return (
                 <React.Fragment key={r.field}>
                   <DataRow row={displayRow} isEven={i % 2 === 0} shade="blue"
@@ -2027,13 +2115,48 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                     evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
                     onRowClick={r.field === 'concessions' && data?.concessionRecognition != null ? openY1Drill : undefined}
                     sigmaTier={sigmaField?.field === r.field ? sigmaField.tier : null}
-                    stanceModulated={r.field === 'vacancy_loss' && !!(stanceByPath['vacancy'])}
-                    stanceTrace={r.field === 'vacancy_loss' ? stanceByPath['vacancy']?.trace : undefined}
+                    stanceModulated={isVacancyRow && !!(stanceByPath['vacancy'])}
+                    stanceTrace={isVacancyRow ? stanceByPath['vacancy']?.trace : undefined}
                     dqaAlerts={dqaByRow[r.field]}
                     onDqaClick={setDqaDrawer}
-                    onToggleAncillary={showPreNriPatternB ? () => toggleRegimeExpand(r.field) : undefined}
-                    ancillaryOpen={showPreNriPatternB ? preNriBOpen : undefined}
+                    onToggleAncillary={
+                      showOccupancyExpand
+                        ? toggleOccupancyExpand
+                        : showPreNriPatternB
+                          ? () => toggleRegimeExpand(r.field)
+                          : undefined
+                    }
+                    ancillaryOpen={
+                      showOccupancyExpand
+                        ? occupancyExpandOpen
+                        : showPreNriPatternB
+                          ? preNriBOpen
+                          : undefined
+                    }
                     sourceDoc={byDocType[mapSourceToDocType(r.source) ?? ''] ?? null}
+                    labelAdornment={
+                      isVacancyRow && floorInfo ? (
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            marginLeft: 8,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            fontSize: 9,
+                            fontFamily: MONO,
+                            background: '#1a1500',
+                            color: '#f59e0b',
+                            border: '1px solid #78350f',
+                            cursor: 'help',
+                          }}
+                          title={`Underwriting vacancy floor binds: physical vacancy ${fmtPct(floorInfo.physicalVacancy)} → floored to ${fmtPct(floorInfo.floorRate)} over ${formatMonthRange(floorInfo.months)}`}
+                        >
+                          Floor: {formatMonthRange(floorInfo.months)}
+                        </span>
+                      ) : undefined
+                    }
                     contextOverrideWidget={r.field === 'loss_to_lease' ? (
                       <OverrideInputCell
                         dealId={dealId}
@@ -2045,6 +2168,54 @@ export function ProFormaSummaryTab({ dealId, deal, modelResults, onIntegrityChan
                       />
                     ) : undefined}
                   />
+                  {/* TS-2: Occupancy ramp sub-row */}
+                  {showOccupancyExpand && occupancyExpandOpen && occupancyRamp && (
+                    <tr style={{ background: '#0a0f0a' }}>
+                      <td colSpan={tableColCount} style={{ padding: '8px 12px 8px 28px' }}>
+                        <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.muted, marginBottom: 6 }}>
+                          Y1 Occupancy Ramp · Avg: {fmtPct(occupancyRamp.avgOccupancy)}
+                          {occupancyRamp.stabilizedTarget != null && (
+                            <span style={{ marginLeft: 12, color: '#34d399' }}>
+                              Target: {fmtPct(occupancyRamp.stabilizedTarget)}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 40 }}>
+                          {occupancyRamp.months.map((m) => {
+                            const barHeight = Math.max(4, m.occupancy * 40);
+                            const isBound = m.floorBinding === true;
+                            return (
+                              <div
+                                key={m.month}
+                                style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  flex: 1,
+                                  minWidth: 18,
+                                }}
+                                title={`M${m.month}: occ ${fmtPct(m.occupancy)}${m.effectiveVacancy != null ? ` · eff vacancy ${fmtPct(m.effectiveVacancy)}` : ''}${isBound ? ' · FLOOR BINDING' : ''}`}
+                              >
+                                <div
+                                  style={{
+                                    width: 14,
+                                    height: barHeight,
+                                    background: isBound ? '#f59e0b' : '#34d399',
+                                    borderRadius: 2,
+                                    opacity: 0.85,
+                                    transition: 'height 0.2s',
+                                  }}
+                                />
+                                <span style={{ fontSize: 7, color: BT.text.muted, marginTop: 2, fontFamily: MONO }}>
+                                  {m.month}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                   {showPreNriPatternB && preNriBOpen && (
                     <RegimeExpand
                       field={r.field}
