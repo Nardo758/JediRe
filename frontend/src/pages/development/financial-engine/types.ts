@@ -157,6 +157,40 @@ export interface ModelResults {
   sensitivityAnalysis: any;
   waterfallDistributions: WaterfallDistribution[];
   projections?: ProjectionRow[];
+  /** Monthly cash flow rows from the deterministic engine (TS-2: floor badge + occupancy ramp) */
+  monthlyCashFlow?: MonthlyCashFlowRow[];
+}
+
+/** Single month cash flow row from the deterministic engine */
+export interface MonthlyCashFlowRow {
+  month: number; // 1-based, 1..(holdYears*12)
+  year: number;  // which operating year this month belongs to
+  gpr: number;
+  lossToLease: number;
+  vacancy: number;       // vacancy rate (0–1 fraction)
+  vacancyLoss: number;   // dollar vacancy deduction
+  concessions: number;
+  badDebt: number;
+  baseRevenue: number;
+  otherIncome: number;
+  egi: number;
+  payroll: number;
+  maintenance: number;
+  contractServices: number;
+  marketing: number;
+  utilities: number;
+  admin: number;
+  insurance: number;
+  propertyTax: number;
+  managementFee: number;
+  replacementReserves: number;
+  totalExpenses: number;
+  noi: number;
+  occupancy: number;
+  /** vacancy rate after underwriting floor applied (may equal physical vacancy) */
+  effectiveVacancy?: number;
+  /** true when underwritingVacancyFloor > physical vacancy */
+  floorBinding?: boolean;
 }
 
 export interface AnnualCashFlowRow {
