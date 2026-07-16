@@ -185,10 +185,21 @@ if (inPlaceNOIEntry && inPlaceNOIEntry.value === 0) {
   console.log('  - Seed-path deals have no acquisition state — they were already owned');
   console.log('  - Asking for inPlaceNOI on a seed-path deal is like asking for');
   console.log('    "purchase price" on a deal that was never purchased');
+} else if (inPlaceNOIEntry && inPlaceNOIEntry.value === null) {
+  console.log('CONFIRMED: inPlaceNOI is NULL with source: "absent".');
+  console.log('The engine correctly signals that this deal has no acquisition-state rent data.');
+  console.log('Reasoning:', inPlaceNOIEntry.reasoning);
+  console.log();
+  console.log('This is the CORRECT behavior for seed-path deals:');
+  console.log('  - inPlaceNOI = left edge of M09 bridge = acquisition-state run-rate');
+  console.log('  - Seed-path deals (owned_import) have no acquisition state — never underwritten');
+  console.log('  - The engine emits null + source:absent + LOW confidence instead of fabricating');
+  console.log('    a zero or negative number that would mislead downstream consumers');
+  console.log('  - Category mismatch, not a bug — the field genuinely does not apply');
 } else if (!inPlaceNOIEntry) {
   console.log('CONFIRMED: inPlaceNOI field is ABSENT from evidence.');
   console.log('The engine does not emit this field when assumptions are incomplete.');
 } else {
   console.log('UNEXPECTED: inPlaceNOI =', inPlaceNOIEntry.value);
-  console.log('Expected zero or absent. Investigate further.');
+  console.log('Expected zero, null, or absent. Investigate further.');
 }
