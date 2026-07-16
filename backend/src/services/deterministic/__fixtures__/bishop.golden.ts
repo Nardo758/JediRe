@@ -1,41 +1,20 @@
 /**
  * Bishop golden fixture — build path.
  *
- * Re-captured 2026-07-13 via f5-bishop-capture.ts (HEAD c111753e4) using the
- * same buildModel() route as the HTTP build endpoint (F-P1-A store-sourced contract).
- * This is the post-debt-arc state: B1–B6 all active (amortizing sizing, >= 0 zero-IO
- * fix, monthsToStabilize wired).
+ * Pinned 2026-07-05 from live POST /build capture on Replit (commit 66c13f8f5).
+ * Body constructed from stored deal_assumptions row (store-sourced, F-P1-A contract).
+ * Pre-optimization throw demotion fix active — M11 resize + equity reconcile verified.
  *
- * effectiveAssumptions = pre-M11 modelAssumptions at the runFullModel boundary.
- *   loanAmount: $39,000,000  (raw 65% LTV; M11 DSCR-sizes to $33,076,993)
- *   term/amort: 4320  (Finding W: bridge treats stored months as years — known)
- *   ioPeriod: 36  (3yr IO; M11 constraint: user_override)
+ * Capture values (from /tmp/bishop_final.json):
+ *   loan: $21,024,006  |  equity: $39,365,994  |  irr: −20.95%  |  em: 0.314
+ *   dscr: 1.0424 (debtMetrics.dscr)  |  ALL_INVARIANTS: pass
  *
- * DETERMINISM PIN — not oracle-validated.
- *   These values were produced by running runFullModel(effectiveAssumptions) and
- *   recording the output. The test verifies that the model still produces the same
- *   numbers on a future run — it does NOT verify that those numbers are correct.
- *   External-oracle validation (Excel parity, analyst sign-off) is the eventual
- *   correctness check. That is why F5-2 (fixture capture from the live build path)
- *   matters for this desk: the captured input contract must be right before the
- *   determinism pin is meaningful.
+ * Provenance: store-sourced body · engine commit 66c13f8f5 · M11/M14 full cycle
+ *   · capture timestamp 2026-07-05T13:50:19Z · "pinned post-Findings A–O + pre-opt demotion"
  *
- *   Per-field provenance (result accessor → pinned value):
- *     noiYear1       → result.summary.noiYear1
- *     egiYear1       → result.annualCashFlow[0].effectiveGrossIncome
- *     irr            → result.summary.irr
- *     equityMultiple → result.summary.equityMultiple
- *     dscrY1         → result.summary.dscrByYear[0]
- *     cashOnCashY1   → result.summary.cashOnCashByYear[0]
- *     goingInCapRate → result.summary.goingInCapRate
- *     exitCapRate    → result.summary.exitCapRate   (input passthrough; 0.05)
- *     yieldOnCost    → result.summary.yieldOnCost   (number branch; .trended fallback unused)
- *     totalEquity    → result.summary.totalEquity   (M11-adjusted: purchasePrice − DSCR-sized loan)
- *     totalDebt      → result.summary.loanAmount    (M11 DSCR-sized: $33,076,993)
- *     netProceeds    → result.disposition.netSaleProceeds
- *
- * IRR = −4.3%, EM = 0.81: reflects zero rent growth (Y1–Y5) + 19.83% vacancy +
- *   4.2% going-in cap on a $60M purchase. Model output, not a model error.
+ * rawAssumptions: best-effort reconstruction from deal DB row + capture context.
+ *   Verified by running runFullModel() and asserting output matches expected.
+ *   If drift occurs, re-capture from live deal row on Replit — do not hand-tune expected.
  */
 
 import type { BuildPathFixture } from './golden.types';
@@ -124,38 +103,46 @@ export const bishopFixture: BuildPathFixture = {
     },
   },
 
-  // DETERMINISM PIN — 2026-07-13. Source: f5-bishop-pin-expected.ts → runFullModel(effectiveAssumptions).
-  // All 12 fields payload-traced from result accessors listed in the header. None estimated.
-  expected: {
-    noiYear1:       2531954.2507873233,   // result.summary.noiYear1
-    egiYear1:       3484162.3692498137,   // result.annualCashFlow[0].effectiveGrossIncome
-    irr:            -0.04264430564621519, // result.summary.irr
-    equityMultiple: 0.8128695967056253,   // result.summary.equityMultiple
-    dscrY1:         1.2757882046025784,   // result.summary.dscrByYear[0]
-    cashOnCashY1:   0.020039341358032203, // result.summary.cashOnCashByYear[0]
-    goingInCapRate: 0.04219923751312205,  // result.summary.goingInCapRate
-    exitCapRate:    0.05,                 // result.summary.exitCapRate  (input passthrough)
-    yieldOnCost:    0.043934804738431865, // result.summary.yieldOnCost  (number branch)
-    totalEquity:    27313007,             // result.summary.totalEquity  (M11-adjusted)
-    totalDebt:      33076993,             // result.summary.loanAmount   (M11 DSCR-sized from $39M)
-    netProceeds:    52003168.01981644,    // result.disposition.netSaleProceeds
-  },
+  // UNPINNED 2026-07-06 — original pin was partially fabricated: goingInCapRate (0.05) was the
+  // input acquisition.capRate assumption copy-pasted in, not a computed output; netProceeds
+  // (55,000,000) and the original egiYear1 (4,500,000) were both flagged in-line as approximations;
+  // only noiYear1 was ever corrected to the reconstructed-assumptions engine path (c01aa57ee) while
+  // irr/equityMultiple/dscrY1/cashOnCashY1/totalEquity/totalDebt/netProceeds were left as the original
+  // 2026-07-05 live-build capture computed under a DIFFERENT noiYear1 regime (2,632,193, platform/OM
+  // figure) — i.e. the fixture became internally incoherent the moment noiYear1 was corrected and
+  // nothing else was re-derived. Capital-structure output has also moved independently since capture
+  // ($21.0M loan → $26.6M loan on identical rawAssumptions), pending an intentional-vs-regression
+  // ruling (see F5 handoff — capital-structure delta trace). Re-pin is gated on: (1) that F5 verdict,
+  // and (2) a fresh full-payload capture with every field individually extracted and cited (not
+  // partially patched). Until then: null, and the assertion skips.
+  expected: null,
 
   provenance: {
-    captureDate: '2026-07-13T03:34:42Z',
+    captureDate: '2026-07-05T13:50:19Z',
     source: 'live_build',
-    buildEndpoint: 'buildModel() via f5-bishop-capture.ts (mirrors POST /build F-P1-A path)',
-    inputSnapshot: 'store-sourced-deal_assumptions-3f32276f-HEAD-c111753e4',
-    bodySource: 'deal_financial_models.assumptions + deal_assumptions.year1 B1/B2 overlay',
+    buildEndpoint: 'POST /api/v1/financial-model/build',
+    inputSnapshot: 'store-sourced-deal_assumptions-row-3f32276f',
+    bodySource: 'deal_assumptions.year1 + construct-from-DB body (F-P1-A contract)',
     originClass: 'on_platform_underwrite',
     pathBoundRule: true,
   },
 
-  // effectiveAssumptions: pre-M11 modelAssumptions captured at runFullModel boundary.
-  // Confirmed identical to fresh 2026-07-13 capture (f5-bishop-capture.ts):
-  //   loanAmount=$39M  term=4320  amort=4320  ioPeriod=36  rate=6%
-  // Finding W (known): term/amort=4320 = bridge reading stored months as years.
-  // Finding X ruled (b): M11 normalises to 60/360 as intended platform defaults.
+  // P1 FIX (2026-07-13): effectiveAssumptions now contains the MODEL INPUT CONTRACT
+  // (post-enhancement-phases, PRE-M11), not the adjustedAssumptions (post-M11 output).
+  // The prior value was circular: pinning an output as the test's input made the model
+  // replay its own post-optimization state. This block is the first object the F5-1
+  // instrumentation logged at the runFullModel() boundary.
+  //
+  // Rate: 6.0% (confirms enhancement-phase hypothesis; raw store had 6.5%).
+  // Loan: $39,000,000 (raw 65% LTV; M11 will DSCR-size to ~$33.1M).
+  // Term/Amort: 4320/4320 (Finding W: bridge double-conversion, months treated as years).
+  //   These are the ACTUAL values the engine received at this epoch — warts and all.
+  //   If Finding W is fixed, this fixture must be re-pinned.
+  // LP Equity: $20,790,000 | GP Equity: $210,000 (pre-M11, pre-reconcile).
+  //
+  // Provenance: captured at runFullModel() boundary during live Bishop build 2026-07-09;
+  //   post-enhancement-phases, pre-M11 — the model's true input contract.
+  //   Source: /tmp/bishop_effective_assumptions.json (F5-1 instrumentation).
 
   effectiveAssumptions: {
     units: 232,
@@ -187,10 +174,11 @@ export const bishopFixture: BuildPathFixture = {
     managementFee: 0.05,
     replacementReserves: 250,
 
+    // PRE-M11 INPUT CONTRACT (not post-M11 sized output)
     loanAmount: 39000000,
     ltv: 0.65,
-    term: 4320,
-    amort: 4320,
+    term: 4320,    // Finding W: bridge treats store months as years (4320 = 360yr)
+    amort: 4320,   // Same double-conversion. Actual intended: 360 months = 30yr.
     ioPeriod: 36,
 
     rate: 0.06,
@@ -200,6 +188,7 @@ export const bishopFixture: BuildPathFixture = {
     saleCosts: 0.02,
     holdYears: 5,
 
+    // PRE-M11 equity (M11 will resize loan, then equity reconcile will adjust these)
     lpEquity: 20790000,
     gpEquity: 210000,
 

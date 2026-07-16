@@ -1,11 +1,14 @@
 /**
  * F5-2 P2: Prove reproduction — run model with corrected effectiveAssumptions
- * 
+ *
  * Run this from the backend directory:
  *   npx ts-node scripts/f5-2-p2-reproduction.ts
- * 
+ *
  * This feeds the captured modelAssumptions (pre-M11, rate 6.0%, loan $39M)
  * into runFullModel and checks the five July-5 values.
+ *
+ * P1 FIX APPLIED: effectiveAssumptions now contains the MODEL INPUT CONTRACT
+ * (post-enhancement-phases, PRE-M11), not the adjustedAssumptions (post-M11 output).
  */
 
 import { runFullModel } from '../src/services/deterministic/run-full-model';
@@ -19,17 +22,19 @@ async function main() {
   }
 
   console.log('=== F5-2 P2: Reproduction Test ===');
-  console.log('Input contract (effectiveAssumptions):');
+  console.log('Input contract (effectiveAssumptions — PRE-M11 boundary):');
   console.log(`  rate: ${(assumptions.rate * 100).toFixed(2)}%`);
   console.log(`  loanAmount: $${assumptions.loanAmount.toLocaleString()}`);
   console.log(`  term: ${assumptions.term} months (${assumptions.term / 12} years)`);
   console.log(`  amort: ${assumptions.amort} months (${assumptions.amort / 12} years)`);
+  console.log(`  lpEquity: $${assumptions.lpEquity.toLocaleString()}`);
+  console.log(`  gpEquity: $${assumptions.gpEquity.toLocaleString()}`);
   console.log('');
 
   const full = runFullModel(assumptions, { skipSensitivity: true });
   const result = full.result;
 
-  // Five July-5 values
+  // Five July-5 values (from live build capture 2026-07-05)
   const july5 = {
     loan: 21_024_006,
     equity: 39_365_994,
@@ -75,11 +80,14 @@ async function main() {
   if (allReproduce) {
     console.log('✅ ALL FIVE REPRODUCE — P2 GREEN');
     console.log('');
-    console.log('=== adjustedAssumptions (for P3 pinning) ===');
+    console.log('=== adjustedAssumptions (post-M11, for reference) ===');
     console.log(JSON.stringify(full.adjustedAssumptions, null, 2));
     console.log('');
     console.log('=== Full result.summary (for P3 pinning) ===');
     console.log(JSON.stringify(result.summary, null, 2));
+    console.log('');
+    console.log('=== evidence.fields (for P3 pinning) ===');
+    console.log(JSON.stringify(result.evidence?.fields?.map((f: any) => ({ field: f.field, value: f.value })), null, 2));
   } else {
     console.log('❌ DOES NOT REPRODUCE — P2 RED');
     console.log('Diffs:');
@@ -91,6 +99,7 @@ async function main() {
     console.log('');
     console.log('=== adjustedAssumptions ===');
     console.log(JSON.stringify(full.adjustedAssumptions, null, 2));
+    process.exit(1);
   }
 }
 

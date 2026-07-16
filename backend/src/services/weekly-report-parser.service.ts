@@ -359,8 +359,10 @@ export class WeeklyReportParserService {
     else if (rentRatio > 1.05) priceMult = 0.8;
 
     const traffic = Math.max(1, Math.round(baseTraffic * occMult * priceMult));
-    const tourConversion = calibration?.avgTourConversion ?? 0.99;
-    const tours = Math.round(traffic * tourConversion);
+    // P0 FIX: Two-stage funnel. visit_to_tour_ratio = 0.50 (platform default, overridable).
+    // Was: tourConversion = 0.99 (erasing the visit→tour stage, causing ~2× over-projection).
+    const visitToTourRatio = calibration?.avgTourConversion ?? 0.50;
+    const tours = Math.round(traffic * visitToTourRatio);
     const websitePct = calibration?.websitePct ?? 0.40;
     const website = Math.round(traffic * websitePct);
     const closingRatio = calibration?.avgClosingRatio ?? 0.207;

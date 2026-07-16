@@ -6,11 +6,11 @@
  * 
  * Baseline Metrics (290 units, ~90% occupancy):
  * - Weekly Traffic: ~11 prospects
- * - Tour Conversion: 99%
- * - Closing Ratio: 20.7%
- * - Expected Weekly Leases: ~2.3
+ * - Visit→Tour Ratio: 50% (P0 FIX — was 99%, erasing the visit→tour stage)
+ * - Closing Ratio: 20.7% (tours → leases)
+ * - Expected Weekly Leases: ~1.1 (P0 FIX — was ~2.3, ~2× over-projected)
  * 
- * @version 1.0.0
+ * @version 1.1.0
  * @date 2025-02-18
  */
 
@@ -21,8 +21,12 @@ const BASELINE_DATA = {
   units: 290,
   baseline_occupancy: 0.90,
   baseline_weekly_traffic: 11,
-  tour_conversion_rate: 0.99,  // 99% of traffic becomes tours
-  closing_ratio: 0.207,         // 20.7% of tours become leases
+  // P0 FIX: visit_to_tour_ratio replaces the 0.99 tour_conversion_rate that
+  // effectively erased the visit→tour stage. Industry drop-off is 40-60%;
+  // 0.50 is a conservative platform default (overridable via calibration).
+  // Provenance: platform_default (interim; absorption engine will calibrate).
+  visit_to_tour_ratio: 0.50,    // visits → tours (NEW — was missing)
+  closing_ratio: 0.207,         // tours → leases (preserved — was misapplied to visits)
   
   // Seasonality multipliers (calibrated from 243 weeks of Highlands actuals, Jul 2021 – Mar 2026)
   seasonality: {
@@ -62,7 +66,9 @@ export interface LeasingPrediction {
   weekly_tours: number;
   expected_leases: number;
   closing_ratio: number;
-  tour_conversion: number;
+  // P0 FIX: visit_to_tour_ratio is now a first-class field (was hardcoded 0.99)
+  visit_to_tour_ratio: number;
+  tour_conversion: number;  // deprecated alias — same as visit_to_tour_ratio
   confidence: number;
   breakdown: {
     base_traffic: number;
@@ -181,7 +187,10 @@ export class MultifamilyTrafficService {
         occupancy_multiplier
       );
 
-      const predicted_tours = Math.round(predicted_traffic * BASELINE_DATA.tour_conversion_rate);
+      // P0 FIX: Two-stage funnel with real visit→tour ratio (was: traffic × 0.99 × closing_ratio)
+      // Now: traffic × visit_to_tour_ratio × closing_ratio
+      // The 0.99 tour_conversion_rate was erasing the visit→tour drop-off, causing ~2× over-projection.
+      const predicted_tours = Math.round(predicted_traffic * BASELINE_DATA.visit_to_tour_ratio);
       const dynamic_closing_ratio = this.calculateClosingRatio(property.occupancy, current_month);
       const predicted_leases = Math.round(predicted_tours * dynamic_closing_ratio * 10) / 10;
 
@@ -193,7 +202,8 @@ export class MultifamilyTrafficService {
         weekly_tours: predicted_tours,
         expected_leases: predicted_leases,
         closing_ratio: dynamic_closing_ratio,
-        tour_conversion: BASELINE_DATA.tour_conversion_rate,
+        visit_to_tour_ratio: BASELINE_DATA.visit_to_tour_ratio,
+        tour_conversion: BASELINE_DATA.visit_to_tour_ratio, // deprecated alias
         confidence,
         breakdown: {
           base_traffic: Math.round(base_traffic * 10) / 10,
@@ -255,7 +265,7 @@ export class MultifamilyTrafficService {
         const pricing_multiplier = this.calculatePricingMultiplier(rent_ratio);
         const occupancy_multiplier = this.calculateOccupancyMultiplier(property.occupancy);
 
-        // Calculate week prediction
+        // P0 FIX: Two-stage funnel with real visit→tour ratio (was: traffic × 0.99 × closing_ratio)
         const traffic = Math.round(
           base_traffic *
           demand_multiplier *
@@ -264,7 +274,7 @@ export class MultifamilyTrafficService {
           occupancy_multiplier
         );
 
-        const tours = Math.round(traffic * BASELINE_DATA.tour_conversion_rate);
+        const tours = Math.round(traffic * BASELINE_DATA.visit_to_tour_ratio);
         const dynamic_closing_ratio = this.calculateClosingRatio(property.occupancy, month);
         const leases = Math.round(tours * dynamic_closing_ratio * 10) / 10;
 
@@ -587,8 +597,8 @@ export class MultifamilyTrafficService {
    *   Occupancy effect: low occ (<88%) pushes to ~31%, high occ (>96%) drops to ~25%
    *   Seasonal effect: June peaks at 40%, Sep-Oct dips to 16-30%
    * 
-   * The closing ratio reflects both market urgency (occupancy) and
-   * seasonal demand quality (month).
+   * The closing ratio is TOURS → LEASES (not visits → leases).
+   * The visit → tour stage is handled by visit_to_tour_ratio.
    */
   private calculateClosingRatio(occupancy: number, month: number): number {
     const BASE_CLOSE_RATE = 0.204;

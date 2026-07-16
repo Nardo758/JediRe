@@ -35,12 +35,16 @@ interface CoefficientRow {
 }
 
 const BASELINE_DEFAULTS: Record<string, { label: string; description: string; baseline: number; format: 'pct' | 'decimal' | 'days' }> = {
-  closing_ratio:      { label: 'Walk-in → Signed',    description: 'Walk-in visitors that convert to signed leases',       baseline: 0.35,  format: 'pct' },
-  tour_conversion:    { label: 'Tour → Signed',        description: 'Scheduled tours that result in signed leases',         baseline: 0.45,  format: 'pct' },
-  avg_days_to_lease:  { label: 'Days to Lease',        description: 'Avg days from first contact to executed lease',        baseline: 7,     format: 'days' },
-  seasonal_factor:    { label: 'Seasonality Index',    description: 'Current month vs annual average (1.0 = neutral)',      baseline: 1.0,   format: 'decimal' },
-  dow_factor:         { label: 'Day-of-Week Factor',   description: "Today's traffic vs weekly average (1.0 = neutral)",    baseline: 1.0,   format: 'decimal' },
-  renewal_rate:       { label: 'Renewal Rate',         description: 'Proportion of expiring leases that renew in-place',   baseline: 0.55,  format: 'pct' },
+  // P0 FIX: visit_to_tour_ratio added as a first-class coefficient (was hardcoded 0.99)
+  visit_to_tour_ratio: { label: 'Visit → Tour',       description: 'Walk-in visitors who schedule a tour (industry: 40–60%)', baseline: 0.50,  format: 'pct' },
+  closing_ratio:      { label: 'Tour → Signed',       description: 'Scheduled tours that convert to signed leases',           baseline: 0.207, format: 'pct' },
+  // DEPRECATED: tour_conversion was a mislabel — it meant tours→leases but was used as visits→leases.
+  // Kept for backward compatibility; new code should use visit_to_tour_ratio + closing_ratio.
+  tour_conversion:    { label: 'Tour → Signed (legacy)', description: 'Legacy alias — use closing_ratio for tours→leases',     baseline: 0.45,  format: 'pct' },
+  avg_days_to_lease:  { label: 'Days to Lease',        description: 'Avg days from first contact to executed lease',            baseline: 7,     format: 'days' },
+  seasonal_factor:    { label: 'Seasonality Index',    description: 'Current month vs annual average (1.0 = neutral)',         baseline: 1.0,   format: 'decimal' },
+  dow_factor:         { label: 'Day-of-Week Factor',   description: "Today's traffic vs weekly average (1.0 = neutral)",       baseline: 1.0,   format: 'decimal' },
+  renewal_rate:       { label: 'Renewal Rate',         description: 'Proportion of expiring leases that renew in-place',       baseline: 0.55,  format: 'pct' },
 };
 
 function fmtVal(val: number | null | undefined, format: 'pct' | 'decimal' | 'days'): string {

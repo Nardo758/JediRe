@@ -566,8 +566,6 @@ export function getRecommendedTerms(params: {
   let constraintDetails = '';
 
   if (ioPeriodMonths !== undefined && ioPeriodMonths >= 0) {
-    // Ruling: explicit 0 means "fully amortizing" — distinct from undefined (use heuristics).
-    // Prior `> 0` guard made ioPeriodMonths:0 fall through to LTV tier → IO=12.
     ioPeriod = ioPeriodMonths;
     ioProvenance = ioPeriodMonths === 0 ? 'caller_explicit_zero: fully amortizing' : 'user_or_agent_override';
     bindingConstraint = 'user_override';
