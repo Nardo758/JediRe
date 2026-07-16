@@ -103,26 +103,46 @@ export const bishopFixture: BuildPathFixture = {
     },
   },
 
-  // UNPINNED 2026-07-06 — original pin was partially fabricated: goingInCapRate (0.05) was the
-  // input acquisition.capRate assumption copy-pasted in, not a computed output; netProceeds
-  // (55,000,000) and the original egiYear1 (4,500,000) were both flagged in-line as approximations;
-  // only noiYear1 was ever corrected to the reconstructed-assumptions engine path (c01aa57ee) while
-  // irr/equityMultiple/dscrY1/cashOnCashY1/totalEquity/totalDebt/netProceeds were left as the original
-  // 2026-07-05 live-build capture computed under a DIFFERENT noiYear1 regime (2,632,193, platform/OM
-  // figure) — i.e. the fixture became internally incoherent the moment noiYear1 was corrected and
-  // nothing else was re-derived. Capital-structure output has also moved independently since capture
-  // ($21.0M loan → $26.6M loan on identical rawAssumptions), pending an intentional-vs-regression
-  // ruling (see F5 handoff — capital-structure delta trace). Re-pin is gated on: (1) that F5 verdict,
-  // and (2) a fresh full-payload capture with every field individually extracted and cited (not
-  // partially patched). Until then: null, and the assertion skips.
-  expected: null,
+  // PINNED 2026-07-13 (commit ab9e126aa) — P3 re-pin after B3/B4/B5/B6 debt-layer fixes.
+  // Prior July-5 values are OBSOLETE: loan $21.0M → $33.1M, equity $39.4M → $27.3M,
+  // IRR −20.95% → −4.26%, EM 0.314 → 0.813, DSCR 1.04 → 1.28.
+  // These are the CORRECT post-fix outputs; the July-5 capture was under a different
+  // capital-structure regime (pre-B3/B4/B5/B6, pre-debt-layer audit fixes).
+  //
+  // Per-field extraction provenance (all from runFullModel result, post-M11/M14):
+  //   noiYear1:      result.summary.noiYear1
+  //   egiYear1:      result.annualCashFlow[0].effectiveGrossIncome
+  //   irr:            result.summary.irr
+  //   equityMultiple: result.summary.equityMultiple
+  //   dscrY1:         result.summary.dscrByYear[0]
+  //   cashOnCashY1:   result.summary.cashOnCashByYear[0]
+  //   goingInCapRate: result.summary.goingInCapRate
+  //   exitCapRate:    result.summary.exitCapRate
+  //   yieldOnCost:    result.summary.yieldOnCost (trended)
+  //   totalEquity:    result.summary.totalEquity
+  //   totalDebt:      result.summary.loanAmount
+  //   netProceeds:    result.disposition.netSaleProceeds
+  expected: {
+    noiYear1: 2531954.251,
+    egiYear1: 3484162.369,
+    irr: -0.0426,
+    equityMultiple: 0.8129,
+    dscrY1: 1.2758,
+    cashOnCashY1: 0.0200,
+    goingInCapRate: 0.0422,
+    exitCapRate: 0.0500,
+    yieldOnCost: 0.0439,
+    totalEquity: 27313007,
+    totalDebt: 33076993,
+    netProceeds: 52003168.02,
+  },
 
   provenance: {
-    captureDate: '2026-07-05T13:50:19Z',
-    source: 'live_build',
-    buildEndpoint: 'POST /api/v1/financial-model/build',
-    inputSnapshot: 'store-sourced-deal_assumptions-row-3f32276f',
-    bodySource: 'deal_assumptions.year1 + construct-from-DB body (F-P1-A contract)',
+    captureDate: '2026-07-13T00:00:00Z',
+    source: 'live_build_post_debt_fixes',
+    buildEndpoint: 'runFullModel(effectiveAssumptions, skipSensitivity)',
+    inputSnapshot: 'effectiveAssumptions from F5-1 instrumentation (pre-M11 boundary)',
+    bodySource: 'P3 re-pin script (f5-2-p3-pin.ts) — per-field extraction with provenance',
     originClass: 'on_platform_underwrite',
     pathBoundRule: true,
   },

@@ -100,8 +100,8 @@ console.log();
 
 const results = runFullModel(highlandsMinimalAssumptions);
 
-// Extract inPlaceNOI from evidence block
-const evidence = results.evidence;
+// Extract inPlaceNOI from evidence block (RunFullModelResult has .result, not .evidence directly)
+const evidence = results.result.evidence;
 const inPlaceNOIEntry = evidence.fields.find(f => f.field === 'inPlaceNOI');
 const noiEntry = evidence.fields.find(f => f.field === 'NOI');
 
