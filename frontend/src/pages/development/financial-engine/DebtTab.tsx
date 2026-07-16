@@ -4,7 +4,7 @@ import { KpiTile } from '../../../components/deal/bloomberg-ui';
 import { Lock, Link, ChevronDown, ChevronRight, Plus, X, AlertTriangle } from 'lucide-react';
 import type { FinancialEngineTabProps, F9DebtLoan, PrepayType } from './types';
 import { fmt$, fmtPct } from './types';
-import { apiClient } from '../../../services/api.client';
+import { apiClient, api } from '../../../services/api.client';
 import { DebtAdvisorSection } from '../../../components/deal/sections/DebtAdvisorSection';
 
 const MONO = BT.font.mono;
@@ -15,11 +15,12 @@ const SOFR_FWD: number[] = [0.0500, 0.0475, 0.0450, 0.0425, 0.0400];
 // ─── Loan letter designations ─────────────────────────────────────────────────
 const LOAN_LETTERS = ['A', 'B', 'C', 'D', 'E'];
 
-// ─── Loan type presets ────────────────────────────────────────────────────────
-type LoanPresetKey = 'Bridge' | 'Agency' | 'FannieDUS' | 'CMBS' | 'HUD' | 'LifeCo' | 'Mezz' | 'BNote';
+// ─── Static fallback presets (used when API fails or no orgId) ───────────────
+// These are the original LOAN_PRESETS — kept as fallback only.
+type StaticPresetKey = 'Bridge' | 'Agency' | 'FannieDUS' | 'CMBS' | 'HUD' | 'LifeCo' | 'Mezz' | 'BNote';
 
 interface LoanPreset {
-  label: LoanPresetKey;
+  label: string; // now dynamic from quote.program
   rateType: 'Fixed' | 'Floating';
   rate: number;
   spread: number;
@@ -32,9 +33,16 @@ interface LoanPreset {
   minDscr: number;
   maxLtv: number;
   prepayType: PrepayType;
+  // LQ-6: org-scoped quote metadata
+  quoteId?: string;
+  lender?: string;
+  program?: string;
+  quoteDate?: string;
+  expires?: string;
+  isLiveQuote?: boolean;
 }
 
-const LOAN_PRESETS: Record<LoanPresetKey, LoanPreset> = {
+const STATIC_PRESETS: Record<StaticPresetKey, LoanPreset> = {
   Bridge:    { label: 'Bridge',    rateType: 'Floating', rate: 0.085, spread: 0.035, term: 3,  amort: 0,  io: 36, origFee: 0.015, exitFee: 0.005, rateCapCost: 0.005, minDscr: 1.15, maxLtv: 0.80, prepayType: 'open' },
   Agency:    { label: 'Agency',    rateType: 'Fixed',    rate: 0.055, spread: 0,     term: 10, amort: 30, io: 0,  origFee: 0.010, exitFee: 0,     rateCapCost: 0,     minDscr: 1.25, maxLtv: 0.75, prepayType: 'stepdown' },
   FannieDUS: { label: 'FannieDUS', rateType: 'Fixed',    rate: 0.054, spread: 0,     term: 10, amort: 30, io: 24, origFee: 0.010, exitFee: 0,     rateCapCost: 0,     minDscr: 1.25, maxLtv: 0.80, prepayType: 'yield_maintenance' },
@@ -45,11 +53,129 @@ const LOAN_PRESETS: Record<LoanPresetKey, LoanPreset> = {
   BNote:     { label: 'BNote',     rateType: 'Floating', rate: 0.095, spread: 0.040, term: 3,  amort: 0,  io: 36, origFee: 0.015, exitFee: 0.005, rateCapCost: 0.006, minDscr: 1.10, maxLtv: 0.85, prepayType: 'open' },
 };
 
+// ─── Org-scoped live quote from API ───────────────────────────────────────────
+interface LoanQuote {
+  id: string;
+  orgId: string;
+  lender: string;
+  program: string;
+  quoteDate: string;
+  expires: string;
+  indexBasis: 'SOFR' | 'treasury_5yr' | 'treasury_7yr' | 'treasury_10yr' | 'treasury_30yr';
+  rateType: 'fixed' | 'floating';
+  spreadMatrix: {
+    program: string;
+    grid: Record<string, Record<number, { min: number; max: number }>>;
+  };
+  adjustments: Array<{ name: string; bps: number; provenance: string }>;
+  prepayStructure: { type: 'yield_maintenance' | 'defeasance' | 'step_down'; terms: Record<string, unknown> };
+  brokerClaims: { source: string; date: string; confidence: number; sourceId?: string; context?: string };
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Map a LoanQuote to a LoanPreset for backward compatibility with the DebtTab UI.
+// Uses the midpoint of the first spread range found in the matrix as the rate/spread.
+function quoteToPreset(quote: LoanQuote): LoanPreset {
+  const isFloating = quote.rateType === 'floating';
+  // Extract first spread range from matrix as fallback rate
+  let rate = 0.05;
+  let spread = 0.02;
+  const grid = quote.spreadMatrix?.grid;
+  if (grid && Object.keys(grid).length > 0) {
+    const firstTier = Object.values(grid)[0];
+    if (firstTier && Object.keys(firstTier).length > 0) {
+      const firstTerm = Object.values(firstTier)[0];
+      if (firstTerm && typeof firstTerm.min === 'number' && typeof firstTerm.max === 'number') {
+        const mid = (firstTerm.min + firstTerm.max) / 2;
+        if (isFloating) { spread = mid; rate = SOFR_FWD[0] + spread; }
+        else { rate = mid; spread = 0; }
+      }
+    }
+  }
+  // Apply adjustments (sum of bps, converted to decimal)
+  const adjBps = quote.adjustments?.reduce((s, a) => s + a.bps, 0) ?? 0;
+  const adjDecimal = adjBps / 10000;
+  if (isFloating) spread += adjDecimal; else rate += adjDecimal;
+
+  // Map prepay structure type to PrepayType
+  const prepayMap: Record<string, PrepayType> = {
+    yield_maintenance: 'yield_maintenance',
+    defeasance: 'defeasance',
+    step_down: 'stepdown',
+  };
+  const prepayType = prepayMap[quote.prepayStructure?.type] ?? 'open';
+
+  // Default term/amort/io from common program patterns
+  let term = 10;
+  let amort = 30;
+  let io = 0;
+  const prog = quote.program.toLowerCase();
+  if (prog.includes('bridge') || prog.includes('mezz')) { term = 3; amort = 0; io = 36; }
+  else if (prog.includes('fannie') || prog.includes('freddie') || prog.includes('agency')) { term = 10; amort = 30; io = 24; }
+  else if (prog.includes('cmbs')) { term = 10; amort = 30; io = 24; }
+  else if (prog.includes('hud') || prog.includes('fha')) { term = 35; amort = 35; io = 36; }
+  else if (prog.includes('life')) { term = 15; amort = 30; io = 0; }
+  else if (prog.includes('bank')) { term = 5; amort = 25; io = 12; }
+
+  // Default fees
+  let origFee = 0.01;
+  let exitFee = 0;
+  let rateCapCost = 0;
+  let minDscr = 1.25;
+  let maxLtv = 0.75;
+  if (prog.includes('bridge')) { origFee = 0.015; exitFee = 0.005; rateCapCost = 0.005; minDscr = 1.15; maxLtv = 0.80; }
+  else if (prog.includes('mezz')) { origFee = 0.02; exitFee = 0.01; rateCapCost = 0.008; minDscr = 1.10; maxLtv = 0.90; }
+  else if (prog.includes('hud')) { origFee = 0.008; minDscr = 1.20; maxLtv = 0.87; }
+  else if (prog.includes('life')) { origFee = 0.005; minDscr = 1.20; maxLtv = 0.65; }
+
+  return {
+    label: quote.program,
+    rateType: isFloating ? 'Floating' : 'Fixed',
+    rate,
+    spread,
+    term,
+    amort,
+    io,
+    origFee,
+    exitFee,
+    rateCapCost,
+    minDscr,
+    maxLtv,
+    prepayType,
+    quoteId: quote.id,
+    lender: quote.lender,
+    program: quote.program,
+    quoteDate: quote.quoteDate,
+    expires: quote.expires,
+    isLiveQuote: true,
+  };
+}
+
+// Build a dynamic preset record from live quotes + static fallback
+type LoanPresetKey = string;
+let LOAN_PRESETS: Record<LoanPresetKey, LoanPreset> = { ...STATIC_PRESETS };
+
+// ─── Resolve orgId from auth context ───────────────────────────────────────────
+function resolveOrgId(): string | null {
+  try {
+    const raw = localStorage.getItem('jedi_user');
+    if (raw) {
+      const user = JSON.parse(raw);
+      if (user?.orgId) return user.orgId;
+      if (user?.organizationId) return user.organizationId;
+      if (user?.id) return user.id;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
 // ─── Per-loan editable state ──────────────────────────────────────────────────
 interface LoanState {
   id: string;
   name: string;
-  loanTypeLabel: LoanPresetKey;
+  loanTypeLabel: string; // now dynamic from quote.program or static preset key
   rateType: 'Fixed' | 'Floating';
   // user overrides (null = use platform/preset)
   userLoanAmount: number | null;
@@ -74,6 +200,10 @@ interface LoanState {
   prepayType: PrepayType;
   sofrCurve: number[];
   extensionOptions: string;
+  // LQ-6: track which quote this loan was created from
+  quoteId?: string;
+  lender?: string;
+  isLiveQuote?: boolean;
 }
 
 function makeLoanState(id: string, name: string, preset: LoanPreset, f9Loan?: F9DebtLoan | null, baseLoanAmt?: number): LoanState {
@@ -103,6 +233,9 @@ function makeLoanState(id: string, name: string, preset: LoanPreset, f9Loan?: F9
     prepayType: f9Loan?.prepayType as PrepayType ?? preset.prepayType,
     sofrCurve: f9Loan?.sofrCurve ?? SOFR_FWD,
     extensionOptions: '',
+    quoteId: preset.quoteId,
+    lender: preset.lender,
+    isLiveQuote: preset.isLiveQuote,
   };
 }
 
@@ -197,6 +330,19 @@ function buildAnnual(amortRows: AmortRow[], noi1: number, rentGrowth: number, mi
     annual.push({ year: y, openBalance, annualInterest, annualPrincipal, annualDS, closeBalance, noi, dscr, debtYield, covenantBreach });
   }
   return annual;
+}
+
+// ─── Helper: get color for loan type label ────────────────────────────────────
+function getLoanTypeColor(label: string): string {
+  const lower = label.toLowerCase();
+  if (lower.includes('bridge') || lower.includes('b-note') || lower.includes('bnote')) return BT.text.amber;
+  if (lower.includes('agency') || lower.includes('fannie') || lower.includes('freddie')) return BT.text.cyan;
+  if (lower.includes('cmbs')) return '#a855f7';
+  if (lower.includes('hud') || lower.includes('fha')) return BT.met.financial;
+  if (lower.includes('life') || lower.includes('insurance')) return '#8b5cf6';
+  if (lower.includes('mezz') || lower.includes('preferred')) return BT.text.red;
+  if (lower.includes('bank')) return '#60a5fa';
+  return BT.text.amber;
 }
 
 // ─── 4-column DebtRow ─────────────────────────────────────────────────────────
@@ -315,7 +461,7 @@ function ColHeader() {
 interface RefiState {
   enabled: boolean;
   triggerYear: number;
-  newLoanType: LoanPresetKey;
+  newLoanType: string; // now dynamic
   newLoanAmtPct: number;
 }
 
@@ -333,9 +479,116 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
   const holdYears = f9Financials?.assumptions?.holdYears ?? 5;
   const dealName = f9Financials?.dealName ?? '';
 
+  // ── LQ-6: Fetch org-scoped live quotes ──────────────────────────────────────
+  const [orgId, setOrgId] = useState<string | null>(null);
+  const [liveQuotes, setLiveQuotes] = useState<LoanQuote[]>([]);
+  const [quotesLoading, setQuotesLoading] = useState(false);
+  const [quotesError, setQuotesError] = useState<string | null>(null);
+  const [presetsReady, setPresetsReady] = useState(false);
+
+  // Resolve orgId on mount
+  useEffect(() => {
+    const oid = resolveOrgId();
+    setOrgId(oid);
+  }, []);
+
+  // Fetch live quotes when orgId is available
+  useEffect(() => {
+    if (!orgId) {
+      // No orgId — use static presets only
+      LOAN_PRESETS = { ...STATIC_PRESETS };
+      setPresetsReady(true);
+      return;
+    }
+    setQuotesLoading(true);
+    setQuotesError(null);
+    api.quotes.list(orgId)
+      .then(res => {
+        const list: LoanQuote[] = res.data?.data || [];
+        setLiveQuotes(list);
+        // Build dynamic LOAN_PRESETS from live quotes + static fallback
+        const dynamic: Record<string, LoanPreset> = {};
+        for (const quote of list) {
+          const key = `quote_${quote.id}`;
+          dynamic[key] = quoteToPreset(quote);
+        }
+        // Merge static presets as fallback (prefixed to avoid collision)
+        for (const [k, v] of Object.entries(STATIC_PRESETS)) {
+          if (!dynamic[k]) dynamic[k] = v;
+        }
+        LOAN_PRESETS = dynamic;
+        setPresetsReady(true);
+      })
+      .catch(err => {
+        setQuotesError(err.response?.data?.error || 'Failed to load live quotes');
+        // Fallback to static presets
+        LOAN_PRESETS = { ...STATIC_PRESETS };
+        setPresetsReady(true);
+      })
+      .finally(() => setQuotesLoading(false));
+  }, [orgId]);
+
   // ── Determine initial preset from f9Loan0 ──
-  const initPresetKey: LoanPresetKey = (LOAN_PRESETS[f9Loan0?.loanTypeLabel as LoanPresetKey] ? f9Loan0?.loanTypeLabel as LoanPresetKey : 'Bridge');
-  const initPreset = LOAN_PRESETS[initPresetKey];
+  const initPresetKey: string = (LOAN_PRESETS[f9Loan0?.loanTypeLabel as string] ? f9Loan0?.loanTypeLabel as string : 'Bridge');
+  const initPreset = LOAN_PRESETS[initPresetKey] ?? STATIC_PRESETS.Bridge;
+
+  // ── Loan stack ──────────────────────────────────────────────────────────────
+  const [loans, setLoans] = useState<LoanState[]>(() => [
+    makeLoanState('senior', 'Senior Loan', initPreset, f9Loan0, baseLoanAmt),
+  ]);
+  const [activeLoanId, setActiveLoanId] = useState<string>('senior');
+
+  // Hydrate from f9Debt.loans on data arrival — restores both senior and mezz from backend
+  useEffect(() => {
+    if (!f9Debt?.loans?.length) return;
+    setLoans(prev => {
+      const next = [...prev];
+      for (const f9L of f9Debt.loans) {
+        const key: string = LOAN_PRESETS[f9L.loanTypeLabel as string] ? f9L.loanTypeLabel as string : (f9L.id === 'mezz' ? 'Mezz' : 'Bridge');
+        const existing = next.find(l => l.id === f9L.id);
+        if (existing) {
+          Object.assign(existing, {
+            loanTypeLabel: key,
+            rateType: f9L.rateType,
+            sofrCurve: f9L.sofrCurve?.length === 5 ? f9L.sofrCurve : SOFR_FWD,
+            prepayType: f9L.prepayType as PrepayType ?? existing.prepayType,
+            extensionOptions: f9L.extensionOptions ?? existing.extensionOptions,
+          });
+        } else if (f9L.id === 'mezz') {
+          const mPreset = LOAN_PRESETS.Mezz ?? STATIC_PRESETS.Mezz;
+          next.push({
+            ...makeLoanState('mezz', 'Mezz / B-Note', mPreset, f9L as F9DebtLoan, f9L.loanAmount.platform ?? 0),
+            loanTypeLabel: key,
+            rateType: f9L.rateType,
+            sofrCurve: f9L.sofrCurve?.length === 5 ? f9L.sofrCurve : SOFR_FWD,
+            prepayType: f9L.prepayType as PrepayType ?? mPreset.prepayType,
+          });
+        }
+        // Restore refi state from senior loan overrides
+        if (f9L.id === 'senior') {
+          setRefi(r => ({
+            ...r,
+            enabled: f9L.refiEnabled,
+            triggerYear: f9L.refiTriggerYear ?? r.triggerYear,
+            newLoanType: (f9L.refiNewLoanType && LOAN_PRESETS[f9L.refiNewLoanType as string])
+              ? f9L.refiNewLoanType as string
+              : r.newLoanType,
+          }));
+        }
+      }
+      return next;
+    });
+  // hook intentionally captures f9Debt.loans via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f9Debt?.loans?.length]);
+
+  const activeLoan = loans.find(l => l.id === activeLoanId) ?? loans[0];
+  const preset = LOAN_PRESETS[activeLoan.loanTypeLabel] ?? STATIC_PRESETS.Bridge;
+  const f9ThisLoan = f9Debt?.loans?.find(l => l.id === activeLoan.id) ?? null;
+
+  // ── Determine initial preset from f9Loan0 ──
+  const initPresetKey: string = (LOAN_PRESETS[f9Loan0?.loanTypeLabel as string] ? f9Loan0?.loanTypeLabel as string : 'Bridge');
+  const initPreset = LOAN_PRESETS[initPresetKey] ?? STATIC_PRESETS.Bridge;
 
   // ── Loan stack ──────────────────────────────────────────────────────────────
   const [loans, setLoans] = useState<LoanState[]>(() => [
@@ -430,7 +683,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
   // Aggregate across stack
   const aggTotalLoan = loans.length > 1
     ? loans.reduce((s, l) => {
-        const p = LOAN_PRESETS[l.loanTypeLabel];
+        const p = LOAN_PRESETS[l.loanTypeLabel] ?? STATIC_PRESETS.Bridge;
         const f9l = f9Debt?.loans?.find(x => x.id === l.id) ?? null;
         return s + (l.userLoanAmount ?? f9l?.loanAmount.platform ?? baseLoanAmt);
       }, 0)
@@ -472,7 +725,44 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
     setLoans(prev => prev.map(l => l.id === id ? { ...l, ...patch } : l));
   }, []);
 
-  const applyPreset = useCallback((id: string, key: LoanPresetKey) => {
+  const applyPreset = useCallback((id: string, key: string) => {
+    const p = LOAN_PRESETS[key] ?? STATIC_PRESETS.Bridge;
+    setLoans(prev => prev.map(l => l.id !== id ? l : {
+      ...l,
+      loanTypeLabel: key,
+      rateType: p.rateType,
+      prepayType: p.prepayType,
+      quoteId: p.quoteId,
+      lender: p.lender,
+      isLiveQuote: p.isLiveQuote,
+      userRate: null, userSpread: null, userSofr: null, userCapRate: null,
+      userTerm: null, userAmort: null, userIO: null,
+      userOrigFee: null, userExitFee: null, userRateCapCost: null,
+      userMinDscr: null, userMinDY: null, userMinOcc: null, userMaxLtv: null,
+    }));
+    // Clear all persisted numeric overrides atomically, then persist the new preset strings
+    const numericFields = ['interestRate','sofr','sofrCurve:0','spread','capRate','termYears',
+      'amortYears','ioMonths','origFee','exitFee','rateCapCost','minDscr','minDY','minOcc',
+      'maxLtv','cashTrapDscr','tiEscrow','replReserve','opReserveMonths'];
+    clearDebtOverrides(id, numericFields).then(() => {
+      patchDebtStr(id, 'loanTypeLabel', p.label);
+      patchDebtStr(id, 'rateType', p.rateType);
+      patchDebtStr(id, 'prepayType', p.prepayType);
+    });
+  }, [clearDebtOverrides, patchDebtStr]);
+
+  const addLoan = useCallback((typeKey: string = 'Mezz') => {
+    if (loans.length >= 5) return;
+    const newId = `loan_${Date.now()}`;
+    const p = LOAN_PRESETS[typeKey] ?? STATIC_PRESETS.Mezz;
+    const letter = LOAN_LETTERS[loans.length] ?? String(loans.length + 1);
+    setLoans(prev => [...prev, makeLoanState(newId, `Loan ${letter}`, p)]);
+    setActiveLoanId(newId);
+    patchDebt(newId, 'loanAmount', 0);
+    patchDebtStr(newId, 'loanTypeLabel', p.label);
+    patchDebtStr(newId, 'rateType', p.rateType);
+    patchDebtStr(newId, 'prepayType', p.prepayType);
+  }, [loans, patchDebt, patchDebtStr]);
     const p = LOAN_PRESETS[key];
     setLoans(prev => prev.map(l => l.id !== id ? l : {
       ...l,
@@ -533,7 +823,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
 
   // ── Refi event ──────────────────────────────────────────────────────────────
   const [refi, setRefi] = useState<RefiState>({ enabled: false, triggerYear: 3, newLoanType: 'Agency', newLoanAmtPct: 0.70 });
-  const refiPreset = LOAN_PRESETS[refi.newLoanType];
+  const refiPreset = LOAN_PRESETS[refi.newLoanType] ?? STATIC_PRESETS[refi.newLoanType as StaticPresetKey] ?? STATIC_PRESETS.Agency;
   const refiPayoff = useMemo(() => {
     const yr = refi.triggerYear;
     const row = annualRows[yr - 1];
@@ -653,6 +943,35 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
         {loans.map((l, idx) => {
           const letter = LOAN_LETTERS[idx] ?? String(idx + 1);
           const isActive = l.id === activeLoanId;
+          const typeColor = getLoanTypeColor(l.loanTypeLabel);
+          const displayLabel = l.isLiveQuote && l.lender
+            ? `${l.lender} · ${l.loanTypeLabel}`
+            : (l.loanTypeLabel === 'BNote' ? 'B-NOTE' : l.loanTypeLabel.toUpperCase());
+          return (
+            <div key={l.id} onClick={() => setActiveLoanId(l.id)} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 14px', cursor: 'pointer',
+              borderRight: `1px solid ${BT.border.subtle}`,
+              background: isActive ? BT.bg.active : 'transparent',
+              borderBottom: isActive ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
+            }}>
+              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 900, color: isActive ? BT.text.white : BT.text.muted, letterSpacing: 0.5 }}>
+                LOAN {letter}
+              </span>
+              <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 2, background: `${typeColor}20`, border: `1px solid ${typeColor}60`, color: typeColor, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {displayLabel}
+              </span>
+              {idx > 0 && (
+                <span onClick={e => { e.stopPropagation(); removeLoan(l.id); setAddLoanMenuOpen(false); }} style={{ cursor: 'pointer', color: BT.text.muted, padding: '0 2px' }}>
+                  <X style={{ width: 9, height: 9 }} />
+                </span>
+              )}
+            </div>
+          );
+        })}
+        {loans.map((l, idx) => {
+          const letter = LOAN_LETTERS[idx] ?? String(idx + 1);
+          const isActive = l.id === activeLoanId;
           const typeColor = l.loanTypeLabel === 'Bridge' || l.loanTypeLabel === 'BNote' ? BT.text.amber
             : l.loanTypeLabel === 'Agency' || l.loanTypeLabel === 'FannieDUS' ? BT.text.cyan
             : l.loanTypeLabel === 'CMBS' ? '#a855f7'
@@ -689,24 +1008,67 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
             <div onClick={() => setAddLoanMenuOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', cursor: 'pointer', color: BT.text.muted }}>
               <Plus style={{ width: 10, height: 10 }} />
               <span style={{ fontFamily: MONO, fontSize: 8 }}>ADD LOAN {LOAN_LETTERS[loans.length] ?? ''}</span>
+              {quotesLoading && <span style={{ fontSize: 7, color: BT.text.cyan }}>⟳</span>}
             </div>
             {addLoanMenuOpen && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, borderRadius: 4, minWidth: 160, boxShadow: '0 4px 16px rgba(0,0,0,0.5)', padding: '4px 0' }}
+              <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, borderRadius: 4, minWidth: 220, maxWidth: 320, boxShadow: '0 4px 16px rgba(0,0,0,0.5)', padding: '4px 0' }}
                 onMouseLeave={() => setAddLoanMenuOpen(false)}>
-                <div style={{ padding: '3px 10px', fontFamily: MONO, fontSize: 7, color: BT.text.muted, borderBottom: `1px solid ${BT.border.subtle}`, marginBottom: 2 }}>SELECT LOAN TYPE</div>
-                {(Object.keys(LOAN_PRESETS) as LoanPresetKey[]).map(key => (
-                  <div key={key} onClick={() => { addLoan(key); setAddLoanMenuOpen(false); }} style={{
-                    padding: '4px 12px', fontFamily: MONO, fontSize: 8, fontWeight: 700,
-                    color: BT.text.secondary, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = `${BT.text.cyan}15`)}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <span>{key === 'BNote' ? 'B-Note' : key}</span>
-                    <span style={{ color: BT.text.muted, fontSize: 7 }}>
-                      {key === 'Bridge' ? 'Float · 3yr' : key === 'Agency' ? 'Fixed · 10yr' : key === 'FannieDUS' ? 'Fixed · 10yr' : key === 'CMBS' ? 'Fixed · 10yr' : key === 'HUD' ? 'Fixed · 35yr' : key === 'LifeCo' ? 'Fixed · 15yr' : key === 'Mezz' ? 'Float · 3yr' : 'Float · 3yr'}
-                    </span>
+                {/* Live quotes section */}
+                {liveQuotes.length > 0 && (
+                  <>
+                    <div style={{ padding: '3px 10px', fontFamily: MONO, fontSize: 7, color: BT.text.cyan, borderBottom: `1px solid ${BT.border.subtle}`, marginBottom: 2 }}>
+                      LIVE QUOTES ({liveQuotes.length})
+                    </div>
+                    {liveQuotes.map(quote => {
+                      const key = `quote_${quote.id}`;
+                      const preset = LOAN_PRESETS[key];
+                      const isExpired = new Date(quote.expires).getTime() < Date.now();
+                      return (
+                        <div key={key} onClick={() => { addLoan(key); setAddLoanMenuOpen(false); }} style={{
+                          padding: '4px 12px', fontFamily: MONO, fontSize: 8, fontWeight: 700,
+                          color: isExpired ? BT.text.muted : BT.text.secondary, cursor: isExpired ? 'not-allowed' : 'pointer',
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: isExpired ? 0.5 : 1,
+                        }}
+                        onMouseEnter={e => !isExpired && (e.currentTarget.style.background = `${BT.text.cyan}15`)}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                            <span>{quote.lender} · {quote.program}</span>
+                            <span style={{ fontSize: 7, color: BT.text.muted, fontWeight: 500 }}>
+                              {quote.rateType === 'floating' ? 'Float' : 'Fixed'} · {preset?.term ?? '?'}yr · {isExpired ? 'EXPIRED' : `exp ${new Date(quote.expires).toLocaleDateString()}`}
+                            </span>
+                          </div>
+                          {isExpired && <span style={{ fontSize: 7, color: BT.text.red, border: `1px solid ${BT.text.red}40`, padding: '0 3px', borderRadius: 2 }}>STALE</span>}
+                        </div>
+                      );
+                    })}
+                    <div style={{ borderBottom: `1px solid ${BT.border.subtle}`, margin: '4px 0' }} />
+                  </>
+                )}
+                {/* Static presets section */}
+                <div style={{ padding: '3px 10px', fontFamily: MONO, fontSize: 7, color: BT.text.muted, borderBottom: `1px solid ${BT.border.subtle}`, marginBottom: 2 }}>
+                  PLATFORM PRESETS
+                </div>
+                {(Object.keys(STATIC_PRESETS) as StaticPresetKey[]).map(key => {
+                  const p = STATIC_PRESETS[key];
+                  return (
+                    <div key={key} onClick={() => { addLoan(key); setAddLoanMenuOpen(false); }} style={{
+                      padding: '4px 12px', fontFamily: MONO, fontSize: 8, fontWeight: 700,
+                      color: BT.text.secondary, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = `${BT.text.cyan}15`)}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                      <span>{key === 'BNote' ? 'B-Note' : key}</span>
+                      <span style={{ color: BT.text.muted, fontSize: 7 }}>
+                        {p.rateType === 'Floating' ? 'Float' : 'Fixed'} · {p.term}yr
+                      </span>
+                    </div>
+                  );
+                })}
+                {quotesError && (
+                  <div style={{ padding: '4px 10px', fontFamily: MONO, fontSize: 7, color: BT.text.red }}>
+                    ⚠ {quotesError}
                   </div>
-                ))}
+                )}
               </div>
             )}
           </div>
@@ -717,18 +1079,13 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
       {loanRelationship === 'chain' && loans.length > 1 && (() => {
         let cursor = 0;
         const segments = loans.map((l, idx) => {
-          const p = LOAN_PRESETS[l.loanTypeLabel];
+          const p = LOAN_PRESETS[l.loanTypeLabel] ?? STATIC_PRESETS.Bridge;
           const f9l = f9Debt?.loans?.find(x => x.id === l.id);
           const termYrs = l.userTerm ?? f9l?.termYears.platform ?? p.term;
           const start = cursor;
           cursor += termYrs;
           const letter = LOAN_LETTERS[idx] ?? String(idx + 1);
-          const typeColor = l.loanTypeLabel === 'Bridge' || l.loanTypeLabel === 'BNote' ? BT.text.amber
-            : l.loanTypeLabel === 'Agency' || l.loanTypeLabel === 'FannieDUS' ? BT.text.cyan
-            : l.loanTypeLabel === 'CMBS' ? '#a855f7'
-            : l.loanTypeLabel === 'HUD' ? BT.met.financial
-            : l.loanTypeLabel === 'LifeCo' ? '#8b5cf6'
-            : l.loanTypeLabel === 'Mezz' ? BT.text.red : BT.text.amber;
+          const typeColor = getLoanTypeColor(l.loanTypeLabel);
           return { letter, typeColor, termYrs, start, end: cursor, pct: termYrs };
         });
         const totalYrs = cursor || 1;
@@ -769,7 +1126,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
       {loanRelationship === 'stack' && loans.length > 1 && (() => {
         const totalStack = loans.reduce((s, l) => {
           const f9l = f9Debt?.loans?.find(x => x.id === l.id);
-          const p = LOAN_PRESETS[l.loanTypeLabel];
+          const p = LOAN_PRESETS[l.loanTypeLabel] ?? STATIC_PRESETS.Bridge;
           return s + (l.userLoanAmount ?? f9l?.loanAmount.platform ?? (l.id === 'senior' ? baseLoanAmt : 0));
         }, 0);
         if (totalStack === 0) return null;
@@ -782,16 +1139,11 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
             <div style={{ display: 'flex', height: 22, borderRadius: 3, overflow: 'hidden', border: `1px solid ${BT.border.subtle}` }}>
               {loans.map((l, idx) => {
                 const f9l = f9Debt?.loans?.find(x => x.id === l.id);
-                const p = LOAN_PRESETS[l.loanTypeLabel];
+                const p = LOAN_PRESETS[l.loanTypeLabel] ?? STATIC_PRESETS.Bridge;
                 const lAmt = l.userLoanAmount ?? f9l?.loanAmount.platform ?? (l.id === 'senior' ? baseLoanAmt : 0);
                 const pct = totalStack > 0 ? lAmt / totalStack : 0;
                 const letter = LOAN_LETTERS[idx] ?? String(idx + 1);
-                const typeColor = l.loanTypeLabel === 'Bridge' || l.loanTypeLabel === 'BNote' ? BT.text.amber
-                  : l.loanTypeLabel === 'Agency' || l.loanTypeLabel === 'FannieDUS' ? BT.text.cyan
-                  : l.loanTypeLabel === 'CMBS' ? '#a855f7'
-                  : l.loanTypeLabel === 'HUD' ? BT.met.financial
-                  : l.loanTypeLabel === 'LifeCo' ? '#8b5cf6'
-                  : l.loanTypeLabel === 'Mezz' ? BT.text.red : BT.text.amber;
+                const typeColor = getLoanTypeColor(l.loanTypeLabel);
                 const start = cumPct;
                 cumPct += pct;
                 return (
@@ -820,7 +1172,8 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
           LOAN {LOAN_LETTERS[loans.findIndex(l => l.id === activeLoanId)] ?? '?'} ·
         </span>
         <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>TYPE:</span>
-        {(Object.keys(LOAN_PRESETS) as LoanPresetKey[]).map(key => (
+        {/* Show only static presets as quick-switch buttons; live quotes are applied via ADD LOAN menu */}
+        {(Object.keys(STATIC_PRESETS) as StaticPresetKey[]).map(key => (
           <button
             key={key}
             onClick={() => applyPreset(activeLoan.id, key)}
@@ -835,6 +1188,11 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
             {key === 'BNote' ? 'B-Note' : key}
           </button>
         ))}
+        {activeLoan.isLiveQuote && activeLoan.lender && (
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan, padding: '2px 8px', background: `${BT.text.cyan}10`, border: `1px solid ${BT.text.cyan}40`, borderRadius: 3 }}>
+            {activeLoan.lender} · {activeLoan.loanTypeLabel}
+          </span>
+        )}
         <span style={{ marginLeft: 8, fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>RATE TYPE:</span>
         {(['Fixed', 'Floating'] as const).map(rt => (
           <button
@@ -1271,13 +1629,14 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 <select
                   value={refi.newLoanType}
                   onChange={e => {
-                    const lt = e.target.value as LoanPresetKey;
+                    const lt = e.target.value;
                     setRefi(r => ({ ...r, newLoanType: lt }));
                     patchDebtStr(activeLoan.id, 'refiNewLoanType', lt);
                   }}
                   style={{ background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, color: BT.text.white, fontFamily: MONO, fontSize: 9, padding: '2px 6px', borderRadius: 2, colorScheme: 'dark' }}
                 >
-                  {(Object.keys(LOAN_PRESETS) as LoanPresetKey[]).map(k => <option key={k} value={k}>{k}</option>)}
+                  {/* Only show static presets in refi dropdown for simplicity */}
+                  {(Object.keys(STATIC_PRESETS) as StaticPresetKey[]).map(k => <option key={k} value={k}>{k}</option>)}
                 </select>
               </>
             )}
@@ -1330,7 +1689,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 0, borderBottom: `1px solid ${BT.border.medium}` }}>
               {loans.map(l => {
                 const lf = f9Debt?.loans?.find(x => x.id === l.id);
-                const lp = LOAN_PRESETS[l.loanTypeLabel];
+                const lp = LOAN_PRESETS[l.loanTypeLabel] ?? STATIC_PRESETS.Bridge;
                 const la = l.userLoanAmount ?? lf?.loanAmount.platform ?? baseLoanAmt;
                 const lr = l.rateType === 'Floating'
                   ? ((l.userSofr ?? lf?.sofr.platform ?? l.sofrCurve[0]) + (l.userSpread ?? lf?.spread.platform ?? lp.spread))
@@ -1352,7 +1711,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                   BLENDED {fmtPctFull(
                     loans.reduce((s, l) => {
                       const lf = f9Debt?.loans?.find(x => x.id === l.id);
-                      const lp = LOAN_PRESETS[l.loanTypeLabel];
+                      const lp = LOAN_PRESETS[l.loanTypeLabel] ?? STATIC_PRESETS.Bridge;
                       const la = l.userLoanAmount ?? lf?.loanAmount.platform ?? baseLoanAmt;
                       const lr = l.rateType === 'Floating'
                         ? ((l.userSofr ?? lf?.sofr.platform ?? l.sofrCurve[0]) + (l.userSpread ?? lf?.spread.platform ?? lp.spread))
