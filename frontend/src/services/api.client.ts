@@ -440,6 +440,24 @@ export const api = {
       apiClient.get(`/api/v1/benchmark-timeline/timeline/${dealId}`),
   },
 
+  // Loan Quotes (LQ-8)
+  quotes: {
+    list: (orgId: string, params?: { lender?: string; program?: string }) =>
+      apiClient.get(`/api/v1/orgs/${orgId}/quotes`, { params }),
+    create: (orgId: string, data: any) =>
+      apiClient.post(`/api/v1/orgs/${orgId}/quotes`, data),
+    get: (orgId: string, id: string) =>
+      apiClient.get(`/api/v1/orgs/${orgId}/quotes/${id}`),
+    update: (orgId: string, id: string, data: any) =>
+      apiClient.patch(`/api/v1/orgs/${orgId}/quotes/${id}`, data),
+    delete: (orgId: string, id: string) =>
+      apiClient.delete(`/api/v1/orgs/${orgId}/quotes/${id}`),
+    compare: (orgId: string, body: any) =>
+      apiClient.post(`/api/v1/orgs/${orgId}/quotes/compare`, body),
+    stale: (orgId: string) =>
+      apiClient.get(`/api/v1/orgs/${orgId}/quotes/stale`),
+  },
+
   // Ticker — public macro data feed (FRED: 10Y Treasury, SOFR, CPI, Unemployment)
   ticker: {
     getFeed: () => apiClient.get('/api/v1/ticker/feed'),

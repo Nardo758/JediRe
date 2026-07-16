@@ -12,3 +12,4 @@ export { MultiMetricPanel }     from './MultiMetricPanel';
 export { AttributionWaterfall } from './AttributionWaterfall';
 export { EventDensityStrip }    from './EventDensityStrip';
 export { CascadeMap }           from './CascadeMap';
+export { M11DebtAdvisorTab }    from './M11DebtAdvisorTab';

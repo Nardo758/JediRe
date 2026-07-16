@@ -1,387 +1,963 @@
 import React, { useState } from 'react';
-import { AlertTriangle, CheckCircle, TrendingDown, Zap, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  AlertTriangle,
+  CheckCircle,
+  TrendingDown,
+  Zap,
+  ChevronDown,
+  ChevronRight,
+  RefreshCw,
+  BarChart2,
+  ArrowRight,
+  Clock,
+  Target,
+} from 'lucide-react';
+import {
+  useDebtAdvisor,
+  DebtPhase,
+  DebtAlternative,
+  MonitoringTrigger,
+  RateEnvironmentResult,
+} from '../../../hooks/useDebtAdvisor';
+import { BT } from '../../../components/deal/bloomberg-ui';
 
-const C = {
-  bg: '#0a0a0c',
-  panel: '#111114',
-  panelAlt: '#13131a',
-  border: '#1e1e24',
-  borderMid: '#2a2a35',
-  cyan: '#00e5a0',
-  amber: '#f59e0b',
-  purple: '#a855f7',
-  red: '#ef4444',
-  green: '#22c55e',
-  orange: '#f97316',
-  textPrimary: '#e2e8f0',
-  textMuted: '#64748b',
-  textDim: '#2a2a40',
-};
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-const mono: React.CSSProperties = { fontFamily: '"JetBrains Mono", monospace' };
+interface M11DebtAdvisorTabProps {
+  dealId: string;
+}
 
-function Pill({ children, color = C.cyan }: { children: React.ReactNode; color?: string }) {
+interface ExitWindow {
+  month: number;
+  label: string;
+  source: 'curve_trough' | 'm35_event' | 'm35_rate_move';
+  projectedRate: number;
+  currentRate: number;
+  rateImprovementBps: number;
+  dscrImprovement: number | null;
+  refiCostPct: number;
+  netBenefitBps: number;
+  isActionable: boolean;
+  confidence: number;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const MONO: React.CSSProperties = { fontFamily: BT.font.mono };
+
+function fmt$M(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
+  return `$${n.toFixed(0)}`;
+}
+
+function fmtPct(n: number, decimals = 2): string {
+  return `${(n * 100).toFixed(decimals)}%`;
+}
+
+function fmtBps(n: number): string {
+  return `${n >= 0 ? '+' : ''}${n.toFixed(0)}bps`;
+}
+
+function sourceColor(source: ExitWindow['source']): string {
+  switch (source) {
+    case 'curve_trough':
+      return BT.text.cyan;
+    case 'm35_rate_move':
+      return BT.text.purple;
+    case 'm35_event':
+      return BT.text.teal;
+    default:
+      return BT.text.muted;
+  }
+}
+
+function sourceLabel(source: ExitWindow['source']): string {
+  switch (source) {
+    case 'curve_trough':
+      return 'CURVE';
+    case 'm35_rate_move':
+      return 'M35 RATE';
+    case 'm35_event':
+      return 'M35 EVENT';
+    default:
+      return 'UNKNOWN';
+  }
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+function Pill({ children, color = BT.text.cyan }: { children: React.ReactNode; color?: string }) {
   return (
-    <span style={{ ...mono, backgroundColor: `${color}18`, color, border: `1px solid ${color}40`, borderRadius: 2, padding: '1px 6px', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}>
+    <span
+      style={{
+        ...MONO,
+        backgroundColor: `${color}18`,
+        color,
+        border: `1px solid ${color}40`,
+        borderRadius: 2,
+        padding: '1px 6px',
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: '0.06em',
+      }}
+    >
       {children}
     </span>
   );
 }
 
-function SectionLabel({ label, accent = C.cyan }: { label: string; accent?: string }) {
+function SectionLabel({ label, accent = BT.text.cyan }: { label: string; accent?: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
       <div style={{ width: 3, height: 14, backgroundColor: accent, borderRadius: 1 }} />
-      <span style={{ ...mono, color: C.textMuted, fontSize: 9, letterSpacing: '0.1em', fontWeight: 700 }}>{label}</span>
+      <span style={{ ...MONO, color: BT.text.muted, fontSize: 9, letterSpacing: '0.1em', fontWeight: 700 }}>
+        {label}
+      </span>
     </div>
   );
 }
 
-function StrategyOrigin() {
+function LoadingState() {
   return (
-    <div style={{ backgroundColor: `${C.cyan}08`, border: `1px solid ${C.cyan}30`, borderRadius: 2, padding: '8px 14px', marginBottom: 14 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Zap size={13} color={C.cyan} />
-        <div style={{ flex: 1 }}>
-          <div style={{ ...mono, color: C.textMuted, fontSize: 9, letterSpacing: '0.08em', marginBottom: 4 }}>DEBT STRUCTURE DRIVEN BY M08 STRATEGY DETECTION</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, alignItems: 'center' }}>
-            {[
-              ['MF VALUE-ADD', C.cyan],
-              ['→', C.textMuted],
-              ['Reno capex $2.7M', C.textMuted],
-              ['·', C.textDim],
-              ['Going-in DSCR 0.91 (IO required)', C.red],
-              ['·', C.textDim],
-              ['Capture Y1 $334K → Y3 $1.16M', C.textMuted],
-              ['·', C.textDim],
-              ['Stab NOI $2.11M → Fannie eligible M21', C.green],
-            ].map(([t, col], i) => (
-              <span key={i} style={{ ...mono, color: col as string, fontSize: 10, fontWeight: t === 'MF VALUE-ADD' ? 700 : 400 }}>{t}</span>
-            ))}
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 300, gap: 12 }}>
+      <RefreshCw size={20} color={BT.text.cyan} style={{ animation: 'spin 1s linear infinite' }} />
+      <span style={{ ...MONO, color: BT.text.muted, fontSize: 11 }}>COMPUTING DEBT PLAN…</span>
+    </div>
+  );
+}
+
+function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 300, gap: 12 }}>
+      <AlertTriangle size={20} color={BT.text.red} />
+      <span style={{ color: BT.text.muted, fontSize: 12 }}>{error}</span>
+      <button
+        onClick={onRetry}
+        style={{
+          ...MONO,
+          fontSize: 10,
+          padding: '5px 14px',
+          backgroundColor: `${BT.text.cyan}15`,
+          color: BT.text.cyan,
+          border: `1px solid ${BT.text.cyan}40`,
+          borderRadius: 2,
+          cursor: 'pointer',
+        }}
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
+function NoStrategyState() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 300, gap: 14, padding: 32 }}>
+      <BarChart2 size={28} color={BT.text.muted} />
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ ...MONO, color: BT.text.primary, fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+          No Strategy Detected
         </div>
-        <button style={{ ...mono, fontSize: 9, padding: '3px 8px', color: C.cyan, border: `1px solid ${C.cyan}40`, borderRadius: 2, backgroundColor: 'transparent', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>View Strategy →</button>
+        <div style={{ color: BT.text.muted, fontSize: 11, maxWidth: 360, lineHeight: 1.6 }}>
+          Run M08 Strategy Analysis first. The Debt Advisor reads your strategy output to determine
+          the optimal debt structure for this deal.
+        </div>
+      </div>
+      <div
+        style={{
+          ...MONO,
+          backgroundColor: `${BT.text.amber}10`,
+          border: `1px solid ${BT.text.amber}30`,
+          borderRadius: 2,
+          padding: '8px 16px',
+          color: BT.text.amber,
+          fontSize: 10,
+        }}
+      >
+        GO TO STRATEGY TAB → RUN ANALYSIS → RETURN HERE
       </div>
     </div>
   );
 }
 
-function DSCRTimeline() {
-  const cols = [
-    { yr: 'Y1', dscr: 0.91, noi: '$1.64M', occ: '89.1%', capture: '$334K', status: 'IO · pre-stab', color: C.red },
-    { yr: 'Y2', dscr: 1.24, noi: '$1.87M', occ: '92.3%', capture: '$877K', status: 'IO · reno 75%', color: C.amber },
-    { yr: 'Y3', dscr: 1.47, noi: '$2.11M', occ: '94.2%', capture: '$1.16M', status: 'REFI TRIGGER', color: C.green, flag: true },
-    { yr: 'Y4', dscr: 1.62, noi: '$2.35M', occ: '95.1%', capture: '$1.20M', status: 'Stabilized', color: C.green },
-    { yr: 'Y5', dscr: 1.68, noi: '$2.49M', occ: '95.8%', capture: '$1.20M', status: 'Exit window', color: C.cyan },
-  ];
+function StrategyOrigin({ phase, strategyName }: { phase: DebtPhase; strategyName: string }) {
   return (
-    <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, padding: 14, marginBottom: 14, backgroundColor: C.panelAlt }}>
+    <div style={{ backgroundColor: `${BT.text.cyan}08`, border: `1px solid ${BT.text.cyan}30`, borderRadius: 2, padding: '8px 14px', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Zap size={13} color={BT.text.cyan} />
+        <div style={{ flex: 1 }}>
+          <div style={{ ...MONO, color: BT.text.muted, fontSize: 9, letterSpacing: '0.08em', marginBottom: 4 }}>
+            DEBT STRUCTURE DRIVEN BY M08 STRATEGY DETECTION · {strategyName.toUpperCase()}
+          </div>
+          <div style={{ color: BT.text.muted, fontSize: 10, lineHeight: 1.5 }}>
+            <span style={{ ...MONO, color: BT.text.primary, fontWeight: 700 }}>{phase.productLabel.toUpperCase()}</span>
+            <span style={{ ...MONO, color: BT.text.muted }}> → {phase.rationale}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DSCRTimeline({ phases }: { phases: DebtPhase[] }) {
+  const refiPhase = phases.find((p) => p.isRefiEvent);
+  const holdMonths = Math.max(...phases.map((p) => p.endMonth), 36);
+
+  // Build year columns from phase data
+  const years = Math.ceil(holdMonths / 12);
+  const cols = Array.from({ length: years }, (_, i) => {
+    const yr = i + 1;
+    const phase = phases.find((p) => p.startMonth <= i * 12 && p.endMonth >= i * 12);
+    const isRefi = refiPhase && refiPhase.startMonth >= i * 12 && refiPhase.startMonth < (i + 1) * 12;
+    const dscr = phase?.dscrAtClose ?? (phase?.rateEst ? 1.2 : 0.91);
+    return {
+      yr: `Y${yr}`,
+      dscr: dscr,
+      noi: '$1.64M', // Would come from proforma in full implementation
+      occ: '89.1%',
+      capture: '$334K',
+      status: isRefi ? 'REFI TRIGGER' : phase?.isRefiEvent ? 'Stabilized' : 'IO · pre-stab',
+      color: isRefi ? BT.text.green : dscr < 1.15 ? BT.text.red : dscr < 1.35 ? BT.text.amber : BT.text.green,
+      flag: isRefi,
+    };
+  });
+
+  return (
+    <div style={{ border: `1px solid ${BT.border.subtle}`, borderRadius: 2, padding: 14, marginBottom: 14, backgroundColor: BT.bg.panelAlt }}>
       <SectionLabel label="DSCR RECOVERY — POWERED BY M08 CAPTURE SCHEDULE" />
       <div style={{ display: 'flex', gap: 0 }}>
         {cols.map((c, i) => (
-          <div key={i} style={{ flex: 1, borderRight: i < cols.length - 1 ? `1px solid ${C.border}` : 'none', padding: '0 12px', borderLeft: c.flag ? `2px solid ${C.green}` : 'none' }}>
-            {c.flag && <div style={{ ...mono, color: C.green, fontSize: 8, marginBottom: 2 }}>◀ REFI HERE</div>}
-            <div style={{ ...mono, color: c.color, fontSize: 18, fontWeight: 700 }}>{c.dscr.toFixed(2)}×</div>
-            <div style={{ ...mono, color: C.textPrimary, fontSize: 11, fontWeight: 700 }}>{c.yr}</div>
-            <div style={{ color: C.textMuted, fontSize: 9, marginTop: 3 }}>NOI {c.noi}</div>
-            <div style={{ color: C.textMuted, fontSize: 9 }}>Occ {c.occ}</div>
-            <div style={{ color: C.cyan, fontSize: 9 }}>Cap {c.capture}</div>
+          <div
+            key={i}
+            style={{
+              flex: 1,
+              borderRight: i < cols.length - 1 ? `1px solid ${BT.border.subtle}` : 'none',
+              padding: '0 12px',
+              borderLeft: c.flag ? `2px solid ${BT.text.green}` : 'none',
+            }}
+          >
+            {c.flag && (
+              <div style={{ ...MONO, color: BT.text.green, fontSize: 8, marginBottom: 2 }}>◀ REFI HERE</div>
+            )}
+            <div style={{ ...MONO, color: c.color, fontSize: 18, fontWeight: 700 }}>{c.dscr.toFixed(2)}×</div>
+            <div style={{ ...MONO, color: BT.text.primary, fontSize: 11, fontWeight: 700 }}>{c.yr}</div>
+            <div style={{ color: BT.text.muted, fontSize: 9, marginTop: 3 }}>NOI {c.noi}</div>
+            <div style={{ color: BT.text.muted, fontSize: 9 }}>Occ {c.occ}</div>
+            <div style={{ color: BT.text.cyan, fontSize: 9 }}>Cap {c.capture}</div>
             <div style={{ marginTop: 6 }}>
-              <span style={{ ...mono, fontSize: 8, color: c.color, backgroundColor: `${c.color}15`, border: `1px solid ${c.color}30`, borderRadius: 2, padding: '1px 4px' }}>{c.status}</span>
+              <span
+                style={{
+                  ...MONO,
+                  fontSize: 8,
+                  color: c.color,
+                  backgroundColor: `${c.color}15`,
+                  border: `1px solid ${c.color}30`,
+                  borderRadius: 2,
+                  padding: '1px 4px',
+                }}
+              >
+                {c.status}
+              </span>
             </div>
             <div style={{ marginTop: 8, height: 36, display: 'flex', alignItems: 'flex-end' }}>
-              <div style={{ width: '70%', height: `${Math.min((c.dscr / 2) * 100, 100)}%`, backgroundColor: `${c.color}35`, border: `1px solid ${c.color}50`, borderRadius: 2 }} />
+              <div
+                style={{
+                  width: '70%',
+                  height: `${Math.min((c.dscr / 2) * 100, 100)}%`,
+                  backgroundColor: `${c.color}35`,
+                  border: `1px solid ${c.color}50`,
+                  borderRadius: 2,
+                }}
+              />
             </div>
           </div>
         ))}
       </div>
-      <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 10, paddingTop: 8, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-        <CheckCircle size={11} color={C.green} style={{ marginTop: 1, flexShrink: 0 }} />
-        <span style={{ color: C.textMuted, fontSize: 10 }}>
-          Refi trigger: <span style={{ ...mono, color: C.green }}>DSCR {'>'} 1.35 AND Occ {'>'} 92%</span> — first met M21 (Q3 Y2). Bridge extension option exercised as needed. Fannie DUS refi executes M24 as planned.
+      {refiPhase && (
+        <div style={{ borderTop: `1px solid ${BT.border.subtle}`, marginTop: 10, paddingTop: 8, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <CheckCircle size={11} color={BT.text.green} style={{ marginTop: 1, flexShrink: 0 }} />
+          <span style={{ color: BT.text.muted, fontSize: 10 }}>
+            Refi trigger:{" "}
+            <span style={{ ...MONO, color: BT.text.green }}>
+              DSCR &gt; {refiPhase.refiTriggerDscr?.toFixed(2) ?? '1.35'} AND Occ &gt;{' '}
+              {(refiPhase.refiTriggerOcc ?? 0.92) * 100}%
+            </span>{' '}
+            — executes at M{refiPhase.startMonth}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DebtTimeline({
+  phases,
+  expandedPhase,
+  setExpandedPhase,
+}: {
+  phases: DebtPhase[];
+  expandedPhase: number | null;
+  setExpandedPhase: (v: number | null) => void;
+}) {
+  const maxMonth = Math.max(...phases.map((p) => p.endMonth), 36);
+  const pct = (m: number) => `${(m / maxMonth) * 100}%`;
+  const phaseColors = [BT.text.orange, BT.text.cyan, BT.text.purple, BT.text.green, BT.text.amber];
+  const refiPhase = phases.find((p) => p.isRefiEvent);
+
+  return (
+    <div style={{ border: `1px solid ${BT.border.subtle}`, borderRadius: 2, padding: 14, marginBottom: 14, backgroundColor: BT.bg.panelAlt }}>
+      <SectionLabel label="DEBT PLAN TIMELINE" accent={BT.text.amber} />
+      <div style={{ position: 'relative', marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+          {Array.from({ length: 7 }, (_, i) => Math.round((maxMonth / 6) * i)).map((m) => (
+            <span key={m} style={{ ...MONO, color: BT.text.muted, fontSize: 9 }}>
+              M{m}
+            </span>
+          ))}
+        </div>
+        {refiPhase && (
+          <div
+            style={{
+              position: 'absolute',
+              left: pct(refiPhase.startMonth),
+              top: 24,
+              height: 34,
+              width: 1,
+              backgroundColor: `${BT.text.green}70`,
+            }}
+          >
+            <span
+              style={{
+                ...MONO,
+                fontSize: 8,
+                color: BT.text.green,
+                position: 'absolute',
+                top: '100%',
+                transform: 'translateX(-50%)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              REFI TRIGGER M{refiPhase.startMonth}
+            </span>
+          </div>
+        )}
+        <div style={{ position: 'relative', height: 34 }}>
+          {phases.map((p, i) => {
+            const color = phaseColors[i % phaseColors.length];
+            const isExpanded = expandedPhase === i;
+            return (
+              <div
+                key={p.phaseIndex}
+                onClick={() => setExpandedPhase(isExpanded ? null : i)}
+                style={{
+                  position: 'absolute',
+                  left: pct(p.startMonth),
+                  width: `calc(${pct(p.endMonth - p.startMonth)} - 2px)`,
+                  top: 0,
+                  height: 28,
+                  backgroundColor: `${color}20`,
+                  border: `1px solid ${color}60`,
+                  borderRadius: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 8px',
+                  gap: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ ...MONO, color, fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {p.phaseLabel.split('—')[0].trim()}
+                </span>
+                <span style={{ color: BT.text.muted, fontSize: 9 }}>· {fmt$M(p.loanAmountEst)}</span>
+                {isExpanded ? (
+                  <ChevronDown size={10} color={color} style={{ marginLeft: 'auto', flexShrink: 0 }} />
+                ) : (
+                  <ChevronRight size={10} color={BT.text.muted} style={{ marginLeft: 'auto', flexShrink: 0 }} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PhaseDetail({ phase, index }: { phase: DebtPhase; index: number }) {
+  const phaseColors = [BT.text.orange, BT.text.cyan, BT.text.purple, BT.text.green, BT.text.amber];
+  const color = phaseColors[index % phaseColors.length];
+
+  const sizingRows: [string, string][] = [
+    ['Loan Amount', fmt$M(phase.loanAmountEst)],
+    ['LTV', fmtPct(phase.ltv)],
+    ['Rate', phase.rateType === 'Floating' && phase.spreadBps ? `SOFR + ${phase.spreadBps}bps` : fmtPct(phase.rateEst)],
+    ['All-in Est', fmtPct(phase.rateEst)],
+  ];
+  if (phase.dscrAtClose != null) sizingRows.push(['DSCR at Close', phase.dscrAtClose.toFixed(2) + '×']);
+  if (phase.debtYieldAtClose != null) sizingRows.push(['Debt Yield', fmtPct(phase.debtYieldAtClose)]);
+
+  const structureRows: [string, string][] = [
+    ['Term', `${phase.termYears}yr`],
+    ['IO Period', phase.ioMonths > 0 ? `${phase.ioMonths}mo` : 'None'],
+    ['Amortization', phase.amortYears > 0 ? `${phase.amortYears}yr` : 'Full IO'],
+    ['Prepay', phase.prepayType],
+  ];
+
+  const feeRows: [string, string][] = [
+    ['Origination', fmtPct(phase.origFee) + '  · ' + fmt$M(phase.loanAmountEst * phase.origFee)],
+    ['Exit Fee', fmtPct(phase.exitFee) + '  · ' + fmt$M(phase.loanAmountEst * phase.exitFee)],
+  ];
+
+  const topLenders = phase.lenders.slice(0, 3);
+
+  return (
+    <div style={{ border: `1px solid ${color}40`, borderRadius: 2, marginBottom: 14, overflow: 'hidden' }}>
+      <div
+        style={{
+          backgroundColor: `${color}10`,
+          padding: '8px 14px',
+          borderBottom: `1px solid ${color}30`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <ChevronDown size={12} color={color} />
+        <span style={{ ...MONO, color, fontSize: 11, fontWeight: 700 }}>
+          {phase.phaseLabel} · M{phase.startMonth}–M{phase.endMonth}
+        </span>
+        <span style={{ color: BT.text.muted, fontSize: 10, flex: 1 }}>{phase.rationale}</span>
+      </div>
+      <div style={{ display: 'flex', gap: 0 }}>
+        <div style={{ flex: 7, padding: 14, borderRight: `1px solid ${BT.border.subtle}` }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+            {[
+              ['SIZING', sizingRows],
+              ['STRUCTURE', structureRows],
+              ['FEES', feeRows],
+            ].map(([section, rows]) => (
+              <div key={section as string}>
+                <div
+                  style={{
+                    ...MONO,
+                    color: BT.text.muted,
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: '0.1em',
+                    marginBottom: 6,
+                  }}
+                >
+                  {section as string}
+                </div>
+                {(rows as [string, string][]).map(([k, v]) => (
+                  <div
+                    key={k}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      borderBottom: `1px solid ${BT.border.subtle}25`,
+                      padding: '3px 0',
+                    }}
+                  >
+                    <span style={{ color: BT.text.muted, fontSize: 10 }}>{k}</span>
+                    <span style={{ ...MONO, color: BT.text.primary, fontSize: 10, fontWeight: 600 }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          {phase.isRefiEvent && phase.refiTriggerOcc && phase.refiTriggerDscr && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: '8px 10px',
+                backgroundColor: `${BT.text.green}08`,
+                border: `1px solid ${BT.text.green}30`,
+                borderRadius: 2,
+                display: 'flex',
+                gap: 6,
+                alignItems: 'center',
+              }}
+            >
+              <CheckCircle size={11} color={BT.text.green} />
+              <span style={{ color: BT.text.muted, fontSize: 10 }}>
+                Refi window:{" "}
+                <span style={{ ...MONO, color: BT.text.green }}>
+                  Occ &gt; {(phase.refiTriggerOcc * 100).toFixed(0)}% AND DSCR &gt; {phase.refiTriggerDscr.toFixed(2)}
+                </span>{' '}
+                — executes at M{phase.startMonth}
+              </span>
+            </div>
+          )}
+        </div>
+        {topLenders.length > 0 && (
+          <div style={{ flex: 3, padding: 14, backgroundColor: BT.bg.terminal }}>
+            <div
+              style={{
+                ...MONO,
+                color: BT.text.muted,
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                marginBottom: 10,
+              }}
+            >
+              LENDER TARGETS
+            </div>
+            {topLenders.map((lt, i) => {
+              const fitColor = lt.fitScore >= 85 ? BT.text.green : lt.fitScore >= 70 ? BT.text.cyan : BT.text.amber;
+              return (
+                <div
+                  key={lt.lender.id}
+                  style={{
+                    border: `1px solid ${i === 0 ? fitColor + '50' : BT.border.subtle}`,
+                    backgroundColor: i === 0 ? `${fitColor}08` : 'transparent',
+                    borderRadius: 2,
+                    padding: '8px 10px',
+                    marginBottom: 8,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                    <span style={{ color: BT.text.primary, fontSize: 11, fontWeight: 600 }}>{lt.lender.name}</span>
+                    <span style={{ ...MONO, color: fitColor, fontSize: 11, fontWeight: 700 }}>fit {lt.fitScore}%</span>
+                  </div>
+                  {lt.lender.dealsYTDEst && (
+                    <div style={{ ...MONO, color: BT.text.muted, fontSize: 9, marginBottom: 2 }}>
+                      {lt.lender.dealsYTDEst} deals YTD · {lt.lender.recoursePreference}
+                    </div>
+                  )}
+                  {lt.lender.notes && <div style={{ color: BT.text.muted, fontSize: 9 }}>{lt.lender.notes}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LQ-7: EXIT WINDOW CALCULATOR — Optimal Refi Window from Curve Analysis
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function ExitWindowsPanel({
+  exitWindows,
+  currentRate,
+}: {
+  exitWindows: NonNullable<DebtAdvisorResponse['exitWindows']>;
+  currentRate: number;
+}) {
+  const { bestWindow, nextWindow, windows, narrative, absenceReason } = exitWindows;
+
+  if (absenceReason) {
+    return (
+      <div
+        style={{
+          border: `1px solid ${BT.border.subtle}`,
+          borderRadius: 2,
+          padding: 14,
+          marginBottom: 14,
+          backgroundColor: BT.bg.panelAlt,
+        }}
+      >
+        <SectionLabel label="EXIT WINDOW ANALYSIS" accent={BT.text.amber} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', backgroundColor: `${BT.text.amber}08`, border: `1px solid ${BT.text.amber}30`, borderRadius: 2 }}>
+          <AlertTriangle size={12} color={BT.text.amber} />
+          <span style={{ ...MONO, color: BT.text.amber, fontSize: 10 }}>{absenceReason}</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        border: `1px solid ${BT.border.subtle}`,
+        borderRadius: 2,
+        padding: 14,
+        marginBottom: 14,
+        backgroundColor: BT.bg.panelAlt,
+      }}
+    >
+      <SectionLabel label="EXIT WINDOW ANALYSIS — CURVE + M35 EVENTS" accent={BT.text.cyan} />
+
+      {/* Best Window Hero */}
+      {bestWindow && (
+        <div
+          style={{
+            backgroundColor: `${BT.text.green}08`,
+            border: `1px solid ${BT.text.green}40`,
+            borderRadius: 2,
+            padding: '10px 14px',
+            marginBottom: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <Target size={18} color={BT.text.green} />
+          <div style={{ flex: 1 }}>
+            <div style={{ ...MONO, color: BT.text.green, fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 2 }}>
+              OPTIMAL REFI WINDOW
+            </div>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'baseline', flexWrap: 'wrap' }}>
+              <span style={{ ...MONO, color: BT.text.primary, fontSize: 16, fontWeight: 700 }}>{bestWindow.label}</span>
+              <span style={{ ...MONO, color: BT.text.cyan, fontSize: 12 }}>
+                {fmtPct(bestWindow.projectedRate)} vs {fmtPct(bestWindow.currentRate)} today
+              </span>
+              <span style={{ ...MONO, color: BT.text.green, fontSize: 12, fontWeight: 700 }}>
+                {fmtBps(bestWindow.rateImprovementBps)} improvement
+              </span>
+              {bestWindow.dscrImprovement != null && (
+                <span style={{ ...MONO, color: BT.text.teal, fontSize: 11 }}>
+                  DSCR +{bestWindow.dscrImprovement.toFixed(2)}×
+                </span>
+              )}
+            </div>
+          </div>
+          <Pill color={BT.text.green}>
+            NET {fmtBps(bestWindow.netBenefitBps)}
+          </Pill>
+        </div>
+      )}
+
+      {/* Next Window */}
+      {nextWindow && nextWindow.month !== bestWindow?.month && (
+        <div
+          style={{
+            backgroundColor: `${BT.text.amber}06`,
+            border: `1px solid ${BT.text.amber}30`,
+            borderRadius: 2,
+            padding: '8px 12px',
+            marginBottom: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <Clock size={14} color={BT.text.amber} />
+          <div>
+            <div style={{ ...MONO, color: BT.text.amber, fontSize: 9, fontWeight: 700 }}>NEXT UPCOMING</div>
+            <div style={{ ...MONO, color: BT.text.primary, fontSize: 11 }}>
+              {nextWindow.label} · {fmtPct(nextWindow.projectedRate)} · {fmtBps(nextWindow.rateImprovementBps)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* All Windows Table */}
+      {windows.length > 0 && (
+        <div style={{ overflow: 'hidden', borderRadius: 2, border: `1px solid ${BT.border.subtle}` }}>
+          <div
+            style={{
+              display: 'flex',
+              backgroundColor: BT.bg.header,
+              borderBottom: `1px solid ${BT.border.medium}`,
+              padding: '4px 8px',
+            }}
+          >
+            {['Window', 'Source', 'Rate', 'Improvement', 'Refi Cost', 'Net Benefit', 'DSCR Δ', 'Confidence'].map((h) => (
+              <div
+                key={h}
+                style={{
+                  ...MONO,
+                  fontSize: 9,
+                  fontWeight: 700,
+                  color: BT.text.muted,
+                  letterSpacing: 0.8,
+                  flex: h === 'Window' ? 2 : 1,
+                  padding: '2px 6px',
+                }}
+              >
+                {h}
+              </div>
+            ))}
+          </div>
+          {windows.map((w, i) => {
+            const sc = sourceColor(w.source);
+            const isBest = bestWindow?.month === w.month;
+            return (
+              <div
+                key={i}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '5px 8px',
+                  backgroundColor: isBest ? `${BT.text.green}06` : i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
+                  borderBottom: `1px solid ${BT.border.subtle}`,
+                }}
+              >
+                <div style={{ flex: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {isBest && <Target size={10} color={BT.text.green} />}
+                  <span style={{ ...MONO, color: BT.text.primary, fontSize: 10, fontWeight: isBest ? 700 : 500 }}>
+                    {w.label}
+                  </span>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <Pill color={sc}>{sourceLabel(w.source)}</Pill>
+                </div>
+                <div style={{ flex: 1, ...MONO, color: BT.text.cyan, fontSize: 10 }}>{fmtPct(w.projectedRate)}</div>
+                <div style={{ flex: 1, ...MONO, color: BT.text.green, fontSize: 10, fontWeight: 700 }}>
+                  {fmtBps(w.rateImprovementBps)}
+                </div>
+                <div style={{ flex: 1, ...MONO, color: BT.text.muted, fontSize: 10 }}>{fmtPct(w.refiCostPct)}</div>
+                <div style={{ flex: 1, ...MONO, color: w.netBenefitBps >= 0 ? BT.text.green : BT.text.red, fontSize: 10, fontWeight: 700 }}>
+                  {fmtBps(w.netBenefitBps)}
+                </div>
+                <div style={{ flex: 1, ...MONO, color: w.dscrImprovement != null ? BT.text.teal : BT.text.muted, fontSize: 10 }}>
+                  {w.dscrImprovement != null ? `+${w.dscrImprovement.toFixed(2)}×` : '—'}
+                </div>
+                <div style={{ flex: 1, ...MONO, color: BT.text.amber, fontSize: 10 }}>
+                  {(w.confidence * 100).toFixed(0)}%
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Narrative */}
+      {narrative && (
+        <div style={{ marginTop: 10, padding: '6px 8px', backgroundColor: `${BT.text.cyan}06`, borderRadius: 2 }}>
+          <span style={{ ...MONO, color: BT.text.muted, fontSize: 9 }}>{narrative}</span>
+        </div>
+      )}
+
+      {/* Current Rate Context */}
+      <div style={{ marginTop: 10, display: 'flex', gap: 12, alignItems: 'center' }}>
+        <span style={{ ...MONO, color: BT.text.muted, fontSize: 9 }}>CURRENT ALL-IN:</span>
+        <span style={{ ...MONO, color: BT.text.amber, fontSize: 11, fontWeight: 700 }}>{fmtPct(currentRate)}</span>
+        <span style={{ ...MONO, color: BT.text.muted, fontSize: 9 }}>
+          {windows.filter((w) => w.isActionable).length} actionable / {windows.length} total windows
         </span>
       </div>
     </div>
   );
 }
 
-function CaptureLinkage() {
-  const rows = [
-    { yr: 'Y1', capture: '$334K', noi: '$1.64M', dscr: '0.91×', ds: '$2.14M (IO)', refi: false, note: 'Bridge IO — DSCR pre-stab. No perm product qualifies at 0.91.' },
-    { yr: 'Y2', capture: '$877K', noi: '$1.87M', dscr: '1.24×', ds: '$2.14M (IO)', refi: false, note: 'Reno 75% complete. DSCR climbing. Approaching refi threshold.' },
-    { yr: 'Y3', capture: '$1.16M', noi: '$2.11M', dscr: '1.47×', ds: '$1.69M (perm)', refi: true, note: '✓ Fannie DUS refi M24. Debt service drops $450K/yr vs IO bridge.' },
-    { yr: 'Y4', capture: '$1.20M', noi: '$2.35M', dscr: '1.62×', ds: '$1.69M', refi: true, note: 'Stabilized. Exit prep. YM prepay est. $640K modeled in waterfall.' },
-  ];
+function AlternativesPanel({ alternatives, onRecompute }: { alternatives: DebtAlternative[]; onRecompute: (hint: string) => void }) {
   return (
-    <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, overflow: 'hidden', marginBottom: 14 }}>
-      <div style={{ backgroundColor: C.panelAlt, padding: '7px 12px', borderBottom: `1px solid ${C.border}` }}>
-        <span style={{ ...mono, color: C.textMuted, fontSize: 9, letterSpacing: '0.1em', fontWeight: 700 }}>M08 CAPTURE SCHEDULE → DEBT STRUCTURE LOGIC</span>
-      </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-        <thead>
-          <tr style={{ backgroundColor: '#0d0d12' }}>
-            {['Yr', 'Net Uplift', 'NOI', 'DSCR', 'Annual DS', 'Refi?', 'Rationale'].map(h => (
-              <th key={h} style={{ ...mono, textAlign: 'left', padding: '4px 10px', color: C.textMuted, fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', borderBottom: `1px solid ${C.border}` }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i} style={{ backgroundColor: r.refi ? `${C.green}06` : 'transparent', borderTop: i > 0 ? `1px solid ${C.border}15` : 'none' }}>
-              <td style={{ ...mono, padding: '5px 10px', color: C.textPrimary, fontWeight: 700 }}>{r.yr}</td>
-              <td style={{ ...mono, padding: '5px 10px', color: C.cyan }}>{r.capture}</td>
-              <td style={{ ...mono, padding: '5px 10px', color: C.textPrimary }}>{r.noi}</td>
-              <td style={{ ...mono, padding: '5px 10px', color: r.dscr.startsWith('0') ? C.red : r.dscr.startsWith('1.2') ? C.amber : C.green, fontWeight: 700 }}>{r.dscr}</td>
-              <td style={{ ...mono, padding: '5px 10px', color: r.refi ? C.cyan : C.textMuted }}>{r.ds}</td>
-              <td style={{ padding: '5px 10px' }}>{r.refi ? <Pill color={C.green}>✓ ELIGIBLE</Pill> : <span style={{ ...mono, color: C.textMuted, fontSize: 9 }}>—</span>}</td>
-              <td style={{ padding: '5px 10px', color: C.textMuted, fontSize: 10 }}>{r.note}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function DebtTimeline({ expandedPhase, setExpandedPhase }: { expandedPhase: string | null; setExpandedPhase: (v: string | null) => void }) {
-  const pct = (m: number) => `${(m / 36) * 100}%`;
-  const phases = [
-    { id: 'bridge', label: 'BRIDGE', detail: '$28.5M · SOFR+275 · 3yr+1+1 · IO · 70% LTC', start: 0, end: 24, color: C.orange },
-    { id: 'refi', label: 'FANNIE DUS REFI', detail: '$32M · 10yr fixed · 5.1% · 65% LTV', start: 24, end: 36, color: C.cyan },
-  ];
-  return (
-    <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, padding: 14, marginBottom: 14, backgroundColor: C.panelAlt }}>
-      <SectionLabel label="DEBT PLAN TIMELINE" accent={C.amber} />
-      <div style={{ position: 'relative', marginBottom: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-          {[0, 6, 12, 18, 24, 30, 36].map(m => (
-            <span key={m} style={{ ...mono, color: C.textMuted, fontSize: 9 }}>M{m}</span>
-          ))}
-        </div>
-        <div style={{ position: 'absolute', left: pct(24), top: 24, height: 34, width: 1, backgroundColor: `${C.green}70` }}>
-          <span style={{ ...mono, fontSize: 8, color: C.green, position: 'absolute', top: '100%', transform: 'translateX(-50%)', whiteSpace: 'nowrap' as const }}>REFI TRIGGER M24</span>
-        </div>
-        <div style={{ position: 'relative', height: 34 }}>
-          {phases.map((p) => (
-            <div
-              key={p.id}
-              onClick={() => setExpandedPhase(expandedPhase === p.id ? null : p.id)}
+    <div style={{ display: 'grid', gridTemplateColumns: alternatives.length === 1 ? '1fr' : '1fr 1fr', gap: 12, marginBottom: 14 }}>
+      {alternatives.map((a, i) => {
+        const irrSign = a.irrImpactBps >= 0 ? '+' : '';
+        const irrColor = a.irrImpactBps >= 0 ? BT.text.green : BT.text.red;
+        return (
+          <div key={i} style={{ border: `1px solid ${BT.border.subtle}`, borderRadius: 2, padding: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 2 }}>
+              <div style={{ ...MONO, color: BT.text.primary, fontSize: 11, fontWeight: 700 }}>{a.label}</div>
+              <span style={{ ...MONO, color: irrColor, fontSize: 10 }}>
+                {irrSign}{(a.irrImpactBps / 100).toFixed(1)}% IRR
+              </span>
+            </div>
+            <div style={{ color: BT.text.muted, fontSize: 10, marginBottom: 10 }}>{a.productLabel}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${BT.border.subtle}20`, padding: '3px 0' }}>
+              <span style={{ color: BT.text.muted, fontSize: 10 }}>Spread delta</span>
+              <span style={{ ...MONO, color: BT.text.primary, fontSize: 10 }}>
+                {a.deltaAllInBps >= 0 ? '+' : ''}
+                {a.deltaAllInBps}bps
+              </span>
+            </div>
+            <div style={{ marginTop: 8, color: BT.text.muted, fontSize: 9, fontStyle: 'italic', lineHeight: 1.5 }}>
+              {a.tradeoff}
+            </div>
+            <button
+              onClick={() => onRecompute(a.product)}
               style={{
-                position: 'absolute',
-                left: pct(p.start),
-                width: `calc(${pct(p.end - p.start)} - 2px)`,
-                top: 0,
-                height: 28,
-                backgroundColor: `${p.color}20`,
-                border: `1px solid ${p.color}60`,
+                ...MONO,
+                marginTop: 10,
+                fontSize: 9,
+                padding: '3px 10px',
+                backgroundColor: `${BT.text.purple}12`,
+                color: BT.text.purple,
+                border: `1px solid ${BT.text.purple}40`,
                 borderRadius: 2,
-                display: 'flex',
-                alignItems: 'center',
-                padding: '0 8px',
-                gap: 6,
                 cursor: 'pointer',
               }}
             >
-              <span style={{ ...mono, color: p.color, fontSize: 10, fontWeight: 700 }}>{p.label}</span>
-              <span style={{ color: C.textMuted, fontSize: 9 }}>· {p.detail}</span>
-              {expandedPhase === p.id ? <ChevronDown size={10} color={p.color} style={{ marginLeft: 'auto' }} /> : <ChevronRight size={10} color={C.textMuted} style={{ marginLeft: 'auto' }} />}
-            </div>
-          ))}
-        </div>
-      </div>
+              Run Alternative →
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function BridgeDetail() {
-  return (
-    <div style={{ border: `1px solid ${C.orange}40`, borderRadius: 2, marginBottom: 14, overflow: 'hidden' }}>
-      <div style={{ backgroundColor: `${C.orange}10`, padding: '8px 14px', borderBottom: `1px solid ${C.orange}30`, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <ChevronDown size={12} color={C.orange} />
-        <span style={{ ...mono, color: C.orange, fontSize: 11, fontWeight: 700 }}>Bridge-to-Perm Bridge · M0–M24</span>
-        <span style={{ color: C.textMuted, fontSize: 10 }}>Why: Going-in DSCR 0.91 disqualifies all perm products. IO preserves cash during reno. Open prepay for clean refi at stabilization.</span>
-      </div>
-      <div style={{ display: 'flex', gap: 0 }}>
-        <div style={{ flex: 7, padding: 14, borderRight: `1px solid ${C.border}` }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            {[
-              { section: 'SIZING', rows: [['Loan Amount', '$28.5M'], ['LTV', '70%'], ['LTC (incl reno)', '70%'], ['DSCR Y1 (IO)', '0.91 — pre-stab'], ['Debt Yield', '5.7%']] },
-              { section: 'PRICING', rows: [['Type', 'Floating · SOFR + 275bps'], ['All-in today', '~8.25%'], ['Rate Cap', '4.5% strike · 2yr · $380K'], ['Cap renewal M24', '~$180K — budget now']] },
-              { section: 'STRUCTURE', rows: [['Term', '3yr + 1yr + 1yr extensions'], ['Amortization', 'Full IO'], ['Extension fee', '50bps per extension'], ['Prepay', 'Open — no yield-maintenance']] },
-              { section: 'ALL-IN FEES', rows: [['Origination 1.5%', '$427K'], ['Exit fee 0.5%', '$142K'], ['Rate cap', '$380K'], ['Total close costs', '$949K']] },
-            ].map((s, i) => (
-              <div key={i}>
-                <div style={{ ...mono, color: C.textMuted, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 6 }}>{s.section}</div>
-                {s.rows.map(([k, v]) => (
-                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${C.border}25`, padding: '3px 0' }}>
-                    <span style={{ color: C.textMuted, fontSize: 10 }}>{k}</span>
-                    <span style={{ ...mono, color: C.textPrimary, fontSize: 10, fontWeight: 600 }}>{v}</span>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 12, padding: '8px 10px', backgroundColor: `${C.green}08`, border: `1px solid ${C.green}30`, borderRadius: 2, display: 'flex', gap: 6, alignItems: 'center' }}>
-            <CheckCircle size={11} color={C.green} />
-            <span style={{ color: C.textMuted, fontSize: 10 }}>
-              Refi window: <span style={{ ...mono, color: C.green }}>Occ {'>'} 92% AND DSCR {'>'} 1.35</span> → projected M21 per M08 capture schedule.
-            </span>
-          </div>
-        </div>
-        <div style={{ flex: 3, padding: 14, backgroundColor: C.bg }}>
-          <div style={{ ...mono, color: C.textMuted, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 10 }}>LENDER TARGETS</div>
-          {[
-            { name: 'Acore Capital', deals: '6 deals YTD', pricing: 'SOFR+290', fit: 94, fitColor: C.green, note: 'Non-recourse · Fast close · Rec.' },
-            { name: 'Square Mile Capital', deals: '4 deals', pricing: 'SOFR+325', fit: 78, fitColor: C.cyan, note: 'Higher spread · Flexible extensions' },
-            { name: 'Bank OZK', deals: '8 deals', pricing: 'SOFR+275', fit: 71, fitColor: C.amber, note: '⚠ Partial recourse required' },
-          ].map((l, i) => (
-            <div key={i} style={{ border: `1px solid ${i === 0 ? C.green + '50' : C.border}`, backgroundColor: i === 0 ? `${C.green}08` : 'transparent', borderRadius: 2, padding: '8px 10px', marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                <span style={{ color: C.textPrimary, fontSize: 11, fontWeight: 600 }}>{l.name}</span>
-                <span style={{ ...mono, color: l.fitColor, fontSize: 11, fontWeight: 700 }}>fit {l.fit}%</span>
-              </div>
-              <div style={{ ...mono, color: C.textMuted, fontSize: 9, marginBottom: 2 }}>{l.deals} · {l.pricing}</div>
-              <div style={{ color: C.textMuted, fontSize: 9 }}>{l.note}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
+function MarketContextPanel({ env }: { env: RateEnvironmentResult }) {
+  const sofrFwd12 = env.sofr + env.sofrForward12moBps / 10000;
+  const isFalling = env.classification === 'Dropping';
+  const TrendIcon = isFalling ? TrendingDown : env.classification === 'Rising' ? ArrowRight : Clock;
+  const trendColor = isFalling ? BT.text.green : env.classification === 'Rising' ? BT.text.red : BT.text.amber;
 
-function MarketContext() {
+  const rows: [string, string, string, string][] = [
+    ['10yr Treasury', fmtPct(env.treasury10y), `${env.classification} env`, trendColor],
+    ['SOFR', fmtPct(env.sofr), `Fwd 12mo: ${fmtPct(sofrFwd12)}`, BT.text.cyan],
+    ['Fed Funds Target', fmtPct(env.fedFundsTarget), env.classification, BT.text.cyan],
+    [
+      'Pricing Window',
+      env.pricingWindowScore.toString() + '/100',
+      env.pricingWindowLabel,
+      env.pricingWindowScore >= 70 ? BT.text.green : env.pricingWindowScore >= 45 ? BT.text.amber : BT.text.red,
+    ],
+  ];
+
   return (
-    <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, padding: 14, backgroundColor: C.bg }}>
-      <div style={{ ...mono, color: C.textMuted, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 12 }}>MARKET CONTEXT</div>
-      {[
-        { label: '10yr Treasury', value: '4.21%', sub: '−8bps today', color: C.green },
-        { label: 'SOFR', value: '4.95%', sub: '−60bps projected 12mo', color: C.cyan },
-        { label: 'RSS Score', value: '67/100', sub: 'Favorable for bridge', color: C.cyan },
-      ].map((r, i) => (
-        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${C.border}30`, padding: '6px 0' }}>
-          <span style={{ color: C.textMuted, fontSize: 10 }}>{r.label}</span>
-          <div style={{ textAlign: 'right' as const }}>
+    <div style={{ border: `1px solid ${BT.border.subtle}`, borderRadius: 2, padding: 14, backgroundColor: BT.bg.terminal }}>
+      <div style={{ ...MONO, color: BT.text.muted, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 12 }}>
+        MARKET CONTEXT
+      </div>
+      {rows.map(([label, value, sub, color]) => (
+        <div
+          key={label}
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            borderBottom: `1px solid ${BT.border.subtle}30`,
+            padding: '6px 0',
+          }}
+        >
+          <span style={{ color: BT.text.muted, fontSize: 10 }}>{label}</span>
+          <div style={{ textAlign: 'right' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-              <TrendingDown size={10} color={r.color} />
-              <span style={{ ...mono, color: r.color, fontSize: 12, fontWeight: 700 }}>{r.value}</span>
+              <TrendIcon size={10} color={color} />
+              <span style={{ ...MONO, color, fontSize: 12, fontWeight: 700 }}>{value}</span>
             </div>
-            <div style={{ ...mono, color: C.textMuted, fontSize: 9 }}>{r.sub}</div>
+            <div style={{ ...MONO, color: BT.text.muted, fontSize: 9 }}>{sub}</div>
           </div>
         </div>
       ))}
+      <div
+        style={{
+          marginTop: 10,
+          backgroundColor: env.pricingWindowScore >= 60 ? `${BT.text.green}10` : `${BT.text.amber}10`,
+          border: `1px solid ${env.pricingWindowScore >= 60 ? BT.text.green : BT.text.amber}30`,
+          borderRadius: 2,
+          padding: '6px 8px',
+        }}
+      >
+        <div style={{ ...MONO, color: env.pricingWindowScore >= 60 ? BT.text.green : BT.text.amber, fontSize: 10, fontWeight: 700 }}>
+          PRICING WINDOW: {env.pricingWindowLabel.toUpperCase()}
+        </div>
+        <div style={{ color: BT.text.muted, fontSize: 9, marginTop: 2 }}>{env.ratCapAdvice}</div>
+      </div>
+      <div style={{ marginTop: 12, borderTop: `1px solid ${BT.border.subtle}`, paddingTop: 10 }}>
+        <div style={{ ...MONO, color: BT.text.muted, fontSize: 9, fontWeight: 700, marginBottom: 6 }}>RATE PREFERENCE</div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <Pill color={BT.text.cyan}>{env.ratePreference}</Pill>
+          <span style={{ color: BT.text.muted, fontSize: 10 }}>{env.termPreference}</span>
+        </div>
+      </div>
       <div style={{ marginTop: 10 }}>
-        <div style={{ ...mono, color: C.textMuted, fontSize: 9, marginBottom: 4 }}>SOFR FORWARD CURVE</div>
+        <div style={{ ...MONO, color: BT.text.muted, fontSize: 9, marginBottom: 4 }}>SOFR FORWARD CURVE</div>
         <svg width="100%" height={32} viewBox="0 0 200 32">
-          <polyline points="0,26 40,24 80,20 120,14 160,9 200,5" fill="none" stroke={C.cyan} strokeWidth={1.5} />
+          {isFalling ? (
+            <polyline points="0,26 40,24 80,20 120,14 160,9 200,5" fill="none" stroke={BT.text.cyan} strokeWidth={1.5} />
+          ) : (
+            <polyline points="0,5 40,8 80,12 120,17 160,22 200,26" fill="none" stroke={trendColor} strokeWidth={1.5} />
+          )}
         </svg>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          {['Now', '6mo', '12mo', '18mo', '24mo'].map(l => (
-            <span key={l} style={{ ...mono, color: C.textMuted, fontSize: 8 }}>{l}</span>
+          {['Now', '6mo', '12mo', '18mo', '24mo'].map((l) => (
+            <span key={l} style={{ ...MONO, color: BT.text.muted, fontSize: 8 }}>
+              {l}
+            </span>
           ))}
         </div>
-      </div>
-      <div style={{ marginTop: 10, backgroundColor: `${C.green}10`, border: `1px solid ${C.green}30`, borderRadius: 2, padding: '6px 8px' }}>
-        <div style={{ ...mono, color: C.green, fontSize: 10, fontWeight: 700 }}>PRICING WINDOW: FAVORABLE</div>
-        <div style={{ color: C.textMuted, fontSize: 9, marginTop: 2 }}>Forward curve supports floating bridge + rate cap today. Lock fixed perm at refi M24 when SOFR lower.</div>
-      </div>
-      <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
-        <div style={{ ...mono, color: C.textMuted, fontSize: 9, fontWeight: 700, marginBottom: 8 }}>SPREAD OVER INDEX (bps)</div>
-        {[
-          { n: 'Agency', s: 165, c: C.cyan },
-          { n: 'CMBS', s: 215, c: '#b794f4' },
-          { n: 'Bank', s: 250, c: '#4fd1c5' },
-          { n: 'Bridge', s: 340, c: C.amber },
-          { n: 'Mezz', s: 650, c: '#f6e05e' },
-        ].map(x => (
-          <div key={x.n} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-            <span style={{ color: C.textMuted, fontSize: 8, minWidth: 40, textAlign: 'right' as const }}>{x.n}</span>
-            <div style={{ flex: 1, height: 8, background: `${C.border}60`, borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${(x.s / 700) * 100}%`, background: `${x.c}40`, borderRadius: 2, borderRight: `2px solid ${x.c}` }} />
-            </div>
-            <span style={{ ...mono, fontSize: 8, color: x.c, minWidth: 30, textAlign: 'right' as const }}>+{x.s}</span>
-          </div>
-        ))}
       </div>
     </div>
   );
 }
 
-function Alternatives() {
+function ActionsPanel({ triggers }: { triggers: MonitoringTrigger[] }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-      {[
-        {
-          title: 'Zero Rate Risk',
-          sub: '3yr Fixed Bridge + Fixed Agency Refi',
-          rows: [['Bridge rate', '6.5% fixed (today)'], ['Rate cap', 'Not needed — saves $380K'], ['Y1 annual DS', '$2.33M vs $2.14M floating IO'], ['IRR impact', '−0.3% (loses floating benefit if SOFR drops)']],
-          tradeoff: 'Eliminates rate cap cost. Sacrifices expected ~$420K floating savings if SOFR declines 60bps as projected.',
-          color: C.textMuted,
-        },
-        {
-          title: 'Higher Leverage',
-          sub: 'Add 10% Mezz at 13% pay+PIK',
-          rows: [['Senior bridge', '$28.5M · SOFR+275'], ['Mezz', '$4.5M · 13% (7% pay + 6% PIK)'], ['Blended all-in', '~9.8%'], ['IRR impact', '+1.1% (more equity deployed)']],
-          tradeoff: 'Mezz adds execution risk (intercreditor, review). Higher coupon drag in IO period.',
-          color: C.purple,
-        },
-      ].map((a, i) => (
-        <div key={i} style={{ border: `1px solid ${C.border}`, borderRadius: 2, padding: 12 }}>
-          <div style={{ ...mono, color: C.textPrimary, fontSize: 11, fontWeight: 700, marginBottom: 2 }}>{a.title}</div>
-          <div style={{ color: C.textMuted, fontSize: 10, marginBottom: 10 }}>{a.sub}</div>
-          {a.rows.map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${C.border}20`, padding: '3px 0' }}>
-              <span style={{ color: C.textMuted, fontSize: 10 }}>{k}</span>
-              <span style={{ ...mono, color: C.textPrimary, fontSize: 10 }}>{v}</span>
+    <div style={{ border: `1px solid ${BT.border.subtle}`, borderRadius: 2, padding: 12, marginTop: 4, backgroundColor: BT.bg.panelAlt }}>
+      <SectionLabel label="ACTIONS & NEXT STEPS" accent={BT.text.amber} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        {triggers.slice(0, 4).map((t, i) => {
+          const color = t.severity === 'critical' ? BT.text.red : t.severity === 'warning' ? BT.text.amber : BT.text.cyan;
+          return (
+            <div
+              key={i}
+              style={{
+                display: 'flex',
+                gap: 8,
+                padding: '6px 8px',
+                border: `1px solid ${color}20`,
+                borderRadius: 2,
+                backgroundColor: `${color}06`,
+              }}
+            >
+              <AlertTriangle size={11} color={color} style={{ marginTop: 1, flexShrink: 0 }} />
+              <div>
+                <div style={{ ...MONO, color, fontSize: 8, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 2 }}>
+                  {t.severity.toUpperCase()}
+                </div>
+                <div style={{ color: BT.text.muted, fontSize: 10 }}>{t.condition}</div>
+              </div>
             </div>
-          ))}
-          <div style={{ marginTop: 8, padding: '6px 8px', backgroundColor: `${C.amber}08`, border: `1px solid ${C.amber}20`, borderRadius: 2 }}>
-            <div style={{ color: C.textMuted, fontSize: 9 }}><span style={{ ...mono, color: C.amber, fontWeight: 700 }}>TRADEOFF: </span>{a.tradeoff}</div>
-          </div>
-        </div>
-      ))}
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-export function M11DebtAdvisorTab() {
-  const [expandedPhase, setExpandedPhase] = useState<string | null>('bridge');
+// ─── Main Component ──────────────────────────────────────────────────────────
+
+export function M11DebtAdvisorTab({ dealId }: M11DebtAdvisorTabProps) {
+  const [expandedPhase, setExpandedPhase] = useState<number | null>(null);
+  const { data, loading, error, recompute, refresh } = useDebtAdvisor(dealId);
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState error={error} onRetry={refresh} />;
+  if (!data || !data.hasStrategy) return <NoStrategyState />;
+
+  const { recommendedStack, alternatives, monitoringTriggers, rateEnvironment, summary, exitWindows } = data;
+  const firstPhase = recommendedStack[0];
 
   return (
-    <div style={{ background: C.bg, color: C.textPrimary, padding: 16, minHeight: 600, fontFamily: 'Inter, sans-serif' }}>
-      <StrategyOrigin />
+    <div style={{ background: BT.bg.terminal, color: BT.text.primary, padding: 16, minHeight: 600, fontFamily: BT.font.label }}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+
+      {firstPhase && <StrategyOrigin phase={firstPhase} strategyName={data.strategyInputs.strategyName} />}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 14, alignItems: 'start' }}>
         <div>
-          <DSCRTimeline />
-          <CaptureLinkage />
-          <DebtTimeline expandedPhase={expandedPhase} setExpandedPhase={setExpandedPhase} />
-          {expandedPhase === 'bridge' && <BridgeDetail />}
-          <SectionLabel label="ALTERNATIVE STRUCTURES" accent={C.purple} />
-          <Alternatives />
+          <DSCRTimeline phases={recommendedStack} />
+
+          <DebtTimeline
+            phases={recommendedStack}
+            expandedPhase={expandedPhase}
+            setExpandedPhase={setExpandedPhase}
+          />
+
+          {expandedPhase !== null && recommendedStack[expandedPhase] && (
+            <PhaseDetail phase={recommendedStack[expandedPhase]} index={expandedPhase} />
+          )}
+
+          {/* LQ-7: Exit Window Calculator Integration */}
+          {exitWindows && (
+            <ExitWindowsPanel
+              exitWindows={exitWindows}
+              currentRate={firstPhase?.rateEst ?? rateEnvironment.sofr + 0.0275}
+            />
+          )}
+
+          {alternatives.length > 0 && (
+            <>
+              <SectionLabel label="ALTERNATIVE STRUCTURES" accent={BT.text.purple} />
+              <AlternativesPanel alternatives={alternatives} onRecompute={recompute} />
+            </>
+          )}
         </div>
-        <MarketContext />
+
+        <MarketContextPanel env={rateEnvironment} />
       </div>
 
-      <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, padding: 12, marginTop: 4, backgroundColor: C.panelAlt }}>
-        <SectionLabel label="ACTIONS &amp; NEXT STEPS" accent={C.amber} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          {[
-            { priority: 'CRITICAL', label: 'Lock rate cap — SOFR strike 4.5% · 2yr · est. $380K', color: C.red },
-            { priority: 'HIGH', label: 'Set M08 NOI alert: fire at DSCR 1.35 + Occ 92%', color: C.amber },
-            { priority: 'HIGH', label: 'Pre-qualify Fannie DUS with Acore — term sheet M6', color: C.amber },
-            { priority: 'MEDIUM', label: 'Budget cap renewal M24: est. $180K reserve', color: C.cyan },
-          ].map((a, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 8px', border: `1px solid ${a.color}20`, borderRadius: 2, backgroundColor: `${a.color}06` }}>
-              <AlertTriangle size={11} color={a.color} style={{ marginTop: 1, flexShrink: 0 }} />
-              <div>
-                <div style={{ ...mono, color: a.color, fontSize: 8, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 2 }}>{a.priority}</div>
-                <div style={{ color: C.textMuted, fontSize: 10 }}>{a.label}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      {monitoringTriggers.length > 0 && <ActionsPanel triggers={monitoringTriggers} />}
     </div>
   );
 }
