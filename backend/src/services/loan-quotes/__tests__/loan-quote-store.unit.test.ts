@@ -273,6 +273,12 @@ describe('loanQuoteStore', () => {
           .mockResolvedValueOnce({ rows: [], command: 'ROLLBACK', rowCount: 0, oid: 0, fields: [] }), // ROLLBACK
         release: vi.fn(),
       };
+      // Ensure query returns a real Promise with .catch()
+      const originalQuery = mockClient.query;
+      mockClient.query = vi.fn((...args: any[]) => {
+        const result = originalQuery(...args);
+        return Promise.resolve(result).then(r => r);
+      });
       mockedGetClient.mockResolvedValueOnce(mockClient as any);
 
       await expect(
@@ -287,6 +293,11 @@ describe('loanQuoteStore', () => {
           .mockResolvedValueOnce({ rows: [], command: 'ROLLBACK', rowCount: 0, oid: 0, fields: [] }), // ROLLBACK
         release: vi.fn(),
       };
+      const originalQuery = mockClient.query;
+      mockClient.query = vi.fn((...args: any[]) => {
+        const result = originalQuery(...args);
+        return Promise.resolve(result).then(r => r);
+      });
       mockedGetClient.mockResolvedValueOnce(mockClient as any);
 
       await expect(
@@ -298,10 +309,16 @@ describe('loanQuoteStore', () => {
       const existingRow = makeDbRow();
       const mockClient = {
         query: vi.fn()
+          .mockResolvedValueOnce({ rows: [], command: 'BEGIN', rowCount: 0, oid: 0, fields: [] }) // BEGIN
           .mockResolvedValueOnce({ rows: [existingRow], command: 'SELECT', rowCount: 1, oid: 0, fields: [] }) // FOR UPDATE check
           .mockResolvedValueOnce({ rows: [], command: 'ROLLBACK', rowCount: 0, oid: 0, fields: [] }), // ROLLBACK
         release: vi.fn(),
       };
+      const originalQuery = mockClient.query;
+      mockClient.query = vi.fn((...args: any[]) => {
+        const result = originalQuery(...args);
+        return Promise.resolve(result).then(r => r);
+      });
       mockedGetClient.mockResolvedValueOnce(mockClient as any);
 
       await expect(
