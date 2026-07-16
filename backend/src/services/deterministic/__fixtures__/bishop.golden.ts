@@ -127,23 +127,22 @@ export const bishopFixture: BuildPathFixture = {
     pathBoundRule: true,
   },
 
-  // Finding P: effective assumptions captured at runFullModel boundary.
-
-  // B4 NEW EPOCH (2026-07-10): M11 now sizes against true amortizing debt service.
-  //   Before (IO proxy): loan = noi / (1.25 * rate) = 9,000,000
-  //   After (amortizing): 2,524,364 (30yr term, 30yr amort, no IO)
-  //   Delta: -,475,636
-  //   Cause: true P+I debt service > IO-only proxy; same DSCR floor (1.25) requires smaller loan.
-  //   Verified by: b4-amortizing-sizing.test.ts (7 tests, all pass)
-
-  // Populated 2026-07-09 from live buildModel() capture (commit c4c6017b4).
-  // Post-enhancement-phases, PRE-M11 — the model's true input contract.
+  // P1 FIX (2026-07-13): effectiveAssumptions now contains the MODEL INPUT CONTRACT
+  // (post-enhancement-phases, PRE-M11), not the adjustedAssumptions (post-M11 output).
+  // The prior value was circular: pinning an output as the test's input made the model
+  // replay its own post-optimization state. This block is the first object the F5-1
+  // instrumentation logged at the runFullModel() boundary.
+  //
   // Rate: 6.0% (confirms enhancement-phase hypothesis; raw store had 6.5%).
   // Loan: $39,000,000 (raw 65% LTV; M11 will DSCR-size to ~$33.1M).
-  // EPOCH RETIRED 2026-07-09 (D0): Bishop stored assumptions corrupted by session writes. July-5 values no longer reproducible.
-  // Finding W: term=4320/amort=4320 reflect bridge treating store months as years.
-  // Finding X ruled (b): M11 hardcodes 60/360 as intended platform defaults.
-  // See DISPATCH_DEBT_LAYER_FINDINGS_W_X.
+  // Term/Amort: 4320/4320 (Finding W: bridge double-conversion, months treated as years).
+  //   These are the ACTUAL values the engine received at this epoch — warts and all.
+  //   If Finding W is fixed, this fixture must be re-pinned.
+  // LP Equity: $20,790,000 | GP Equity: $210,000 (pre-M11, pre-reconcile).
+  //
+  // Provenance: captured at runFullModel() boundary during live Bishop build 2026-07-09;
+  //   post-enhancement-phases, pre-M11 — the model's true input contract.
+  //   Source: /tmp/bishop_effective_assumptions.json (F5-1 instrumentation).
 
   effectiveAssumptions: {
     units: 232,
@@ -175,10 +174,11 @@ export const bishopFixture: BuildPathFixture = {
     managementFee: 0.05,
     replacementReserves: 250,
 
+    // PRE-M11 INPUT CONTRACT (not post-M11 sized output)
     loanAmount: 39000000,
     ltv: 0.65,
-    term: 4320,
-    amort: 4320,
+    term: 4320,    // Finding W: bridge treats store months as years (4320 = 360yr)
+    amort: 4320,   // Same double-conversion. Actual intended: 360 months = 30yr.
     ioPeriod: 36,
 
     rate: 0.06,
@@ -188,6 +188,7 @@ export const bishopFixture: BuildPathFixture = {
     saleCosts: 0.02,
     holdYears: 5,
 
+    // PRE-M11 equity (M11 will resize loan, then equity reconcile will adjust these)
     lpEquity: 20790000,
     gpEquity: 210000,
 
