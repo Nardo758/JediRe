@@ -98,7 +98,7 @@ export const loanQuoteStore: LoanQuoteStore = {
    */
   async create(quote): Promise<LoanQuote> {
     const [sql, params] = quoteToInsertable(quote);
-    const result = await query<LoanQuoteRow>(sql, params);
+    const result = await query(sql, params);
     return rowToQuote(result.rows[0]);
   },
 
@@ -107,7 +107,7 @@ export const loanQuoteStore: LoanQuoteStore = {
    * Returns null if not found or org mismatch — honest absence.
    */
   async read(id, orgId): Promise<LoanQuote | null> {
-    const result = await query<LoanQuoteRow>(
+    const result = await query(
       `SELECT * FROM loan_quotes WHERE id = $1 AND org_id = $2`,
       [id, orgId]
     );
@@ -132,7 +132,7 @@ export const loanQuoteStore: LoanQuoteStore = {
     }
 
     const sql = `SELECT * FROM loan_quotes WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC`;
-    const result = await query<LoanQuoteRow>(sql, params);
+    const result = await query(sql, params);
     return result.rows.map(rowToQuote);
   },
 
@@ -146,7 +146,7 @@ export const loanQuoteStore: LoanQuoteStore = {
       await client.query('BEGIN');
 
       // Verify existence + org scope (honest-absence: throw if missing)
-      const check = await client.query<LoanQuoteRow>(
+      const check = await client.query(
         `SELECT * FROM loan_quotes WHERE id = $1 AND org_id = $2 FOR UPDATE`,
         [id, orgId]
       );
@@ -211,7 +211,7 @@ export const loanQuoteStore: LoanQuoteStore = {
       params.push(id);
       params.push(orgId);
       const updateSql = `UPDATE loan_quotes SET ${fields.join(', ')}, updated_at = NOW() WHERE id = $${fields.length + 1} AND org_id = $${fields.length + 2} RETURNING *`;
-      const updateResult = await client.query<LoanQuoteRow>(updateSql, params);
+      const updateResult = await client.query(updateSql, params);
 
       await client.query('COMMIT');
       return rowToQuote(updateResult.rows[0]);
@@ -238,7 +238,7 @@ export const loanQuoteStore: LoanQuoteStore = {
    * Find quotes that have expired (expires < now) for an org.
    */
   async findStale(orgId): Promise<LoanQuote[]> {
-    const result = await query<LoanQuoteRow>(
+    const result = await query(
       `SELECT * FROM loan_quotes WHERE org_id = $1 AND expires < CURRENT_DATE`,
       [orgId]
     );
@@ -246,4 +246,5 @@ export const loanQuoteStore: LoanQuoteStore = {
   },
 };
 
-export default loanQuoteStore;
+// Re-export types for downstream consumers
+export type { LoanQuoteRow };

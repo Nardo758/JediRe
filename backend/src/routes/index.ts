@@ -489,6 +489,7 @@ import trafficAiRoutes from '../api/rest/traffic-ai.routes';
 import geographicContextRoutes from '../api/rest/geographic-context.routes';
 import corporateHealthRouter from '../api/rest/corporate-health.routes';
 import orgRouter from '../api/rest/org.routes';
+import loanQuotesRouter from '../api/rest/loan-quotes.routes';
 
 export function mountAnalyticsRoutes(app: Express) {
   app.use('/api/v1/dashboard', requireAuth, dashboardRouter);
@@ -501,6 +502,8 @@ export function mountAnalyticsRoutes(app: Express) {
   app.use('/api/v1/deals', requireAuth, geographicContextRoutes);
   app.use('/api/v1/corporate-health', requireAuth, corporateHealthRouter);
   app.use('/api/v1/orgs', requireAuth, orgRouter);
+  // Loan Quote Management — org-scoped (LQ-3)
+  app.use('/api/v1/orgs/:orgId/quotes', requireAuth, loanQuotesRouter);
 }
 
 // ─── Misc & Extensions Routes ────────────────────────────────────────────────

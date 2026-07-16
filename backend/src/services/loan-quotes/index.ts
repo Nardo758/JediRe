@@ -18,12 +18,11 @@ export type {
 } from './loan-quote.types';
 
 export {
-  PostgresLoanQuoteStore,
-  getLoanQuoteStore,
-  resetLoanQuoteStore,
-  validateQuoteShape,
-  QuoteNotFoundError,
-  OrgMismatchError,
+  loanQuoteStore,
+} from './loan-quote-store';
+
+export type {
+  LoanQuoteRow,
 } from './loan-quote-store';
 
 export {

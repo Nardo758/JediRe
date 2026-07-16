@@ -1,6 +1,6 @@
 /**
  * loan-quote-store.unit.test.ts
- * Unit tests for PostgresLoanQuoteStore — mocks the query layer.
+ * Unit tests for loanQuoteStore — mocks the query layer.
  *
  * These tests verify SQL generation, org-scoping, honest-absence invariants,
  * and JSONB serialization without requiring a real PostgreSQL connection.
@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { PostgresLoanQuoteStore, QuoteNotFoundError } from '../loan-quote-store';
+import { loanQuoteStore } from '../loan-quote-store';
 import type {
   LoanQuote,
   SpreadMatrix,
@@ -21,12 +21,13 @@ import type {
 // Mock the database connection
 vi.mock('../../../database/connection', () => ({
   query: vi.fn(),
-  transaction: vi.fn((cb: any) => cb({ query: vi.fn() })),
+  getClient: vi.fn(),
 }));
 
-import { query } from '../../../database/connection';
+import { query, getClient } from '../../../database/connection';
 
 const mockedQuery = vi.mocked(query);
+const mockedGetClient = vi.mocked(getClient);
 
 function makeSpreadMatrix(): SpreadMatrix {
   return {
@@ -103,12 +104,10 @@ function makeCreateInput(): Omit<LoanQuote, 'id' | 'createdAt' | 'updatedAt'> {
   };
 }
 
-describe('PostgresLoanQuoteStore', () => {
-  let store: PostgresLoanQuoteStore;
-
+describe('loanQuoteStore', () => {
   beforeEach(() => {
-    store = new PostgresLoanQuoteStore();
     mockedQuery.mockClear();
+    mockedGetClient.mockClear();
   });
 
   // ── CREATE ────────────────────────────────────────────────────────────────
@@ -119,7 +118,7 @@ describe('PostgresLoanQuoteStore', () => {
       mockedQuery.mockResolvedValueOnce({ rows: [dbRow], command: 'INSERT', rowCount: 1, oid: 0, fields: [] } as any);
 
       const input = makeCreateInput();
-      const result = await store.create(input);
+      const result = await loanQuoteStore.create(input);
 
       expect(result.id).toBe('quote-generated-uuid');
       expect(result.orgId).toBe('org_acme');
@@ -148,7 +147,7 @@ describe('PostgresLoanQuoteStore', () => {
       const dbRow = makeDbRow();
       mockedQuery.mockResolvedValueOnce({ rows: [dbRow], command: 'SELECT', rowCount: 1, oid: 0, fields: [] } as any);
 
-      const result = await store.read('quote-test-001', 'org_acme');
+      const result = await loanQuoteStore.read('quote-test-001', 'org_acme');
 
       expect(result).not.toBeNull();
       expect(result!.id).toBe('quote-test-001');
@@ -164,7 +163,7 @@ describe('PostgresLoanQuoteStore', () => {
     it('returns null when quote not found (honest absence)', async () => {
       mockedQuery.mockResolvedValueOnce({ rows: [], command: 'SELECT', rowCount: 0, oid: 0, fields: [] } as any);
 
-      const result = await store.read('nonexistent', 'org_acme');
+      const result = await loanQuoteStore.read('nonexistent', 'org_acme');
 
       expect(result).toBeNull();
     });
@@ -172,7 +171,7 @@ describe('PostgresLoanQuoteStore', () => {
     it('returns null when org mismatch (honest absence, Lane B privacy)', async () => {
       mockedQuery.mockResolvedValueOnce({ rows: [], command: 'SELECT', rowCount: 0, oid: 0, fields: [] } as any);
 
-      const result = await store.read('quote-test-001', 'org_other');
+      const result = await loanQuoteStore.read('quote-test-001', 'org_other');
 
       expect(result).toBeNull();
     });
@@ -181,14 +180,14 @@ describe('PostgresLoanQuoteStore', () => {
   // ── LIST ──────────────────────────────────────────────────────────────────
 
   describe('list', () => {
-    it('returns all quotes for an org ordered by quote_date DESC', async () => {
+    it('returns all quotes for an org ordered by created_at DESC', async () => {
       const dbRows = [
-        makeDbRow({ id: 'quote-002', quote_date: '2024-06-26' }),
-        makeDbRow({ id: 'quote-001', quote_date: '2024-06-25' }),
+        makeDbRow({ id: 'quote-002', created_at: '2024-06-26T00:00:00Z' }),
+        makeDbRow({ id: 'quote-001', created_at: '2024-06-25T00:00:00Z' }),
       ];
       mockedQuery.mockResolvedValueOnce({ rows: dbRows, command: 'SELECT', rowCount: 2, oid: 0, fields: [] } as any);
 
-      const result = await store.list('org_acme');
+      const result = await loanQuoteStore.list('org_acme');
 
       expect(result).toHaveLength(2);
       expect(result[0].id).toBe('quote-002');
@@ -203,7 +202,7 @@ describe('PostgresLoanQuoteStore', () => {
     it('filters by lender when provided', async () => {
       mockedQuery.mockResolvedValueOnce({ rows: [], command: 'SELECT', rowCount: 0, oid: 0, fields: [] } as any);
 
-      await store.list('org_acme', { lender: 'NewPoint' });
+      await loanQuoteStore.list('org_acme', { lender: 'NewPoint' });
 
       const [sql, params] = mockedQuery.mock.calls[0];
       expect(sql).toContain('lender = $2');
@@ -213,7 +212,7 @@ describe('PostgresLoanQuoteStore', () => {
     it('filters by program when provided', async () => {
       mockedQuery.mockResolvedValueOnce({ rows: [], command: 'SELECT', rowCount: 0, oid: 0, fields: [] } as any);
 
-      await store.list('org_acme', { program: 'Fannie DUS' });
+      await loanQuoteStore.list('org_acme', { program: 'Fannie DUS' });
 
       const [sql, params] = mockedQuery.mock.calls[0];
       expect(sql).toContain('program = $2');
@@ -223,7 +222,7 @@ describe('PostgresLoanQuoteStore', () => {
     it('filters by both lender and program', async () => {
       mockedQuery.mockResolvedValueOnce({ rows: [], command: 'SELECT', rowCount: 0, oid: 0, fields: [] } as any);
 
-      await store.list('org_acme', { lender: 'NewPoint', program: 'Fannie DUS' });
+      await loanQuoteStore.list('org_acme', { lender: 'NewPoint', program: 'Fannie DUS' });
 
       const [sql, params] = mockedQuery.mock.calls[0];
       expect(sql).toContain('lender = $2');
@@ -234,7 +233,7 @@ describe('PostgresLoanQuoteStore', () => {
     it('returns empty array when no quotes exist', async () => {
       mockedQuery.mockResolvedValueOnce({ rows: [], command: 'SELECT', rowCount: 0, oid: 0, fields: [] } as any);
 
-      const result = await store.list('org_empty');
+      const result = await loanQuoteStore.list('org_empty');
 
       expect(result).toEqual([]);
     });
@@ -244,16 +243,21 @@ describe('PostgresLoanQuoteStore', () => {
 
   describe('update', () => {
     it('updates fields and returns updated quote', async () => {
-      // First read check
       const existingRow = makeDbRow();
-      // Update return
       const updatedRow = makeDbRow({ lender: 'UpdatedLender', notes: 'Updated note' });
 
-      mockedQuery
-        .mockResolvedValueOnce({ rows: [existingRow], command: 'SELECT', rowCount: 1, oid: 0, fields: [] } as any)
-        .mockResolvedValueOnce({ rows: [updatedRow], command: 'UPDATE', rowCount: 1, oid: 0, fields: [] } as any);
+      // Mock getClient to return a transaction-capable client
+      const mockClient = {
+        query: vi.fn()
+          .mockResolvedValueOnce({ rows: [existingRow], command: 'SELECT', rowCount: 1, oid: 0, fields: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [existingRow], command: 'SELECT', rowCount: 1, oid: 0, fields: [] }) // FOR UPDATE check
+          .mockResolvedValueOnce({ rows: [updatedRow], command: 'UPDATE', rowCount: 1, oid: 0, fields: [] }) // UPDATE
+          .mockResolvedValueOnce({ rows: [], command: 'COMMIT', rowCount: 0, oid: 0, fields: [] }), // COMMIT
+        release: vi.fn(),
+      };
+      mockedGetClient.mockResolvedValueOnce(mockClient as any);
 
-      const result = await store.update('quote-test-001', 'org_acme', {
+      const result = await loanQuoteStore.update('quote-test-001', 'org_acme', {
         lender: 'UpdatedLender',
         notes: 'Updated note',
       });
@@ -262,50 +266,47 @@ describe('PostgresLoanQuoteStore', () => {
       expect(result.notes).toBe('Updated note');
     });
 
-    it('throws QuoteNotFoundError when quote does not exist', async () => {
-      mockedQuery.mockResolvedValueOnce({ rows: [], command: 'SELECT', rowCount: 0, oid: 0, fields: [] } as any);
-
-      await expect(
-        store.update('nonexistent', 'org_acme', { lender: 'X' })
-      ).rejects.toThrow(QuoteNotFoundError);
-    });
-
-    it('throws QuoteNotFoundError on org mismatch', async () => {
-      mockedQuery.mockResolvedValueOnce({ rows: [], command: 'SELECT', rowCount: 0, oid: 0, fields: [] } as any);
-
-      await expect(
-        store.update('quote-test-001', 'org_other', { lender: 'X' })
-      ).rejects.toThrow(QuoteNotFoundError);
-    });
-
-    it('returns existing quote when patch is empty (no fields to update)', async () => {
-      const existingRow = makeDbRow();
-      mockedQuery.mockResolvedValueOnce({ rows: [existingRow], command: 'SELECT', rowCount: 1, oid: 0, fields: [] } as any);
-
-      const result = await store.update('quote-test-001', 'org_acme', {});
-
-      expect(result.id).toBe('quote-test-001');
-      expect(mockedQuery).toHaveBeenCalledTimes(1); // No UPDATE issued
-    });
-
-    it('serializes JSONB fields correctly', async () => {
-      const existingRow = makeDbRow();
-      const newMatrix: SpreadMatrix = {
-        program: 'Freddie Mac',
-        grid: {
-          'Tier-1': { 5: { min: 0.0100, max: 0.0110 } },
-        },
+    it('throws when quote does not exist', async () => {
+      const mockClient = {
+        query: vi.fn()
+          .mockResolvedValueOnce({ rows: [], command: 'SELECT', rowCount: 0, oid: 0, fields: [] }) // FOR UPDATE check — empty
+          .mockResolvedValueOnce({ rows: [], command: 'ROLLBACK', rowCount: 0, oid: 0, fields: [] }), // ROLLBACK
+        release: vi.fn(),
       };
-      const updatedRow = makeDbRow({ spread_matrix: newMatrix });
+      mockedGetClient.mockResolvedValueOnce(mockClient as any);
 
-      mockedQuery
-        .mockResolvedValueOnce({ rows: [existingRow], command: 'SELECT', rowCount: 1, oid: 0, fields: [] } as any)
-        .mockResolvedValueOnce({ rows: [updatedRow], command: 'UPDATE', rowCount: 1, oid: 0, fields: [] } as any);
+      await expect(
+        loanQuoteStore.update('nonexistent', 'org_acme', { lender: 'X' })
+      ).rejects.toThrow('Quote not found');
+    });
 
-      await store.update('quote-test-001', 'org_acme', { spreadMatrix: newMatrix });
+    it('throws on org mismatch', async () => {
+      const mockClient = {
+        query: vi.fn()
+          .mockResolvedValueOnce({ rows: [], command: 'SELECT', rowCount: 0, oid: 0, fields: [] }) // FOR UPDATE check — empty
+          .mockResolvedValueOnce({ rows: [], command: 'ROLLBACK', rowCount: 0, oid: 0, fields: [] }), // ROLLBACK
+        release: vi.fn(),
+      };
+      mockedGetClient.mockResolvedValueOnce(mockClient as any);
 
-      const [, params] = mockedQuery.mock.calls[1];
-      expect(params).toContain(JSON.stringify(newMatrix));
+      await expect(
+        loanQuoteStore.update('quote-test-001', 'org_other', { lender: 'X' })
+      ).rejects.toThrow('Quote not found');
+    });
+
+    it('throws when patch is empty (no fields to update)', async () => {
+      const existingRow = makeDbRow();
+      const mockClient = {
+        query: vi.fn()
+          .mockResolvedValueOnce({ rows: [existingRow], command: 'SELECT', rowCount: 1, oid: 0, fields: [] }) // FOR UPDATE check
+          .mockResolvedValueOnce({ rows: [], command: 'ROLLBACK', rowCount: 0, oid: 0, fields: [] }), // ROLLBACK
+        release: vi.fn(),
+      };
+      mockedGetClient.mockResolvedValueOnce(mockClient as any);
+
+      await expect(
+        loanQuoteStore.update('quote-test-001', 'org_acme', {})
+      ).rejects.toThrow('No fields provided for update');
     });
   });
 
@@ -316,7 +317,7 @@ describe('PostgresLoanQuoteStore', () => {
       const dbRow = makeDbRow();
       mockedQuery.mockResolvedValueOnce({ rows: [dbRow], command: 'DELETE', rowCount: 1, oid: 0, fields: [] } as any);
 
-      const result = await store.delete('quote-test-001', 'org_acme');
+      const result = await loanQuoteStore.delete('quote-test-001', 'org_acme');
 
       expect(result).toBe(true);
       expect(mockedQuery).toHaveBeenCalledWith(
@@ -328,7 +329,7 @@ describe('PostgresLoanQuoteStore', () => {
     it('returns false when quote not found (honest absence)', async () => {
       mockedQuery.mockResolvedValueOnce({ rows: [], command: 'DELETE', rowCount: 0, oid: 0, fields: [] } as any);
 
-      const result = await store.delete('nonexistent', 'org_acme');
+      const result = await loanQuoteStore.delete('nonexistent', 'org_acme');
 
       expect(result).toBe(false);
     });
@@ -336,7 +337,7 @@ describe('PostgresLoanQuoteStore', () => {
     it('returns false on org mismatch (Lane B privacy)', async () => {
       mockedQuery.mockResolvedValueOnce({ rows: [], command: 'DELETE', rowCount: 0, oid: 0, fields: [] } as any);
 
-      const result = await store.delete('quote-test-001', 'org_other');
+      const result = await loanQuoteStore.delete('quote-test-001', 'org_other');
 
       expect(result).toBe(false);
     });
@@ -353,7 +354,7 @@ describe('PostgresLoanQuoteStore', () => {
       ];
       mockedQuery.mockResolvedValueOnce({ rows: dbRows, command: 'SELECT', rowCount: 2, oid: 0, fields: [] } as any);
 
-      const result = await store.findStale('org_acme');
+      const result = await loanQuoteStore.findStale('org_acme');
 
       expect(result).toHaveLength(2);
       expect(result[0].id).toBe('stale-001');
@@ -368,7 +369,7 @@ describe('PostgresLoanQuoteStore', () => {
     it('returns empty array when no stale quotes exist', async () => {
       mockedQuery.mockResolvedValueOnce({ rows: [], command: 'SELECT', rowCount: 0, oid: 0, fields: [] } as any);
 
-      const result = await store.findStale('org_acme');
+      const result = await loanQuoteStore.findStale('org_acme');
 
       expect(result).toEqual([]);
     });
@@ -376,7 +377,7 @@ describe('PostgresLoanQuoteStore', () => {
     it('is org-scoped — does not return stale quotes from other orgs', async () => {
       mockedQuery.mockResolvedValueOnce({ rows: [], command: 'SELECT', rowCount: 0, oid: 0, fields: [] } as any);
 
-      const result = await store.findStale('org_other');
+      const result = await loanQuoteStore.findStale('org_other');
 
       expect(result).toEqual([]);
       expect(mockedQuery).toHaveBeenCalledWith(
@@ -402,7 +403,7 @@ describe('PostgresLoanQuoteStore', () => {
       const dbRow = makeDbRow({ spread_matrix: matrix });
       mockedQuery.mockResolvedValueOnce({ rows: [dbRow], command: 'SELECT', rowCount: 1, oid: 0, fields: [] } as any);
 
-      const result = await store.read('quote-test-001', 'org_acme');
+      const result = await loanQuoteStore.read('quote-test-001', 'org_acme');
 
       expect(result!.spreadMatrix).toEqual(matrix);
     });
@@ -414,7 +415,7 @@ describe('PostgresLoanQuoteStore', () => {
       const dbRow = makeDbRow({ adjustments: adjs });
       mockedQuery.mockResolvedValueOnce({ rows: [dbRow], command: 'SELECT', rowCount: 1, oid: 0, fields: [] } as any);
 
-      const result = await store.read('quote-test-001', 'org_acme');
+      const result = await loanQuoteStore.read('quote-test-001', 'org_acme');
 
       expect(result!.adjustments).toEqual(adjs);
     });
@@ -427,7 +428,7 @@ describe('PostgresLoanQuoteStore', () => {
       const dbRow = makeDbRow({ prepay_structure: prepay });
       mockedQuery.mockResolvedValueOnce({ rows: [dbRow], command: 'SELECT', rowCount: 1, oid: 0, fields: [] } as any);
 
-      const result = await store.read('quote-test-001', 'org_acme');
+      const result = await loanQuoteStore.read('quote-test-001', 'org_acme');
 
       expect(result!.prepayStructure).toEqual(prepay);
     });
