@@ -41,7 +41,16 @@ export type {
 
 export { assembleDebtContext } from './debt-context-assembler';
 
-export { computeDistressFlags } from './s1-distress-calculator';
+export {
+  computeOptimalTerm,
+  batchOptimizeTerms,
+  type TermOptimizerInput,
+  type TermOptimizerResult,
+  type TermOptimizerAbsence,
+  type TermEvaluation,
+  type BatchTermOptimizerInput,
+  type BatchTermOptimizerResult,
+} from './term-optimizer';
 
 export {
   readDealContextFinancials,
@@ -49,3 +58,11 @@ export {
   readMarketRates,
   readM11Sizing,
 } from './deal-context-financials-reader';
+
+// LQ-5: Exit Window Calculator
+export {
+  computeExitWindows,
+  type ExitWindowInput,
+  type ExitWindowAnalysis,
+  type RefiWindow,
+} from './exit-window-calculator';

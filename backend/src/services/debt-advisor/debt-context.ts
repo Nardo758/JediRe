@@ -77,6 +77,10 @@ export interface DebtContext {
   dealContextFinancials?: Record<string, any>;
   /** Loan Quote scaffold integration: org-scoped quotes for this deal */
   loanQuotes?: LoanQuote[];
+  /** LQ-4: Term optimization result for optimal loan term selection */
+  termOptimization?: import('./term-optimizer').TermOptimizerResult | null;
+  /** LQ-5: Exit window analysis for optimal refi timing */
+  exitWindows?: import('./exit-window-calculator').ExitWindowAnalysis | null;
   assembledAt: string;
 }
 
@@ -94,4 +98,8 @@ export interface DebtContextInput {
   loanProduct?: LoanProductContext | null;
   /** Loan Quote scaffold integration */
   loanQuotes?: LoanQuote[];
+  /** LQ-4: Optional term optimization pre-computed for this context */
+  termOptimization?: import('./term-optimizer').TermOptimizerResult | null;
+  /** LQ-5: Optional exit window analysis pre-computed for this context */
+  exitWindows?: import('./exit-window-calculator').ExitWindowAnalysis | null;
 }
