@@ -11,7 +11,9 @@
  */
 
 import type { LoanQuote } from './loan-quote.types';
-import type { PricingResult, PricingAbsence } from './pricing-resolver';
+import { computeAllInRate, type PricingInput, type PricingResult, type PricingAbsence } from './pricing-resolver';
+import type { ForwardCurve } from './forward-curve';
+import { getRecommendedTerms } from '../module-wiring/capital-structure-adapter';
 
 // ============================================================================
 // Comparison Objective
@@ -55,6 +57,9 @@ export interface QuoteComparisonInput {
 
   /** Ranking objective. */
   objective: ComparisonObjective;
+
+  /** Forward curve for term-index lookup. If null/missing, pricing returns honest absence. */
+  curve?: ForwardCurve | null;
 }
 
 // ============================================================================
@@ -115,7 +120,6 @@ export interface QuoteComparisonResult {
  * Failed quotes (missing matrix entry, stale curve) are captured separately.
  *
  * TODO: Integrate with full model for 'best_levered_irr' objective.
- * TODO: Integrate with M11 sizing for 'max_proceeds' objective.
  */
 export function compareQuotes(input: QuoteComparisonInput): QuoteComparisonResult {
   const { deal, quotes, objective } = input;
@@ -133,24 +137,35 @@ export function compareQuotes(input: QuoteComparisonInput): QuoteComparisonResul
     }
   }
 
-  // ── Step 2: Price each active quote (stub) ────────────────────────────────
+  // ── Step 2: Price each active quote via computeAllInRate ───────────────────
   const ranked: RankedQuote[] = [];
   const failed: Array<{ quote: LoanQuote; reason: string }> = [];
 
   for (const quote of activeQuotes) {
-    // Stub: simulate pricing result.
-    // Real implementation calls computeAllInRate() with deal + quote + curve.
-    const stubPricing = stubPriceQuote(deal, quote, objective);
+    const tier = Object.keys(quote.spreadMatrix.grid)[0] ?? 'unknown';
+    const pricingInput: PricingInput = {
+      dealAssumptions: {
+        purchasePrice: deal.purchasePrice,
+        noiY1: deal.noiY1,
+        targetLtv: deal.targetLtv,
+      },
+      targetTier: tier,
+      targetTerm: deal.preferredTerm ?? 10,
+      targetProgram: quote.program,
+      quote,
+      curve: input.curve ?? null,
+    };
 
-    if ('failureReason' in stubPricing && stubPricing.failureReason) {
-      failed.push({ quote, reason: stubPricing.failureReason });
+    const pricing = computeAllInRate(pricingInput);
+
+    if ('failureReason' in pricing && pricing.failureReason) {
+      failed.push({ quote, reason: pricing.failureReason });
       continue;
     }
 
-    const pricing = stubPricing as PricingResult;
-    const rankScore = computeRankScore(pricing, deal, objective);
+    const rankScore = computeRankScore(pricing as PricingResult, deal, objective);
 
-    ranked.push({ quote, pricing, rankScore, rank: 0 }); // rank filled in Step 3
+    ranked.push({ quote, pricing: pricing as PricingResult, rankScore, rank: 0 }); // rank filled in Step 3
   }
 
   // ── Step 3: Sort by rank score (descending) and assign ranks ──────────────
@@ -180,73 +195,8 @@ export function flagStaleQuotes(quotes: LoanQuote[]): LoanQuote[] {
 }
 
 // ============================================================================
-// Stub Helpers
+// Rank Score Helpers
 // ============================================================================
-
-/**
- * Stub pricing function — returns a realistic PricingResult or PricingAbsence
- * based on quote properties. Replaced by real computeAllInRate() integration.
- */
-function stubPriceQuote(
-  deal: QuoteComparisonInput['deal'],
-  quote: LoanQuote,
-  _objective: ComparisonObjective
-): PricingResult | PricingAbsence {
-  // Simulate honest-absence for quotes with no spread matrix
-  const tiers = Object.keys(quote.spreadMatrix.grid);
-  if (tiers.length === 0) {
-    return {
-      allInRate: null,
-      termIndex: null,
-      spread: null,
-      adjustments: [],
-      totalBps: 0,
-      provenanceChain: [],
-      resolvedTier: deal.preferredTerm?.toString() ?? 'unknown',
-      resolvedTerm: deal.preferredTerm ?? 0,
-      failureReason: 'Spread matrix is empty',
-    };
-  }
-
-  const tier = tiers[0];
-  const term = deal.preferredTerm ?? 10;
-  const termEntry = quote.spreadMatrix.grid[tier]?.[term];
-
-  if (!termEntry) {
-    return {
-      allInRate: null,
-      termIndex: null,
-      spread: null,
-      adjustments: [],
-      totalBps: 0,
-      provenanceChain: [],
-      resolvedTier: tier,
-      resolvedTerm: term,
-      failureReason: `No spread for tier "${tier}" term ${term}yr`,
-    };
-  }
-
-  const spread = (termEntry.min + termEntry.max) / 2;
-  const termIndex = 0.043; // stub 10yr treasury proxy
-  const totalBps = quote.adjustments.reduce((s, a) => s + a.bps, 0) / 10_000;
-  const allInRate = termIndex + spread + totalBps;
-
-  return {
-    allInRate,
-    termIndex,
-    spread,
-    adjustments: quote.adjustments,
-    totalBps,
-    provenanceChain: [
-      { step: 'term_index', value: termIndex, source: 'stub_10yr_treasury' },
-      { step: 'spread', value: spread, source: `${quote.lender} ${tier} ${term}yr` },
-      { step: 'adjustments', value: totalBps, source: 'quote_adjustments' },
-      { step: 'all_in_rate', value: allInRate, source: 'stub_pricing' },
-    ],
-    resolvedTier: tier,
-    resolvedTerm: term,
-  };
-}
 
 /**
  * Compute a rank score for a given pricing result and objective.
@@ -254,25 +204,42 @@ function stubPriceQuote(
  */
 function computeRankScore(
   pricing: PricingResult,
-  _deal: QuoteComparisonInput['deal'],
+  deal: QuoteComparisonInput['deal'],
   objective: ComparisonObjective
 ): number {
   switch (objective) {
     case 'lowest_all_in':
       // Lower rate is better → invert so higher score wins
       return pricing.allInRate > 0 ? 1 / pricing.allInRate : 0;
-    case 'max_proceeds':
-      // TODO: integrate with M11 sizing to get actual loan amount
-      // Stub: assume proceeds scale inversely with rate
-      return pricing.allInRate > 0 ? 1 / pricing.allInRate : 0;
+
+    case 'max_proceeds': {
+      // M11 sizing: maximize loan amount given NOI, purchase price, LTV, and the priced rate
+      const sizing = getRecommendedTerms({
+        noiY1: deal.noiY1,
+        purchasePrice: deal.purchasePrice,
+        ltv: deal.targetLtv,
+        rate: pricing.allInRate,
+      });
+      return sizing.recommendedLoanAmount;
+    }
+
+    case 'best_dscr_headroom': {
+      // M11 sizing: DSCR headroom above the 1.25 floor
+      const sizing = getRecommendedTerms({
+        noiY1: deal.noiY1,
+        purchasePrice: deal.purchasePrice,
+        ltv: deal.targetLtv,
+        rate: pricing.allInRate,
+      });
+      const dscr = sizing.debtService > 0 ? deal.noiY1 / sizing.debtService : 0;
+      return dscr - 1.25;
+    }
+
     case 'best_levered_irr':
-      // TODO: integrate with full model
-      // Stub: placeholder
-      return 0.12;
-    case 'best_dscr_headroom':
-      // TODO: integrate with DSCR computation
-      // Stub: placeholder
-      return 1.35;
+      // TODO: integrate with full model (requires levered IRR across hold period)
+      // Stub: higher rate = worse IRR; scale by leverage
+      return pricing.allInRate > 0 ? (1 / pricing.allInRate) * deal.targetLtv : 0;
+
     default:
       return 0;
   }

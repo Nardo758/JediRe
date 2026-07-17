@@ -311,6 +311,7 @@ describe('Component 3: Quote comparison', () => {
       },
       quotes,
       objective: 'lowest_all_in',
+      curve: makeMockCurve(),
     };
 
     const result = compareQuotes(input);
@@ -363,6 +364,7 @@ describe('Component 3: Stale quote handling', () => {
       },
       quotes,
       objective: 'lowest_all_in',
+      curve: makeMockCurve(),
     };
 
     const result = compareQuotes(input);
