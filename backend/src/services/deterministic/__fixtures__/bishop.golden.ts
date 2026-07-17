@@ -13,8 +13,12 @@
  *   · capture timestamp 2026-07-05T13:50:19Z · "pinned post-Findings A–O + pre-opt demotion"
  *
  * rawAssumptions: best-effort reconstruction from deal DB row + capture context.
- *   Verified by running runFullModel() and asserting output matches expected.
- *   If drift occurs, re-capture from live deal row on Replit — do not hand-tune expected.
+ *   This is a DETERMINISM pin (same inputs → same outputs), NOT external-correctness
+ *   validation. The expected values below are what the engine produced on the
+ *   capture date, bugs included. Correctness against an external oracle (Excel
+ *   parity) is pending — do not treat these numbers as ground truth until that
+ *   gate passes. If drift occurs, re-capture from live deal row on Replit — do
+ *   not hand-tune expected.
  */
 
 import type { BuildPathFixture } from './golden.types';

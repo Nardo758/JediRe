@@ -53,15 +53,13 @@ export {
 } from './term-optimizer';
 
 export {
-  computeOptimalTerm,
-  batchOptimizeTerms,
-  type TermOptimizerInput,
-  type TermOptimizerResult,
-  type TermOptimizerAbsence,
-  type TermEvaluation,
-  type BatchTermOptimizerInput,
-  type BatchTermOptimizerResult,
-} from './term-optimizer';
+  formulateDebtPlan,
+  bustAdvisorCache,
+  type DebtPhase,
+  type MonitoringTrigger,
+  type DebtAlternative,
+  type DebtAdvisorResponse,
+} from './debt-plan-formulator.service';
 
 export {
   readDealContextFinancials,
