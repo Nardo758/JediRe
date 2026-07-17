@@ -586,64 +586,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
   const preset = LOAN_PRESETS[activeLoan.loanTypeLabel] ?? STATIC_PRESETS.Bridge;
   const f9ThisLoan = f9Debt?.loans?.find(l => l.id === activeLoan.id) ?? null;
 
-  // ── Determine initial preset from f9Loan0 ──
-  const initPresetKey: string = (LOAN_PRESETS[f9Loan0?.loanTypeLabel as string] ? f9Loan0?.loanTypeLabel as string : 'Bridge');
-  const initPreset = LOAN_PRESETS[initPresetKey] ?? STATIC_PRESETS.Bridge;
-
-  // ── Loan stack ──────────────────────────────────────────────────────────────
-  const [loans, setLoans] = useState<LoanState[]>(() => [
-    makeLoanState('senior', 'Senior Loan', initPreset, f9Loan0, baseLoanAmt),
-  ]);
-  const [activeLoanId, setActiveLoanId] = useState<string>('senior');
-
-  // Hydrate from f9Debt.loans on data arrival — restores both senior and mezz from backend
-  useEffect(() => {
-    if (!f9Debt?.loans?.length) return;
-    setLoans(prev => {
-      const next = [...prev];
-      for (const f9L of f9Debt.loans) {
-        const key: LoanPresetKey = LOAN_PRESETS[f9L.loanTypeLabel as LoanPresetKey] ? f9L.loanTypeLabel as LoanPresetKey : (f9L.id === 'mezz' ? 'Mezz' : 'Bridge');
-        const existing = next.find(l => l.id === f9L.id);
-        if (existing) {
-          Object.assign(existing, {
-            loanTypeLabel: key,
-            rateType: f9L.rateType,
-            sofrCurve: f9L.sofrCurve?.length === 5 ? f9L.sofrCurve : SOFR_FWD,
-            prepayType: f9L.prepayType as PrepayType ?? existing.prepayType,
-            extensionOptions: f9L.extensionOptions ?? existing.extensionOptions,
-          });
-        } else if (f9L.id === 'mezz') {
-          const mPreset = LOAN_PRESETS.Mezz;
-          next.push({
-            ...makeLoanState('mezz', 'Mezz / B-Note', mPreset, f9L as F9DebtLoan, f9L.loanAmount.platform ?? 0),
-            loanTypeLabel: key,
-            rateType: f9L.rateType,
-            sofrCurve: f9L.sofrCurve?.length === 5 ? f9L.sofrCurve : SOFR_FWD,
-            prepayType: f9L.prepayType as PrepayType ?? mPreset.prepayType,
-          });
-        }
-        // Restore refi state from senior loan overrides
-        if (f9L.id === 'senior') {
-          setRefi(r => ({
-            ...r,
-            enabled: f9L.refiEnabled,
-            triggerYear: f9L.refiTriggerYear ?? r.triggerYear,
-            newLoanType: (f9L.refiNewLoanType && LOAN_PRESETS[f9L.refiNewLoanType as LoanPresetKey])
-              ? f9L.refiNewLoanType as LoanPresetKey
-              : r.newLoanType,
-          }));
-        }
-      }
-      return next;
-    });
-  // hook intentionally captures f9Debt.loans via the closure rather than re-running on each change — re-running on the listed deps is the desired trigger; the omitted value is read from the enclosing scope at the moment of fire.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [f9Debt?.loans?.length]);
-
-  const activeLoan = loans.find(l => l.id === activeLoanId) ?? loans[0];
-  const preset = LOAN_PRESETS[activeLoan.loanTypeLabel];
-  const f9ThisLoan = f9Debt?.loans?.find(l => l.id === activeLoan.id) ?? null;
-
   // Resolved values
   const effLoanAmt  = activeLoan.userLoanAmount ?? f9ThisLoan?.loanAmount.platform ?? baseLoanAmt;
   const effRate     = activeLoan.rateType === 'Floating'
