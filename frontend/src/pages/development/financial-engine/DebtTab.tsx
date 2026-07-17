@@ -693,40 +693,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
     });
   }, [clearDebtOverrides, patchDebtStr]);
 
-  const addLoan = useCallback((typeKey: string = 'Mezz') => {
-    if (loans.length >= 5) return;
-    const newId = `loan_${Date.now()}`;
-    const p = LOAN_PRESETS[typeKey] ?? STATIC_PRESETS.Mezz;
-    const letter = LOAN_LETTERS[loans.length] ?? String(loans.length + 1);
-    setLoans(prev => [...prev, makeLoanState(newId, `Loan ${letter}`, p)]);
-    setActiveLoanId(newId);
-    patchDebt(newId, 'loanAmount', 0);
-    patchDebtStr(newId, 'loanTypeLabel', p.label);
-    patchDebtStr(newId, 'rateType', p.rateType);
-    patchDebtStr(newId, 'prepayType', p.prepayType);
-  }, [loans, patchDebt, patchDebtStr]);
-    const p = LOAN_PRESETS[key];
-    setLoans(prev => prev.map(l => l.id !== id ? l : {
-      ...l,
-      loanTypeLabel: key,
-      rateType: p.rateType,
-      prepayType: p.prepayType,
-      userRate: null, userSpread: null, userSofr: null, userCapRate: null,
-      userTerm: null, userAmort: null, userIO: null,
-      userOrigFee: null, userExitFee: null, userRateCapCost: null,
-      userMinDscr: null, userMinDY: null, userMinOcc: null, userMaxLtv: null,
-    }));
-    // Clear all persisted numeric overrides atomically, then persist the new preset strings
-    const numericFields = ['interestRate','sofr','sofrCurve:0','spread','capRate','termYears',
-      'amortYears','ioMonths','origFee','exitFee','rateCapCost','minDscr','minDY','minOcc',
-      'maxLtv','cashTrapDscr','tiEscrow','replReserve','opReserveMonths'];
-    clearDebtOverrides(id, numericFields).then(() => {
-      patchDebtStr(id, 'loanTypeLabel', key);
-      patchDebtStr(id, 'rateType', p.rateType);
-      patchDebtStr(id, 'prepayType', p.prepayType);
-    });
-  }, [clearDebtOverrides, patchDebtStr]);
-
   const addLoan = useCallback((typeKey: LoanPresetKey = 'Mezz') => {
     if (loans.length >= 5) return;
     const newId = `loan_${Date.now()}`;
