@@ -582,6 +582,20 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [f9Debt?.loans?.length]);
 
+  const activeLoan = loans.find(l => l.id === activeLoanId) ?? loans[0];
+  const preset = LOAN_PRESETS[activeLoan.loanTypeLabel] ?? STATIC_PRESETS.Bridge;
+  const f9ThisLoan = f9Debt?.loans?.find(l => l.id === activeLoan.id) ?? null;
+
+  // ── Determine initial preset from f9Loan0 ──
+  const initPresetKey: string = (LOAN_PRESETS[f9Loan0?.loanTypeLabel as string] ? f9Loan0?.loanTypeLabel as string : 'Bridge');
+  const initPreset = LOAN_PRESETS[initPresetKey] ?? STATIC_PRESETS.Bridge;
+
+  // ── Loan stack ──────────────────────────────────────────────────────────────
+  const [loans, setLoans] = useState<LoanState[]>(() => [
+    makeLoanState('senior', 'Senior Loan', initPreset, f9Loan0, baseLoanAmt),
+  ]);
+  const [activeLoanId, setActiveLoanId] = useState<string>('senior');
+
   // Hydrate from f9Debt.loans on data arrival — restores both senior and mezz from backend
   useEffect(() => {
     if (!f9Debt?.loans?.length) return;
@@ -732,6 +746,40 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
       'maxLtv','cashTrapDscr','tiEscrow','replReserve','opReserveMonths'];
     clearDebtOverrides(id, numericFields).then(() => {
       patchDebtStr(id, 'loanTypeLabel', p.label);
+      patchDebtStr(id, 'rateType', p.rateType);
+      patchDebtStr(id, 'prepayType', p.prepayType);
+    });
+  }, [clearDebtOverrides, patchDebtStr]);
+
+  const addLoan = useCallback((typeKey: string = 'Mezz') => {
+    if (loans.length >= 5) return;
+    const newId = `loan_${Date.now()}`;
+    const p = LOAN_PRESETS[typeKey] ?? STATIC_PRESETS.Mezz;
+    const letter = LOAN_LETTERS[loans.length] ?? String(loans.length + 1);
+    setLoans(prev => [...prev, makeLoanState(newId, `Loan ${letter}`, p)]);
+    setActiveLoanId(newId);
+    patchDebt(newId, 'loanAmount', 0);
+    patchDebtStr(newId, 'loanTypeLabel', p.label);
+    patchDebtStr(newId, 'rateType', p.rateType);
+    patchDebtStr(newId, 'prepayType', p.prepayType);
+  }, [loans, patchDebt, patchDebtStr]);
+    const p = LOAN_PRESETS[key];
+    setLoans(prev => prev.map(l => l.id !== id ? l : {
+      ...l,
+      loanTypeLabel: key,
+      rateType: p.rateType,
+      prepayType: p.prepayType,
+      userRate: null, userSpread: null, userSofr: null, userCapRate: null,
+      userTerm: null, userAmort: null, userIO: null,
+      userOrigFee: null, userExitFee: null, userRateCapCost: null,
+      userMinDscr: null, userMinDY: null, userMinOcc: null, userMaxLtv: null,
+    }));
+    // Clear all persisted numeric overrides atomically, then persist the new preset strings
+    const numericFields = ['interestRate','sofr','sofrCurve:0','spread','capRate','termYears',
+      'amortYears','ioMonths','origFee','exitFee','rateCapCost','minDscr','minDY','minOcc',
+      'maxLtv','cashTrapDscr','tiEscrow','replReserve','opReserveMonths'];
+    clearDebtOverrides(id, numericFields).then(() => {
+      patchDebtStr(id, 'loanTypeLabel', key);
       patchDebtStr(id, 'rateType', p.rateType);
       patchDebtStr(id, 'prepayType', p.prepayType);
     });

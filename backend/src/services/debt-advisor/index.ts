@@ -41,7 +41,16 @@ export type {
 
 export { assembleDebtContext } from './debt-context-assembler';
 
-export { computeDistressFlags } from './s1-distress-calculator';
+export {
+  computeOptimalTerm,
+  batchOptimizeTerms,
+  type TermOptimizerInput,
+  type TermOptimizerResult,
+  type TermOptimizerAbsence,
+  type TermEvaluation,
+  type BatchTermOptimizerInput,
+  type BatchTermOptimizerResult,
+} from './term-optimizer';
 
 export {
   computeOptimalTerm,

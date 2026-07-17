@@ -145,6 +145,7 @@ export const loanQuoteStore: LoanQuoteStore = {
     try {
       await client.query('BEGIN');
 
+      // Verify existence + org scope (honest-absence: throw if missing)
       const check = await client.query(
         `SELECT * FROM loan_quotes WHERE id = $1 AND org_id = $2 FOR UPDATE`,
         [id, orgId]
@@ -157,17 +158,50 @@ export const loanQuoteStore: LoanQuoteStore = {
       const fields: string[] = [];
       const params: unknown[] = [];
 
-      if (patch.lender !== undefined) { fields.push(`lender = $${fields.length + 1}`); params.push(patch.lender); }
-      if (patch.program !== undefined) { fields.push(`program = $${fields.length + 1}`); params.push(patch.program); }
-      if (patch.quoteDate !== undefined) { fields.push(`quote_date = $${fields.length + 1}`); params.push(patch.quoteDate); }
-      if (patch.expires !== undefined) { fields.push(`expires = $${fields.length + 1}`); params.push(patch.expires); }
-      if (patch.indexBasis !== undefined) { fields.push(`index_basis = $${fields.length + 1}`); params.push(patch.indexBasis); }
-      if (patch.rateType !== undefined) { fields.push(`rate_type = $${fields.length + 1}`); params.push(patch.rateType); }
-      if (patch.spreadMatrix !== undefined) { fields.push(`spread_matrix = $${fields.length + 1}`); params.push(JSON.stringify(patch.spreadMatrix)); }
-      if (patch.adjustments !== undefined) { fields.push(`adjustments = $${fields.length + 1}`); params.push(JSON.stringify(patch.adjustments)); }
-      if (patch.prepayStructure !== undefined) { fields.push(`prepay_structure = $${fields.length + 1}`); params.push(JSON.stringify(patch.prepayStructure)); }
-      if (patch.brokerClaims !== undefined) { fields.push(`broker_claims = $${fields.length + 1}`); params.push(JSON.stringify(patch.brokerClaims)); }
-      if (patch.notes !== undefined) { fields.push(`notes = $${fields.length + 1}`); params.push(patch.notes ?? null); }
+      if (patch.lender !== undefined) {
+        fields.push(`lender = $${fields.length + 1}`);
+        params.push(patch.lender);
+      }
+      if (patch.program !== undefined) {
+        fields.push(`program = $${fields.length + 1}`);
+        params.push(patch.program);
+      }
+      if (patch.quoteDate !== undefined) {
+        fields.push(`quote_date = $${fields.length + 1}`);
+        params.push(patch.quoteDate);
+      }
+      if (patch.expires !== undefined) {
+        fields.push(`expires = $${fields.length + 1}`);
+        params.push(patch.expires);
+      }
+      if (patch.indexBasis !== undefined) {
+        fields.push(`index_basis = $${fields.length + 1}`);
+        params.push(patch.indexBasis);
+      }
+      if (patch.rateType !== undefined) {
+        fields.push(`rate_type = $${fields.length + 1}`);
+        params.push(patch.rateType);
+      }
+      if (patch.spreadMatrix !== undefined) {
+        fields.push(`spread_matrix = $${fields.length + 1}`);
+        params.push(JSON.stringify(patch.spreadMatrix));
+      }
+      if (patch.adjustments !== undefined) {
+        fields.push(`adjustments = $${fields.length + 1}`);
+        params.push(JSON.stringify(patch.adjustments));
+      }
+      if (patch.prepayStructure !== undefined) {
+        fields.push(`prepay_structure = $${fields.length + 1}`);
+        params.push(JSON.stringify(patch.prepayStructure));
+      }
+      if (patch.brokerClaims !== undefined) {
+        fields.push(`broker_claims = $${fields.length + 1}`);
+        params.push(JSON.stringify(patch.brokerClaims));
+      }
+      if (patch.notes !== undefined) {
+        fields.push(`notes = $${fields.length + 1}`);
+        params.push(patch.notes ?? null);
+      }
 
       if (fields.length === 0) {
         await client.query('ROLLBACK');
@@ -212,4 +246,5 @@ export const loanQuoteStore: LoanQuoteStore = {
   },
 };
 
+// Re-export types for downstream consumers
 export type { LoanQuoteRow };

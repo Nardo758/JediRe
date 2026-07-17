@@ -917,7 +917,7 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
       const syntheticQuote: import('../loan-quotes/loan-quote.types').LoanQuote = {
         id: `synthetic_${dealId}`,
         orgId: 'platform',
-        lender: phase1.lenders[0]?.lender?.name ?? 'Advisor',
+        lender: phase1.lenders[0]?.name ?? 'Advisor',
         program: phase1.product,
         quoteDate: new Date().toISOString().split('T')[0],
         expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
