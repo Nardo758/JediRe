@@ -13,7 +13,7 @@
  *   Step 6: OCR any PDF attachments
  *   Step 7: Extract structured deal fields
  *   Step 8: Score fit against investment profile
- *   Step 9: Create draft deal (status = awaiting_review, source = email_intake)
+ *   Step 9: Create draft deal (status = PROSPECT, source = email_intake)
  *   Step 10: Emit deal.created → Research Agent chains from here
  *   Step 11: Log to audit_log
  *
@@ -31,6 +31,7 @@ import { classifyAsDealOpportunity } from '../../agents/tools/classify_as_deal_o
 import { extractDealFields, ExtractedDealFields } from '../../agents/tools/extract_deal_fields';
 import { scoreFitAgainstProfile, FitScoreResult } from '../../agents/tools/score_fit_against_profile';
 import { createDealDraft } from '../../agents/tools/create_deal_draft';
+import { stampProvenance } from '../../utils/provenance-stamp';
 import { ocrDocument } from '../../agents/tools/ocr_document';
 
 const CONFIDENCE_THRESHOLD = 0.7;
@@ -190,6 +191,13 @@ export const emailIntakeFunction = inngest.createFunction(
     }) as FitScoreResult;
 
     // ── Step 9: Create draft deal ────────────────────────────────────────
+    const stamp = stampProvenance({
+      ingestionSource: 'email_intake',
+      userId: user_id,
+      rawSourceRef: message_id,
+      documentSource: 'email',
+    });
+    const draft = await step.run('create-draft-deal', async () => {
     const draft = await step.run('create-draft-deal', async () => {
       return createDealDraft(fields, user_id, {
         gmail_message_id: message_id,
@@ -198,7 +206,7 @@ export const emailIntakeFunction = inngest.createFunction(
         asset_class_hint: classification.asset_class_hint,
         fit_score: fitScore.fit_score,
         fit_breakdown: fitScore.fit_breakdown,
-      });
+      }, stamp);
     });
 
     // ── Step 10: Notify user — new deal arrived in inbox ─────────────────

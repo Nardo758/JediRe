@@ -24,6 +24,7 @@ import { logger } from '../../utils/logger';
 import { ExtractedDealFields } from './extract_deal_fields';
 import { FitScoreResult } from './score_fit_against_profile';
 import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
+import { stampProvenance, type ProvenanceStamp } from '../../utils/provenance-stamp';
 
 export interface IntakeMetadata {
   gmail_message_id: string;
@@ -48,7 +49,8 @@ export interface CreateDealDraftResult {
 export async function createDealDraft(
   fields: ExtractedDealFields,
   userId: string,
-  metadata: IntakeMetadata
+  metadata: IntakeMetadata,
+  stamp?: ProvenanceStamp
 ): Promise<CreateDealDraftResult> {
   const existing = await query(
     `SELECT id, name FROM deals
@@ -76,6 +78,7 @@ export async function createDealDraft(
 
   const dealData = {
     source: 'email_intake',
+    _provenance: stamp ?? stampProvenance({ ingestionSource: 'email_intake', userId }),
     gmail_message_id: metadata.gmail_message_id,
     from_address: metadata.from_address,
     classification_confidence: metadata.classification_confidence,
@@ -156,16 +159,6 @@ export async function createDealDraft(
     status: 'PROSPECT',
   };
 }
-
-export const createDealDraftTool = {
-  name: 'create_deal_draft',
-  description: `Create a PROSPECT deal draft from email intake.
-Insert directly into deals table with status='PROSPECT' and intake provenance.
-Returns: deal_id, deal_name, status.
-Use after extract_deal_fields + score_fit_against_profile confirm a deal.`,
-  };
-}
-
 
 export const createDealDraftTool = {
   name: 'create_deal_draft',

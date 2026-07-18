@@ -17,6 +17,7 @@ import { parseRentRoll } from './document-extraction/parsers/rent-roll-parser';
 import { parseTaxBillAsync } from './document-extraction/parsers/tax-bill-parser';
 import { parseOMAsync, type OMExtraction } from './document-extraction/parsers/om-parser';
 import { logger } from '../utils/logger';
+import { type ProvenanceStamp } from '../utils/provenance-stamp';
 import { createProfileFromOM } from './building-profiles/building-profile.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -643,7 +644,7 @@ async function parseArchiveDeal(
 
 // ─── Database Upsert ──────────────────────────────────────────────────────────
 
-async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal, existingAssetId?: string, createdBy?: string): Promise<string> {
+async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal, existingAssetId?: string, createdBy?: string, provenance?: ProvenanceStamp): Promise<string> {
   const propertyType = deal.stories ? getPropertyType(deal.stories, deal.units) : 'garden';
 
   const mergedExtraction = {
@@ -651,6 +652,7 @@ async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal, existingAs
     brokerClaims: deal.brokerClaims,
     sourceFiles: deal.sourceFiles.map(f => ({ name: f.name, type: f.type })),
     parseWarnings: deal.parseWarnings,
+    ...(provenance && { _provenance: provenance }),
   };
 
   const dqScore = computeDQ({
@@ -772,6 +774,7 @@ export async function ingestArchiveDeals(
      *  `docType` overrides the auto-detected type from classifyFile().
      *  `obsDate` (YYYY-MM) overrides the observation period used when building corpus rows. */
     fileClassifications?: Record<string, { docType: ArchiveFile['type']; obsDate?: string }>;
+    provenance?: ProvenanceStamp;
   } = {}
 ): Promise<ArchiveScanResult> {
   const pool = getPool();
@@ -811,7 +814,7 @@ export async function ingestArchiveDeals(
     
     try {
       const parsed = await parseArchiveDeal(folder, { createdBy: options.createdBy });
-      const assetId = await upsertArchiveDeal(pool, parsed, options.existingAssetId, options.createdBy);
+      const assetId = await upsertArchiveDeal(pool, parsed, options.existingAssetId, options.createdBy, options.provenance);
       if (assetId) {
         if (!result.assetIds) result.assetIds = [];
         result.assetIds.push(assetId);

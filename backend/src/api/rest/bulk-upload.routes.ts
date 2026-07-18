@@ -13,6 +13,7 @@ import * as os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 import { ingestArchiveDeals } from '../../services/archive-ingestion.service';
 import { logger } from '../../utils/logger';
+import { stampProvenance } from '../../utils/provenance-stamp';
 import AdmZip from 'adm-zip';
 import { query as dbQuery } from '../../database/connection';
 import { getDataLibraryAutoEnrichmentService } from '../../services/property-enrichment/data-library/auto-enrichment.service';
@@ -405,12 +406,14 @@ async function processUploadJob(job: UploadJob): Promise<void> {
       rootLabel = r.rows[0]?.property_name || undefined;
     }
 
+    const stamp = stampProvenance({ ingestionSource: 'archive_import', userId: job.userId || null, jobId: job.id });
     const result = await ingestArchiveDeals(job.uploadPath, {
       skipExisting: false,
       rootLabel,
       existingAssetId: job.assetId || undefined,
       createdBy: job.userId || undefined,
       fileClassifications: job.fileClassificationMap,
+      provenance: stamp,
     });
 
     job.dealsCreated = result.parsedFolders;
@@ -518,12 +521,14 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
       rootLabel = r.rows[0]?.property_name || undefined;
     }
 
+    const stamp = stampProvenance({ ingestionSource: 'archive_import', userId: job.userId || null, jobId: job.id });
     // Run archive ingestion (ZIP uploads don't carry per-file classifications from frontend)
     const result = await ingestArchiveDeals(job.uploadPath, {
       skipExisting: false,
       rootLabel,
       existingAssetId: job.assetId || undefined,
       createdBy: job.userId || undefined,
+      provenance: stamp,
     });
 
 
