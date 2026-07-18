@@ -65,7 +65,7 @@ const GDOT_CONFIG: StateDOTConfig = {
   stateFips: '13',
   name: 'Georgia DOT (via FHWA HPMS)',
   coordinateSystem: 'wgs84',
-  availableYears: [2020, 2022],
+  availableYears: [2020, 2022, 2024],
   getServiceUrl: (year: number) =>
     `https://geo.dot.gov/server/rest/services/Hosted/HPMS_FULL_GA_${year}/FeatureServer/0`,
   getAadtField: (_year: number) => 'aadt',
