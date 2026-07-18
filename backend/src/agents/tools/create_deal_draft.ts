@@ -3,14 +3,14 @@ import { z } from 'zod';
 /**
  * create_deal_draft
  *
- * Creates an awaiting_review deal from email intake.
+ * Creates a PROSPECT deal from email intake.
  *
  * Design note — why direct DB instead of POST /api/v1/deals:
  *   The platform API's deal-create endpoint requires a geographic boundary
  *   (GeoJSON geometry) that is not available from broker emails.  It also
  *   sets status='active' and applies user-auth middleware — neither correct
  *   for auto-intake drafts.  This tool inserts directly into `deals` (the
- *   same table the route writes to) to set status='awaiting_review' and
+ *   same table the route writes to) to set status='PROSPECT' and
  *   store intake provenance in the `deal_data` JSONB column, which already
  *   exists and has a GIN index.  After creation it calls autoDiscoverComps
  *   to match the side-effect that the route handler also fires.
@@ -37,7 +37,7 @@ export interface IntakeMetadata {
 export interface CreateDealDraftResult {
   deal_id: string;
   deal_name: string;
-  status: 'awaiting_review';
+  status: 'PROSPECT';
 }
 
 /**
@@ -65,7 +65,7 @@ export async function createDealDraft(
     return {
       deal_id: existing.rows[0].id,
       deal_name: existing.rows[0].name,
-      status: 'awaiting_review',
+      status: 'PROSPECT',
     };
   }
 
@@ -83,7 +83,8 @@ export async function createDealDraft(
     fit_score: metadata.fit_score,
     fit_breakdown: metadata.fit_breakdown,
     intake_at: new Date().toISOString(),
-    ...(fields.sqft != null && { sqft: fields.sqft }),
+    ...(fields.asset_class != null && { asset_class: fields.asset_class }),
+    ...(fields.deal_type != null && { deal_type: fields.deal_type }),
     ...(fields.year_built != null && { year_built: fields.year_built }),
     ...(fields.noi != null && { noi: fields.noi }),
     ...(fields.cap_rate != null && { cap_rate: fields.cap_rate }),
@@ -99,7 +100,7 @@ export async function createDealDraft(
        user_id, name, status, deal_category,
        address, property_address, city, state_code,
        unit_count, strategy, deal_data, origin_class
-     ) VALUES ($1, $2, 'awaiting_review', 'pipeline', $3, $4, $5, $6, $7, $8, $9, 'platform_underwritten')
+     ) VALUES ($1, $2, 'PROSPECT', 'pipeline', $3, $4, $5, $6, $7, $8, $9, 'platform_underwritten')
      RETURNING id, name`,
     [
       userId,
@@ -109,7 +110,7 @@ export async function createDealDraft(
       fields.city,
       fields.state,
       fields.units,
-      fields.asset_class,
+      fields.deal_type ?? fields.asset_class ?? 'value_add',
       JSON.stringify(dealData),
     ]
   );
@@ -152,15 +153,25 @@ export async function createDealDraft(
   return {
     deal_id: row.id,
     deal_name: row.name,
-    status: 'awaiting_review',
+    status: 'PROSPECT',
+  };
+}
+
+export const createDealDraftTool = {
+  name: 'create_deal_draft',
+  description: `Create a PROSPECT deal draft from email intake.
+Insert directly into deals table with status='PROSPECT' and intake provenance.
+Returns: deal_id, deal_name, status.
+Use after extract_deal_fields + score_fit_against_profile confirm a deal.`,
   };
 }
 
 
 export const createDealDraftTool = {
   name: 'create_deal_draft',
-  description: `Create an awaiting_review deal draft from email intake.
-Insert directly into deals table with status='awaiting_review' and intake provenance.
+  description: `Create a PROSPECT deal draft from email intake.
+Insert directly into deals table with status='PROSPECT' and intake provenance.
+Returns: deal_id, deal_name, status.
 Returns: deal_id, deal_name, status.
 Use after extract_deal_fields + score_fit_against_profile confirm a deal.`,
   inputSchema: z.object({

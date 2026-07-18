@@ -147,7 +147,7 @@ export const bishopFixture: BuildPathFixture = {
     buildEndpoint: 'runFullModel(effectiveAssumptions, skipSensitivity)',
     inputSnapshot: 'effectiveAssumptions from F5-1 instrumentation (pre-M11 boundary)',
     bodySource: 'P3 re-pin script (f5-2-p3-pin.ts) — per-field extraction with provenance',
-    originClass: 'on_platform_underwrite',
+    originClass: 'platform_underwritten',
     pathBoundRule: true,
   },
 
