@@ -63,25 +63,35 @@ const FDOT_CONFIG: StateDOTConfig = {
 const GDOT_CONFIG: StateDOTConfig = {
   state: 'GA',
   stateFips: '13',
-  name: 'Georgia DOT',
+  name: 'Georgia DOT (via FHWA HPMS)',
   coordinateSystem: 'wgs84',
-  availableYears: [2018, 2019, 2020, 2021, 2022, 2023, 2024],
-  getServiceUrl: (_year: number) =>
-    'https://services1.arcgis.com/d3dSGjssFXn4j9Xh/arcgis/rest/services/GDOT_AADT/FeatureServer/0',
-  getAadtField: (_year: number) => 'AADT',
-  getWhereClause: (year: number) => `COUNT_YEAR=${year} AND AADT>0`,
+  availableYears: [2020, 2022, 2024],
+  getServiceUrl: (year: number) =>
+    `https://geo.dot.gov/server/rest/services/Hosted/HPMS_FULL_GA_${year}/FeatureServer/0`,
+  getAadtField: (_year: number) => 'aadt',
+  getWhereClause: (_year: number) => 'aadt>0',
   mapFeature: (attrs, _geom, year, state) => {
-    const adt = parseInt(String(attrs.AADT || '0'), 10);
+    const adt = parseInt(String(attrs.aadt || '0'), 10);
     if (!adt || adt <= 0) return null;
+
+    // Field names differ by year: 2020 uses route_id/county_code; 2022 uses routeid/county_id
+    const routeId = String(attrs.route_id || attrs.routeid || '');
+    const county = String(attrs.county_code || attrs.county_id || '');
+    const roadName = String(attrs.route_name || routeId || 'Unknown');
+    const lanes = parseInt(String(attrs.through_lanes || '0'), 10) || undefined;
+    const fClass = parseInt(String(attrs.f_system || '0'), 10) || undefined;
+
     return {
       source_system: `DOT_${state}`,
-      station_id: `GA_${attrs.RC_STATION || attrs.OBJECTID || ''}`,
-      route_id: String(attrs.ROUTE_ID || '') || undefined,
-      road_name: String(attrs.ROAD_NAME || attrs.ROUTE_ID || 'Unknown'),
-      county: String(attrs.COUNTY || '') || undefined,
+      station_id: `GA_HPMS_${attrs.objectid || routeId}_${year}`,
+      route_id: routeId || undefined,
+      road_name: roadName,
+      county: county || undefined,
       state,
       adt,
-      measurement_year: parseInt(String(attrs.COUNT_YEAR || year), 10),
+      measurement_year: year,
+      number_of_lanes: lanes || undefined,
+      functional_class: fClass ? String(fClass) : undefined,
     };
   },
 };
