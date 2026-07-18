@@ -56,10 +56,34 @@ export type LayeredValueSource =
 export interface LayeredValue<T> {
   value: T;
   source: LayeredValueSource | string;
+
+  // ── Agent provenance ──
   agentRunId?: string;
   agentId?: string;
   runAt?: string;
   metadata?: Record<string, unknown>;
+
+  // ── DealContext tier fields (absorbed from dealContext.ts / frontend dealContext.types.ts)
+  /** Which layer won the resolution. */
+  resolvedFrom?: 'broker' | 'platform' | 'user' | 't12' | 'rent_roll' | 'tax_bill' | 'om' | 'agent' | 'computed' | string;
+  /** Timestamp of last resolution (was `updatedAt` in dealContext). */
+  resolvedAt?: string;
+  /** Confidence score 0–1 (dealContext used number; proforma used 'high'|'medium'|'low'). */
+  confidence?: number;
+  /** Data quality classification. */
+  dataQuality?: 'ACTUAL' | 'INFERRED' | 'ESTIMATED' | 'DEFAULT';
+  /** How the value was filled when direct source absent. */
+  fillMethod?: string;
+  /** Model version that produced this value. */
+  modelVersion?: string;
+  /** Nested layer values for broker / platform / user overrides. */
+  layers?: {
+    broker?: { value: T; updatedAt: string; confidence: number; source?: string };
+    platform?: { value: T; updatedAt: string; confidence: number; source?: string };
+    user?: { value: T; updatedAt: string; confidence: number };
+  };
+
+  // ── Stance / operator modulation ──
   /**
    * True when OperatorStance modulated this value after tier-hierarchy resolution.
    * Drives the "yellow attention" marker in the Thesis / Assumptions UI.
