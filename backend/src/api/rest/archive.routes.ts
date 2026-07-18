@@ -686,8 +686,8 @@ router.post('/ingest-rows', async (req: Request, res: Response) => {
         const existingSignals: string[] = (existing.rows[0].source_signals as string[]) ?? [];
         const mergedSignals = Array.from(new Set([...existingSignals, ...newSignals]));
 
-        const assignments: string[] = ['source_signals = $1', 'scope_id = $2', 'redistribution_restricted = $3', 'updated_at = NOW()'];
-        const params: unknown[] = [mergedSignals, 'GLOBAL', false];
+        const assignments: string[] = ['source_signals = $1', 'updated_at = NOW()'];
+        const params: unknown[] = [mergedSignals];
         let idx = params.length;
 
         for (const [col, val] of Object.entries(row)) {
@@ -825,8 +825,6 @@ router.post('/parse-om', memUpload.single('file'), async (req: Request, res: Res
           `UPDATE historical_observations
            SET property_year_built = $1,
                source_signals = array(SELECT DISTINCT unnest(source_signals || ARRAY['om'])),
-               scope_id = 'GLOBAL',
-               redistribution_restricted = FALSE,
                updated_at = NOW()
            WHERE id = $2`,
           [yearBuilt, existing.rows[0].id],
