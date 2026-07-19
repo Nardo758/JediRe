@@ -1,10 +1,11 @@
 # ABSORPTION ENGINE — PHASE 1 DESIGN BRIEF
 
 **Date:** 2026-07-18
-**Governing spec:** SPEC_ABSORPTION_ENGINE (I–II.13, proven against Highlands)
+**Governing spec:** SPEC_ABSORPTION_ENGINE (I–II.15, proven against Highlands)
 **Governing rulings:** TRAFFIC_ENGINE_AUDIT R1–R5 (approved by Leon 2026-07-18)
 **Build wave:** Wave 3 (gated behind unification foundations; DESIGN proceeds now)
 **Gate deals:** Highlands (existing/owned) · Bishop (lease-up)
+**Review status:** REVISED — addresses R1–R7 from review gate (commit `431cacecd`)
 
 ---
 
@@ -38,6 +39,12 @@ Every interface, type, and schema decision in this doc is evaluated against one 
 | 9 | **Comp bridge implementation** | `CompTrafficService` stays separate in Phase 1 (R5) | `AbsorptionEngine.estimate()` accepts `signal_source: 'subject' \| 'comp'`; comp implementation is a new consumer calling the same method. |
 | 10 | **Ten-year projection** | `TenYearProjectionService` is RETIRED, not adapted (R2) | `DemandContext` seam carries weekly horizon; long-term projection is a Phase 2 extension on the same seam. |
 
+### P0 FIX — EXPLICITLY OUT OF SCOPE
+
+The P0 visits-vs-tours fix (`ProFormaService:134` computes `projectedLeases = weekly_walk_ins × closing_ratio` — but `weekly_walk_ins` are **visits** and `closing_ratio` is **tours→leases**) is a **live production data-integrity defect that ships independently in Wave 0.** This design inherits corrected stage-labeling; it does not deliver the fix. No Phase 1 deliverable is a prerequisite for the P0 dispatch. The interim fix (insert `visit_to_tour_ratio` or honest-absence the projection) runs on its own timeline; the permanent shape is decided by this design but the build does not block the interim.
+
+*(SPEC II. P0 section: "LIVE BUG, FIX BEFORE (OR INDEPENDENT OF) THE BUILD")*
+
 ---
 
 ## 2. ABSORPTIONENGINE INPUT CONTRACT (WIDE)
@@ -46,6 +53,8 @@ The engine exposes **one entry point** with a discriminated input contract. All 
 
 ```typescript
 // Phase 1 ships these two modes; Phase 2 adds 'land' | 'ground_up' without breaking.
+// Canonical spellings: registered in backend/src/types/canonical-keys.ts (Wave 1 unification).
+// Reconciliation: 'existing' = STABILIZED · 'lease_up' = LEASE_UP per traffic-calibration.types.ts:103
 type DealMode = 'existing' | 'lease_up';
 
 type SignalSource = 'subject' | 'comp';  // 'comp' wired in Phase 2; socket exists now
@@ -150,15 +159,16 @@ interface MonthlyAbsorption {
 ```typescript
 // Sole proprietor of all conversion ratios.
 // Callers request by stage-label; the registry resolves the ratio + provenance.
+// Stage labels match SPEC_ABSORPTION_ENGINE II.1 taxonomy exactly.
 interface ConversionRegistry {
   resolveRatio(request: RatioRequest): RatioResolution;
   registerActuals(actuals: StageActuals): void;  // EMA recalibration trigger
 }
 
 type StageLabel =
-  | 'inquiry→tour'
-  | 'tour→application'
-  | 'application→lease'
+  | 'inquiry→tour'         // SPEC II.1: awareness → interest → anchor
+  | 'tour→application'     // SPEC II.1: anchor → outcome
+  | 'application→lease'    // SPEC II.1: outcome closes loop
   | 'inquiry→lease'        // composite; computed from chain, not stored
   | 'visit→tour'           // legacy alias; maps to 'inquiry→tour' with deprecation log
   ;
@@ -185,7 +195,7 @@ interface RatioResolution {
 | Step | Action | Target |
 |------|--------|--------|
 | 1 | Build `ConversionRegistry` + table | New code, no consumers yet |
-| 2 | Migrate `TrafficToProFormaService` (M07→M09 bridge) | First live consumer; thin wrapper over registry |
+| 2 | Migrate `TrafficToProFormaService` (M07→M09 bridge); `ProFormaService:134` `closing_ratio` and `visit_to_tour_ratio` migrate INTO the registry | First live consumer; thin wrapper over registry |
 | 3 | `MultifamilyTrafficService` delegates to registry | Old service becomes thin, then deleted |
 | 4 | `TrafficPredictionEngine v2` funnel metrics read from registry | Replaces inline ratios |
 | 5 | `TrafficLearningService` EMA writes to registry | Recalibration target changes |
@@ -233,10 +243,17 @@ const compEstimate = await absorptionEngine.estimate({
 | `analysis_date` | date | weekly atom anchor |
 | `deal_mode` | enum | `'existing' \| 'lease_up'`; open for expansion |
 | `signal_source` | enum | `'subject' \| 'comp'` |
+| `estimate_tier` | enum | `'measured' \| 'observed' \| 'inferred'` — spec II.3 provenance |
+| `fallback_rung` | text | which II.3 rung produced the value (e.g., `'submarket_peer'`, `'market_default'`, `'workback(capture 0.4–0.7)'`) |
+| `confidence_band` | jsonb | `{ lower: number, upper: number, method: string }` — spec II.3 format |
 | `weekly_forecast` | jsonb | 52-week array of `{weekEnding, inquiries, tours, apps, leases}` |
 | `monthly_rollup` | jsonb | Array of `MonthlyAbsorption` |
 | `conversion_provenance` | jsonb | Which stage labels resolved from which source |
 | `created_at` / `updated_at` | timestamp | |
+
+**Provenance rule (Check 3):** No estimate row can exist without `estimate_tier` + `fallback_rung` + `confidence_band`. The `estimate_tier` maps to spec II.3's three-tier confidence gradient: `measured` (uploaded docs) > `observed` (real traffic) > `inferred` (modeled from surroundings). The `fallback_rung` names the method that produced the value. The `confidence_band` carries the empirical error bar.
+
+**Review-gate extension (II.14):** `absorption_estimates` AND `rent_roll_snapshots` share the stamp-the-time-axis-at-write requirement. `as_of_date` on every row; the "current" rent roll is DERIVED (`max(as_of_date)`), not separately stored.
 
 ### Index Strategy
 
@@ -246,9 +263,46 @@ const compEstimate = await absorptionEngine.estimate({
 
 ---
 
-## 7. INTEGRATION WITH EXISTING ENGINE
+## 7. RENT ENGINE: PER-LEASE ROLL-TO-MARKET (II.13)
 
-The `AbsorptionEngine` does NOT replace `TrafficPredictionEngine` in Phase 1. It sits **beside** it, consuming its weekly output and adding the conversion + ladder layers that the current engine lacks.
+### The Ladder Is the Rent Engine
+
+Rent growth is NOT a uniform `GPR×(1+g)^year`. Market rent grows continuously; a unit's REALIZED rent steps only at LEASE EXPIRATION, when it rolls to then-current market (new lease) or takes a renewal step. Revenue = a per-lease roll-to-market schedule driven by the EXPIRY LADDER — the same ladder that drives move-outs (Section 3). **One ladder, two consumers.**
+
+```typescript
+interface RentContext {
+  // Per-lease roll schedule — unit 1103 rolls Jul-2027, unit 2201 Mar-2028
+  leaseRolls: Array<{
+    unitId: string;
+    leaseEndDate: Date;
+    inPlaceRent: number;
+    marketRentAtRoll: number;   // projected market rent at lease_end_date
+    renewalRate: number;        // probability this lease renews
+    newLeaseConcessionMonths: number;
+  }>;
+  // Loss-to-lease is expressible: an individual lease can sit below market and roll at expiration
+  // Highlands finding: LTL $192/unit = $588K/yr — invisible to uniform-growth models
+  lossToLeaseAnnual: number;     // sized demand gap
+  demandSupportedRent: number;   // triangulated (rent roll, weekly effective, submarket clearing)
+}
+```
+
+### Asymmetric Trending (II.13)
+
+| Field class | Horizon model | Override behavior |
+|---|---|---|
+| Gross rents | per-lease roll-to-market on the expiry ladder | growth-rate override propagates VIA the ladder (derived, safe to overlay) |
+| Other income | stabilized value, entered DIRECT (not trended from Y1) | overrides the stabilized level |
+| Expenses | stabilized value, entered DIRECT | overrides stabilized; **trend toggle MUST stay wired, default flat** |
+| Exit cap | single value consumed in the exit year | must REACH the exit-year disposition calc (the silent-drop risk field) |
+
+**Assembler discipline:** The overlay does NOT touch stored-direct stabilized expenses / other income (no re-trending). A rent-growth override re-propagates through the per-lease roll, not just a Y1 scalar. This is the horizon-audit target: confirm rents are per-lease-derived AND per-lease-grain; confirm expenses/other-income are stored-stabilized-direct so the rebuild overlay does NOT re-trend them; confirm exit-cap override reaches the exit year.
+
+---
+
+## 8. INTEGRATION WITH EXISTING ENGINE
+
+The `AbsorptionEngine` does NOT replace `TrafficPredictionEngine` in Phase 1. It sits **beside** it, consuming its weekly output and adding the conversion + ladder + rent-roll layers that the current engine lacks.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -263,40 +317,62 @@ The `AbsorptionEngine` does NOT replace `TrafficPredictionEngine` in Phase 1. It
 │  2. Resolve conversion ratios via ConversionRegistry        │
 │  3. Build monthly ladder from expirations                   │
 │  4. Aggregate weekly → monthly                              │
-│  5. Return MonthlyAbsorption[]                              │
+│  5. Build per-lease rent roll-forward (RentContext)         │
+│  6. Return DemandContext (occupancyPath + rentPath + ...)   │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  EXISTING (consumer updated)                                │
-│  TrafficToProFormaService — reads MonthlyAbsorption[]       │
+│  TrafficToProFormaService — reads DemandContext             │
 │  instead of inline conversion math                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
+**DemandContext fields (II.8):**
+```typescript
+interface DemandContext {
+  occupancyPath: MonthlyAbsorption[];   // monthly, absorption-driven
+  monthsToStabilize: number;            // DERIVED, not assumed
+  rentPath: RentContext;                // per-lease roll-to-market
+  turnover: number;                     // measured/estimated
+  renewalRate: number;
+  concessionPosture: string;
+  confidenceTier: 'measured' | 'observed' | 'inferred';
+}
+```
+
+**Replacement map:** linear lease-up ramp (Finding-AA placeholder) → `occupancyPath` · `?? 12` stabilization heuristic → derived `monthsToStabilize` · flat market rent growth → `rentPath` · flat 50% turnover → measured/estimated · static concession → dial position · `visits × closing_ratio` → staged funnel.
+
 ---
 
-## 8. TEST STRATEGY
+## 9. TEST STRATEGY
 
 ### Gate Deal: Highlands (existing/owned)
 
-| Test | Evidence | Pass criteria |
-|------|----------|---------------|
-| Weekly seasonality | 52-week ingestion table | Forecast peaks align with historical peaks |
-| Monthly aggregation | Rent roll + lease transactions | `netAbsorption` matches back-test v1 |
-| Conversion registry | `deal_traffic_snapshots` | Ratios resolve to deal-level learned rates |
+| # | Test | Evidence | Pass criteria |
+|---|------|----------|---------------|
+| 9.1 | **Funnel reproduction** | 261-week ingestion | 332K exposures/wk → anchor est. 25–40 visits/wk → **15 contacts → 10.9–12.2 tours → 1.94–3.15 leases/wk** |
+| 9.2 | **Race deficit** | Weekly leasing report | Replacement race deficit **18%** (need **13.3** tours/wk, have **10.9**) |
+| 9.3 | **Ladder accuracy** | Rent roll | Expiry wave: **121 leases Jun–Sep 2026, July = 46**; `expectedMoveOuts` = `expirations × (1 − 0.65)` |
+| 9.4 | **LTL sizing** | Rent roll + weekly effective | **LTL $192/unit = $588K/yr** ≈ $10.7M of asking-value demand won't fund |
+| 9.5 | **Demand-supported rent** | Triangulated 3× | **$1,674–1,680** (rent roll, weekly effective, submarket clearing) |
+| 9.6 | **Conversion registry** | `deal_traffic_snapshots` | Ratios resolve to deal-level learned rates; `tour→lease` = **17.9%** (Highlands measured) |
+| 9.7 | **Back-test v0 honesty** | Held-out Jan–Jul 2026 (n=27) | Tours +11.3% · net leases +15.4% · move-outs +30.6% · **occupancy WRONG DIRECTION** (pred 91.0%, actual 96.2%) labeled honestly: `modeled · backtested · direction unreliable under lumpy expiries · n=27` |
+| 9.8 | **Back-test v1 fix** | Ladder-driven move-outs + rent-coupled conversion | Occupancy direction CORRECTED; v1 = ladder-driven move-outs + rent-coupled conversion (conversion observed non-constant: 15.9%–26.5% by year) |
 
 ### Gate Deal: Bishop (lease-up)
 
-| Test | Evidence | Pass criteria |
-|------|----------|---------------|
-| Estimation fallback | Sparse actuals | Falls back to submarket peers, then market default |
-| Ladder accuracy | Rent roll at close | `expectedMoveOuts` = `expirations × (1 − 0.50)` |
-| Pro forma bridge | M07→M09 integration | `MonthlyAbsorption` feeds pro forma without manual translation |
+| # | Test | Evidence | Pass criteria |
+|---|------|----------|---------------|
+| 9.9 | **Estimation fallback** | Sparse actuals | Falls back to submarket peers, then market default; `estimate_tier` = `'inferred'` with wide band |
+| 9.10 | **monthsToStabilize derivation** | S-curve from absorption path | DERIVED from `occupancyPath` crossing stabilization threshold; consumed by B5 IO-from-lease-up + refi timing |
+| 9.11 | **Ladder accuracy** | Rent roll at close | `expectedMoveOuts` = `expirations × (1 − renewalRate)` |
+| 9.12 | **Pro forma bridge** | M07→M09 integration | `DemandContext` feeds pro forma without manual translation; `rentPath` is per-lease-grain |
 
 ---
 
-## 9. RISK REGISTER
+## 10. RISK REGISTER
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
@@ -304,20 +380,28 @@ The `AbsorptionEngine` does NOT replace `TrafficPredictionEngine` in Phase 1. It
 | Conversion registry migration stalls at step 3 | Medium | Medium | Old services stay as thin delegates indefinitely; no forced deletion |
 | Rent roll schema diverges from ladder needs | Low | High | Ladder reads `lease_end_date` only; any rent roll with that field works |
 | Phase 2 address grain requires schema migration | Low | High | `address` is structural now; migration is data backfill, not schema change |
+| **CoStar-lineage data contamination** | Low | **High** | **Supply inputs = permits/Census ONLY; no calibration/validation against CoStar-derived data; CE pairs against CoStar-lineage rows remain deal-scoped/restricted per I1-EXTENSION firewall. The Highlands submarket cross-read is observational only — confirms the engine's independent narrative but contributes ZERO coefficients.** |
+| Cell-phone/foot-traffic privacy/licensing | Medium | High | Treat sourcing with same firewall rigor as CoStar: whose license, what redistribution rights, does it enter any training corpus |
+| Back-test graded on training data (fabricated confidence) | Medium | High | Held-out validation only; error bars INCLUDE misses; per-signal-profile accuracy; confidence decays with staleness |
 
 ---
 
-## 10. DECISION LOG
+## 11. DECISION LOG
 
-| # | Decision | Ruling | Rationale |
-|---|----------|--------|-----------|
+| # | Decision | Ruling / Source | Rationale |
+|---|----------|-----------------|-----------|
 | 1 | `property_id` is the Phase 1 lens | R1 | Address grain is schema-ready but not resolved; geocoding is Phase 2 |
 | 2 | Weekly atom, monthly rollup | R2 | Revenue management cadence is weekly; monthly is consumer-derived |
 | 3 | `TenYearProjectionService` retired, not adapted | R2 | Decay model is wrong abstraction for absorption; `DemandContext` replaces it |
 | 4 | Land deferred | R3 | Existing + lease-up is enough to prove the engine; land is one more inference case |
 | 5 | One conversion registry, not wiring-first | R4 | Wiring-first created the P0; B1 precedent demands consolidation |
 | 6 | Comp bridge socketed, not built | R5 | Interface is ready; implementation is Phase 2 consumer work |
+| 7 | P0 explicitly OUT of scope | SPEC II. P0 section | Live defect ships independently; design inherits corrected stage-labeling |
+| 8 | Per-lease roll-to-market (not uniform growth) | SPEC II.13 | Ladder is the rent engine; loss-to-lease ($588K) is invisible to uniform models |
+| 9 | Provenance stamps on every row | SPEC II.3 / II.14 | `estimate_tier` + `fallback_rung` + `confidence_band` — no row without all three |
+| 10 | CoStar firewall in risk register | SPEC II.1 / II.2 / II.4 | Supply = permits/Census only; observational cross-read confirmed but quarantined |
+| 11 | Canonical keys deferred to Wave 1 module | Review gate CHECK 4 | `DealMode` and `StageLabel` literals declared now; reconciliation with `backend/src/types/canonical-keys.ts` is a Wave 1 unification task |
 
 ---
 
-**Status:** DESIGN COMPLETE — ready for Leon review before Wave 3 build dispatch.
+**Status:** DESIGN REVISED — ready for re-review against REVIEW_GATE_ABSORPTION_PHASE1_DESIGN.md.
