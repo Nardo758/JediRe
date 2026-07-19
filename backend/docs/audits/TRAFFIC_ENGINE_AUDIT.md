@@ -222,32 +222,46 @@ The traffic→leases conversion concept **already exists** across 5+ backend ser
 
 ---
 
-## RULINGS REQUIRED FOR PHASE 1 DESIGN
+## APPROVED RULINGS — PHASE 1 DESIGN GATES
 
-### Ruling 1: Grain Resolution
-**Question:** Is address-level precision (distinguishing two comps in the same submarket) a P0 requirement, or can Phase 1 ship at property_id-level?
+**Ruled by Leon 2026-07-18. These gate Phase 1 DESIGN (which may start now). Phase 1 BUILD remains Wave 3 per `JEDIRE_ROADMAP_2026-07-18` — behind the unification foundations. The P0 visits-vs-tours fix ships in Wave 0 regardless, independent of these rulings.**
 
-**Consequence:** If address-level is P0, the engine needs a new geocoding/address-resolution layer before any absorption work begins. If property_id-level is acceptable for Phase 1, the comp-projection frontier (Layer 1's fourth lens) is deferred.
+**Governing pattern for all five: build the contracts WIDE, ship the implementations NARROW.** Re-widening a shipped-narrow contract is where this codebase bleeds (both unification audits documented this). Defer implementations freely; never let Phase 1 weld a door shut.
 
-### Ruling 2: Time Resolution
-**Question:** Does absorption need native monthly output, or can it down-sample from weekly?
+---
 
-**Consequence:** If monthly is required natively, `TrafficPrediction` interface needs a new monthly field or a monthly variant. If weekly→monthly aggregation is acceptable, the existing `TenYearProjectionService` decay model can be adapted.
+### R1 — GRAIN: address-CAPABLE schema, property_id shipping
+- Keys and data model support address-grain identity from day one (address-capable ≠ address-required).
+- Phase 1 SHIPS at `property_id` for subject deals. No new geocoding/address-resolution layer in Phase 1.
+- The comp lens (the consumer that needs address discrimination) is Phase 2, per R5.
+- **FORBIDDEN:** any schema decision that would require rework to admit address grain later.
 
-### Ruling 3: Land Case Scope
-**Question:** Is land/ground-up in Phase 1, or deferred to Phase 2?
+### R2 — TIME: weekly is the atom, monthly is a rollup — the old decay model does NOT ride in
+- Weekly native (revenue management drives cadence; Highlands' own data is weekly). Monthly derived by aggregation for absorption's consumers.
+- **REJECTED:** adapting `TenYearProjectionService`'s decay model as the monthly path. That projection layer is what Phase 1 RETIRES (spec II.8).
+- The monthly move-out model is **LADDER-DRIVEN**: `expirations(month) × (1 − renewal_rate)` from the rent roll — monthly-native by construction, the back-test's proven v1 fix. Weekly funnel flows + monthly ladder, married.
+- **FORBIDDEN:** resurrecting the sentenced projection service as an "aggregation adapter."
 
-**Consequence:** If land is Phase 1, the type system needs a new deal mode, a new starting-state branch, synthetic property data loading, and pre-leasing logic. This is the largest scope expansion. If deferred, the engine can focus on existing + lease-up.
+### R3 — LAND: deferred to Phase 2; Phase 1 is forbidden from forbidding it
+- Phase 1 scope: existing + lease-up only. Gate deals: Highlands (existing/owned) and Bishop (lease-up).
+- No new deal mode, no synthetic property loading, no pre-leasing logic in Phase 1.
+- **SURVIVING CONSTRAINT** from the prior land ruling: no `year_built` required at the contract level; no funnel interface that assumes an operating property. The estimation/fallback layer (spec II.3) exists in Phase 1 anyway; land in Phase 2 = one more inference case, not a rework.
 
-### Ruling 4: Conversion Unification
-**Question:** Does Phase 1 consolidate the 5+ fragmented conversion services into a single AbsorptionEngine, or wire the existing services together first?
+### R4 — CONVERSION: CONSOLIDATE. This is B1 for conversion.
+- 5+ fragmented conversion services = the same disease both unification audits documented; conversion fragmentation is specifically HOW the P0 happened (a ratio applied to the wrong stage because no single owner knew which stage its number belonged to).
+- Precedent applied exactly: debt arc found 5+ rate sources → built ONE rate arbiter (B1). Layer 2 gets the same: **one conversion service owning the stage-labeled ratio registry** (contact→tour, tour→app, app→lease, composites) — sole proprietor of `closing_ratio` and `visit_to_tour_ratio`.
+- Scope honestly: consolidate the CONCEPT — one service, one registry; existing call sites migrate onto it (old services become thin delegates, then die). NOT a big-bang rewrite of five services in one wave.
+- **REJECTED:** wiring-first — it creates conversion-resolver drift (dual-resolver drift with a new name).
 
-**Consequence:** Consolidation is cleaner but larger. Wiring-first is faster but leaves technical debt. The spec's Layer 2 (conversion ratio) design depends on this ruling.
+### R5 — COMP BRIDGE: defer; design the socket into the Phase 1 contract
+- `CompTrafficService` stays a separate consumer in Phase 1.
+- The AbsorptionEngine input contract (the estimation layer) is designed so comp traffic feeds it in Phase 2 WITHOUT interface change — comp traffic is just another signal source entering the same stage-labeled contract.
+- **FORBIDDEN:** any Phase 1 interface decision that forces a breaking change to admit comps later.
 
-### Ruling 5: Comp-Projection Bridge
-**Question:** Does Phase 1 build the bridge from `CompTrafficService` into `TrafficPredictionEngine`, or leave comp traffic as a separate consumer?
+---
 
-**Consequence:** The bridge is required for the fourth lens (traffic-normalized comps). Without it, comp projection remains a separate surface that does not feed absorption.
+**Cross-references:** SPEC_ABSORPTION_ENGINE II.1 (stage-labeling mandatory) · II.3 (fallback chain) · II.8 (projection layer retired, DemandContext seam) · II.13 (ladder = the rent engine) · `JEDIRE_ROADMAP_2026-07-18` Wave 0 (P0) / Wave 3 (build).
+**Next step:** Phase 1 DESIGN proceeds against these rulings + the spec. Design output = one design doc for Leon's review before any build dispatch is cut.
 
 ---
 
@@ -260,5 +274,7 @@ The traffic→leases conversion concept **already exists** across 5+ backend ser
 - [x] T5 — Reusability per case (existing=as-is, lease-up=wiring, land=real work)
 - [x] Scope verdict delivered: **build deal-level traffic modeling**
 - [x] Rulings required listed (5 rulings)
+- [x] Rulings approved by Leon 2026-07-18 (R1–R5 committed)
 
 **STOP. No fixes. This audit sizes the absorption arc.**
+**Next step:** Phase 1 DESIGN proceeds against these rulings + the spec. Design output = one design doc for Leon's review before any build dispatch is cut.
