@@ -447,7 +447,18 @@ export class FinancialModelEngineService {
   async buildModel(dealId: string, assumptions: ProFormaAssumptions, userId?: string | null): Promise<{ result: FinancialModelResult; assumptionsHash: string }> {
     const pool = getPool();
 
-    // If no assumptions provided, load the deal's stored year1 snapshot from DB.
+    if (!assumptions) {
+      const { buildAssumptionsFromStore } = await import('./assumption-store-builder');
+      assumptions = await buildAssumptionsFromStore(dealId, pool);
+    }
+
+    // Snapshot the hash BEFORE any mutation (fill-in pass, M26/M27 enhancement).
+    // via the same path the HTTP route uses (honest rebuild — same deal, same
+    // classification, with all year1 overlays applied).
+    if (!assumptions) {
+      const { buildAssumptionsFromStore } = await import('./assumption-store-builder');
+      assumptions = await buildAssumptionsFromStore(dealId, pool);
+    }
     // This makes buildModel resilient to "rebuild without edits" calls (e.g. D3 proof (b)).
     if (!assumptions) {
       const stored = await pool.query(

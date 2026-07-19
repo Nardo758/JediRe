@@ -44,6 +44,18 @@ const YEAR1_FIELD_MAP: Record<string, string> = {
   io_period_months:  'io_period',
   dscr_floor:        'dscr_floor',
   debt_yield_floor:  'debt_yield_floor',
+  exit_cap_rate:     'exit_cap_rate',
+};
+  vacancy_rate:      'vacancy_pct',
+  management_fee_pct: 'management_fee_pct',
+  capex_per_unit:    'replacement_reserves',
+  interest_rate:     'rate',
+  ltv_pct:           'ltv',
+  loan_term_years:   'term',
+  amortization_years: 'amort',
+  io_period_months:  'io_period',
+  dscr_floor:        'dscr_floor',
+  debt_yield_floor:  'debt_yield_floor',
 };
 
 // ── Plausibility bounds (W3) ──────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { financialModelEngine } from '../../services/financial-model-engine.service';
 import { excelExportService } from '../../services/excel-export.service';
 import { getPool } from '../../database/connection';
+import { buildAssumptionsFromStore } from '../../services/assumption-store-builder';
 import { dealVersionsService, type SaveTrigger, type DealVersionRow } from '../../services/proforma/deal-versions.service';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { requireDealAccess } from '../../middleware/deal-access';
@@ -531,7 +532,14 @@ export function normalizeToEngineFormat(raw: any): ProFormaAssumptions {
 // client had on its last successful build, without requiring the client to resend
 // the full assumptions blob.
 //
-// Equivalence proof: running /build with the result of this function should
+// Equivalence proof: running /build with the result of buildAssumptionsFromStore
+// should produce identical model outputs to a /build call with the same assumptions
+// blob the client originally supplied — because it IS that blob (deal_financial_models
+// stores the ProFormaAssumptions verbatim in the `assumptions` column).
+// B1 (F-P1): client path retired — server-fetch is the only build path.
+// buildAssumptionsFromStore now lives in ../../services/assumption-store-builder.
+
+router.post('/build', async (req: Request, res: Response) => {
 // produce identical model outputs to a /build call with the same assumptions blob
 // the client originally supplied — because it IS that blob (deal_financial_models
 // stores the ProFormaAssumptions verbatim in the `assumptions` column).
