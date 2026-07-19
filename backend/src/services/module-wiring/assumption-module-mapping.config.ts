@@ -1,7 +1,7 @@
 /**
  * D-MOD-1 — Assumption → Module Mapping Config
  *
- * Maps each of the 10 critical F9 proforma assumptions to:
+ * Maps each of the 8 critical F9 proforma assumptions to:
  *   - authoritativeModule: The module whose output wins on disagreement
  *   - supportingModules:   Modules that contribute evidence / cross-checks
  *   - conflictBandPct:     Relative % divergence that triggers a conflict flag
@@ -29,8 +29,6 @@ export type AssumptionField =
   | 'expenses.real_estate_tax'
   | 'expenses.insurance'
   | 'disposition.exitCapRate'
-  | 'financing.loanAmount'
-  | 'financing.interestRate'
   | 'holdPeriod'
   | 'revenue.absorptionRate';
 
@@ -128,28 +126,6 @@ export const ASSUMPTION_MODULE_MAPPINGS: readonly AssumptionModuleMapping[] = [
     placeholderModules:  ['M20'],
     stageDependency:     'exit',
     notes:               'M12 anchors on going-in cap + risk premium spread. M05 comp set (fetch_comp_set) cross-checks market level. M11 rate cycle adjusts direction/magnitude. M20 exit analysis placeholder.',
-  },
-  {
-    field:               'financing.loanAmount',
-    label:               'Loan Amount / LTV Sizing',
-    description:         'Senior debt quantum. Triple-constrained: LTC, LTV, DSCR (F40).',
-    authoritativeModule: 'M11',
-    supportingModules:   ['M14'],
-    conflictBandPct:     0.10,
-    placeholderModules:  [],
-    stageDependency:     'capital_structure',
-    notes:               'M11 F40 formula (sizeSeniorDebt) is authoritative. M14 risk score can add covenant-based buffer. Debt cannot be sized until proforma NOI is resolved (stageDependency).',
-  },
-  {
-    field:               'financing.interestRate',
-    label:               'Interest Rate / All-In Rate',
-    description:         'Blended interest rate on senior debt = index + spread (F48).',
-    authoritativeModule: 'M11',
-    supportingModules:   [],
-    conflictBandPct:     0.10,
-    placeholderModules:  ['M28'],
-    stageDependency:     'capital_structure',
-    notes:               'M11 SOFR rate environment classification drives the all-in rate band. M28 macro placeholder — treat as absent and use M11 alone.',
   },
   {
     field:               'holdPeriod',
