@@ -1,5 +1,10 @@
 -- D3-W7: Tax Reconciliation State Tracking
 -- Tracks the lifecycle of tax projections vs actual tax bills.
+--
+-- DEPENDENCY: tax_projections must have UUID id (run 20260718_d3w7_fix_tax_projections.sql first).
+-- Wrapped in a transaction so partial failures roll back cleanly.
+
+BEGIN;
 
 CREATE TABLE IF NOT EXISTS tax_reconciliation_states (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -65,3 +70,5 @@ CREATE TRIGGER trg_tax_recon_updated_at
   BEFORE UPDATE ON tax_reconciliation_states
   FOR EACH ROW
   EXECUTE FUNCTION update_tax_recon_updated_at();
+
+COMMIT;
