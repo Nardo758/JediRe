@@ -1741,7 +1741,7 @@ export class FinancialModelEngineService {
             if (periodicSeed) {
               const updatedSeed = overlayEngineMonthlyOnSeed(
                 periodicSeed,
-                deterministicResult.monthlyCashFlow as Array<Record<string, number>>,
+                (deterministicResult.monthlyCashFlow as unknown as Array<Record<string, number>>),
                 modelAssumptions.units,
               );
               await pool.query(
