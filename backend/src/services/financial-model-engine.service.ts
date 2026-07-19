@@ -856,18 +856,18 @@ export class FinancialModelEngineService {
             acq._purchasePriceSignal = vgResult.reconciliation.convergenceSignal;
             acq._purchasePriceSource = 'valuation_grid';
             acq._valuationGridEvidence = (vgResult.methods as any[])
-              .filter((m: any) => m.active !== false)
+              .filter((m: any) => m.status === 'active')
               .map((m: any) => ({
-                methodId:   m.methodId ?? m.label ?? 'unknown',
-                p50:        m.p50 ?? null,
+                methodId:   m.id ?? m.label ?? 'unknown',
+                p50:        m.indicatedValueP50 ?? null,
                 ppu:        m.ppu ?? null,
                 confidence: m.confidence ?? null,
               }));
           }
           const methodSummary = (vgResult.methods as any[])
-            .filter((m: any) => m.active !== false)
+            .filter((m: any) => m.status === 'active')
             .map((m: any) =>
-              `${m.methodId ?? m.label ?? '?'}:P50=$${m.p50 != null ? Math.round(m.p50).toLocaleString() : 'n/a'}`
+              `${m.id ?? m.label ?? '?'}:P50=$${m.indicatedValueP50 != null ? Math.round(m.indicatedValueP50).toLocaleString() : 'n/a'}`
             )
             .join(', ');
           logger.info(
@@ -1578,10 +1578,10 @@ export class FinancialModelEngineService {
                   acq7._purchasePriceSignal = vgResult.reconciliation.convergenceSignal;
                   acq7._purchasePriceSource = 'valuation_grid_post_bridge';
                   acq7._valuationGridEvidence = (vgResult.methods as any[])
-                    .filter((m: any) => m.active !== false)
+                    .filter((m: any) => m.status === 'active')
                     .map((m: any) => ({
-                      methodId:   m.methodId ?? m.label ?? 'unknown',
-                      p50:        m.p50 ?? null,
+                      methodId:   m.id ?? m.label ?? 'unknown',
+                      p50:        m.indicatedValueP50 ?? null,
                       ppu:        m.ppu ?? null,
                       confidence: m.confidence ?? null,
                     }));
