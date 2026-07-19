@@ -198,7 +198,6 @@ export const emailIntakeFunction = inngest.createFunction(
       documentSource: 'email',
     });
     const draft = await step.run('create-draft-deal', async () => {
-    const draft = await step.run('create-draft-deal', async () => {
       return createDealDraft(fields, user_id, {
         gmail_message_id: message_id,
         from_address,
