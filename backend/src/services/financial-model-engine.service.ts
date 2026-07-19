@@ -904,7 +904,11 @@ export class FinancialModelEngineService {
       const b6City  = (enhancedAssumptions.dealInfo?.city  ?? '').trim();
       const b6State = (enhancedAssumptions.dealInfo?.state ?? '').trim().toUpperCase();
       const b6Units = enhancedAssumptions.dealInfo?.totalUnits || 1;
+      if (!enhancedAssumptions.revenue) {
+        enhancedAssumptions.revenue = {} as any;
+      }
       const rev6 = enhancedAssumptions.revenue as Record<string, unknown>;
+
 
       // ── 6a: Comp-anchored rent band (primary) + EC3 validation/bounding ──────
       // Primary source: rent comps from v_comp_search — median/P25/P75 of t12_avg_rent
