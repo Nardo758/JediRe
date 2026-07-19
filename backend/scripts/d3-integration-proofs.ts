@@ -118,47 +118,6 @@ async function runProofs(): Promise<ProofResult[]> {
   } catch (err: any) {
     results.push({ proof: '(b) Write survives subsequent build', passed: false, error: err.message });
   }
-  try {
-    // Trigger a build on the deal (calls the same path the UI uses)
-    const { financialModelEngine } = await import('../src/services/financial-model-engine.service');
-    const { buildModel } = financialModelEngine;
-
-    const buildResult = await buildModel(TEST_DEAL_ID, undefined, USER_ID);
-
-    // After build, the overlay row should still exist and not be superseded
-    const surviveCheck = await pool.query(
-      `SELECT id, superseded_at FROM deal_assumption_overlays
-        WHERE deal_id = $1 AND field_key = 'exit_cap_rate' AND source_tag = 'agent_confirmed'
-        ORDER BY created_at DESC LIMIT 1`,
-      [TEST_DEAL_ID],
-    );
-
-    const row = surviveCheck.rows[0];
-    if (!row) {
-      results.push({ proof: '(b) Write survives subsequent build', passed: false, detail: 'Overlay row disappeared after build' });
-    } else if (row.superseded_at) {
-      results.push({ proof: '(b) Write survives subsequent build', passed: false, detail: `Row was superseded at ${row.superseded_at}` });
-    } else {
-      // VALUE SURVIVAL: verify the agent_confirmed exit_cap_rate actually propagated
-      // into the rebuilt assumptions (not just "row still exists")
-      const assumptionsCheck = await pool.query(
-        `SELECT assumptions->'disposition'->>'exitCapRate' as used_cap
-           FROM deal_financial_models
-          WHERE deal_id = $1 AND status = 'complete'
-          ORDER BY created_at DESC LIMIT 1`,
-        [TEST_DEAL_ID],
-      );
-      const usedCap = assumptionsCheck.rows[0]?.used_cap;
-      const expectedCap = '0.055';
-      if (usedCap === expectedCap) {
-        results.push({ proof: '(b) Write survives subsequent build', passed: true, detail: `Row ${row.id} intact AND exitCapRate=${usedCap} propagated` });
-      } else {
-        results.push({ proof: '(b) Write survives subsequent build', passed: false, detail: `Row intact but exitCapRate=${usedCap} (expected ${expectedCap}) — overlay did not propagate` });
-      }
-    }
-  } catch (err: any) {
-    results.push({ proof: '(b) Write survives subsequent build', passed: false, error: err.message });
-  }
 
   // ── Proof (c): Same on a fresh CREATE-1 deal ───────────────────────────────
   // This requires a fresh deal. If TEST_DEAL_ID is Bishop, skip with note.
