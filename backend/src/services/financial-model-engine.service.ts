@@ -13,6 +13,7 @@ import { resolveAssumptionBatch, type ModuleValueInput } from './module-wiring/c
 import { ASSUMPTION_MODULE_MAPPINGS, type AssumptionField } from './module-wiring/assumption-module-mapping.config';
 import { ASSUMPTION_EXTRACTORS, type ModuleDataSources } from './module-wiring/d-mod-extractors';
 import type { ProFormaYear1Seed } from './document-extraction/types';
+import type { ProvenancedValue } from '../types/provenanced-value';
 
 
 /**
@@ -606,7 +607,7 @@ export class FinancialModelEngineService {
       let cyclePressureIndex: ProvenancedValue<number> | null = null;
       try {
         const { computeCyclePressureIndex } = await import('./proforma/cycle-pressure-index.service');
-        cyclePressureIndex = await computeCyclePressureIndex(pool, city, state, totalUnits);
+        cyclePressureIndex = await computeCyclePressureIndex(pool, city, state, enhancedAssumptions.dealInfo?.totalUnits ?? null);
         if (cyclePressureIndex) {
           logger.info(
             `[Batch4-Cycle] cyclePressureIndex for ${dealId}: ${cyclePressureIndex.value.toFixed(2)} ` +
@@ -1740,7 +1741,7 @@ export class FinancialModelEngineService {
             if (periodicSeed) {
               const updatedSeed = overlayEngineMonthlyOnSeed(
                 periodicSeed,
-                deterministicResult.monthlyCashFlow,
+                deterministicResult.monthlyCashFlow as Array<Record<string, number>>,
                 modelAssumptions.units,
               );
               await pool.query(

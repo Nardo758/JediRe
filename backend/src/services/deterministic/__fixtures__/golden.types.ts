@@ -57,7 +57,7 @@ export interface SeedExpected {
 export interface GoldenProvenance {
   captureDate: string; // ISO 8601
   /** Surface that produced the expected values. */
-  source: 'live_build' | 'seed_actuals' | 'synthetic_engine';
+  source: 'live_build' | 'live_build_post_debt_fixes' | 'seed_actuals' | 'synthetic_engine';
   /** Endpoint, route, or engine function that produced the values. */
   buildEndpoint: string;
   /** Hash or version identifier of the input assumptions/snapshot at capture time. */

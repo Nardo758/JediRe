@@ -19,7 +19,7 @@ const HIGHLANDS_DEAL_ID = 'eaabeb9f-830e-44f9-a923-56679ad0329d';
 // If you want to test on a fresh deal, replace this with a newly created deal ID
 const TEST_DEAL_ID = process.env.TEST_DEAL_ID || BISHOP_DEAL_ID;
 
-const USER_ID = 'test-user-001';
+const USER_ID = '00000000-0000-0000-0000-000000000001';
 
 interface ProofResult {
   proof: string;
