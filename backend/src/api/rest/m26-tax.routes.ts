@@ -1,6 +1,6 @@
 /**
  * M26: Tax Intelligence Routes
- * API endpoints for tax projections, forecast, rate sheets and coverage
+ * API endpoints for tax projections, forecast, rate sheets, coverage, and reconciliation
  */
 
 import { Router, Request, Response } from 'express';
@@ -11,6 +11,11 @@ import { taxService } from '../../services/tax/taxService';
 import { buildTaxContext, TaxContextOverrides, DealRowForTaxContext } from '../../services/tax/compositeResolver';
 import { getAllRateSheets, getRateSheet } from '../../services/tax/rateSheets/loader';
 import { query } from '../../database/connection';
+import {
+  getLatestTaxReconciliation,
+  recordReconciliationAction,
+  buildTaxReconciliationNotification,
+} from '../../services/tax-reconciliation.service';
 
 const router = Router();
 
@@ -138,6 +143,68 @@ router.get('/deals/:dealId/tax/summary', requireAuth, async (req: AuthenticatedR
       success: false,
       error: error.message
     });
+  }
+});
+
+// ─── D3-W7: Tax Reconciliation routes ─────────────────────────────────────────
+
+/**
+ * GET /api/v1/deals/:dealId/tax/reconciliation
+ * Get the latest tax reconciliation state for a deal.
+ */
+router.get('/deals/:dealId/tax/reconciliation', requireAuth, requireDealAccess, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    const recon = await getLatestTaxReconciliation(dealId);
+
+    if (!recon) {
+      return res.json({
+        success: true,
+        data: { hasReconciliation: false, message: 'No tax reconciliation state found' },
+      });
+    }
+
+    const notification = buildTaxReconciliationNotification(recon);
+
+    res.json({
+      success: true,
+      data: {
+        hasReconciliation: true,
+        reconciliation: recon,
+        notification,
+      },
+    });
+  } catch (error: any) {
+    console.error('Tax reconciliation GET error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/deals/:dealId/tax/reconciliation/:reconId/action
+ * Record an action taken on a tax reconciliation (rebase, notify, ignore).
+ */
+router.post('/deals/:dealId/tax/reconciliation/:reconId/action', requireAuth, requireDealAccess, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { reconId } = req.params;
+    const { action } = req.body;
+    const userId = (req.user as any)?.userId ?? null;
+
+    if (!action || !['rebase', 'notify', 'ignore'].includes(action)) {
+      return res.status(400).json({ success: false, error: 'action must be one of: rebase, notify, ignore' });
+    }
+
+    const updated = await recordReconciliationAction(reconId, action, userId);
+
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Reconciliation record not found' });
+    }
+
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    console.error('Tax reconciliation action error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
