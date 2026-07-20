@@ -452,26 +452,6 @@ export class FinancialModelEngineService {
       assumptions = await buildAssumptionsFromStore(dealId, pool);
     }
 
-    // Snapshot the hash BEFORE any mutation (fill-in pass, M26/M27 enhancement).
-    // via the same path the HTTP route uses (honest rebuild — same deal, same
-    // classification, with all year1 overlays applied).
-    if (!assumptions) {
-      const { buildAssumptionsFromStore } = await import('./assumption-store-builder');
-      assumptions = await buildAssumptionsFromStore(dealId, pool);
-    }
-    // This makes buildModel resilient to "rebuild without edits" calls (e.g. D3 proof (b)).
-    if (!assumptions) {
-      const stored = await pool.query(
-        `SELECT year1 FROM deal_assumptions WHERE deal_id = $1`,
-        [dealId]
-      );
-      const year1 = stored.rows[0]?.year1 ?? null;
-      if (year1) {
-        assumptions = year1 as ProFormaAssumptions;
-      } else {
-        throw new Error(`buildModel called without assumptions and no stored year1 found for deal ${dealId}`);
-      }
-    }
 
     // Snapshot the hash BEFORE any mutation (fill-in pass, M26/M27 enhancement).
     // This is the canonical value stored in `assumptions_hash` and echoed in the
