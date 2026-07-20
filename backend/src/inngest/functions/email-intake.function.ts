@@ -242,7 +242,7 @@ export const emailIntakeFunction = inngest.createFunction(
         address: fields.address ?? undefined,
         triggeredBy: 'event',
       },
-    } satisfies JediEvents);
+    } as unknown as JediEvents);
 
     // ── Step 12: Audit log ───────────────────────────────────────────────
     await step.run('write-audit-log', async () => {
