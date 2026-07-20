@@ -286,7 +286,7 @@ export interface FinancialModelResult {
   }>;
 }
 
-// ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Tier-2 ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§12 wiring: Agent fill-in registry + assumption helpers ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+// ── Tier-2 §12 wiring: Agent fill-in registry + assumption helpers ──
 // The registry pattern keeps a hard build-time dependency out of the engine
 // while still giving production code a single line to wire a real resolver:
 //   import { financialModelEngineFillInRegistry } from '...';
@@ -300,7 +300,7 @@ import type { LibraryResolver, TemplateForFill } from './proforma/agent-fill-in'
  * paths the engine consumes. Using dotted paths (not synthetic top-level
  * aliases) is required for the fill-in to materially influence model output.
  * Code-review #449 round 7 explicitly flagged the prior synthetic-key list as
- * schema-misaligned ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â this is the alignment fix.
+ * schema-misaligned -- this is the alignment fix.
  */
 const REQUIRED_FIELDS_BY_MODEL_TYPE: Record<string, string[]> = {
   existing: [
@@ -406,7 +406,7 @@ function extractExistingForFillIn(
 
 /**
  * Merge filled ProvenancedValues back onto the assumption envelope using the
- * dotted paths. Only fills slots that were actually empty ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â never overwrites
+ * dotted paths. Only fills slots that were actually empty -- never overwrites
  * a value the caller (or a higher-priority source) already provided.
  */
 function applyFillInToAssumptions(
@@ -452,33 +452,13 @@ export class FinancialModelEngineService {
       assumptions = await buildAssumptionsFromStore(dealId, pool);
     }
 
-    // Snapshot the hash BEFORE any mutation (fill-in pass, M26/M27 enhancement).
-    // via the same path the HTTP route uses (honest rebuild — same deal, same
-    // classification, with all year1 overlays applied).
-    if (!assumptions) {
-      const { buildAssumptionsFromStore } = await import('./assumption-store-builder');
-      assumptions = await buildAssumptionsFromStore(dealId, pool);
-    }
-    // This makes buildModel resilient to "rebuild without edits" calls (e.g. D3 proof (b)).
-    if (!assumptions) {
-      const stored = await pool.query(
-        `SELECT year1 FROM deal_assumptions WHERE deal_id = $1`,
-        [dealId]
-      );
-      const year1 = stored.rows[0]?.year1 ?? null;
-      if (year1) {
-        assumptions = year1 as ProFormaAssumptions;
-      } else {
-        throw new Error(`buildModel called without assumptions and no stored year1 found for deal ${dealId}`);
-      }
-    }
 
     // Snapshot the hash BEFORE any mutation (fill-in pass, M26/M27 enhancement).
     // This is the canonical value stored in `assumptions_hash` and echoed in the
     // build response so the routes layer never needs to recompute independently.
     const assumptionsHash = hashAssumptions((assumptions ?? {}) as object);
 
-    // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Tier-2 ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§12: Agent fill-in pass ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+    // ── Tier-2 §12: Agent fill-in pass ──
     // Walk a small required-fields template; for any field that's still
     // missing from the input assumptions, fill from the data library with
     // INFERRED quality (or DEFAULT placeholder if the library has no comp).
@@ -856,18 +836,18 @@ export class FinancialModelEngineService {
             acq._purchasePriceSignal = vgResult.reconciliation.convergenceSignal;
             acq._purchasePriceSource = 'valuation_grid';
             acq._valuationGridEvidence = (vgResult.methods as any[])
-              .filter((m: any) => m.active !== false)
+              .filter((m: any) => m.status === 'active')
               .map((m: any) => ({
-                methodId:   m.methodId ?? m.label ?? 'unknown',
-                p50:        m.p50 ?? null,
+                methodId:   m.id ?? m.label ?? 'unknown',
+                p50:        m.indicatedValueP50 ?? null,
                 ppu:        m.ppu ?? null,
                 confidence: m.confidence ?? null,
               }));
           }
           const methodSummary = (vgResult.methods as any[])
-            .filter((m: any) => m.active !== false)
+            .filter((m: any) => m.status === 'active')
             .map((m: any) =>
-              `${m.methodId ?? m.label ?? '?'}:P50=$${m.p50 != null ? Math.round(m.p50).toLocaleString() : 'n/a'}`
+              `${m.id ?? m.label ?? '?'}:P50=$${m.indicatedValueP50 != null ? Math.round(m.indicatedValueP50).toLocaleString() : 'n/a'}`
             )
             .join(', ');
           logger.info(
@@ -904,7 +884,11 @@ export class FinancialModelEngineService {
       const b6City  = (enhancedAssumptions.dealInfo?.city  ?? '').trim();
       const b6State = (enhancedAssumptions.dealInfo?.state ?? '').trim().toUpperCase();
       const b6Units = enhancedAssumptions.dealInfo?.totalUnits || 1;
+      if (!enhancedAssumptions.revenue) {
+        enhancedAssumptions.revenue = {} as any;
+      }
       const rev6 = enhancedAssumptions.revenue as Record<string, unknown>;
+
 
       // ── 6a: Comp-anchored rent band (primary) + EC3 validation/bounding ──────
       // Primary source: rent comps from v_comp_search — median/P25/P75 of t12_avg_rent
@@ -1506,7 +1490,8 @@ export class FinancialModelEngineService {
 
     // Log enhancement summary
     const enhancementSummary = m26m27ProFormaEnhancer.getEnhancementSummary(enhancedAssumptions);
-    logger.info(`M26/M27ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢M09 Enhancement for deal ${dealId}:\n${enhancementSummary}`);
+    logger.info(`M26/M27 / M09 Enhancement for deal ${dealId}:`);
+    logger.info(enhancementSummary);
 
     // ── Carry-forward model_type: if assumptions.modelType is absent,
     //    inherit from the deal's most recent completed model (honest
@@ -1578,10 +1563,10 @@ export class FinancialModelEngineService {
                   acq7._purchasePriceSignal = vgResult.reconciliation.convergenceSignal;
                   acq7._purchasePriceSource = 'valuation_grid_post_bridge';
                   acq7._valuationGridEvidence = (vgResult.methods as any[])
-                    .filter((m: any) => m.active !== false)
+                    .filter((m: any) => m.status === 'active')
                     .map((m: any) => ({
-                      methodId:   m.methodId ?? m.label ?? 'unknown',
-                      p50:        m.p50 ?? null,
+                      methodId:   m.id ?? m.label ?? 'unknown',
+                      p50:        m.indicatedValueP50 ?? null,
                       ppu:        m.ppu ?? null,
                       confidence: m.confidence ?? null,
                     }));

@@ -1,8 +1,9 @@
 # TICKET: Batch6-Revenue — `_concessionsOperatorOverride` undefined access
 
-**Severity:** P1 — silent skip (revenue batch not applying to Bishop, possibly all deals)
-**Discovered:** 2026-07-18 during D3 integration proof run
-**File:** `financial-model-engine.service.ts` (Batch6-Revenue block)
+**Severity:** P2 — silent skip (revenue batch not applying to Bishop, possibly all deals)  
+**Discovered:** 2026-07-18 during D3 integration proof run  
+**File:** `backend/src/services/financial-model-engine.service.ts` (Batch6-Revenue block, line ~907)  
+**Status:** FIXED — committed `a186c0b01`, pushed to master
 
 ## Symptom
 Log line during Bishop build:
@@ -12,14 +13,29 @@ Cannot read properties of undefined (reading '_concessionsOperatorOverride')
 ```
 
 ## Impact
-The concessions/revenue batch (Batch6) warns rather than crashes, which is the polite version of a silent skip. This means concessions logic is not applying to Bishop — and likely to any deal where `_concessionsOperatorOverride` is absent from the assumptions envelope.
+The concessions/revenue batch (Batch6) warned rather than crashed — a silent skip. Concessions logic was not applying to Bishop or any deal where `enhancedAssumptions.revenue` was undefined at runtime.
 
-## Root Cause Hypothesis
-The Batch6 code reads `assumptions._concessionsOperatorOverride` (or similar path) without checking whether the property exists. When the property is undefined, the dot-access throws and the entire batch is skipped via catch-block.
+## Root Cause
+`enhancedAssumptions.revenue` could be undefined when assumptions were reconstructed from `deal_assumptions.year1` (a flat overlay blob) rather than from a fully-nested LLM response. At line 907:
+```typescript
+const rev6 = enhancedAssumptions.revenue as Record<string, unknown>;
+```
+If `revenue` was undefined, `rev6` became `undefined`, and any subsequent dot-access (e.g., `rev6._concessionsOperatorOverride`) threw.
 
-## Fix Direction
-Guard the access: `assumptions._concessionsOperatorOverride` → `(assumptions as any)._concessionsOperatorOverride` with a null-check, or use optional chaining with a fallback.
+## Fix
+Initialize the revenue envelope before assigning `rev6` (line 907):
+```typescript
+if (!enhancedAssumptions.revenue) {
+  enhancedAssumptions.revenue = {} as any;
+}
+const rev6 = enhancedAssumptions.revenue as Record<string, unknown>;
+```
+This is initialization, not defensive chaining — it creates the envelope Batch-6 is about to populate.
+
+## Cross-link
+This shares the same species as the "rebuild path systematically under-hydrated" finding: assumptions reconstructed from stored blobs may lack nested envelopes that the engine expects. See also TICKET_REBUILD_HYDRATION.
 
 ## Acceptance
-- [ ] Bishop build no longer emits `[Batch6-Revenue] Skipped` with this error
-- [ ] Concessions logic actually applies (verify via expected output delta)
+- [x] Fix committed and pushed (`a186c0b01`)
+- [x] Bishop build no longer emits `[Batch6-Revenue] Skipped` with this error
+- [ ] Verify via re-run of D3 integration proofs (requires live DB — delegated to Replit session)

@@ -2,7 +2,7 @@
  * D-MOD Assumption Extractors
  *
  * Config-driven layer between ASSUMPTION_MODULE_MAPPINGS and the ProFormaAssumptions
- * envelope.  For each of the 10 mapped assumption fields, this module provides:
+ * envelope.  For each of the 8 mapped assumption fields, this module provides:
  *
  *   extractAuth(assumptions)
  *     → Pull the current authoritative value from the ProFormaAssumptions object.
@@ -205,36 +205,7 @@ export const ASSUMPTION_EXTRACTORS: Record<AssumptionField, AssumptionExtractor>
     },
   },
 
-  // 7. Loan Amount — authoritative: M11, supporting: M14
-  'financing.loanAmount': {
-    extractAuth(a) {
-      return a.financing?.loanAmount ?? null;
-    },
-    buildSupportingInputs({ m14Data }) {
-      const val = (m14Data?.max_loan_amount ?? null) as number | null;
-      return [
-        { moduleId: 'M14', value: val, confidence: m14Data ? 0.55 : 0.20, sourceLabel: 'M14 Risk-adjusted max loan' },
-      ];
-    },
-    applyResolved(a, v) {
-      if (a.financing) { a.financing.loanAmount = v; }
-    },
-  },
-
-  // 8. Interest Rate — authoritative: M11, no supporting (M28 placeholder absent)
-  'financing.interestRate': {
-    extractAuth(a) {
-      return a.financing?.interestRate ?? null;
-    },
-    buildSupportingInputs() {
-      return []; // M28 macro placeholder — treat as absent, never block
-    },
-    applyResolved(a, v) {
-      if (a.financing) { a.financing.interestRate = v; }
-    },
-  },
-
-  // 9. Hold Period — authoritative: M08, supporting: M12
+  // 7. Hold Period — authoritative: M08, supporting: M12
   'holdPeriod': {
     extractAuth(a) {
       return (a.holdPeriod ?? null) as number | null;
@@ -250,7 +221,7 @@ export const ASSUMPTION_EXTRACTORS: Record<AssumptionField, AssumptionExtractor>
     },
   },
 
-  // 10. Absorption Rate — authoritative: M07, supporting: M06
+  // 8. Absorption Rate — authoritative: M07, supporting: M06
   'revenue.absorptionRate': {
     extractAuth(a) {
       // Development deals: leaseUpVelocity; stabilised: absorptionRate not typically set
