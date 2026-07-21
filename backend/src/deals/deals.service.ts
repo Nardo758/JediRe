@@ -10,6 +10,14 @@ import {
   buildSideEffectSQL,
   normalizeStatus,
 } from '../services/lifecycle/transition-guard.service';
+import { logger } from '../utils/logger';
+import {
+  dealPropertyLinkService,
+  DEAL_RESOLVE_FLAG,
+  shouldUseNewPath,
+  shouldRunShadow,
+  phase3ShadowService,
+} from '../services/property-entity';
 
 @Injectable()
 export class DealsService {
@@ -168,7 +176,113 @@ export class DealsService {
   /**
    * Get all deals for a user
    */
+  /**
+   * Get all deals for a user
+   */
   async findAll(userId: string, query: DealQueryDto) {
+    const { status = 'active', limit = 50, offset = 0 } = query;
+
+    const flag = DEAL_RESOLVE_FLAG();
+    const useNew = shouldUseNewPath(flag);
+    const runShadow = shouldRunShadow(flag);
+
+    const oldResult = await this.db.query(
+      `SELECT 
+        d.id,
+        d.name,
+        d.project_type,
+        d.tier,
+        d.status,
+        d.budget,
+        d.address,
+        ST_AsGeoJSON(d.boundary)::json AS boundary,
+        COALESCE(d.acres, ST_Area(d.boundary::geography) / 4046.86) AS acres,
+        d.created_at,
+        d.updated_at,
+        d.state,
+        d.triage_status,
+        d.triage_score,
+        d.signal_confidence,
+        d.triaged_at,
+        d.state_data,
+        COUNT(DISTINCT dp.property_id) AS property_count,
+        COUNT(DISTINCT dt.id) FILTER (WHERE dt.status != 'completed') AS pending_tasks,
+        COALESCE(
+          EXTRACT(DAY FROM NOW() - COALESCE(
+            (SELECT transitioned_at FROM state_transitions 
+             WHERE deal_id = d.id AND to_state = d.state 
+             ORDER BY transitioned_at DESC LIMIT 1),
+            d.created_at
+          ))::INTEGER,
+          0
+        ) AS days_in_station
+      FROM deals d
+      LEFT JOIN deal_properties dp ON d.id = dp.deal_id
+      LEFT JOIN deal_tasks dt ON d.id = dt.deal_id
+      WHERE d.user_id = $1
+        AND ($2 = 'all' OR d.status = $2)
+      GROUP BY d.id
+      ORDER BY d.created_at DESC
+      LIMIT $3 OFFSET $4`,
+      [userId, status, limit, offset]
+    );
+
+    const countResult = await this.db.query(
+      'SELECT COUNT(*) FROM deals WHERE user_id = $1 AND ($2 = \'all\' OR status = $2)',
+      [userId, status]
+    );
+
+    const oldResponse = {
+      deals: oldResult.rows,
+      total: parseInt(countResult.rows[0].count),
+      limit,
+      offset
+    };
+
+    if (useNew || runShadow) {
+      try {
+        const dealIds = oldResult.rows.map((r: any) => r.id);
+        let propertyMap = new Map<string, string | null>();
+        if (dealIds.length > 0) {
+          const propRes = await this.db.query(
+            `SELECT id, property_id FROM deals WHERE id = ANY($1)`,
+            [dealIds]
+          );
+          propertyMap = new Map(propRes.rows.map((r: any) => [r.id, r.property_id ?? null]));
+        }
+
+        const newRows = oldResult.rows.map((row: any) => ({
+          ...row,
+          property_count: propertyMap.get(row.id) ? 1 : 0,
+        }));
+
+        const newResponse = {
+          deals: newRows,
+          total: oldResponse.total,
+          limit,
+          offset,
+        };
+
+        if (runShadow) {
+          for (let i = 0; i < oldResult.rows.length; i++) {
+            const oldCount = Number(oldResult.rows[i].property_count) || 0;
+            const newCount = newRows[i].property_count;
+            if (oldCount !== newCount) {
+              await phase3ShadowService.logBatch('deal_resolve', oldResult.rows[i].id, {
+                property_count: { old: oldCount, new: newCount },
+              });
+            }
+          }
+        }
+
+        if (useNew) return newResponse;
+      } catch (err) {
+        logger.warn('R-001 findAll new path failed; falling back to old path', { err });
+      }
+    }
+
+    return oldResponse;
+  }
     const { status = 'active', limit = 50, offset = 0 } = query;
 
     const result = await this.db.query(
@@ -228,7 +342,67 @@ export class DealsService {
   /**
    * Get a single deal by ID
    */
+  /**
+   * Get a single deal by ID
+   */
   async findOne(dealId: string, userId: string) {
+    const flag = DEAL_RESOLVE_FLAG();
+    const useNew = shouldUseNewPath(flag);
+    const runShadow = shouldRunShadow(flag);
+
+    const oldResult = await this.db.query(
+      `SELECT 
+        d.*,
+        ST_AsGeoJSON(d.boundary)::json AS boundary,
+        COALESCE(d.acres, ST_Area(d.boundary::geography) / 4046.86) AS acres,
+        ST_Area(d.boundary::geography) / 4046.86 AS boundary_acres,
+        ST_AsGeoJSON(ST_Centroid(d.boundary))::json AS center,
+        dp.stage AS pipeline_stage,
+        dp.days_in_stage,
+        COUNT(DISTINCT dpr.property_id) AS property_count,
+        COUNT(DISTINCT de.email_id) AS email_count,
+        COUNT(DISTINCT dt.id) AS task_count,
+        COUNT(DISTINCT dt.id) FILTER (WHERE dt.status = 'completed') AS completed_tasks
+      FROM deals d
+      LEFT JOIN deal_pipeline dp ON d.id = dp.deal_id
+      LEFT JOIN deal_properties dpr ON d.id = dpr.deal_id
+      LEFT JOIN deal_emails de ON d.id = de.deal_id
+      LEFT JOIN deal_tasks dt ON d.id = dt.deal_id
+      WHERE d.id = $1 AND d.user_id = $2
+      GROUP BY d.id, dp.stage, dp.days_in_stage`,
+      [dealId, userId]
+    );
+
+    if (oldResult.rows.length === 0) {
+      throw new NotFoundException('Deal not found');
+    }
+
+    const oldRow = oldResult.rows[0];
+
+    if (useNew || runShadow) {
+      try {
+        const link = await dealPropertyLinkService.resolveDealProperty(dealId);
+        const newRow = {
+          ...oldRow,
+          property_count: link ? 1 : 0,
+        };
+
+        if (runShadow) {
+          const oldCount = Number(oldRow.property_count) || 0;
+          const newCount = newRow.property_count;
+          await phase3ShadowService.logBatch('deal_resolve', dealId, {
+            property_count: { old: oldCount, new: newCount },
+          });
+        }
+
+        if (useNew) return newRow;
+      } catch (err) {
+        logger.warn('R-001 findOne new path failed; falling back to old path', { err, dealId });
+      }
+    }
+
+    return oldRow;
+  }
     const result = await this.db.query(
       `SELECT 
         d.*,
@@ -374,7 +548,75 @@ export class DealsService {
    * Sync is_subject_property on historical_observations whenever a deal's status changes.
    * Primary path: rows with deal_id set. Fallback: pre-backfill rows identified by parcel join.
    */
+  /**
+   * Sync is_subject_property on historical_observations whenever a deal's status changes.
+   * Primary path: rows with deal_id set. Fallback: pre-backfill rows identified by parcel join.
+   */
   private async syncCorpusSubjectFlag(dealId: string, status: string): Promise<void> {
+    const flag = DEAL_RESOLVE_FLAG();
+    const useNew = shouldUseNewPath(flag);
+    const runShadow = shouldRunShadow(flag);
+
+    const SUBJECT_STATUSES = ['CLOSED_OWNED', 'MONITORING', 'DISPOSITION', 'SOLD'];
+    const isSubjectProperty = SUBJECT_STATUSES.includes(status);
+
+    const oldSql = `UPDATE historical_observations
+          SET is_subject_property = $1, updated_at = NOW()
+        WHERE deal_id = $2
+           OR (
+             deal_id IS NULL
+             AND parcel_id IN (
+               SELECT COALESCE(p.parcel_id, dp.property_id::text)
+                 FROM deal_properties dp
+                 LEFT JOIN properties p ON p.id = dp.property_id
+                WHERE dp.deal_id = $2
+             )
+           )`;
+
+    const newSql = `UPDATE historical_observations
+          SET is_subject_property = $1, updated_at = NOW()
+        WHERE deal_id = $2
+           OR (
+             deal_id IS NULL
+             AND parcel_id IN (
+               SELECT COALESCE(p.parcel_id, d.property_id::text)
+                 FROM deals d
+                 LEFT JOIN properties p ON p.id = d.property_id
+                WHERE d.id = $2
+             )
+           )`;
+
+    if (useNew) {
+      await this.db.query(newSql, [isSubjectProperty, dealId]);
+      return;
+    }
+
+    const oldResult = await this.db.query(oldSql, [isSubjectProperty, dealId]);
+
+    if (runShadow) {
+      try {
+        const newCheck = await this.db.query(
+          `SELECT COUNT(*)::int AS cnt FROM historical_observations
+           WHERE deal_id = $1
+              OR (
+                deal_id IS NULL
+                AND parcel_id IN (
+                  SELECT COALESCE(p.parcel_id, d.property_id::text)
+                    FROM deals d
+                    LEFT JOIN properties p ON p.id = d.property_id
+                   WHERE d.id = $1
+                )
+              )`,
+          [dealId]
+        );
+        await phase3ShadowService.logBatch('deal_resolve', dealId, {
+          affected_rows: { old: oldResult.rowCount ?? 0, new: newCheck.rows[0].cnt },
+        });
+      } catch (err) {
+        logger.warn('R-001 syncCorpusSubjectFlag shadow check failed', { err, dealId });
+      }
+    }
+  }
     const SUBJECT_STATUSES = ['CLOSED_OWNED', 'MONITORING', 'DISPOSITION', 'SOLD'];
     const isSubjectProperty = SUBJECT_STATUSES.includes(status);
     await this.db.query(
@@ -434,7 +676,104 @@ export class DealsService {
   /**
    * Get properties within deal boundary
    */
+  /**
+   * Get properties within deal boundary
+   */
   async getProperties(dealId: string, userId: string, filters: any = {}) {
+    await this.verifyOwnership(dealId, userId);
+
+    const { limit = 20, offset = 0, class: propertyClass, minRent, maxRent } = filters;
+
+    let whereClause = '';
+    const queryParams: any[] = [dealId];
+    let paramIndex = 2;
+
+    if (propertyClass) {
+      whereClause += ` AND p.class = $${paramIndex++}`;
+      queryParams.push(propertyClass);
+    }
+
+    if (minRent) {
+      whereClause += ` AND p.rent >= $${paramIndex++}`;
+      queryParams.push(minRent);
+    }
+
+    if (maxRent) {
+      whereClause += ` AND p.rent <= $${paramIndex++}`;
+      queryParams.push(maxRent);
+    }
+
+    queryParams.push(limit, offset);
+
+    const flag = DEAL_RESOLVE_FLAG();
+    const useNew = shouldUseNewPath(flag);
+    const runShadow = shouldRunShadow(flag);
+
+    const oldResult = await this.db.query(
+      `SELECT 
+        p.*,
+        dp.relationship,
+        dp.confidence_score,
+        dp.notes,
+        ST_Distance(
+          d.boundary::geography,
+          ST_Point(p.lng, p.lat)::geography
+        ) / 1609.34 AS distance_miles
+      FROM deals d
+      CROSS JOIN LATERAL (
+        SELECT * FROM properties p
+        WHERE ST_Contains(d.boundary, ST_Point(p.lng, p.lat))
+        ${whereClause}
+      ) p
+      LEFT JOIN deal_properties dp ON dp.deal_id = d.id AND dp.property_id = p.id
+      WHERE d.id = $1
+      ORDER BY p.rent ASC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      queryParams
+    );
+
+    if (useNew || runShadow) {
+      try {
+        const newResult = await this.db.query(
+          `SELECT 
+            p.*,
+            CASE WHEN p.id = d.property_id THEN 'subject' ELSE NULL END AS relationship,
+            CASE WHEN p.id = d.property_id THEN 1.0 ELSE NULL END AS confidence_score,
+            NULL AS notes,
+            ST_Distance(
+              d.boundary::geography,
+              ST_Point(p.lng, p.lat)::geography
+            ) / 1609.34 AS distance_miles
+          FROM deals d
+          CROSS JOIN LATERAL (
+            SELECT * FROM properties p
+            WHERE ST_Contains(d.boundary, ST_Point(p.lng, p.lat))
+            ${whereClause}
+          ) p
+          WHERE d.id = $1
+          ORDER BY p.rent ASC
+          LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+          queryParams
+        );
+
+        if (runShadow) {
+          const oldCanonical = oldResult.rows.find((r: any) => r.relationship != null);
+          const newCanonical = newResult.rows.find((r: any) => r.relationship != null);
+          await phase3ShadowService.logBatch('deal_resolve', dealId, {
+            relationship: { old: oldCanonical?.relationship ?? null, new: newCanonical?.relationship ?? null },
+            confidence_score: { old: oldCanonical?.confidence_score ?? null, new: newCanonical?.confidence_score ?? null },
+            notes: { old: oldCanonical?.notes ?? null, new: newCanonical?.notes ?? null },
+          });
+        }
+
+        if (useNew) return newResult.rows;
+      } catch (err) {
+        logger.warn('R-001 getProperties new path failed; falling back to old path', { err, dealId });
+      }
+    }
+
+    return oldResult.rows;
+  }
     await this.verifyOwnership(dealId, userId);
 
     const { limit = 20, offset = 0, class: propertyClass, minRent, maxRent } = filters;
@@ -489,7 +828,56 @@ export class DealsService {
   /**
    * Link property to deal
    */
+  /**
+   * Link property to deal
+   */
   async linkProperty(dealId: string, userId: string, propertyId: string, relationship: string = 'comparable') {
+    await this.verifyOwnership(dealId, userId);
+
+    const flag = DEAL_RESOLVE_FLAG();
+    const useNew = shouldUseNewPath(flag);
+    const runShadow = shouldRunShadow(flag);
+
+    const oldResult = await this.db.query(
+      `INSERT INTO deal_properties (deal_id, property_id, relationship, linked_by, confidence_score)
+       VALUES ($1, $2, $3, 'manual', 1.0)
+       ON CONFLICT (deal_id, property_id) DO UPDATE
+       SET relationship = $3, linked_by = 'manual', confidence_score = 1.0
+       RETURNING *`,
+      [dealId, propertyId, relationship]
+    );
+
+    let returnRow = oldResult.rows[0];
+
+    if (useNew || runShadow) {
+      try {
+        if (relationship === 'subject') {
+          await dealPropertyLinkService.linkDealToProperty(dealId, propertyId);
+        }
+
+        const newResult = await this.db.query(
+          `SELECT * FROM deal_properties WHERE deal_id = $1 AND property_id = $2`,
+          [dealId, propertyId]
+        );
+        const newRow = newResult.rows[0] ?? oldResult.rows[0];
+
+        if (runShadow) {
+          await phase3ShadowService.logBatch('deal_resolve', dealId, {
+            property_id: { old: oldResult.rows[0]?.property_id, new: newRow?.property_id },
+            relationship: { old: oldResult.rows[0]?.relationship, new: newRow?.relationship },
+          });
+        }
+
+        if (useNew) returnRow = newRow;
+      } catch (err) {
+        logger.warn('R-001 linkProperty new path failed; falling back to old path', { err, dealId });
+      }
+    }
+
+    await this.logActivity(dealId, userId, 'property_linked', `Property linked as ${relationship}`);
+
+    return returnRow;
+  }
     await this.verifyOwnership(dealId, userId);
 
     const result = await this.db.query(

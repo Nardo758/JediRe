@@ -23,6 +23,13 @@ import type { ZoningAgentOutput } from './zoning.config';
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import type { RunContext } from './runtime/types';
+import {
+  dealPropertyLinkService,
+  AGENT_RUNNERS_FLAG,
+  shouldUseNewPath,
+  shouldRunShadow,
+  phase3ShadowService,
+} from '../services/property-entity';
 
 // ── Tier gating ─────────────────────────────────────────────────────────────
 // Tiers that allow AUTOMATED (event-driven) Zoning Agent runs.
@@ -86,9 +93,15 @@ export const zoningOnDealCreated = inngest.createFunction(
     });
 
     // ── Step 3: Resolve deal context ────────────────────────────────
-    // NOTE: prompt seeding is handled at server startup only (seedAllAgentPrompts).
-    // Per-run seeding was removed in Phase 5 to make rollback authoritative.
+    // R-006: Agent runners deal→property — Phase 3 reader migration
+    // Flag: USE_NEW_PROPERTY_SCHEMA_AGENT_RUNNERS (default: false)
+    // New path: DealPropertyLinkService.resolveDealProperty → properties identity cols
     const dealCtx = await step.run('resolve-deal-context', async () => {
+      const agentFlag = AGENT_RUNNERS_FLAG();
+      const useNew = shouldUseNewPath(agentFlag);
+      const runShadow = shouldRunShadow(agentFlag);
+
+      // ── Old path (deal_properties JOIN) ────────────────────────────
       const res = await query(
         `SELECT d.address, d.property_address, d.city, d.state_code,
                 dp.property_id, p.lot_size_sqft
@@ -101,13 +114,52 @@ export const zoningOnDealCreated = inngest.createFunction(
         [dealId]
       );
       const row = res.rows[0] ?? {};
-      return {
+      const oldResult = {
         address: (row.property_address ?? row.address ?? null) as string | null,
         city: (row.city ?? null) as string | null,
         state: (row.state_code ?? null) as string | null,
         property_id: (row.property_id ?? null) as string | null,
         lot_size_sqft: (row.lot_size_sqft ?? null) as number | null,
       };
+
+      // ── New path (DealPropertyLinkService → properties identity) ───
+      if (useNew || runShadow) {
+        try {
+          const link = await dealPropertyLinkService.resolveDealProperty(dealId);
+          let newPropertyId: string | null = null;
+          let newLotSize: number | null = null;
+
+          if (link?.propertyId) {
+            newPropertyId = link.propertyId;
+            const propRes = await query(
+              `SELECT lot_size_sqft FROM properties WHERE id = $1`,
+              [link.propertyId]
+            );
+            newLotSize = (propRes.rows[0]?.lot_size_sqft as number | null) ?? null;
+          }
+
+          const newResult = {
+            address: oldResult.address,
+            city: oldResult.city,
+            state: oldResult.state,
+            property_id: newPropertyId,
+            lot_size_sqft: newLotSize,
+          };
+
+          if (runShadow) {
+            await phase3ShadowService.logBatch('agent_runners', dealId, {
+              property_id: { old: oldResult.property_id, new: newResult.property_id },
+              lot_size_sqft: { old: oldResult.lot_size_sqft, new: newResult.lot_size_sqft },
+            });
+          }
+
+          if (useNew) return newResult;
+        } catch (err) {
+          logger.warn('R-006 zoning_agent new path failed; falling back to old path', { err, dealId });
+        }
+      }
+
+      return oldResult;
     });
 
     // ── Step 4: Execute Zoning Agent via AgentRuntime ───────────────

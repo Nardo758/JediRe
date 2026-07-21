@@ -1493,25 +1493,14 @@ export class FinancialModelEngineService {
     logger.info(`M26/M27 / M09 Enhancement for deal ${dealId}:`);
     logger.info(enhancementSummary);
 
-    // ── Carry-forward model_type: if assumptions.modelType is absent,
-    //    inherit from the deal's most recent completed model (honest
-    //    rebuild — same deal, same classification).  This prevents the
-    //    NOT NULL violation when inferModelType has not yet run.
-    let modelType = assumptions.modelType;
-    if (!modelType) {
-      const priorType = await pool.query(
-        `SELECT model_type FROM deal_financial_models
-          WHERE deal_id = $1 AND status = 'complete' AND model_type IS NOT NULL
-          ORDER BY created_at DESC LIMIT 1`,
-        [dealId],
-      );
-      modelType = priorType.rows[0]?.model_type ?? null;
-    }
+    // ── D2: Deterministic-primary build path ──────────────────────────────
+    // model_type is derived-at-read from ClassificationContext (W1-4 ruling).
+    // No carry-forward; honest absence if underivable.
 
     const insertResult = await pool.query(
-      `INSERT INTO deal_financial_models (deal_id, model_type, assumptions, status, assumptions_hash)
-       VALUES ($1, $2, $3, 'building', $4) RETURNING id`,
-      [dealId, modelType, JSON.stringify(enhancedAssumptions), assumptionsHash]
+      `INSERT INTO deal_financial_models (deal_id, assumptions, status, assumptions_hash)
+       VALUES ($1, $2, 'building', $3) RETURNING id`,
+      [dealId, JSON.stringify(enhancedAssumptions), assumptionsHash]
     );
     const modelId = insertResult.rows[0].id;
 

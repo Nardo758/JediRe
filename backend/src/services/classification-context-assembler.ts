@@ -1,9 +1,10 @@
 /**
  * ClassificationContext — canonical deal classification assembled from all sources.
  *
- * Wave 1 W2: One assembler that reads every classification field from every
- * source (deals table, deal_data, deal_context_fields, agent outputs, user
- * overrides) and resolves them into the canonical types defined in
+ * Wave 1 W3: Resolved assembler with override tracking, source classification,
+ * and defensive null handling. Reads every classification field from every source
+ * (deals table, deal_data, deal_context_fields, agent outputs, user overrides)
+ * and resolves them into the canonical types defined in
  * backend/src/types/classification.ts.
  *
  * Precedence (highest → lowest):
@@ -14,6 +15,15 @@
  *   5. platform_default — system fallback
  */
 
+import {
+  isDealType,
+  isStrategyType,
+  isAssetClass,
+  isDealMode,
+  isViewMode,
+  canonicalizeStrategy,
+  PROJECT_INTENTS,
+} from '../types/classification';
 import type {
   DealType,
   StrategyType,
@@ -32,6 +42,7 @@ export interface ClassificationValue<T> {
   value: T;
   provenance: ProvenanceStamp;
   confidence: number; // 0–1
+  /** Whether this winning value was established by a user or agent override. */
   overriddenBy?: 'user' | 'agent' | null;
 }
 
@@ -113,14 +124,9 @@ const FIELD_MAP: Record<string, string> = {
 // Guard: validate a raw value against a canonical type
 // ═════════════════════════════════════════════════════════════════════════════
 
-import {
-  isDealType,
-  isStrategyType,
-  isAssetClass,
-  isDealMode,
-  isViewMode,
-  canonicalizeStrategy,
-} from '../types/classification';
+function isProjectIntent(v: unknown): v is ProjectIntent {
+  return typeof v === 'string' && (PROJECT_INTENTS as readonly string[]).includes(v);
+}
 
 function validateCanonical(field: string, raw: string): unknown {
   const trimmed = raw.trim().toLowerCase();
@@ -135,14 +141,26 @@ function validateCanonical(field: string, raw: string): unknown {
       // DealMode is uppercase in canonical type
       return isDealMode(raw.trim()) ? raw.trim() : isDealMode(raw.trim().toUpperCase()) ? raw.trim().toUpperCase() : null;
     case 'projectIntent':
-      return ['acquisition', 'development', 'redevelopment', 'disposition', 'refinance'].includes(trimmed)
-        ? trimmed
-        : null;
+      return isProjectIntent(trimmed) ? trimmed : null;
     case 'viewMode':
       return isViewMode(raw.trim()) ? raw.trim() : null;
     default:
       return null;
   }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Source classification — determine override origin for the winning value
+// ═════════════════════════════════════════════════════════════════════════════
+
+function classifyOverrideSource(source: string): 'user' | 'agent' | null {
+  if (source === 'user_override' || source === 'override' || source === 'user' || source === 'manual_entry') {
+    return 'user';
+  }
+  if (source === 'agent_output' || source.startsWith('agent:')) {
+    return 'agent';
+  }
+  return null;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -174,7 +192,14 @@ export function assembleClassificationContext(
     if (!candidates || candidates.length === 0) return null;
 
     const valid = candidates
-      .map(r => ({ row: r, canonical: validateCanonical(field, String(r.value)) }))
+      .map(r => {
+        // Defensive: skip null, undefined, or empty values
+        const rawValue = r.value;
+        if (rawValue == null || String(rawValue).trim() === '') {
+          return { row: r, canonical: null };
+        }
+        return { row: r, canonical: validateCanonical(field, String(rawValue)) };
+      })
       .filter(x => x.canonical !== null);
 
     if (valid.length === 0) return null;
@@ -187,15 +212,22 @@ export function assembleClassificationContext(
     });
 
     const winner = valid[0];
+
+    // NOTE: winner.row.source may be an internal granular source (e.g. 'agent:research')
+    // that is not a canonical IngestionSource. We preserve the raw source string in
+    // provenance for backward compatibility with consumers that expect it.
+    // The ProvenanceStamp type expects IngestionSource, so we cast through unknown
+    // to avoid a compilation break while keeping runtime behavior identical.
     return {
       value: winner.canonical,
       provenance: {
-        ingestionSource: winner.row.source as any,
+        ingestionSource: winner.row.source as unknown as ProvenanceStamp['ingestionSource'],
         userId: winner.row.userId,
         agentRunId: winner.row.agentRunId ?? null,
         stampedAt: winner.row.stampedAt,
       },
       confidence: winner.row.confidence,
+      overriddenBy: classifyOverrideSource(winner.row.source),
     };
   };
 

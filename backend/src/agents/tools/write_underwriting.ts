@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import { DealType } from '../../shared/canonical-keys';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import type { ToolDefinition } from '../runtime/types';
@@ -124,7 +125,7 @@ function runSanityChecks(
 
   // Lease-up / non-stabilised flag: project_type is 'lease-up' or occupancy < 88%
   const isLeasingUp =
-    dealContext?.projectType === 'lease-up' ||
+    dealContext?.projectType === DealType.LEASE_UP ||
     (occupancyPct != null && occupancyPct < 0.88);
 
   // ── Check 1: OpEx should not exceed EGI ──

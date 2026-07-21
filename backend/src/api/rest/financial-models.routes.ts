@@ -631,7 +631,7 @@ router.post('/:dealId/validate', async (req: Request, res: Response) => {
     const { validateModelOutput } = await import('../../services/model-validator.service');
 
     // Validate the output
-    const modelType = model.model_type || 'acquisition'; // Default to acquisition if not set
+    const modelType = model.model_type; // W1-4: derived-at-read, no fallback
     const output = model.claude_output || model.results;
 
     const validation = validateModelOutput(output || {});

@@ -20,6 +20,13 @@ import { logger } from '../../utils/logger';
 import { CommentaryAgent } from '../../agents/commentary.agent';
 import type { StrategySignalInputs } from '../../services/module-wiring/strategy-arbitrage-engine';
 import { getRentRollDerivations } from '../../services/rent-roll/rent-roll-derivations.service';
+import {
+  dealPropertyLinkService,
+  OPERATIONS_FLAG,
+  shouldUseNewPath,
+  shouldRunShadow,
+  phase3ShadowService,
+} from '../../services/property-entity';
 
 const router = Router();
 
@@ -1078,12 +1085,32 @@ router.post('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRe
       return res.status(400).json({ error: 'actuals array required' });
     }
 
-    // Resolve property_id from deal_properties (first linked property)
+    const opFlag = OPERATIONS_FLAG();
+    const opUseNew = shouldUseNewPath(opFlag);
+    const opRunShadow = shouldRunShadow(opFlag);
+
+    // Old path: resolve property_id from deal_properties (first linked property)
     const propRes = await query(
       `SELECT property_id FROM deal_properties WHERE deal_id = $1 ORDER BY created_at LIMIT 1`,
       [dealId]
     );
-    const propertyId: string | null = propRes.rows[0]?.property_id ?? null;
+    let propertyId: string | null = propRes.rows[0]?.property_id ?? null;
+
+    // New path
+    if (opUseNew || opRunShadow) {
+      try {
+        const link = await dealPropertyLinkService.resolveDealProperty(dealId);
+        const newPropertyId = link?.propertyId ?? null;
+        if (opRunShadow) {
+          await phase3ShadowService.logBatch('operations', dealId, {
+            property_id: { old: propertyId, new: newPropertyId },
+          });
+        }
+        if (opUseNew) propertyId = newPropertyId;
+      } catch (err) {
+        logger.warn('R-005 operations new path failed; falling back to old', { err, dealId });
+      }
+    }
 
     // Fallback unit count from deal_data for occupancy_rate computation
     const dealRes = await query(`SELECT deal_data FROM deals WHERE id = $1`, [dealId]);
