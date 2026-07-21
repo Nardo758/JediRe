@@ -95,7 +95,7 @@ export async function registerUploadedFile(
        (original_filename, sha256, mime_type, size_bytes,
         storage_provider, storage_bucket, storage_key, document_type,
         parser_status, parcel_id, uploaded_by, scope_id,
-        redistribution_restricted, license_source)
+        license_restricted, license_source)
      VALUES ($1, $2, $3, $4, 'r2', $5, $6, $7, 'unparsed', $8, $9, $10, $11, $12)
      ON CONFLICT (sha256) DO NOTHING
      RETURNING id, true AS inserted`,
