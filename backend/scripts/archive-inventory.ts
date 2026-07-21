@@ -184,7 +184,7 @@ async function main() {
   const filesRes = await pool.query<FileRow>(
     `SELECT id, original_filename, mime_type, uploaded_at
      FROM data_library_files
-     WHERE scope_id = 'ARCHIVE_IMPORT_2026-05-21'
+     WHERE scope_id = 'GLOBAL' AND uploaded_at::date = '2026-05-21'
      ORDER BY original_filename`
   );
   const files = filesRes.rows;
