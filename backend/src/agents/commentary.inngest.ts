@@ -25,6 +25,13 @@ import type { CommentaryAgentOutput } from './commentary.config';
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import type { RunContext } from './runtime/types';
+import {
+  dealPropertyLinkService,
+  AGENT_RUNNERS_FLAG,
+  shouldUseNewPath,
+  shouldRunShadow,
+  phase3ShadowService,
+} from '../services/property-entity';
 
 const COMMENTARY_CACHE_TTL_HOURS = 24;
 
@@ -113,7 +120,15 @@ export const commentaryOnResearchCompleted = inngest.createFunction(
     // Per-run seeding was removed in Phase 5 to make rollback authoritative.
     // Commentary uses entity_type/entity_id rather than deal_id.
     // For a deal trigger, the entity is the property (entity_type = 'property').
+    //
+    // R-006: Agent runners deal→property — Phase 3 reader migration
+    // Flag: USE_NEW_PROPERTY_SCHEMA_AGENT_RUNNERS (default: false)
     const dealCtx = await step.run('resolve-deal-context', async () => {
+      const agentFlag = AGENT_RUNNERS_FLAG();
+      const useNew = shouldUseNewPath(agentFlag);
+      const runShadow = shouldRunShadow(agentFlag);
+
+      // ── Old path (deal_properties JOIN) ────────────────────────────
       const res = await query(
         `SELECT d.address, d.property_address, d.city, d.state_code,
                 dp.property_id
@@ -128,10 +143,38 @@ export const commentaryOnResearchCompleted = inngest.createFunction(
       const address = (row.property_address ?? row.address ?? null) as string | null;
       const city = (row.city ?? null) as string | null;
       const state = (row.state_code ?? null) as string | null;
-      // Entity identity: use property_id if available, else fall back to dealId
-      const entityId = (row.property_id ?? dealId) as string;
-      const entityName = address ?? city ?? dealId;
-      return { address, city, state, entityId, entityName };
+      const oldPropertyId = (row.property_id ?? null) as string | null;
+      const oldEntityId = (oldPropertyId ?? dealId) as string;
+      const oldEntityName = address ?? city ?? dealId;
+
+      // ── New path (DealPropertyLinkService → properties identity) ───
+      if (useNew || runShadow) {
+        try {
+          const link = await dealPropertyLinkService.resolveDealProperty(dealId);
+          const newPropertyId = link?.propertyId ?? null;
+          const newEntityId = (newPropertyId ?? dealId) as string;
+
+          const newResult = {
+            address,
+            city,
+            state,
+            entityId: newEntityId,
+            entityName: address ?? city ?? dealId,
+          };
+
+          if (runShadow) {
+            await phase3ShadowService.logBatch('agent_runners', dealId, {
+              property_id: { old: oldPropertyId, new: newPropertyId },
+            });
+          }
+
+          if (useNew) return newResult;
+        } catch (err) {
+          logger.warn('R-006 commentary_agent new path failed; falling back to old path', { err, dealId });
+        }
+      }
+
+      return { address, city, state, entityId: oldEntityId, entityName: oldEntityName };
     });
 
     // ── Step 4: Execute Commentary Agent via AgentRuntime ───────────

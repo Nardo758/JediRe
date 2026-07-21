@@ -23,6 +23,13 @@ import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import { resolveOrgForUser } from '../services/ai/orgCreditService';
 import type { RunContext } from './runtime/types';
+import {
+  dealPropertyLinkService,
+  AGENT_RUNNERS_FLAG,
+  shouldUseNewPath,
+  shouldRunShadow,
+  phase3ShadowService,
+} from '../services/property-entity';
 
 // ── Tier gating ─────────────────────────────────────────────────────────────
 // Tiers that allow AUTOMATED (event-driven) Supply Agent runs.
@@ -113,9 +120,14 @@ export const supplyOnDealCreated = inngest.createFunction(
     });
 
     // ── Step 3: Resolve deal context ────────────────────────────────
-    // NOTE: prompt seeding is handled at server startup only (seedAllAgentPrompts).
-    // Per-run seeding was removed in Phase 5 to make rollback authoritative.
+    // R-006: Agent runners deal→property — Phase 3 reader migration
+    // Flag: USE_NEW_PROPERTY_SCHEMA_AGENT_RUNNERS (default: false)
     const dealCtx = await step.run('resolve-deal-context', async () => {
+      const agentFlag = AGENT_RUNNERS_FLAG();
+      const useNew = shouldUseNewPath(agentFlag);
+      const runShadow = shouldRunShadow(agentFlag);
+
+      // ── Old path (deal_properties JOIN) ────────────────────────────
       const res = await query(
         `SELECT d.address, d.property_address, d.city, d.state_code,
                 dp.property_id, p.property_type
@@ -128,13 +140,52 @@ export const supplyOnDealCreated = inngest.createFunction(
         [dealId]
       );
       const row = res.rows[0] ?? {};
-      return {
+      const oldResult = {
         address: (row.property_address ?? row.address ?? null) as string | null,
         city: (row.city ?? null) as string | null,
         state: (row.state_code ?? null) as string | null,
         property_id: (row.property_id ?? null) as string | null,
         property_type: (row.property_type ?? null) as string | null,
       };
+
+      // ── New path (DealPropertyLinkService → properties identity) ───
+      if (useNew || runShadow) {
+        try {
+          const link = await dealPropertyLinkService.resolveDealProperty(dealId);
+          let newPropertyId: string | null = null;
+          let newPropertyType: string | null = null;
+
+          if (link?.propertyId) {
+            newPropertyId = link.propertyId;
+            const propRes = await query(
+              `SELECT property_type FROM properties WHERE id = $1`,
+              [link.propertyId]
+            );
+            newPropertyType = (propRes.rows[0]?.property_type as string | null) ?? null;
+          }
+
+          const newResult = {
+            address: oldResult.address,
+            city: oldResult.city,
+            state: oldResult.state,
+            property_id: newPropertyId,
+            property_type: newPropertyType,
+          };
+
+          if (runShadow) {
+            await phase3ShadowService.logBatch('agent_runners', dealId, {
+              property_id: { old: oldResult.property_id, new: newResult.property_id },
+              property_type: { old: oldResult.property_type, new: newResult.property_type },
+            });
+          }
+
+          if (useNew) return newResult;
+        } catch (err) {
+          logger.warn('R-006 supply_agent new path failed; falling back to old path', { err, dealId });
+        }
+      }
+
+      return oldResult;
     });
 
     // ── Step 4: Execute Supply Agent via AgentRuntime ───────────────

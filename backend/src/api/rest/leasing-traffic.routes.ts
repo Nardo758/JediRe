@@ -24,6 +24,13 @@ import { trendPatternDetector } from '../../services/trend-pattern-detector';
 import { visibilityScoringService } from '../../services/visibility-scoring.service';
 import { logger } from '../../utils/logger';
 import { CompTrafficService } from '../../services/comp-traffic.service';
+import {
+  dealPropertyLinkService,
+  LEASING_TRAFFIC_FLAG,
+  shouldUseNewPath,
+  shouldRunShadow,
+  phase3ShadowService,
+} from '../../services/property-entity';
 
 const router = Router();
 const compTrafficService = new CompTrafficService(pool);
@@ -470,6 +477,10 @@ const weeklyUpload = multer({
         return res.status(400).json({ error: 'view must be weekly, monthly, or yearly' });
       }
 
+      const ltFlag = LEASING_TRAFFIC_FLAG();
+      const ltUseNew = shouldUseNewPath(ltFlag);
+      const ltRunShadow = shouldRunShadow(ltFlag);
+
       let marketFactors: { demand?: number; supply?: number; digital?: number } = {};
       let propertyData: any = {};
       let calibrationData: any = undefined;
@@ -562,11 +573,29 @@ const weeklyUpload = multer({
           }
 
           try {
+            // Old path
             const propResult = await pool.query(
               `SELECT id FROM properties WHERE deal_id = $1 LIMIT 1`,
               [dealId]
             );
-            const propId = propResult.rows[0]?.id;
+            let propId = propResult.rows[0]?.id;
+
+            // New path
+            if (ltUseNew || ltRunShadow) {
+              try {
+                const link = await dealPropertyLinkService.resolveDealProperty(dealId);
+                const newPropId = link?.propertyId;
+                if (ltRunShadow) {
+                  await phase3ShadowService.logBatch('leasing_traffic', dealId, {
+                    property_id: { old: propId ?? null, new: newPropId ?? null },
+                  });
+                }
+                if (ltUseNew) propId = newPropId;
+              } catch (err) {
+                logger.warn('R-004 leasing-traffic new path failed; falling back to old', { err, dealId });
+              }
+            }
+
             if (propId) {
               try {
                 const digitalScore = await digitalTrafficService.calculateDigitalScore(propId);
@@ -598,6 +627,7 @@ const weeklyUpload = multer({
           if (!deal.trade_area_id) {
             tradeAreaWarning = 'Define a trade area to unlock full traffic intelligence (comp proxy, market context, visibility scoring)';
           }
+          // Old path
           let propId: string | undefined;
           const dpLookup = await pool.query(
             `SELECT property_id FROM deal_properties WHERE deal_id = $1 LIMIT 1`,
@@ -611,6 +641,23 @@ const weeklyUpload = multer({
             );
             propId = propLookup.rows[0]?.id;
           }
+
+          // New path
+          if (ltUseNew || ltRunShadow) {
+            try {
+              const link = await dealPropertyLinkService.resolveDealProperty(dealId);
+              const newPropId = link?.propertyId;
+              if (ltRunShadow) {
+                await phase3ShadowService.logBatch('leasing_traffic', dealId, {
+                  property_id: { old: propId ?? null, new: newPropId ?? null },
+                });
+              }
+              if (ltUseNew) propId = newPropId;
+            } catch (err) {
+              logger.warn('R-004 leasing-traffic new path failed; falling back to old', { err, dealId });
+            }
+          }
+
           if (propId) {
             try {
               dataSourceSignals = await trafficPredictionEngine.loadDataSourceSignals(propId);
@@ -704,6 +751,11 @@ const weeklyUpload = multer({
         });
       }
 
+      const ltFlag = LEASING_TRAFFIC_FLAG();
+      const ltUseNew = shouldUseNewPath(ltFlag);
+      const ltRunShadow = shouldRunShadow(ltFlag);
+
+      // Old path
       let propertyId: string | undefined;
       const dpLookup = await pool.query(
         `SELECT property_id FROM deal_properties WHERE deal_id = $1 LIMIT 1`,
@@ -716,6 +768,22 @@ const weeklyUpload = multer({
           [dealId]
         );
         propertyId = propLookup.rows[0]?.id;
+      }
+
+      // New path
+      if (ltUseNew || ltRunShadow) {
+        try {
+          const link = await dealPropertyLinkService.resolveDealProperty(dealId);
+          const newPropertyId = link?.propertyId;
+          if (ltRunShadow) {
+            await phase3ShadowService.logBatch('leasing_traffic', dealId, {
+              property_id: { old: propertyId ?? null, new: newPropertyId ?? null },
+            });
+          }
+          if (ltUseNew) propertyId = newPropertyId;
+        } catch (err) {
+          logger.warn('R-004 leasing-traffic new path failed; falling back to old', { err, dealId });
+        }
       }
 
       if (!propertyId) {

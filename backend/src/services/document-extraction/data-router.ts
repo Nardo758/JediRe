@@ -1847,11 +1847,42 @@ async function routeLeasingStats(
   let rowsInserted = 0;
 
   // Write the Leasing Stats section as a deal_monthly_actuals row
+  // R-003: Document extraction data-router deal→property — Phase 3 reader migration
   const propertyResult = await pool.query(
     `SELECT property_id FROM deal_properties WHERE deal_id = $1 LIMIT 1`,
     [dealId]
   );
-  const propertyId = propertyResult.rows[0]?.property_id;
+  const oldPropertyId: string | null = propertyResult.rows[0]?.property_id ?? null;
+
+  let propertyId = oldPropertyId;
+
+  // ── New path (DealPropertyLinkService) ───────────────────────────
+  const dataRouterFlag = DATA_ROUTER_FLAG();
+  const useNewDataRouter = shouldUseNewPath(dataRouterFlag);
+  const runShadowDataRouter = shouldRunShadow(dataRouterFlag);
+
+  if (useNewDataRouter || runShadowDataRouter) {
+    try {
+      const link = await dealPropertyLinkService.resolveDealProperty(dealId);
+      const newPropertyId = link?.propertyId ?? null;
+
+      if (runShadowDataRouter) {
+        await phase3ShadowService.log({
+          readerId: 'data_router',
+          entityId: dealId,
+          field: 'propertyId',
+          oldValue: oldPropertyId,
+          newValue: newPropertyId,
+        });
+      }
+
+      if (useNewDataRouter && newPropertyId) {
+        propertyId = newPropertyId;
+      }
+    } catch {
+      // New path failure falls through to old path
+    }
+  }
 
   if (propertyId && data.reporting_period.start) {
     await pool.query(

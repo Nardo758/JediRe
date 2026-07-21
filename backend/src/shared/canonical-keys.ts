@@ -42,6 +42,11 @@ export const SourceClass = {
 } as const;
 export type SourceClass = (typeof SourceClass)[keyof typeof SourceClass];
 
+// ── LayeredValue (canonical re-export) ──────────────────────────────────────
+// The canonical definition lives in backend/src/types/layered-value.ts
+// Re-export it here so W1-1 is the single import point for all shared keys.
+export type { LayeredValue, LayeredValueSource, UnderwritingValue } from '../types/layered-value';
+
 // ── DisplayMap (presentation layer only) ────────────────────────────────────
 export const DisplayMap = {
   dealType: {
