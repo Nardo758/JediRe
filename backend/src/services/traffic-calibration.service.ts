@@ -211,7 +211,8 @@ class TrafficCalibrationService {
       if (cal.avg_tour_conversion) {
         comparisons['Tour Conversion'] = {
           calibrated: Number(cal.avg_tour_conversion),
-          default: 0.99,
+          // Platform default: must match BASELINE_DATA in multifamilyTrafficService
+          default: 0.50,
         };
       }
       if (cal.website_pct) {
