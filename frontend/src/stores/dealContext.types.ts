@@ -193,7 +193,7 @@ export function layered<T>(
 // Deal identity & classification
 // ---------------------------------------------------------------------------
 
-export type DealMode = 'existing' | 'development' | 'redevelopment';
+export type DealMode = 'existing' | 'value_add' | 'lease_up' | 'stabilized' | 'development' | 'redevelopment';
 export type DealStage =
   | 'lead'
   | 'screening'

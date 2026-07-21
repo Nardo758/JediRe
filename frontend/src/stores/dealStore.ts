@@ -41,7 +41,7 @@ import {
   getDealTypeConfig,
   type DealType,
 } from '@/shared/config/deal-type-visibility';
-import { resolveProjectType } from '@/shared/utils/project-type';
+import { resolveProjectType, toTabVisibilityType } from '@/shared/utils/project-type';
 import {
   getStrategyAvailability,
   getStrategyStrength,
@@ -738,7 +738,7 @@ export const useDealStore = create<DealStore>()(
           identity: normalizedIdentity,
           resolvedUnitMix,
           totalUnits,
-          projectType: resolvedType,
+          projectType: toTabVisibilityType(resolvedType),
           assetUseType: data.assetUseType ?? data.asset_use_type ?? '',
           editLog: data.editLog ?? [],
           redevelopment: data.redevelopment ?? null,
