@@ -4,6 +4,7 @@
  * Single source of truth consumed by Zoning, Supply, and Cashflow agents.
  */
 
+import type { LayeredValue } from './layered-value';
 import type { OperatorStance } from './operator-stance';
 
 // ── Shared Layer Types (aligned with frontend dealContext.types.ts) ──
