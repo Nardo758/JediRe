@@ -11,6 +11,25 @@
 import { getPool } from '../database/connection';
 import type { ProFormaAssumptions } from './financial-model-engine.service';
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// W1-7 Guard: exported list of year1 keys resolved by buildAssumptionsFromStore.
+// Any key added to agent-overlay-writer.ts YEAR1_FIELD_MAP must also appear here.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const RESOLVED_YEAR1_KEYS = new Set([
+  'rate',
+  'ltv',
+  'term',
+  'amort',
+  'io_period',
+  'dscr_floor',
+  'debt_yield_floor',
+  'vacancy_pct',
+  'management_fee_pct',
+  'replacement_reserves',
+  'exit_cap_rate',
+]);
+
 // ── Helper: safely coerce a value to number (mirrors bridge's toNumber) ────
 function toNumber(v: unknown, fallback: number): number {
   if (v === null || v === undefined) return fallback;

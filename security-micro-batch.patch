@@ -1,0 +1,149 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Security Micro-Batch <security@jedire.dev>
+Date: Mon, 20 Jul 2026 21:00:00 +0000
+Subject: [PATCH] Security micro-batch: proxy secret, license restricted-by-default,
+ PII minimize-at-source, calibration constant
+
+Fix 1: proxyTokenSecret() throws on missing JWT_SECRET/SESSION_SECRET
+Fix 2: upload restricted-by-default with filename heuristic assist
+Fix 3: drop tenant_name from LLM SELECT + redact guard
+Fix 4: tour conversion default 0.99 -> 0.50 (matches BASELINE_DATA)
+
+---
+ backend/src/api/rest/archive.routes.ts            |  6 +++-
+ .../intake-sources/data-library-upload/index.ts  | 37 ++++++++++++++----
+ .../services/deal-financial-context.service.ts   | 19 +++++++---
+ backend/src/services/traffic-calibration.service.ts |  3 +-
+ 4 files changed, 48 insertions(+), 17 deletions(-)
+
+diff --git a/backend/src/api/rest/archive.routes.ts b/backend/src/api/rest/archive.routes.ts
+index 1111111..2222222 100644
+--- a/backend/src/api/rest/archive.routes.ts
++++ b/backend/src/api/rest/archive.routes.ts
+@@ -1715,8 +1715,12 @@ const PROXY_KEY_PATTERN = /^uploads\/library\/[0-9a-f-]{36}\.[a-z0-9]+$/;
+ 
+ function proxyTokenSecret(): string {
+-  return process.env.JWT_SECRET ?? process.env.SESSION_SECRET ?? 'r2-proxy-fallback-secret';
++  const secret = process.env.JWT_SECRET ?? process.env.SESSION_SECRET;
++  if (!secret) {
++    throw new Error('FATAL: JWT_SECRET or SESSION_SECRET must be configured for upload proxy token signing');
++  }
++  return secret;
+ }
+ 
+ function signProxyToken(storageKey: string, userId: string, expiresAt: string): string {
+
+diff --git a/backend/src/services/intake-sources/data-library-upload/index.ts b/backend/src/services/intake-sources/data-library-upload/index.ts
+index 1111111..2222222 100644
+--- a/backend/src/services/intake-sources/data-library-upload/index.ts
++++ b/backend/src/services/intake-sources/data-library-upload/index.ts
+@@ -57,6 +57,28 @@ export async function registerUploadedFile(
+   if (!meta.sha256) throw new Error('[data-library-upload] sha256 is required');
+   if (!meta.storage_key) throw new Error('[data-library-upload] storage_key is required');
+   if (!meta.original_filename) throw new Error('[data-library-upload] original_filename is required');
++
++  // ── License classification (restricted-by-default) ─────────────────────────
++  // Heuristic: filename patterns that indicate third-party vendor data.
++  // Unknown / undeclared source → restricted until proven free (honest-absence).
++  const filenameLower = meta.original_filename.toLowerCase();
++  const vendorPatterns: Array<{ pattern: RegExp; source: string }> = [
++    { pattern: /costar/, source: 'costar' },
++    { pattern: /axio/, source: 'axiometrics' },
++    { pattern: /axiom/, source: 'axiometrics' },
++    { pattern: /submarket/, source: 'suspected_restricted' },
++  ];
++
++  let licenseRestricted = true;  // DEFAULT: restricted until classified
++  let licenseSource: string | null = null;
++
++  const matchedVendor = vendorPatterns.find(v => v.pattern.test(filenameLower));
++  if (matchedVendor) {
++    licenseRestricted = true;
++    licenseSource = matchedVendor.source;
++  }
++  // TODO: add explicit source-declaration override when req.body.source is wired
++
++  const scopeId = licenseRestricted
++    ? 'RESTRICTED_PENDING_DEAL'
++    : (meta.uploaded_by ? 'user:' + meta.uploaded_by : 'GLOBAL');
+ 
+   const docType = normalizeDocType(meta.document_type);
+   const parcelId = meta.parcel_id?.trim() || null;
+@@ -67,11 +89,12 @@ export async function registerUploadedFile(
+   const fileRes = await query<{ id: string; inserted: boolean }>(
+     `INSERT INTO data_library_files
+        (original_filename, sha256, mime_type, size_bytes,
+-        storage_provider, storage_bucket, storage_key,
+-        document_type, parser_status, parcel_id, uploaded_by, scope_id, redistribution_restricted)
+-     VALUES ($1, $2, $3, $4, 'r2', $5, $6, $7, 'unparsed', $8, $9, $10, FALSE)
++        storage_provider, storage_bucket, storage_key, document_type,
++        parser_status, parcel_id, uploaded_by, scope_id,
++        redistribution_restricted, license_source)
++     VALUES ($1, $2, $3, $4, 'r2', $5, $6, $7, 'unparsed', $8, $9, $10, $11, $12)
+      ON CONFLICT (sha256) DO NOTHING
+      RETURNING id, true AS inserted`,
+     [
+@@ -83,7 +106,9 @@ export async function registerUploadedFile(
+       docType,
+       parcelId,
+       meta.uploaded_by ?? null,
+-      meta.uploaded_by ? 'user:' + meta.uploaded_by : 'GLOBAL',
++      scopeId,
++      licenseRestricted,
++      licenseSource,
+     ],
+   );
+ 
+diff --git a/backend/src/services/deal-financial-context.service.ts b/backend/src/services/deal-financial-context.service.ts
+index 1111111..2222222 100644
+--- a/backend/src/services/deal-financial-context.service.ts
++++ b/backend/src/services/deal-financial-context.service.ts
+@@ -181,7 +181,7 @@ export async function buildDealFinancialContext(
+ 
+     pool.query(
+-      `SELECT unit_number, tenant_name, monthly_rent, effective_rent,
++      `SELECT unit_number, monthly_rent, effective_rent,
+               lease_start, lease_end, lease_status, concession_amount, source_type
+        FROM deal_lease_transactions
+        WHERE deal_id = $1
+@@ -361,7 +361,7 @@ export async function buildDealFinancialContext(
+       items: leaseRows.map((l: any) => ({
+         unitNumber: l.unit_number,
+-        tenantName: l.tenant_name,
++        tenantName: '[REDACTED]',
+         monthlyRent: Number(l.monthly_rent) || 0,
+         effectiveRent: Number(l.effective_rent) || undefined,
+         leaseStart: l.lease_start,
+@@ -433,6 +433,15 @@ export function formatFinancialContextForPrompt(ctx: DealFinancialContext): stri
+     return 'No financial data available for this deal. Analysis will be based on deal specs and market data only.';
+   }
+ 
++  // ── PII redaction guard ───────────────────────────────────────────────────
++  // Belt-and-suspenders: tenant names must never reach LLM prompts.
++  // (Source-layer fix: tenant_name dropped from SELECT above.)
++  for (const lease of ctx.leases.items) {
++    if (lease.tenantName && lease.tenantName !== '[REDACTED]') {
++      throw new Error(`PII leak blocked: unredacted tenant name in unit ${lease.unitNumber}`);
++    }
++  }
++
+   let prompt = '';
+ 
+   if (ctx.assumptions.totalUnits || ctx.assumptions.rentPerUnit) {
+
+diff --git a/backend/src/services/traffic-calibration.service.ts b/backend/src/services/traffic-calibration.service.ts
+index 1111111..2222222 100644
+--- a/backend/src/services/traffic-calibration.service.ts
++++ b/backend/src/services/traffic-calibration.service.ts
+@@ -211,7 +211,8 @@ export class TrafficCalibrationService {
+       if (cal.avg_tour_conversion) {
+         comparisons['Tour Conversion'] = {
+           calibrated: Number(cal.avg_tour_conversion),
+-          default: 0.99,
++          // Platform default: must match BASELINE_DATA in multifamilyTrafficService
++          default: 0.50,
+         };
+       }
+ 
+-- 
+2.43.0

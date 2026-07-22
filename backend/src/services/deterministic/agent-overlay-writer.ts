@@ -33,7 +33,8 @@ import { logger } from '../../utils/logger';
 // year1 patch (so the resolution chain picks them up during the next build).
 // Fields without a year1 mapping still get an overlay row for provenance.
 
-const YEAR1_FIELD_MAP: Record<string, string> = {
+// Exported for W1-7 guard test — must stay in sync with assumption-store-builder.ts
+export const YEAR1_FIELD_MAP: Record<string, string> = {
   vacancy_rate:      'vacancy_pct',
   management_fee_pct: 'management_fee_pct',
   capex_per_unit:    'replacement_reserves',
@@ -51,7 +52,8 @@ const YEAR1_FIELD_MAP: Record<string, string> = {
 // Deterministic, not judgement. Values outside bounds → confidence='LOW' + note.
 // Never reject — R4: escalate, never drop.
 
-const PLAUSIBILITY_BOUNDS: Record<string, [min: number, max: number]> = {
+// Exported for W1-7 guard test
+export const PLAUSIBILITY_BOUNDS: Record<string, [min: number, max: number]> = {
   cap_rate:           [0.02, 0.20],
   exit_cap_rate:      [0.02, 0.20],
   exit_year:          [1,    30],
