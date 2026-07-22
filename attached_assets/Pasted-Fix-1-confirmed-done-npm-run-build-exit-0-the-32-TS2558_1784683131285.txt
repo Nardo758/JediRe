@@ -1,0 +1,87 @@
+Fix 1 confirmed done — npm run build exit 0, the 32 TS2558 generic errors are cleared.
+Now for Fix 3: repoint the remaining LayeredValue imports from the renamed files to canonical types/layered-value.ts.
+In Replit, run this script:
+bash
+Copy
+cd ~/workspace/backend
+
+cat > /tmp/fix3-imports.py << 'PYEOF'
+#!/usr/bin/env python3
+"""
+Fix 3: Repoint LayeredValue imports from renamed files to canonical types/layered-value.ts
+"""
+
+import os
+import re
+
+fixes = [
+    ('src/services/coefficient-resolver.service.ts', 'traffic-calibration.types', '../types/layered-value'),
+    ('src/services/deterministic/proforma-assumptions-bridge.ts', 'document-extraction/types', '../../types/layered-value'),
+    ('src/services/inflation/index.ts', 'replacement-cost-v2.service', '../../types/layered-value'),
+    ('src/services/proforma-seeder.service.ts', 'document-extraction/types', '../types/layered-value'),
+    ('src/services/proforma/periodic-field.types.ts', 'document-extraction/types', '../../types/layered-value'),
+    ('src/services/tax/compositeResolver.ts', './types', '../../types/layered-value'),
+]
+
+for filepath, source_substr, canonical_path in fixes:
+    if not os.path.exists(filepath):
+        print(f"SKIP: {filepath} not found")
+        continue
+    
+    with open(filepath, 'r') as f:
+        content = f.read()
+    
+    pattern = r"^import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+(['\"][^'\"]*" + re.escape(source_substr) + r"[^'\"]*['\"]);?\s*$"
+    matches = list(re.finditer(pattern, content, re.MULTILINE))
+    
+    if not matches:
+        print(f"NO MATCH: {filepath}")
+        continue
+    
+    for m in matches:
+        imports = m.group(1)
+        source = m.group(2)
+        
+        if 'LayeredValue' not in imports:
+            continue
+        
+        items = [i.strip() for i in imports.split(',') if i.strip()]
+        other_items = [i for i in items if 'LayeredValue' not in i]
+        
+        old_block = m.group(0)
+        new_lines = []
+        
+        if other_items:
+            new_lines.append(f"import {{ {', '.join(other_items)} }} from {source};")
+        
+        new_lines.append(f"import type {{ LayeredValue }} from '{canonical_path}';")
+        
+        content = content.replace(old_block, '\n'.join(new_lines), 1)
+        print(f"FIXED: {filepath}")
+        for line in new_lines:
+            print(f"  -> {line}")
+        print()
+    
+    with open(filepath, 'w') as f:
+        f.write(content)
+
+print("Done.")
+PYEOF
+
+python3 /tmp/fix3-imports.py
+Then verify the two files the script may have corrupted:
+bash
+Copy
+# tax/types.ts — check the regex didn't over-delete
+echo "=== tax/types.ts first 30 lines ==="
+head -30 src/services/tax/types.ts
+
+# dealContext.ts — check import is present and correct
+echo "=== dealContext.ts first 15 lines ==="
+head -15 src/types/dealContext.ts
+Finally, count remaining W1-6b-specific errors:
+bash
+Copy
+npx tsc --noEmit --skipLibCheck 2>&1 | grep -iE 'layeredvalue|TrafficCoefficientCascade|ExtractedFieldSources|StrategyLayeredValue|InflationCostValue' | tee /tmp/w16b-residual.txt
+echo "W1-6b residual errors: $(grep -c 'error TS' /tmp/w16b-residual.txt)"
+Paste the residual count and the head -30 / head -15 outputs. If the residual is near zero, W1-6b closes.

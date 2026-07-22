@@ -1,0 +1,25 @@
+Neither (a) nor (b). The Fix 3 script sent the wrong import target.
+The proforma-seeder and proforma-assumptions-bridge were importing LayeredValue from document-extraction/types.ts. The W1-6b script renamed that type to ExtractedFieldSources — but the fields are identical (resolved, resolution, platform, override, t12, etc.). The script only changed the name, not the body.
+So the fix is not "create another type" (a) or "migrate 200 call sites" (b). It's: import ExtractedFieldSources from document-extraction/types.ts instead of canonical LayeredValue.
+The Fix 3 script repointed them to canonical types/layered-value.ts, but canonical LayeredValue<T> has a completely different shape (value, source, confidence, layers). That's why ~220 errors appeared — structural mismatch, not missing imports.
+The correct Fix 4 in Replit:
+bash
+Copy
+cd ~/workspace/backend
+
+# Fix 4: Repoint proforma-seeder and bridge to ExtractedFieldSources (the renamed doc-extraction type)
+sed -i 's|import type { LayeredValue } from .*document-extraction/types.*|import type { ExtractedFieldSources } from '\''./document-extraction/types'\'';|' src/services/proforma-seeder.service.ts
+sed -i 's|import type { LayeredValue } from .*document-extraction/types.*|import type { ExtractedFieldSources } from '\''../document-extraction/types'\'';|' src/services/deterministic/proforma-assumptions-bridge.ts
+
+# Replace LayeredValue usage with ExtractedFieldSources in those two files
+sed -i 's/LayeredValue</ExtractedFieldSources</g' src/services/proforma-seeder.service.ts
+sed -i 's/LayeredValue</ExtractedFieldSources</g' src/services/deterministic/proforma-assumptions-bridge.ts
+
+# Also fix the custom-metrics derivation PeriodLayeredValue issue
+sed -i 's/PeriodLayeredValue/ExtractedFieldSources/g' src/services/custom-metrics/derivation.service.ts 2>/dev/null || true
+Then verify:
+bash
+Copy
+npx tsc --noEmit --skipLibCheck 2>&1 | grep -iE 'proforma-seeder|proforma-assumptions-bridge|ExtractedFieldSources' | head -20
+echo "Residual W1-6b errors: $(npx tsc --noEmit --skipLibCheck 2>&1 | grep -ciE 'layeredvalue|TrafficCoefficientCascade|ExtractedFieldSources|StrategyLayeredValue|InflationCostValue')"
+This should drop the 223 to near-zero without any architectural migration. The ExtractedFieldSources type was literally created for this purpose — a multi-source extraction record with document-type fields. Run it and paste the residual count.

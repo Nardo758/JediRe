@@ -24,7 +24,8 @@
 
 import { resolveRulesetStack } from './resolver';
 import { federalRuleset, federalIncomeTaxRate, federalCostSegAvailablePct } from './rulesets/federal.ruleset';
-import type { TaxContext, TaxForecast, ReTaxYear, SectionCForecast, SectionBForecast, TaxForecastProvenance, LayeredValue, TPPContext } from './types';
+import type { TaxContext, TaxForecast, ReTaxYear, SectionCForecast, SectionBForecast, TaxForecastProvenance, TPPContext } from './types';
+import type { LayeredValue } from '../../types/layered-value';
 
 /**
  * Fixed year used as the default placed-in-service year when TaxContext omits it.
@@ -33,7 +34,8 @@ import type { TaxContext, TaxForecast, ReTaxYear, SectionCForecast, SectionBFore
  */
 const FEDERAL_RATE_SHEET_YEAR = 2026;
 
-export { TaxContext, TaxForecast, TaxForecastProvenance, LayeredValue, SectionBForecast } from './types';
+export { TaxContext, TaxForecast, TaxForecastProvenance, SectionBForecast } from './types';
+export type { LayeredValue } from '../../types/layered-value';
 
 export const taxService = {
   /**
@@ -193,7 +195,7 @@ export const taxService = {
       conf: 'high' | 'medium' | 'low',
       formula: string,
       inputs?: Record<string, { value: unknown; source: string }>,
-    ): import('./types').LayeredValue<T> => ({
+    ): LayeredValue<T> => ({
       value,
       source,
       // computed_at intentionally omitted from per-field metadata to preserve

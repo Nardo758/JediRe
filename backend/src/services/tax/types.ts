@@ -14,6 +14,8 @@
  * until Phase 3 expansion populates correct values.
  */
 
+import type { LayeredValue } from '../../types/layered-value';
+
 // ── Supporting enumerations ────────────────────────────────────────────────────
 
 export type AssetClass =
@@ -451,33 +453,7 @@ export interface TaxRuleset {
  * audit metadata. Callers that only need the raw value read `.value`.
  * The F9 UI and audit trail consumers read the full object.
  */
-export interface LayeredValue<T> {
-  /** The computed or fetched value. Mirrors the corresponding raw field on TaxForecast. */
-  value: T;
-  /**
-   * Origin of the value:
-   *   'tax_bill_pdf'        — parsed from an uploaded tax bill PDF (highest trust)
-   *   'attom'               — fetched from ATTOM property detail API
-   *   'county_adapter'      — fetched from a direct county PA adapter
-   *   'live_millage_service'— TX Comptroller live rates
-   *   'tax_service_computed'— derived by taxService.forecast() from ruleset + context
-   *   'user_override'       — explicit user-supplied override
-   *   'fallback'            — purchase price or ruleset default used (low confidence)
-   */
-  source: string;
-  metadata: {
-    /** Ruleset jurisdiction + year used to compute this value, e.g. "FL-2026". */
-    ruleset_version?: string;
-    /** Human-readable formula trace, e.g. "$50,000,000 × 1.05% doc stamp". */
-    formula?: string;
-    /** Named inputs consumed by this calculation with their own sources. */
-    inputs?: Record<string, { value: unknown; source: string }>;
-    /** Confidence level of this specific value. */
-    confidence: 'high' | 'medium' | 'low';
-    /** ISO timestamp when this value was computed / fetched. Optional — omit for deterministic inline-computed fields. */
-    computed_at?: string;
-  };
-}
+// Tax LayeredValue -> imported from canonical (source string accepts tax_bill_pdf etc.)
 
 // ── Phase 4: NormalizedParcel from PropertyAppraiserFetcher ───────────────────
 

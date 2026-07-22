@@ -19,16 +19,8 @@
  */
 
 import type { Pool } from 'pg';
-import type {
-  LayeredValue,
-  TrafficCoefficientFamily,
-  CalibrationMeta,
-  MatchTier,
-  CalibrationWindow,
-  SubjectTrafficHistory,
-  AsymmetricConfidenceBand,
-  LegacyConfidenceBand,
-} from '../types/traffic-calibration.types';
+import { TrafficCoefficientFamily, CalibrationMeta, MatchTier, CalibrationWindow, SubjectTrafficHistory, AsymmetricConfidenceBand, LegacyConfidenceBand } from '../types/traffic-calibration.types';
+import type { LayeredValue } from '../types/layered-value';
 import { SUBJECT_N_REQUIRED } from '../types/traffic-calibration.types';
 import { BASELINE_COEFFICIENTS } from '../jobs/trafficCalibrationJob';
 import { logger } from '../utils/logger';
@@ -219,7 +211,7 @@ export class CoefficientResolverService {
         window:            resolvedWindow,
         n_peer_properties: resolvedN,
         subject_weight:    subjectWeight,
-      } as LayeredValue;
+      };
     }
 
     // NOTE: Resolver is read-only for peer collisions.
@@ -230,7 +222,7 @@ export class CoefficientResolverService {
 
     // Build confidence band — asymmetric (FIX-3) if evidence_values available, else legacy
     const sampleCoeff = platformCoefficients?.['walkin_to_tour'];
-    const mid = (family.walkin_to_tour as LayeredValue).resolved;
+    const mid = (family.walkin_to_tour as unknown as LayeredValue<number>).value;
     let confidenceBand: AsymmetricConfidenceBand | LegacyConfidenceBand;
     let resolvedEvidenceValues: CalibrationMeta['evidence_values'] = null;
 

@@ -1,7 +1,7 @@
 /**
  * JediRe Replacement Cost Estimator V2
  * 
- * Permit-Derived Replacement Cost with LayeredValue provenance tracking.
+ * Permit-Derived Replacement Cost with InflationCostValue provenance tracking.
  * 
  * DATA SOURCES (100% free — no RSMeans or paid feeds):
  * 
@@ -41,7 +41,8 @@ import { Pool } from 'pg';
 // LAYERED VALUE TYPE
 // ============================================================================
 
-export interface LayeredValue<T> {
+/** Inflation-adjusted cost value with provenance chain. Distinct from canonical InflationCostValue because it carries temporal and provenance metadata. */
+export interface InflationCostValue<T = number> {
   value: T;
   source: 'permit_derived' | 'data_library' | 'ppi_escalated' | 'regional_adjusted' | 'market_basket' | 'override' | 'default';
   confidence: 'high' | 'medium' | 'low';
@@ -86,9 +87,9 @@ export interface ReplacementCostInput {
 
 export interface ReplacementCostResult {
   // Final values with provenance
-  costPerSF: LayeredValue<number>;
-  totalCost: LayeredValue<number>;
-  costPerUnit: LayeredValue<number>;
+  costPerSF: InflationCostValue<number>;
+  totalCost: InflationCostValue<number>;
+  costPerUnit: InflationCostValue<number>;
   
   // Breakdown
   components: {
@@ -221,7 +222,7 @@ export class ReplacementCostServiceV2 {
   async estimateReplacementCost(
     input: ReplacementCostInput
   ): Promise<ReplacementCostResult> {
-    const provenance: LayeredValue<number>['provenance'] = [];
+    const provenance: InflationCostValue<number>['provenance'] = [];
     
     // ========================================================================
     // LAYER 1: Permit-Derived Baseline
@@ -229,8 +230,8 @@ export class ReplacementCostServiceV2 {
     const permitBaseline = await this.getPermitDerivedCostPerSF(input);
     
     let currentCostPerSF = permitBaseline.medianCostPerSF;
-    let currentSource: LayeredValue<number>['source'] = 'permit_derived';
-    let confidence: LayeredValue<number>['confidence'] = 
+    let currentSource: InflationCostValue<number>['source'] = 'permit_derived';
+    let confidence: InflationCostValue<number>['confidence'] = 
       permitBaseline.sampleSize >= 20 ? 'high' : 
       permitBaseline.sampleSize >= 5 ? 'medium' : 'low';
     

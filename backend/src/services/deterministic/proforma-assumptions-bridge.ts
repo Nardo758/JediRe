@@ -22,7 +22,8 @@
 import type { ProFormaAssumptions } from '../financial-model-engine.service';
 import type { CollisionEntry, ModelAssumptions } from './deterministic-model-runner';
 import { DEF_UNDERWRITING_VACANCY_FLOOR } from './deterministic-model-runner';
-import type { ProFormaYear1Seed, LayeredValue } from '../document-extraction/types';
+import { ProFormaYear1Seed } from '../document-extraction/types';
+import type { ExtractedFieldSources } from '../document-extraction/types';
 import { resolveAlias, OPEX_KEY_RULESET_VERSION } from './opex-key-aliases';
 
 // §4.3 thresholds for collision detection
@@ -32,7 +33,7 @@ const COLLISION_CRITICAL_PCT = 0.25;
 type EvidenceConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
 
 /** Map LayeredValue.resolution to a confidence level. */
-function resolutionToConfidence(resolution: LayeredValue<number>['resolution']): EvidenceConfidence {
+function resolutionToConfidence(resolution: ExtractedFieldSources<number>['resolution']): EvidenceConfidence {
   switch (resolution) {
     case 't12':
     case 'rent_roll':
@@ -51,7 +52,7 @@ function resolutionToConfidence(resolution: LayeredValue<number>['resolution']):
 }
 
 /** Map LayeredValue.resolution to a human-readable source label. */
-function resolutionToSource(resolution: LayeredValue<number>['resolution']): string {
+function resolutionToSource(resolution: ExtractedFieldSources<number>['resolution']): string {
   const map: Record<string, string> = {
     t12: 'T12',
     rent_roll: 'Rent Roll',
@@ -69,11 +70,11 @@ function resolutionToSource(resolution: LayeredValue<number>['resolution']): str
 /** Detect source collisions for a single LayeredValue (spec §4.3). */
 function detectCollisionsForField(
   fieldName: string,
-  lv: LayeredValue<number>,
+  lv: ExtractedFieldSources<number>,
   selectedSource: string,
 ): CollisionEntry[] {
   const entries: CollisionEntry[] = [];
-  const sources: Array<{ key: keyof LayeredValue<number>; label: string }> = [
+  const sources: Array<{ key: keyof ExtractedFieldSources<number>; label: string }> = [
     { key: 't12', label: 'T12' },
     { key: 'rent_roll', label: 'Rent Roll' },
     { key: 'tax_bill', label: 'Tax Bill' },
@@ -84,8 +85,8 @@ function detectCollisionsForField(
 
   for (let i = 0; i < sources.length; i++) {
     for (let j = i + 1; j < sources.length; j++) {
-      const a = lv[sources[i].key as keyof LayeredValue<number>] as number | null | undefined;
-      const b = lv[sources[j].key as keyof LayeredValue<number>] as number | null | undefined;
+      const a = lv[sources[i].key as keyof ExtractedFieldSources<number>] as number | null | undefined;
+      const b = lv[sources[j].key as keyof ExtractedFieldSources<number>] as number | null | undefined;
       if (a == null || b == null) continue;
       const delta = Math.abs(a - b);
       const base = Math.max(Math.abs(a), Math.abs(b), 1);
@@ -121,7 +122,7 @@ export function buildEvidenceHintsFromSeed(seed: ProFormaYear1Seed): {
 
   const addHint = (
     key: string,
-    lv: LayeredValue<number> | undefined,
+    lv: ExtractedFieldSources<number> | undefined,
     extraReasoning?: string,
   ): void => {
     if (!lv || lv.resolved == null) return;
@@ -165,7 +166,7 @@ export function buildEvidenceHintsFromSeed(seed: ProFormaYear1Seed): {
 /**
  * Map a `ProFormaAssumptions` envelope to the flat `ModelAssumptions` struct.
  *
- * All fields are derived from plain scalar values — `LayeredValue<T>` wrappers
+ * All fields are derived from plain scalar values — `ExtractedFieldSources<T>` wrappers
  * are not expected here because `ProFormaAssumptions` carries resolved scalars.
  * (The seeder's `LayeredValue` metadata stays in `ProFormaYear1Seed`; by the
  * time the engine service receives `ProFormaAssumptions`, values are already
@@ -173,7 +174,7 @@ export function buildEvidenceHintsFromSeed(seed: ProFormaYear1Seed): {
  */
 /**
  * Safely extract a numeric scalar from a value that may be a plain number OR
- * a `LayeredValue<number>` wrapper (i.e. `{ resolved: number; ... }`).
+ * a `ExtractedFieldSources<number>` wrapper (i.e. `{ resolved: number; ... }`).
  *
  * This protects the bridge from accidentally receiving un-resolved LayeredValue
  * envelopes from upstream callers that forget to call resolve() first.
