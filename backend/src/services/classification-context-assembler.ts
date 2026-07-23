@@ -150,6 +150,35 @@ function validateCanonical(field: string, raw: string): unknown {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// Source-class confidence hook (W1-3)
+// Deterministic mapping from ingestion source → confidence 0–1.
+// Replaces raw pass-through of winner.row.confidence.
+// ═════════════════════════════════════════════════════════════════════════════
+
+function sourceClassToConfidence(source: string): number {
+  const normalized = source.toLowerCase();
+  if (normalized === 'user_override' || normalized === 'override' || normalized === 'user' || normalized === 'manual_entry') {
+    return 1.0;
+  }
+  if (normalized === 'agent_output' || normalized.startsWith('agent:')) {
+    return 0.9;
+  }
+  if (normalized === 'document_extraction') {
+    return 0.85;
+  }
+  if (normalized === 'email_intake') {
+    return 0.7;
+  }
+  if (normalized === 'platform_default' || normalized === 'platform' || normalized === 'computed') {
+    return 0.5;
+  }
+  if (normalized === 'archive_import' || normalized === 'owned_import' || normalized === 'api_import') {
+    return 0.6;
+  }
+  return 0.1;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // Source classification — determine override origin for the winning value
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -226,7 +255,7 @@ export function assembleClassificationContext(
         agentRunId: winner.row.agentRunId ?? null,
         stampedAt: winner.row.stampedAt,
       },
-      confidence: winner.row.confidence,
+      confidence: sourceClassToConfidence(winner.row.source),
       overriddenBy: classifyOverrideSource(winner.row.source),
     };
   };
