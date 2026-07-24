@@ -20,6 +20,7 @@ import { Router, Request, Response } from 'express';
 import { Pool } from 'pg';
 import { randomUUID } from 'crypto';
 import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
+import { stampProvenance } from '../../utils/provenance-stamp';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -94,6 +95,13 @@ export function createDealCapsuleBridge(pool: Pool): Router {
     // Seed deal_data with what we know from the deal record
     // Flat keys (layer1.*) live at the top level for the capsule detail page
     const dealDataObj = deal.deal_data || {};
+    // W1-7: carry deal provenance forward into capsule, or create new bridge stamp
+    const existingProvenance = dealDataObj._provenance;
+    const capsuleStamp = existingProvenance ?? stampProvenance({
+      ingestionSource: 'capsule_bridge',
+      userId,
+      rawSourceRef: dealId,
+    });
     const dealData: Record<string, any> = {
       deal_id: dealId,
       property_address: propertyAddress,
@@ -101,6 +109,7 @@ export function createDealCapsuleBridge(pool: Pool): Router {
       boundary: deal.boundary,
       status: deal.status || 'discovery',
       broker_claims: {},
+      _provenance: capsuleStamp,
       // Promote flat keys for the capsule overview page (layer1)
       asking_price: dealDataObj.asking_price || null,
       units: dealDataObj.target_units || dealDataObj.units || deal.target_units || null,

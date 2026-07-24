@@ -15,6 +15,7 @@ import { processDocument, processDealDocuments } from '../../services/document-e
 import { computeAndPersistTrafficSnapshot } from '../../services/traffic-analytics.service';
 import { getDealFinancials } from '../../services/proforma-adjustment.service';
 import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
+import { stampProvenance } from '../../utils/provenance-stamp';
 import { buildProjectionsForExport } from '../../services/f9-financial-export.service';
 import {
   ABSOLUTE_MAX_HOLD_YEARS,
@@ -469,22 +470,21 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
     const boundaryGeom = boundary.type === 'Point'
       ? `ST_Buffer(ST_GeomFromGeoJSON($3)::geography, 200)::geometry`
       : `ST_GeomFromGeoJSON($3)`;
-    // CREATE-1/T002: origin_class classifies HOW this deal entered the platform
-    // (never touched for existing deals — Bishop/Highlands were classified
-    // historically and this only applies to newly-INSERTed rows going forward).
-    // Portfolio-category creates follow the same doctrine as Highlands
-    // (owned_import); everything else created through this live web route is
-    // platform_underwritten (the platform originated + will underwrite it).
-    const originClass = (deal_category === 'portfolio') ? 'owned_import' : 'platform_underwritten';
+    // W1-7: stamp-at-entry — provenance convergence for all ingestion routes
+    const stamp = stampProvenance({
+      ingestionSource: (deal_category === 'portfolio') ? 'owned_import' : 'platform_underwritten',
+      userId: req.user!.userId,
+    });
+    const originClass = stamp.ingestionSource;
 
     const result = await client.query(`
       INSERT INTO deals (
         user_id, name, boundary, project_type, project_intent,
         target_units, budget, timeline_start, timeline_end, tier, status,
         deal_category, development_type, address, description, org_id, strategy,
-        origin_class
+        origin_class, deal_data
       )
-      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'PROSPECT', $11, $12, $13, $14, $15, $16, $17)
+      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'PROSPECT', $11, $12, $13, $14, $15, $16, $17, $18)
       RETURNING *
     `, [
       req.user!.userId,
@@ -504,6 +504,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       userOrgId,
       resolvedStrategy,
       originClass,
+      JSON.stringify({ _provenance: stamp }),
     ]);
 
     const row = result.rows[0];

@@ -19,6 +19,7 @@
 
 import { query } from '../../../database/connection';
 import { logger } from '../../../utils/logger';
+import { stampProvenance } from '../../../utils/provenance-stamp';
 
 export interface UploadedFileMetadata {
   parcel_id?: string | null;
@@ -108,6 +109,12 @@ export async function registerUploadedFile(
   }
 
   // ── 2. intake_jobs UPSERT ─────────────────────────────────────────────────
+  const stamp = stampProvenance({
+    ingestionSource: 'document_extraction',
+    userId: meta.uploaded_by ?? null,
+    documentSource: docType,
+    rawSourceRef: meta.sha256,
+  });
   const rawInput = JSON.stringify({
     original_filename: meta.original_filename,
     sha256: meta.sha256,
@@ -117,6 +124,7 @@ export async function registerUploadedFile(
     storage_key: meta.storage_key,
     parcel_id: parcelId,
     uploaded_by: meta.uploaded_by ?? null,
+    _provenance: stamp,
   });
 
   const jobRes = await query<{ id: string }>(
