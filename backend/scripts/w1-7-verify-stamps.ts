@@ -103,7 +103,7 @@ async function main() {
     const status = okStamp ? '✅' : '❌';
     console.log(`  ${status} ${row.id}  deal_id=${row.deal_id ?? 'NULL'}  ingestion_source=${row.ingestion_source ?? 'NULL'}`);
   }
-  console.log(`  Missing _provenance: ${capsuleMissingStamp}\n`);
+  console.log(`  Missing _provenance:  ${capsuleMissingStamp}\n`);
 
   // ── Summary ───────────────────────────────────────────────────────────────
   const totalMissing = dealMissingOrigin + dealMissingStamp + jobMissingStamp + capsuleMissingStamp;
