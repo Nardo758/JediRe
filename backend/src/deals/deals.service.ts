@@ -11,6 +11,7 @@ import {
   normalizeStatus,
 } from '../services/lifecycle/transition-guard.service';
 import { logger } from '../utils/logger';
+import { stampProvenance } from '../utils/provenance-stamp';
 import {
   dealPropertyLinkService,
   DEAL_RESOLVE_FLAG,
@@ -63,13 +64,20 @@ export class DealsService {
       throw new BadRequestException('Invalid boundary geometry');
     }
 
+    // W1-7: stamp-at-entry — provenance convergence for all ingestion routes
+    const stamp = stampProvenance({
+      ingestionSource: (dto.deal_category === 'portfolio') ? 'owned_import' : 'platform_underwritten',
+      userId,
+    });
+
     // Create deal
     const result = await this.db.query(
       `INSERT INTO deals (
         user_id, name, boundary, project_type, project_intent,
         target_units, budget, timeline_start, timeline_end, tier,
-        deal_category, development_type, address, description
-      ) VALUES ($1, $2, ST_GeomFromGeoJSON($3), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        deal_category, development_type, address, description,
+        origin_class, deal_data
+      ) VALUES ($1, $2, ST_GeomFromGeoJSON($3), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING id, name, project_type, tier, deal_category, development_type, address, created_at`,
       [
         userId,
@@ -85,7 +93,9 @@ export class DealsService {
         dto.deal_category,
         dto.development_type,
         dto.address,
-        dto.description || null
+        dto.description || null,
+        stamp.ingestionSource,
+        JSON.stringify({ _provenance: stamp }),
       ]
     );
 

@@ -25,6 +25,7 @@ import {
 } from '../../services/archive-benchmark-aggregator';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import { stampProvenance } from '../../utils/provenance-stamp';
 import multer from 'multer';
 import { parseOM } from '../../services/document-extraction/parsers/om-parser';
 import { S3Client, PutObjectCommand, PutBucketCorsCommand } from '@aws-sdk/client-s3';
@@ -80,11 +81,17 @@ router.post('/ingest', requireAuth, async (req: AuthenticatedRequest, res: Respo
   try {
     const { path: archivePath, limit, skipExisting } = req.body;
     
+    const stamp = stampProvenance({
+      ingestionSource: 'archive_import',
+      userId: req.user?.userId ?? null,
+      rawSourceRef: archivePath || DEFAULT_ARCHIVE_PATH,
+    });
     const result = await ingestArchiveDeals(
       archivePath || DEFAULT_ARCHIVE_PATH,
       { 
         limit: limit ? parseInt(limit) : undefined,
         skipExisting: skipExisting !== false, // default true
+        provenance: stamp,
       }
     );
     

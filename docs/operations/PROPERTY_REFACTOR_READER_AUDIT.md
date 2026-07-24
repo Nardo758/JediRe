@@ -3,7 +3,7 @@
 **Phase:** 3 — Reader Migration  
 **Status:** IN PROGRESS — Wave 1 started  
 **Produced:** 2026-05-29  
-**Last updated:** 2026-05-29
+**Last updated:** 2026-07-20
 
 ---
 
@@ -53,6 +53,8 @@ depends on property identity being correct.
 ---
 
 ### R-001 — DealService deal→property resolution
+
+**Status:** SHADOW (Wave 1)
 
 **Status:** IN PROGRESS (Wave 1)  
 **Flag:** `USE_NEW_PROPERTY_SCHEMA_DEAL_RESOLVE`  
@@ -129,6 +131,8 @@ deferred until after R-001 shadow period confirms consistent property_id resolut
 
 ### R-004 — Leasing/traffic routes deal→property
 
+**Status:** SHADOW (Wave 1)
+
 **Status:** NOT STARTED (Wave 1 extension)  
 **Flag:** `USE_NEW_PROPERTY_SCHEMA_LEASING_TRAFFIC`  
 **Flag default:** OFF
@@ -147,6 +151,8 @@ deferred until after R-001 shadow period confirms consistent property_id resolut
 
 ### R-005 — Operations routes deal→property
 
+**Status:** SHADOW (Wave 1)
+
 **Status:** NOT STARTED (Wave 1 extension)  
 **Flag:** `USE_NEW_PROPERTY_SCHEMA_OPERATIONS`  
 **Flag default:** OFF
@@ -161,6 +167,8 @@ deferred until after R-001 shadow period confirms consistent property_id resolut
 ---
 
 ### R-006 — Agent inngest runners deal→property
+
+**Status:** SHADOW (Wave 1)
 
 **Status:** NOT STARTED (Wave 1 extension)  
 **Flag:** `USE_NEW_PROPERTY_SCHEMA_AGENT_RUNNERS`  
@@ -880,5 +888,8 @@ any reader flag is promoted from shadow to 10% canary.
 ## Document history
 
 | Date | Entry |
+|---|---|
+| 2026-05-29 | Reader inventory produced via comprehensive grep. 37 readers identified across 5 waves. Wave 1 (R-001, R-002) IN PROGRESS with feature flags. |
+| 2026-07-20 | R-001, R-004, R-005, R-006 wired with shadow+flag pattern. Status updated to SHADOW.
 |---|---|
 | 2026-05-29 | Reader inventory produced via comprehensive grep. 37 readers identified across 5 waves. Wave 1 (R-001, R-002) IN PROGRESS with feature flags. |

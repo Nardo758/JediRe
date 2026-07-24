@@ -18,6 +18,7 @@ import { createCalibrationRoutes } from './api/rest/calibration.routes';
 import { createCapsuleRoutes } from './api/rest/capsule.routes';
 import { createEventsRoutes } from './api/rest/events.routes';
 import healthRoutes, { initHealthCheck } from './api/rest/health.routes';
+import { stampProvenance } from './utils/provenance-stamp';
 
 dotenv.config();
 
@@ -407,13 +408,19 @@ app.post('/api/v1/deals', requireAuth, async (req: AuthenticatedRequest, res) =>
     const boundaryGeom = boundary.type === 'Point'
       ? `ST_Buffer(ST_GeomFromGeoJSON($3)::geography, 200)::geometry`
       : `ST_GeomFromGeoJSON($3)`;
+    // W1-7: stamp-at-entry for legacy route
+    const stamp = stampProvenance({
+      ingestionSource: (deal_category === 'portfolio') ? 'owned_import' : 'platform_underwritten',
+      userId: req.user!.userId,
+    });
     const result = await client.query(`
       INSERT INTO deals (
         user_id, name, boundary, project_type, project_intent,
         target_units, budget, timeline_start, timeline_end, tier, status,
-        deal_category, development_type, address, description
+        deal_category, development_type, address, description,
+        origin_class, deal_data
       )
-      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14)
+      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14, $15, $16)
       RETURNING *
     `, [
       req.user!.userId,
@@ -430,6 +437,8 @@ app.post('/api/v1/deals', requireAuth, async (req: AuthenticatedRequest, res) =>
       development_type || 'new',
       address || null,
       description || null,
+      stamp.ingestionSource,
+      JSON.stringify({ _provenance: stamp }),
     ]);
 
     const row = result.rows[0];

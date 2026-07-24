@@ -69,7 +69,7 @@ router.get('/deals/:dealId/valuation-grid', requireAuth, async (req: Authenticat
     }
 
     // Verify deal ownership (owner or admin) before computing
-    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+    if (req.user?.role !== 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found.' });
     }
 
@@ -98,7 +98,7 @@ router.post('/deals/:dealId/valuation-grid/populate-subject', requireAuth, async
     const userId = req.user?.userId;
     const pool = getPool();
 
-    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+    if (req.user?.role !== 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found.' });
     }
 
@@ -131,7 +131,7 @@ router.patch('/deals/:dealId/valuation-grid/override', requireAuth, async (req: 
     const pool = getPool();
 
     // Verify deal ownership before allowing writes
-    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+    if (req.user?.role !== 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found.' });
     }
 
@@ -180,7 +180,7 @@ router.post(
         return res.status(400).json({ success: false, error: 'No file uploaded.' });
       }
 
-      if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      if (req.user?.role !== 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
         return res.status(404).json({ success: false, error: 'Deal not found.' });
       }
 
@@ -249,7 +249,7 @@ router.post(
         return res.status(400).json({ success: false, error: 'No file uploaded.' });
       }
 
-      if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      if (req.user?.role !== 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
         return res.status(404).json({ success: false, error: 'Deal not found.' });
       }
 
@@ -306,7 +306,7 @@ router.post(
         return res.status(400).json({ success: false, error: 'No file uploaded.' });
       }
 
-      if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+      if (req.user?.role !== 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
         return res.status(404).json({ success: false, error: 'Deal not found.' });
       }
 
@@ -368,7 +368,7 @@ router.get('/deals/:dealId/valuation-grid/comps', requireAuth, async (req: Authe
     const userId = req.user?.userId;
     const pool = getPool();
 
-    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+    if (req.user?.role !== 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found.' });
     }
 
@@ -394,7 +394,7 @@ router.patch('/deals/:dealId/valuation-grid/comps/criteria', requireAuth, async 
     const userId = req.user?.userId;
     const pool = getPool();
 
-    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+    if (req.user?.role !== 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found.' });
     }
 
@@ -429,7 +429,7 @@ router.delete('/deals/:dealId/valuation-grid/comps/:compId', requireAuth, async 
     const userId = req.user?.userId;
     const pool = getPool();
 
-    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+    if (req.user?.role !== 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found.' });
     }
 
@@ -453,7 +453,7 @@ router.post('/deals/:dealId/valuation-grid/comps/:compId/include', requireAuth, 
     const userId = req.user?.userId;
     const pool = getPool();
 
-    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+    if (req.user?.role !== 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found.' });
     }
 
@@ -479,7 +479,7 @@ router.post('/deals/:dealId/valuation-grid/comps/:compId/add', requireAuth, asyn
     const userId = req.user?.userId;
     const pool = getPool();
 
-    if (!req.user?.role === 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+    if (req.user?.role !== 'admin' && !await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
       return res.status(404).json({ success: false, error: 'Deal not found.' });
     }
 

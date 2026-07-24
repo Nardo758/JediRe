@@ -28,6 +28,7 @@ export type IngestionSource =
   | 'archive_import'         // historical portfolio data import
   | 'owned_import'           // owned asset data import
   | 'capsule_bridge'         // shared capsule import
+  | 'platform_underwritten'  // platform originated + underwritten deal
   | 'comp_set_sync';         // comparable set synchronization
 
 export const INGESTION_SOURCES: readonly IngestionSource[] = [
@@ -43,6 +44,7 @@ export const INGESTION_SOURCES: readonly IngestionSource[] = [
   'archive_import',
   'owned_import',
   'capsule_bridge',
+  'platform_underwritten',
   'comp_set_sync',
 ] as const;
 

@@ -39,6 +39,7 @@ import PDFDocument from 'pdfkit';
 import { computeUserLineAnnual } from '../../services/proforma-seeder.service';
 import { redactRestrictedVendorPlatformIntel } from '../../services/vendor-freshness.service';
 import { getFieldValues } from '../../services/field-access/get-field-value.service';
+import { stampProvenance } from '../../utils/provenance-stamp';
 
 // Fields tracked for divergence analysis (same set as field-divergences.routes.ts)
 const SHARE_DIVERGENCE_FIELDS = [
@@ -1735,8 +1736,14 @@ router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedReq
 
     // Build seeded deal_data from the capsule, tagging the fork origin
     const sourceDealData = (capsule.deal_data as Record<string, unknown>) ?? {};
+    const stamp = stampProvenance({
+      ingestionSource: 'capsule_bridge',
+      userId,
+      rawSourceRef: shortcode,
+    });
     const seededDealData: Record<string, unknown> = {
       ...sourceDealData,
+      _provenance: stamp,
       forked_from_share: shortcode,
       forked_from_capsule: capsuleId,
       forked_at: new Date().toISOString(),
@@ -1780,8 +1787,8 @@ router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedReq
         `INSERT INTO deals (
            user_id, name, status, deal_category,
            address, property_address,
-           strategy, deal_data
-         ) VALUES ($1, $2, 'active', 'pipeline', $3, $4, $5, $6)
+           strategy, deal_data, origin_class
+         ) VALUES ($1, $2, 'active', 'pipeline', $3, $4, $5, $6, $7)
          RETURNING id, name`,
         [
           userId,
@@ -1790,6 +1797,7 @@ router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedReq
           propertyAddress,
           assetClass,
           JSON.stringify(seededDealData),
+          stamp.ingestionSource,
         ]
       );
       newDeal = dealInsert.rows[0];

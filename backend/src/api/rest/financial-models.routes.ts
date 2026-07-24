@@ -317,6 +317,10 @@ router.post('/:dealId/compute-claude', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
+    const dealCheck = await query('SELECT * FROM deals WHERE id = $1', [dealId]);
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
     const deal = dealCheck.rows[0];
 
     // Import services (lazy load to avoid circular deps)
@@ -501,6 +505,10 @@ router.get('/:dealId/assumptions', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
+    const dealCheck = await query('SELECT * FROM deals WHERE id = $1', [dealId]);
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
     const deal = dealCheck.rows[0];
 
     // Import services
