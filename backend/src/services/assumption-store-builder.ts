@@ -28,9 +28,10 @@ export const RESOLVED_YEAR1_KEYS = new Set([
   'management_fee_pct',
   'replacement_reserves',
   'exit_cap_rate',
+  'rent_growth',
+  'opex_growth',
+  'absorption',
 ]);
-
-// ── Helper: safely coerce a value to number (mirrors bridge's toNumber) ────
 function toNumber(v: unknown, fallback: number): number {
   if (v === null || v === undefined) return fallback;
   if (typeof v === 'number') return isFinite(v) ? v : fallback;
@@ -54,16 +55,18 @@ function resolveLv(blob: unknown): number | null {
   const lv = blob as Record<string, unknown>;
   if (lv.override != null) return Number(lv.override);
   if (lv.agent_confirmed != null) return Number(lv.agent_confirmed);
+  if (lv.detected != null) return Number(lv.detected);
   if (lv.platform != null) return Number(lv.platform);
   if (lv.resolved != null) return Number(lv.resolved);
   return null;
 }
 
+export { resolveLv };
+
 /**
  * Build ProFormaAssumptions from the deal's last completed model, overlaying
  * any resolved year1 fields (agent_confirmed, override, platform, resolved).
- *
- * @param dealId  Deal UUID
+ * Build ProFormaAssumptions from the deal's last completed model, overlaying
  * @param pool    DB pool (optional — created internally if omitted)
  */
 export async function buildAssumptionsFromStore(
@@ -100,7 +103,10 @@ export async function buildAssumptionsFromStore(
               year1->'vacancy_pct'        as vacancy_pct,
               year1->'management_fee_pct' as management_fee_pct,
               year1->'replacement_reserves' as replacement_reserves,
-              year1->'exit_cap_rate'      as exit_cap_rate
+              year1->'exit_cap_rate'      as exit_cap_rate,
+              year1->'rent_growth'        as rent_growth,
+              year1->'opex_growth'        as opex_growth,
+              year1->'absorption'         as absorption
        FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
       [dealId],
     );
@@ -155,6 +161,25 @@ export async function buildAssumptionsFromStore(
     const resolvedExitCap = resolveLv(y1.exit_cap_rate);
     if (resolvedExitCap != null && !isNaN(resolvedExitCap)) {
       assumptions.disposition = { ...assumptions.disposition, exitCapRate: resolvedExitCap };
+    }
+
+    // ── W1-8: Assumption fields (rent_growth, opex_growth, absorption) ──────
+    const resolvedRentGrowth = resolveLv(y1.rent_growth);
+    if (resolvedRentGrowth != null && !isNaN(resolvedRentGrowth)) {
+      assumptions.revenue = {
+        ...assumptions.revenue,
+        rentGrowth: [resolvedRentGrowth, ...(assumptions.revenue?.rentGrowth?.slice(1) || [])],
+      };
+    }
+
+    const resolvedOpexGrowth = resolveLv(y1.opex_growth);
+    if (resolvedOpexGrowth != null && !isNaN(resolvedOpexGrowth)) {
+      (assumptions as any).opexGrowthPct = resolvedOpexGrowth;
+    }
+
+    const resolvedAbsorption = resolveLv(y1.absorption);
+    if (resolvedAbsorption != null && !isNaN(resolvedAbsorption)) {
+      (assumptions as any).absorptionRate = resolvedAbsorption;
     }
 
     // ── Expenses ──────────────────────────────────────────────────────────
