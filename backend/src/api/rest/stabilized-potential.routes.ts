@@ -22,6 +22,7 @@ import {
 } from '../../services/stabilized-year-resolver.service';
 import type { LeaseVelocityResult, MonthOutput } from '../../services/lease-velocity-types';
 import { resolveLvSource } from '../../services/assumption-store-builder';
+import { detectAndEmitEpochFlag } from '../../services/epoch-flag.service';
 
 const router = Router();
 
@@ -543,6 +544,11 @@ router.get('/:dealId/stabilized-potential', requireAuth, async (req: Authenticat
     };
 
     const layout = await buildStabilizedLayout(ctx);
+
+    // ── W1-10: Epoch flag detection (async side effect, non-blocking) ────────
+    detectAndEmitEpochFlag(dealId, pool).catch(err => {
+      logger.warn('W1-10: Epoch flag detection failed', { err, dealId });
+    });
 
     // ── Step 3: Compute summary from layout ──────────────────────────────────
     const currentNoi = layout.find(l => l.key === 'noi')?.current ?? 0;
