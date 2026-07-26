@@ -21,6 +21,7 @@ import {
   type StabilizedYearResult,
 } from '../../services/stabilized-year-resolver.service';
 import type { LeaseVelocityResult, MonthOutput } from '../../services/lease-velocity-types';
+import { resolveLvSource } from '../../services/assumption-store-builder';
 
 const router = Router();
 
@@ -93,12 +94,26 @@ interface LayoutBuildContext {
   pool: ReturnType<typeof getPool>;
   dealId: string;
   modelType: ModelType;
+  /** W1-9: year1 LayeredValue blobs from deal_assumptions for dominantSource wiring */
+  year1Assumptions: Record<string, unknown>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt$(val: number): string {
   return '$' + val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+/**
+ * W1-9: Map a resolved LayeredValue source layer to the badge type used
+ * in the stabilized-potential layout. Override → 'override'; everything
+ * else (agent_confirmed, detected, platform, resolved) is platform-derived.
+ * Returns null when there is no LayeredValue blob for the field.
+ */
+function lvSourceToBadge(source: string | null): LayeredValueSource | null {
+  if (source === 'override') return 'override';
+  if (source === null) return null;
+  return 'platform';
 }
 
 /**
@@ -245,6 +260,7 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
   const isDevelopment = ctx.modelType === 'development';
   const cur = await fetchCurrentFinancials(ctx.dealId, ctx.pool);
   const sm = stabMonthOutput(ctx.engineResult);
+  const y1 = ctx.year1Assumptions;
 
   // Current values — development deals have no T12 so Current = $0
   const cGpr = isDevelopment ? 0 : (cur.gpr > 0 ? cur.gpr : 4_820_000);
@@ -293,6 +309,12 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
 
   const emptyBridge: BridgeDecomposition = { market: 0, platform: 0, operator: 0, capex: 0 };
 
+  // W1-9: Resolve dominantSource from year1 LayeredValues where available
+  const gprSource = lvSourceToBadge(resolveLvSource(y1.rent_growth));
+  const vacSource = lvSourceToBadge(resolveLvSource(y1.vacancy_pct));
+  const opexSource = lvSourceToBadge(resolveLvSource(y1.opex_growth));
+  const capSource = lvSourceToBadge(resolveLvSource(y1.exit_cap_rate));
+
   const rawItems: StabilizedLineItem[] = [
     {
       key: 'gpr',
@@ -306,7 +328,7 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
           ? `Rent roll burn-off + premium: ${fmt$(cGpr)} → ${fmt$(pGpr)} (${((pGpr / cGpr - 1) * 100).toFixed(1)}%)`
           : `Full build-out (no current T12)`,
       bridge: isDevelopment ? emptyBridge : { market: Math.round(gprDelta * 0.18), platform: Math.round(gprDelta * 0.31), operator: Math.round(gprDelta * 0.39), capex: Math.round(gprDelta * 0.12) },
-      dominantSource: isDevelopment ? 'platform' : (cGpr > 0 ? 'rent_roll' : 'platform'),
+      dominantSource: gprSource,
       alertLevel: 'green',
       isSubtotal: false,
     },
@@ -320,7 +342,7 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
         ? `Lease-up to ${(pOccupancy * 100).toFixed(0)}% stabilized occupancy`
         : `Occupancy recovery: ${(cOccupancy * 100).toFixed(0)}% → ${(pOccupancy * 100).toFixed(0)}%`,
       bridge: isDevelopment ? emptyBridge : { market: Math.round(vacDelta * 0.15), platform: Math.round(vacDelta * 0.50), operator: Math.round(vacDelta * 0.35), capex: 0 },
-      dominantSource: 'platform',
+      dominantSource: vacSource,
       alertLevel: 'green',
       isSubtotal: false,
     },
@@ -332,7 +354,7 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
       delta: concDelta,
       driver: isDevelopment ? 'Stabilized concession environment' : 'Concession environment normalization',
       bridge: isDevelopment ? emptyBridge : { market: Math.round(concDelta * 0.30), platform: Math.round(concDelta * 0.55), operator: Math.round(concDelta * 0.15), capex: 0 },
-      dominantSource: 'platform',
+      dominantSource: null,
       alertLevel: 'green',
       isSubtotal: false,
     },
@@ -344,7 +366,7 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
       delta: bdDelta,
       driver: isDevelopment ? 'New construction tenant base' : 'Tenant quality lift post-renovation',
       bridge: isDevelopment ? emptyBridge : { market: Math.round(bdDelta * 0.10), platform: Math.round(bdDelta * 0.45), operator: Math.round(bdDelta * 0.45), capex: 0 },
-      dominantSource: 'platform',
+      dominantSource: null,
       alertLevel: 'green',
       isSubtotal: false,
     },
@@ -356,7 +378,7 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
       delta: oiDelta,
       driver: 'RUBS + parking pricing (M08 ancillary)',
       bridge: isDevelopment ? emptyBridge : { market: Math.round(oiDelta * 0.15), platform: Math.round(oiDelta * 0.40), operator: Math.round(oiDelta * 0.45), capex: 0 },
-      dominantSource: 'platform',
+      dominantSource: null,
       alertLevel: 'green',
       isSubtotal: false,
     },
@@ -380,7 +402,7 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
       delta: isDevelopment ? 0 : (cOpex - pOpex),
       driver: isDevelopment ? 'Stabilized OpEx build (M22 normalization)' : 'Inflation + insurance reset (M22 normalization)',
       bridge: isDevelopment ? emptyBridge : { market: Math.round(Math.abs(pOpex - cOpex) * 0.45), platform: Math.round(Math.abs(pOpex - cOpex) * 0.10), operator: Math.round(Math.abs(pOpex - cOpex) * 0.45), capex: 0 },
-      dominantSource: isDevelopment ? 'platform' : 't12',
+      dominantSource: opexSource,
       alertLevel: (!isDevelopment && pOpex > cOpex * 1.15) ? 'amber' : 'green',
       isSubtotal: false,
     },
@@ -410,7 +432,7 @@ async function buildStabilizedLayout(ctx: LayoutBuildContext): Promise<Stabilize
         ? `Submarket compression: ${(goingInCapRate * 100).toFixed(2)}% → ${(exitCapRate * 100).toFixed(2)}%`
         : `Cap rate expansion: ${(goingInCapRate * 100).toFixed(2)}% → ${(exitCapRate * 100).toFixed(2)}%`,
       bridge: emptyBridge,
-      dominantSource: 'platform',
+      dominantSource: capSource,
       alertLevel: capDelta >= 0 ? 'green' : 'amber',
       isSubtotal: false,
       formatAs: 'pct',
@@ -490,6 +512,24 @@ router.get('/:dealId/stabilized-potential', requireAuth, async (req: Authenticat
       logger.warn('Stabilized year resolver returned error, using fallback', { dealId, error: yearResult.error });
     }
 
+    // ── W1-9: Fetch year1 LayeredValues for dominantSource wiring ────────────
+    let year1Assumptions: Record<string, unknown> = {};
+    try {
+      const y1Result = await pool.query(
+        `SELECT year1->'rent_growth'   as rent_growth,
+                year1->'vacancy_pct'   as vacancy_pct,
+                year1->'opex_growth'   as opex_growth,
+                year1->'exit_cap_rate' as exit_cap_rate
+         FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+        [dealId]
+      );
+      if (y1Result.rows.length > 0) {
+        year1Assumptions = y1Result.rows[0];
+      }
+    } catch (err) {
+      logger.warn('Error fetching year1 assumptions for dominantSource', { err, dealId });
+    }
+
     // ── Step 2: Build layout from real data ──────────────────────────────────
     const ctx: LayoutBuildContext = {
       engineResult: yearResult.engineResult,
@@ -499,6 +539,7 @@ router.get('/:dealId/stabilized-potential', requireAuth, async (req: Authenticat
       pool,
       dealId,
       modelType: yearResult.modelType,
+      year1Assumptions,
     };
 
     const layout = await buildStabilizedLayout(ctx);
