@@ -63,6 +63,19 @@ function resolveLv(blob: unknown): number | null {
 
 export { resolveLv };
 
+// Helper: return the winning layer name from a LayeredValue blob (W1-9).
+// Returns null if blob is not a valid LayeredValue.
+export function resolveLvSource(blob: unknown): string | null {
+  if (!blob || typeof blob !== 'object') return null;
+  const lv = blob as Record<string, unknown>;
+  if (lv.override != null) return 'override';
+  if (lv.agent_confirmed != null) return 'agent_confirmed';
+  if (lv.detected != null) return 'detected';
+  if (lv.platform != null) return 'platform';
+  if (lv.resolved != null) return 'resolved';
+  return null;
+}
+
 /**
  * Build ProFormaAssumptions from the deal's last completed model, overlaying
  * any resolved year1 fields (agent_confirmed, override, platform, resolved).
