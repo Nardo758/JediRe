@@ -8,7 +8,7 @@ packages = ["orbiton"]
 
 [deployment]
 run = ["node", "index.js"]
-deploymentTarget = "cloudrun"
+deploymentTarget = "autoscale"
 build = ["npm", "run", "build"]
 
 [[ports]]
