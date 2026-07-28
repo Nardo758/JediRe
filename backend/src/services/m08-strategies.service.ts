@@ -28,7 +28,7 @@ import { getDisplayLabel, formatMetricValue } from './m35-metric-mapping';
 // ─── Section 8 contract types ─────────────────────────────────────────────────
 
 /** Strategy-specific value with layer and sourceRef. Kept separate from canonical StrategyStrategyLayeredValue because 'layer' is a different axis. */
-export interface StrategyStrategyLayeredValue<T> {
+export interface StrategyLayeredValue<T> {
   value: T;
   layer: 'platform' | 'user' | 'default';
   sourceRef?: string;

@@ -36,12 +36,15 @@ async function getSustainedOccupancy(
 ): Promise<number | null> {
   try {
     const result = await pool.query(
-      `SELECT AVG(occupancy_pct) as avg_occ, COUNT(*) as month_count
+      `SELECT AVG(occupancy_rate) as avg_occ, COUNT(*) as month_count
        FROM (
-         SELECT occupancy_pct
-         FROM deal_t12_rows
-         WHERE deal_id = $1 AND archived_at IS NULL
-         ORDER BY month DESC
+         SELECT occupancy_rate
+         FROM deal_monthly_actuals
+         WHERE deal_id = $1
+           AND is_budget = false
+           AND is_proforma = false
+           AND occupancy_rate IS NOT NULL
+         ORDER BY report_month DESC
          LIMIT 3
        ) recent`,
       [dealId],
