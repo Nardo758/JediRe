@@ -221,6 +221,8 @@ import uploadRouter from '../api/rest/upload.routes';
 import compQueryRouter from '../api/rest/comp-query.routes';
 import proformaGeneratorRouter from '../api/rest/proforma-generator.routes';
 
+import assessorRouter from '../api/rest/assessor.routes';
+
 export function mountPropertyRoutes(app: Express, pool: any) {
   // Unified properties (mounted BEFORE CRUD so /unified isn't shadowed by /:id)
   app.use('/api/v1/properties', createUnifiedPropertiesRoutes(pool));
@@ -262,6 +264,9 @@ export function mountPropertyRoutes(app: Express, pool: any) {
 
   // Property proxy (must be after specific property sub-routes)
   app.use('/api/v1', requireAuth, propertyProxyRoutes);
+
+  // Assessor parcel lookup API (F7/M30 Property Surface)
+  app.use('/api/assessor', requireAuth, assessorRouter);
 }
 
 // ─── Grid & Portfolio Routes ────────────────────────────────────────────────

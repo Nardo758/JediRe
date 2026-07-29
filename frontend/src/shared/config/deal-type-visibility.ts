@@ -25,7 +25,7 @@ export type StationId = 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6';
 export type ModuleId =
   | 'M01' | 'M02' | 'M03' | 'M04' | 'M05' | 'M06' | 'M07' | 'M08'
   | 'M09' | 'M10' | 'M11' | 'M12' | 'M13' | 'M14' | 'M15'
-  | 'M16' | 'M17' | 'M18' | 'M20' | 'M21' | 'M22' | 'M27' | 'M29' | 'M35';
+  | 'M16' | 'M17' | 'M18' | 'M20' | 'M21' | 'M22' | 'M27' | 'M29' | 'M30' | 'M35';
 
 export type FKey =
   | 'F1' | 'F2' | 'F3' | 'F4' | 'F5' | 'F6' | 'F7' | 'F8'
@@ -489,6 +489,17 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
     category: 'Intelligence',
     showFor: { existing: 'full', development: 'full', redevelopment: 'full' },
     dealTypeNotes: 'M27 Sale Comp Intelligence: transaction comps, price-per-unit benchmarking, and buyer-type pattern detection for all deal types.',
+  },
+
+  {
+    moduleId: 'M30',
+    name: 'Property Surface',
+    fKey: 'F7',
+    station: 'S1',
+    stationLabel: 'Intake & Triage',
+    category: 'Intelligence',
+    showFor: { existing: 'full', development: 'full', redevelopment: 'full' },
+    dealTypeNotes: 'Map-centric parcel intelligence with 3D design mode. Shows parcel boundaries, ownership, traffic, demographics, zoning overlays, and custom layers. Includes AI Generate and 3D building design for dev/redev deals.',
   },
 
   {
