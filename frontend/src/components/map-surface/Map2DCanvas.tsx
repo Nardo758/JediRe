@@ -11,6 +11,7 @@ interface Map2DCanvasProps {
   dealType: string;
   parcelBoundary?: GeoJSON.Polygon;
   onParcelSelect: (parcel: ParcelRecord | null) => void;
+  children?: React.ReactNode;
 }
 
 /**
@@ -27,6 +28,7 @@ export const Map2DCanvas: React.FC<Map2DCanvasProps> = ({
   dealType,
   parcelBoundary,
   onParcelSelect,
+  children,
 }) => {
   const mapRef = useRef<MapRef>(null);
 
@@ -166,9 +168,8 @@ export const Map2DCanvas: React.FC<Map2DCanvasProps> = ({
           </Source>
         )}
 
-        {/* TODO: Traffic count layer (Phase 2) */}
-        {/* TODO: Zoning district layer (Phase 2) */}
-        {/* TODO: Property listings layer (Phase 2) */}
+        {/* Injected child layers (deal pins, traffic, etc.) */}
+        {children}
       </Map>
 
       {/* Bottom-left info badge */}

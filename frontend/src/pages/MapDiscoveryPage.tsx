@@ -4,7 +4,9 @@ import { apiClient } from '../services/api.client';
 import { useMapSurfaceStore } from '../stores/mapSurfaceStore';
 import type { ParcelRecord } from '../types/map-surface.types';
 import { Map2DCanvas } from '../components/map-surface/Map2DCanvas';
+import { DealPinLayer } from '../components/map-surface/DealPinLayer';
 import { normalizeAssessorParcel } from '../components/map-surface/PropertySurfaceModule';
+import { TIER_COLORS } from '../components/map-surface/FlagPin';
 
 /**
  * ═══════════════════════════════════════════════════════════════════
@@ -15,9 +17,25 @@ import { normalizeAssessorParcel } from '../components/map-surface/PropertySurfa
  * parcel ID, view the assessor boundary on the Mapbox satellite map,
  * inspect parcel details, and create a deal directly from the map.
  *
+ * Phase 1 additions:
+ *   • Layer toggles (Parcels / Pipeline / Portfolio)
+ *   • Metric selector (Color By + Display)
+ *   • Flag pins with tier coloring
+ *   • Expandable popup on pin click
+ *
  * Route: /surface
  * Next:  /deals/create?parcelId=...&address=...&boundary=...
  */
+
+const METRIC_OPTIONS = [
+  { value: 'jediScore', label: 'JEDI Score' },
+  { value: 'occupancyRate', label: 'Occupancy' },
+  { value: 'rentGrowth', label: 'Rent Growth' },
+  { value: 'concessions', label: 'Concessions' },
+  { value: 'vacancyLoss', label: 'Vacancy Loss' },
+  { value: 'noi', label: 'NOI' },
+];
+
 export const MapDiscoveryPage: React.FC = () => {
   const navigate = useNavigate();
   const [urlSearchParams] = useSearchParams();
@@ -26,12 +44,19 @@ export const MapDiscoveryPage: React.FC = () => {
   const selectParcel = useMapSurfaceStore((s) => s.selectParcel);
   const selectedProperty = useMapSurfaceStore((s) => s.selectedProperty);
 
-  // Local state
+  // Local state — search
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [parcelBoundary, setParcelBoundary] = useState<GeoJSON.Polygon | undefined>(undefined);
+
+  // Local state — layer toggles & metric selectors
+  const [showParcels, setShowParcels] = useState(true);
+  const [showPipeline, setShowPipeline] = useState(true);
+  const [showPortfolio, setShowPortfolio] = useState(true);
+  const [colorBy, setColorBy] = useState('jediScore');
+  const [display, setDisplay] = useState('jediScore');
 
   // Seed search from URL ?search=... (arriving from Deal Detail or Terminal)
   useEffect(() => {
@@ -109,13 +134,21 @@ export const MapDiscoveryPage: React.FC = () => {
     setPanelOpen(false);
   };
 
+  // Build ownership filter array from toggles
+  const ownershipFilter = [
+    ...(showPipeline ? ['pipeline'] : []),
+    ...(showPortfolio ? ['portfolio'] : []),
+  ];
+
+  const anyDealLayerVisible = showPipeline || showPortfolio;
+
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-gray-900">
       {/* ─── Map Canvas (full bleed) ─── */}
       <div className="absolute inset-0">
         <Map2DCanvas
           dealType="discovery"
-          parcelBoundary={parcelBoundary}
+          parcelBoundary={showParcels ? parcelBoundary : undefined}
           onParcelSelect={(p) => {
             if (p) {
               selectParcel(p);
@@ -127,7 +160,17 @@ export const MapDiscoveryPage: React.FC = () => {
               setPanelOpen(false);
             }
           }}
-        />
+        >
+          {/* Deal flag pins */}
+          {anyDealLayerVisible && (
+            <DealPinLayer
+              colorBy={colorBy}
+              display={display}
+              visible={anyDealLayerVisible}
+              ownershipFilter={ownershipFilter.length > 0 ? ownershipFilter : undefined}
+            />
+          )}
+        </Map2DCanvas>
       </div>
 
       {/* ─── Floating Search Bar (top-center) ─── */}
@@ -181,6 +224,76 @@ export const MapDiscoveryPage: React.FC = () => {
             {error}
           </div>
         )}
+      </div>
+
+      {/* ─── Layer Toggle & Metric Control Bar (top-right) ─── */}
+      <div className="absolute top-6 right-4 z-10 flex flex-col gap-2 items-end">
+        {/* Layer toggles */}
+        <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 px-3 py-2 flex items-center gap-3">
+          <ToggleChip
+            label="Parcels"
+            active={showParcels}
+            onClick={() => setShowParcels((v) => !v)}
+            color="#2563eb"
+          />
+          <ToggleChip
+            label="Pipeline"
+            active={showPipeline}
+            onClick={() => setShowPipeline((v) => !v)}
+            color="#d97706"
+          />
+          <ToggleChip
+            label="Portfolio"
+            active={showPortfolio}
+            onClick={() => setShowPortfolio((v) => !v)}
+            color="#1d4ed8"
+          />
+        </div>
+
+        {/* Metric selectors */}
+        <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 px-3 py-2 flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Color</span>
+            <select
+              value={colorBy}
+              onChange={(e) => setColorBy(e.target.value)}
+              className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {METRIC_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="w-px h-4 bg-gray-200" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Display</span>
+            <select
+              value={display}
+              onChange={(e) => setDisplay(e.target.value)}
+              className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {METRIC_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Legend Bar (bottom-center) ─── */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
+        <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 px-4 py-2 flex items-center gap-4">
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Legend</span>
+          <LegendDot color={TIER_COLORS.strong} label="Strong" />
+          <LegendDot color={TIER_COLORS.fair} label="Fair" />
+          <LegendDot color={TIER_COLORS.watch} label="Watch" />
+          <LegendDot color={TIER_COLORS.risk} label="Risk" />
+          <LegendDot color={TIER_COLORS.neutral} label="No Data" />
+        </div>
       </div>
 
       {/* ─── Slide-in Parcel Panel (left) ─── */}
@@ -309,19 +422,6 @@ export const MapDiscoveryPage: React.FC = () => {
           )}
         </div>
       </div>
-
-      {/* ─── Bottom-left badge ─── */}
-      <div className="absolute bottom-4 left-4 z-10 bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 shadow-sm border border-gray-200 text-xs text-gray-600">
-        <span className="font-semibold text-gray-800">JediRe Surface</span>
-        <span className="mx-2 text-gray-300">|</span>
-        <span className="text-gray-500">Discovery Mode</span>
-        {selectedProperty && (
-          <>
-            <span className="mx-2 text-gray-300">|</span>
-            <span className="text-green-600 font-medium">Parcel loaded ✓</span>
-          </>
-        )}
-      </div>
     </div>
   );
 };
@@ -332,6 +432,35 @@ const MetricBox: React.FC<{ label: string; value: string }> = ({ label, value })
   <div className="bg-gray-50 rounded-lg p-2.5">
     <p className="text-xs text-gray-500">{label}</p>
     <p className="text-sm font-semibold text-gray-900 truncate">{value}</p>
+  </div>
+);
+
+const ToggleChip: React.FC<{
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  color: string;
+}> = ({ label, active, onClick, color }) => (
+  <button
+    onClick={onClick}
+    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition border ${
+      active
+        ? 'border-transparent text-white'
+        : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'
+    }`}
+    style={active ? { backgroundColor: color } : undefined}
+  >
+    <span
+      className={`w-2 h-2 rounded-full ${active ? 'bg-white/80' : 'bg-gray-300'}`}
+    />
+    {label}
+  </button>
+);
+
+const LegendDot: React.FC<{ color: string; label: string }> = ({ color, label }) => (
+  <div className="flex items-center gap-1.5">
+    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+    <span className="text-[10px] text-gray-500 font-medium">{label}</span>
   </div>
 );
 

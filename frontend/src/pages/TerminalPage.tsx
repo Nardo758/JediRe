@@ -16,6 +16,7 @@ import { StrategyBuilderPage } from "./StrategyBuilderPage";
 import { BottomPanel } from "../components/layout/BottomPanel";
 import { SkillsBar } from "../components/layout/SkillsBar";
 import TerminalMapView from "../components/map/TerminalMapView";
+import { WarMapPipelineSidebar } from "../components/map/WarMapPipelineSidebar";
 import { AssumptionsPanel } from "../components/deal/AssumptionsPanel";
 import { M35EventCard, type M35EventCardData } from "../components/m35/M35EventCard";
 import { MorningBriefWidget } from "../components/dashboard/MorningBriefWidget";
@@ -1339,6 +1340,15 @@ export default function TerminalPage() {
           <button onClick={()=>setMapCreating(c=>!c)} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"1px 6px",cursor:"pointer"}}>+ LAYER</button>
           <button onClick={()=>{setMapOpen(false);setMapCreating(false);setMapSelDeal(null);}} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"0px 5px",cursor:"pointer"}}>✕</button>
         </div>}/>
+
+      {/* ── Pipeline deals with metrics ── */}
+      {fkey!=="F3" && (
+        <WarMapPipelineSidebar
+          theme={T}
+          onDealClick={(id)=>{setMapSelDeal(id);navigate(`/deals/${id}/detail`);}}
+          selectedDealId={mapSelDeal}
+        />
+      )}
 
       {/* ── Layer creation form ── */}
       {mapCreating&&(
