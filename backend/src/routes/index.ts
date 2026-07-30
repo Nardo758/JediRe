@@ -220,6 +220,7 @@ import uploadTemplatesRouter from '../api/rest/upload-templates.routes';
 import uploadRouter from '../api/rest/upload.routes';
 import compQueryRouter from '../api/rest/comp-query.routes';
 import proformaGeneratorRouter from '../api/rest/proforma-generator.routes';
+import propertyGeoRouter from '../api/rest/property-geo.routes';
 
 import assessorRouter from '../api/rest/assessor.routes';
 
@@ -229,6 +230,13 @@ export function mountPropertyRoutes(app: Express, pool: any) {
 
   // Property CRUD
   app.use('/api/v1/properties', propertyRoutes);
+
+  // Geo-located properties with metrics (for mapping surface overlay)
+  app.use('/api/v1/properties', requireAuth, propertyGeoRouter);
+
+  // Property types & strategies
+
+  // Property types & strategies
 
   // Property types & strategies
   app.use('/api/v1/property-types', requireAuth, propertyTypesRouter);
