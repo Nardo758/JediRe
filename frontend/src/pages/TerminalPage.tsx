@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"; "react";
 import { TickerBar } from "../components/terminal/TickerBar";
 import { useNavigate, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { apiClient, api } from "../services/api.client";
@@ -644,6 +644,7 @@ export default function TerminalPage() {
   const [bottomTab, setBottomTab] = useState("alerts");
   const [bottomOpen, setBottomOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const [mapMenuOpen, setMapMenuOpen] = useState(false);
   const [mapSelDeal, setMapSelDeal] = useState<string|null>(null);
   const [selDealId, setSelDealId] = useState<string|null>(null);
 
@@ -866,7 +867,7 @@ export default function TerminalPage() {
   },[liveDeals]);
 
   // Reset map pin selection when switching tabs
-  useEffect(()=>{ setMapSelDeal(null); setShowStrategyBuilder(false); },[fkey]);
+  useEffect(()=>{ setMapSelDeal(null); setShowStrategyBuilder(false); setMapMenuOpen(false); },[fkey]);
 
   useEffect(() => {
     setDealsLoading(true);
@@ -1225,7 +1226,7 @@ export default function TerminalPage() {
         {fStage!=="ALL"&&<Bd c={T.text.cyan}>{fStage}</Bd>}
         {fStrat!=="ALL"&&<Bd c={T.text.purple}>{fStrat}</Bd>}
         <span style={{fontSize:10,color:T.text.muted,fontFamily:T.font.mono}}>{sorted.length} deals</span>
-        <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:mapOpen?T.text.cyan:T.bg.input,color:mapOpen?T.bg.terminal:T.text.cyan,border:`1px solid ${mapOpen?T.text.cyan:T.text.cyan}44`,padding:"2px 12px",height:20,cursor:"pointer",letterSpacing:0.3}}>MAP</button>
+        <MapDropdownButton compact />
       </div>
       <div style={{display:"grid",gridTemplateColumns:gc,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
         {[{l:"#"},{l:"PROPERTY",c:"name"},{l:"MARKET"},{l:"JEDI",c:"score"},{l:"D30",c:"delta"},{l:"STRAT"},{l:"IRR"},{l:"EM"},{l:"PRICE"},{l:"$/U"},{l:"STAGE"},{l:"RISK"},{l:"DAYS",c:"days"},{l:""}].map((h,i)=>(
@@ -1751,6 +1752,35 @@ export default function TerminalPage() {
     }
   };
 
+  // ─── MAP DROPDOWN BUTTON (shared by F1 + F2 + F3) ──────────
+  const MapDropdownButton = ({ compact = false }: { compact?: boolean }) => {
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      const handler = (e: MouseEvent) => {
+        if (ref.current && !ref.current.contains(e.target as Node)) setMapMenuOpen(false);
+      };
+      if (mapMenuOpen) document.addEventListener('mousedown', handler);
+      return () => document.removeEventListener('mousedown', handler);
+    }, [mapMenuOpen]);
+    return (
+      <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
+        <button onClick={() => setMapMenuOpen(o => !o)} style={{ fontFamily: T.font.mono, fontSize: 10, fontWeight: 600, background: mapOpen ? T.text.cyan : T.bg.input, color: mapOpen ? T.bg.terminal : T.text.cyan, border: `1px solid ${mapOpen ? T.text.cyan : T.text.cyan}44`, padding: compact ? '1px 8px' : '2px 12px', height: compact ? 18 : 20, cursor: 'pointer', letterSpacing: 0.3, display: 'flex', alignItems: 'center', gap: 3 }}>
+          MAP <span style={{ fontSize: 8, opacity: 0.7 }}>▾</span>
+        </button>
+        {mapMenuOpen && (
+          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: T.bg.panel, border: `1px solid ${T.border.medium}`, boxShadow: '0 8px 24px rgba(0,0,0,0.6)', zIndex: 9998, minWidth: 180, overflow: 'hidden' }}>
+            <button onClick={() => { setMapOpen(o => !o); setMapMenuOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', fontFamily: T.font.mono, fontSize: 10, fontWeight: 600, color: T.text.primary, background: 'transparent', border: 'none', borderBottom: `1px solid ${T.border.subtle}`, padding: '6px 10px', cursor: 'pointer', textAlign: 'left' }}>
+              <span>📍</span> Toggle Map Sidebar
+            </button>
+            <button onClick={() => { navigate('/surface'); setMapMenuOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', fontFamily: T.font.mono, fontSize: 10, fontWeight: 600, color: T.text.cyan, background: 'transparent', border: 'none', padding: '6px 10px', cursor: 'pointer', textAlign: 'left' }}>
+              <span>🌐</span> Discovery Surface →
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ─── VIEW: F1 DASHBOARD (Grid + Float Window System) ──────
   const ViewDashboard = () => {
     const gridWidgets = dashWindows.filter(id => !floatWidgets.includes(id));
@@ -1805,7 +1835,7 @@ export default function TerminalPage() {
             {dashWindows.length>0&&<span style={{fontSize:10,color:T.text.muted}}>{gridWidgets.length} grid{floatWidgets.length>0?` · ${floatWidgets.length} floating`:""}</span>}
           </div>
           <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:mapOpen?T.text.cyan:T.bg.input,color:mapOpen?T.bg.terminal:T.text.cyan,border:`1px solid ${mapOpen?T.text.cyan:T.text.cyan}44`,padding:"2px 12px",height:20,cursor:"pointer",letterSpacing:0.3}}>MAP</button>
+            <MapDropdownButton />
             {dashWindows.length>0&&<button onClick={()=>{setDashWindows([]);setWinStates({});setFloatWidgets([]);persistWins([],{});}} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"3px 8px",cursor:"pointer"}}>CLEAR ALL</button>}
             <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3}}>+ ADD WIDGET</button>
           </div>
@@ -2049,7 +2079,7 @@ export default function TerminalPage() {
           ))}
           <div style={{flex:1}}/>
           <button onClick={exportPortfolioCsv} disabled={portfolioExporting} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:"transparent",color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 10px",cursor:"pointer",letterSpacing:0.3,margin:"4px 0 4px 8px"}}>{portfolioExporting?"EXPORTING…":"EXPORT CSV"}</button>
-          <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:mapOpen?T.text.cyan:T.bg.input,color:mapOpen?T.bg.terminal:T.text.cyan,border:`1px solid ${mapOpen?T.text.cyan:T.text.cyan}44`,padding:"2px 15px",cursor:"pointer",letterSpacing:0.3,margin:"4px 0 4px 8px"}}>MAP</button>
+          <MapDropdownButton compact />
           <button onClick={() => navigate("/deals/create", {state:{dealCategory:"portfolio"}})} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3,margin:"4px 8px"}}>+ ADD ASSET</button>
         </div>
 
