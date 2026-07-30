@@ -557,7 +557,34 @@ router.patch('/:dealId/assumptions', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
 
-    // Log to assumption_history table
+    // Log to assumption_history table and write year1 overrides for assumption fields
+    const YEAR1_ASSUMPTION_KEYS = new Set(['rent_growth', 'vacancy_pct', 'opex_growth', 'exit_cap_rate', 'absorption']);
+    for (const [key, value] of Object.entries(updates)) {
+      await query(
+        `INSERT INTO assumption_history 
+         (deal_id, user_id, assumption_key, new_value, changed_by)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [dealId, userId, key, JSON.stringify(value), userId]
+      );
+
+      if (YEAR1_ASSUMPTION_KEYS.has(key)) {
+        const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+        if (!isNaN(numValue)) {
+          await query(
+            `INSERT INTO deal_assumptions (deal_id, year1, updated_at)
+             VALUES ($1, jsonb_build_object($2, jsonb_build_object('override', $3)), NOW())
+             ON CONFLICT (deal_id) DO UPDATE SET
+               year1 = COALESCE(deal_assumptions.year1, '{}'::jsonb) ||
+                       jsonb_build_object(
+                         $2,
+                         COALESCE(deal_assumptions.year1->$2, '{}'::jsonb)::jsonb || jsonb_build_object('override', $3)
+                       ),
+               updated_at = NOW()`,
+            [dealId, key, numValue]
+          );
+        }
+      }
+    }
     for (const [key, value] of Object.entries(updates)) {
       await query(
         `INSERT INTO assumption_history 

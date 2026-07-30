@@ -211,6 +211,11 @@ const ALLOWED_FIELDS = new Set([
   // Capital & deal fields
   'purchase_price', 'equity_at_close', 'loan_amount', 'interest_rate',
   'ltc_pct', 'exit_cap', 'rent_growth_yr1', 'hold_period_years',
+  // W1-8: Assumption fields with year1 LayeredValue representation
+  'rent_growth', 'vacancy_pct', 'opex_growth', 'exit_cap_rate', 'absorption',
+  // Financing fields (B2: R9 — Build the rail)
+  'purchase_price', 'equity_at_close', 'loan_amount', 'interest_rate',
+  'ltc_pct', 'exit_cap', 'rent_growth_yr1', 'hold_period_years',
   // Financing fields (B2: R9 — Build the rail)
   'ltv_pct', 'loan_term_years', 'amortization_years', 'io_period_months',
   'dscr_floor', 'debt_yield_floor',

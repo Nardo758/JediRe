@@ -118,7 +118,19 @@ export interface ComparisonResult {
     exitCap: number;
     absorption: number;
   };
-  recentAdjustments: AssumptionAdjustment[];
+}
+
+// W1-8: LayeredValue resolver for year1 assumption fields
+// Resolution chain: override > agent_confirmed > detected > platform > resolved
+function resolveLv(blob: unknown): number | null {
+  if (!blob || typeof blob !== 'object') return null;
+  const lv = blob as Record<string, unknown>;
+  if (lv.override != null) return Number(lv.override);
+  if (lv.agent_confirmed != null) return Number(lv.agent_confirmed);
+  if (lv.detected != null) return Number(lv.detected);
+  if (lv.platform != null) return Number(lv.platform);
+  if (lv.resolved != null) return Number(lv.resolved);
+  return null;
 }
 
 // ============================================================================
@@ -126,6 +138,17 @@ export interface ComparisonResult {
 // ============================================================================
 
 export class ProFormaAdjustmentService {
+
+  /**
+   * W1-8: Mapping from assumption_type (used in DB / API) to year1 JSONB key.
+   */
+  private static ASSUMPTION_TYPE_TO_YEAR1_KEY: Record<string, string> = {
+    rent_growth: 'rent_growth',
+    vacancy: 'vacancy_pct',
+    opex_growth: 'opex_growth',
+    exit_cap: 'exit_cap_rate',
+    absorption: 'absorption',
+  };
 
   /**
    * PF-04: Transaction-scoped query runner.
@@ -138,11 +161,40 @@ export class ProFormaAdjustmentService {
   }
 
   /**
+   * W1-8: Write a single slot into a year1 LayeredValue field.
+   * Merges nested JSONB without overwriting sibling slots.
+   */
+  private async writeYear1Slot(
+    dealId: string,
+    field: string,
+    slot: string,
+    value: number,
+    client?: PoolClient,
+  ): Promise<void> {
+    const q = this.exec(client);
+    await q(
+      `INSERT INTO deal_assumptions (deal_id, year1, updated_at)
+       VALUES ($1, jsonb_build_object($2, jsonb_build_object($3, $4)), NOW())
+       ON CONFLICT (deal_id) DO UPDATE SET
+         year1 = COALESCE(deal_assumptions.year1, '{}'::jsonb) ||
+                 jsonb_build_object(
+                   $2,
+                   COALESCE(deal_assumptions.year1->$2, '{}'::jsonb)::jsonb || jsonb_build_object($3, $4)
+                 ),
+         updated_at = NOW()`,
+      [dealId, field, slot, value],
+    );
+  }
+
+  /**
    * Get or create pro forma assumptions for a deal
    */
   async getProForma(dealId: string): Promise<ProFormaAssumptions | null> {
     const result = await query(
-      `SELECT * FROM proforma_assumptions WHERE deal_id = $1`,
+      `SELECT pa.*, da.year1
+       FROM proforma_assumptions pa
+       LEFT JOIN deal_assumptions da ON da.deal_id = pa.deal_id
+       WHERE pa.deal_id = $1`,
       [dealId]
     );
     
@@ -152,7 +204,6 @@ export class ProFormaAdjustmentService {
     
     return this.mapProForma(result.rows[0]);
   }
-
 
   /**
    * Initialize pro forma for a deal (with baseline values)
@@ -191,10 +242,19 @@ export class ProFormaAdjustmentService {
       ]
     );
     
+    // W1-8: Seed year1 platform layer for the 5 assumption fields
+    await this.writeYear1Slot(dealId, 'rent_growth', 'platform', parseFloat(baselineValues?.rentGrowth?.baseline ?? marketBaseline.rentGrowth), client);
+    await this.writeYear1Slot(dealId, 'vacancy_pct', 'platform', parseFloat(baselineValues?.vacancy?.baseline ?? marketBaseline.vacancy), client);
+    await this.writeYear1Slot(dealId, 'opex_growth', 'platform', parseFloat(baselineValues?.opexGrowth?.baseline ?? marketBaseline.opexGrowth), client);
+    await this.writeYear1Slot(dealId, 'exit_cap_rate', 'platform', parseFloat(baselineValues?.exitCap?.baseline ?? marketBaseline.exitCap), client);
+    await this.writeYear1Slot(dealId, 'absorption', 'platform', parseFloat(baselineValues?.absorption?.baseline ?? marketBaseline.absorption), client);
+    
     logger.info('Pro forma initialized', { dealId, strategy });
     
     return this.mapProForma(result.rows[0]);
   }
+      [
+        dealId,
   
   /**
    * Recalculate all adjustments for a deal
@@ -322,6 +382,8 @@ export class ProFormaAdjustmentService {
       [newValue, proformaId]
     );
     
+    // W1-8: Write demand-adjusted value to year1 detected slot
+    await this.writeYear1Slot(dealId, 'rent_growth', 'detected', newValue, client);
     logger.info('Rent growth adjusted', { 
       dealId, 
       previousValue: current.current ?? current.baseline, 
@@ -399,7 +461,13 @@ export class ProFormaAdjustmentService {
     }, client);
     
     await q(
+    await q(
       `UPDATE proforma_assumptions SET vacancy_current = $1 WHERE id = $2`,
+      [finalValue, proformaId]
+    );
+    
+    // W1-8: Write demand-adjusted value to year1 detected slot
+    await this.writeYear1Slot(dealId, 'vacancy_pct', 'detected', finalValue, client);
       [finalValue, proformaId]
     );
     
@@ -485,7 +553,13 @@ export class ProFormaAdjustmentService {
     }, client);
     
     await q(
+    await q(
       `UPDATE proforma_assumptions SET opex_growth_current = $1 WHERE id = $2`,
+      [newValue, proformaId]
+    );
+    
+    // W1-8: Write demand-adjusted value to year1 detected slot
+    await this.writeYear1Slot(dealId, 'opex_growth', 'detected', newValue, client);
       [newValue, proformaId]
     );
     
@@ -562,7 +636,13 @@ export class ProFormaAdjustmentService {
     }, client);
     
     await q(
+    await q(
       `UPDATE proforma_assumptions SET exit_cap_current = $1 WHERE id = $2`,
+      [newValue, proformaId]
+    );
+    
+    // W1-8: Write demand-adjusted value to year1 detected slot
+    await this.writeYear1Slot(dealId, 'exit_cap_rate', 'detected', newValue, client);
       [newValue, proformaId]
     );
     
@@ -632,7 +712,13 @@ export class ProFormaAdjustmentService {
     }, client);
     
     await q(
+    await q(
       `UPDATE proforma_assumptions SET absorption_current = $1 WHERE id = $2`,
+      [finalValue, proformaId]
+    );
+    
+    // W1-8: Write demand-adjusted value to year1 detected slot
+    await this.writeYear1Slot(dealId, 'absorption', 'detected', finalValue, client);
       [finalValue, proformaId]
     );
     
@@ -655,6 +741,39 @@ export class ProFormaAdjustmentService {
     }
     
     await transaction(async (client) => {
+      // W1-8: Write user override to year1 override slot (primary store)
+      const year1Key = ProFormaAdjustmentService.ASSUMPTION_TYPE_TO_YEAR1_KEY[assumptionType];
+      if (year1Key) {
+        await this.writeYear1Slot(dealId, year1Key, 'override', value, client);
+      }
+      
+      // Keep scalar override reason for backward compat
+      const reasonColumn = `${assumptionType}_override_reason`;
+      await client.query(
+        `UPDATE proforma_assumptions 
+         SET ${reasonColumn} = $1
+         WHERE deal_id = $2`,
+        [reason, dealId]
+      );
+      
+      // Create adjustment record
+      const assumptionKey = assumptionType === 'rent_growth' ? 'rentGrowth'
+        : assumptionType === 'opex_growth' ? 'opexGrowth'
+        : assumptionType === 'exit_cap' ? 'exitCap'
+        : assumptionType;
+      const previousEffective = parseFloat((proforma as any)[assumptionKey]?.effective ?? '0');
+      
+      await this.createAdjustment({
+        proformaId: proforma.id,
+        adjustmentTrigger: 'manual',
+        assumptionType,
+        previousValue: previousEffective,
+        newValue: value,
+        calculationMethod: 'user_override',
+        calculationInputs: { reason },
+        confidenceScore: 100 // User override = highest confidence
+      }, client);
+    });
       // Update override value
       const column = `${assumptionType}_user_override`;
       const reasonColumn = `${assumptionType}_override_reason`;
@@ -691,6 +810,46 @@ export class ProFormaAdjustmentService {
    * Called by trafficToProFormaService when predictions are refreshed.
    */
   async updatePlatformLayer(
+    dealId: string,
+    platformValues: {
+      vacancy?: number;
+      rentGrowth?: number;
+      absorption?: number;
+      exitCap?: number;
+    },
+    source: string = 'M07 Traffic Engine v2'
+  ): Promise<ProFormaAssumptions> {
+    return await transaction(async (client) => {
+      let proforma = await this.getProForma(dealId);
+
+      if (!proforma) {
+        proforma = await this.initializeProForma(dealId, 'rental', undefined, client);
+      }
+
+      // W1-8: Write platform values to year1 platform slot (not scalar _current)
+      if (platformValues.vacancy !== undefined) {
+        await this.writeYear1Slot(dealId, 'vacancy_pct', 'platform', platformValues.vacancy, client);
+      }
+      if (platformValues.rentGrowth !== undefined) {
+        await this.writeYear1Slot(dealId, 'rent_growth', 'platform', platformValues.rentGrowth, client);
+      }
+      if (platformValues.absorption !== undefined) {
+        await this.writeYear1Slot(dealId, 'absorption', 'platform', platformValues.absorption, client);
+      }
+      if (platformValues.exitCap !== undefined) {
+        await this.writeYear1Slot(dealId, 'exit_cap_rate', 'platform', platformValues.exitCap, client);
+      }
+
+      await client.query(
+        `UPDATE proforma_assumptions SET last_recalculation = NOW(), updated_at = NOW() WHERE deal_id = $1`,
+        [dealId]
+      );
+
+      logger.info('ProForma platform layer updated from traffic', { dealId, source, platformValues });
+
+      return (await this.getProForma(dealId))!;
+    });
+  }
     dealId: string,
     platformValues: {
       vacancy?: number;
@@ -1100,6 +1259,14 @@ export class ProFormaAdjustmentService {
       `UPDATE proforma_assumptions SET rent_growth_current = $1 WHERE id = $2`,
       [maxGrowth, proformaId]
     );
+    
+    // W1-8: Write policy-capped value to year1 agent_confirmed slot
+    await this.writeYear1Slot(dealId, 'rent_growth', 'agent_confirmed', maxGrowth, client);
+    const q = this.exec(client);
+    await q(
+      `UPDATE proforma_assumptions SET rent_growth_current = $1 WHERE id = $2`,
+      [maxGrowth, proformaId]
+    );
     await this.createAdjustment({
       proformaId,
       adjustmentTrigger: 'manual',
@@ -1365,72 +1532,51 @@ export class ProFormaAdjustmentService {
   }
   
   private mapProForma(row: any): ProFormaAssumptions {
-    // Return values as strings (from PostgreSQL NUMERIC columns) - parse only when doing calculations
-    const rentGrowthBaseline = (row.rent_growth_baseline || '0').toString();
-    const rentGrowthCurrent = row.rent_growth_current ? row.rent_growth_current.toString() : rentGrowthBaseline;
-    const rentGrowthUserOverride = row.rent_growth_user_override ? row.rent_growth_user_override.toString() : undefined;
+    const y1 = row.year1 || {};
 
-    const vacancyBaseline = (row.vacancy_baseline || '0').toString();
-    const vacancyCurrent = row.vacancy_current ? row.vacancy_current.toString() : vacancyBaseline;
-    const vacancyUserOverride = row.vacancy_user_override ? row.vacancy_user_override.toString() : undefined;
+    // W1-8: Helper to build AssumptionValue from year1 LV + scalar fallback
+    const buildAv = (
+      year1Key: string,
+      scalarBaseline: any,
+      scalarCurrent: any,
+      scalarOverride: any,
+      scalarReason: any,
+    ) => {
+      const blob = y1[year1Key];
+      const platform = blob?.platform;
+      const detected = blob?.detected;
+      const agentConfirmed = blob?.agent_confirmed;
+      const override = blob?.override;
 
-    const opexGrowthBaseline = (row.opex_growth_baseline || '0').toString();
-    const opexGrowthCurrent = row.opex_growth_current ? row.opex_growth_current.toString() : opexGrowthBaseline;
-    const opexGrowthUserOverride = row.opex_growth_user_override ? row.opex_growth_user_override.toString() : undefined;
+      const baseline = platform != null ? String(platform) : (scalarBaseline || '0').toString();
+      const current = (detected != null ? String(detected) : null)
+        ?? (agentConfirmed != null ? String(agentConfirmed) : null)
+        ?? (scalarCurrent ? scalarCurrent.toString() : baseline);
+      const userOverride = override != null ? String(override) : (scalarOverride ? scalarOverride.toString() : undefined);
+      const resolvedNum = resolveLv(blob);
+      const effective = resolvedNum != null ? String(resolvedNum) : (userOverride || current || baseline);
 
-    const exitCapBaseline = (row.exit_cap_baseline || '0').toString();
-    const exitCapCurrent = row.exit_cap_current ? row.exit_cap_current.toString() : exitCapBaseline;
-    const exitCapUserOverride = row.exit_cap_user_override ? row.exit_cap_user_override.toString() : undefined;
-
-    const absorptionBaseline = (row.absorption_baseline || '0').toString();
-    const absorptionCurrent = row.absorption_current ? row.absorption_current.toString() : absorptionBaseline;
-    const absorptionUserOverride = row.absorption_user_override ? row.absorption_user_override.toString() : undefined;
+      return {
+        baseline,
+        current,
+        userOverride,
+        overrideReason: scalarReason,
+        effective,
+      };
+    };
 
     return {
       id: row.id,
       dealId: row.deal_id,
       strategy: row.strategy,
-      rentGrowth: {
-        baseline: rentGrowthBaseline,
-        current: rentGrowthCurrent,
-        userOverride: rentGrowthUserOverride,
-        overrideReason: row.rent_growth_override_reason,
-        effective: rentGrowthUserOverride || rentGrowthCurrent || rentGrowthBaseline
-      },
-      vacancy: {
-        baseline: vacancyBaseline,
-        current: vacancyCurrent,
-        userOverride: vacancyUserOverride,
-        overrideReason: row.vacancy_override_reason,
-        effective: vacancyUserOverride || vacancyCurrent || vacancyBaseline
-      },
-      opexGrowth: {
-        baseline: opexGrowthBaseline,
-        current: opexGrowthCurrent,
-        userOverride: opexGrowthUserOverride,
-        overrideReason: row.opex_growth_override_reason,
-        effective: opexGrowthUserOverride || opexGrowthCurrent || opexGrowthBaseline
-      },
-      exitCap: {
-        baseline: exitCapBaseline,
-        current: exitCapCurrent,
-        userOverride: exitCapUserOverride,
-        overrideReason: row.exit_cap_override_reason,
-        effective: exitCapUserOverride || exitCapCurrent || exitCapBaseline
-      },
-      absorption: {
-        baseline: absorptionBaseline,
-        current: absorptionCurrent,
-        userOverride: absorptionUserOverride,
-        overrideReason: row.absorption_override_reason,
-        effective: absorptionUserOverride || absorptionCurrent || absorptionBaseline
-      },
+      rentGrowth: buildAv('rent_growth', row.rent_growth_baseline, row.rent_growth_current, row.rent_growth_user_override, row.rent_growth_override_reason),
+      vacancy: buildAv('vacancy_pct', row.vacancy_baseline, row.vacancy_current, row.vacancy_user_override, row.vacancy_override_reason),
+      opexGrowth: buildAv('opex_growth', row.opex_growth_baseline, row.opex_growth_current, row.opex_growth_user_override, row.opex_growth_override_reason),
+      exitCap: buildAv('exit_cap_rate', row.exit_cap_baseline, row.exit_cap_current, row.exit_cap_user_override, row.exit_cap_override_reason),
+      absorption: buildAv('absorption', row.absorption_baseline, row.absorption_current, row.absorption_user_override, row.absorption_override_reason),
       strategySpecificData: row.strategy_specific_data,
       lastRecalculation: row.last_recalculation ? new Date(row.last_recalculation) : undefined,
       updatedAt: new Date(row.updated_at)
-    };
-  }
-  
   private mapAdjustment(row: any): AssumptionAdjustment {
     return {
       id: row.id,

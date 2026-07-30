@@ -542,8 +542,7 @@ export type RentRollLayout =
   | 'generic_flat'
   | 'unknown';
 
-/** Multi-source extraction record — each key is a doc-type that contributed a value. */
-export interface ExtractedFieldSources<T = number> {
+export interface LayeredValue<T = number> {
   platform: T | null;
   t12?: T | null;
   rent_roll?: T | null;
@@ -590,23 +589,23 @@ export interface ExtractedFieldSources<T = number> {
 }
 
 export interface ProFormaYear1Seed {
-  gpr: ExtractedFieldSources<number>;
-  loss_to_lease_pct: ExtractedFieldSources<number>;
-  vacancy_pct: ExtractedFieldSources<number>;
-  concessions_pct: ExtractedFieldSources<number>;
-  bad_debt_pct: ExtractedFieldSources<number>;
-  non_revenue_units_pct: ExtractedFieldSources<number>;
-  net_rental_income: ExtractedFieldSources<number>;
-  other_income_per_unit: ExtractedFieldSources<number>;
+  gpr: LayeredValue<number>;
+  loss_to_lease_pct: LayeredValue<number>;
+  vacancy_pct: LayeredValue<number>;
+  concessions_pct: LayeredValue<number>;
+  bad_debt_pct: LayeredValue<number>;
+  non_revenue_units_pct: LayeredValue<number>;
+  net_rental_income: LayeredValue<number>;
+  other_income_per_unit: LayeredValue<number>;
   other_income_breakdown: {
-    parking: ExtractedFieldSources<number>;
-    pet: ExtractedFieldSources<number>;
-    storage: ExtractedFieldSources<number>;
-    laundry: ExtractedFieldSources<number>;
-    rubs: ExtractedFieldSources<number>;
-    fees: ExtractedFieldSources<number>;
-    insurance_admin: ExtractedFieldSources<number>;
-    other: ExtractedFieldSources<number>;
+    parking: LayeredValue<number>;
+    pet: LayeredValue<number>;
+    storage: LayeredValue<number>;
+    laundry: LayeredValue<number>;
+    rubs: LayeredValue<number>;
+    fees: LayeredValue<number>;
+    insurance_admin: LayeredValue<number>;
+    other: LayeredValue<number>;
   };
   /**
    * User-added ancillary income lines that don't fit the canonical categories
@@ -665,63 +664,79 @@ export interface ProFormaYear1Seed {
       probability_adopted: number;
     } | null;
   }>;
-  egi: ExtractedFieldSources<number>;
-  payroll: ExtractedFieldSources<number>;
-  repairs_maintenance: ExtractedFieldSources<number>;
-  turnover: ExtractedFieldSources<number>;
-  amenities: ExtractedFieldSources<number>;
-  contract_services: ExtractedFieldSources<number>;
-  marketing: ExtractedFieldSources<number>;
-  office: ExtractedFieldSources<number>;
-  g_and_a: ExtractedFieldSources<number>;
-  hoa_dues: ExtractedFieldSources<number>;
-  utilities: ExtractedFieldSources<number>;
+  egi: LayeredValue<number>;
+  payroll: LayeredValue<number>;
+  repairs_maintenance: LayeredValue<number>;
+  turnover: LayeredValue<number>;
+  amenities: LayeredValue<number>;
+  contract_services: LayeredValue<number>;
+  marketing: LayeredValue<number>;
+  office: LayeredValue<number>;
+  g_and_a: LayeredValue<number>;
+  hoa_dues: LayeredValue<number>;
+  utilities: LayeredValue<number>;
   /** Utility sub-lines — sub-components of the compound `utilities` field.
    *  Null from T12 today (parser aggregates to `utilities`); available for
    *  user override. When any sub-line is resolved, total_opex uses their sum
    *  in place of `utilities`. Task #672. */
-  water_sewer?: ExtractedFieldSources<number>;
-  electric?: ExtractedFieldSources<number>;
-  gas_fuel?: ExtractedFieldSources<number>;
+  water_sewer?: LayeredValue<number>;
+  electric?: LayeredValue<number>;
+  gas_fuel?: LayeredValue<number>;
   /** Landscaping / grounds — parser rolls this into contract_services from T12;
    *  available as a standalone line for user override. Task #672. */
-  landscaping?: ExtractedFieldSources<number>;
-  management_fee_pct: ExtractedFieldSources<number>;
-  insurance: ExtractedFieldSources<number>;
-  real_estate_tax: ExtractedFieldSources<number>;
-  personal_property_tax: ExtractedFieldSources<number>;
-  replacement_reserves: ExtractedFieldSources<number>;
-  total_opex: ExtractedFieldSources<number>;
-  noi: ExtractedFieldSources<number>;
-  noi_per_unit: ExtractedFieldSources<number>;
-  /** Interest rate for debt financing — ExtractedFieldSources-resolved from deal_assumptions.year1.
+  landscaping?: LayeredValue<number>;
+  management_fee_pct: LayeredValue<number>;
+  insurance: LayeredValue<number>;
+  real_estate_tax: LayeredValue<number>;
+  personal_property_tax: LayeredValue<number>;
+  replacement_reserves: LayeredValue<number>;
+  total_opex: LayeredValue<number>;
+  noi: LayeredValue<number>;
+  noi_per_unit: LayeredValue<number>;
+  /** Interest rate for debt financing — LayeredValue-resolved from deal_assumptions.year1.
    *  Arbiter: user override > agent_confirmed > platform > bridge default (R6).
    *  Added in B1 (DEBT_LAYER_PHASE2_GO). */
-  rate: ExtractedFieldSources<number>;
-  /** Loan-to-Value ratio (decimal, e.g. 0.65 = 65%) — ExtractedFieldSources-resolved from deal_assumptions.year1.
+  rate: LayeredValue<number>;
+  /** Loan-to-Value ratio (decimal, e.g. 0.65 = 65%) — LayeredValue-resolved from deal_assumptions.year1.
    *  Arbiter: user override > agent_confirmed > platform > bridge default (R9).
    *  Added in B2 (DEBT_LAYER_PHASE2_GO). */
-  ltv: ExtractedFieldSources<number>;
-  /** Loan term in years — ExtractedFieldSources-resolved from deal_assumptions.year1.
+  ltv: LayeredValue<number>;
+  /** Loan term in years — LayeredValue-resolved from deal_assumptions.year1.
    *  Arbiter: user override > agent_confirmed > platform > bridge default (R9).
    *  Added in B2 (DEBT_LAYER_PHASE2_GO). */
-  term: ExtractedFieldSources<number>;
-  /** Amortization period in years — ExtractedFieldSources-resolved from deal_assumptions.year1.
+  term: LayeredValue<number>;
+  /** Amortization period in years — LayeredValue-resolved from deal_assumptions.year1.
    *  Arbiter: user override > agent_confirmed > platform > bridge default (R9).
    *  Added in B2 (DEBT_LAYER_PHASE2_GO). */
-  amort: ExtractedFieldSources<number>;
-  /** Interest-Only period in months — ExtractedFieldSources-resolved from deal_assumptions.year1.
+  amort: LayeredValue<number>;
+  /** Interest-Only period in months — LayeredValue-resolved from deal_assumptions.year1.
    *  Arbiter: user override > agent_confirmed > platform > bridge default (R9).
    *  Added in B2 (DEBT_LAYER_PHASE2_GO). */
-  io_period: ExtractedFieldSources<number>;
-  /** DSCR floor constraint — ExtractedFieldSources-resolved from deal_assumptions.year1.
+  io_period: LayeredValue<number>;
+  /** DSCR floor constraint — LayeredValue-resolved from deal_assumptions.year1.
    *  Used by M11 for sizing in future B3/B4 steps.
    *  Added in B2 (DEBT_LAYER_PHASE2_GO). */
-  dscr_floor: ExtractedFieldSources<number>;
-  /** Debt yield floor constraint — ExtractedFieldSources-resolved from deal_assumptions.year1.
+  dscr_floor: LayeredValue<number>;
+  /** Debt yield floor constraint — LayeredValue-resolved from deal_assumptions.year1.
    *  Used by M11 for sizing in future B3/B4 steps.
    *  Added in B2 (DEBT_LAYER_PHASE2_GO). */
-  debt_yield_floor: ExtractedFieldSources<number>;
+  debt_yield_floor: LayeredValue<number>;
+  /** W1-8: Year-1 rent growth assumption — LayeredValue-resolved from deal_assumptions.year1.
+   *  Arbiter: user override > agent_confirmed > detected > platform.
+   */
+  rent_growth: LayeredValue<number>;
+  /** W1-8: Exit cap rate assumption — LayeredValue-resolved from deal_assumptions.year1.
+   *  Arbiter: user override > agent_confirmed > detected > platform.
+   */
+  exit_cap_rate: LayeredValue<number>;
+  /** W1-8: Operating expense growth assumption — LayeredValue-resolved from deal_assumptions.year1.
+   *  Arbiter: user override > agent_confirmed > detected > platform.
+   */
+  opex_growth: LayeredValue<number>;
+  /** W1-8: Absorption rate assumption — LayeredValue-resolved from deal_assumptions.year1.
+   *  Arbiter: user override > agent_confirmed > detected > platform.
+   */
+  absorption: LayeredValue<number>;
   source_docs: {
     t12_doc_id?: string;
     rent_roll_doc_id?: string;

@@ -46,6 +46,9 @@ export const YEAR1_FIELD_MAP: Record<string, string> = {
   dscr_floor:        'dscr_floor',
   debt_yield_floor:  'debt_yield_floor',
   exit_cap_rate:     'exit_cap_rate',
+  rent_growth:       'rent_growth',
+  expense_growth:    'opex_growth',
+  absorption:        'absorption',
 };
 
 // ── Plausibility bounds (W3) ──────────────────────────────────────────────────
@@ -70,6 +73,7 @@ export const PLAUSIBILITY_BOUNDS: Record<string, [min: number, max: number]> = {
   io_period_months:   [0,    120],
   dscr_floor:         [1.0,  3.0],
   debt_yield_floor:   [0.05, 0.20],
+  absorption:         [0,    100],
 };
 
 // ── Public types ──────────────────────────────────────────────────────────────
