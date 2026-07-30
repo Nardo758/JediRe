@@ -149,6 +149,14 @@ export const bishopFixture: BuildPathFixture = {
     bodySource: 'P3 re-pin script (f5-2-p3-pin.ts) — per-field extraction with provenance',
     originClass: 'platform_underwritten',
     pathBoundRule: true,
+    // 2026-07-30 verification (bishop-vintage-fix.ts): yearBuilt 2014 populated in
+    // deal_data (was null). No re-pin performed: live capture is post-M11 (loan
+    // $33.08M) and cannot represent this pre-M11 contract; golden suite passes 9/9
+    // unchanged. Live-vs-fixture bridge diff: term/amort now 60/360 (Finding W no
+    // longer expressing on the live store path — 4320 below is the pinned historical
+    // wart), dealMode/exitCap/expenseGrowth drifted in the live store since capture.
+    // NOTE: live store builder resolved dealInfo.vintage=1980 despite year_built=2014
+    // in deal_data — vintage source precedence needs investigation.
   },
 
   // P1 FIX (2026-07-13): effectiveAssumptions now contains the MODEL INPUT CONTRACT
