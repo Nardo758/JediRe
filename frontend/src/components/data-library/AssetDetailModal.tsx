@@ -53,6 +53,10 @@ interface AssetDetails {
   soldPrice: string;
   soldDate: string;
   noi: string;
+  constructionType: string;
+  parkingType: string;
+  parkingRatio: string;
+  amenities: string;
 }
 
 // Strip everything except digits and a single decimal point so paste of
@@ -146,6 +150,20 @@ const DEAL_TYPES = [
   { value: 'distressed', label: 'Distressed — REO / Foreclosure' },
 ];
 
+const CONSTRUCTION_TYPES = [
+  { value: 'wood_frame', label: 'Wood Frame' },
+  { value: 'concrete', label: 'Concrete' },
+  { value: 'steel', label: 'Steel' },
+  { value: 'mixed', label: 'Mixed' },
+];
+
+const PARKING_TYPES = [
+  { value: 'surface', label: 'Surface' },
+  { value: 'structured', label: 'Structured' },
+  { value: 'wrap', label: 'Wrap' },
+  { value: 'podium', label: 'Podium' },
+];
+
 export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   assetId,
   customLabel,
@@ -171,6 +189,10 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     soldPrice: '',
     soldDate: '',
     noi: '',
+    constructionType: '',
+    parkingType: '',
+    parkingRatio: '',
+    amenities: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -266,6 +288,10 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
           soldPrice: a.sale_price != null ? String(Number(a.sale_price)) : '',
           soldDate: a.sale_date ? String(a.sale_date).slice(0, 10) : '',
           noi: a.noi != null ? String(Number(a.noi)) : '',
+          constructionType: a.construction_type || '',
+          parkingType: a.parking_type || '',
+          parkingRatio: a.parking_ratio != null ? String(Number(a.parking_ratio)) : '',
+          amenities: a.amenities?.length > 0 ? a.amenities.join(', ') : '',
         });
       } catch (err) {
         console.error('Failed to load asset:', err);
@@ -318,6 +344,10 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
               soldPrice:    d.soldPrice    || ex.soldPrice    || '',
               soldDate:     d.soldDate     || '',
               noi:          d.noi          || ex.noi          || '',
+              constructionType: d.constructionType || ex.constructionType || '',
+              parkingType:    d.parkingType    || ex.parkingType    || '',
+              parkingRatio:   d.parkingRatio   || ex.parkingRatio   || '',
+              amenities:      d.amenities      || ex.amenities      || '',
             }));
             setUploadStatus(omRes.data.usedOcr ? 'OCR complete — fields filled' : 'OM parsed — fields filled');
           }
@@ -372,6 +402,10 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
               occupancyPct: occPct || d.occupancyPct,
               capRate: capPct || d.capRate,
               noi: a.noi != null ? String(Number(a.noi)) : d.noi,
+              constructionType: a.construction_type || d.constructionType,
+              parkingType: a.parking_type || d.parkingType,
+              parkingRatio: a.parking_ratio != null ? String(Number(a.parking_ratio)) : d.parkingRatio,
+              amenities: a.amenities?.length > 0 ? a.amenities.join(', ') : d.amenities,
             }));
             onSave(); // notify parent so list refreshes
             fetchAttachedFiles(); // refresh the file list in this modal
@@ -533,6 +567,10 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         yearBuilt: a.year_built != null ? String(a.year_built) : prev.yearBuilt,
         units: a.unit_count != null ? String(a.unit_count) : prev.units,
         occupancyPct: occPct || prev.occupancyPct,
+        constructionType: a.construction_type ?? prev.constructionType,
+        parkingType: a.parking_type ?? prev.parkingType,
+        parkingRatio: a.parking_ratio != null ? String(Number(a.parking_ratio)) : prev.parkingRatio,
+        amenities: a.amenities?.length > 0 ? a.amenities.join(', ') : prev.amenities,
       }));
     } catch {
       /* non-fatal */
@@ -628,6 +666,10 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         sale_price: details.soldPrice ? parseFloat(details.soldPrice) : null,
         sale_date: details.soldDate || null,
         noi: details.noi ? parseFloat(details.noi) : null,
+        construction_type: details.constructionType || null,
+        parking_type: details.parkingType || null,
+        parking_ratio: details.parkingRatio ? parseFloat(details.parkingRatio) : null,
+        amenities: details.amenities ? details.amenities.split(',').map(s => s.trim()).filter(Boolean) : null,
       };
 
       // Calculate vintage band
@@ -982,6 +1024,52 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                 value={details.stories}
                 onChange={e => updateField('stories', e.target.value)}
                 placeholder="3"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          {/* Building Characteristics */}
+          <div style={{ fontSize: 10, fontWeight: 600, color: C.cyan, marginBottom: 10, marginTop: 20, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Building2 size={12} />
+            BUILDING CHARACTERISTICS
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+            <div>
+              <label style={labelStyle}>Construction Type</label>
+              <select value={details.constructionType} onChange={e => updateField('constructionType', e.target.value)} style={selectStyle}>
+                <option value="">Select construction...</option>
+                {CONSTRUCTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Parking Type</label>
+              <select value={details.parkingType} onChange={e => updateField('parkingType', e.target.value)} style={selectStyle}>
+                <option value="">Select parking...</option>
+                {PARKING_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12, marginBottom: 16 }}>
+            <div>
+              <label style={labelStyle}>Parking Ratio</label>
+              <input
+                type="number"
+                step="0.1"
+                value={details.parkingRatio}
+                onChange={e => updateField('parkingRatio', e.target.value)}
+                placeholder="1.5"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Amenities (comma-separated)</label>
+              <input
+                value={details.amenities}
+                onChange={e => updateField('amenities', e.target.value)}
+                placeholder="pool, gym, concierge, rooftop"
                 style={inputStyle}
               />
             </div>

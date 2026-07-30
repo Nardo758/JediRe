@@ -380,6 +380,27 @@ export function createDataLibraryAssetsRoutes(pool: Pool): Router {
       maybe('management_fee_pct', pf?.managementFeePct != null
         ? (Number(pf.managementFeePct) > 1 ? Number(pf.managementFeePct) / 100 : Number(pf.managementFeePct))
         : null);
+      maybe('construction_type', prop?.constructionType ?? null);
+      maybe('parking_type', prop?.parkingType ?? null);
+      maybe('parking_ratio', prop?.parkingRatio ?? null);
+      maybe('amenities', prop?.amenities?.length > 0 ? prop.amenities : null);
+      maybe('address', prop?.address);
+      maybe('city', prop?.city);
+      maybe('state', prop?.state);
+      maybe('property_type', propertyType);
+      maybe('unit_count', prop?.units != null ? Math.round(Number(prop.units)) : null);
+      maybe('year_built', prop?.yearBuilt != null ? Math.round(Number(prop.yearBuilt)) : null);
+      maybe('year_renovated', prop?.yearRenovated != null ? Math.round(Number(prop.yearRenovated)) : null);
+      maybe('stories', prop?.stories != null ? Math.round(Number(prop.stories)) : null);
+      maybe('avg_rent', avgRent != null ? Math.round(avgRent) : null);
+      maybe('occupancy_rate', occStored);
+      maybe('cap_rate', capRateStored);
+      maybe('asking_price', meta?.askingPrice != null ? Number(meta.askingPrice) : null);
+      maybe('noi', noi != null ? Math.round(Number(noi)) : null);
+      maybe('gross_potential_rent', pf?.stabilizedGpr != null ? Math.round(Number(pf.stabilizedGpr)) : null);
+      maybe('management_fee_pct', pf?.managementFeePct != null
+        ? (Number(pf.managementFeePct) > 1 ? Number(pf.managementFeePct) / 100 : Number(pf.managementFeePct))
+        : null);
 
       if (updates.length > 0) {
         updates.push(`data_type = COALESCE(data_type, 'om')`);
@@ -397,6 +418,29 @@ export function createDataLibraryAssetsRoutes(pool: Pool): Router {
         frac == null ? null : String(parseFloat((frac * 100).toFixed(4)).toString().replace(/\.?0+$/, ''));
 
       // Return extracted values as frontend-friendly field names
+      return res.json({
+        success: true,
+        usedOcr: result.meta?.usedOcr ?? false,
+        extracted: {
+          propertyName: prop?.name ?? null,
+          address:      prop?.address ?? null,
+          city:         prop?.city ?? null,
+          state:        prop?.state ?? null,
+          units:        prop?.units != null ? String(Math.round(Number(prop.units))) : null,
+          yearBuilt:    prop?.yearBuilt != null ? String(Math.round(Number(prop.yearBuilt))) : null,
+          stories:      prop?.stories != null ? String(Math.round(Number(prop.stories))) : null,
+          avgRent:      avgRent != null ? String(Math.round(avgRent)) : null,
+          occupancyPct: toDisplayPct(occStored),
+          capRate:      toDisplayPct(capRateStored),
+          askingPrice:  meta?.askingPrice != null ? String(Math.round(Number(meta.askingPrice))) : null,
+          noi:          noi != null ? String(Math.round(Number(noi))) : null,
+          soldPrice:    null,
+          constructionType: prop?.constructionType ?? null,
+          parkingType:    prop?.parkingType ?? null,
+          parkingRatio:   prop?.parkingRatio != null ? String(Number(prop.parkingRatio)) : null,
+          amenities:      prop?.amenities?.length > 0 ? prop.amenities.join(', ') : null,
+        },
+      });
       return res.json({
         success: true,
         usedOcr: result.meta?.usedOcr ?? false,

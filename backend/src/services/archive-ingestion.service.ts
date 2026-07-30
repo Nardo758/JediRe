@@ -665,7 +665,102 @@ async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal, existingAs
     year_built: deal.yearBuilt,
   });
 
+  const omProp = (deal.extractionData?.om as any)?.property;
+  const constructionType = omProp?.constructionType ?? null;
+  const parkingType = omProp?.parkingType ?? null;
+  const parkingRatio = omProp?.parkingRatio ?? null;
+  const amenities = omProp?.amenities?.length > 0 ? omProp.amenities : null;
+
   // If updating an existing asset, only fill in blanks (COALESCE) and merge extraction_data.
+  if (existingAssetId) {
+    const upd = await pool.query(
+      `UPDATE data_library_assets SET
+         city           = COALESCE(city,           $2),
+         state          = COALESCE(state,          $3),
+         unit_count     = COALESCE(unit_count,     $4),
+         year_built     = COALESCE(year_built,     $5),
+         property_type  = COALESCE(property_type,  $6),
+         stories        = COALESCE(stories,        $7),
+         msa_name       = COALESCE(msa_name,       $8),
+         asset_class    = COALESCE(asset_class,    $9),
+         cap_rate       = COALESCE(cap_rate,       $10),
+         noi            = COALESCE(noi,            $11),
+         noi_per_unit   = COALESCE(noi_per_unit,   $12),
+         expense_ratio  = COALESCE(expense_ratio,  $13),
+         avg_rent       = COALESCE(avg_rent,       $14),
+         occupancy_rate = COALESCE(occupancy_rate, $15),
+         construction_type = COALESCE(construction_type, $16),
+         parking_type   = COALESCE(parking_type,   $17),
+         parking_ratio  = COALESCE(parking_ratio,  $18),
+         amenities      = COALESCE(amenities,      $19),
+         extraction_data = COALESCE(extraction_data, '{}'::jsonb) || $20::jsonb,
+         data_quality_score = GREATEST(COALESCE(data_quality_score, 0), $21),
+         source_type    = CASE WHEN source_type = 'manual' THEN 'archive' ELSE source_type END,
+         updated_at     = NOW()
+       WHERE id = $1
+       RETURNING id`,
+      [
+        existingAssetId,
+        deal.city, deal.state, deal.units, deal.yearBuilt,
+        propertyType, deal.stories, deal.msa, deal.assetClass,
+        deal.goingInCapRate, deal.trailingNoi, deal.noiPerUnit, deal.opexRatio,
+        deal.avgRent, deal.occupancyPct,
+        constructionType, parkingType, parkingRatio, amenities,
+        JSON.stringify(mergedExtraction),
+        dqScore,
+      ]
+    );
+    return upd.rows[0]?.id;
+  }
+
+  const result = await pool.query(
+    `INSERT INTO data_library_assets (
+      property_name, city, state, unit_count, year_built,
+      source_type,
+      property_type,
+      stories, msa_name, asset_class,
+      cap_rate,
+      noi, noi_per_unit, expense_ratio,
+      avg_rent, occupancy_rate,
+      construction_type, parking_type, parking_ratio, amenities,
+      extraction_data, data_quality_score, created_by, created_at, updated_at
+    ) VALUES (
+      $1, $2, $3, $4, $5,
+      'archive',
+      $6,
+      $7, $8, $9,
+      $10,
+      $11, $12, $13,
+      $14, $15,
+      $16, $17, $18, $19,
+      $20, $21, $22, NOW(), NOW()
+    )
+    RETURNING id`,
+    [
+      deal.propertyName,
+      deal.city,
+      deal.state,
+      deal.units,
+      deal.yearBuilt,
+      propertyType,
+      deal.stories,
+      deal.msa,
+      deal.assetClass,
+      deal.goingInCapRate,
+      deal.trailingNoi,
+      deal.noiPerUnit,
+      deal.opexRatio,
+      deal.avgRent,
+      deal.occupancyPct,
+      constructionType,
+      parkingType,
+      parkingRatio,
+      amenities,
+      JSON.stringify(mergedExtraction),
+      dqScore,
+      createdBy ?? null,
+    ]
+  );
   if (existingAssetId) {
     const upd = await pool.query(
       `UPDATE data_library_assets SET
@@ -826,6 +921,25 @@ export async function ingestArchiveDeals(
       }
       
       // Create building profile from OM extraction data
+      const omData = parsed.extractionData?.om as import('./document-extraction/parsers/om-parser').OMExtraction | undefined;
+      if (omData?.property) {
+        try {
+          const omProp = omData.property;
+          await createProfileFromOM(assetId, {
+            yearBuilt: omProp.yearBuilt,
+            stories: omProp.stories,
+            units: parsed.units,
+            squareFeet: omProp.netRentableSF,
+            parkingSpaces: omProp.parkingSpaces,
+            parkingRatio: omProp.parkingRatio,
+            amenities: omProp.amenities,
+            buildingType: omProp.propertyType ?? undefined,
+            constructionType: omProp.constructionType ?? undefined,
+          });
+        } catch (profileErr) {
+          result.warnings.push(`${folder.name}: building profile creation failed — ${profileErr instanceof Error ? profileErr.message : String(profileErr)}`);
+        }
+      }
       if (parsed.extractionData?.property) {
         try {
           const omProp = parsed.extractionData.property;
