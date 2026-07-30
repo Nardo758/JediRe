@@ -964,7 +964,13 @@ const DealDetailPage: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: 0, minWidth: 0, flex: 1 }}>
               <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#F5A623', flexShrink: 0, marginRight: 6 }} />
               {(deal.address || deal.location) && (
-                <span style={{ color: TEXT_MID, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260, letterSpacing: 0.2 }}>
+                <span
+                  onClick={() => navigate(`/surface?search=${encodeURIComponent(deal.address || deal.location)}`)}
+                  title="Open in Discovery Surface"
+                  style={{ color: TEXT_MID, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260, letterSpacing: 0.2, cursor: 'pointer' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLSpanElement).style.color = '#00BCD4'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLSpanElement).style.color = TEXT_MID; }}
+                >
                   {deal.address || deal.location}
                 </span>
               )}

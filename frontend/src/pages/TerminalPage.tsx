@@ -1250,7 +1250,7 @@ export default function TerminalPage() {
             <div style={{padding:4,fontSize:10,color:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{i+1}</div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`}}>
               <div style={{fontSize:10,fontWeight:600,color:T.text.primary}}>{d.name}</div>
-              <div style={{fontSize:10,color:T.text.muted}}>{d.addr}</div>
+              <div onClick={(e)=>{e.stopPropagation();navigate(`/surface?search=${encodeURIComponent(d.addr)}`);}} style={{fontSize:10,color:T.text.muted,cursor:'pointer'}} title="Open in Discovery Surface">{d.addr}</div>
             </div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`}}><div style={{fontSize:10,color:T.text.secondary}}>{d.market}</div></div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>

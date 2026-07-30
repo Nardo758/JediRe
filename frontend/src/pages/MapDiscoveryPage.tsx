@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
 import { useMapSurfaceStore } from '../stores/mapSurfaceStore';
 import type { ParcelRecord } from '../types/map-surface.types';
@@ -20,6 +20,7 @@ import { normalizeAssessorParcel } from '../components/map-surface/PropertySurfa
  */
 export const MapDiscoveryPage: React.FC = () => {
   const navigate = useNavigate();
+  const [urlSearchParams] = useSearchParams();
 
   // Store
   const selectParcel = useMapSurfaceStore((s) => s.selectParcel);
@@ -31,6 +32,24 @@ export const MapDiscoveryPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [parcelBoundary, setParcelBoundary] = useState<GeoJSON.Polygon | undefined>(undefined);
+
+  // Seed search from URL ?search=... (arriving from Deal Detail or Terminal)
+  useEffect(() => {
+    const q = urlSearchParams.get('search');
+    if (q) {
+      setSearchQuery(q);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-search when searchQuery was seeded from URL
+  const didAutoSearchRef = React.useRef(false);
+  useEffect(() => {
+    if (searchQuery && !didAutoSearchRef.current && !isSearching && !selectedProperty) {
+      didAutoSearchRef.current = true;
+      const t = setTimeout(() => handleSearch(), 150);
+      return () => clearTimeout(t);
+    }
+  }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
