@@ -26,13 +26,8 @@ import { resolveRulesetStack, deriveCounty } from './resolver';
 import { jurisdictionCacheGet, jurisdictionCacheSet } from './jurisdictionCache';
 import { federalRuleset, federalIncomeTaxRate, federalCostSegAvailablePct } from './rulesets/federal.ruleset';
 import { logger } from '../../utils/logger';
-import type {
-  TaxContext,
-  LayeredValue,
-  TaxForecastProvenance,
-  PropertyAppraiserResult,
-} from './types';
-
+import { TaxContext, TaxForecastProvenance, PropertyAppraiserResult } from './types';
+import type { LayeredValue } from '../../types/layered-value';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /** Minimal shape of a deal row as returned by the DB (not full DealRow). */

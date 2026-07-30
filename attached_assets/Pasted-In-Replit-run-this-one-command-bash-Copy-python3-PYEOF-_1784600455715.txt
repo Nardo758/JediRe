@@ -1,0 +1,171 @@
+In Replit, run this one command:
+bash
+Copy
+python3 << 'PYEOF'
+import re
+
+# ── Fix 1: proxy secret throw ───────────────────────────────────────────
+with open('src/api/rest/archive.routes.ts', 'r') as f:
+    content = f.read()
+
+old = """function proxyTokenSecret(): string {
+  return process.env.JWT_SECRET ?? process.env.SESSION_SECRET ?? 'r2-proxy-fallback-secret';
+}"""
+new = """function proxyTokenSecret(): string {
+  const secret = process.env.JWT_SECRET ?? process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error('FATAL: JWT_SECRET or SESSION_SECRET must be configured for upload proxy token signing');
+  }
+  return secret;
+}"""
+
+if old in content:
+    content = content.replace(old, new)
+    with open('src/api/rest/archive.routes.ts', 'w') as f:
+        f.write(content)
+    print("✓ Fix 1 applied: proxy secret throw")
+else:
+    print("✗ Fix 1: target not found (already patched?)")
+
+# ── Fix 2: restricted-by-default + heuristic ────────────────────────────
+with open('src/services/intake-sources/data-library-upload/index.ts', 'r') as f:
+    content = f.read()
+
+old = """  if (!meta.sha256) throw new Error('[data-library-upload] sha256 is required');
+  if (!meta.storage_key) throw new Error('[data-library-upload] storage_key is required');
+  if (!meta.original_filename) throw new Error('[data-library-upload] original_filename is required');
+
+  const docType = normalizeDocType(meta.document_type);"""
+
+new = """  if (!meta.sha256) throw new Error('[data-library-upload] sha256 is required');
+  if (!meta.storage_key) throw new Error('[data-library-upload] storage_key is required');
+  if (!meta.original_filename) throw new Error('[data-library-upload] original_filename is required');
+
+  // ── License classification (restricted-by-default) ─────────────────────────
+  // Heuristic: filename patterns that indicate third-party vendor data.
+  // Unknown / undeclared source → restricted until proven free (honest-absence).
+  const filenameLower = meta.original_filename.toLowerCase();
+  const vendorPatterns: Array<{ pattern: RegExp; source: string }> = [
+    { pattern: /costar/, source: 'costar' },
+    { pattern: /axio/, source: 'axiometrics' },
+    { pattern: /axiom/, source: 'axiometrics' },
+    { pattern: /submarket/, source: 'suspected_restricted' },
+  ];
+
+  let licenseRestricted = true;  // DEFAULT: restricted until classified
+  let licenseSource: string | null = null;
+
+  const matchedVendor = vendorPatterns.find(v => v.pattern.test(filenameLower));
+  if (matchedVendor) {
+    licenseRestricted = true;
+    licenseSource = matchedVendor.source;
+  }
+  // TODO: add explicit source-declaration override when req.body.source is wired
+
+  const scopeId = licenseRestricted
+    ? 'RESTRICTED_PENDING_DEAL'
+    : (meta.uploaded_by ? 'user:' + meta.uploaded_by : 'GLOBAL');
+
+  const docType = normalizeDocType(meta.document_type);"""
+
+if old in content:
+    content = content.replace(old, new)
+    # Also fix the INSERT columns
+    old_insert = """    `INSERT INTO data_library_files
+       (original_filename, sha256, mime_type, size_bytes,
+        storage_provider, storage_bucket, storage_key,
+        document_type, parser_status, parcel_id, uploaded_by, scope_id, redistribution_restricted)
+     VALUES ($1, $2, $3, $4, 'r2', $5, $6, $7, 'unparsed', $8, $9, $10, FALSE)
+     ON CONFLICT (sha256) DO NOTHING
+     RETURNING id, true AS inserted`"""
+    new_insert = """    `INSERT INTO data_library_files
+       (original_filename, sha256, mime_type, size_bytes,
+        storage_provider, storage_bucket, storage_key, document_type,
+        parser_status, parcel_id, uploaded_by, scope_id,
+        redistribution_restricted, license_source)
+     VALUES ($1, $2, $3, $4, 'r2', $5, $6, $7, 'unparsed', $8, $9, $10, $11, $12)
+     ON CONFLICT (sha256) DO NOTHING
+     RETURNING id, true AS inserted`"""
+    content = content.replace(old_insert, new_insert)
+    # Fix the parameters array
+    old_params = """      meta.uploaded_by ?? null,
+      meta.uploaded_by ? 'user:' + meta.uploaded_by : 'GLOBAL',"""
+    new_params = """      meta.uploaded_by ?? null,
+      scopeId,
+      licenseRestricted,
+      licenseSource,"""
+    content = content.replace(old_params, new_params)
+    with open('src/services/intake-sources/data-library-upload/index.ts', 'w') as f:
+        f.write(content)
+    print("✓ Fix 2 applied: restricted-by-default + heuristic")
+else:
+    print("✗ Fix 2: target not found (already patched?)")
+
+# ── Fix 3: PII minimize-at-source + redact guard ────────────────────────
+with open('src/services/deal-financial-context.service.ts', 'r') as f:
+    content = f.read()
+
+old_select = """    pool.query(
+      `SELECT unit_number, tenant_name, monthly_rent, effective_rent,
+              lease_start, lease_end, lease_status, concession_amount, source_type
+       FROM deal_lease_transactions
+       WHERE deal_id = $1
+       ORDER BY unit_number`,"""
+new_select = """    pool.query(
+      `SELECT unit_number, monthly_rent, effective_rent,
+              lease_start, lease_end, lease_status, concession_amount, source_type
+       FROM deal_lease_transactions
+       WHERE deal_id = $1
+       ORDER BY unit_number`,"""
+
+if old_select in content:
+    content = content.replace(old_select, new_select)
+    content = content.replace("        tenantName: l.tenant_name,", "        tenantName: '[REDACTED]',")
+    # Add redact guard before prompt building
+    old_prompt = "  let prompt = '';"
+    new_prompt = """  // ── PII redaction guard ───────────────────────────────────────────────────
+  // Belt-and-suspenders: tenant names must never reach LLM prompts.
+  // (Source-layer fix: tenant_name dropped from SELECT above.)
+  for (const lease of ctx.leases.items) {
+    if (lease.tenantName && lease.tenantName !== '[REDACTED]') {
+      throw new Error(`PII leak blocked: unredacted tenant name in unit ${lease.unitNumber}`);
+    }
+  }
+
+  let prompt = '';"""
+    content = content.replace(old_prompt, new_prompt)
+    with open('src/services/deal-financial-context.service.ts', 'w') as f:
+        f.write(content)
+    print("✓ Fix 3 applied: PII minimize-at-source + redact guard")
+else:
+    print("✗ Fix 3: target not found (already patched?)")
+
+# ── Fix 4: calibration constant ─────────────────────────────────────────
+with open('src/services/traffic-calibration.service.ts', 'r') as f:
+    content = f.read()
+
+old_cal = """        comparisons['Tour Conversion'] = {
+          calibrated: Number(cal.avg_tour_conversion),
+          default: 0.99,
+        };"""
+new_cal = """        comparisons['Tour Conversion'] = {
+          calibrated: Number(cal.avg_tour_conversion),
+          // Platform default: must match BASELINE_DATA in multifamilyTrafficService
+          default: 0.50,
+        };"""
+
+if old_cal in content:
+    content = content.replace(old_cal, new_cal)
+    with open('src/services/traffic-calibration.service.ts', 'w') as f:
+        f.write(content)
+    print("✓ Fix 4 applied: calibration 0.99 → 0.50")
+else:
+    print("✗ Fix 4: target not found (already patched?)")
+
+print("\n=== Verify: git diff --stat ===")
+PYEOF
+Then verify:
+bash
+Copy
+cd ~/workspace/backend && git diff --stat
+cd ~/workspace/backend && npm run build

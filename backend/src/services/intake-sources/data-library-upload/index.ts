@@ -62,6 +62,31 @@ export async function registerUploadedFile(
   if (!meta.storage_key) throw new Error('[data-library-upload] storage_key is required');
   if (!meta.original_filename) throw new Error('[data-library-upload] original_filename is required');
 
+  // ── License classification (restricted-by-default) ─────────────────────────
+  // Heuristic: filename patterns that indicate third-party vendor data.
+  // Unknown / undeclared source → restricted until proven free (honest-absence).
+  const filenameLower = meta.original_filename.toLowerCase();
+  const vendorPatterns: Array<{ pattern: RegExp; source: string }> = [
+    { pattern: /costar/, source: 'costar' },
+    { pattern: /axio/, source: 'axiometrics' },
+    { pattern: /axiom/, source: 'axiometrics' },
+    { pattern: /submarket/, source: 'suspected_restricted' },
+  ];
+
+  let licenseRestricted = true;  // DEFAULT: restricted until classified
+  let licenseSource: string | null = null;
+
+  const matchedVendor = vendorPatterns.find(v => v.pattern.test(filenameLower));
+  if (matchedVendor) {
+    licenseRestricted = true;
+    licenseSource = matchedVendor.source;
+  }
+  // TODO: add explicit source-declaration override when req.body.source is wired
+
+  const scopeId = licenseRestricted
+    ? 'RESTRICTED_PENDING_DEAL'
+    : (meta.uploaded_by ? 'user:' + meta.uploaded_by : 'GLOBAL');
+
   const docType = normalizeDocType(meta.document_type);
   const parcelId = meta.parcel_id?.trim() || null;
 
@@ -69,9 +94,10 @@ export async function registerUploadedFile(
   const fileRes = await query<{ id: string; inserted: boolean }>(
     `INSERT INTO data_library_files
        (original_filename, sha256, mime_type, size_bytes,
-        storage_provider, storage_bucket, storage_key,
-        document_type, parser_status, parcel_id, uploaded_by, scope_id, redistribution_restricted)
-     VALUES ($1, $2, $3, $4, 'r2', $5, $6, $7, 'unparsed', $8, $9, $10, FALSE)
+        storage_provider, storage_bucket, storage_key, document_type,
+        parser_status, parcel_id, uploaded_by, scope_id,
+        license_restricted, license_source)
+     VALUES ($1, $2, $3, $4, 'r2', $5, $6, $7, 'unparsed', $8, $9, $10, $11, $12)
      ON CONFLICT (sha256) DO NOTHING
      RETURNING id, true AS inserted`,
     [
@@ -84,7 +110,9 @@ export async function registerUploadedFile(
       docType,
       parcelId,
       meta.uploaded_by ?? null,
-      meta.uploaded_by ? 'user:' + meta.uploaded_by : 'GLOBAL',
+      scopeId,
+      licenseRestricted,
+      licenseSource,
     ],
   );
 

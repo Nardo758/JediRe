@@ -1,0 +1,78 @@
+~/workspace$ git add frontend/src/stores/dealStore.ts frontend/package.json frontend/package-lock.json
+git commit --no-edit
+On branch main
+Your branch and 'gitsafe-backup/main' have diverged,
+and have 1613 and 2 different commits each, respectively.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+    modified:   artifacts/mockup-sandbox/src/.generated/mockup-components.ts
+    modified:   backend/src/services/m08-strategies.service.ts
+
+no changes added to commit (use "git add" and/or "git commit -a")
+~/workspace$ git pull origin master
+# Run the migration first:
+psql $DATABASE_URL -f backend/src/database/migrations/20260726_w1_10_epoch_events.sql
+# Then run the guard:
+npx ts-node --transpile-only backend/scripts/w1-10-epoch-flag-guard.ts
+remote: Enumerating objects: 24, done.
+remote: Counting objects: 100% (24/24), done.
+remote: Compressing objects: 100% (4/4), done.
+remote: Total 14 (delta 10), reused 14 (delta 10), pack-reused 0 (from 0)
+Unpacking objects: 100% (14/14), 4.80 KiB | 68.00 KiB/s, done.
+From https://github.com/Nardo758/JediRe
+ * branch                master     -> FETCH_HEAD
+   ed048bf31..980a20456  master     -> origin/master
+Merge made by the 'ort' strategy.
+ .../w1-10-epoch-flag-guard.ts       |  92 +++++++
+ .../stabilized-potential.routes.ts  |   6 +
+ .../20260726_w1_10_epoch_events.sql |  24 ++
+ .../services/epoch-flag.service.ts  | 154 ++++++++++++
+ 4 files changed, 276 insertions(+)
+ create mode 100644 backend/scripts/w1-10-epoch-flag-guard.ts
+ create mode 100644 backend/src/database/migrations/20260726_w1_10_epoch_events.sql
+ create mode 100644 backend/src/services/epoch-flag.service.ts
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+COMMENT
+Need to install the following packages:
+ts-node@10.9.2
+Ok to proceed? (y) y
+
+{"level":"WARN","timestamp":"2026-07-28T13:18:10.572Z","logger":"kafkajs","message":"KafkaJS v2.0.0 switched default partitioner. To retain the same partitioning behavior as in previous versions, create the producer with the option \"createPartitioner: Partitioners.LegacyPartitioner\". See the migration guide at https://kafka.js.org/docs/migration-guide-v2.0.0#producer-new-default-partitioner for details. Silence this warning by setting the environment variable \"KAFKAJS_NO_PARTITIONER_WARNING=1\""}
+{"level":"WARN","timestamp":"2026-07-28T13:18:10.574Z","logger":"kafkajs","message":"[Producer] Limiting retries for the idempotent producer may invalidate EoS guarantees"}
+=== W1-10 Epoch Flag Guard ===
+
+--- 1. Table existence ---
+  ✅ deal_epoch_events table exists
+
+--- 2. Deal classification ---
+  Deal 3f32276f-aacd-4da3-b306-317c5109b403 project_type: existing
+  Is lease_up classification: no
+
+--- 3. Sustained occupancy check ---
+Guard failed: error: relation "deal_t12_rows" does not exist
+    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async run (/home/runner/workspace/backend/scripts/w1-10-epoch-flag-guard.ts:51:21) {
+  length: 113,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '108',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '1452',
+  routine: 'parserOpenTable'
+}
+~/workspace$ 

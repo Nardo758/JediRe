@@ -44,5 +44,4 @@ export {
   getReplacementCostServiceV2,
   ReplacementCostInput,
   ReplacementCostResult,
-  LayeredValue
 } from './replacement-cost-v2.service';

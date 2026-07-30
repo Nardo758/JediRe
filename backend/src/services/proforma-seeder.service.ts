@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
-import type { LayeredValue, ProFormaYear1Seed } from './document-extraction/types';
+import { ProFormaYear1Seed } from './document-extraction/types';
+import type { ExtractedFieldSources } from './document-extraction/types';
 import { buildBoundaryContext, type BoundaryContext } from './proforma/boundary.types';
 import { buildPeriodicSeed } from './proforma/periodic-seeder.service';
 import type { ProFormaPeriodicSeed } from './proforma/periodic-field.types';
@@ -102,7 +103,7 @@ function obj(o: Capsule | null | undefined, key: string): Capsule | null {
 }
 
 interface ExistingSeed {
-  [key: string]: LayeredValue<number> | Record<string, unknown> | unknown;
+  [key: string]: ExtractedFieldSources<number> | Record<string, unknown> | unknown;
 }
 
 interface DealRow {
@@ -404,7 +405,7 @@ const SKIP_ZERO_FIELDS = new Set<string>([
  * `updated_at` / `updated_by` — callers own those.
  */
 export function reResolveClearedLayeredValue(
-  field: LayeredValue<number>,
+  field: ExtractedFieldSources<number>,
   fieldName: string,
 ): void {
   const { chain, unresolvedReason } = resolvePriorityChain(fieldName, FIELD_PRIORITIES);
@@ -425,8 +426,8 @@ export function reResolveClearedLayeredValue(
     const srcVal = (field as unknown as Record<string, number | null>)[src];
     if (srcVal != null && (!shouldSkipZero || srcVal !== 0)) {
       field.resolved = srcVal;
-      field.resolution = src as LayeredValue<number>['resolution'];
-      field.resolvedFrom = src as LayeredValue<number>['resolvedFrom'];
+      field.resolution = src as ExtractedFieldSources<number>['resolution'];
+      field.resolvedFrom = src as ExtractedFieldSources<number>['resolvedFrom'];
       break;
     }
   }
@@ -462,9 +463,9 @@ function resolve(
     scenarios?: Record<string, number>;
     warning?: string;
   }
-): LayeredValue<number> {
+): ExtractedFieldSources<number> {
   const { chain, unresolvedReason } = resolvePriorityChain(fieldName, FIELD_PRIORITIES, options.priority);
-  const lv: LayeredValue<number> = {
+  const lv: ExtractedFieldSources<number> = {
     platform,
     t12: options.t12 ?? null,
     rent_roll: options.rent_roll ?? null,
@@ -504,7 +505,7 @@ function resolve(
     const v = (lv as unknown as Record<string, number | null>)[src];
     if (v != null && (!shouldSkipZero || v !== 0)) {
       lv.resolved = v;
-      lv.resolution = src as LayeredValue<number>['resolution'];
+      lv.resolution = src as ExtractedFieldSources<number>['resolution'];
       return lv;
     }
   }
@@ -565,7 +566,7 @@ function buildSeed(
       current = (current as Record<string, unknown>)[part];
     }
     if (current && typeof current === 'object' && 'override' in current) {
-      const lv = current as LayeredValue<number> & { override_source?: string | null; om?: number | null };
+      const lv = current as ExtractedFieldSources<number> & { override_source?: string | null; om?: number | null };
       // F-010 contamination guard: if override_source is absent (pre-operator-tag era,
       // before Task #832 added 'operator' stamping) AND override exactly equals the om
       // slot, this is a legacy OM-to-override write from a historical code path.
@@ -761,7 +762,7 @@ function buildSeed(
     .some(lv => lv.resolved != null && lv.resolved !== 0);
   if (!breakdownHasAnyData && t12AnnualTotal != null && t12AnnualTotal !== 0
       && otherIncomeBreakdown.other.resolution !== 'override') {
-    const merged: LayeredValue<number> = {
+    const merged: ExtractedFieldSources<number> = {
       ...otherIncomeBreakdown.other,
       t12: t12AnnualTotal,
       resolved: t12AnnualTotal,
@@ -785,7 +786,7 @@ function buildSeed(
     fieldName: string,
     platformValue: number | null = null,
     omVal: number | null = null
-  ): LayeredValue<number> => {
+  ): ExtractedFieldSources<number> => {
     const t12Val = num(t12Opex, t12Field);
     return resolve(fieldName, platformValue, {
       t12: t12Val,
@@ -831,7 +832,7 @@ function buildSeed(
   const sanitizeKey = (label: string) =>
     'custom_opex_' + label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48);
   
-  const customOpexItems: Record<string, LayeredValue<number>> = {};
+  const customOpexItems: Record<string, ExtractedFieldSources<number>> = {};
   let excludedCustomTotal = 0;
   const excludedLabels: string[] = [];
   
@@ -879,7 +880,7 @@ function buildSeed(
   });
 
   // Real estate tax — tax bill scenarios
-  let realEstateTax: LayeredValue<number>;
+  let realEstateTax: ExtractedFieldSources<number>;
   if (taxBillCapsule) {
     const scenarios: Record<string, number> = {};
     const billCurrent = num(taxBillCapsule, 'annual_tax_current') ?? num(taxBillCapsule, 'totalAnnualTax') ?? 0;
@@ -967,7 +968,7 @@ function buildSeed(
       - gprPlatform * (badDebtPct.platform ?? BASE_BAD_DEBT_PCT)
     : null;
 
-  const netRentalIncome: LayeredValue<number> = {
+  const netRentalIncome: ExtractedFieldSources<number> = {
     platform: nri_platform, override: null,
     resolved: nri_resolved,
     resolution: 'platform_fallback',
@@ -1000,7 +1001,7 @@ function buildSeed(
   // No further bad-debt deduction here. Task #672.
   const egi_platform = nri_platform;
 
-  const egi: LayeredValue<number> = {
+  const egi: ExtractedFieldSources<number> = {
     platform: egi_platform, override: null,
     resolved: egi_resolved,
     resolution: 'platform_fallback',
@@ -1048,7 +1049,7 @@ function buildSeed(
     (personalPropTax.platform ?? 0) + (insurance.platform ?? 0)
   ) || null;
 
-  const totalOpex: LayeredValue<number> = {
+  const totalOpex: ExtractedFieldSources<number> = {
     platform: total_opex_platform, override: null,
     resolved: total_opex_resolved,
     resolution: 'platform_fallback',
@@ -1066,7 +1067,7 @@ function buildSeed(
   // arithmetic relationship between EGI, OpEx, and NOI from downstream consumers.
   // resolution is always 'computed'; the UI can still surface noi.om for the
   // broker-column comparison alongside the arithmetic result.
-  const noi: LayeredValue<number> = {
+  const noi: ExtractedFieldSources<number> = {
     platform: noi_platform, override: null,
     om: bpNOI,
     resolved: noi_resolved,
@@ -1074,7 +1075,7 @@ function buildSeed(
     updated_at: now(),
   };
 
-  const replacementReserves: LayeredValue<number> = resolve('replacement_reserves', null, {
+  const replacementReserves: ExtractedFieldSources<number> = resolve('replacement_reserves', null, {
     t12: num(t12Opex, 'replacement_reserves'),
     om: bpReserves,
     existingOverride: getOverride('replacement_reserves'),
@@ -1133,7 +1134,7 @@ function buildSeed(
     _boundary_context: boundary ?? undefined,
     // Custom (previously unrecognized) GL line items from T12
     ...customOpexItems,
-  };
+  } as unknown as ProFormaYear1Seed;
 }
 
 /**
@@ -1192,7 +1193,7 @@ function emitSeedObservabilityLog(
 
   const year1_slot_population: Record<string, Record<string, string>> = {};
   for (const { field, slots } of TRACKED) {
-    const lv = seed[field] as (LayeredValue<number> & Record<string, unknown>) | undefined;
+    const lv = seed[field] as (ExtractedFieldSources<number> & Record<string, unknown>) | undefined;
     if (!lv) continue;
     year1_slot_population[field as string] = {};
     for (const slot of slots) {
@@ -2022,7 +2023,7 @@ export async function seedProFormaYear1(
     }
 
     const fieldsSeeded = Object.values(seed).filter(
-      (v: unknown) => v && typeof v === 'object' && 'resolved' in v && (v as LayeredValue<number>).resolved != null
+      (v: unknown) => v && typeof v === 'object' && 'resolved' in v && (v as ExtractedFieldSources<number>).resolved != null
     ).length;
 
     // ── LTL lease roll velocity — Task #1540 (Piece B1) ──────────────────────
@@ -2476,7 +2477,7 @@ export async function applyUserOverride(
       lv = target[lastKey];
     }
   }
-  const field = lv as LayeredValue<number>;
+  const field = lv as ExtractedFieldSources<number>;
 
   // ── Capture pre-override state for M35 training signal (before mutation) ──
   const previousResolved = field.resolved;
@@ -2487,14 +2488,14 @@ export async function applyUserOverride(
 
   field.override = value;
   field.updated_at = new Date().toISOString();
-  (field as LayeredValue<number> & { updated_by?: string }).updated_by = userId;
+  (field as ExtractedFieldSources<number> & { updated_by?: string }).updated_by = userId;
   // Stamp origin so agent write-back can distinguish deliberate operator
   // overrides from system-sourced values (e.g., seeder OM layer).
   // 'operator' = a human explicitly entered this value via the UI.
   // Use null (not undefined) for the clear case so JSON.stringify includes the
   // key in $4 and the SQL JSONB || merge explicitly removes the stale
   // 'operator' value from the DB rather than silently preserving it.
-  (field as LayeredValue<number> & { override_source?: string | null }).override_source =
+  (field as ExtractedFieldSources<number> & { override_source?: string | null }).override_source =
     value != null ? 'operator' : null;
   if (value != null) {
     field.resolved = value;
@@ -2674,7 +2675,7 @@ export async function applyUserOverride(
 /**
  * Recompute derived layered values in place. Called after any override.
  */
-function r(field: LayeredValue<number> | undefined): number {
+function r(field: ExtractedFieldSources<number> | undefined): number {
   return field?.resolved ?? 0;
 }
 
@@ -2805,7 +2806,7 @@ function recomputeDerived(seed: ProFormaYear1Seed): void {
  */
 export function buildAssumptionsFromYear1Seed(year1: ProFormaYear1Seed, deal: DealRow | null): Record<string, unknown> {
   if (!year1) throw new Error('No year1 seed provided');
-  const rv = (lv: LayeredValue<number> | undefined) => lv?.resolved ?? null;
+  const rv = (lv: ExtractedFieldSources<number> | undefined) => lv?.resolved ?? null;
 
   return {
     modelType: 'acquisition',

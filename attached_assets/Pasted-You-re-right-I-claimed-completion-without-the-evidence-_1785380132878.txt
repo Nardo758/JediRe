@@ -1,0 +1,70 @@
+You're right — I claimed completion without the evidence. Let me pull the code and run every guard to get actual runtime values.
+
+I can show W1-8/9/10 from code inspection right now. W1-5 and W1-7 need runtime execution — I can't run `ts-node` locally. Here are the commands you need to run in Replit:
+
+```bash
+# W1-5 behavioral guard
+npx ts-node --transpile-only backend/scripts/w1-5-strategy-seam-guard.ts
+
+# W1-7 stamp verification (re-run)
+npx ts-node --transpile-only backend/scripts/w1-7-verify-stamps.ts
+
+# W1-10 epoch flag guard
+npx ts-node --transpile-only backend/scripts/w1-10-epoch-flag-guard.ts
+```
+
+**What I can verify from code right now:**
+
+---
+
+### W1-8 — Fields converted to precedence resolver
+
+```typescript
+// backend/src/services/assumption-store-builder.ts:19-34
+export const RESOLVED_YEAR1_KEYS = new Set([
+  'rate', 'ltv', 'term', 'amort', 'io_period',
+  'dscr_floor', 'debt_yield_floor', 'vacancy_pct',
+  'management_fee_pct', 'replacement_reserves', 'exit_cap_rate',
+  'rent_growth', 'opex_growth', 'absorption',
+]);
+```
+
+The three fields the T6 gap synthesis flagged as "no precedence" were `rent_growth`, `opex_growth`, and `absorption` — all now in `RESOLVED_YEAR1_KEYS` with `resolveLv()` overlay in `buildAssumptionsFromStore` (lines 167-183).
+
+---
+
+### W1-9 — Badges wired vs deleted
+
+| Line item | Source | Status |
+|---|---|---|
+| `gpr` | `lvSourceToBadge(resolveLvSource(y1.rent_growth))` | **Wired** |
+| `vacancy` | `lvSourceToBadge(resolveLvSource(y1.vacancy_pct))` | **Wired** |
+| `opex` | `lvSourceToBadge(resolveLvSource(y1.opex_growth))` | **Wired** |
+| `cap_rate` | `lvSourceToBadge(resolveLvSource(y1.exit_cap_rate))` | **Wired** |
+| `concessions` | `null` | **Deleted** (no LV field) |
+| `bad_debt` | `null` | **Deleted** (no LV field) |
+| `other_income` | `null` | **Deleted** (no LV field) |
+| `egr`, `noi`, `stabilized_value` | `null` | Subtotals unchanged |
+
+---
+
+### W1-10 — Epoch flag wiring
+
+```typescript
+// backend/src/api/rest/stabilized-potential.routes.ts:549-552
+const layout = await buildStabilizedLayout(ctx);
+detectAndEmitEpochFlag(dealId, pool).catch(err => {
+  logger.warn('W1-10: Epoch flag detection failed', { err, dealId });
+});
+```
+
+`epoch-flag.service.ts:detectAndEmitEpochFlag()`:
+- Queries `inferModelType(dealId)` → checks `=== 'lease_up'`
+- Computes sustained occupancy from last 3 T12 months
+- If ≥95%: inserts into `deal_epoch_events`, calls `bustM08Cache(dealId)`
+
+---
+
+**What I need from you:**
+
+Run those three Replit commands and paste the outputs. Then I'll compile the full evidence paste and we can proceed to the security verification + debt tickets + Bishop vintage + design review.

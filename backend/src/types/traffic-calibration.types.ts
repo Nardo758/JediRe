@@ -20,10 +20,11 @@ export type CalibrationWindow = 'TTM' | 'PYTM' | 'TTM_24';
  * `baseline` is the hard-coded constant from the original engine.
  * `resolved` is the value the engine actually uses.
  *
- * Generic: T defaults to number.  Use LayeredValue<string> for label-typed
+ * Generic: T defaults to number.  Use TrafficCoefficientCascade<string> for label-typed
  * coefficients (e.g. a calibrated unit-mix label).
  */
-export interface LayeredValue<T = number> {
+/** @deprecated Wave 3: the conversion registry will own these coefficients. This shape is interim; do not invest in it. */
+export interface TrafficCoefficientCascade<T = number> {
   baseline: T;
   platform: T | null;    // null = no platform data for this scope
   deal: T | null;        // null = no rent roll data for this deal
@@ -41,12 +42,12 @@ export interface LayeredValue<T = number> {
 // ============================================================================
 
 export interface TrafficCoefficientFamily {
-  visibility_capture_rate: LayeredValue;
-  apartment_seeker_pct: LayeredValue;
-  stop_probability: LayeredValue;
-  walkin_to_tour: LayeredValue;
-  tour_to_app: LayeredValue;
-  app_to_signed: LayeredValue;
+  visibility_capture_rate: TrafficCoefficientCascade;
+  apartment_seeker_pct: TrafficCoefficientCascade;
+  stop_probability: TrafficCoefficientCascade;
+  walkin_to_tour: TrafficCoefficientCascade;
+  tour_to_app: TrafficCoefficientCascade;
+  app_to_signed: TrafficCoefficientCascade;
 }
 
 // ============================================================================

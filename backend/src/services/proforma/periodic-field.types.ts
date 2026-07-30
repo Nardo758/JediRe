@@ -9,7 +9,7 @@
  * can be converted to `ProFormaPeriodicSeed` via `buildPeriodicSeed()`.
  */
 
-import type { LayeredValue } from '../document-extraction/types';
+import type { LayeredValue } from '../../types/layered-value';
 import type { BoundaryContext, PeriodZoneType } from './boundary.types';
 
 // ─────────────────────────────────────────────────────────────────────────────

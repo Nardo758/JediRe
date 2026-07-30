@@ -1,0 +1,112 @@
+Two accuracy problems acknowledged — both need fixing before anything banks.
+1. Inventory intersection + temporal — you're right to flag it. "7 BOTH, 0 temporal" against 411 operating docs is suspicious. The recomputation may have carried forward stale intersection logic. Here's a targeted re-run that recomputes ONLY the intersection and temporal checks against the corrected classifications, with a better date extractor that handles the patterns we saw in the leak triage ((2019.05.31), 080819):
+bash
+Copy
+cd ~/workspace/backend && npx ts-node -e "
+import { Pool } from 'pg';
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+function classifyDocType(filename: string): string {
+  const lower = filename.toLowerCase();
+  if (/\\brr\\b/.test(lower) || /rent\\s*roll/.test(lower)) return 'rent_roll';
+  if (/\\binc\\b/.test(lower) || /\\bt12\\b/.test(lower) || /trailing\\s*12/.test(lower) || /income\\s*(stmt|statement)/.test(lower)) return 't12';
+  if (/\\btax\\s*bill\\b/.test(lower) || /\\btaxable\\b/.test(lower) || /\\btax\\b.*\\b(201\\d|202\\d)/.test(lower)) return 'tax';
+  if (/offering\\s*memorandum|offering_memorandum|\\bom\\b/.test(lower)) return 'om';
+  if (/unit\\s*mix|unitmix/.test(lower)) return 'unit_mix';
+  return 'unknown';
+}
+
+function extractYear(filename: string): number | null {
+  // Pattern: (2019.05.31) or (2019.05)
+  let m = filename.match(/\\((\\d{4})[._]\\d{2}(?:[._]\\d{2})?\\)/);
+  if (m) { const y = parseInt(m[1]); if (y >= 1980 && y <= 2030) return y; }
+  // Pattern: 080819 (MMDDYY)
+  m = filename.match(/\\b(\\d{2})(\\d{2})(\\d{2})\\b/);
+  if (m) { const yy = parseInt(m[3]); const y = yy < 50 ? 2000 + yy : 1900 + yy; if (y >= 1980 && y <= 2030) return y; }
+  // Pattern: 2019.05.31 or 2019-05-31
+  m = filename.match(/\\b(\\d{4})[._\\-]\\d{2}[._\\-]\\d{2}\\b/);
+  if (m) { const y = parseInt(m[1]); if (y >= 1980 && y <= 2030) return y; }
+  // Pattern: standalone year
+  m = filename.match(/\\b(201\\d|202\\d)\\b/);
+  if (m) { return parseInt(m[1]); }
+  return null;
+}
+
+async function main() {
+  const res = await pool.query(\"SELECT id, original_filename FROM data_library_files WHERE scope_id='GLOBAL' AND uploaded_at::date = '2026-05-21'\");
+  const files = res.rows;
+  
+  const clusters = new Map<string, { files: Array<{docType: string; year: number|null}> }>();
+  
+  for (const f of files) {
+    const base = f.original_filename.replace(/\\.[^.]+$/, '');
+    const docType = classifyDocType(base);
+    const year = extractYear(base);
+    
+    let cleaned = base
+      .replace(/\\b(rent\\s*roll|rentroll|rr|t12|t-12|om|offering\\s*memorandum|tax\\s*bill|taxable|unit\\s*mix|financials|inc|income)\\b/gi, ' ')
+      .replace(/\\(\\d{4}[._]\\d{2}(?:[._]\\d{2})?\\)/g, ' ')
+      .replace(/\\d{4}[._\\-]\\d{2}[._\\-]\\d{2}/g, ' ')
+      .replace(/\\d{6}/g, ' ')
+      .replace(/\\b(techno|modified|copy\\s*of|summary|statement|detail|preliminary|historical|forecast|budget)\\b/gi, ' ')
+      .replace(/\\s+/g, ' ').trim();
+    
+    const normKey = cleaned.toLowerCase().replace(/[^a-z0-9]/g, '') || 'unknown';
+    if (!clusters.has(normKey)) clusters.set(normKey, { files: [] });
+    clusters.get(normKey)!.files.push({ docType, year });
+  }
+
+  let omCount = 0, opCount = 0, bothCount = 0, temporalCount = 0;
+
+  for (const [name, data] of clusters) {
+    const types = new Set(data.files.map(f => f.docType));
+    const hasOM = types.has('om');
+    const hasOperating = types.has('rent_roll') || types.has('t12') || types.has('tax') || types.has('unit_mix');
+    if (hasOM) omCount++;
+    if (hasOperating) opCount++;
+    if (hasOM && hasOperating) bothCount++;
+
+    const years = new Set<number>();
+    for (const f of data.files) {
+      if (f.year && (f.docType === 'rent_roll' || f.docType === 't12')) years.add(f.year);
+    }
+    if (years.size >= 2) {
+      const span = Math.max(...years) - Math.min(...years);
+      if (span >= 2) {
+        temporalCount++;
+        console.log('TEMPORAL:', name, Array.from(years).sort().join(','), 'span=' + span);
+      }
+    }
+  }
+
+  console.log('\\n=== RECOMPUTED ===');
+  console.log('Clusters:', clusters.size);
+  console.log('OM only:', omCount);
+  console.log('Operating only:', opCount);
+  console.log('BOTH OM + operating:', bothCount);
+  console.log('Temporal (≥2yr span):', temporalCount);
+  
+  await pool.end();
+}
+main().catch(console.error);
+"
+Paste the output — especially if bothCount or temporalCount move.
+2. CHECK 4 correction — you're right, I conflated items. The design re-review's actual CHECK 4 is StageLabel → underscore-lowercase (option b, already ruled), with display-arrows as presentation layer only. The tax supersession documentation was a separate D3-W7 close item, already done. My error.
+Corrected design re-review scope:
+CHECK 1: Deletion commitment + real citations + conversion-registry scope (now includes four inherited tickets: P0 visit_to_tour_ratio override wiring, 0.98 inquiry→tour placeholder, plus the two from the calibration audit)
+CHECK 4: StageLabel enum values → underscore-lowercase; display arrows (→) as presentation-only, never stored
+3. Rulings — on your screen, one word gates Wave 1.
+From your previous message, compressed to approvable lines:
+Classification R1–R5:
+R1: model_type survives rebuild (carry-forward, not re-derive) — ok?
+R2: deterministic bridge = sole write path to modelAssumptions — ok?
+R3: runFullModel() never receives store blob directly — ok?
+R4: conversion registry = sole proprietor of visit_to_tour_ratio, closing_ratio — ok?
+R5: agent-overlay allowlist guard test — every overlay-writable field must appear in rebuild resolution map — ok?
+Data-source D1–D5:
+D1: rent_growth override = rate input triggering re-derivation, not cell patch — ok?
+D2: stamp-at-entry on all ingestion paths (source-class at upload door) — ok?
+D3: last-write-wins on rent_growth_current (decorative badges, not provenance) — ok?
+D4: flywheel/archive aggregation = coefficients only, never raw records — ok?
+D5: S4 restricted rows (CoStar/Axio) → firewall verified, upload heuristic as interim — ok?
+"ok" on all, or amended lines, and Wave 1's W1-combined dispatch cuts immediately.

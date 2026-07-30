@@ -1723,7 +1723,11 @@ ensureR2CorsPolicy().catch(err => {
 const PROXY_KEY_PATTERN = /^uploads\/library\/[0-9a-f-]{36}\.[a-z0-9]+$/;
 
 function proxyTokenSecret(): string {
-  return process.env.JWT_SECRET ?? process.env.SESSION_SECRET ?? 'r2-proxy-fallback-secret';
+  const secret = process.env.JWT_SECRET ?? process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error('FATAL: JWT_SECRET or SESSION_SECRET must be configured for upload proxy token signing');
+  }
+  return secret;
 }
 
 function signProxyToken(storageKey: string, userId: string, expiresAt: string): string {

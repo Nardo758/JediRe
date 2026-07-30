@@ -1,0 +1,40 @@
+Three verifications before the security batch closes. Here's what to run in Replit, in order:
+1. Git history — who applied these fixes and when?
+bash
+Copy
+cd ~/workspace/backend && git log --oneline -8 --format='%h %ad %s' --date=short -- 'src/api/rest/archive.routes.ts' 'src/services/intake-sources/data-library-upload/' 'src/services/deal-financial-context.service.ts' 'src/services/traffic-calibration.service.ts'
+Paste the output — this tells us if (a) a prior session applied them, (b) another agent is working concurrently, or (c) the board was stale for the third time.
+2. Fix 2 adversarial test — the leak door is shut
+Upload a file with "costar" in the name, no source declaration, verify restricted:
+bash
+Copy
+cd ~/workspace/backend && npx ts-node -e "
+import { registerUploadedFile } from './src/services/intake-sources/data-library-upload';
+async function test() {
+  const result = await registerUploadedFile({
+    sha256: 'adversarial_test_' + Date.now(),
+    original_filename: 'Sample Submarket Report - costar.pdf',
+    storage_key: 'uploads/library/' + crypto.randomUUID() + '.pdf',
+    mime_type: 'application/pdf',
+    size_bytes: 1024,
+    uploaded_by: 'test_user',
+  });
+  console.log('Result:', result);
+}
+test().catch(console.error);
+"
+Then query the row:
+bash
+Copy
+cd ~/workspace/backend && psql $DATABASE_URL -c "SELECT original_filename, scope_id, redistribution_restricted, license_source FROM data_library_files WHERE original_filename = 'Sample Submarket Report - costar.pdf' ORDER BY uploaded_at DESC LIMIT 1;"
+Expected: scope_id = 'RESTRICTED_PENDING_DEAL', redistribution_restricted = true, license_source = 'costar'.
+3. Fix 1 env check — secret is actually configured
+bash
+Copy
+cd ~/workspace/backend && printenv | grep -E 'JWT_SECRET|SESSION_SECRET' | head -2
+Or if printenv is limited:
+bash
+Copy
+cd ~/workspace/backend && node -e "console.log('JWT_SECRET set:', !!process.env.JWT_SECRET); console.log('SESSION_SECRET set:', !!process.env.SESSION_SECRET);"
+Expected: at least one of them is true. If both are false, the throw will brick uploads.
+Paste all three outputs — git log, adversarial test row, env check — and the security batch closes with provenance. Then we move to design review revisions → inventory abbreviation re-run → your rulings.

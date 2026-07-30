@@ -178,7 +178,7 @@ export function buildCustomMetricSeries(
         periodIndex: i,
         month: v.period_month.slice(0, 7), // YYYY-MM from YYYY-MM-01
         resolved: v.value,
-        resolution: 'input',
+        resolution: 'actual' as PeriodLayeredValue['resolution'],
         source: `custom_metric:${def.metric_key}`,
         zone: v.zone as 'actual' | 'gap' | 'projection' | 'override',
         updated_at: new Date().toISOString(),

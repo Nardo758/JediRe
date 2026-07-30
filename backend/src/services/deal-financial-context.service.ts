@@ -181,7 +181,7 @@ export async function getDealFinancialContext(dealId: string): Promise<DealFinan
     ).catch(() => ({ rows: [] })),
 
     pool.query(
-      `SELECT unit_number, tenant_name, monthly_rent, effective_rent,
+      `SELECT unit_number, monthly_rent, effective_rent,
               lease_start, lease_end, lease_status, concession_amount, source_type
        FROM deal_lease_transactions
        WHERE deal_id = $1
@@ -363,7 +363,7 @@ export async function getDealFinancialContext(dealId: string): Promise<DealFinan
       upcomingExpirations,
       items: leaseRows.map((l: any) => ({
         unitNumber: l.unit_number,
-        tenantName: l.tenant_name,
+        tenantName: '[REDACTED]',
         monthlyRent: Number(l.monthly_rent) || 0,
         effectiveRent: Number(l.effective_rent) || undefined,
         leaseStart: l.lease_start,
@@ -434,6 +434,15 @@ export async function getDealFinancialContext(dealId: string): Promise<DealFinan
 export function formatFinancialContextForPrompt(ctx: DealFinancialContext): string {
   if (!ctx.hasFinancialData) {
     return 'No financial data available for this deal. Analysis will be based on deal specs and market data only.';
+  }
+
+  // ── PII redaction guard ───────────────────────────────────────────────────
+  // Belt-and-suspenders: tenant names must never reach LLM prompts.
+  // (Source-layer fix: tenant_name dropped from SELECT above.)
+  for (const lease of ctx.leases.items) {
+    if (lease.tenantName && lease.tenantName !== '[REDACTED]') {
+      throw new Error(`PII leak blocked: unredacted tenant name in unit ${lease.unitNumber}`);
+    }
   }
 
   let prompt = '';

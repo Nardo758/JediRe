@@ -1,0 +1,140 @@
+cd ~/workspace/backend && npx ts-node -e "
+import { Pool } from 'pg';
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+function classifyDocType(filename: string): { docType: string; confidence: 'high' | 'medium' | 'low' } {
+  const lower = filename.toLowerCase();
+  
+  // ABBREVIATION EXPANSIONS (the missing patterns)
+  if (/\\brr\\b/.test(lower) || /rent\\s*roll/.test(lower)) 
+    return { docType: 'rent_roll', confidence: 'high' };
+  if (/\\binc\\b/.test(lower) || /\\bt12\\b/.test(lower) || /trailing\\s*12/.test(lower) || /income\\s*(stmt|statement)/.test(lower))
+    return { docType: 't12', confidence: 'high' };
+  if (/\\btax\\s*bill\\b/.test(lower) || /\\btaxable\\b/.test(lower) || /\\btax\\b.*\\b(201\\d|202\\d)/.test(lower) || /\\bbill\\b.*\\b(201\\d|202\\d)/.test(lower))
+    return { docType: 'tax', confidence: 'medium' };
+  
+  // Original patterns (keep for full-word matches)
+  if (/offering\\s*memorandum|offering_memorandum|\\bom\\b/.test(lower)) 
+    return { docType: 'om', confidence: 'high' };
+  if (/unit\\s*mix|unitmix/.test(lower)) 
+    return { docType: 'unit_mix', confidence: 'high' };
+  if (/box\\s*score|boxscore/.test(lower)) 
+    return { docType: 'box_score', confidence: 'high' };
+  if (/flyer|brochure|photos?/.test(lower)) 
+    return { docType: 'photos', confidence: 'medium' };
+  if (/apinv|ap\\s*inv/.test(lower)) 
+    return { docType: 'ap_invoice', confidence: 'medium' };
+  if (/demographics|concession|concessions/.test(lower)) 
+    return { docType: 'demographics_concessions', confidence: 'medium' };
+  if (/forecast|budget/.test(lower)) 
+    return { docType: 'forecast_budget', confidence: 'medium' };
+  if (/lease|leases/.test(lower)) 
+    return { docType: 'lease', confidence: 'low' };
+  
+  return { docType: 'unknown', confidence: 'low' };
+}
+
+function extractDate(filename: string): number | null {
+  const patterns = [
+    /(\\d{4})[._]\\d{2}[._]\\d{2}/,
+    /(\\d{4})[._]\\d{2}/,
+    /(\\d{2})(\\d{2})(\\d{2})/,
+    /(\\d{4})[-–—]\\d{2}[-–—]\\d{2}/,
+    /\\(\\d{4}[._]\\d{2}\\)/,
+    /\\bQ[1-4][-\\–—]?(\\d{2,4})\\b/,
+  ];
+  for (const p of patterns) {
+    const m = filename.match(p);
+    if (m) {
+      let year = parseInt(m[1]);
+      if (year >= 1980 && year <= 2030) return year;
+      if (m[0].match(/^\\d{6}$/)) {
+        let y = parseInt(m[3]);
+        year = y < 50 ? 2000 + y : 1900 + y;
+        if (year >= 1980 && year <= 2030) return year;
+      }
+    }
+  }
+  return null;
+}
+
+async function main() {
+  const res = await pool.query(
+    \"SELECT id, original_filename FROM data_library_files WHERE scope_id='GLOBAL' AND uploaded_at::date = '2026-05-21'\"
+  );
+  const files = res.rows;
+  console.log('Total files:', files.length);
+
+  const clusters = new Map<string, { files: Array<{id: string; filename: string; docType: string; year: number|null}> }>();
+  
+  for (const f of files) {
+    const base = f.original_filename.replace(/\\.[^.]+$/, '');
+    const { docType } = classifyDocType(base);
+    const year = extractDate(base);
+    
+    // Extract property name: remove doc-type words, dates, common suffixes
+    let cleaned = base
+      .replace(/\\b(rent\\s*roll|rentroll|rr|t12|t-12|om|offering\\s*memorandum|tax\\s*bill|taxable|unit\\s*mix|financials|inc|income)\\b/gi, ' ')
+      .replace(/\\d{4}[._]\\d{2}[._]\\d{2}/g, ' ')
+      .replace(/\\d{6}/g, ' ')
+      .replace(/\\(\\d{4}[._]\\d{2}\\)/g, ' ')
+      .replace(/\\bQ[1-4][-\\–—]?\\d{2,4}\\b/g, ' ')
+      .replace(/\\d{4}\\b/g, ' ')
+      .replace(/\\b(techno|modified|copy\\s*of|summary|statement|detail|preliminary|historical|forecast|budget)\\b/gi, ' ')
+      .replace(/\\s+/g, ' ')
+      .trim();
+    
+    const propName = cleaned.length >= 2 ? cleaned : 'UNKNOWN';
+    const normKey = propName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    
+    if (!clusters.has(normKey)) clusters.set(normKey, { files: [] });
+    clusters.get(normKey)!.files.push({ id: f.id, filename: f.original_filename, docType, year });
+  }
+
+  // T2: Document-type census
+  const typeCounts = new Map<string, number>();
+  let propertiesWithOM = 0;
+  let propertiesWithOperating = 0;
+  let propertiesWithBoth = 0;
+  
+  for (const [name, data] of clusters) {
+    const types = new Set(data.files.map(f => f.docType));
+    typeCounts.set('om', (typeCounts.get('om') || 0) + (types.has('om') ? 1 : 0));
+    typeCounts.set('rent_roll', (typeCounts.get('rent_roll') || 0) + (types.has('rent_roll') ? 1 : 0));
+    typeCounts.set('t12', (typeCounts.get('t12') || 0) + (types.has('t12') ? 1 : 0));
+    typeCounts.set('tax', (typeCounts.get('tax') || 0) + (types.has('tax') ? 1 : 0));
+    
+    const hasOM = types.has('om');
+    const hasOperating = types.has('rent_roll') || types.has('t12') || types.has('tax') || types.has('unit_mix');
+    if (hasOM) propertiesWithOM++;
+    if (hasOperating) propertiesWithOperating++;
+    if (hasOM && hasOperating) propertiesWithBoth++;
+  }
+
+  // T3: Temporal jackpot check
+  let temporalCandidates = 0;
+  for (const [name, data] of clusters) {
+    const years = new Set<number>();
+    for (const f of data.files) {
+      if (f.year && (f.docType === 'rent_roll' || f.docType === 't12')) years.add(f.year);
+    }
+    if (years.size >= 2) {
+      const span = Math.max(...years) - Math.min(...years);
+      if (span >= 2) {
+        temporalCandidates++;
+        console.log('TEMPORAL:', name, 'years:', Array.from(years).sort().join(','), 'span:', span);
+      }
+    }
+  }
+
+  console.log('\\n=== CORRECTED T2/T3 ===');
+  console.log('Properties with OM:', propertiesWithOM);
+  console.log('Properties with operating docs:', propertiesWithOperating);
+  console.log('Properties with BOTH OM + operating:', propertiesWithBoth);
+  console.log('Temporal-series candidates (≥2yr):', temporalCandidates);
+  
+  await pool.end();
+}
+
+main().catch(console.error);
+"

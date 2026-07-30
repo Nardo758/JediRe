@@ -27,7 +27,8 @@ import { getDisplayLabel, formatMetricValue } from './m35-metric-mapping';
 
 // ─── Section 8 contract types ─────────────────────────────────────────────────
 
-export interface LayeredValue<T> {
+/** Strategy-specific value with layer and sourceRef. Kept separate from canonical StrategyStrategyLayeredValue because 'layer' is a different axis. */
+export interface StrategyLayeredValue<T> {
   value: T;
   layer: 'platform' | 'user' | 'default';
   sourceRef?: string;
@@ -60,7 +61,7 @@ export interface SubStrategyScore {
   finalScore: number;
   disqualified: boolean;
   financialPreview: FinancialPreview;
-  strategyAssumptions: Record<string, LayeredValue<number | string>>;
+  strategyAssumptions: Record<string, StrategyStrategyLayeredValue<number | string>>;
   appliedCorrelations: string[];
   evidenceReport: EvidenceReport;
 }
