@@ -1763,7 +1763,10 @@ export default function TerminalPage() {
   };
 
   // ─── MAP DROPDOWN BUTTON (shared by F1 + F2 + F3) ──────────
-  const MapDropdownButton = ({ compact = false }: { compact?: boolean }) => {
+  // Function declaration (hoisted) — this component is referenced inside a
+  // useMemo earlier in the render body; a `const` here throws a TDZ
+  // ReferenceError ("Cannot access 'MapDropdownButton' before initialization").
+  function MapDropdownButton({ compact = false }: { compact?: boolean }) {
     const ref = useRef<HTMLDivElement>(null);
     useEffect(() => {
       const handler = (e: MouseEvent) => {

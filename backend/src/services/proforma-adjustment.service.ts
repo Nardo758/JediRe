@@ -253,9 +253,7 @@ export class ProFormaAdjustmentService {
     
     return this.mapProForma(result.rows[0]);
   }
-      [
-        dealId,
-  
+
   /**
    * Recalculate all adjustments for a deal
    */
@@ -461,15 +459,12 @@ export class ProFormaAdjustmentService {
     }, client);
     
     await q(
-    await q(
       `UPDATE proforma_assumptions SET vacancy_current = $1 WHERE id = $2`,
       [finalValue, proformaId]
     );
     
     // W1-8: Write demand-adjusted value to year1 detected slot
     await this.writeYear1Slot(dealId, 'vacancy_pct', 'detected', finalValue, client);
-      [finalValue, proformaId]
-    );
     
     logger.info('Vacancy adjusted', { 
       dealId, 
@@ -553,15 +548,12 @@ export class ProFormaAdjustmentService {
     }, client);
     
     await q(
-    await q(
       `UPDATE proforma_assumptions SET opex_growth_current = $1 WHERE id = $2`,
       [newValue, proformaId]
     );
     
     // W1-8: Write demand-adjusted value to year1 detected slot
     await this.writeYear1Slot(dealId, 'opex_growth', 'detected', newValue, client);
-      [newValue, proformaId]
-    );
     
     logger.info('OpEx growth adjusted', { dealId, newValue, adjustment: constrainedAdjustment });
   }
@@ -636,15 +628,12 @@ export class ProFormaAdjustmentService {
     }, client);
     
     await q(
-    await q(
       `UPDATE proforma_assumptions SET exit_cap_current = $1 WHERE id = $2`,
       [newValue, proformaId]
     );
     
     // W1-8: Write demand-adjusted value to year1 detected slot
     await this.writeYear1Slot(dealId, 'exit_cap_rate', 'detected', newValue, client);
-      [newValue, proformaId]
-    );
     
     logger.info('Exit cap adjusted', { dealId, newValue, compressionBps });
   }
@@ -712,16 +701,13 @@ export class ProFormaAdjustmentService {
     }, client);
     
     await q(
-    await q(
       `UPDATE proforma_assumptions SET absorption_current = $1 WHERE id = $2`,
       [finalValue, proformaId]
     );
     
     // W1-8: Write demand-adjusted value to year1 detected slot
     await this.writeYear1Slot(dealId, 'absorption', 'detected', finalValue, client);
-      [finalValue, proformaId]
-    );
-    
+
     logger.info('Absorption rate adjusted', { dealId, newValue: finalValue });
   }
   
@@ -768,31 +754,6 @@ export class ProFormaAdjustmentService {
         adjustmentTrigger: 'manual',
         assumptionType,
         previousValue: previousEffective,
-        newValue: value,
-        calculationMethod: 'user_override',
-        calculationInputs: { reason },
-        confidenceScore: 100 // User override = highest confidence
-      }, client);
-    });
-      // Update override value
-      const column = `${assumptionType}_user_override`;
-      const reasonColumn = `${assumptionType}_override_reason`;
-      
-      await client.query(
-        `UPDATE proforma_assumptions 
-         SET ${column} = $1, ${reasonColumn} = $2
-         WHERE deal_id = $3`,
-        [value, reason, dealId]
-      );
-      
-      // Create adjustment record
-      const current = await this.getCurrentValue(proforma.id, assumptionType);
-      
-      await this.createAdjustment({
-        proformaId: proforma.id,
-        adjustmentTrigger: 'manual',
-        assumptionType,
-        previousValue: current.effective,
         newValue: value,
         calculationMethod: 'user_override',
         calculationInputs: { reason },
@@ -846,58 +807,6 @@ export class ProFormaAdjustmentService {
       );
 
       logger.info('ProForma platform layer updated from traffic', { dealId, source, platformValues });
-
-      return (await this.getProForma(dealId))!;
-    });
-  }
-    dealId: string,
-    platformValues: {
-      vacancy?: number;
-      rentGrowth?: number;
-      absorption?: number;
-      exitCap?: number;
-    },
-    source: string = 'M07 Traffic Engine v2'
-  ): Promise<ProFormaAssumptions> {
-    return await transaction(async (client) => {
-      let proforma = await this.getProForma(dealId);
-
-      if (!proforma) {
-        proforma = await this.initializeProForma(dealId, 'rental', undefined, client);
-      }
-
-      const updates: string[] = [];
-      const params: any[] = [dealId];
-      let paramIdx = 2;
-
-      if (platformValues.vacancy !== undefined) {
-        updates.push(`vacancy_current = $${paramIdx++}`);
-        params.push(platformValues.vacancy);
-      }
-      if (platformValues.rentGrowth !== undefined) {
-        updates.push(`rent_growth_current = $${paramIdx++}`);
-        params.push(platformValues.rentGrowth);
-      }
-      if (platformValues.absorption !== undefined) {
-        updates.push(`absorption_current = $${paramIdx++}`);
-        params.push(platformValues.absorption);
-      }
-      if (platformValues.exitCap !== undefined) {
-        updates.push(`exit_cap_current = $${paramIdx++}`);
-        params.push(platformValues.exitCap);
-      }
-
-      if (updates.length > 0) {
-        updates.push('last_recalculation = NOW()');
-        updates.push('updated_at = NOW()');
-
-        await client.query(
-          `UPDATE proforma_assumptions SET ${updates.join(', ')} WHERE deal_id = $1`,
-          params
-        );
-
-        logger.info('ProForma platform layer updated from traffic', { dealId, source, platformValues });
-      }
 
       return (await this.getProForma(dealId))!;
     });
@@ -1262,11 +1171,6 @@ export class ProFormaAdjustmentService {
     
     // W1-8: Write policy-capped value to year1 agent_confirmed slot
     await this.writeYear1Slot(dealId, 'rent_growth', 'agent_confirmed', maxGrowth, client);
-    const q = this.exec(client);
-    await q(
-      `UPDATE proforma_assumptions SET rent_growth_current = $1 WHERE id = $2`,
-      [maxGrowth, proformaId]
-    );
     await this.createAdjustment({
       proformaId,
       adjustmentTrigger: 'manual',
@@ -1577,6 +1481,9 @@ export class ProFormaAdjustmentService {
       strategySpecificData: row.strategy_specific_data,
       lastRecalculation: row.last_recalculation ? new Date(row.last_recalculation) : undefined,
       updatedAt: new Date(row.updated_at)
+    };
+  }
+
   private mapAdjustment(row: any): AssumptionAdjustment {
     return {
       id: row.id,
