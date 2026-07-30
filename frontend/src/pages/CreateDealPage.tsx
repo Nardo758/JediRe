@@ -141,6 +141,48 @@ export const CreateDealPage: React.FC = () => {
   const [tradeAreaId, setTradeAreaId] = useState<string | null>(null);
   const [submarketId, setSubmarketId] = useState<number | null>(null);
   const [msaId, setMsaId] = useState<number | null>(null);
+  const [parcelBoundary, setParcelBoundary] = useState<GeoJSON.Polygon | null>(null);
+  const [parcelId, setParcelId] = useState<string | null>(null);
+
+  // ─── Pre-populate from /surface parcel query params ─────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const urlAddress = params.get('address');
+    const urlBoundary = params.get('boundary');
+    const urlParcelId = params.get('parcelId');
+
+    if (urlAddress) {
+      setAddress(urlAddress);
+      if (urlParcelId) setParcelId(urlParcelId);
+      // Derive a deal name from the address (strip street number, keep street name)
+      const nameFromAddress = urlAddress
+        .split(',')[0]
+        .replace(/^\d+\s+/, '')
+        .trim();
+      setDealName(nameFromAddress || 'New Deal');
+
+      if (urlBoundary) {
+        try {
+          const polygon: GeoJSON.Polygon = JSON.parse(urlBoundary);
+          setParcelBoundary(polygon);
+          if (polygon.coordinates?.[0]?.length > 0) {
+            const coords = polygon.coordinates[0];
+            const lngSum = coords.reduce((s, c) => s + c[0], 0);
+            const latSum = coords.reduce((s, c) => s + c[1], 0);
+            const centerLng = lngSum / coords.length;
+            const centerLat = latSum / coords.length;
+            setCoordinates([centerLng, centerLat]);
+          }
+        } catch (e) {
+          console.warn('[CreateDealPage] Failed to parse boundary from URL:', e);
+        }
+      }
+
+      // Auto-advance to project type selection if we have pre-filled data
+      setCurrentStep(STEPS.PROJECT_TYPE);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -392,6 +434,8 @@ export const CreateDealPage: React.FC = () => {
         project_type: projectType,
         address,
         boundary,
+        parcel_id: parcelId ?? undefined,
+        parcel_boundary: parcelBoundary ?? undefined,
         purchase_price: purchasePrice ? parseFloat(purchasePrice.replace(/[^0-9.]/g, '')) : undefined,
         call_for_offer_date: offerDate || undefined,
         units: units ? parseInt(units) : undefined,

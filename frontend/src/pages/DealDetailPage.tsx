@@ -41,7 +41,7 @@ import {
   ArrowLeft, ArrowRight, Activity, LayoutDashboard,
   Landmark, HardHat, Shield, Box, FileText, Briefcase,
   CheckCircle, X, Loader2, AlertTriangle, ChevronDown, HelpCircle,
-  Share2,
+  Share2, Map as MapIcon,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
 import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
@@ -84,6 +84,7 @@ import { DealToolsSection } from '../components/deal/sections/DealToolsSection';
 
 import { FinancialEnginePage } from './development/FinancialEnginePage';
 import { Design3DShellPage } from './development/Design3DShellPage';
+import { PropertySurfaceModule } from '../components/map-surface/PropertySurfaceModule';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
@@ -219,6 +220,13 @@ const Design3DScreen = (props: ScreenProps) => (
     dealId={props.dealId}
     deal={props.deal}
     dealType={props.dealType}
+  />
+);
+const PropertySurfaceScreen = (props: ScreenProps) => (
+  <PropertySurfaceModule
+    dealId={props.dealId}
+    dealType={props.dealType || 'existing'}
+    parcelBoundary={props.deal?.boundary as GeoJSON.Polygon | undefined}
   />
 );
 const DealToolsScreen = (props: ScreenProps) => (
@@ -799,7 +807,7 @@ const DealDetailPage: React.FC = () => {
       }
       const fKeyMap: { [key: string]: string } = {
         F1: 'overview',   F2: 'zoning',    F3: 'market',      F4: 'supply',
-        F5: 'strategy',    F6: 'traffic',   F7: 'design-3d',   F8: 'capital',
+        F5: 'strategy',    F6: 'traffic',   F7: 'property-surface',   F8: 'capital',
         F9: 'proforma',    F10: 'risk',     F11: 'deal-tools',
       };
       if (fKeyMap[e.key]) {
@@ -855,7 +863,7 @@ const DealDetailPage: React.FC = () => {
     { id: 'supply',      moduleId: 'M04', fkey: 'F4',  code: 'M04', short: 'SUPPLY',     label: 'Supply Pipeline',  icon: <Package size={14} />,         component: SupplyPipelineScreen },
     { id: 'strategy',    moduleId: 'M08', fkey: 'F5',  code: 'M08', short: 'STRATEGY',   label: 'Strategy',         icon: <Target size={14} />,          component: StrategyScreen },
     { id: 'traffic',     moduleId: 'M07', fkey: 'F6',  code: 'M07', short: 'TRAFFIC',    label: 'Traffic Intel',    icon: <Activity size={14} />,        component: TrafficScreen },
-    { id: 'design-3d',   moduleId: 'M03', fkey: 'F7',  code: 'M03', short: '3D DESIGN',  label: '3D Design',        icon: <Box size={14} />,             component: Design3DScreen },
+    { id: 'property-surface', moduleId: 'M30', fkey: 'F7',  code: 'M30', short: 'PROPERTY',  label: 'Property Surface',   icon: <MapIcon size={14} />,            component: PropertySurfaceScreen },
     { id: 'capital',     moduleId: 'M11', fkey: 'F8',  code: 'M11', short: 'DEBT/CAP',   label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
     { id: 'proforma',    moduleId: 'M09', fkey: 'F9',  code: 'M09', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
     { id: 'risk',        moduleId: 'M14', fkey: 'F10', code: 'M14', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
@@ -956,7 +964,13 @@ const DealDetailPage: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: 0, minWidth: 0, flex: 1 }}>
               <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#F5A623', flexShrink: 0, marginRight: 6 }} />
               {(deal.address || deal.location) && (
-                <span style={{ color: TEXT_MID, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260, letterSpacing: 0.2 }}>
+                <span
+                  onClick={() => navigate(`/surface?search=${encodeURIComponent(deal.address || deal.location)}`)}
+                  title="Open in Discovery Surface"
+                  style={{ color: TEXT_MID, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260, letterSpacing: 0.2, cursor: 'pointer' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLSpanElement).style.color = '#00BCD4'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLSpanElement).style.color = TEXT_MID; }}
+                >
                   {deal.address || deal.location}
                 </span>
               )}
