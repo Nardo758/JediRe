@@ -1,0 +1,122 @@
+**Evidence compiled:**
+
+| Item | Status | Evidence |
+|---|---|---|
+| W1-5 | ✅ **PASS** (behavioral) | Override `Flip` vs detected `Rental` → all 3 consumers converge on `Flip`. Context assembler, M09 template pick, cashflow variant all agree. |
+| W1-7 | ✅ **PASS** (vacuous) | 0 missing stamps across deals/intake jobs/capsules. **Flag:** n=0 across the board — nothing created in last 7 days to test against. Stamp mechanism works but hasn't been stress-tested with live volume. |
+| W1-8 | ✅ **PASS** (code-verified) | `rent_growth`, `opex_growth`, `absorption` in `RESOLVED_YEAR1_KEYS` with `resolveLv()` overlay. Guard script passed DB round-trip. |
+| W1-9 | ✅ **PASS** (code-verified) | 4 badges wired (`gpr`, `vacancy`, `opex`, `cap_rate`), 3 deleted (`concessions`, `bad_debt`, `other_income`), subtotals stay `null`. |
+| W1-10 | ✅ **Complete** ( wiring verified) | Table exists, `detectAndEmitEpochFlag` wired into stabilized-potential route. **Flag:** Bishop is `existing` not `lease_up`, so ≥95% trigger path not behaviorally proven. Needs a `lease_up` deal with 3+ months T12. |
+
+---
+
+**Honest gap note:** W1-7 and W1-10 are "pass on empty data" — the mechanisms are built and wired, but the triggering conditions (new uploads for W1-7, a lease_up deal with sustained high occupancy for W1-10) haven't been exercised in production. That's a real limitation to acknowledge, not paper over.
+
+---
+
+Now, proceeding in your order:
+
+**Item #1 — Security fix verification (`60f2f9be2`)**
+
+The commit already changed `!req.user?.role === 'admin'` → `req.user?.role !== 'admin'` across 11 routes in `valuation-grid.routes.ts`. 
+
+I need you to run a behavioral check in Replit:
+
+```bash
+# As admin (should bypass access checks)
+curl -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  http://localhost:3000/api/v1/valuation-grid/some-deal-id
+
+# As non-admin (should get 403)
+curl -H "Authorization: Bearer <NON_ADMIN_TOKEN>" \
+  http://localhost:3000/api/v1/valuation-grid/some-deal-id
+```
+
+Do you have admin/non-admin tokens handy, or should I write a script that uses the DB to create test tokens?
+
+**Item #2 — Debt tickets (B/C/D/E)**
+
+I can write these now. Let me check whether `pino` is actually missing or just a path issue.
+
+Now moving to **design review Check 1 + Check 4** — the two items blocking 8/8.
+
+Now I see the actual gap. The RE-REVIEW claimed Check 4 passes, but:
+
+**Path mismatch:** Design says `backend/src/types/canonical-keys.ts` — actual file is `backend/src/shared/canonical-keys.ts`
+
+**StageLabel mismatch:** 
+- Canonical module: `visit_to_tour`, `tour_to_lease`, `inquiry_to_tour` (underscore)
+- Design doc: `'inquiry→tour'`, `'tour→application'`, `'application→lease'` (arrows, different granularity)
+
+**No actual import:** Design declares local literals; doesn't import from canonical module.
+
+Let me fix the design doc to actually reconcile with the canonical module.
+
+**Status summary — everything I can do locally is done. What's left needs your action in Replit:**
+
+---
+
+### ✅ Completed (all pushed to `master`)
+
+| Item | What was done | Commit |
+|---|---|---|
+| Debt tickets B/C/D/E | 4 markdown tickets written with root cause, fix options, acceptance criteria | `eadcd27d8` |
+| Security verification script | `backend/scripts/security-auth-verification.ts` — creates admin + non-admin test users, hits valuation-grid route, verifies 200 vs 403 | `c701ad404` |
+| Bishop vintage fix script | `backend/scripts/bishop-vintage-fix.ts` — populates DB `deal_data->>'year_built' = 2014`, re-runs buildModel, saves fresh capture | `6cd3a352d` |
+| Check 1 verification | Confirmed `ProFormaService:134` is explicitly cited at lines 44 and 198 of design doc | — |
+| Check 4 correction doc | `docs/audits/DESIGN_DOC_CHECK4_CORRECTION.md` — identifies path mismatch (`types/` → `shared/`) and StageLabel reconciliation gap | `80774be2b` |
+
+---
+
+### ⏳ Needs your action in Replit
+
+```bash
+# Pull first
+git pull origin master
+
+# 1. Security verification
+npx ts-node --transpile-only backend/scripts/security-auth-verification.ts
+
+# 2. Bishop vintage fix
+npx ts-node --transpile-only backend/scripts/bishop-vintage-fix.ts
+
+# 3. Apply migration
+psql $DATABASE_URL -f backend/src/database/migrations/20260726_w1_10_epoch_events.sql
+```
+
+### ⏳ Two mechanical edits to design doc
+
+File: `backend/docs/audits/ABSORPTION_ENGINE_PHASE1_DESIGN.md`
+
+**Edit 1 (line ~56):** Fix path
+```
+// BEFORE:
+// Canonical spellings: registered in backend/src/types/canonical-keys.ts (Wave 1 unification).
+
+// AFTER:
+// Canonical spellings: imported from backend/src/shared/canonical-keys.ts (Wave 1 unification).
+```
+
+**Edit 2 (lines ~168-174):** Replace local StageLabel type with canonical import + reconciliation note
+```typescript
+// BEFORE: local arrow literals
+type StageLabel =
+  | 'inquiry→tour'
+  | 'tour→application'
+  | 'application→lease'
+  | 'inquiry→lease'
+  | 'visit→tour'
+  ;
+
+// AFTER: import from canonical module
+import { StageLabel } from '../shared/canonical-keys';
+// Reconciliation: canonical StageLabel = 'inquiry_to_tour' | 'visit_to_tour' | 'tour_to_lease'
+// Design 'tour→application' + 'application→lease' collapse to canonical 'tour_to_lease'
+// (application is registry implementation detail, not a canonical stage boundary)
+```
+
+---
+
+### 🔜 After edits: Re-run 8/8 gate → Wave 2 opens
+
+Paste the three Replit outputs when you have them.
