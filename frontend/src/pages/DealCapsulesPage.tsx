@@ -427,7 +427,10 @@ const DealCapsulesPage: React.FC = () => {
                   onMouseLeave={(e) => e.currentTarget.style.background = T.bg.panel}
                 >
                   <div style={{ cursor: 'pointer' }} onClick={() => navigate(`/capsules/${capsule.id}`)}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary, marginBottom: 2 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary, marginBottom: 2, cursor: 'pointer' }}
+                      onClick={(e) => { e.stopPropagation(); navigate(`/surface?search=${encodeURIComponent(capsule.property_address)}`); }}
+                      title="Open in Discovery Surface"
+                    >
                       {capsule.property_address}
                     </div>
                     <div style={{ fontSize: 9, color: T.text.muted }}>

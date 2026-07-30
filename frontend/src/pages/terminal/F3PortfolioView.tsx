@@ -733,7 +733,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
                       <span style={{ color: T.text.muted, fontSize: 9 }}>{expanded ? '▼' : '▶'}</span>
                       <div>
                         <div style={{ color: T.text.primary, fontWeight: 500 }}>{asset.name}</div>
-                        <div style={{ color: T.text.muted, fontSize: 9 }}>{asset.address}</div>
+                        <div onClick={(e)=>{e.stopPropagation();navigate(`/surface?search=${encodeURIComponent(asset.address)}`);}} style={{ color: T.text.muted, fontSize: 9, cursor: 'pointer' }} title="Open in Discovery Surface">{asset.address}</div>
                       </div>
                     </div>
                   </td>
