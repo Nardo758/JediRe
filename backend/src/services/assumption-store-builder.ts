@@ -103,6 +103,38 @@ export async function buildAssumptionsFromStore(
   const raw = result.rows[0].assumptions;
   const assumptions = (typeof raw === 'string' ? JSON.parse(raw) : raw) as ProFormaAssumptions;
 
+  // ── #1876: Refresh identity fields from deals.deal_data (not stale model copy) ─
+  try {
+    const identityRes = await db.query(
+      `SELECT
+         deal_data->>'name'         as name,
+         deal_data->>'address'       as address,
+         deal_data->>'city'          as city,
+         deal_data->>'state_code'    as state,
+         deal_data->>'year_built'    as year_built,
+         target_units                as target_units
+       FROM deals WHERE id = $1 LIMIT 1`,
+      [dealId],
+    );
+    const idRow = identityRes.rows[0];
+    if (idRow) {
+      assumptions.dealInfo = {
+        ...assumptions.dealInfo,
+        ...(idRow.name ? { dealName: idRow.name } : {}),
+        ...(idRow.address ? { address: idRow.address } : {}),
+        ...(idRow.city ? { city: idRow.city } : {}),
+        ...(idRow.state ? { state: idRow.state } : {}),
+        ...(idRow.year_built ? { vintage: Number(idRow.year_built) } : {}),
+        ...(idRow.target_units ? { totalUnits: Number(idRow.target_units) } : {}),
+      };
+    }
+  } catch {
+    // Non-blocking: if DB query fails, keep stored identity values
+  }
+
+  // ── Overlay all year1 LayeredValue fields (widened from financing-only) ────
+  const assumptions = (typeof raw === 'string' ? JSON.parse(raw) : raw) as ProFormaAssumptions;
+
   // ── Overlay all year1 LayeredValue fields (widened from financing-only) ────
   try {
     const year1Res = await db.query(
