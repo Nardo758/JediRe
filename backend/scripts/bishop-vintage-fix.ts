@@ -69,15 +69,18 @@ async function run() {
   const assumptions = await buildAssumptionsFromStore(BISHOP_DEAL_ID, pool);
 
   // Run buildModel (same as the real route)
-  const result = await financialModelEngine.buildModel(BISHOP_DEAL_ID, assumptions, USER_ID);
+  // buildModel returns { result, assumptionsHash }; the effective assumptions
+  // are the (M11-mutated) ProFormaAssumptions object we passed in.
+  const { result: modelResult, assumptionsHash } = await financialModelEngine.buildModel(BISHOP_DEAL_ID, assumptions, USER_ID);
 
   // Log the key fields for verification
   console.log('  Captured effective_assumptions key fields:');
-  console.log(`    purchasePrice: ${result.assumptions.acquisition?.purchasePrice}`);
-  console.log(`    units: ${result.assumptions.dealInfo?.totalUnits}`);
-  console.log(`    loanAmount: ${result.assumptions.financing?.loanAmount}`);
-  console.log(`    rate: ${result.assumptions.financing?.interestRate}`);
-  console.log(`    holdYears: ${result.assumptions.holdPeriod?.holdYears}`);
+  console.log(`    purchasePrice: ${(assumptions as any).acquisition?.purchasePrice}`);
+  console.log(`    units: ${(assumptions as any).dealInfo?.totalUnits}`);
+  console.log(`    loanAmount: ${(assumptions as any).financing?.loanAmount}`);
+  console.log(`    rate: ${(assumptions as any).financing?.interestRate}`);
+  console.log(`    holdPeriod: ${(assumptions as any).holdPeriod}`);
+  console.log(`    assumptionsHash: ${assumptionsHash}`);
   console.log(`    vintage (from deal_data): ${BISHOP_YEAR_BUILT}`);
 
   // ── Step 4: Save capture for fixture update ────────────────────────────────
@@ -85,7 +88,7 @@ async function run() {
   const capturePath = '/tmp/bishop_effective_assumptions_v2.json';
   fs.writeFileSync(capturePath, JSON.stringify({
     modelAssumptions: assumptions,
-    effectiveAssumptions: result.assumptions,
+    effectiveAssumptions: assumptions,
     capturedAt: new Date().toISOString(),
     yearBuilt: BISHOP_YEAR_BUILT,
   }, null, 2));
@@ -95,6 +98,7 @@ async function run() {
   console.log('1. Copy the captured assumptions from the JSON file above');
   console.log('2. Update backend/tests/deterministic/bishop.golden.ts effectiveAssumptions');
   console.log('3. Commit with message: "T1-C: re-pin Bishop fixture with yearBuilt 2014"');
+  process.exit(0);
 }
 
 run().catch(err => {
