@@ -53,7 +53,7 @@ The engine exposes **one entry point** with a discriminated input contract. All 
 
 ```typescript
 // Phase 1 ships these two modes; Phase 2 adds 'land' | 'ground_up' without breaking.
-// Canonical spellings: registered in backend/src/types/canonical-keys.ts (Wave 1 unification).
+// Canonical spellings: imported from backend/src/shared/canonical-keys.ts (Wave 1 unification).
 // Reconciliation: 'existing' = STABILIZED · 'lease_up' = LEASE_UP per traffic-calibration.types.ts:103
 type DealMode = 'existing' | 'lease_up';
 
@@ -165,13 +165,12 @@ interface ConversionRegistry {
   registerActuals(actuals: StageActuals): void;  // EMA recalibration trigger
 }
 
-type StageLabel =
-  | 'inquiry→tour'         // SPEC II.1: awareness → interest → anchor
-  | 'tour→application'     // SPEC II.1: anchor → outcome
-  | 'application→lease'    // SPEC II.1: outcome closes loop
-  | 'inquiry→lease'        // composite; computed from chain, not stored
-  | 'visit→tour'           // legacy alias; maps to 'inquiry→tour' with deprecation log
-  ;
+import { StageLabel } from '../shared/canonical-keys';
+// Reconciliation: canonical StageLabel = 'inquiry_to_tour' | 'visit_to_tour' | 'tour_to_lease'
+// Design 'inquiry→tour' and 'visit→tour' map to canonical 'inquiry_to_tour' and 'visit_to_tour'
+// Design 'tour→application' + 'application→lease' collapse to canonical 'tour_to_lease'
+// (application is registry implementation detail, not a canonical stage boundary)
+// 'inquiry→lease' is composite — computed from chain, not stored; no canonical equivalent needed
 
 interface RatioRequest {
   stage: StageLabel;
@@ -400,7 +399,7 @@ interface DemandContext {
 | 8 | Per-lease roll-to-market (not uniform growth) | SPEC II.13 | Ladder is the rent engine; loss-to-lease ($588K) is invisible to uniform models |
 | 9 | Provenance stamps on every row | SPEC II.3 / II.14 | `estimate_tier` + `fallback_rung` + `confidence_band` — no row without all three |
 | 10 | CoStar firewall in risk register | SPEC II.1 / II.2 / II.4 | Supply = permits/Census only; observational cross-read confirmed but quarantined |
-| 11 | Canonical keys deferred to Wave 1 module | Review gate CHECK 4 | `DealMode` and `StageLabel` literals declared now; reconciliation with `backend/src/types/canonical-keys.ts` is a Wave 1 unification task |
+| 11 | Canonical keys deferred to Wave 1 module | Review gate CHECK 4 | `DealMode` and `StageLabel` literals declared now; reconciliation with `backend/src/shared/canonical-keys.ts` is a Wave 1 unification task |
 
 ---
 
