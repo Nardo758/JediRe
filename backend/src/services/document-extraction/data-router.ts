@@ -14,6 +14,7 @@ import { runCrossValidation } from '../multi-doc-cross-validation.service';
 import { runDataQualityAgent, runDataQualityAgentAfterReseed } from '../data-quality-agent.service';
 import { emitExtractionEvents, emitOmProformaEvents } from '../extraction-events.service';
 import { ingestPropertyPerformance } from '../historical-observations/property-performance-ingestor';
+import { createProfileFromOM } from '../building-profiles/building-profile.service';
 import {
   dealPropertyLinkService,
   DATA_ROUTER_FLAG,
@@ -1171,6 +1172,23 @@ async function routeOM(
     );
   }
 
+  // Persist building profile from OM property data
+  try {
+    await createProfileFromOM(dealId, {
+      yearBuilt: data.property.yearBuilt,
+      stories: data.property.stories,
+      units: data.property.units,
+      squareFeet: data.property.netRentableSF,
+      parkingSpaces: data.property.parkingSpaces,
+      parkingRatio: data.property.parkingRatio,
+      amenities: data.property.amenities,
+      buildingType: data.property.propertyType ?? undefined,
+      constructionType: data.property.constructionType ?? undefined,
+    }, pool);
+  } catch (profileErr) {
+    alerts.push(`Building profile creation failed: ${profileErr instanceof Error ? profileErr.message : String(profileErr)}`);
+  }
+
   // Store key events in platform_intel
   const keyEvents: Array<{ type: string; title: string; detail: Record<string, unknown> }> = [];
 
@@ -1250,6 +1268,62 @@ async function upsertDataLibraryAsset(pool: Pool, dealId: string, result: Extrac
     warnings: result.warnings,
   };
 
+  // Extract building characteristics from OM data
+  let constructionType: string | null = null;
+  let parkingType: string | null = null;
+  let parkingRatio: number | null = null;
+  let amenities: string[] | null = null;
+
+  if (result.documentType === 'OM' && result.data) {
+    const omData = result.data as unknown as OMExtraction;
+    const prop = omData.property;
+    constructionType = prop.constructionType ?? null;
+    parkingType = prop.parkingType ?? null;
+    parkingRatio = prop.parkingRatio ?? null;
+    amenities = prop.amenities?.length ? prop.amenities : null;
+
+    // Persist building profile from OM extraction
+    try {
+      await createProfileFromOM(dealId, {
+        yearBuilt: prop.yearBuilt,
+        stories: prop.stories,
+        units: prop.units,
+        squareFeet: prop.netRentableSF,
+        siteAcres: null,
+        parkingSpaces: prop.parkingSpaces,
+        parkingRatio: prop.parkingRatio,
+        amenities: prop.amenities,
+        buildingType: prop.propertyType,
+        constructionType: prop.constructionType,
+      }, pool);
+    } catch (profileErr) {
+      // Best-effort: don't fail the extraction pipeline
+      console.error('[BuildingProfile] OM profile creation failed:', profileErr instanceof Error ? profileErr.message : profileErr);
+    }
+
+    // Store building profile snapshot in deal_data
+    try {
+      await pool.query(
+        `UPDATE deals SET
+           deal_data = COALESCE(deal_data, '{}'::jsonb) || $2::jsonb,
+           updated_at = NOW()
+         WHERE id = $1`,
+        [dealId, JSON.stringify({
+          extraction_building_profile: {
+            construction_type: constructionType,
+            parking_type: parkingType,
+            parking_ratio: parkingRatio,
+            amenities: amenities,
+            source: 'om_parsed',
+            captured_at: new Date().toISOString(),
+          },
+        })]
+      );
+    } catch (ddErr) {
+      console.error('[DealData] Building profile snapshot failed:', ddErr instanceof Error ? ddErr.message : ddErr);
+    }
+  }
+
   const existingResult = await pool.query(
     `SELECT id FROM data_library_assets WHERE source_deal_id = $1 LIMIT 1`,
     [dealId]
@@ -1259,9 +1333,13 @@ async function upsertDataLibraryAsset(pool: Pool, dealId: string, result: Extrac
     await pool.query(
       `UPDATE data_library_assets SET
          extraction_data = COALESCE(extraction_data, '{}'::jsonb) || $2::jsonb,
+         construction_type = COALESCE($3, construction_type),
+         parking_type = COALESCE($4, parking_type),
+         parking_ratio = COALESCE($5, parking_ratio),
+         amenities = COALESCE($6, amenities),
          updated_at = NOW()
        WHERE source_deal_id = $1`,
-      [dealId, JSON.stringify({ [result.documentType]: extractionData })]
+      [dealId, JSON.stringify({ [result.documentType]: extractionData }), constructionType, parkingType, parkingRatio, amenities]
     );
   } else {
     const dealResult = await pool.query(
@@ -1278,19 +1356,129 @@ async function upsertDataLibraryAsset(pool: Pool, dealId: string, result: Extrac
       await pool.query(
         `INSERT INTO data_library_assets (
           property_name, city, state, unit_count, year_built,
-          source_deal_id, extraction_data, data_quality_score, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 50, NOW(), NOW())
+          source_deal_id, extraction_data, data_quality_score, created_at, updated_at,
+          construction_type, parking_type, parking_ratio, amenities
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 50, NOW(), NOW(), $8, $9, $10, $11)
         ON CONFLICT (source_deal_id) WHERE source_deal_id IS NOT NULL DO UPDATE SET
           extraction_data = COALESCE(data_library_assets.extraction_data, '{}'::jsonb) || EXCLUDED.extraction_data,
+          construction_type = COALESCE(EXCLUDED.construction_type, data_library_assets.construction_type),
+          parking_type = COALESCE(EXCLUDED.parking_type, data_library_assets.parking_type),
+          parking_ratio = COALESCE(EXCLUDED.parking_ratio, data_library_assets.parking_ratio),
+          amenities = COALESCE(EXCLUDED.amenities, data_library_assets.amenities),
           updated_at = NOW()`,
         [
           deal.property_name || deal.deal_name || 'Untitled',
           deal.city, deal.state_code, deal.units, deal.year_built,
           dealId, JSON.stringify({ [result.documentType]: extractionData }),
+          constructionType, parkingType, parkingRatio, amenities,
         ]
       );
     }
   }
+}
+
+export async function populate_data_library_from_deal(
+  pool: Pool,
+  dealId: string
+): Promise<string | null> {
+  // Read the deal's OM-extracted property characteristics
+  const dealResult = await pool.query(
+    `SELECT deal_data->'broker_claims'->'property' as om_property
+     FROM deals WHERE id = $1 LIMIT 1`,
+    [dealId]
+  );
+
+  if (dealResult.rows.length === 0) return null;
+
+  const omProperty = dealResult.rows[0].om_property as Record<string, unknown> | null;
+  if (!omProperty) return null;
+
+  // Extract the 4 building-characteristic fields
+  const constructionType = (omProperty.constructionType as string) ?? null;
+  const parkingType = (omProperty.parkingType as string) ?? null;
+  const parkingRatio = (omProperty.parkingRatio as number) ?? null;
+  const amenities = Array.isArray(omProperty.amenities) ? omProperty.amenities : null;
+
+  // Persist / update building_profiles via createProfileFromOM
+  await createProfileFromOM(dealId, {
+    yearBuilt: (omProperty.yearBuilt as number) ?? null,
+    stories: (omProperty.stories as number) ?? null,
+    units: (omProperty.units as number) ?? null,
+    squareFeet: (omProperty.netRentableSF as number) ?? (omProperty.buildingSf as number) ?? null,
+    siteAcres: (omProperty.siteAcres as number) ?? null,
+    parkingSpaces: (omProperty.parkingSpaces as number) ?? null,
+    parkingRatio: parkingRatio,
+    amenities: amenities ?? [],
+    buildingType: (omProperty.propertyType as string) ?? undefined,
+    constructionType: constructionType ?? undefined,
+  }, pool);
+
+  // Copy the 4 fields into data_library_assets (update existing, or insert minimal row)
+  let assetResult = await pool.query(
+    `UPDATE data_library_assets SET
+       construction_type = COALESCE(construction_type, $2),
+       parking_type      = COALESCE(parking_type, $3),
+       parking_ratio     = COALESCE(parking_ratio, $4),
+       amenities         = COALESCE(amenities, $5),
+       updated_at        = NOW()
+     WHERE source_deal_id = $1
+     RETURNING id`,
+    [dealId, constructionType, parkingType, parkingRatio, amenities]
+  );
+
+  if (assetResult.rows.length === 0) {
+    assetResult = await pool.query(
+      `UPDATE data_library_assets SET
+         construction_type = COALESCE(construction_type, $2),
+         parking_type      = COALESCE(parking_type, $3),
+         parking_ratio     = COALESCE(parking_ratio, $4),
+         amenities         = COALESCE(amenities, $5),
+         updated_at        = NOW()
+       WHERE deal_id = $1
+       RETURNING id`,
+      [dealId, constructionType, parkingType, parkingRatio, amenities]
+    );
+  }
+
+  if (assetResult.rows.length === 0) {
+    // No existing asset — mint a minimal row so the characteristics have a home
+    assetResult = await pool.query(
+      `INSERT INTO data_library_assets (
+         source_deal_id, property_name, city, state, unit_count,
+         construction_type, parking_type, parking_ratio, amenities,
+         data_quality_score, created_at, updated_at
+       )
+       SELECT
+         $1, d.name, d.city, d.state_code, d.target_units,
+         $2, $3, $4, $5,
+         50, NOW(), NOW()
+       FROM deals d
+       WHERE d.id = $1
+       RETURNING id`,
+      [dealId, constructionType, parkingType, parkingRatio, amenities]
+    );
+  }
+
+  const assetId: string | null = assetResult.rows[0]?.id ?? null;
+
+  // Store a building-profile snapshot in deals.deal_data
+  await pool.query(
+    `UPDATE deals
+     SET deal_data = COALESCE(deal_data, '{}'::jsonb)
+       || jsonb_build_object('extraction_building_profile', $2::jsonb),
+       updated_at = NOW()
+     WHERE id = $1`,
+    [dealId, JSON.stringify({
+      construction_type: constructionType,
+      parking_type: parkingType,
+      parking_ratio: parkingRatio,
+      amenities: amenities,
+      source: 'om_extraction',
+      captured_at: new Date().toISOString(),
+    })]
+  );
+
+  return assetId;
 }
 
 /**
@@ -1674,6 +1862,38 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
         annual_tax_unappealed: tax.unappealedTaxAmount ?? tax.totalAnnualTax,
         appeal_status: tax.appealStatus ?? 'none',
         owner_lp: tax.ownerName ?? null,
+      };
+      break;
+    }
+    case 'OM': {
+      const om = result.data as unknown as OMExtraction;
+      const omProp = om.property;
+
+      if (omProp) {
+        try {
+          await createProfileFromOM(dealId, {
+            yearBuilt: omProp.yearBuilt,
+            stories: omProp.stories,
+            units: omProp.units,
+            squareFeet: omProp.netRentableSF,
+            parkingSpaces: omProp.parkingSpaces,
+            parkingRatio: omProp.parkingRatio,
+            amenities: omProp.amenities,
+            buildingType: omProp.propertyType ?? undefined,
+            constructionType: omProp.constructionType ?? undefined,
+          }, pool);
+        } catch (profileErr) {
+          alerts.push(`Building profile creation failed: ${profileErr instanceof Error ? profileErr.message : 'unknown'}`);
+        }
+      }
+
+      capsulePayload.extraction_building_profile = {
+        source: 'OM',
+        updatedAt: now,
+        construction_type: omProp?.constructionType ?? null,
+        parking_type: omProp?.parkingType ?? null,
+        parking_ratio: omProp?.parkingRatio ?? null,
+        amenities: omProp?.amenities ?? null,
       };
       break;
     }
