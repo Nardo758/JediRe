@@ -5,7 +5,7 @@
 **Governing rulings:** TRAFFIC_ENGINE_AUDIT R1–R5 (approved by Leon 2026-07-18)
 **Build wave:** Wave 3 (gated behind unification foundations; DESIGN proceeds now)
 **Gate deals:** Highlands (existing/owned) · Bishop (lease-up)
-**Review status:** REVIEWED — BANKED FOR WAVE 3 (re-review 8/8 PASS, commit `7d27c4f78`)
+**Review status:** REVISED — 8/8 PASS (commit `7d27c4f78`, phantom citation fix `ProFormaService:134` → `multifamilyTrafficService.ts`+`weekly-report-parser.service.ts`)
 
 ---
 
@@ -41,7 +41,7 @@ Every interface, type, and schema decision in this doc is evaluated against one 
 
 ### P0 FIX — EXPLICITLY OUT OF SCOPE
 
-The P0 visits-vs-tours fix (`ProFormaService:134` computes `projectedLeases = weekly_walk_ins × closing_ratio` — but `weekly_walk_ins` are **visits** and `closing_ratio` is **tours→leases**) is a **live production data-integrity defect that ships independently in Wave 0.** This design inherits corrected stage-labeling; it does not deliver the fix. No Phase 1 deliverable is a prerequisite for the P0 dispatch. The interim fix (insert `visit_to_tour_ratio` or honest-absence the projection) runs on its own timeline; the permanent shape is decided by this design but the build does not block the interim.
+The P0 visits-vs-tours fix (`multifamilyTrafficService.ts:24-29` defines `closing_ratio` and `visit_to_tour_ratio` as `BASELINE_DATA` constants; `:193-195` computes `projectedLeases = predicted_traffic × visit_to_tour_ratio × closing_ratio` — but `weekly-report-parser.service.ts:184` and `:362` parse `closing_ratio` from weekly reports while applying `visit_to_tour_ratio = 0.50` platform default) is a **live production data-integrity defect that ships independently in Wave 0.** This design inherits corrected stage-labeling; it does not deliver the fix. No Phase 1 deliverable is a prerequisite for the P0 dispatch. The interim fix (insert `visit_to_tour_ratio` or honest-absence the projection) runs on its own timeline; the permanent shape is decided by this design but the build does not block the interim.
 
 *(SPEC II. P0 section: "LIVE BUG, FIX BEFORE (OR INDEPENDENT OF) THE BUILD")*
 
@@ -194,7 +194,7 @@ interface RatioResolution {
 | Step | Action | Target |
 |------|--------|--------|
 | 1 | Build `ConversionRegistry` + table | New code, no consumers yet |
-| 2 | Migrate `TrafficToProFormaService` (M07→M09 bridge); `ProFormaService:134` `closing_ratio` and `visit_to_tour_ratio` migrate INTO the registry | First live consumer; thin wrapper over registry |
+| 2 | Migrate `TrafficToProFormaService` (M07→M09 bridge); `multifamilyTrafficService.ts:24-29` `closing_ratio` and `visit_to_tour_ratio` migrate INTO the registry | First live consumer; thin wrapper over registry |
 | 3 | `MultifamilyTrafficService` delegates to registry | Old service becomes thin, then deleted |
 | 4 | `TrafficPredictionEngine v2` funnel metrics read from registry | Replaces inline ratios |
 | 5 | `TrafficLearningService` EMA writes to registry | Recalibration target changes |
