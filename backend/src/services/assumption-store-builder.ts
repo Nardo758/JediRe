@@ -133,9 +133,6 @@ export async function buildAssumptionsFromStore(
   }
 
   // ── Overlay all year1 LayeredValue fields (widened from financing-only) ────
-  const assumptions = (typeof raw === 'string' ? JSON.parse(raw) : raw) as ProFormaAssumptions;
-
-  // ── Overlay all year1 LayeredValue fields (widened from financing-only) ────
   try {
     const year1Res = await db.query(
       `SELECT year1->'rate'               as rate,
