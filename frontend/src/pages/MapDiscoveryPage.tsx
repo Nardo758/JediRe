@@ -31,6 +31,10 @@ import { TIER_COLORS } from '../components/map-surface/FlagPin';
  *   • Submarket aggregation bubbles
  *   • Traffic prediction heatmap
  *
+ * Phase 3 additions:
+ *   • Metrics mode toggle (show values on pins vs. dots only)
+ *   • Metric selector integrated with layer toggles
+ *
  * Route: /surface
  * Next:  /deals/create?parcelId=...&address=...&boundary=...
  */
@@ -68,6 +72,7 @@ export const MapDiscoveryPage: React.FC = () => {
   const [showPortfolio, setShowPortfolio] = useState(true);
   const [showSubmarkets, setShowSubmarkets] = useState(false);
   const [showTraffic, setShowTraffic] = useState(false);
+  const [showPinMetrics, setShowPinMetrics] = useState(true);
   const [colorBy, setColorBy] = useState('jediScore');
   const [display, setDisplay] = useState('jediScore');
 
@@ -202,6 +207,7 @@ export const MapDiscoveryPage: React.FC = () => {
               colorBy={colorBy}
               display={display}
               visible={anyDealLayerVisible}
+              showValues={showPinMetrics}
               ownershipFilter={ownershipFilter.length > 0 ? ownershipFilter : undefined}
               mapZoom={mapZoom}
               mapBounds={mapBounds}
@@ -298,40 +304,49 @@ export const MapDiscoveryPage: React.FC = () => {
             onClick={() => setShowTraffic((v) => !v)}
             color="#ef4444"
           />
+          <div className="w-px h-4 bg-gray-200 mx-1" />
+          <ToggleChip
+            label="Metrics"
+            active={showPinMetrics}
+            onClick={() => setShowPinMetrics((v) => !v)}
+            color="#059669"
+          />
         </div>
 
-        {/* Metric selectors */}
-        <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 px-3 py-2 flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Color</span>
-            <select
-              value={colorBy}
-              onChange={(e) => setColorBy(e.target.value)}
-              className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {METRIC_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+        {/* Metric selectors — only visible when Metrics mode is ON */}
+        {showPinMetrics && (
+          <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 px-3 py-2 flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Color</span>
+              <select
+                value={colorBy}
+                onChange={(e) => setColorBy(e.target.value)}
+                className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {METRIC_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="w-px h-4 bg-gray-200" />
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Display</span>
+              <select
+                value={display}
+                onChange={(e) => setDisplay(e.target.value)}
+                className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {METRIC_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div className="w-px h-4 bg-gray-200" />
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Display</span>
-            <select
-              value={display}
-              onChange={(e) => setDisplay(e.target.value)}
-              className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {METRIC_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* ─── Legend Bar (bottom-center) ─── */}

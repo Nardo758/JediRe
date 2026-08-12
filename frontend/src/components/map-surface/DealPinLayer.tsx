@@ -33,6 +33,8 @@ interface DealPinLayerProps {
   display: string;
   /** Whether this layer is visible at all */
   visible: boolean;
+  /** Whether to print metric values on pin faces (false = colored dots only) */
+  showValues?: boolean;
   /** Filter by ownership status (e.g. ['pipeline','portfolio']). Undefined = all. */
   ownershipFilter?: string[];
   /** Current map zoom (for clustering threshold) */
@@ -56,6 +58,7 @@ export const DealPinLayer: React.FC<DealPinLayerProps> = ({
   colorBy,
   display,
   visible,
+  showValues = true,
   ownershipFilter,
   mapZoom,
   mapBounds,
@@ -201,7 +204,9 @@ export const DealPinLayer: React.FC<DealPinLayerProps> = ({
         if (!p) return null;
 
         const color = getTierColor(colorBy, resolveMetricValue(p, colorBy));
-        const displayValue = formatMetricValue(display, resolveMetricValue(p, display));
+        const displayValue = showValues
+          ? formatMetricValue(display, resolveMetricValue(p, display))
+          : undefined;
 
         return (
           <Marker
@@ -213,6 +218,7 @@ export const DealPinLayer: React.FC<DealPinLayerProps> = ({
             <FlagPin
               value={displayValue}
               color={color}
+              showValue={showValues}
               onClick={() => setSelectedProperty(p)}
             />
           </Marker>

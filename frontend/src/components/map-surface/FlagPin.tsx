@@ -1,10 +1,11 @@
 import React from 'react';
 
 export interface FlagPinProps {
-  value: string | number;
+  value?: string | number;
   color: string;      // hex color for flag body
   textColor?: string; // text color (defaults to white)
   size?: 'sm' | 'md' | 'lg';
+  showValue?: boolean; // when false, renders a compact dot instead of text
   onClick?: () => void;
 }
 
@@ -17,17 +18,48 @@ const SIZE_MAP = {
 /**
  * SVG Flag Pin — shaped like a map push-pin flag.
  * The flag body is colored by the active metric tier.
- * The label shows the selected display metric value.
+ * The label shows the selected display metric value when showValue=true.
+ * When showValue=false, renders a compact colored dot for cleaner maps.
  */
 export const FlagPin: React.FC<FlagPinProps> = ({
   value,
   color,
   textColor = '#fff',
   size = 'md',
+  showValue = true,
   onClick,
 }) => {
   const s = SIZE_MAP[size];
   const halfW = s.w / 2;
+
+  // Compact dot mode (no text)
+  if (!showValue) {
+    return (
+      <div
+        onClick={onClick}
+        style={{
+          width: 18,
+          height: 18,
+          cursor: onClick ? 'pointer' : 'default',
+          position: 'relative',
+          userSelect: 'none',
+        }}
+        title={value != null ? String(value) : undefined}
+      >
+        <svg
+          width={18}
+          height={18}
+          viewBox="0 0 18 18"
+          style={{ display: 'block', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))' }}
+        >
+          <circle cx={9} cy={9} r={7} fill={color} stroke="rgba(0,0,0,0.3)" strokeWidth={1.5} />
+          <circle cx={9} cy={9} r={3} fill="rgba(255,255,255,0.4)" />
+        </svg>
+      </div>
+    );
+  }
+
+  const displayText = value != null ? String(value).slice(0, 5) : '';
 
   return (
     <div
@@ -39,7 +71,7 @@ export const FlagPin: React.FC<FlagPinProps> = ({
         position: 'relative',
         userSelect: 'none',
       }}
-      title={String(value)}
+      title={value != null ? String(value) : undefined}
     >
       <svg
         width={s.w}
@@ -73,7 +105,7 @@ export const FlagPin: React.FC<FlagPinProps> = ({
           fontFamily="'JetBrains Mono', 'Fira Code', monospace"
           style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
         >
-          {String(value).slice(0, 5)}
+          {displayText}
         </text>
       </svg>
     </div>
