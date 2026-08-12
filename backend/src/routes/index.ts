@@ -221,6 +221,8 @@ import uploadRouter from '../api/rest/upload.routes';
 import compQueryRouter from '../api/rest/comp-query.routes';
 import proformaGeneratorRouter from '../api/rest/proforma-generator.routes';
 import propertyGeoRouter from '../api/rest/property-geo.routes';
+import submarketGeoRouter from '../api/rest/submarket-geo.routes';
+import trafficGeoRouter from '../api/rest/traffic-geo.routes';
 
 import assessorRouter from '../api/rest/assessor.routes';
 
@@ -233,6 +235,12 @@ export function mountPropertyRoutes(app: Express, pool: any) {
 
   // Geo-located properties with metrics (for mapping surface overlay)
   app.use('/api/v1/properties', requireAuth, propertyGeoRouter);
+
+  // Traffic prediction heatmap (for mapping surface heatmap layer)
+  app.use('/api/v1/properties', requireAuth, trafficGeoRouter);
+
+  // Submarket aggregation bubbles (for mapping surface heatmap layer)
+  app.use('/api/v1/submarkets', requireAuth, submarketGeoRouter);
 
   // Property types & strategies
 

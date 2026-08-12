@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useMemo, useCallback, useEffect, useImperativeHandle, forwardRef } from 'react';
 import Map, { Source, Layer, MapRef, NavigationControl } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import type { ParcelRecord } from '../../types/map-surface.types';
@@ -6,12 +6,18 @@ import type { ParcelRecord } from '../../types/map-surface.types';
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const DEFAULT_CENTER: [number, number] = [-84.388, 33.749]; // Atlanta
 
+export interface Map2DCanvasHandle {
+  flyTo: (opts: { center: [number, number]; zoom: number }) => void;
+}
+
 interface Map2DCanvasProps {
   dealId?: string;
   dealType: string;
   parcelBoundary?: GeoJSON.Polygon;
   onParcelSelect: (parcel: ParcelRecord | null) => void;
   children?: React.ReactNode;
+  /** Fires whenever the map moves — passes zoom + bounds for clustering */
+  onViewStateChange?: (vs: { zoom: number; bounds: { north: number; south: number; east: number; west: number } | null }) => void;
 }
 
 /**
@@ -23,14 +29,21 @@ interface Map2DCanvasProps {
  * Renders parcel boundaries as GeoJSON overlays with fill + outline.
  * Centers on the deal boundary when available, falls back to Atlanta.
  */
-export const Map2DCanvas: React.FC<Map2DCanvasProps> = ({
+export const Map2DCanvas = forwardRef<Map2DCanvasHandle, Map2DCanvasProps>(({
   dealId,
   dealType,
   parcelBoundary,
   onParcelSelect,
   children,
-}) => {
+  onViewStateChange,
+}, ref) => {
   const mapRef = useRef<MapRef>(null);
+
+  useImperativeHandle(ref, () => ({
+    flyTo: ({ center, zoom }) => {
+      mapRef.current?.flyTo({ center, zoom, duration: 800 });
+    },
+  }));
 
   // Compute initial view state from parcel boundary centroid, or Atlanta default
   const initialViewState = useMemo(() => {
@@ -74,6 +87,30 @@ export const Map2DCanvas: React.FC<Map2DCanvasProps> = ({
       ],
     };
   }, [parcelBoundary, dealId, dealType]);
+
+  // Notify parent of zoom + bounds changes (for clustering)
+  const handleMove = useCallback(
+    (evt: any) => {
+      const vs = evt.viewState;
+      setViewState(vs);
+
+      if (onViewStateChange && mapRef.current) {
+        const b = mapRef.current.getMap().getBounds();
+        onViewStateChange({
+          zoom: vs.zoom,
+          bounds: b
+            ? {
+                north: b.getNorth(),
+                south: b.getSouth(),
+                east: b.getEast(),
+                west: b.getWest(),
+              }
+            : null,
+        });
+      }
+    },
+    [onViewStateChange]
+  );
 
   // Stub: handle map click for parcel selection
   const handleMapClick = useCallback(
@@ -136,7 +173,7 @@ export const Map2DCanvas: React.FC<Map2DCanvasProps> = ({
       <Map
         ref={mapRef}
         {...viewState}
-        onMove={(evt) => setViewState(evt.viewState)}
+        onMove={handleMove}
         onClick={handleMapClick}
         mapboxAccessToken={MAPBOX_TOKEN}
         mapStyle="mapbox://styles/mapbox/satellite-streets-v12"
@@ -190,6 +227,6 @@ export const Map2DCanvas: React.FC<Map2DCanvasProps> = ({
       </div>
     </div>
   );
-};
+});
 
 export default Map2DCanvas;

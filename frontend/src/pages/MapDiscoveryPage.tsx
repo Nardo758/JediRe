@@ -1,10 +1,12 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
 import { useMapSurfaceStore } from '../stores/mapSurfaceStore';
 import type { ParcelRecord } from '../types/map-surface.types';
-import { Map2DCanvas } from '../components/map-surface/Map2DCanvas';
+import { Map2DCanvas, type Map2DCanvasHandle } from '../components/map-surface/Map2DCanvas';
 import { DealPinLayer } from '../components/map-surface/DealPinLayer';
+import { SubmarketBubbleLayer } from '../components/map-surface/SubmarketBubbleLayer';
+import { TrafficHeatmapLayer } from '../components/map-surface/TrafficHeatmapLayer';
 import { normalizeAssessorParcel } from '../components/map-surface/PropertySurfaceModule';
 import { TIER_COLORS } from '../components/map-surface/FlagPin';
 
@@ -23,6 +25,12 @@ import { TIER_COLORS } from '../components/map-surface/FlagPin';
  *   • Flag pins with tier coloring
  *   • Expandable popup on pin click
  *
+ * Phase 2 additions:
+ *   • Deal clustering at low zoom (Supercluster)
+ *   • Cluster click → flyTo expansion zoom
+ *   • Submarket aggregation bubbles
+ *   • Traffic prediction heatmap
+ *
  * Route: /surface
  * Next:  /deals/create?parcelId=...&address=...&boundary=...
  */
@@ -40,6 +48,9 @@ export const MapDiscoveryPage: React.FC = () => {
   const navigate = useNavigate();
   const [urlSearchParams] = useSearchParams();
 
+  // Map canvas ref for flyTo on cluster click
+  const mapCanvasRef = useRef<Map2DCanvasHandle>(null);
+
   // Store
   const selectParcel = useMapSurfaceStore((s) => s.selectParcel);
   const selectedProperty = useMapSurfaceStore((s) => s.selectedProperty);
@@ -55,8 +66,14 @@ export const MapDiscoveryPage: React.FC = () => {
   const [showParcels, setShowParcels] = useState(true);
   const [showPipeline, setShowPipeline] = useState(true);
   const [showPortfolio, setShowPortfolio] = useState(true);
+  const [showSubmarkets, setShowSubmarkets] = useState(false);
+  const [showTraffic, setShowTraffic] = useState(false);
   const [colorBy, setColorBy] = useState('jediScore');
   const [display, setDisplay] = useState('jediScore');
+
+  // Local state — map view (for clustering)
+  const [mapZoom, setMapZoom] = useState(13);
+  const [mapBounds, setMapBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null);
 
   // Seed search from URL ?search=... (arriving from Deal Detail or Terminal)
   useEffect(() => {
@@ -134,6 +151,10 @@ export const MapDiscoveryPage: React.FC = () => {
     setPanelOpen(false);
   };
 
+  const handleClusterZoom = useCallback((center: [number, number], zoom: number) => {
+    mapCanvasRef.current?.flyTo({ center, zoom });
+  }, []);
+
   // Build ownership filter array from toggles
   const ownershipFilter = [
     ...(showPipeline ? ['pipeline'] : []),
@@ -147,6 +168,7 @@ export const MapDiscoveryPage: React.FC = () => {
       {/* ─── Map Canvas (full bleed) ─── */}
       <div className="absolute inset-0">
         <Map2DCanvas
+          ref={mapCanvasRef}
           dealType="discovery"
           parcelBoundary={showParcels ? parcelBoundary : undefined}
           onParcelSelect={(p) => {
@@ -160,7 +182,20 @@ export const MapDiscoveryPage: React.FC = () => {
               setPanelOpen(false);
             }
           }}
+          onViewStateChange={({ zoom, bounds }) => {
+            setMapZoom(zoom);
+            setMapBounds(bounds);
+          }}
         >
+          {/* Traffic prediction heatmap */}
+          <TrafficHeatmapLayer visible={showTraffic} />
+
+          {/* Submarket aggregation bubbles */}
+          <SubmarketBubbleLayer
+            visible={showSubmarkets}
+            colorBy={colorBy}
+          />
+
           {/* Deal flag pins */}
           {anyDealLayerVisible && (
             <DealPinLayer
@@ -168,6 +203,9 @@ export const MapDiscoveryPage: React.FC = () => {
               display={display}
               visible={anyDealLayerVisible}
               ownershipFilter={ownershipFilter.length > 0 ? ownershipFilter : undefined}
+              mapZoom={mapZoom}
+              mapBounds={mapBounds}
+              onClusterZoom={handleClusterZoom}
             />
           )}
         </Map2DCanvas>
@@ -247,6 +285,18 @@ export const MapDiscoveryPage: React.FC = () => {
             active={showPortfolio}
             onClick={() => setShowPortfolio((v) => !v)}
             color="#1d4ed8"
+          />
+          <ToggleChip
+            label="Submarkets"
+            active={showSubmarkets}
+            onClick={() => setShowSubmarkets((v) => !v)}
+            color="#7c3aed"
+          />
+          <ToggleChip
+            label="Traffic"
+            active={showTraffic}
+            onClick={() => setShowTraffic((v) => !v)}
+            color="#ef4444"
           />
         </div>
 
