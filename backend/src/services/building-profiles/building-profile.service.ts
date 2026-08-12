@@ -70,6 +70,10 @@ export interface BuildingProfile {
   extractionSource: string;
   extractionConfidence: number;
   profileFingerprint?: string;
+  
+  // Per-field provenance (Piece 2.2: confidence-weighted merge)
+  // When present, each field's source/confidence overrides the top-level values
+  fieldMeta?: Partial<Record<string, { source: string; confidence: number }>>;
 }
 
 export interface OpExBenchmark {
@@ -150,7 +154,6 @@ const AMENITY_MAP: Record<string, keyof BuildingProfile['amenityFlags']> = {
   'tennis': 'hasTennis',
   'basketball': 'hasBasketball',
   'business center': 'hasBusinessCenter',
-  'business center': 'hasBusinessCenter',
   'playground': 'hasPlayground',
   'grill': 'hasGrill',
   'grilling': 'hasGrill',
@@ -191,6 +194,93 @@ function classifyAmenities(rawAmenities: string[]): BuildingProfile['amenityFlag
   return flags;
 }
 
+// ─── Source Precedence (Piece 2.2) ────────────────────────────────────────────
+
+const SOURCE_PRECEDENCE: Record<string, number> = {
+  user_input:     100,
+  web_research:    80,
+  om_parsed:       70,
+  county_parcel:   60,
+  agent_inferred:  40,
+  batch_scan:      30,
+};
+
+async function mergeBuildingProfile(
+  incoming: BuildingProfile,
+  pool: Pool
+): Promise<BuildingProfile> {
+  const existing = await getBuildingProfile(incoming.dealId, pool);
+  if (!existing) return incoming;
+
+  const incomingMeta = incoming.fieldMeta ?? {};
+  const getIncomingSource = (field: string): string =>
+    incomingMeta[field]?.source ?? incoming.extractionSource;
+  const getIncomingConfidence = (field: string): number =>
+    incomingMeta[field]?.confidence ?? incoming.extractionConfidence;
+
+  const shouldUseIncoming = (field: string, existingValue: unknown, incomingValue: unknown): boolean => {
+    if (incomingValue === null || incomingValue === undefined) return false;
+    if (existingValue === null || existingValue === undefined) return true;
+    const incPrec = SOURCE_PRECEDENCE[getIncomingSource(field)] ?? 0;
+    const existPrec = SOURCE_PRECEDENCE[existing.extractionSource] ?? 0;
+    if (incPrec > existPrec) return true;
+    if (incPrec < existPrec) return false;
+    return getIncomingConfidence(field) >= existing.extractionConfidence;
+  };
+
+  return {
+    dealId: incoming.dealId,
+    yearBuilt: shouldUseIncoming('yearBuilt', existing.yearBuilt, incoming.yearBuilt)
+      ? incoming.yearBuilt : existing.yearBuilt,
+    totalStories: shouldUseIncoming('totalStories', existing.totalStories, incoming.totalStories)
+      ? incoming.totalStories : existing.totalStories,
+    totalUnits: shouldUseIncoming('totalUnits', existing.totalUnits, incoming.totalUnits)
+      ? incoming.totalUnits : existing.totalUnits,
+    buildingType: shouldUseIncoming('buildingType', existing.buildingType, incoming.buildingType)
+      ? incoming.buildingType : existing.buildingType,
+    constructionType: shouldUseIncoming('constructionType', existing.constructionType, incoming.constructionType)
+      ? incoming.constructionType : existing.constructionType,
+    siteAcres: shouldUseIncoming('siteAcres', existing.siteAcres, incoming.siteAcres)
+      ? incoming.siteAcres : existing.siteAcres,
+    buildingSqft: shouldUseIncoming('buildingSqft', existing.buildingSqft, incoming.buildingSqft)
+      ? incoming.buildingSqft : existing.buildingSqft,
+    unitSqftAvg: shouldUseIncoming('unitSqftAvg', existing.unitSqftAvg, incoming.unitSqftAvg)
+      ? incoming.unitSqftAvg : existing.unitSqftAvg,
+    parkingSpaces: shouldUseIncoming('parkingSpaces', existing.parkingSpaces, incoming.parkingSpaces)
+      ? incoming.parkingSpaces : existing.parkingSpaces,
+    parkingType: shouldUseIncoming('parkingType', existing.parkingType, incoming.parkingType)
+      ? incoming.parkingType : existing.parkingType,
+    parkingRatio: shouldUseIncoming('parkingRatio', existing.parkingRatio, incoming.parkingRatio)
+      ? incoming.parkingRatio : existing.parkingRatio,
+    vintageBand: shouldUseIncoming('vintageBand', existing.vintageBand, incoming.vintageBand)
+      ? incoming.vintageBand : existing.vintageBand,
+    sizeBand: shouldUseIncoming('sizeBand', existing.sizeBand, incoming.sizeBand)
+      ? incoming.sizeBand : existing.sizeBand,
+    amenities: [...new Set([...existing.amenities, ...incoming.amenities])],
+    amenityFlags: {
+      hasElevator: existing.amenityFlags.hasElevator || incoming.amenityFlags.hasElevator,
+      hasPool: existing.amenityFlags.hasPool || incoming.amenityFlags.hasPool,
+      hasClubhouse: existing.amenityFlags.hasClubhouse || incoming.amenityFlags.hasClubhouse,
+      hasFitness: existing.amenityFlags.hasFitness || incoming.amenityFlags.hasFitness,
+      hasConcierge: existing.amenityFlags.hasConcierge || incoming.amenityFlags.hasConcierge,
+      hasDogPark: existing.amenityFlags.hasDogPark || incoming.amenityFlags.hasDogPark,
+      hasRooftop: existing.amenityFlags.hasRooftop || incoming.amenityFlags.hasRooftop,
+      hasCoworking: existing.amenityFlags.hasCoworking || incoming.amenityFlags.hasCoworking,
+      hasPackageConcierge: existing.amenityFlags.hasPackageConcierge || incoming.amenityFlags.hasPackageConcierge,
+      hasValetTrash: existing.amenityFlags.hasValetTrash || incoming.amenityFlags.hasValetTrash,
+      hasDoorman: existing.amenityFlags.hasDoorman || incoming.amenityFlags.hasDoorman,
+      hasGarage: existing.amenityFlags.hasGarage || incoming.amenityFlags.hasGarage,
+      hasTennis: existing.amenityFlags.hasTennis || incoming.amenityFlags.hasTennis,
+      hasBasketball: existing.amenityFlags.hasBasketball || incoming.amenityFlags.hasBasketball,
+      hasBusinessCenter: existing.amenityFlags.hasBusinessCenter || incoming.amenityFlags.hasBusinessCenter,
+      hasPlayground: existing.amenityFlags.hasPlayground || incoming.amenityFlags.hasPlayground,
+      hasGrill: existing.amenityFlags.hasGrill || incoming.amenityFlags.hasGrill,
+    },
+    extractionSource: incoming.extractionSource,
+    extractionConfidence: incoming.extractionConfidence,
+  };
+}
+
 // ─── Service Functions ────────────────────────────────────────────────────────
 
 /**
@@ -202,10 +292,20 @@ export async function upsertBuildingProfile(
   pool?: Pool
 ): Promise<string> {
   const db = pool ?? getPool();
-  const flags = profile.amenityFlags;
-  const vintage = profile.vintageBand ?? getVintageBand(profile.yearBuilt);
-  const size = profile.sizeBand ?? getSizeBand(profile.totalUnits);
-  const bldgType = profile.buildingType ?? determineBuildingType(profile.totalStories, profile.totalUnits);
+  
+  // Piece 2.2: merge with existing profile using source precedence
+  const merged = await mergeBuildingProfile(profile, db);
+  
+  // Piece 2.3: capture pre-upsert fingerprint to detect changes
+  const preFingerprint = await db.query(
+    `SELECT profile_fingerprint FROM building_profiles WHERE deal_id = $1`,
+    [merged.dealId]
+  ).then((r: any) => r.rows[0]?.profile_fingerprint as string | undefined);
+  
+  const flags = merged.amenityFlags;
+  const vintage = merged.vintageBand ?? getVintageBand(merged.yearBuilt);
+  const size = merged.sizeBand ?? getSizeBand(merged.totalUnits);
+  const bldgType = merged.buildingType ?? determineBuildingType(merged.totalStories, merged.totalUnits);
   
   const { rows } = await db.query(`
     INSERT INTO building_profiles (
@@ -275,30 +375,48 @@ export async function upsertBuildingProfile(
       END
     RETURNING id
   `, [
-    profile.dealId,
-    profile.yearBuilt,
-    profile.totalStories,
-    profile.totalUnits,
+    merged.dealId,
+    merged.yearBuilt,
+    merged.totalStories,
+    merged.totalUnits,
     bldgType,
-    profile.constructionType,
-    profile.siteAcres,
-    profile.buildingSqft,
-    profile.unitSqftAvg,
-    profile.parkingSpaces,
-    profile.parkingType,
-    profile.parkingRatio,
+    merged.constructionType,
+    merged.siteAcres,
+    merged.buildingSqft,
+    merged.unitSqftAvg,
+    merged.parkingSpaces,
+    merged.parkingType,
+    merged.parkingRatio,
     vintage,
     size,
     flags.hasElevator, flags.hasPool, flags.hasClubhouse, flags.hasFitness,
     flags.hasConcierge, flags.hasDogPark, flags.hasRooftop, flags.hasCoworking,
     flags.hasPackageConcierge, flags.hasValetTrash, flags.hasDoorman, flags.hasGarage,
     flags.hasTennis, flags.hasBasketball, flags.hasBusinessCenter, flags.hasPlayground, flags.hasGrill,
-    profile.amenities,
-    profile.extractionSource,
-    profile.extractionConfidence,
+    merged.amenities,
+    merged.extractionSource,
+    merged.extractionConfidence,
   ]);
   
-  return rows[0].id;
+  const profileId = rows[0].id;
+  
+  // Piece 2.3: trigger OpEx benchmark recalculation if fingerprint changed
+  const postFingerprint = await db.query(
+    `SELECT profile_fingerprint FROM building_profiles WHERE deal_id = $1`,
+    [merged.dealId]
+  ).then((r: any) => r.rows[0]?.profile_fingerprint as string | undefined);
+  
+  if (postFingerprint && postFingerprint !== preFingerprint) {
+    setImmediate(async () => {
+      try {
+        await recomputeProfileBenchmarksForFingerprint(postFingerprint, db);
+      } catch (err) {
+        logger.warn(`[BuildingProfiles] Benchmark recompute failed for fingerprint ${postFingerprint}:`, err);
+      }
+    });
+  }
+  
+  return profileId;
 }
 
 /**
@@ -407,6 +525,89 @@ export async function recomputeProfileBenchmarks(pool?: Pool): Promise<number> {
   
   // Upsert each benchmark
   let inserted = 0;
+  for (const row of counts) {
+    await db.query(`
+      INSERT INTO building_profile_opex_benchmarks (
+        profile_fingerprint, line_item, region,
+        p10_per_unit, p25_per_unit, p50_per_unit, p75_per_unit, p90_per_unit,
+        p10_pct_egi, p25_pct_egi, p50_pct_egi, p75_pct_egi, p90_pct_egi,
+        sample_count
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ON CONFLICT (profile_fingerprint, line_item, region) DO UPDATE SET
+        p10_per_unit = EXCLUDED.p10_per_unit,
+        p25_per_unit = EXCLUDED.p25_per_unit,
+        p50_per_unit = EXCLUDED.p50_per_unit,
+        p75_per_unit = EXCLUDED.p75_per_unit,
+        p90_per_unit = EXCLUDED.p90_per_unit,
+        p10_pct_egi  = EXCLUDED.p10_pct_egi,
+        p25_pct_egi  = EXCLUDED.p25_pct_egi,
+        p50_pct_egi  = EXCLUDED.p50_pct_egi,
+        p75_pct_egi  = EXCLUDED.p75_pct_egi,
+        p90_pct_egi  = EXCLUDED.p90_pct_egi,
+        sample_count  = EXCLUDED.sample_count,
+        computed_at   = NOW()
+    `, [
+      row.profile_fingerprint, row.line_item, 'national',
+      row.p10_per_unit, row.p25_per_unit, row.p50_per_unit,
+      row.p75_per_unit, row.p90_per_unit,
+      row.p10_pct_egi, row.p25_pct_egi, row.p50_pct_egi,
+      row.p75_pct_egi, row.p90_pct_egi,
+      row.sample_count,
+    ]);
+    inserted++;
+  }
+  
+  logger.info(`[BuildingProfiles] recomputed ${inserted} benchmark rows from ${counts.length} groups`);
+  return inserted;
+}
+
+/**
+ * Recompute OpEx benchmarks for a single fingerprint (Piece 2.3).
+ * Lighter than the full table recompute — only touches one fingerprint's rows.
+ */
+export async function recomputeProfileBenchmarksForFingerprint(
+  fingerprint: string,
+  pool?: Pool
+): Promise<number> {
+  const db = pool ?? getPool();
+  
+  const { rows } = await db.query(`
+    WITH profile_metrics AS (
+      SELECT
+        bp.profile_fingerprint,
+        pli.line_item,
+        pli.annual_amount,
+        pli.pct_egi,
+        bp.total_units
+      FROM building_profiles bp
+      JOIN deal_data dd ON dd.deal_id = bp.deal_id
+      JOIN deal_line_items pli ON pli.deal_data_id = dd.id
+        AND pli.source = 't12'
+      WHERE bp.profile_fingerprint = $1
+        AND pli.annual_amount IS NOT NULL
+        AND bp.total_units IS NOT NULL
+        AND bp.total_units > 0
+    )
+    SELECT
+      profile_fingerprint,
+      line_item,
+      COUNT(*) AS sample_count,
+      percentile_cont(0.10) WITHIN GROUP (ORDER BY annual_amount / total_units) AS p10_per_unit,
+      percentile_cont(0.25) WITHIN GROUP (ORDER BY annual_amount / total_units) AS p25_per_unit,
+      percentile_cont(0.50) WITHIN GROUP (ORDER BY annual_amount / total_units) AS p50_per_unit,
+      percentile_cont(0.75) WITHIN GROUP (ORDER BY annual_amount / total_units) AS p75_per_unit,
+      percentile_cont(0.90) WITHIN GROUP (ORDER BY annual_amount / total_units) AS p90_per_unit,
+      percentile_cont(0.10) WITHIN GROUP (ORDER BY pct_egi) AS p10_pct_egi,
+      percentile_cont(0.25) WITHIN GROUP (ORDER BY pct_egi) AS p25_pct_egi,
+      percentile_cont(0.50) WITHIN GROUP (ORDER BY pct_egi) AS p50_pct_egi,
+      percentile_cont(0.75) WITHIN GROUP (ORDER BY pct_egi) AS p75_pct_egi,
+      percentile_cont(0.90) WITHIN GROUP (ORDER BY pct_egi) AS p90_pct_egi
+    FROM profile_metrics
+    GROUP BY profile_fingerprint, line_item
+    HAVING COUNT(*) >= 3
+  `, [fingerprint]);
+  
+  let inserted = 0;
   for (const row of rows) {
     await db.query(`
       INSERT INTO building_profile_opex_benchmarks (
@@ -439,7 +640,7 @@ export async function recomputeProfileBenchmarks(pool?: Pool): Promise<number> {
     inserted++;
   }
   
-  logger.info(`[BuildingProfiles] recomputed ${inserted} benchmark rows from ${rows.length} groups`);
+  logger.info(`[BuildingProfiles] recomputed ${inserted} benchmark rows for fingerprint ${fingerprint}`);
   return inserted;
 }
 
@@ -536,5 +737,6 @@ export default {
   getBuildingProfile,
   getProfileBenchmarks,
   recomputeProfileBenchmarks,
+  recomputeProfileBenchmarksForFingerprint,
   createProfileFromOM,
 };
