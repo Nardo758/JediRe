@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Render Path B — AI Rendering Pipeline</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .pascal-building {
+      background: linear-gradient(180deg, #334155 0%, #475569 40%, #64748b 100%);
+    }
+    .ai-building {
+      background: linear-gradient(160deg, #0f172a 0%, #451a03 30%, #b45309 55%, #fcd34d 80%, #fffbeb 100%);
+      filter: saturate(1.15) contrast(1.05);
+    }
+    .ai-glow {
+      box-shadow: 0 0 80px rgba(245,158,11,0.2), 0 0 160px rgba(245,158,11,0.08);
+    }
+    .pulse-ring {
+      animation: pulseRing 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulseRing {
+      0% { transform: scale(0.95); opacity: 0.6; }
+      50% { transform: scale(1.05); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.6; }
+    }
+    .progress-fill {
+      animation: progressBar 3s ease-in-out infinite;
+    }
+    @keyframes progressBar {
+      0% { width: 0%; }
+      50% { width: 70%; }
+      100% { width: 100%; }
+    }
+    .sparkle {
+      animation: sparkle 1.5s ease-in-out infinite;
+    }
+    @keyframes sparkle {
+      0%, 100% { opacity: 0.3; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div class="max-w-4xl mx-auto px-6 py-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <div class="flex items-center gap-3 mb-1">
+          <svg class="w-8 h-8 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+          <h1 class="text-2xl font-bold text-white">Render Path B</h1>
+        </div>
+        <p class="text-slate-400 text-sm">AI Rendering Pipeline — Text-to-Image Generation</p>
+      </div>
+      <span class="px-3 py-1 rounded-full bg-purple-900/40 text-purple-300 text-xs font-medium border border-purple-800/60 flex items-center gap-1.5">
+        <span class="w-1.5 h-1.5 rounded-full bg-purple-400 sparkle"></span>
+        AI-Powered
+      </span>
+    </div>
+
+    <!-- Top: Pascal 3D View -->
+    <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden mb-6">
+      <div class="bg-slate-800 px-4 py-2 flex items-center justify-between border-b border-slate-700">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+          <span class="text-xs text-slate-300 font-medium">Pascal Editor — 3D View</span>
+        </div>
+        <span class="text-[10px] text-slate-500">The Pascal · 4 Levels · 32 Units</span>
+      </div>
+      <div class="relative h-56 flex items-center justify-center bg-slate-950">
+        <!-- Simple block building -->
+        <div class="relative">
+          <div class="w-28 h-40 pascal-building rounded-sm shadow-2xl relative">
+            <div class="absolute inset-x-2 top-2 bottom-2 grid grid-cols-3 gap-1.5">
+              <div class="bg-blue-300/30 rounded-sm"></div><div class="bg-blue-300/20 rounded-sm"></div><div class="bg-blue-300/30 rounded-sm"></div>
+              <div class="bg-blue-300/25 rounded-sm"></div><div class="bg-blue-300/35 rounded-sm"></div><div class="bg-blue-300/20 rounded-sm"></div>
+              <div class="bg-blue-300/30 rounded-sm"></div><div class="bg-blue-300/25 rounded-sm"></div><div class="bg-blue-300/30 rounded-sm"></div>
+              <div class="bg-blue-300/20 rounded-sm"></div><div class="bg-blue-300/30 rounded-sm"></div><div class="bg-blue-300/25 rounded-sm"></div>
+            </div>
+            <!-- Roof -->
+            <div class="absolute -top-3 left-1/2 -translate-x-1/2 w-20 h-3 bg-slate-600 rounded-sm"></div>
+          </div>
+          <!-- Ground -->
+          <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-40 h-2 bg-slate-800 rounded-full blur-sm"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Middle: Prompt + AI Render Button -->
+    <div class="bg-slate-900 rounded-xl border border-slate-800 p-6 mb-6">
+      <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Prompt</label>
+      <div class="flex gap-3">
+        <div class="flex-1 relative">
+          <input type="text" value="Photorealistic apartment building, golden hour, urban context, glass facade" readonly
+            class="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-purple-500" />
+          <div class="absolute right-3 top-1/2 -translate-y-1/2">
+            <button class="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+              img2img
+            </button>
+          </div>
+        </div>
+        <button class="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-sm font-semibold px-6 py-3 rounded-lg shadow-lg shadow-purple-900/30 flex items-center gap-2 transition-all pulse-ring">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          AI Render
+        </button>
+      </div>
+
+      <!-- Processing Animation -->
+      <div class="mt-5">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs text-purple-400 font-medium flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
+            Generating...
+          </span>
+          <span class="text-xs text-slate-500">Step 2 of 3: Upscaling</span>
+        </div>
+        <div class="h-2 bg-slate-800 rounded-full overflow-hidden">
+          <div class="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full progress-fill"></div>
+        </div>
+        <div class="flex items-center gap-4 mt-3 text-[11px] text-slate-500">
+          <span class="flex items-center gap-1"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Scene extracted</span>
+          <span class="flex items-center gap-1 text-purple-400"><span class="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></span> Diffusion denoising</span>
+          <span class="flex items-center gap-1">Upscale & enhance</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom: AI Result -->
+    <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden ai-glow">
+      <div class="bg-slate-800 px-4 py-2 flex items-center justify-between border-b border-slate-700">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          <span class="text-xs text-slate-300 font-medium">AI-Generated Render</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-0.5 rounded bg-purple-900/50 text-purple-300 text-[10px] font-medium border border-purple-800">Stable Diffusion XL</span>
+          <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px] font-medium border border-slate-700">1024×1024</span>
+        </div>
+      </div>
+      <div class="relative h-72 ai-building">
+        <!-- Stylized building -->
+        <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-36 h-52 bg-slate-900/70 rounded-t-lg backdrop-blur-sm">
+          <div class="absolute inset-x-2 top-3 bottom-2 grid grid-cols-3 gap-1.5">
+            <div class="bg-amber-200/40 rounded-sm shadow-inner"></div><div class="bg-amber-200/50 rounded-sm"></div><div class="bg-amber-200/30 rounded-sm"></div>
+            <div class="bg-amber-200/35 rounded-sm"></div><div class="bg-amber-200/55 rounded-sm shadow-lg"></div><div class="bg-amber-200/40 rounded-sm"></div>
+            <div class="bg-amber-200/45 rounded-sm"></div><div class="bg-amber-200/35 rounded-sm"></div><div class="bg-amber-200/50 rounded-sm"></div>
+            <div class="bg-amber-200/30 rounded-sm"></div><div class="bg-amber-200/45 rounded-sm"></div><div class="bg-amber-200/40 rounded-sm"></div>
+            <div class="bg-amber-200/50 rounded-sm"></div><div class="bg-amber-200/60 rounded-sm shadow-lg"></div><div class="bg-amber-200/35 rounded-sm"></div>
+          </div>
+          <!-- Reflection streak -->
+          <div class="absolute top-8 -right-4 w-16 h-32 bg-gradient-to-b from-amber-200/20 to-transparent rounded-full blur-md transform rotate-12"></div>
+        </div>
+        <!-- Atmospheric haze -->
+        <div class="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-amber-900/30 to-transparent"></div>
+        <!-- Sun -->
+        <div class="absolute top-10 right-12 w-16 h-16 rounded-full bg-amber-300/40 blur-xl"></div>
+        <!-- Painterly overlay -->
+        <div class="absolute inset-0 opacity-[0.03]" style="background-image: url('data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noise%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noise)%22/%3E%3C/svg%3E'); background-size: 150px;"></div>
+      </div>
+      <!-- Action bar -->
+      <div class="bg-slate-800 px-4 py-3 flex items-center justify-between border-t border-slate-700">
+        <div class="flex items-center gap-3">
+          <button class="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition-colors">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            Regenerate
+          </button>
+          <button class="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition-colors">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            Edit Prompt
+          </button>
+        </div>
+        <button class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium px-4 py-1.5 rounded-md transition-colors">Use This Render</button>
+      </div>
+    </div>
+
+    <!-- Badge -->
+    <div class="mt-4 flex justify-center">
+      <div class="flex items-center gap-2 text-[11px] text-slate-500">
+        <svg class="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        Powered by Stable Diffusion / Midjourney — Results may vary
+      </div>
+    </div>
+  </div>
+</body>
+</html>

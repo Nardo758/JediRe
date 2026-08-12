@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pascal 3D Map Overlay — JediRe</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; background: #0f172a; }
+
+    /* ── Satellite Map Background ── */
+    .satellite-bg {
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse 60% 40% at 55% 50%, rgba(34,139,34,0.12) 0%, transparent 70%),
+        radial-gradient(ellipse 80% 60% at 30% 70%, rgba(72,118,61,0.10) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 50% at 70% 30%, rgba(85,107,47,0.08) 0%, transparent 60%),
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 24px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 24px),
+        linear-gradient(135deg, #1e3a1e 0%, #2d4a2d 30%, #3a5a3a 50%, #2d4a2d 70%, #1e3a1e 100%);
+    }
+    .satellite-texture {
+      position: absolute; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      mix-blend-mode: overlay;
+    }
+
+    /* ── Road network overlay ── */
+    .road {
+      position: absolute;
+      background: rgba(210, 190, 160, 0.35);
+      border-radius: 1px;
+    }
+    .road-main { width: 4px; }
+    .road-sec  { width: 2px; }
+
+    /* ── Parcel ── */
+    .parcel {
+      position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%);
+      width: 420px; height: 320px;
+    }
+    .parcel-fill {
+      width: 100%; height: 100%;
+      background: rgba(59,130,246,0.08);
+      border: 2px solid rgba(59,130,246,0.6);
+      clip-path: polygon(5% 15%, 35% 5%, 85% 8%, 95% 45%, 88% 88%, 40% 95%, 8% 80%);
+    }
+    .parcel-glow {
+      position: absolute; inset: -4px;
+      background: rgba(59,130,246,0.04);
+      clip-path: polygon(5% 15%, 35% 5%, 85% 8%, 95% 45%, 88% 88%, 40% 95%, 8% 80%);
+      filter: blur(8px);
+    }
+    .parcel-label {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      color: rgba(59,130,246,0.7); font-size: 11px; font-weight: 600; letter-spacing: 0.15em;
+      text-transform: uppercase; pointer-events: none;
+    }
+
+    /* ── 3D Scene ── */
+    .scene {
+      position: absolute; left: 50%; top: 52%;
+      width: 0; height: 0;
+      perspective: 1200px;
+      transform-style: preserve-3d;
+    }
+
+    /* Shadow base */
+    .shadow-base {
+      position: absolute;
+      width: 220px; height: 160px;
+      left: -110px; top: -60px;
+      background: rgba(0,0,0,0.22);
+      border-radius: 4px;
+      filter: blur(12px);
+      transform: rotateX(60deg) rotateZ(-15deg) translateZ(-80px);
+      transition: all 0.6s cubic-bezier(0.4,0,0.2,1);
+    }
+    .view-exploded .shadow-base {
+      opacity: 0.08; filter: blur(20px);
+    }
+    .view-solo .shadow-base {
+      opacity: 0.12; width: 180px; height: 120px;
+    }
+
+    .building {
+      position: absolute;
+      transform-style: preserve-3d;
+      transform: rotateX(55deg) rotateZ(-25deg) translateZ(0);
+      transition: transform 0.8s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    /* ── Floor / Level ── */
+    .level {
+      position: absolute;
+      transform-style: preserve-3d;
+      transition: transform 0.7s cubic-bezier(0.4,0,0.2,1), opacity 0.4s;
+    }
+    .level-core {
+      position: relative;
+      transform-style: preserve-3d;
+    }
+
+    /* Faces */
+    .face {
+      position: absolute;
+      backface-visibility: visible;
+    }
+    .face-front  { transform: translateZ(0); }
+    .face-back   { transform: rotateY(180deg) translateZ(0); }
+    .face-right  { transform: rotateY(90deg) translateZ(0); }
+    .face-left   { transform: rotateY(-90deg) translateZ(0); }
+    .face-top    { transform: rotateX(90deg) translateZ(0); }
+    .face-bottom { transform: rotateX(-90deg) translateZ(0); }
+
+    /* Window grid */
+    .windows {
+      display: grid;
+      gap: 3px;
+      padding: 4px;
+    }
+    .window {
+      background: rgba(200,225,255,0.45);
+      border: 1px solid rgba(150,190,230,0.3);
+      border-radius: 1px;
+      box-shadow: inset 0 1px 2px rgba(255,255,255,0.15);
+    }
+    .window.lit {
+      background: rgba(255,220,150,0.6);
+      border-color: rgba(200,170,100,0.4);
+      box-shadow: inset 0 1px 3px rgba(255,200,80,0.3), 0 0 4px rgba(255,200,80,0.1);
+    }
+
+    /* ── Level dimensions & positions (stacked default) ── */
+    /* Level 4 (top) */
+    .l4 { width: 160px; height: 100px; }
+    .l4 .face-front, .l4 .face-back { width: 160px; height: 30px; }
+    .l4 .face-right, .l4 .face-left { width: 100px; height: 30px; }
+    .l4 .face-top, .l4 .face-bottom { width: 160px; height: 100px; }
+    .l4 .face-right  { left: 30px; }
+    .l4 .face-left   { left: 30px; }
+    .l4 .face-top    { top: -35px; }
+    .l4 .face-bottom { top: -35px; }
+    .l4 .face-front  .windows { grid-template-columns: repeat(5,1fr); grid-template-rows: 1fr; height: 100%; }
+    .l4 .face-right  .windows { grid-template-columns: repeat(3,1fr); grid-template-rows: 1fr; height: 100%; }
+    .l4 .face-back   .windows { grid-template-columns: repeat(5,1fr); grid-template-rows: 1fr; height: 100%; }
+    .l4 .face-left   .windows { grid-template-columns: repeat(3,1fr); grid-template-rows: 1fr; height: 100%; }
+
+    /* Level 3 */
+    .l3 { width: 180px; height: 120px; }
+    .l3 .face-front, .l3 .face-back { width: 180px; height: 34px; }
+    .l3 .face-right, .l3 .face-left { width: 120px; height: 34px; }
+    .l3 .face-top, .l3 .face-bottom { width: 180px; height: 120px; }
+    .l3 .face-right  { left: 30px; }
+    .l3 .face-left   { left: 30px; }
+    .l3 .face-top    { top: -43px; }
+    .l3 .face-bottom { top: -43px; }
+    .l3 .face-front  .windows { grid-template-columns: repeat(6,1fr); grid-template-rows: 1fr; height: 100%; }
+    .l3 .face-right  .windows { grid-template-columns: repeat(4,1fr); grid-template-rows: 1fr; height: 100%; }
+    .l3 .face-back   .windows { grid-template-columns: repeat(6,1fr); grid-template-rows: 1fr; height: 100%; }
+    .l3 .face-left   .windows { grid-template-columns: repeat(4,1fr); grid-template-rows: 1fr; height: 100%; }
+
+    /* Level 2 */
+    .l2 { width: 200px; height: 140px; }
+    .l2 .face-front, .l2 .face-back { width: 200px; height: 36px; }
+    .l2 .face-right, .l2 .face-left { width: 140px; height: 36px; }
+    .l2 .face-top, .l2 .face-bottom { width: 200px; height: 140px; }
+    .l2 .face-right  { left: 30px; }
+    .l2 .face-left   { left: 30px; }
+    .l2 .face-top    { top: -52px; }
+    .l2 .face-bottom { top: -52px; }
+    .l2 .face-front  .windows { grid-template-columns: repeat(7,1fr); grid-template-rows: 1fr; height: 100%; }
+    .l2 .face-right  .windows { grid-template-columns: repeat(5,1fr); grid-template-rows: 1fr; height: 100%; }
+    .l2 .face-back   .windows { grid-template-columns: repeat(7,1fr); grid-template-rows: 1fr; height: 100%; }
+    .l2 .face-left   .windows { grid-template-columns: repeat(5,1fr); grid-template-rows: 1fr; height: 100%; }
+
+    /* Level 1 (ground) */
+    .l1 { width: 220px; height: 160px; }
+    .l1 .face-front, .l1 .face-back { width: 220px; height: 40px; }
+    .l1 .face-right, .l1 .face-left { width: 160px; height: 40px; }
+    .l1 .face-top, .l1 .face-bottom { width: 220px; height: 160px; }
+    .l1 .face-right  { left: 30px; }
+    .l1 .face-left   { left: 30px; }
+    .l1 .face-top    { top: -60px; }
+    .l1 .face-bottom { top: -60px; }
+    .l1 .face-front  .windows { grid-template-columns: repeat(8,1fr); grid-template-rows: 1fr; height: 100%; }
+    .l1 .face-right  .windows { grid-template-columns: repeat(5,1fr); grid-template-rows: 1fr; height: 100%; }
+    .l1 .face-back   .windows { grid-template-columns: repeat(8,1fr); grid-template-rows: 1fr; height: 100%; }
+    .l1 .face-left   .windows { grid-template-columns: repeat(5,1fr); grid-template-rows: 1fr; height: 100%; }
+
+    /* Face colours by level */
+    .l1 .face-front  { background: linear-gradient(180deg, #5a7a8a 0%, #4a6a7a 100%); }
+    .l1 .face-back   { background: linear-gradient(180deg, #4a6a7a 0%, #3d5a6a 100%); }
+    .l1 .face-right  { background: linear-gradient(180deg, #4a5a6a 0%, #3d4a5a 100%); }
+    .l1 .face-left   { background: linear-gradient(180deg, #4a5a6a 0%, #3d4a5a 100%); }
+    .l1 .face-top    { background: #7a8a9a; }
+    .l1 .face-bottom { background: #2a3a4a; }
+
+    .l2 .face-front  { background: linear-gradient(180deg, #6a8a9a 0%, #5a7a8a 100%); }
+    .l2 .face-back   { background: linear-gradient(180deg, #5a7a8a 0%, #4a6a7a 100%); }
+    .l2 .face-right  { background: linear-gradient(180deg, #5a6a7a 0%, #4a5a6a 100%); }
+    .l2 .face-left   { background: linear-gradient(180deg, #5a6a7a 0%, #4a5a6a 100%); }
+    .l2 .face-top    { background: #8a9aaa; }
+    .l2 .face-bottom { background: #3a4a5a; }
+
+    .l3 .face-front  { background: linear-gradient(180deg, #7a9aaa 0%, #6a8a9a 100%); }
+    .l3 .face-back   { background: linear-gradient(180deg, #6a8a9a 0%, #5a7a8a 100%); }
+    .l3 .face-right  { background: linear-gradient(180deg, #6a7a8a 0%, #5a6a7a 100%); }
+    .l3 .face-left   { background: linear-gradient(180deg, #6a7a8a 0%, #5a6a7a 100%); }
+    .l3 .face-top    { background: #9aabba; }
+    .l3 .face-bottom { background: #4a5a6a; }
+
+    .l4 .face-front  { background: linear-gradient(180deg, #8aaaba 0%, #7a9aaa 100%); }
+    .l4 .face-back   { background: linear-gradient(180deg, #7a9aaa 0%, #6a8a9a 100%); }
+    .l4 .face-right  { background: linear-gradient(180deg, #7a8a9a 0%, #6a7a8a 100%); }
+    .l4 .face-left   { background: linear-gradient(180deg, #7a8a9a 0%, #6a7a8a 100%); }
+    .l4 .face-top    { background: #aabbca; }
+    .l4 .face-bottom { background: #5a6a7a; }
+
+    /* ── Stacked positions ── */
+    .view-stacked .l1 { transform: translateX(-110px) translateY(-80px) translateZ(0); }
+    .view-stacked .l2 { transform: translateX(-100px) translateY(-70px) translateZ(40px); }
+    .view-stacked .l3 { transform: translateX(-90px)  translateY(-60px) translateZ(74px); }
+    .view-stacked .l4 { transform: translateX(-80px)  translateY(-50px) translateZ(108px); }
+
+    /* ── Exploded positions ── */
+    .view-exploded .l1 { transform: translateX(-110px) translateY(-20px) translateZ(0);   opacity: 1; }
+    .view-exploded .l2 { transform: translateX(-100px) translateY(-40px) translateZ(90px); opacity: 1; }
+    .view-exploded .l3 { transform: translateX(-90px)  translateY(-60px) translateZ(170px); opacity: 1; }
+    .view-exploded .l4 { transform: translateX(-80px)  translateY(-80px) translateZ(240px); opacity: 1; }
+
+    /* ── Solo (only current level) ── */
+    .view-solo .l1 { transform: translateX(-110px) translateY(-80px) translateZ(40px); opacity: 1; }
+    .view-solo .l2 { transform: translateX(-100px) translateY(-70px) translateZ(40px); opacity: 0; }
+    .view-solo .l3 { transform: translateX(-90px)  translateY(-60px) translateZ(40px); opacity: 0; }
+    .view-solo .l4 { transform: translateX(-80px)  translateY(-50px) translateZ(40px); opacity: 0; }
+    .view-solo.level-2 .l1 { opacity: 0; }
+    .view-solo.level-2 .l2 { opacity: 1; }
+    .view-solo.level-3 .l1 { opacity: 0; }
+    .view-solo.level-3 .l3 { opacity: 1; }
+    .view-solo.level-4 .l1 { opacity: 0; }
+    .view-solo.level-4 .l4 { opacity: 1; }
+
+    /* Roof cap */
+    .roof-cap {
+      position: absolute;
+      width: 60px; height: 40px;
+      background: linear-gradient(135deg, #8899aa, #667788);
+      border: 1px solid rgba(255,255,255,0.2);
+      transform: translateX(-30px) translateY(-20px) translateZ(138px) rotateX(55deg) rotateZ(-25deg);
+      transition: transform 0.7s cubic-bezier(0.4,0,0.2,1);
+    }
+    .view-exploded .roof-cap {
+      transform: translateX(-30px) translateY(-80px) translateZ(280px) rotateX(55deg) rotateZ(-25deg);
+    }
+    .view-solo .roof-cap {
+      opacity: 0;
+      transform: translateX(-30px) translateY(-20px) translateZ(60px) rotateX(55deg) rotateZ(-25deg);
+    }
+
+    /* Level tags */
+    .level-tag {
+      position: absolute;
+      background: rgba(15,23,42,0.85);
+      color: #e2e8f0; font-size: 10px; font-weight: 600;
+      padding: 2px 8px; border-radius: 4px;
+      border: 1px solid rgba(148,163,184,0.2);
+      white-space: nowrap;
+      transition: all 0.5s cubic-bezier(0.4,0,0.2,1);
+      pointer-events: none;
+    }
+    .view-stacked .tag-l1 { transform: translateX(-40px) translateY(10px) translateZ(20px); }
+    .view-stacked .tag-l2 { transform: translateX(-40px) translateY(0px) translateZ(60px); }
+    .view-stacked .tag-l3 { transform: translateX(-40px) translateY(-10px) translateZ(92px); }
+    .view-stacked .tag-l4 { transform: translateX(-40px) translateY(-20px) translateZ(124px); }
+    .view-exploded .tag-l1 { transform: translateX(-40px) translateY(40px) translateZ(20px); }
+    .view-exploded .tag-l2 { transform: translateX(-40px) translateY(10px) translateZ(110px); }
+    .view-exploded .tag-l3 { transform: translateX(-40px) translateY(-20px) translateZ(190px); }
+    .view-exploded .tag-l4 { transform: translateX(-40px) translateY(-50px) translateZ(260px); }
+    .view-solo .tag-l1 { transform: translateX(-40px) translateY(-10px) translateZ(60px); opacity: 1; }
+    .view-solo .tag-l2 { opacity: 0; }
+    .view-solo .tag-l3 { opacity: 0; }
+    .view-solo .tag-l4 { opacity: 0; }
+    .view-solo.level-2 .tag-l1 { opacity: 0; }
+    .view-solo.level-2 .tag-l2 { opacity: 1; transform: translateX(-40px) translateY(-10px) translateZ(60px); }
+    .view-solo.level-3 .tag-l1 { opacity: 0; }
+    .view-solo.level-3 .tag-l3 { opacity: 1; transform: translateX(-40px) translateY(-10px) translateZ(60px); }
+    .view-solo.level-4 .tag-l1 { opacity: 0; }
+    .view-solo.level-4 .tag-l4 { opacity: 1; transform: translateX(-40px) translateY(-10px) translateZ(60px); }
+
+    /* ── Toggle buttons ── */
+    .toggle-btn {
+      background: rgba(15,23,42,0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(148,163,184,0.2);
+      color: #94a3b8;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 12px; font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .toggle-btn:hover { background: rgba(30,41,59,0.8); color: #e2e8f0; }
+    .toggle-btn.active {
+      background: rgba(59,130,246,0.2);
+      border-color: rgba(59,130,246,0.5);
+      color: #60a5fa;
+    }
+
+    /* ── Info panel ── */
+    .info-panel {
+      background: rgba(15,23,42,0.82);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(148,163,184,0.15);
+      border-radius: 12px;
+    }
+
+    /* ── Compass ── */
+    .compass {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: rgba(15,23,42,0.82);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(148,163,184,0.2);
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .compass-needle {
+      width: 2px; height: 24px;
+      background: linear-gradient(to top, #64748b 50%, #ef4444 50%);
+      border-radius: 1px;
+      transform-origin: center;
+      transition: transform 0.4s cubic-bezier(0.4,0,0.2,1);
+    }
+    .compass-ring {
+      position: absolute; inset: 4px;
+      border-radius: 50%;
+      border: 1px solid rgba(148,163,184,0.15);
+    }
+    .compass-label {
+      position: absolute; top: 2px;
+      font-size: 8px; font-weight: 700; color: #ef4444;
+    }
+
+    /* ── Watermark ── */
+    .watermark {
+      position: absolute; bottom: 20px; right: 24px;
+      color: rgba(148,163,184,0.35);
+      font-size: 11px; font-weight: 500; letter-spacing: 0.08em;
+      pointer-events: none; user-select: none;
+    }
+
+    /* ── Animations ── */
+    @keyframes floatIn {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .animate-in { animation: floatIn 0.6s ease-out forwards; }
+    .delay-1 { animation-delay: 0.1s; opacity: 0; }
+    .delay-2 { animation-delay: 0.2s; opacity: 0; }
+    .delay-3 { animation-delay: 0.3s; opacity: 0; }
+    .delay-4 { animation-delay: 0.4s; opacity: 0; }
+
+    /* Level cycling for solo view */
+    @keyframes cycleSolo {
+      0%, 20%   { opacity: 1; }
+      25%, 95%  { opacity: 0; }
+      100%      { opacity: 1; }
+    }
+  </style>
+</head>
+<body class="w-screen h-screen overflow-hidden">
+
+  <!-- ===== Satellite Background ===== -->
+  <div class="satellite-bg">
+    <div class="satellite-texture"></div>
+  </div>
+
+  <!-- Fake road network -->
+  <div class="road road-main" style="left:18%;top:0;height:100%;transform:rotate(8deg);"></div>
+  <div class="road road-main" style="left:0;top:35%;width:100%;transform:rotate(-3deg);"></div>
+  <div class="road road-sec"  style="left:55%;top:0;height:100%;transform:rotate(-6deg);"></div>
+  <div class="road road-sec"  style="left:0;top:62%;width:100%;transform:rotate(2deg);"></div>
+
+  <!-- ===== Parcel ===== -->
+  <div class="parcel animate-in delay-1">
+    <div class="parcel-glow"></div>
+    <div class="parcel-fill"></div>
+    <div class="parcel-label">Parcel 42-A</div>
+  </div>
+
+  <!-- ===== 3D Building Scene ===== -->
+  <div class="scene view-stacked" id="scene">
+    <div class="shadow-base"></div>
+
+    <div class="building" id="building">
+      <!-- Level 1 -->
+      <div class="level l1" id="level1">
+        <div class="level-core">
+          <div class="face face-front"><div class="windows"><div class="window lit"></div><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window"></div></div></div>
+          <div class="face face-back"><div class="windows"><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window"></div><div class="window lit"></div></div></div>
+          <div class="face face-right"><div class="windows"><div class="window lit"></div><div class="window"></div><div class="window"></div><div class="window lit"></div><div class="window"></div></div></div>
+          <div class="face face-left"><div class="windows"><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window"></div><div class="window lit"></div></div></div>
+          <div class="face face-top"></div>
+          <div class="face face-bottom"></div>
+        </div>
+        <div class="level-tag tag-l1">Level 1 — Retail + Lobby</div>
+      </div>
+
+      <!-- Level 2 -->
+      <div class="level l2" id="level2">
+        <div class="level-core">
+          <div class="face face-front"><div class="windows"><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window"></div><div class="window lit"></div></div></div>
+          <div class="face face-back"><div class="windows"><div class="window lit"></div><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window"></div><div class="window lit"></div><div class="window"></div></div></div>
+          <div class="face face-right"><div class="windows"><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window"></div><div class="window lit"></div></div></div>
+          <div class="face face-left"><div class="windows"><div class="window lit"></div><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window"></div></div></div>
+          <div class="face face-top"></div>
+          <div class="face face-bottom"></div>
+        </div>
+        <div class="level-tag tag-l2">Level 2 — Office</div>
+      </div>
+
+      <!-- Level 3 -->
+      <div class="level l3" id="level3">
+        <div class="level-core">
+          <div class="face face-front"><div class="windows"><div class="window lit"></div><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window"></div><div class="window lit"></div></div></div>
+          <div class="face face-back"><div class="windows"><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window"></div></div></div>
+          <div class="face face-right"><div class="windows"><div class="window lit"></div><div class="window"></div><div class="window lit"></div><div class="window"></div></div></div>
+          <div class="face face-left"><div class="windows"><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window lit"></div></div></div>
+          <div class="face face-top"></div>
+          <div class="face face-bottom"></div>
+        </div>
+        <div class="level-tag tag-l3">Level 3 — Residential</div>
+      </div>
+
+      <!-- Level 4 -->
+      <div class="level l4" id="level4">
+        <div class="level-core">
+          <div class="face face-front"><div class="windows"><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window lit"></div><div class="window"></div></div></div>
+          <div class="face face-back"><div class="windows"><div class="window lit"></div><div class="window"></div><div class="window lit"></div><div class="window"></div><div class="window lit"></div></div></div>
+          <div class="face face-right"><div class="windows"><div class="window"></div><div class="window lit"></div><div class="window"></div></div></div>
+          <div class="face face-left"><div class="windows"><div class="window lit"></div><div class="window"></div><div class="window lit"></div></div></div>
+          <div class="face face-top"></div>
+          <div class="face face-bottom"></div>
+        </div>
+        <div class="level-tag tag-l4">Level 4 — Penthouse</div>
+      </div>
+
+      <!-- Roof -->
+      <div class="roof-cap"></div>
+    </div>
+  </div>
+
+  <!-- ===== Top-Left Badge ===== -->
+  <div class="absolute top-5 left-5 animate-in delay-2">
+    <div class="flex items-center gap-2 bg-slate-900/80 backdrop-blur-md border border-slate-700/40 rounded-lg px-3 py-2">
+      <div class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+      <span class="text-slate-200 text-xs font-semibold tracking-wide">3D DESIGN MODE</span>
+    </div>
+  </div>
+
+  <!-- ===== Top-Right Toggles ===== -->
+  <div class="absolute top-5 right-5 flex gap-2 animate-in delay-2">
+    <button class="toggle-btn active" id="btn-stacked" onclick="setView('stacked')">Stacked</button>
+    <button class="toggle-btn" id="btn-exploded" onclick="setView('exploded')">Exploded</button>
+    <button class="toggle-btn" id="btn-solo" onclick="setView('solo')">Solo</button>
+  </div>
+
+  <!-- ===== Bottom-Left Info Panel ===== -->
+  <div class="absolute bottom-5 left-5 animate-in delay-3">
+    <div class="info-panel p-4 w-64">
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+          <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M4 18h16M6 18v-8l6-4 6 4v8M9 10h.01M15 10h.01"/></svg>
+        </div>
+        <div>
+          <div class="text-slate-100 text-sm font-semibold leading-tight">The Pascal</div>
+          <div class="text-slate-400 text-[10px] uppercase tracking-wider">Mixed-Use Development</div>
+        </div>
+      </div>
+      <div class="space-y-2">
+        <div class="flex justify-between text-xs">
+          <span class="text-slate-400">Levels</span>
+          <span class="text-slate-200 font-medium">4</span>
+        </div>
+        <div class="flex justify-between text-xs">
+          <span class="text-slate-400">Total SF</span>
+          <span class="text-slate-200 font-medium">45,000</span>
+        </div>
+        <div class="flex justify-between text-xs">
+          <span class="text-slate-400">Units</span>
+          <span class="text-slate-200 font-medium">32</span>
+        </div>
+        <div class="h-px bg-slate-700/40 my-2"></div>
+        <div class="flex justify-between text-xs">
+          <span class="text-slate-400">Parcel</span>
+          <span class="text-blue-300 font-medium">42-A</span>
+        </div>
+        <div class="flex justify-between text-xs">
+          <span class="text-slate-400">Zoning</span>
+          <span class="text-emerald-300 font-medium">MU-3</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Compass ===== -->
+  <div class="absolute bottom-5 right-24 animate-in delay-4">
+    <div class="compass" id="compass" onclick="rotateCompass()">
+      <div class="compass-ring"></div>
+      <div class="compass-needle" id="needle"></div>
+      <div class="compass-label">N</div>
+    </div>
+  </div>
+
+  <!-- ===== Watermark ===== -->
+  <div class="watermark">POWERED BY PASCAL EDITOR</div>
+
+  <script>
+    const scene = document.getElementById('scene');
+    const btns = { stacked: document.getElementById('btn-stacked'), exploded: document.getElementById('btn-exploded'), solo: document.getElementById('btn-solo') };
+    let soloLevel = 1;
+    let soloInterval = null;
+
+    function setView(view) {
+      // Update buttons
+      Object.values(btns).forEach(b => b.classList.remove('active'));
+      btns[view].classList.add('active');
+
+      // Clear solo cycling
+      if (soloInterval) { clearInterval(soloInterval); soloInterval = null; }
+
+      // Update scene class
+      scene.className = 'scene view-' + view;
+      if (view === 'solo') {
+        scene.classList.add('level-' + soloLevel);
+        startSoloCycle();
+      }
+    }
+
+    function startSoloCycle() {
+      soloInterval = setInterval(() => {
+        scene.classList.remove('level-1','level-2','level-3','level-4');
+        soloLevel = soloLevel % 4 + 1;
+        scene.classList.add('level-' + soloLevel);
+      }, 2200);
+    }
+
+    // Compass rotation
+    let compassAngle = -25;
+    const needle = document.getElementById('needle');
+    function rotateCompass() {
+      compassAngle = (compassAngle + 45) % 360;
+      needle.style.transform = 'rotate(' + compassAngle + 'deg)';
+    }
+    needle.style.transform = 'rotate(' + compassAngle + 'deg)';
+
+    // Subtle parallax on mouse move
+    document.addEventListener('mousemove', (e) => {
+      const x = (e.clientX / window.innerWidth - 0.5) * 8;
+      const y = (e.clientY / window.innerHeight - 0.5) * 6;
+      const b = document.getElementById('building');
+      b.style.transform = 'rotateX(' + (55 + y*0.3) + 'deg) rotateZ(' + (-25 + x*0.3) + 'deg) translateZ(0)';
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Render Path C — Web Path Tracing</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .noise-overlay {
+      opacity: 0.35;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      background-size: 120px;
+      animation: noiseFade 4s ease-in-out forwards;
+    }
+    @keyframes noiseFade {
+      0% { opacity: 0.45; }
+      100% { opacity: 0.08; }
+    }
+    .trace-building {
+      background: linear-gradient(180deg, #475569 0%, #64748b 50%, #94a3b8 100%);
+    }
+    .trace-building-lit {
+      background: linear-gradient(160deg, #334155 0%, #475569 40%, #94a3b8 70%, #cbd5e1 100%);
+    }
+    .browser-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .slider-track {
+      -webkit-appearance: none; appearance: none;
+      height: 4px; border-radius: 2px; background: #334155; outline: none;
+    }
+    .slider-track::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 16px; height: 16px; border-radius: 50%; background: #3b82f6; cursor: pointer; border: 2px solid #1e293b;
+    }
+    .sample-counter {
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div class="max-w-5xl mx-auto px-6 py-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <div class="flex items-center gap-3 mb-1">
+          <svg class="w-8 h-8 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          <h1 class="text-2xl font-bold text-white">Render Path C</h1>
+        </div>
+        <p class="text-slate-400 text-sm">Web Path Tracing — Real-time Browser Rendering</p>
+      </div>
+      <span class="px-3 py-1 rounded-full bg-cyan-900/40 text-cyan-300 text-xs font-medium border border-cyan-800/60 flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        GPU Accelerated
+      </span>
+    </div>
+
+    <!-- Browser Window Mockup -->
+    <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-2xl">
+      <!-- Browser Chrome -->
+      <div class="bg-slate-800 px-3 py-2 flex items-center gap-3 border-b border-slate-700">
+        <div class="flex items-center gap-1.5">
+          <div class="browser-dot bg-red-500"></div>
+          <div class="browser-dot bg-yellow-500"></div>
+          <div class="browser-dot bg-green-500"></div>
+        </div>
+        <div class="flex-1 bg-slate-900 rounded-md px-3 py-1 flex items-center gap-2 border border-slate-700">
+          <svg class="w-3 h-3 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
+          <span class="text-xs text-slate-400 font-mono">app.jedire.com/deals/123/3d-render</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </div>
+      </div>
+
+      <!-- Render Canvas Area -->
+      <div class="relative h-80 bg-slate-950">
+        <!-- 3D Scene -->
+        <div class="absolute inset-0 flex items-center justify-center">
+          <div class="relative">
+            <!-- Building -->
+            <div class="w-32 h-44 trace-building-lit rounded-sm shadow-2xl relative">
+              <div class="absolute inset-x-2 top-2 bottom-2 grid grid-cols-3 gap-1.5">
+                <div class="bg-blue-200/25 rounded-sm"></div><div class="bg-blue-200/35 rounded-sm"></div><div class="bg-blue-200/20 rounded-sm"></div>
+                <div class="bg-blue-200/30 rounded-sm"></div><div class="bg-blue-200/40 rounded-sm"></div><div class="bg-blue-200/25 rounded-sm"></div>
+                <div class="bg-blue-200/35 rounded-sm"></div><div class="bg-blue-200/25 rounded-sm"></div><div class="bg-blue-200/30 rounded-sm"></div>
+                <div class="bg-blue-200/20 rounded-sm"></div><div class="bg-blue-200/35 rounded-sm"></div><div class="bg-blue-200/25 rounded-sm"></div>
+              </div>
+              <!-- Roof -->
+              <div class="absolute -top-2 left-1/2 -translate-x-1/2 w-24 h-2 bg-slate-500 rounded-sm"></div>
+            </div>
+            <!-- Ground plane -->
+            <div class="absolute -bottom-2 left-1/2 -translate-x-1/2 w-48 h-4 bg-slate-800/60 rounded-full blur-sm"></div>
+            <!-- Shadow -->
+            <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-28 h-3 bg-black/30 rounded-full blur-md"></div>
+          </div>
+        </div>
+        <!-- Sky gradient -->
+        <div class="absolute inset-0 bg-gradient-to-b from-slate-900 via-slate-800/30 to-transparent pointer-events-none"></div>
+
+        <!-- Noise overlay (fading) -->
+        <div class="absolute inset-0 noise-overlay pointer-events-none"></div>
+
+        <!-- Progress info overlay -->
+        <div class="absolute top-4 left-4 bg-slate-900/80 backdrop-blur-sm rounded-lg px-3 py-2 border border-slate-700/50">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+            <span class="text-xs font-medium text-cyan-400">Path Tracing</span>
+          </div>
+          <div class="text-[11px] text-slate-400 sample-counter">Samples: 128 / 4096</div>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="absolute bottom-0 left-0 right-0 bg-slate-900/80 backdrop-blur-sm border-t border-slate-700/50 px-4 py-2">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-[11px] text-slate-400">Path tracing in browser...</span>
+            <span class="text-[11px] text-cyan-400 font-medium">3%</span>
+          </div>
+          <div class="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full" style="width: 3%;"></div>
+          </div>
+        </div>
+
+        <!-- GPU Warning -->
+        <div class="absolute top-4 right-4">
+          <div class="flex items-center gap-1.5 bg-amber-900/60 backdrop-blur-sm text-amber-300 text-[10px] font-medium px-2.5 py-1 rounded-md border border-amber-800/60">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            GPU intensive — 2-5 min
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls Panel -->
+      <div class="bg-slate-800/50 px-5 py-4 border-t border-slate-700">
+        <div class="grid grid-cols-3 gap-6">
+          <!-- Time of Day -->
+          <div>
+            <label class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2 block flex items-center gap-1.5">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+              Time of Day
+            </label>
+            <input type="range" min="0" max="24" value="17" class="slider-track w-full" />
+            <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+              <span>6 AM</span><span class="text-cyan-400 font-medium">5:00 PM</span><span>6 PM</span>
+            </div>
+          </div>
+          <!-- Material Quality -->
+          <div>
+            <label class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2 block flex items-center gap-1.5">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+              Material Quality
+            </label>
+            <select class="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500">
+              <option>Draft — Fast preview</option>
+              <option selected>Standard — Balanced</option>
+              <option>High — Accurate PBR</option>
+              <option>Production — Maximum fidelity</option>
+            </select>
+          </div>
+          <!-- Resolution -->
+          <div>
+            <label class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2 block flex items-center gap-1.5">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+              Resolution
+            </label>
+            <div class="flex gap-2">
+              <button class="flex-1 bg-slate-900 border border-slate-700 rounded-md py-1.5 text-[11px] text-slate-400 hover:text-slate-200 transition-colors">720p</button>
+              <button class="flex-1 bg-cyan-900/30 border border-cyan-700/60 rounded-md py-1.5 text-[11px] text-cyan-300 font-medium">1080p</button>
+              <button class="flex-1 bg-slate-900 border border-slate-700 rounded-md py-1.5 text-[11px] text-slate-400 hover:text-slate-200 transition-colors">4K</button>
+            </div>
+          </div>
+        </div>
+        <div class="mt-4 flex items-center justify-between">
+          <div class="flex items-center gap-4 text-[11px] text-slate-500">
+            <span class="flex items-center gap-1"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> WebGL 2.0</span>
+            <span class="flex items-center gap-1"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg> RTX 3060 detected</span>
+          </div>
+          <button class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium px-5 py-2 rounded-md transition-colors flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Start Render
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Result preview comparison -->
+    <div class="mt-6 grid grid-cols-2 gap-4">
+      <div class="bg-slate-900 rounded-xl border border-slate-800 p-4">
+        <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Pascal Editor (Real-time)</p>
+        <div class="h-32 bg-slate-950 rounded-lg flex items-center justify-center relative overflow-hidden">
+          <div class="w-20 h-28 trace-building rounded-sm">
+            <div class="absolute inset-x-1.5 top-1.5 bottom-1.5 grid grid-cols-2 gap-1">
+              <div class="bg-blue-300/20 rounded-sm"></div><div class="bg-blue-300/15 rounded-sm"></div>
+              <div class="bg-blue-300/15 rounded-sm"></div><div class="bg-blue-300/20 rounded-sm"></div>
+              <div class="bg-blue-300/20 rounded-sm"></div><div class="bg-blue-300/15 rounded-sm"></div>
+            </div>
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-500 mt-2">Basic shading · 60 FPS · No GI</p>
+      </div>
+      <div class="bg-slate-900 rounded-xl border border-slate-800 p-4">
+        <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Path Traced Result</p>
+        <div class="h-32 bg-slate-950 rounded-lg flex items-center justify-center relative overflow-hidden">
+          <div class="w-20 h-28 trace-building-lit rounded-sm shadow-lg">
+            <div class="absolute inset-x-1.5 top-1.5 bottom-1.5 grid grid-cols-2 gap-1">
+              <div class="bg-amber-200/25 rounded-sm"></div><div class="bg-amber-200/35 rounded-sm"></div>
+              <div class="bg-amber-200/30 rounded-sm"></div><div class="bg-amber-200/25 rounded-sm"></div>
+              <div class="bg-amber-200/35 rounded-sm"></div><div class="bg-amber-200/20 rounded-sm"></div>
+            </div>
+          </div>
+          <div class="absolute inset-0 bg-gradient-to-tr from-amber-900/20 to-transparent pointer-events-none"></div>
+        </div>
+        <p class="text-[10px] text-slate-500 mt-2">Global illumination · Soft shadows · Physically accurate</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

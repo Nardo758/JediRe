@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JediRe Render Paths — Comparison Index</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .thumb-a { background: linear-gradient(135deg, #0f172a, #1e3a5f, #f59e0b); }
+    .thumb-b { background: linear-gradient(160deg, #0f172a, #581c87, #f472b6); }
+    .thumb-c { background: linear-gradient(135deg, #0f172a, #0e7490, #22d3ee); }
+    .thumb-d { background: linear-gradient(160deg, #0f172a, #1e40af, #3b82f6); }
+    .card-hover { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    .card-hover:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
+    .badge-p0 { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+    .badge-p1 { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+    .badge-p2 { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div class="max-w-6xl mx-auto px-6 py-10">
+    <!-- Header -->
+    <div class="text-center mb-10">
+      <div class="inline-flex items-center gap-2 mb-3">
+        <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
+          <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        </div>
+        <h1 class="text-3xl font-bold text-white">JediRe Render Paths</h1>
+      </div>
+      <p class="text-slate-400 max-w-2xl mx-auto">Four approaches to getting photorealistic 3D architectural renders from the Pascal Editor into the JediRe mapping platform. Compare workflows, trade-offs, and production readiness.</p>
+    </div>
+
+    <!-- Path Cards Grid -->
+    <div class="grid grid-cols-2 gap-6 mb-10">
+      <!-- Path A -->
+      <a href="render-path-a-export.html" class="card-hover bg-slate-900 rounded-xl border border-slate-800 overflow-hidden block">
+        <div class="h-36 thumb-a relative">
+          <div class="absolute inset-0" style="background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.06) 45%, transparent 60%);"></div>
+          <div class="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-sm rounded-md px-2 py-1 border border-slate-700/50">
+            <span class="text-[10px] font-bold text-slate-300">PATH A</span>
+          </div>
+          <div class="absolute bottom-3 left-3 right-3 flex items-end justify-between">
+            <div class="w-12 h-16 bg-slate-800/80 rounded-sm border border-blue-500/30"></div>
+            <svg class="w-6 h-6 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+            <div class="w-14 h-10 bg-amber-500/20 rounded-sm border border-amber-500/30"></div>
+          </div>
+        </div>
+        <div class="p-5">
+          <h3 class="text-base font-bold text-white mb-1">Export to External Renderer</h3>
+          <p class="text-xs text-slate-400 mb-3">Blender / Lumion / V-Ray</p>
+          <div class="space-y-2">
+            <div class="flex gap-2 text-[11px]">
+              <span class="px-1.5 py-0.5 rounded badge-p0">High quality</span>
+              <span class="px-1.5 py-0.5 rounded badge-p0">Full control</span>
+            </div>
+            <div class="border-t border-slate-800 pt-2">
+              <p class="text-[11px] text-slate-500 mb-1">Pros</p>
+              <ul class="text-[11px] text-slate-400 space-y-0.5">
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-green-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Maximum photorealism</li>
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-green-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Industry-standard tools</li>
+              </ul>
+            </div>
+            <div class="border-t border-slate-800 pt-2">
+              <p class="text-[11px] text-slate-500 mb-1">Cons</p>
+              <ul class="text-[11px] text-slate-400 space-y-0.5">
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-red-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg> Requires external software</li>
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-red-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg> Manual export/import cycle</li>
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-red-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg> Steep learning curve</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </a>
+
+      <!-- Path B -->
+      <a href="render-path-b-ai.html" class="card-hover bg-slate-900 rounded-xl border border-slate-800 overflow-hidden block">
+        <div class="h-36 thumb-b relative">
+          <div class="absolute inset-0" style="background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.05) 50%, transparent 65%);"></div>
+          <div class="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-sm rounded-md px-2 py-1 border border-slate-700/50">
+            <span class="text-[10px] font-bold text-slate-300">PATH B</span>
+          </div>
+          <div class="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1">
+            <div class="w-20 h-5 bg-purple-500/30 rounded border border-purple-500/40 flex items-center justify-center">
+              <span class="text-[8px] text-purple-300">AI generating...</span>
+            </div>
+            <div class="w-16 h-12 bg-amber-500/20 rounded-sm border border-amber-500/30"></div>
+          </div>
+        </div>
+        <div class="p-5">
+          <h3 class="text-base font-bold text-white mb-1">AI Rendering Pipeline</h3>
+          <p class="text-xs text-slate-400 mb-3">Stable Diffusion / Midjourney</p>
+          <div class="space-y-2">
+            <div class="flex gap-2 text-[11px]">
+              <span class="px-1.5 py-0.5 rounded badge-p1">Fast iteration</span>
+              <span class="px-1.5 py-0.5 rounded badge-p1">No 3D skills needed</span>
+            </div>
+            <div class="border-t border-slate-800 pt-2">
+              <p class="text-[11px] text-slate-500 mb-1">Pros</p>
+              <ul class="text-[11px] text-slate-400 space-y-0.5">
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-green-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Rapid iteration from prompts</li>
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-green-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Low barrier to entry</li>
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-green-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Atmospheric & artistic results</li>
+              </ul>
+            </div>
+            <div class="border-t border-slate-800 pt-2">
+              <p class="text-[11px] text-slate-500 mb-1">Cons</p>
+              <ul class="text-[11px] text-slate-400 space-y-0.5">
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-red-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg> Inconsistent geometry fidelity</li>
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-red-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg> Licensing & API costs</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </a>
+
+      <!-- Path C -->
+      <a href="render-path-c-pathtrace.html" class="card-hover bg-slate-900 rounded-xl border border-slate-800 overflow-hidden block">
+        <div class="h-36 thumb-c relative">
+          <div class="absolute inset-0" style="background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.05) 50%, transparent 60%);"></div>
+          <div class="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-sm rounded-md px-2 py-1 border border-slate-700/50">
+            <span class="text-[10px] font-bold text-slate-300">PATH C</span>
+          </div>
+          <div class="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1">
+            <div class="w-24 h-4 bg-slate-800/80 rounded border border-cyan-700/40 flex items-center px-1.5">
+              <div class="h-1.5 bg-cyan-500 rounded-full" style="width: 35%;"></div>
+              <span class="text-[7px] text-cyan-400 ml-1">128/4096</span>
+            </div>
+            <div class="w-14 h-10 bg-slate-700/50 rounded-sm border border-cyan-500/20"></div>
+          </div>
+        </div>
+        <div class="p-5">
+          <h3 class="text-base font-bold text-white mb-1">Web Path Tracing</h3>
+          <p class="text-xs text-slate-400 mb-3">Browser-based GPU rendering</p>
+          <div class="space-y-2">
+            <div class="flex gap-2 text-[11px]">
+              <span class="px-1.5 py-0.5 rounded badge-p2">No plugins</span>
+              <span class="px-1.5 py-0.5 rounded badge-p2">Physically accurate</span>
+            </div>
+            <div class="border-t border-slate-800 pt-2">
+              <p class="text-[11px] text-slate-500 mb-1">Pros</p>
+              <ul class="text-[11px] text-slate-400 space-y-0.5">
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-green-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> No external software</li>
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-green-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> PBR accuracy in browser</li>
+              </ul>
+            </div>
+            <div class="border-t border-slate-800 pt-2">
+              <p class="text-[11px] text-slate-500 mb-1">Cons</p>
+              <ul class="text-[11px] text-slate-400 space-y-0.5">
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-red-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg> Very slow (2–5 min per frame)</li>
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-red-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg> Requires powerful GPU</li>
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-red-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg> Not real-time interactive</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </a>
+
+      <!-- Path D -->
+      <a href="render-path-d-hybrid.html" class="card-hover bg-slate-900 rounded-xl border border-blue-600/40 overflow-hidden block relative">
+        <div class="absolute top-0 right-0 bg-blue-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-bl-md">RECOMMENDED</div>
+        <div class="h-36 thumb-d relative">
+          <div class="absolute inset-0" style="background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.06) 45%, transparent 60%);"></div>
+          <div class="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-sm rounded-md px-2 py-1 border border-slate-700/50">
+            <span class="text-[10px] font-bold text-blue-300">PATH D</span>
+          </div>
+          <div class="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-end gap-2">
+            <div class="w-10 h-12 bg-slate-700/60 rounded-sm border border-blue-500/30"></div>
+            <div class="w-4 h-8 bg-blue-500/30 rounded-sm"></div>
+            <div class="w-14 h-9 bg-amber-500/20 rounded-sm border border-amber-500/30"></div>
+          </div>
+        </div>
+        <div class="p-5">
+          <h3 class="text-base font-bold text-white mb-1">Design + Presentation Mode</h3>
+          <p class="text-xs text-slate-400 mb-3">Hybrid workflow inside JediRe</p>
+          <div class="space-y-2">
+            <div class="flex gap-2 text-[11px]">
+              <span class="px-1.5 py-0.5 rounded badge-p0">Integrated</span>
+              <span class="px-1.5 py-0.5 rounded badge-p0">Production-ready</span>
+            </div>
+            <div class="border-t border-slate-800 pt-2">
+              <p class="text-[11px] text-slate-500 mb-1">Pros</p>
+              <ul class="text-[11px] text-slate-400 space-y-0.5">
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-green-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Seamless design-to-present flow</li>
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-green-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Render gallery per deal</li>
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-green-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> No context switching</li>
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-green-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Familiar map-based UX</li>
+              </ul>
+            </div>
+            <div class="border-t border-slate-800 pt-2">
+              <p class="text-[11px] text-slate-500 mb-1">Cons</p>
+              <ul class="text-[11px] text-slate-400 space-y-0.5">
+                <li class="flex items-start gap-1.5"><svg class="w-3 h-3 text-amber-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg> Still requires external renderer for best quality</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </a>
+    </div>
+
+    <!-- Comparison Table -->
+    <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden mb-10">
+      <div class="px-5 py-3 border-b border-slate-800">
+        <h2 class="text-sm font-bold text-white">At-a-Glance Comparison</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-[11px]">
+          <thead>
+            <tr class="border-b border-slate-800">
+              <th class="text-left px-5 py-2.5 text-slate-500 font-medium">Criteria</th>
+              <th class="text-center px-4 py-2.5 text-slate-400 font-medium">Path A<br/><span class="text-[9px] text-slate-600">Export</span></th>
+              <th class="text-center px-4 py-2.5 text-slate-400 font-medium">Path B<br/><span class="text-[9px] text-slate-600">AI</span></th>
+              <th class="text-center px-4 py-2.5 text-slate-400 font-medium">Path C<br/><span class="text-[9px] text-slate-600">Path Trace</span></th>
+              <th class="text-center px-4 py-2.5 text-blue-400 font-medium">Path D<br/><span class="text-[9px] text-blue-600">Hybrid ★</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-slate-800/50">
+              <td class="px-5 py-2.5 text-slate-300">Quality</td>
+              <td class="text-center text-green-400 font-semibold">★★★★★</td>
+              <td class="text-center text-amber-400 font-semibold">★★★☆☆</td>
+              <td class="text-center text-green-400 font-semibold">★★★★☆</td>
+              <td class="text-center text-green-400 font-semibold">★★★★★</td>
+            </tr>
+            <tr class="border-b border-slate-800/50">
+              <td class="px-5 py-2.5 text-slate-300">Speed</td>
+              <td class="text-center text-amber-400 font-semibold">★★★☆☆</td>
+              <td class="text-center text-green-400 font-semibold">★★★★★</td>
+              <td class="text-center text-red-400 font-semibold">★★☆☆☆</td>
+              <td class="text-center text-green-400 font-semibold">★★★★☆</td>
+            </tr>
+            <tr class="border-b border-slate-800/50">
+              <td class="px-5 py-2.5 text-slate-300">Ease of Use</td>
+              <td class="text-center text-red-400 font-semibold">★★☆☆☆</td>
+              <td class="text-center text-green-400 font-semibold">★★★★★</td>
+              <td class="text-center text-amber-400 font-semibold">★★★☆☆</td>
+              <td class="text-center text-green-400 font-semibold">★★★★★</td>
+            </tr>
+            <tr class="border-b border-slate-800/50">
+              <td class="px-5 py-2.5 text-slate-300">Integration</td>
+              <td class="text-center text-red-400 font-semibold">★★☆☆☆</td>
+              <td class="text-center text-amber-400 font-semibold">★★★☆☆</td>
+              <td class="text-center text-green-400 font-semibold">★★★★☆</td>
+              <td class="text-center text-green-400 font-semibold">★★★★★</td>
+            </tr>
+            <tr class="border-b border-slate-800/50">
+              <td class="px-5 py-2.5 text-slate-300">Cost</td>
+              <td class="text-center text-amber-400 font-semibold">$$$</td>
+              <td class="text-center text-amber-400 font-semibold">$$</td>
+              <td class="text-center text-green-400 font-semibold">$</td>
+              <td class="text-center text-green-400 font-semibold">$</td>
+            </tr>
+            <tr>
+              <td class="px-5 py-2.5 text-slate-300">Best For</td>
+              <td class="text-center text-slate-400 px-2">Final marketing assets</td>
+              <td class="text-center text-slate-400 px-2">Concept exploration</td>
+              <td class="text-center text-slate-400 px-2">Technical accuracy</td>
+              <td class="text-center text-blue-300 px-2 font-medium">Production workflow</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="text-center text-[11px] text-slate-600">
+      <p>JediRe Render Path Exploration · Mockups for architectural visualization workflow planning</p>
+      <p class="mt-1">Open any card above to view the interactive mockup</p>
+    </div>
+  </div>
+</body>
+</html>

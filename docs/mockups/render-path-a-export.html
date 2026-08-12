@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Render Path A — Export to External Renderer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .wireframe-box {
+      background: linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(30,58,138,0.12) 100%);
+      border: 1px solid rgba(59,130,246,0.25);
+    }
+    .wireframe-edge { background: rgba(59,130,246,0.35); }
+    .render-gradient {
+      background: linear-gradient(160deg, #0f172a 0%, #1e293b 30%, #7c2d12 60%, #f59e0b 85%, #fef3c7 100%);
+    }
+    .glass-reflection {
+      background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.12) 38%, rgba(255,255,255,0.06) 45%, transparent 55%);
+    }
+    .arrow-flow { animation: flowPulse 2s ease-in-out infinite; }
+    @keyframes flowPulse {
+      0%,100% { opacity: 0.6; transform: translateX(0); }
+      50% { opacity: 1; transform: translateX(4px); }
+    }
+    .thumb-gradient-1 { background: linear-gradient(135deg, #1e293b, #7c2d12, #fbbf24); }
+    .thumb-gradient-2 { background: linear-gradient(160deg, #0f172a, #1e3a5f, #60a5fa); }
+    .thumb-gradient-3 { background: linear-gradient(135deg, #1e293b, #065f46, #34d399); }
+    .thumb-gradient-4 { background: linear-gradient(160deg, #0f172a, #581c87, #c084fc); }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div class="max-w-7xl mx-auto px-6 py-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <div class="flex items-center gap-3 mb-1">
+          <svg class="w-8 h-8 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          <h1 class="text-2xl font-bold text-white">Render Path A</h1>
+        </div>
+        <p class="text-slate-400 text-sm">Export to External Renderer (Blender / Lumion / V-Ray)</p>
+      </div>
+      <span class="px-3 py-1 rounded-full bg-slate-800 text-slate-400 text-xs font-medium border border-slate-700">Offline Pipeline</span>
+    </div>
+
+    <!-- Workflow Steps -->
+    <div class="grid grid-cols-4 gap-4 mb-2">
+      <div class="text-center"><span class="text-xs font-semibold text-blue-400 uppercase tracking-wider">Step 1</span><p class="text-sm text-slate-300 mt-1">Design in Pascal</p></div>
+      <div class="text-center"><span class="text-xs font-semibold text-blue-400 uppercase tracking-wider">Step 2</span><p class="text-sm text-slate-300 mt-1">Export Scene</p></div>
+      <div class="text-center"><span class="text-xs font-semibold text-blue-400 uppercase tracking-wider">Step 3</span><p class="text-sm text-slate-300 mt-1">Render Externally</p></div>
+      <div class="text-center"><span class="text-xs font-semibold text-blue-400 uppercase tracking-wider">Step 4</span><p class="text-sm text-slate-300 mt-1">Upload to Deal</p></div>
+    </div>
+
+    <!-- Main Split Screen -->
+    <div class="grid grid-cols-3 gap-6 mb-8">
+      <!-- Left: Pascal Editor -->
+      <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+        <div class="bg-slate-800 px-4 py-2 flex items-center gap-2 border-b border-slate-700">
+          <div class="w-3 h-3 rounded-full bg-red-500"></div>
+          <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+          <div class="w-3 h-3 rounded-full bg-green-500"></div>
+          <span class="text-xs text-slate-400 ml-2">Pascal Editor — Untitled.deal</span>
+        </div>
+        <div class="p-6 relative h-80">
+          <!-- 3D Wireframe Building -->
+          <div class="absolute inset-0 flex items-center justify-center">
+            <div class="relative" style="width:140px;height:200px;transform: perspective(600px) rotateY(-20deg) rotateX(10deg);">
+              <!-- Front face -->
+              <div class="absolute inset-0 wireframe-box" style="transform: translateZ(70px);">
+                <div class="absolute top-4 left-4 right-4 bottom-4">
+                  <div class="grid grid-cols-3 gap-2 h-full">
+                    <div class="wireframe-edge rounded-sm"></div><div class="wireframe-edge rounded-sm"></div><div class="wireframe-edge rounded-sm"></div>
+                    <div class="wireframe-edge rounded-sm"></div><div class="wireframe-edge rounded-sm"></div><div class="wireframe-edge rounded-sm"></div>
+                    <div class="wireframe-edge rounded-sm"></div><div class="wireframe-edge rounded-sm"></div><div class="wireframe-edge rounded-sm"></div>
+                  </div>
+                </div>
+              </div>
+              <!-- Right face -->
+              <div class="absolute inset-0 wireframe-box" style="transform: rotateY(90deg) translateZ(70px); width:140px;">
+                <div class="absolute top-4 left-4 right-4 bottom-4">
+                  <div class="grid grid-cols-2 gap-2 h-full">
+                    <div class="wireframe-edge rounded-sm"></div><div class="wireframe-edge rounded-sm"></div>
+                    <div class="wireframe-edge rounded-sm"></div><div class="wireframe-edge rounded-sm"></div>
+                    <div class="wireframe-edge rounded-sm"></div><div class="wireframe-edge rounded-sm"></div>
+                  </div>
+                </div>
+              </div>
+              <!-- Top face -->
+              <div class="absolute inset-0 wireframe-box" style="transform: rotateX(90deg) translateZ(100px); height:140px;"></div>
+            </div>
+          </div>
+          <!-- Toolbar -->
+          <div class="absolute top-3 left-3 flex flex-col gap-2">
+            <div class="w-8 h-8 bg-slate-800 rounded border border-slate-700 flex items-center justify-center"><svg class="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>
+            <div class="w-8 h-8 bg-slate-800 rounded border border-slate-700 flex items-center justify-center"><svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg></div>
+            <div class="w-8 h-8 bg-slate-800 rounded border border-slate-700 flex items-center justify-center"><svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg></div>
+          </div>
+          <!-- Export Button -->
+          <div class="absolute bottom-4 left-1/2 -translate-x-1/2">
+            <button class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg shadow-lg shadow-blue-900/30 transition-colors">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export Scene
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center: Flow / Formats -->
+      <div class="flex flex-col items-center justify-center gap-4">
+        <div class="bg-slate-900 rounded-xl border border-slate-800 p-6 w-full">
+          <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4 text-center">Export Formats</p>
+          <div class="space-y-3">
+            <div class="flex items-center gap-3 bg-slate-800 rounded-lg px-4 py-3 border border-slate-700">
+              <div class="w-8 h-8 bg-orange-500/20 rounded flex items-center justify-center"><span class="text-xs font-bold text-orange-400">FBX</span></div>
+              <div><p class="text-sm font-medium text-slate-200">Autodesk FBX</p><p class="text-xs text-slate-500">Geometry + Materials</p></div>
+            </div>
+            <div class="flex items-center gap-3 bg-slate-800 rounded-lg px-4 py-3 border border-slate-700">
+              <div class="w-8 h-8 bg-green-500/20 rounded flex items-center justify-center"><span class="text-xs font-bold text-green-400">OBJ</span></div>
+              <div><p class="text-sm font-medium text-slate-200">Wavefront OBJ</p><p class="text-xs text-slate-500">Universal compatibility</p></div>
+            </div>
+            <div class="flex items-center gap-3 bg-slate-800 rounded-lg px-4 py-3 border border-slate-700">
+              <div class="w-8 h-8 bg-blue-500/20 rounded flex items-center justify-center"><span class="text-xs font-bold text-blue-400">GLB</span></div>
+              <div><p class="text-sm font-medium text-slate-200">glTF Binary</p><p class="text-xs text-slate-500">Web-optimized</p></div>
+            </div>
+          </div>
+        </div>
+        <!-- Arrows -->
+        <div class="flex items-center gap-2 arrow-flow">
+          <svg class="w-6 h-6 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+          <span class="text-xs text-slate-500">~2 min export</span>
+          <svg class="w-6 h-6 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+        </div>
+      </div>
+
+      <!-- Right: External Renderer Result -->
+      <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+        <div class="bg-slate-800 px-4 py-2 flex items-center justify-between border-b border-slate-700">
+          <span class="text-xs text-slate-400">Blender / V-Ray Render</span>
+          <span class="px-2 py-0.5 rounded bg-green-900/50 text-green-400 text-[10px] font-medium border border-green-800">Complete</span>
+        </div>
+        <div class="relative h-80 render-gradient">
+          <!-- Building silhouette -->
+          <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-32 h-48 bg-slate-900/80 rounded-t-lg" style="box-shadow: 0 -20px 60px rgba(245,158,11,0.15);">
+            <div class="absolute inset-x-2 top-4 bottom-0 grid grid-cols-3 gap-1">
+              <div class="bg-amber-200/20 rounded-sm"></div><div class="bg-amber-200/30 rounded-sm"></div><div class="bg-amber-200/15 rounded-sm"></div>
+              <div class="bg-amber-200/25 rounded-sm"></div><div class="bg-amber-200/35 rounded-sm"></div><div class="bg-amber-200/20 rounded-sm"></div>
+              <div class="bg-amber-200/15 rounded-sm"></div><div class="bg-amber-200/25 rounded-sm"></div><div class="bg-amber-200/30 rounded-sm"></div>
+            </div>
+          </div>
+          <!-- Glass reflection overlay -->
+          <div class="absolute inset-0 glass-reflection"></div>
+          <!-- Sun glow -->
+          <div class="absolute top-8 right-8 w-20 h-20 rounded-full bg-amber-300/30 blur-2xl"></div>
+          <!-- Render info -->
+          <div class="absolute bottom-3 left-3 right-3 flex justify-between text-[10px] text-slate-400/70">
+            <span>4K · 3840×2160</span>
+            <span>32 samples · 12m 34s</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom: Rendered Gallery -->
+    <div class="bg-slate-900 rounded-xl border border-slate-800 p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-semibold text-slate-200">Rendered Gallery — The Pascal</h3>
+        <button class="text-xs text-blue-400 hover:text-blue-300 font-medium">View All →</button>
+      </div>
+      <div class="grid grid-cols-4 gap-4">
+        <div class="aspect-video rounded-lg thumb-gradient-1 relative overflow-hidden group cursor-pointer border border-slate-700/50">
+          <div class="absolute inset-0 glass-reflection"></div>
+          <div class="absolute bottom-2 left-2"><span class="text-[10px] font-medium text-white/80 bg-black/40 px-2 py-0.5 rounded">Golden Hour</span></div>
+        </div>
+        <div class="aspect-video rounded-lg thumb-gradient-2 relative overflow-hidden group cursor-pointer border border-slate-700/50">
+          <div class="absolute inset-0 glass-reflection" style="background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.08) 50%, transparent 60%);"></div>
+          <div class="absolute bottom-2 left-2"><span class="text-[10px] font-medium text-white/80 bg-black/40 px-2 py-0.5 rounded">Blue Hour</span></div>
+        </div>
+        <div class="aspect-video rounded-lg thumb-gradient-3 relative overflow-hidden group cursor-pointer border border-slate-700/50">
+          <div class="absolute bottom-2 left-2"><span class="text-[10px] font-medium text-white/80 bg-black/40 px-2 py-0.5 rounded">Aerial View</span></div>
+        </div>
+        <div class="aspect-video rounded-lg thumb-gradient-4 relative overflow-hidden group cursor-pointer border border-slate-700/50">
+          <div class="absolute bottom-2 left-2"><span class="text-[10px] font-medium text-white/80 bg-black/40 px-2 py-0.5 rounded">Street Level</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer action -->
+    <div class="mt-6 flex justify-center">
+      <button class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium px-6 py-2.5 rounded-lg border border-slate-700 transition-colors">
+        <svg class="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+        Upload to Deal Capsule
+      </button>
+    </div>
+  </div>
+</body>
+</html>
