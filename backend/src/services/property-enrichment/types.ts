@@ -156,6 +156,22 @@ export interface RentData {
 }
 
 // ============================================================================
+// STREAM 3: BUILDING CHARACTERISTICS (Web Research)
+// ============================================================================
+
+export interface BuildingCharacteristicsData {
+  yearBuilt?: number | null;
+  stories?: number | null;
+  constructionType?: string | null;
+  buildingType?: string | null;
+  parkingType?: string | null;
+  parkingRatio?: number | null;
+  amenities?: string[];
+  confidence: number;
+  sources: string[];
+}
+
+// ============================================================================
 // UNIFIED PROPERTY PROFILE
 // ============================================================================
 
@@ -177,6 +193,7 @@ export interface PropertyProfile {
   // Combined Data
   propertyInfo?: PropertyInfo;
   rentData?: RentData;
+  buildingCharacteristics?: BuildingCharacteristicsData;
   
   // Data Quality
   dataQualityScore: number; // 0-100
@@ -187,6 +204,7 @@ export interface PropertyProfile {
   updatedAt: Date;
   propertyInfoFetchedAt?: Date;
   rentDataFetchedAt?: Date;
+  buildingCharacteristicsFetchedAt?: Date;
 }
 
 // ============================================================================
@@ -279,6 +297,12 @@ export interface EnrichmentJob {
   rentDataProvider?: string;
   rentDataError?: string;
   rentData?: RentData;
+  
+  // Stream 3: Building Characteristics
+  buildingCharacteristicsStatus: EnrichmentStatus;
+  buildingCharacteristicsProvider?: string;
+  buildingCharacteristicsError?: string;
+  buildingCharacteristics?: BuildingCharacteristicsData;
   
   // Timestamps
   createdAt: Date;

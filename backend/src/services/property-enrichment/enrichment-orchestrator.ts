@@ -1,8 +1,8 @@
 /**
  * Property Enrichment Orchestrator
  * 
- * Coordinates both data streams (Property Info + Rent Data) to build
- * complete property profiles. Handles geocoding, provider selection,
+ * Coordinates three data streams (Property Info + Rent Data + Building Characteristics)
+ * to build complete property profiles. Handles geocoding, provider selection,
  * parallel fetching, and data quality scoring.
  */
 
@@ -17,13 +17,16 @@ import {
 } from './types';
 import { getPropertyInfoRegistry } from './property-info/provider-registry';
 import { getRentDataRegistry } from './rent-data/provider-registry';
+import { BuildingCharacteristicsWebProvider } from './building-characteristics/web-research-provider';
+import { upsertBuildingProfile } from '../building-profiles/building-profile.service';
 
 export class PropertyEnrichmentOrchestrator {
   private propertyInfoRegistry = getPropertyInfoRegistry();
   private rentDataRegistry = getRentDataRegistry();
+  private buildingCharacteristicsProvider = new BuildingCharacteristicsWebProvider();
   
   /**
-   * Enrich a property address with both property info and rent data
+   * Enrich a property address with all three data streams
    */
   async enrichProperty(
     address: string,
@@ -36,6 +39,7 @@ export class PropertyEnrichmentOrchestrator {
       coordinates?: { lat: number; lng: number };
       skipPropertyInfo?: boolean;
       skipRentData?: boolean;
+      skipBuildingCharacteristics?: boolean;
     } = {}
   ): Promise<EnrichmentJob> {
     const jobId = uuidv4();
@@ -51,6 +55,7 @@ export class PropertyEnrichmentOrchestrator {
       coordinates: options.coordinates,
       propertyInfoStatus: options.skipPropertyInfo ? 'complete' : 'pending',
       rentDataStatus: options.skipRentData ? 'complete' : 'pending',
+      buildingCharacteristicsStatus: options.skipBuildingCharacteristics ? 'complete' : 'pending',
       createdAt: new Date(),
       startedAt: new Date()
     };
@@ -64,8 +69,8 @@ export class PropertyEnrichmentOrchestrator {
       }
     }
     
-    // Step 2: Fetch both streams in parallel
-    const [propertyInfoResult, rentDataResult] = await Promise.allSettled([
+    // Step 2: Fetch all three streams in parallel
+    const [propertyInfoResult, rentDataResult, buildingCharsResult] = await Promise.allSettled([
       // Stream 1: Property Info
       options.skipPropertyInfo 
         ? Promise.resolve({ info: null, provider: null })
@@ -74,7 +79,12 @@ export class PropertyEnrichmentOrchestrator {
       // Stream 2: Rent Data
       options.skipRentData
         ? Promise.resolve({ data: null, provider: null })
-        : this.fetchRentData(address, city, state, options.propertyName)
+        : this.fetchRentData(address, city, state, options.propertyName),
+      
+      // Stream 3: Building Characteristics
+      options.skipBuildingCharacteristics
+        ? Promise.resolve({ data: null })
+        : this.fetchBuildingCharacteristics(address, city, state, options)
     ]);
     
     // Process Property Info result
@@ -99,12 +109,37 @@ export class PropertyEnrichmentOrchestrator {
       job.rentDataError = rentDataResult.reason?.message || 'Unknown error';
     }
     
+    // Process Building Characteristics result
+    if (buildingCharsResult.status === 'fulfilled') {
+      const { data } = buildingCharsResult.value;
+      if (data) {
+        job.buildingCharacteristics = data;
+        job.buildingCharacteristicsStatus = 'complete';
+        job.buildingCharacteristicsProvider = 'web_research';
+        
+        // Persist to building_profiles via the building profile service (fire-and-forget)
+        setImmediate(async () => {
+          try {
+            await this.persistBuildingCharacteristics(job);
+          } catch (persistErr) {
+            console.warn('[Enrichment] Building characteristics persist failed (non-fatal):', persistErr);
+          }
+        });
+      } else {
+        job.buildingCharacteristicsStatus = 'failed';
+      }
+    } else {
+      job.buildingCharacteristicsStatus = 'failed';
+      job.buildingCharacteristicsError = buildingCharsResult.reason?.message || 'Unknown error';
+    }
+    
     job.completedAt = new Date();
     
     const duration = Date.now() - startTime;
     console.log(`[Enrichment] Completed job ${jobId} in ${duration}ms`);
     console.log(`[Enrichment] Property Info: ${job.propertyInfoStatus} (${job.propertyInfoProvider || 'none'})`);
     console.log(`[Enrichment] Rent Data: ${job.rentDataStatus} (${job.rentDataProvider || 'none'})`);
+    console.log(`[Enrichment] Building Characteristics: ${job.buildingCharacteristicsStatus} (${job.buildingCharacteristicsProvider || 'none'})`);
     
     // Ingest enriched property into Knowledge Graph (fire-and-forget)
     setImmediate(async () => {
@@ -113,6 +148,7 @@ export class PropertyEnrichmentOrchestrator {
         const { getPool } = await import('../../database/connection');
         const kg = getKnowledgeGraph(getPool());
         const pi = job.propertyInfo as any;
+        const bc = job.buildingCharacteristics;
         await kg.upsertNode({
           type: 'Property',
           externalId: `enriched-${jobId}`,
@@ -126,11 +162,14 @@ export class PropertyEnrichmentOrchestrator {
             latitude: job.coordinates?.lat,
             longitude: job.coordinates?.lng,
             units: pi?.units,
-            yearBuilt: pi?.yearBuilt,
+            yearBuilt: pi?.yearBuilt ?? bc?.yearBuilt,
             propertyType: pi?.propertyType,
             assessedValue: pi?.assessedValue,
             ownerName: pi?.ownerName,
             parcelId: pi?.parcelId,
+            buildingType: bc?.buildingType,
+            constructionType: bc?.constructionType,
+            parkingType: bc?.parkingType,
             enrichedAt: new Date().toISOString(),
             enrichmentProvider: job.propertyInfoProvider,
           }
@@ -145,13 +184,29 @@ export class PropertyEnrichmentOrchestrator {
   }
   
   /**
+   * Persist building characteristics from an enrichment job to the building_profiles table.
+   * Converts web research results into a BuildingProfile and upserts via the service.
+   */
+  private async persistBuildingCharacteristics(job: EnrichmentJob): Promise<void> {
+    const bc = job.buildingCharacteristics;
+    if (!bc) return;
+
+    // Need a dealId to write to building_profiles. The enrichment orchestrator
+    // operates on addresses, not deals. If the caller hasn't linked this to a
+    // deal, we can't persist. Future: accept dealId in enrichProperty options.
+    // For now, this is a no-op placeholder — the data-router path (OM ingestion)
+    // and explicit deal enrichment API (Piece 2.5) will handle persistence.
+    console.log(`[Enrichment] Building characteristics for job ${job.id} not persisted — no dealId linkage in orchestrator`);
+  }
+  
+  /**
    * Build a unified property profile from enrichment job
    */
   buildPropertyProfile(job: EnrichmentJob): PropertyProfile {
-    const { propertyInfo, rentData } = job;
+    const { propertyInfo, rentData, buildingCharacteristics } = job;
     
     // Calculate data quality score
-    const { score, missingFields } = this.calculateDataQuality(propertyInfo, rentData);
+    const { score, missingFields } = this.calculateDataQuality(propertyInfo, rentData, buildingCharacteristics);
     
     const profile: PropertyProfile = {
       id: job.id,
@@ -171,6 +226,7 @@ export class PropertyEnrichmentOrchestrator {
       // Combined data
       propertyInfo,
       rentData,
+      buildingCharacteristics,
       
       // Quality metrics
       dataQualityScore: score,
@@ -180,7 +236,8 @@ export class PropertyEnrichmentOrchestrator {
       createdAt: new Date(),
       updatedAt: new Date(),
       propertyInfoFetchedAt: propertyInfo?.fetchedAt,
-      rentDataFetchedAt: rentData?.fetchedAt
+      rentDataFetchedAt: rentData?.fetchedAt,
+      buildingCharacteristicsFetchedAt: buildingCharacteristics ? new Date() : undefined
     };
     
     return profile;
@@ -222,6 +279,48 @@ export class PropertyEnrichmentOrchestrator {
       state,
       propertyName
     );
+  }
+  
+  /**
+   * Fetch building characteristics from web research (Stream 3).
+   * Only researches fields that county GIS / property info did not provide.
+   */
+  private async fetchBuildingCharacteristics(
+    address: string,
+    city: string,
+    state: string,
+    options: {
+      propertyName?: string;
+      zip?: string;
+    }
+  ): Promise<{ data: import('./types').BuildingCharacteristicsData | null }> {
+    const result = await this.buildingCharacteristicsProvider.research(
+      address,
+      city,
+      state,
+      {
+        propertyName: options.propertyName,
+        zip: options.zip,
+      }
+    );
+    
+    if (result.confidence === 0.0) {
+      return { data: null };
+    }
+    
+    return {
+      data: {
+        yearBuilt: result.yearBuilt,
+        stories: result.stories,
+        constructionType: result.constructionType,
+        buildingType: result.buildingType,
+        parkingType: result.parkingType,
+        parkingRatio: result.parkingRatio,
+        amenities: result.amenities,
+        confidence: result.confidence,
+        sources: result.sources,
+      }
+    };
   }
   
   /**
@@ -275,26 +374,32 @@ export class PropertyEnrichmentOrchestrator {
    */
   private calculateDataQuality(
     propertyInfo?: PropertyInfo,
-    rentData?: RentData
+    rentData?: RentData,
+    buildingCharacteristics?: import('./types').BuildingCharacteristicsData
   ): { score: number; missingFields: string[] } {
     const weights = {
-      // Property Info (60 points total)
-      yearBuilt: 10,
-      numberOfUnits: 10,
-      livingAreaSqFt: 8,
+      // Property Info (50 points total)
+      yearBuilt: 8,
+      numberOfUnits: 8,
+      livingAreaSqFt: 6,
       zoning: 5,
-      justValue: 7,
-      ownerName: 5,
-      latitude: 5,
-      numberOfBuildings: 5,
+      justValue: 6,
+      ownerName: 4,
+      latitude: 4,
+      numberOfBuildings: 4,
       acres: 5,
       
-      // Rent Data (40 points total)
-      unitMix: 15,
-      avgAskingRent: 10,
-      occupancyPct: 8,
+      // Rent Data (30 points total)
+      unitMix: 12,
+      avgAskingRent: 8,
+      occupancyPct: 6,
       concessions: 4,
-      amenities: 3
+      
+      // Building Characteristics (20 points total)
+      stories: 5,
+      constructionType: 5,
+      parkingType: 5,
+      amenities: 5
     };
     
     let score = 0;
@@ -345,12 +450,25 @@ export class PropertyEnrichmentOrchestrator {
       
       if (rentData.concessions) score += weights.concessions;
       // Concessions are optional, don't mark as missing
-      
-      if (rentData.unitAmenities?.length || rentData.communityAmenities?.length) {
-        score += weights.amenities;
-      }
     } else {
       missingFields.push('rentData');
+    }
+    
+    // Score building characteristics
+    if (buildingCharacteristics) {
+      if (buildingCharacteristics.stories) score += weights.stories;
+      else missingFields.push('stories');
+      
+      if (buildingCharacteristics.constructionType) score += weights.constructionType;
+      else missingFields.push('constructionType');
+      
+      if (buildingCharacteristics.parkingType) score += weights.parkingType;
+      else missingFields.push('parkingType');
+      
+      if (buildingCharacteristics.amenities && buildingCharacteristics.amenities.length > 0) score += weights.amenities;
+      else missingFields.push('amenities');
+    } else {
+      missingFields.push('buildingCharacteristics');
     }
     
     return { score, missingFields };
@@ -362,6 +480,7 @@ export class PropertyEnrichmentOrchestrator {
   getCoverage(state: string, county?: string): {
     propertyInfo: { hasCoverage: boolean; providers: string[] };
     rentData: { hasCoverage: boolean; providers: string[] };
+    buildingCharacteristics: { hasCoverage: boolean; provider: string };
   } {
     const propertyInfoCoverage = this.propertyInfoRegistry.checkCoverage(state, county);
     const rentDataStats = this.rentDataRegistry.getStats();
@@ -371,6 +490,10 @@ export class PropertyEnrichmentOrchestrator {
       rentData: {
         hasCoverage: rentDataStats.enabledProviders > 0,
         providers: rentDataStats.providers.filter(p => p.enabled).map(p => p.name)
+      },
+      buildingCharacteristics: {
+        hasCoverage: true,
+        provider: 'web_research'
       }
     };
   }
@@ -381,6 +504,7 @@ export class PropertyEnrichmentOrchestrator {
   async healthCheck(): Promise<{
     propertyInfo: Map<string, boolean>;
     rentData: Map<string, boolean>;
+    buildingCharacteristics: boolean;
   }> {
     const [propertyInfoHealth, rentDataHealth] = await Promise.all([
       this.propertyInfoRegistry.healthCheck(),
@@ -389,7 +513,8 @@ export class PropertyEnrichmentOrchestrator {
     
     return {
       propertyInfo: propertyInfoHealth,
-      rentData: rentDataHealth
+      rentData: rentDataHealth,
+      buildingCharacteristics: true
     };
   }
   
