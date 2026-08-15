@@ -1,0 +1,197 @@
+/**
+ * Building Characteristics API Routes (Piece 2.5)
+ *
+ * POST /deals/:dealId/enrich-building-characteristics
+ *   Triggers web research for a deal's building characteristics,
+ *   persists the result to building_profiles, and returns the enrichment job.
+ */
+
+import { Router } from 'express';
+import { getPool } from '../../database/connection';
+import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
+import { getEnrichmentOrchestrator } from '../../services/property-enrichment/enrichment-orchestrator';
+import { upsertBuildingProfile } from '../../services/building-profiles/building-profile.service';
+import { BuildingProfile } from '../../services/building-profiles/building-profile.service';
+
+const router = Router();
+
+/**
+ * POST /deals/:dealId/enrich-building-characteristics
+ *
+ * Body (optional):
+ *   { propertyName?: string }
+ *
+ * Steps:
+ *   1. Resolve deal from DB (name, address, city, state, zip)
+ *   2. Call enrichment orchestrator Stream 3 (web research)
+ *   3. Convert result → BuildingProfile with fieldMeta
+ *   4. Upsert via building-profile.service (triggers merge + fingerprint recalc)
+ *   5. Return enrichment job + profileId
+ */
+router.post(
+  '/:dealId/enrich-building-characteristics',
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    const { dealId } = req.params;
+    const { propertyName } = req.body || {};
+    const db = getPool();
+
+    try {
+      // Verify caller has access to this deal
+      await assertDealOrgAccess(req, dealId);
+
+      // Resolve deal geography
+      const dealRow = await db.query(
+        `SELECT name, address, city, state_code, zip, target_units FROM deals WHERE id = $1`,
+        [dealId]
+      );
+      const deal = dealRow.rows[0];
+      if (!deal) {
+        return res.status(404).json({ success: false, error: 'Deal not found' });
+      }
+
+      const address: string = deal.address || '';
+      const city: string = deal.city || '';
+      const state: string = deal.state_code || '';
+      const zip: string = deal.zip || '';
+      const units: number | null = deal.target_units ?? null;
+
+      if (!address || !city || !state) {
+        return res.status(400).json({
+          success: false,
+          error: 'Deal is missing address/city/state required for enrichment',
+        });
+      }
+
+      // Run Stream 3 enrichment
+      const orchestrator = getEnrichmentOrchestrator();
+      const job = await orchestrator.enrichProperty(address, city, state, {
+        zip: zip || undefined,
+        propertyName: propertyName || deal.name || undefined,
+        skipPropertyInfo: true,
+        skipRentData: true,
+        skipBuildingCharacteristics: false,
+      });
+
+      const bc = job.buildingCharacteristics;
+      let profileId: string | null = null;
+
+      // Persist to building_profiles if we got data
+      if (bc && bc.confidence > 0) {
+        const profile: BuildingProfile = {
+          dealId,
+          yearBuilt: bc.yearBuilt ?? null,
+          totalStories: bc.stories ?? null,
+          totalUnits: units,
+          buildingType: bc.buildingType ?? null,
+          constructionType: bc.constructionType ?? null,
+          siteAcres: null,
+          buildingSqft: null,
+          unitSqftAvg: null,
+          parkingSpaces: null,
+          parkingType: bc.parkingType ?? null,
+          parkingRatio: bc.parkingRatio ?? null,
+          vintageBand: null,
+          sizeBand: null,
+          amenities: bc.amenities ?? [],
+          amenityFlags: {
+            hasElevator: bc.amenities?.includes('elevator') ?? false,
+            hasPool: bc.amenities?.includes('pool') ?? false,
+            hasClubhouse: bc.amenities?.includes('clubhouse') ?? false,
+            hasFitness: bc.amenities?.includes('fitness_center') ?? false,
+            hasConcierge: bc.amenities?.includes('concierge') ?? false,
+            hasDogPark: bc.amenities?.includes('dog_park') ?? false,
+            hasRooftop: bc.amenities?.includes('rooftop_deck') ?? false,
+            hasCoworking: bc.amenities?.includes('business_center') ?? false,
+            hasPackageConcierge: bc.amenities?.includes('package_lockers') ?? false,
+            hasValetTrash: bc.amenities?.includes('valet_trash') ?? false,
+            hasDoorman: bc.amenities?.includes('concierge') ?? false,
+            hasGarage: (bc.parkingType === 'garage') || (bc.amenities?.includes('garage_parking') ?? false),
+            hasTennis: bc.amenities?.includes('tennis_court') ?? false,
+            hasBasketball: bc.amenities?.includes('basketball_court') ?? false,
+            hasBusinessCenter: bc.amenities?.includes('business_center') ?? false,
+            hasPlayground: bc.amenities?.includes('playground') ?? false,
+            hasGrill: bc.amenities?.includes('bbq_area') ?? false,
+          },
+          extractionSource: 'web_research',
+          extractionConfidence: bc.confidence,
+          fieldMeta: {
+            yearBuilt:         { source: 'web_research', confidence: bc.stories ? 0.85 : 0.0 },
+            totalStories:      { source: 'web_research', confidence: bc.stories ? 0.85 : 0.0 },
+            buildingType:      { source: 'web_research', confidence: bc.buildingType ? 0.85 : 0.0 },
+            constructionType:  { source: 'web_research', confidence: bc.constructionType ? 0.85 : 0.0 },
+            parkingType:       { source: 'web_research', confidence: bc.parkingType ? 0.85 : 0.0 },
+            parkingRatio:      { source: 'web_research', confidence: bc.parkingRatio ? 0.85 : 0.0 },
+            amenities:         { source: 'web_research', confidence: bc.amenities?.length ? 0.6 : 0.0 },
+          },
+        };
+
+        profileId = await upsertBuildingProfile(profile, db);
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          enrichmentJob: job,
+          profileId,
+          buildingCharacteristics: bc || null,
+        },
+      });
+    } catch (err) {
+      console.error('[BuildingCharacteristicsRoutes] Enrichment failed:', err);
+      return res.status(500).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      });
+    }
+  }
+);
+
+/**
+ * GET /deals/:dealId/building-characteristics
+ *
+ * Returns the current building profile for a deal (if any).
+ */
+router.get(
+  '/:dealId/building-characteristics',
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    const { dealId } = req.params;
+    const db = getPool();
+
+    try {
+      await assertDealOrgAccess(req, dealId);
+
+      const { rows } = await db.query(
+        `SELECT
+          year_built, total_stories, total_units, building_type, construction_type,
+          site_acres, building_sqft, unit_sqft_avg,
+          parking_spaces, parking_type, parking_ratio,
+          vintage_band, size_band,
+          has_elevator, has_pool, has_clubhouse, has_fitness,
+          has_concierge, has_dog_park, has_rooftop, has_coworking,
+          has_package_concierge, has_valet_trash, has_doorman, has_garage,
+          has_tennis, has_basketball, has_business_center, has_playground, has_grill,
+          raw_amenities, extraction_source, extraction_confidence, profile_fingerprint,
+          created_at, updated_at
+         FROM building_profiles WHERE deal_id = $1`,
+        [dealId]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'No building profile found' });
+      }
+
+      return res.status(200).json({ success: true, data: rows[0] });
+    } catch (err) {
+      console.error('[BuildingCharacteristicsRoutes] Fetch failed:', err);
+      return res.status(500).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      });
+    }
+  }
+);
+
+export default router;

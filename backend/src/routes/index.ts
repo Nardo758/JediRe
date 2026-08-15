@@ -109,6 +109,7 @@ import dealStrategyRouter from '../api/rest/deal-strategy.routes';
 import skillChatRouter from '../api/rest/skill-chat.routes';
 import jediRoutes from '../api/rest/jedi.routes';
 import dealMarketEventsRouter from '../api/rest/deal-market-events.routes';
+import buildingCharacteristicsRouter from '../api/rest/building-characteristics.routes';
 
 export function mountDealRoutes(app: Express) {
   // Capsule sharing routes mounted here (second, early mount) so that the
@@ -188,6 +189,9 @@ export function mountDealRoutes(app: Express) {
 
   // M35 annotation layer — market events for a deal's timeline
   app.use('/api/v1/deals', requireAuth, requireWeb, dealMarketEventsRouter);
+
+  // Building Characteristics — web research enrichment for physical building specs
+  app.use('/api/v1/deals', requireAuth, requireWeb, buildingCharacteristicsRouter);
 }
 
 // ─── Property & Data Library Routes ─────────────────────────────────────────
