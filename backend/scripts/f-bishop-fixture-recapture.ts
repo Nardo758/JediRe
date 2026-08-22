@@ -5,7 +5,8 @@
  * effectiveAssumptions block after the vintage fix (year_built = 2014).
  *
  * Steps:
- * 1. Build assumptions from deals.deal_data (same as live build path)
+ * 1. Build assumptions from deal_financial_models + deal_assumptions.year1 overlays
+ *    using buildAssumptionsFromStore (returns nested ProFormaAssumptions)
  * 2. Run financialModelEngine.buildModel() (the real service path)
  * 3. Capture both modelAssumptions (pre-M11) and adjustedAssumptions (post-M11)
  * 4. Diff against current bishop.golden.ts expected values
@@ -17,7 +18,7 @@
 import * as fs from 'fs';
 import { getPool } from '../src/database/connection';
 import { financialModelEngine } from '../src/services/financial-model-engine.service';
-import type { ProFormaAssumptions } from '../src/services/financial-model-engine.service';
+import { buildAssumptionsFromStore } from '../src/services/assumption-store-builder';
 
 const BISHOP_DEAL_ID = '3f32276f-aacd-4da3-b306-317c5109b403';
 const GOLDEN_PATH = 'src/services/deterministic/__fixtures__/bishop.golden.ts';
@@ -37,75 +38,77 @@ async function main() {
   }
 
   // ── 2. Build assumptions from live deal state ─────────────────────────────
-  const assumptionsRes = await pool.query(`
-    SELECT
-      target_units,
-      deal_data
-    FROM deals
-    WHERE id = $1
-  `, [BISHOP_DEAL_ID]);
+  // Use buildAssumptionsFromStore to get the properly nested ProFormaAssumptions
+  let assumptions;
+  try {
+    assumptions = await buildAssumptionsFromStore(BISHOP_DEAL_ID, pool);
+    console.log('Assumptions built from store (deal_financial_models + overlays)');
+  } catch (storeErr: any) {
+    console.log('buildAssumptionsFromStore failed:', storeErr.message);
+    console.log('Falling back to manual construction from deals.deal_data...');
 
-  if (assumptionsRes.rows.length === 0) {
-    throw new Error('No deal found for Bishop');
+    const assumptionsRes = await pool.query(`
+      SELECT target_units, deal_data FROM deals WHERE id = $1
+    `, [BISHOP_DEAL_ID]);
+
+    if (assumptionsRes.rows.length === 0) {
+      throw new Error('No deal found for Bishop');
+    }
+
+    const row = assumptionsRes.rows[0];
+    const dealData = row.deal_data || {};
+
+    // Manual nested ProFormaAssumptions construction
+    assumptions = {
+      dealInfo: {
+        totalUnits: row.target_units ?? 232,
+        netRentableSF: (row.target_units ?? 232) * 800,
+      },
+      acquisition: {
+        purchasePrice: 60000000,
+        closingCosts: {},
+      },
+      revenue: {
+        rentGrowth: dealData.rent_growth ?? [0, 0, 0, 0, 0, 0.03],
+        stabilizedOccupancy: 1 - (dealData.vacancy_y1 ?? 19.83) / 100,
+        lossToLease: 0.03,
+        collectionLoss: 0.015,
+      },
+      expenses: {},
+      financing: {
+        loanAmount: dealData.loan_amount ?? 39000000,
+        term: 5,
+        amortization: 30,
+        ioPeriod: 36,
+        interestRate: 0.06,
+        originationFee: 0.01,
+        prepayPenalty: 0,
+      },
+      disposition: {
+        exitCapRate: 0.05,
+        sellingCosts: 0.02,
+      },
+      waterfall: {
+        equityContribution: 21000000,
+        lpShare: 0.99,
+        gpShare: 0.01,
+        hurdles: [
+          { hurdleRate: 0.08, promoteToGP: 0.20 },
+          { hurdleRate: 0.12, promoteToGP: 0.30 },
+          { hurdleRate: 0.15, promoteToGP: 0.50 },
+        ],
+      },
+      capex: {
+        lineItems: [],
+        contingencyPct: 0.10,
+        reservesPerUnit: 250,
+      },
+      holdPeriod: 5,
+      modelType: 'existing',
+      dealMode: 'lease_up',
+      unitMix: [],
+    };
   }
-
-  const row = assumptionsRes.rows[0];
-  const dealData = row.deal_data || {};
-
-  // Construct assumptions the same way the assumption-store builder does
-  const assumptions: ProFormaAssumptions = {
-    units: row.target_units ?? 232,
-    avgUnitSf: 800,
-    marketRent: 1500,
-    inPlaceRent: 1400,
-    purchasePrice: 60000000,
-    closingCostsPct: 0.0015,
-    isFlorida: false,
-    docStampsPct: 0,
-    intangibleTaxPct: 0,
-    titleInsurancePct: 0,
-    capexBudget: 0,
-    rentGrowth: dealData.rent_growth ?? [0, 0, 0, 0, 0, 0.03],
-    lossToLease: 0.03,
-    vacancyY1: dealData.vacancy_y1 ?? 19.83,
-    vacancyStab: dealData.vacancy_stab ?? 19.83,
-    concessions: 0,
-    badDebt: 0.015,
-    otherIncomePerUnit: 0,
-    expenseGrowth: 0.031,
-    payrollPerUnit: 0,
-    maintenancePerUnit: 0,
-    contractServicesPerUnit: 0,
-    marketingPerUnit: 0,
-    utilitiesPerUnit: 0,
-    adminPerUnit: 0,
-    insurancePerUnit: 0,
-    managementFee: 0.05,
-    replacementReserves: 250,
-    loanAmount: dealData.loan_amount ?? 39000000,
-    ltv: 0.65,
-    term: 60,
-    amort: 360,
-    ioPeriod: 36,
-    rate: 0.06,
-    originationFeePct: 1,
-    prepayPenalty: 0,
-    exitCap: 0.05,
-    saleCosts: 0.02,
-    holdYears: 5,
-    lpEquity: 20790000,
-    gpEquity: 210000,
-    preferredReturn: 0.08,
-    promoteTiers: [0.08, 0.12, 0.15],
-    promoteSplits: [0.2, 0.3, 0.5],
-    dealType: 'existing',
-    dealMode: 'lease_up',
-    standardTurnDowntimeDays: 14,
-    newLeaseConcessionMonths: 1,
-    annualTurnoverRate: 0.5,
-    occupancyAtClose: 0.9310344827586207,
-    underwritingVacancyFloor: 0.05,
-  };
 
   // ── 3. Run buildModel ─────────────────────────────────────────────────────
   console.log('\n[capture] Calling financialModelEngine.buildModel()...');
@@ -121,17 +124,19 @@ async function main() {
   const r = result as any;
   const capture = {
     assumptionsHash,
-    units: assumptions.units,
-    purchasePrice: assumptions.purchasePrice,
-    loanAmount: r?.debtMetrics?.loanAmount ?? r?.financing?.loanAmount ?? assumptions.loanAmount,
-    ltv: assumptions.ltv,
-    rate: assumptions.rate,
-    term: assumptions.term,
-    amort: assumptions.amort,
-    ioPeriod: assumptions.ioPeriod,
-    holdYears: assumptions.holdYears,
-    exitCap: assumptions.exitCap,
-    yearBuilt: dealData.year_built ?? null,
+    units: assumptions.dealInfo?.totalUnits ?? assumptions.units,
+    purchasePrice: assumptions.acquisition?.purchasePrice ?? assumptions.purchasePrice,
+    loanAmount: r?.debtMetrics?.loanAmount ?? r?.financing?.loanAmount ?? assumptions.financing?.loanAmount,
+    ltv: assumptions.financing?.loanAmount && assumptions.acquisition?.purchasePrice
+      ? assumptions.financing.loanAmount / assumptions.acquisition.purchasePrice
+      : 0.65,
+    rate: assumptions.financing?.interestRate ?? assumptions.rate,
+    term: assumptions.financing?.term ? assumptions.financing.term * 12 : 60,
+    amort: assumptions.financing?.amortization ? assumptions.financing.amortization * 12 : 360,
+    ioPeriod: assumptions.financing?.ioPeriod ?? 36,
+    holdYears: assumptions.holdPeriod ?? 5,
+    exitCap: assumptions.disposition?.exitCapRate ?? assumptions.exitCap,
+    yearBuilt: null, // pulled from deal_data separately
     totalDebt: r?.debtMetrics?.totalDebt ?? r?.financing?.totalDebt ?? null,
     dscr: r?.debtMetrics?.dscr ?? null,
     noiStabilized: r?.incomeStatement?.noi?.[r.incomeStatement.noi.length - 1] ?? null,
@@ -145,7 +150,6 @@ async function main() {
 
   const diffs: Array<{ field: string; golden: string; capture: string }> = [];
 
-  // Extract expected values from golden content (simple regex parse)
   const extractExpected = (field: string): string | null => {
     const m = goldenContent.match(new RegExp(`${field}:\\s*([^,\\n]+)`));
     return m ? m[1].trim() : null;
