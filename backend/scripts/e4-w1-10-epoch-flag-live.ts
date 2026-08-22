@@ -6,9 +6,6 @@
  *   1. Event emitted: {dealId, expectedMode, observedMode, detectedAt}
  *   2. M08 cache bust observed at m08-strategies.service.ts bust site
  *
- * If Bishop is not lease_up, this script creates a temporary test scenario
- * by setting project_type = 'lease_up' and injecting mock occupancy data.
- *
  * SAFE: always ROLLBACK.
  *
  * Run: cd backend && npx ts-node --transpile-only scripts/e4-w1-10-epoch-flag-live.ts
@@ -71,34 +68,6 @@ async function main() {
         }
       }
     }
-    const wasLeaseUp = deal.project_type?.toLowerCase().includes('lease');
-    let forcedLeaseUp = false;
-    if (!wasLeaseUp) {
-      console.log('\n→ Temporarily setting project_type to lease_up for test...');
-      try {
-        await client.query(
-          `UPDATE deals SET project_type = 'lease-up' WHERE id = $1`,
-          [TEST_DEAL_ID]
-        );
-        forcedLeaseUp = true;
-      } catch (constraintErr: any) {
-        if (constraintErr.message?.includes('check_project_type')) {
-          console.log('  ⚠️  Check constraint blocks lease-up. Trying lease_up...');
-          try {
-            await client.query(
-              `UPDATE deals SET project_type = 'lease_up' WHERE id = $1`,
-              [TEST_DEAL_ID]
-            );
-            forcedLeaseUp = true;
-          } catch (e2: any) {
-            console.log('  ❌ Constraint also blocks lease_up:', e2.message);
-            console.log('  Will test wiring only (epoch detection will return null).');
-          }
-        } else {
-          throw constraintErr;
-        }
-      }
-    }
 
     // ── 3. Ensure 3+ months of high occupancy actuals exist ──────────────────
     const occRes = await client.query(`
@@ -151,7 +120,7 @@ async function main() {
       if (latest) {
         console.log('\n✅ Event persisted in deal_epoch_events table');
         console.log(`   id:           ${latest.id}`);
-        console.log(`   detectedAt:   ${latest.detectAt}`);
+        console.log(`   detectedAt:   ${latest.detectedAt}`);
       } else {
         console.log('\n❌ Event NOT found in deal_epoch_events table');
       }
