@@ -5,7 +5,7 @@
 **Governing rulings:** TRAFFIC_ENGINE_AUDIT R1–R5 (approved by Leon 2026-07-18)
 **Build wave:** Wave 3 (gated behind unification foundations; DESIGN proceeds now)
 **Gate deals:** Highlands (existing/owned) · Bishop (lease-up)
-**Review status:** REVISED — 8/8 PASS (commit `7d27c4f78`, phantom citation fix `ProFormaService:134` → `multifamilyTrafficService.ts`+`weekly-report-parser.service.ts`)
+**Review status:** REVISED — 8/8 PASS (commit `ae220c20e`; Check 1 risk-register rewritten with `@deprecated` + removal tickets; Check 4 canonical-path + StageLabel reconciliation verified live)
 
 ---
 
@@ -376,7 +376,7 @@ interface DemandContext {
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | `TrafficPredictionEngine` output shape changes | Medium | High | AbsorptionEngine accepts generic `weeklyTrafficForecast: number[]`, not engine-specific types |
-| Conversion registry migration stalls at step 3 | Medium | Medium | Old services stay as thin delegates indefinitely; no forced deletion |
+| Conversion registry migration stalls at step 3 | Medium | Medium | **Schedule risk, not architecture risk.** Each legacy service tagged `@deprecated` at registry launch; removal tickets (#M4-1 through #M4-5) track per-step completion. Thin delegates are interim scaffolding, not permanent. If step 3 stalls >2 sprints, escalation to architecture review; no silent indefinite coexistence. |
 | Rent roll schema diverges from ladder needs | Low | High | Ladder reads `lease_end_date` only; any rent roll with that field works |
 | Phase 2 address grain requires schema migration | Low | High | `address` is structural now; migration is data backfill, not schema change |
 | **CoStar-lineage data contamination** | Low | **High** | **Supply inputs = permits/Census ONLY; no calibration/validation against CoStar-derived data; CE pairs against CoStar-lineage rows remain deal-scoped/restricted per I1-EXTENSION firewall. The Highlands submarket cross-read is observational only — confirms the engine's independent narrative but contributes ZERO coefficients.** |
