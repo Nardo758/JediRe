@@ -31,6 +31,13 @@ async function main() {
 
     // ── 1. Read M08's current winning_strategy_id from strategy_arbitrage ────
     const arbRes = await client.query(`
+      SELECT deal_id, winning_strategy_id, calculated_at
+      FROM strategy_arbitrage
+      WHERE deal_id = $1
+      ORDER BY calculated_at DESC
+      LIMIT 1
+    `, [TEST_DEAL_ID]);
+    const arbRes = await client.query(`
       SELECT deal_id, winning_strategy_id, confidence, detected_at, source_data
       FROM strategy_arbitrage
       WHERE deal_id = $1
