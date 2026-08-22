@@ -5,7 +5,7 @@
 **Governing rulings:** TRAFFIC_ENGINE_AUDIT R1–R5 (approved by Leon 2026-07-18)
 **Build wave:** Wave 3 (gated behind unification foundations; DESIGN proceeds now)
 **Gate deals:** Highlands (existing/owned) · Bishop (lease-up)
-**Review status:** REVISED — 8/8 PASS (commit `ae220c20e`; Check 1 risk-register rewritten with `@deprecated` + removal tickets; Check 4 canonical-path + StageLabel reconciliation verified live)
+**Review status:** REVISED — 8/8 PASS (commit `ae220c20e`; review doc `5b30e05a9`; Check 1 risk-register rewritten with `@deprecated` + removal tickets; Check 4 canonical-path + StageLabel reconciliation verified live)
 
 ---
 

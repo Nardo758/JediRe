@@ -2,7 +2,7 @@
 
 **Review date:** 2026-08-22
 **Design commit reviewed:** `ae220c20e` (HEAD at time of review)
-**Review document commit:** `REVIEW_DOC_COMMIT` — updated after this file commits
+**Review document commit:** `5b30e05a9` — this file
 **Reviewer:** local agent (post W1 closeout)
 **Rule:** One line per check: PASS / FAIL / PARTIAL — verbatim quote + section. Any non-PASS = revision list; re-run required.
 

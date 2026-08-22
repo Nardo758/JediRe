@@ -27,7 +27,7 @@ async function main() {
     // Fetch full deal state
     const [dealRes, assumptionsRes, proformaRes] = await Promise.all([
       pool.query(
-        'SELECT id, name, city, state_code, target_units, budget, deal_data, deal_type FROM deals WHERE id = $1',
+        'SELECT id, name, city, state_code, target_units, budget, deal_data, deal_type, project_type FROM deals WHERE id = $1',
         [dealId]
       ),
       pool.query(
@@ -147,6 +147,14 @@ async function main() {
       }
     }
 
+    // #1876/#1877: Normalize project_type → canonical deal mode.
+    // modelType is structural ('development' | 'existing'); dealMode is operational
+    // (lease_up, value_add, etc.). Reads project_type first, falls back to deal_type.
+    const projectTypeRaw = (deal.project_type || deal.deal_type || 'existing').toString().toLowerCase().trim();
+    const isDevelopment = ['development', 'ground_up', 'ground-up', 'new_construction', 'new construction', 'new_development', 'new-development', 'land', 'vacant'].includes(projectTypeRaw);
+    const canonicalModelType = isDevelopment ? 'development' : 'existing';
+    const canonicalDealMode = projectTypeRaw;
+
     // Construct frontend-format body
     const body = {
       dealId,
@@ -156,12 +164,13 @@ async function main() {
           dealName: deal.name || 'Deal',
           totalUnits: assumptions.total_units || deal.target_units || 0,
           netRentableSF: (assumptions.total_units || deal.target_units || 0) * 800,
-          vintage: deal.deal_data?.vintage || 1980,
+          vintage: Number(deal.deal_data?.year_built) || Number(deal.deal_data?.vintage) || 1980,
           address: deal.deal_data?.address || '',
           city: deal.city || '',
           state: deal.state_code || '',
         },
-        modelType: deal.deal_type || 'existing',
+        modelType: canonicalModelType,
+        dealMode: canonicalDealMode,
         holdPeriod: assumptions.hold_period_years || 5,
         unitMix,
         acquisition: {
