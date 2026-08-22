@@ -89,6 +89,28 @@ async function main() {
       console.log('→ Injecting 3 months of 96% occupancy actuals for test...');
       const months = ['2026-05-01', '2026-06-01', '2026-07-01'];
       for (const m of months) {
+        // Check if row exists first (ON CONFLICT requires unique constraint which may not exist)
+        const existsRes = await client.query(
+          `SELECT 1 FROM deal_monthly_actuals WHERE deal_id = $1 AND report_month = $2`,
+          [TEST_DEAL_ID, m]
+        );
+        if (existsRes.rows.length > 0) {
+          await client.query(
+            `UPDATE deal_monthly_actuals SET occupancy_rate = 0.96 WHERE deal_id = $1 AND report_month = $2`,
+            [TEST_DEAL_ID, m]
+          );
+        } else {
+          await client.query(`
+            INSERT INTO deal_monthly_actuals (deal_id, report_month, occupancy_rate, is_budget, is_proforma, created_at)
+            VALUES ($1, $2, 0.96, false, false, NOW())
+          `, [TEST_DEAL_ID, m]);
+        }
+      }
+    }
+    if (occCount < 3 || (avgOcc && parseFloat(avgOcc) < 0.95)) {
+      console.log('→ Injecting 3 months of 96% occupancy actuals for test...');
+      const months = ['2026-05-01', '2026-06-01', '2026-07-01'];
+      for (const m of months) {
         await client.query(`
           INSERT INTO deal_monthly_actuals (deal_id, report_month, occupancy_rate, is_budget, is_proforma, created_at)
           VALUES ($1, $2, 0.96, false, false, NOW())
