@@ -41,6 +41,40 @@ async function main() {
     let forcedLeaseUp = false;
     if (!wasLeaseUp) {
       console.log('\n→ Temporarily setting project_type to lease_up for test...');
+      await client.query('SAVEPOINT sp_leaseup');
+      try {
+        await client.query(
+          `UPDATE deals SET project_type = 'lease-up' WHERE id = $1`,
+          [TEST_DEAL_ID]
+        );
+        forcedLeaseUp = true;
+        await client.query('RELEASE SAVEPOINT sp_leaseup');
+      } catch (constraintErr: any) {
+        await client.query('ROLLBACK TO SAVEPOINT sp_leaseup');
+        if (constraintErr.message?.includes('check_project_type')) {
+          console.log('  ⚠️  Check constraint blocks lease-up. Trying lease_up...');
+          await client.query('SAVEPOINT sp_leaseup2');
+          try {
+            await client.query(
+              `UPDATE deals SET project_type = 'lease_up' WHERE id = $1`,
+              [TEST_DEAL_ID]
+            );
+            forcedLeaseUp = true;
+            await client.query('RELEASE SAVEPOINT sp_leaseup2');
+          } catch (e2: any) {
+            await client.query('ROLLBACK TO SAVEPOINT sp_leaseup2');
+            console.log('  ❌ Constraint also blocks lease_up:', e2.message);
+            console.log('  Will test wiring only (epoch detection will return null).');
+          }
+        } else {
+          throw constraintErr;
+        }
+      }
+    }
+    const wasLeaseUp = deal.project_type?.toLowerCase().includes('lease');
+    let forcedLeaseUp = false;
+    if (!wasLeaseUp) {
+      console.log('\n→ Temporarily setting project_type to lease_up for test...');
       try {
         await client.query(
           `UPDATE deals SET project_type = 'lease-up' WHERE id = $1`,
