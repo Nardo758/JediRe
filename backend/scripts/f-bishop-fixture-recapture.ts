@@ -39,6 +39,20 @@ async function main() {
   // ── 2. Build assumptions from live deal state ─────────────────────────────
   const assumptionsRes = await pool.query(`
     SELECT
+      target_units,
+      deal_data
+    FROM deals
+    WHERE id = $1
+  `, [BISHOP_DEAL_ID]);
+
+  if (assumptionsRes.rows.length === 0) {
+    throw new Error('No deal found for Bishop');
+  }
+
+  const row = assumptionsRes.rows[0];
+  const dealData = row.deal_data || {};
+  const assumptionsRes = await pool.query(`
+    SELECT
       da.assumptions,
       da.deal_data,
       d.target_units,
