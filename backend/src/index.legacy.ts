@@ -418,9 +418,9 @@ app.post('/api/v1/deals', requireAuth, async (req: AuthenticatedRequest, res) =>
         user_id, name, boundary, project_type, project_intent,
         target_units, budget, timeline_start, timeline_end, tier, status,
         deal_category, development_type, address, description,
-        origin_class, deal_data
+        deal_data
       )
-      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14, $15, $16)
+      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14, $15)
       RETURNING *
     `, [
       req.user!.userId,
@@ -437,7 +437,6 @@ app.post('/api/v1/deals', requireAuth, async (req: AuthenticatedRequest, res) =>
       development_type || 'new',
       address || null,
       description || null,
-      stamp.ingestionSource,
       JSON.stringify({ _provenance: stamp }),
     ]);
 

@@ -1787,8 +1787,8 @@ router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedReq
         `INSERT INTO deals (
            user_id, name, status, deal_category,
            address, property_address,
-           strategy, deal_data, origin_class
-         ) VALUES ($1, $2, 'active', 'pipeline', $3, $4, $5, $6, $7)
+           strategy, deal_data
+         ) VALUES ($1, $2, 'active', 'pipeline', $3, $4, $5, $6)
          RETURNING id, name`,
         [
           userId,
@@ -1797,7 +1797,6 @@ router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedReq
           propertyAddress,
           assetClass,
           JSON.stringify(seededDealData),
-          stamp.ingestionSource,
         ]
       );
       newDeal = dealInsert.rows[0];

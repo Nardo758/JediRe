@@ -10,7 +10,7 @@ import { z } from 'zod';
  *   (GeoJSON geometry) that is not available from broker emails.  It also
  *   sets status='active' and applies user-auth middleware — neither correct
  *   for auto-intake drafts.  This tool inserts directly into `deals` (the
- *   same table the route writes to) to set status='PROSPECT' and
+ *   same table the route handler also writes to) to set status='PROSPECT' and
  *   store intake provenance in the `deal_data` JSONB column, which already
  *   exists and has a GIN index.  After creation it calls autoDiscoverComps
  *   to match the side-effect that the route handler also fires.
@@ -102,8 +102,8 @@ export async function createDealDraft(
     `INSERT INTO deals (
        user_id, name, status, deal_category,
        address, property_address, city, state_code,
-       unit_count, strategy, deal_data, origin_class
-     ) VALUES ($1, $2, 'PROSPECT', 'pipeline', $3, $4, $5, $6, $7, $8, $9, 'platform_underwritten')
+       unit_count, strategy, deal_data
+     ) VALUES ($1, $2, 'PROSPECT', 'pipeline', $3, $4, $5, $6, $7, $8, $9)
      RETURNING id, name`,
     [
       userId,

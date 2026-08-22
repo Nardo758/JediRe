@@ -76,8 +76,8 @@ export class DealsService {
         user_id, name, boundary, project_type, project_intent,
         target_units, budget, timeline_start, timeline_end, tier,
         deal_category, development_type, address, description,
-        origin_class, deal_data
-      ) VALUES ($1, $2, ST_GeomFromGeoJSON($3), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        deal_data
+      ) VALUES ($1, $2, ST_GeomFromGeoJSON($3), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING id, name, project_type, tier, deal_category, development_type, address, created_at`,
       [
         userId,
@@ -94,7 +94,6 @@ export class DealsService {
         dto.development_type,
         dto.address,
         dto.description || null,
-        stamp.ingestionSource,
         JSON.stringify({ _provenance: stamp }),
       ]
     );

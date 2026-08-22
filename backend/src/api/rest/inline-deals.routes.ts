@@ -475,16 +475,14 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       ingestionSource: (deal_category === 'portfolio') ? 'owned_import' : 'platform_underwritten',
       userId: req.user!.userId,
     });
-    const originClass = stamp.ingestionSource;
-
     const result = await client.query(`
       INSERT INTO deals (
         user_id, name, boundary, project_type, project_intent,
         target_units, budget, timeline_start, timeline_end, tier, status,
         deal_category, development_type, address, description, org_id, strategy,
-        origin_class, deal_data
+        deal_data
       )
-      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'PROSPECT', $11, $12, $13, $14, $15, $16, $17, $18)
+      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'PROSPECT', $11, $12, $13, $14, $15, $16, $17)
       RETURNING *
     `, [
       req.user!.userId,
@@ -503,7 +501,6 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       description || null,
       userOrgId,
       resolvedStrategy,
-      originClass,
       JSON.stringify({ _provenance: stamp }),
     ]);
 
