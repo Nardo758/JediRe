@@ -37,13 +37,6 @@ async function main() {
       ORDER BY calculated_at DESC
       LIMIT 1
     `, [TEST_DEAL_ID]);
-    const arbRes = await client.query(`
-      SELECT deal_id, winning_strategy_id, confidence, detected_at, source_data
-      FROM strategy_arbitrage
-      WHERE deal_id = $1
-      ORDER BY detected_at DESC
-      LIMIT 1
-    `, [TEST_DEAL_ID]);
 
     console.log('--- 1. M08 strategy_arbitrage row ---');
     if (arbRes.rows.length === 0) {
