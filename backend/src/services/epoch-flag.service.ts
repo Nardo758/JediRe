@@ -9,7 +9,7 @@
 import { Pool } from 'pg';
 import { logger } from '../utils/logger';
 import { bustM08Cache } from './m08-strategies.service';
-import { inferModelType } from './model-type-inference.service';
+import { resolveModelType } from './model-type-inference.service';
 
 const EPOCH_OCCUPANCY_THRESHOLD = 0.95; // 95% sustained occupancy
 
@@ -67,13 +67,22 @@ async function getSustainedOccupancy(
  *
  * Side effect: busts M08 cache so the next strategy analysis is recomputed.
  *
+ * FIX: Uses the passed `pool` for the project_type query so the classification
+ * is read from the same transaction/session as the caller. Previously called
+ * `inferModelType()` which used the global `query()` outside any transaction.
+ *
  * @returns The emitted event if a mismatch was detected, null otherwise.
  */
 export async function detectAndEmitEpochFlag(
   dealId: string,
   pool: Pool,
 ): Promise<EpochFlagEvent | null> {
-  const classifiedMode = await inferModelType(dealId);
+  // Use passed pool (may be a transaction client) for consistent read
+  const dealRes = await pool.query(
+    `SELECT project_type FROM deals WHERE id = $1 LIMIT 1`,
+    [dealId],
+  );
+  const classifiedMode = resolveModelType(dealRes.rows[0]?.project_type);
 
   // Only check lease_up deals for now (the primary epoch mismatch)
   if (classifiedMode !== 'lease_up') {

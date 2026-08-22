@@ -43,7 +43,7 @@ const REDEVELOPMENT_ALIASES = new Set([
   'conversion', 'partial_demo', 'partial-demo',
 ]);
 
-function resolveModelType(raw: string | null | undefined): string {
+export function resolveModelType(raw: string | null | undefined): string {
   if (!raw) return 'existing';
 
   const normalized = raw.toLowerCase().trim();
