@@ -5,7 +5,7 @@
  * effectiveAssumptions block after the vintage fix (year_built = 2014).
  *
  * Steps:
- * 1. Build assumptions from deal_assumptions + deal_data (same as live build path)
+ * 1. Build assumptions from deals.deal_data (same as live build path)
  * 2. Run financialModelEngine.buildModel() (the real service path)
  * 3. Capture both modelAssumptions (pre-M11) and adjustedAssumptions (post-M11)
  * 4. Diff against current bishop.golden.ts expected values
@@ -47,23 +47,6 @@ async function main() {
 
   if (assumptionsRes.rows.length === 0) {
     throw new Error('No deal found for Bishop');
-  }
-
-  const row = assumptionsRes.rows[0];
-  const dealData = row.deal_data || {};
-  const assumptionsRes = await pool.query(`
-    SELECT
-      da.assumptions,
-      da.deal_data,
-      d.target_units,
-      d.deal_data as d_deal_data
-    FROM deal_assumptions da
-    JOIN deals d ON d.id = da.deal_id
-    WHERE da.deal_id = $1
-  `, [BISHOP_DEAL_ID]);
-
-  if (assumptionsRes.rows.length === 0) {
-    throw new Error('No deal_assumptions found for Bishop');
   }
 
   const row = assumptionsRes.rows[0];
