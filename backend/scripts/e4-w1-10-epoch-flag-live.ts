@@ -89,7 +89,6 @@ async function main() {
       console.log('→ Injecting 3 months of 96% occupancy actuals for test...');
       const months = ['2026-05-01', '2026-06-01', '2026-07-01'];
       for (const m of months) {
-        // Check if row exists first (ON CONFLICT requires unique constraint which may not exist)
         const existsRes = await client.query(
           `SELECT 1 FROM deal_monthly_actuals WHERE deal_id = $1 AND report_month = $2`,
           [TEST_DEAL_ID, m]
@@ -105,17 +104,6 @@ async function main() {
             VALUES ($1, $2, 0.96, false, false, NOW())
           `, [TEST_DEAL_ID, m]);
         }
-      }
-    }
-    if (occCount < 3 || (avgOcc && parseFloat(avgOcc) < 0.95)) {
-      console.log('→ Injecting 3 months of 96% occupancy actuals for test...');
-      const months = ['2026-05-01', '2026-06-01', '2026-07-01'];
-      for (const m of months) {
-        await client.query(`
-          INSERT INTO deal_monthly_actuals (deal_id, report_month, occupancy_rate, is_budget, is_proforma, created_at)
-          VALUES ($1, $2, 0.96, false, false, NOW())
-          ON CONFLICT (deal_id, report_month) DO UPDATE SET occupancy_rate = 0.96
-        `, [TEST_DEAL_ID, m]);
       }
     }
 
@@ -137,7 +125,6 @@ async function main() {
         console.log(`   metadata:     ${JSON.stringify(event.metadata)}`);
       }
 
-      // Verify persisted in deal_epoch_events
       const latest = await getLatestEpochFlag(TEST_DEAL_ID, client);
       if (latest) {
         console.log('\n✅ Event persisted in deal_epoch_events table');
@@ -147,7 +134,6 @@ async function main() {
         console.log('\n❌ Event NOT found in deal_epoch_events table');
       }
 
-      // M08 cache bust
       console.log('\n--- M08 cache bust check ---');
       try {
         const bustResult = await bustM08Cache(TEST_DEAL_ID);
@@ -160,7 +146,6 @@ async function main() {
 
       console.log('\n=== E4 PASS — Epoch flag emitted + persisted + cache bust attempted ===');
     } else {
-      // Wiring check: functions imported, table exists, but positive case blocked
       console.log('\n--- Wiring verification (no epoch event emitted) ---');
       console.log('  Functions importable:    ✅ detectAndEmitEpochFlag, getLatestEpochFlag, bustM08Cache');
 
