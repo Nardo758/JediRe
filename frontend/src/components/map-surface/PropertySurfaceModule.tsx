@@ -6,6 +6,7 @@ import type { ParcelRecord } from '../../types/map-surface.types';
 import { Map2DCanvas } from './Map2DCanvas';
 import { ProceduralBuildingScene } from './ProceduralBuildingScene';
 import { BuildingParameterPanel } from './BuildingParameterPanel';
+import { DesignAgentPanel } from './DesignAgentPanel';
 import { DEFAULT_BUILDING_PARAMS, type BuildingParameters } from '../../lib/building-engine';
 
 interface PropertySurfaceModuleProps {
@@ -49,7 +50,7 @@ export function normalizeAssessorParcel(raw: any, fallbackBoundary?: GeoJSON.Pol
  * Map-centric parcel intelligence with 3D design mode.
  * Phase 1: 2D map with parcel overlay, property sidebar, layer panel
  * Phase 3: 3D procedural building mode — parcel polygon extruded in real-time
- * Phase 3+: AI Generate mode (Design Agent)
+ * Phase 3+: AI Generate mode (Design Agent via GPT-6 Astra)
  */
 export const PropertySurfaceModule: React.FC<PropertySurfaceModuleProps> = ({
   dealId,
@@ -74,6 +75,7 @@ export const PropertySurfaceModule: React.FC<PropertySurfaceModuleProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [buildingParams, setBuildingParams] = useState<BuildingParameters>(DEFAULT_BUILDING_PARAMS);
+  const [designReasoning, setDesignReasoning] = useState<string | null>(null);
 
   // Load parcel data from deal address on mount
   useEffect(() => {
@@ -83,13 +85,11 @@ export const PropertySurfaceModule: React.FC<PropertySurfaceModuleProps> = ({
       setIsLoadingParcels(true);
       setError(null);
       try {
-        // Load deal to get address
         const dealRes = await apiClient.get(`/api/v1/deals/${effectiveDealId}`);
         const deal = dealRes.data?.deal || dealRes.data?.data || dealRes.data;
         const address = deal?.address;
 
         if (address) {
-          // Call assessor API for parcel lookup by address
           const assessorRes = await apiClient.get('/api/assessor/lookup', {
             params: { address },
           });
@@ -101,14 +101,12 @@ export const PropertySurfaceModule: React.FC<PropertySurfaceModuleProps> = ({
             );
             selectParcel(parcel);
           } else {
-            // No assessor data — show a placeholder from deal info
             console.log('[PropertySurface] No assessor data for address:', address);
           }
         }
       } catch (err: any) {
         const msg = err?.response?.data?.error || err?.message || 'Failed to load parcel';
         console.warn('[PropertySurface] Could not load parcel data:', msg);
-        // Don't set error on initial load — deal may not have address yet
       } finally {
         setIsLoadingParcels(false);
       }
@@ -151,8 +149,23 @@ export const PropertySurfaceModule: React.FC<PropertySurfaceModuleProps> = ({
     [toggleLayer]
   );
 
+  const handleDesignGenerated = useCallback((params: BuildingParameters, reasoning: string) => {
+    setBuildingParams(params);
+    setDesignReasoning(reasoning);
+  }, []);
+
   // Determine which geometry to use for 3D mode
   const parcelGeometry = selectedProperty?.geometry ?? parcelBoundary;
+
+  const parcelContext = selectedProperty
+    ? {
+        lotSizeSqft: selectedProperty.lotSizeSqft,
+        address: selectedProperty.address,
+        county: selectedProperty.county,
+        state: selectedProperty.state,
+        geometry: selectedProperty.geometry,
+      }
+    : undefined;
 
   return (
     <div className="flex h-full w-full bg-gray-50">
@@ -209,10 +222,21 @@ export const PropertySurfaceModule: React.FC<PropertySurfaceModuleProps> = ({
           </div>
         </div>
 
-        {/* 3D Mode: Building Parameter Panel */}
-        {mode === '3d' && parcelGeometry && (
+        {/* 3D Mode: AI Design Agent + Parameter Panel */}
+        {mode === '3d' && parcelGeometry && parcelContext && (
           <div className="flex-1 overflow-y-auto">
-            <BuildingParameterPanel params={buildingParams} onChange={setBuildingParams} />
+            <DesignAgentPanel
+              parcelContext={parcelContext}
+              onDesignGenerated={handleDesignGenerated}
+            />
+            {designReasoning && (
+              <div className="mx-4 mb-3 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-800 leading-relaxed">{designReasoning}</p>
+              </div>
+            )}
+            <div className="border-t border-gray-200">
+              <BuildingParameterPanel params={buildingParams} onChange={setBuildingParams} />
+            </div>
           </div>
         )}
 

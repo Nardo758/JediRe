@@ -472,6 +472,7 @@ import organizationRouter from '../api/rest/organization.routes';
 import sigmaRouter from '../api/rest/sigma.routes';
 import sigmaFullRouter from '../api/rest/sigma-full.routes';
 import { designMassingRouter } from '../services/design/design-massing.service';
+import designAgentRouter from '../api/rest/design-agent.routes';
 import leaseVelocityRouter from '../api/rest/lease-velocity.routes';
 import historicalObservationsRoutes from '../api/rest/historical-observations.routes';
 import vendorRegistryRoutes from '../api/rest/vendor-registry.routes';
@@ -491,6 +492,7 @@ export function mountOperationsRoutes(app: Express, pool: any) {
   app.use('/api/v1/capital', requireAuth, investorCapitalRoutes);
   app.use('/api/v1/organization', organizationRouter);
   app.use('/api/v1/design', requireAuth, designMassingRouter);
+  app.use('/api/v1/design-agent', requireAuth, designAgentRouter);
   app.use('/api/v1/sigma', requireAuth, sigmaRouter);
   app.use('/api/v2/sigma', requireAuth, sigmaFullRouter);
   app.use('/api/v1/analogs', analogRouter);
