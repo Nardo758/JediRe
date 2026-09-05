@@ -4,6 +4,9 @@ import { apiClient } from '../../services/api.client';
 import { useMapSurfaceStore } from '../../stores/mapSurfaceStore';
 import type { ParcelRecord } from '../../types/map-surface.types';
 import { Map2DCanvas } from './Map2DCanvas';
+import { ProceduralBuildingScene } from './ProceduralBuildingScene';
+import { BuildingParameterPanel } from './BuildingParameterPanel';
+import { DEFAULT_BUILDING_PARAMS, type BuildingParameters } from '../../lib/building-engine';
 
 interface PropertySurfaceModuleProps {
   dealId: string;
@@ -45,7 +48,7 @@ export function normalizeAssessorParcel(raw: any, fallbackBoundary?: GeoJSON.Pol
  *
  * Map-centric parcel intelligence with 3D design mode.
  * Phase 1: 2D map with parcel overlay, property sidebar, layer panel
- * Phase 3: 3D design mode (Pascal Editor integration)
+ * Phase 3: 3D procedural building mode — parcel polygon extruded in real-time
  * Phase 3+: AI Generate mode (Design Agent)
  */
 export const PropertySurfaceModule: React.FC<PropertySurfaceModuleProps> = ({
@@ -70,6 +73,7 @@ export const PropertySurfaceModule: React.FC<PropertySurfaceModuleProps> = ({
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [buildingParams, setBuildingParams] = useState<BuildingParameters>(DEFAULT_BUILDING_PARAMS);
 
   // Load parcel data from deal address on mount
   useEffect(() => {
@@ -147,9 +151,12 @@ export const PropertySurfaceModule: React.FC<PropertySurfaceModuleProps> = ({
     [toggleLayer]
   );
 
+  // Determine which geometry to use for 3D mode
+  const parcelGeometry = selectedProperty?.geometry ?? parcelBoundary;
+
   return (
     <div className="flex h-full w-full bg-gray-50">
-      {/* LEFT PANEL: Property Sidebar */}
+      {/* LEFT PANEL */}
       <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-gray-200">
@@ -159,25 +166,27 @@ export const PropertySurfaceModule: React.FC<PropertySurfaceModuleProps> = ({
           </p>
         </div>
 
-        {/* Search */}
-        <div className="p-3 border-b border-gray-200">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search address or parcel ID..."
-              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            />
-            <button
-              onClick={handleSearch}
-              className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
-            >
-              🔍
-            </button>
+        {/* Search — only in 2d mode */}
+        {mode === '2d' && (
+          <div className="p-3 border-b border-gray-200">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search address or parcel ID..."
+                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              />
+              <button
+                onClick={handleSearch}
+                className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+              >
+                🔍
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Mode Switcher */}
         <div className="p-3 border-b border-gray-200">
@@ -200,45 +209,55 @@ export const PropertySurfaceModule: React.FC<PropertySurfaceModuleProps> = ({
           </div>
         </div>
 
-        {/* Layer Panel */}
-        <div className="p-3 border-b border-gray-200">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-            Layers
-          </h3>
-          <div className="space-y-1.5">
-            {activeLayers.map((layer) => (
-              <label
-                key={layer.id}
-                className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={layer.visible}
-                  onChange={() => handleLayerToggle(layer.id)}
-                  className="w-4 h-4 text-blue-600 rounded border-gray-300"
-                />
-                <span className="text-sm text-gray-700">{layer.name}</span>
-              </label>
-            ))}
+        {/* 3D Mode: Building Parameter Panel */}
+        {mode === '3d' && parcelGeometry && (
+          <div className="flex-1 overflow-y-auto">
+            <BuildingParameterPanel params={buildingParams} onChange={setBuildingParams} />
           </div>
-        </div>
+        )}
 
-        {/* Property Card */}
-        <div className="flex-1 overflow-y-auto p-3">
-          {selectedProperty ? (
-            <PropertyCard parcel={selectedProperty} />
-          ) : (
-            <div className="text-center py-8">
-              <div className="text-4xl mb-3">📍</div>
-              <p className="text-sm text-gray-500">
-                Click a parcel on the map to view details
-              </p>
+        {/* 2D Mode: Layer Panel + Property Card */}
+        {mode === '2d' && (
+          <>
+            <div className="p-3 border-b border-gray-200">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Layers
+              </h3>
+              <div className="space-y-1.5">
+                {activeLayers.map((layer) => (
+                  <label
+                    key={layer.id}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={layer.visible}
+                      onChange={() => handleLayerToggle(layer.id)}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300"
+                    />
+                    <span className="text-sm text-gray-700">{layer.name}</span>
+                  </label>
+                ))}
+              </div>
             </div>
-          )}
-        </div>
+
+            <div className="flex-1 overflow-y-auto p-3">
+              {selectedProperty ? (
+                <PropertyCard parcel={selectedProperty} />
+              ) : (
+                <div className="text-center py-8">
+                  <div className="text-4xl mb-3">📍</div>
+                  <p className="text-sm text-gray-500">
+                    Click a parcel on the map to view details
+                  </p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      {/* RIGHT: Map Canvas */}
+      {/* RIGHT: Canvas Area */}
       <div className="flex-1 relative">
         {mode === '2d' && (
           <Map2DCanvas
@@ -249,23 +268,23 @@ export const PropertySurfaceModule: React.FC<PropertySurfaceModuleProps> = ({
           />
         )}
 
-        {mode === '3d' && (
-          <div className="flex items-center justify-center h-full">
+        {mode === '3d' && parcelGeometry && (
+          <ProceduralBuildingScene
+            parcelBoundary={parcelGeometry}
+            params={buildingParams}
+          />
+        )}
+
+        {mode === '3d' && !parcelGeometry && (
+          <div className="flex items-center justify-center h-full bg-gray-900">
             <div className="text-center">
               <div className="text-6xl mb-4">🏗️</div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                3D Design Mode
+              <h3 className="text-xl font-semibold text-white mb-2">
+                No Parcel Selected
               </h3>
-              <p className="text-gray-600 max-w-md mx-auto mb-4">
-                Pascal Editor integration coming in Phase 3.
-                <br />
-                You'll be able to draw walls, slabs, and zones on this parcel.
+              <p className="text-gray-400 max-w-md mx-auto">
+                Switch to 2D Map mode and select a parcel to view the 3D building preview.
               </p>
-              <div className="text-sm text-gray-500">
-                Deal type: <strong>{dealType}</strong>
-                <br />
-                {zoningProfile ? 'Zoning profile loaded ✓' : 'No zoning profile'}
-              </div>
             </div>
           </div>
         )}
