@@ -264,7 +264,7 @@ function createMeteringFn(config: AgentConfig): CreateMessageFn {
   }
 
   // Default: Anthropic MeteringAdapter
-  const adapter = new MeteringAdapter();
+  const adapter = new MeteringAdapter(undefined, { timeoutMs: config.requestTimeoutMs, maxRetries: config.providerMaxRetries });
   return async (params) => {
     const resp = await adapter.createMessage({
       model: params.model,
@@ -646,8 +646,8 @@ export class AgentRuntime {
         model: this.config.modelName,
         system: systemPrompt,
         messages,
-        tools: this.config.tools.map(toAnthropicToolSchema),
-        max_tokens: 8192,
+        tools: this.config.tools.length ? this.config.tools.map(toAnthropicToolSchema) : undefined,
+        max_tokens: Math.min(8192, this.config.maxOutputTokens ?? 8192),
         tool_choice: toolChoice,
         metadata: {
           actor_type: 'agent',

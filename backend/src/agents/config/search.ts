@@ -27,6 +27,7 @@ export interface SearchConfig {
 }
 
 export const AGENT_SEARCH_CONFIG: Record<AgentId, SearchConfig | null> = {
+  'site-finder': null,
   research: {
     maxSearchesPerRun: 10,
     allowlistDomains: null,

@@ -248,7 +248,7 @@ export class MeteringAdapter {
    *   Pass one in test/stub contexts to avoid SDK-level API key validation.
    *   When omitted, the production client is constructed from environment variables.
    */
-  constructor(anthropicClient?: Anthropic) {
+  constructor(anthropicClient?: Anthropic, options?: { timeoutMs?: number; maxRetries?: number }) {
     // Same baseURL handling as JediAIService — pass the ModelFarm proxy URL
     // explicitly because the SDK only auto-reads ANTHROPIC_BASE_URL.
     this.anthropic = anthropicClient ?? new Anthropic({
@@ -257,6 +257,8 @@ export class MeteringAdapter {
         process.env.ANTHROPIC_API_KEY ||
         process.env.CLAUDE_API_KEY,
       baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || undefined,
+      ...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
+      ...(options?.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
     });
   }
 

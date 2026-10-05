@@ -2,11 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
 import { useTheme } from '../contexts/ThemeContext';
-import SiteFinderWidget, { type SiteFinderCatalog } from '../components/site-finder/SiteFinderWidget';
-import type { SiteCriteria, SiteInterpretation, SiteParcel, SiteReview, SiteRun } from '../../../shared/site-finder';
-import { SITE_COUNTIES } from '../../../shared/site-finder';
+import SiteFinderWidget, { type SiteInstructionView } from '../components/site-finder/SiteFinderWidget';
+import type { SiteParcel, SiteReview, SiteRun } from '../../../shared/site-finder';
 
-const defaults: SiteCriteria = { counties: [...SITE_COUNTIES], limit: 100 };
 type SortKey = 'county' | 'address' | 'parcelId' | 'acres' | 'currentPropertyType' | 'district';
 const statusColors: Record<string, string> = { 'by-right': '#00D26A', conditional: '#F5A623', prohibited: '#FF4757', unverified: '#A78BFA', 'not-requested': '#6B7A8D' };
 const formatDate = (value?: string) => value ? new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Not reported';
@@ -14,28 +12,20 @@ const errorMessage = (error: unknown, fallback: string) => {
   const value = error as { response?: { data?: { error?: string } } };
   return value.response?.data?.error || fallback;
 };
-const normalizeCriteria = (criteria: SiteCriteria): SiteCriteria => {
-  const normalized: SiteCriteria = { ...criteria, counties: [...criteria.counties], limit: Math.min(100, criteria.limit) };
-  if (criteria.propertyType?.trim()) normalized.propertyType = criteria.propertyType.trim();
-  else {
-    delete normalized.propertyType;
-    delete normalized.typeSemantics;
-  }
-  if (criteria.intendedUse?.trim()) normalized.intendedUse = criteria.intendedUse.trim();
-  else delete normalized.intendedUse;
-  if (criteria.addressText?.trim()) normalized.addressText = criteria.addressText.trim();
-  else delete normalized.addressText;
-  if (criteria.municipality?.trim()) normalized.municipality = criteria.municipality.trim();
-  else delete normalized.municipality;
-  if (criteria.zoning?.code.trim() && criteria.zoning.jurisdiction.trim()) {
-    normalized.zoning = { code: criteria.zoning.code.trim(), jurisdiction: criteria.zoning.jurisdiction.trim() };
-  } else delete normalized.zoning;
-  if (criteria.area && (criteria.area.min !== undefined || criteria.area.max !== undefined)) {
-    normalized.area = { ...criteria.area };
-  } else delete normalized.area;
-  return normalized;
+const actionableError = (error: unknown, fallback: string) => {
+  const status = (error as { response?: { status?: number } })?.response?.status;
+  if (status === 401) return 'Your sign-in has expired. Sign in again, then resume this instruction.';
+  if (status === 404) return 'This instruction route is unavailable or the instruction has expired. Your text is retained; submit it again as a new request.';
+  if (status === 429) return 'Too many requests. Wait briefly, then retry the same instruction.';
+  if (status === 503) return 'The screening service, provider, or parcel catalog is temporarily unavailable. Your instruction is retained; retry shortly.';
+  return errorMessage(error, fallback);
 };
-
+const instructionStorageKey = (userId: string) => `site-finder:pending-instruction:${userId}`;
+const isInstruction = (value: unknown): value is SiteInstructionView => {
+  if (!value || typeof value !== 'object') return false;
+  const item = value as SiteInstructionView;
+  return typeof item.id === 'string' && typeof item.text === 'string' && ['queued', 'understanding', 'clarification', 'searching', 'error'].includes(item.status);
+};
 function GeometryOutline({ parcel }: { parcel: SiteParcel }) {
   const rings = parcel.geometry?.type === 'MultiPolygon' ? parcel.geometry.coordinates.flat() : parcel.geometry?.coordinates;
   if (!rings?.[0]?.length) return <div className="sf-no-geometry">No verified parcel boundary supplied for this record.</div>;
@@ -83,14 +73,26 @@ function Evidence({ evidence }: { evidence: { section: string; excerpt: string; 
 
 export const SiteFinderPage: React.FC = () => {
   const { theme } = useTheme();
+  // This app bootstraps its signed-in user before mounting routes; AuthContext is not mounted here.
+  // This identity scopes local drafts only. Every server request still verifies the bearer session.
+  const [user] = useState<{ id: string } | null>(() => {
+    try {
+      const value = JSON.parse(localStorage.getItem('jedi_user') || 'null');
+      return typeof value?.id === 'string' ? { id: value.id } : null;
+    } catch { return null; }
+  });
   const [params, setParams] = useSearchParams();
-  const [criteria, setCriteria] = useState<SiteCriteria>(defaults);
-  const [catalog, setCatalog] = useState<SiteFinderCatalog | null>(null);
-  const [catalogError, setCatalogError] = useState('');
-  const [naturalText, setNaturalText] = useState('');
-  const [interpretation, setInterpretation] = useState<SiteInterpretation | null>(null);
-  const [interpretationIssues, setInterpretationIssues] = useState<string[]>([]);
-  const [interpretBusy, setInterpretBusy] = useState(false);
+  const navigationRef = useRef({ instructionId: params.get('instruction'), runId: params.get('run') });
+  navigationRef.current = { instructionId: params.get('instruction'), runId: params.get('run') };
+  const [instructionText, setInstructionText] = useState('');
+  const [instruction, setInstruction] = useState<SiteInstructionView | null>(null);
+  const [instructionHistory, setInstructionHistory] = useState<SiteInstructionView[]>([]);
+  const [instructionBusy, setInstructionBusy] = useState(false);
+  const [instructionError, setInstructionError] = useState('');
+  const [clarificationOf, setClarificationOf] = useState<string | undefined>();
+  const [canRetryNetwork, setCanRetryNetwork] = useState(false);
+  const [pollingPaused, setPollingPaused] = useState(false);
+  const [pollFailures, setPollFailures] = useState(0);
   const [run, setRun] = useState<SiteRun | null>(null);
   const [history, setHistory] = useState<SiteRun[]>([]);
   const [runBusy, setRunBusy] = useState(false);
@@ -102,81 +104,254 @@ export const SiteFinderPage: React.FC = () => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(0);
   const [filterText, setFilterText] = useState('');
-  const pollRef = useRef<number | null>(null);
+  const instructionPollRef = useRef<number | null>(null);
+  const runPollRef = useRef<number | null>(null);
   const activeRunRef = useRef('');
+  const retryRequestRef = useRef<{ id: string; text: string; clarificationOf?: string } | null>(null);
+  const runRetryIdRef = useRef<{ runId: string; id: string } | null>(null);
+  const recoveryKeyRef = useRef('');
+  const historyLoadedForRef = useRef('');
+  const [runPollFailures, setRunPollFailures] = useState(0);
+  const [runPollingPaused, setRunPollingPaused] = useState(false);
   const dark = theme !== 'light';
 
-  const loadRun = useCallback(async (id: string, updateUrl = false) => {
+  const loadRun = useCallback(async (id: string): Promise<boolean> => {
     try {
       const response = await apiClient.get(`/api/v1/site-finder/runs/${encodeURIComponent(id)}`);
       const value = response.data.data as SiteRun;
+      if (navigationRef.current.runId !== id) return true;
       setRun(value); setPageError('');
       if (activeRunRef.current !== value.id) {
         activeRunRef.current=value.id;
-        setCriteria(normalizeCriteria(value.criteria));
         setTab(value.criteria.intendedUse ? 'qualified' : 'not-requested');
         setPage(0);setFilterText('');setSelectedKey('');
       }
-      if (updateUrl) setParams({ run: value.id }, { replace: true });
+      return true;
     } catch (error) {
+      if (navigationRef.current.runId !== id) return true;
       setPageError(errorMessage(error, 'Could not restore this server-side run. It may have expired or may not be available to this account.'));
-      setRun(null);
+      return false;
     }
-  }, [setParams]);
+  }, []);
+
+  const loadInstructionRun = useCallback(async (id: string, instructionId: string) => {
+    const navigation = navigationRef.current;
+    if (navigation.instructionId !== instructionId || (navigation.runId && navigation.runId !== id)) return;
+    navigationRef.current = { instructionId, runId: id };
+    setParams(current => { current.set('run', id); return current; }, { replace: true });
+    const loaded = await loadRun(id);
+    if (!loaded) setRunPollingPaused(true);
+    return loaded;
+  }, [loadRun, setParams]);
+
+  const loadInstruction = useCallback(async (id: string, updateUrl = false, preserveDraft = false) => {
+    const response = await apiClient.get(`/api/v1/site-finder/instructions/${encodeURIComponent(id)}`);
+    const value = response.data.data as SiteInstructionView;
+    if (!isInstruction(value)) throw new Error('The instruction response was not valid.');
+    if (navigationRef.current.instructionId !== id) return value;
+    setInstruction(value);
+    setInstructionHistory(old => [value, ...old.filter(item => item.id !== value.id)].slice(0, 10));
+    setInstructionError('');
+    setCanRetryNetwork(false);
+    retryRequestRef.current = null;
+    setPollFailures(0);
+    setPollingPaused(false);
+    if (!preserveDraft) {
+      setInstructionText(value.status === 'clarification' ? '' : value.text);
+      if (value.status === 'clarification') setClarificationOf(value.id);
+      else setClarificationOf(undefined);
+    } else if (value.status === 'clarification') {
+      setClarificationOf(value.id);
+      setInstructionText(current => current === value.text ? '' : current);
+    } else {
+      setClarificationOf(undefined);
+    }
+    if (updateUrl) setParams(current => { current.set('instruction', value.id); return current; }, { replace: true });
+    if (value.status === 'searching' && value.runId) void loadInstructionRun(value.runId, value.id);
+    return value;
+  }, [loadInstructionRun, setParams]);
+
+  const postInstruction = useCallback(async (request: { id: string; text: string; clarificationOf?: string }) => {
+    setInstructionBusy(true);
+    setInstructionError('');
+    setCanRetryNetwork(false);
+    retryRequestRef.current = request;
+    navigationRef.current = { instructionId: request.id, runId: null };
+    setRun(null); setSelectedKey('');
+    if (user?.id) localStorage.setItem(instructionStorageKey(user.id), JSON.stringify(request));
+    setParams(current => { current.set('instruction', request.id); current.delete('run'); return current; });
+    try {
+      const response = await apiClient.post('/api/v1/site-finder/instructions', request);
+      const value = response.data.data as SiteInstructionView;
+      if (!isInstruction(value)) throw new Error('The instruction response was not valid.');
+      if (navigationRef.current.instructionId !== request.id) return value;
+      retryRequestRef.current = null;
+      setInstruction(value);
+      setInstructionHistory(old => [value, ...old.filter(item => item.id !== value.id)].slice(0, 10));
+      setInstructionText(value.status === 'clarification' ? '' : value.text);
+      setClarificationOf(value.status === 'clarification' ? value.id : undefined);
+      setInstructionError('');
+      setPollFailures(0);
+      setPollingPaused(false);
+      if (value.status === 'searching' && value.runId) void loadInstructionRun(value.runId, value.id);
+      if (value.status === 'error') setInstructionError(value.message || 'This instruction could not be processed. Review it and explicitly retry as a new request.');
+      return value;
+    } catch (error) {
+      if (navigationRef.current.instructionId !== request.id) return null;
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      setInstructionError(actionableError(error, 'Could not submit the instruction. Your request is retained and can be retried.'));
+      const safelyRetryable = status === undefined || status === 401 || status === 429 || status === 503 || (status !== undefined && status >= 500);
+      setCanRetryNetwork(safelyRetryable);
+      if (!safelyRetryable) retryRequestRef.current = null;
+      return null;
+    } finally {
+      if (navigationRef.current.instructionId === request.id) setInstructionBusy(false);
+    }
+  }, [loadInstructionRun, setParams, user?.id]);
 
   useEffect(() => {
-    let alive = true;
-    apiClient.get('/api/v1/site-finder/catalog').then(response => {
-      if (alive) { setCatalog(response.data.data as SiteFinderCatalog); setCatalogError(''); }
-    }).catch(error => { if (alive) setCatalogError(errorMessage(error, 'Catalog unavailable. Search criteria remain editable, but property type choices require the live catalog.')); });
-    apiClient.get('/api/v1/site-finder/runs').then(response => { if (alive) setHistory(response.data.data as SiteRun[]); }).catch(() => { if (alive) setHistory([]); });
-    const id = params.get('run');
-    if (id) void loadRun(id);
-    return () => { alive = false; if (pollRef.current) window.clearTimeout(pollRef.current); };
-  }, [loadRun, params]);
+    if (!user?.id) return;
+    if (historyLoadedForRef.current !== user.id) {
+      historyLoadedForRef.current = user.id;
+      apiClient.get('/api/v1/site-finder/instructions').then(response => {
+        const values = response.data.data;
+        if (Array.isArray(values)) setInstructionHistory(values.filter(isInstruction).slice(0, 10));
+      }).catch(() => { /* History is optional; instruction recovery remains available by URL/local storage. */ });
+      apiClient.get('/api/v1/site-finder/runs').then(response => setHistory(response.data.data as SiteRun[])).catch(() => setHistory([]));
+    }
+    const instructionId = params.get('instruction');
+    const runId = params.get('run');
+    const recoveryKey = `${user.id}:${instructionId ?? ''}:${runId ?? ''}`;
+    if (recoveryKeyRef.current === recoveryKey) return;
+    recoveryKeyRef.current = recoveryKey;
+    if (instructionId && retryRequestRef.current?.id === instructionId) return;
+    if (instructionId) {
+      let savedRequest: { id: string; text: string; clarificationOf?: string } | null = null;
+      try {
+        const saved = JSON.parse(localStorage.getItem(instructionStorageKey(user.id)) || 'null');
+        if (saved?.id === instructionId && typeof saved.text === 'string') {
+          savedRequest = saved;
+          setInstructionText(saved.text);
+        }
+      } catch { /* A malformed local draft is not a server request. */ }
+      void loadInstruction(instructionId).catch(error => {
+        if (navigationRef.current.instructionId !== instructionId) return;
+        if (savedRequest) { retryRequestRef.current = savedRequest; setCanRetryNetwork(true); }
+        setInstructionError(actionableError(error, 'Could not restore this instruction. Its saved text remains available for a new request.'));
+      });
+    } else if (!runId) {
+      const saved = localStorage.getItem(instructionStorageKey(user.id));
+      if (saved) {
+        try {
+          const pending = JSON.parse(saved) as { id?: string; text?: string; clarificationOf?: string };
+          if (pending.id && pending.text) {
+            const request = { id: pending.id, text: pending.text, ...(pending.clarificationOf ? { clarificationOf: pending.clarificationOf } : {}) };
+            retryRequestRef.current = request;
+            navigationRef.current = { instructionId: pending.id, runId: null };
+            setParams(current => { current.set('instruction', pending.id!); return current; }, { replace: true });
+            setInstructionText(pending.text);
+            void loadInstruction(pending.id).catch(error => {
+              if (navigationRef.current.instructionId !== pending.id) return;
+              setInstructionText(pending.text || '');
+              retryRequestRef.current = request;
+              setCanRetryNetwork(true);
+              setInstructionError(actionableError(error, 'Could not restore the saved instruction. Retry the same ID to safely recover the request.'));
+            });
+          }
+        } catch { localStorage.removeItem(instructionStorageKey(user.id)); }
+      }
+    }
+    if (runId) void loadRun(runId);
+  }, [loadInstruction, loadRun, params, setParams, user?.id]);
 
   useEffect(() => {
-    if (!run || !['queued', 'running'].includes(run.status)) return;
-    pollRef.current = window.setTimeout(() => { void loadRun(run.id); }, 1800);
-    return () => { if (pollRef.current) window.clearTimeout(pollRef.current); };
-  }, [run, loadRun]);
+    if (!instruction || !['queued', 'understanding'].includes(instruction.status) || pollingPaused) return;
+    instructionPollRef.current = window.setTimeout(() => {
+      void loadInstruction(instruction.id, false, true).catch(error => {
+        if (navigationRef.current.instructionId !== instruction.id) return;
+        const next = pollFailures + 1;
+        setPollFailures(next);
+        if (next >= 5) setPollingPaused(true);
+        setInstructionError(actionableError(error, 'Connection interrupted while checking progress. Existing results are preserved; resume checks to try again.'));
+      });
+    }, 1800);
+    return () => { if (instructionPollRef.current) window.clearTimeout(instructionPollRef.current); };
+  }, [instruction, loadInstruction, pollingPaused, pollFailures]);
 
-  const interpret = async () => {
-    if (!naturalText.trim()) return;
-    setInterpretBusy(true); setPageError('');
-    try {
-      const response = await apiClient.post('/api/v1/site-finder/interpret', { text: naturalText.trim(), criteria: normalizeCriteria(criteria) });
-      const parsed = response.data.data as SiteInterpretation;
-      setInterpretation(parsed);
-      setInterpretationIssues(parsed.issues);
-    } catch (error) { setPageError(errorMessage(error, 'Unable to interpret this search. Please try again.')); }
-    finally { setInterpretBusy(false); }
+  useEffect(() => {
+    if (!run || !['queued', 'running'].includes(run.status) || runPollingPaused) return;
+    runPollRef.current = window.setTimeout(() => {
+      void loadRun(run.id).then(ok => {
+        if (ok) setRunPollFailures(0);
+        else {
+          const next = runPollFailures + 1;
+          setRunPollFailures(next);
+          if (next >= 5) setRunPollingPaused(true);
+        }
+      });
+    }, 1800);
+    return () => { if (runPollRef.current) window.clearTimeout(runPollRef.current); };
+  }, [run, loadRun, runPollingPaused, runPollFailures]);
+
+  const submitInstruction = () => {
+    const text = instructionText.trim();
+    if (!text || text.length > 1000) return;
+    setSelectedKey('');
+    void postInstruction({ id: crypto.randomUUID(), text, ...(clarificationOf ? { clarificationOf } : {}) });
   };
-  const applyInterpretation = () => {
-    if (!interpretation) return;
-    setCriteria(normalizeCriteria(interpretation.criteria));
-    setNaturalText('');
-    setInterpretation(null);
+  const retrySameInstruction = () => {
+    if (retryRequestRef.current) void postInstruction(retryRequestRef.current);
   };
-  const startRun = async () => {
-    if (naturalText.trim()) { setPageError('Interpret and apply the text first so you can inspect the criteria before searching.'); return; }
-    if (interpretationIssues.length) { setPageError('Unsupported interpretation issues are still unresolved. Use structured filters only, or interpret a revised request before running.'); return; }
-    setRunBusy(true); setPageError(''); setRun(null); setSelectedKey('');
-    try {
-      const response = await apiClient.post('/api/v1/site-finder/runs', { criteria: normalizeCriteria(criteria) });
-      const created = response.data.data as SiteRun;
-      setRun(created); setParams({ run: created.id });
-      setHistory(old => [created, ...old.filter(item => item.id !== created.id)].slice(0, 10));
-    } catch (error) { setPageError(errorMessage(error, 'The parcel screen could not be started.')); }
-    finally { setRunBusy(false); }
+  const retryInstructionAsNew = () => {
+    const text = instructionText.trim() || instruction?.text || '';
+    if (!text) return;
+    setInstructionText(text);
+    const parent = instruction?.clarificationOf ?? clarificationOf;
+    void postInstruction({ id: crypto.randomUUID(), text, ...(parent ? { clarificationOf: parent } : {}) });
+  };
+  const restoreInstruction = (id: string) => {
+    setInstructionError('');
+    navigationRef.current = { instructionId: id, runId: null };
+    setRun(null); setInstruction(null); setSelectedKey('');
+    setParams(current => { current.set('instruction', id); current.delete('run'); return current; });
+    void loadInstruction(id).catch(error => setInstructionError(actionableError(error, 'Could not restore this instruction.')));
+  };
+  const resumePolling = () => {
+    setPollFailures(0);
+    setPollingPaused(false);
+    setRunPollFailures(0);
+    setRunPollingPaused(false);
+    setInstructionError('');
+    if (!run && instruction?.status === 'searching' && instruction.runId) void loadInstructionRun(instruction.runId, instruction.id);
+  };
+  const selectRun = (id: string) => {
+    navigationRef.current = { instructionId: null, runId: id };
+    setInstruction(null); setClarificationOf(undefined); setInstructionBusy(false);
+    setInstructionError(''); setCanRetryNetwork(false); retryRequestRef.current = null;
+    setRun(null); setSelectedKey(''); setRunPollingPaused(false); setRunPollFailures(0);
+    setParams(current => { current.delete('instruction'); current.set('run', id); return current; });
+    void loadRun(id);
+  };
+  const newScreen = () => {
+    navigationRef.current = { instructionId: null, runId: null };
+    if (user?.id) localStorage.removeItem(instructionStorageKey(user.id));
+    setInstruction(null); setInstructionText(''); setClarificationOf(undefined); setInstructionBusy(false);
+    setInstructionError(''); setCanRetryNetwork(false); retryRequestRef.current = null;
+    setRun(null); setSelectedKey(''); setPageError(''); activeRunRef.current = '';
+    setParams(current => { current.delete('instruction'); current.delete('run'); return current; });
   };
   const retryRun = async () => {
     if (!run) return;
     setRunBusy(true); setPageError('');
+    const sourceRunId = run.id;
     try {
-      const response = await apiClient.post(`/api/v1/site-finder/runs/${encodeURIComponent(run.id)}/retry`);
+      const retryId = runRetryIdRef.current?.runId === run.id ? runRetryIdRef.current.id : crypto.randomUUID();
+      runRetryIdRef.current = { runId: run.id, id: retryId };
+      const response = await apiClient.post(`/api/v1/site-finder/runs/${encodeURIComponent(run.id)}/retry`, { id: retryId });
       const created = response.data.data as SiteRun;
-      setRun(created); setParams({ run: created.id });
+      runRetryIdRef.current = null;
+      if (navigationRef.current.runId !== sourceRunId) return;
+      selectRun(created.id);
       setHistory(old => [created, ...old.filter(item => item.id !== created.id)].slice(0, 10));
     } catch (error) { setPageError(errorMessage(error, 'Retry could not be started.')); }
     finally { setRunBusy(false); }
@@ -243,7 +418,8 @@ export const SiteFinderPage: React.FC = () => {
       .sf-hero{display:grid;grid-template-columns:1fr auto;align-items:end;gap:24px;margin-bottom:20px}.sf-kicker{font:700 9px 'JetBrains Mono',monospace;color:#00BCD4;letter-spacing:1.5px}.sf-hero h1{margin:7px 0 5px;font:600 clamp(24px,3vw,38px) 'IBM Plex Mono',monospace;letter-spacing:-1.6px}.sf-hero p{margin:0;color:var(--sf-secondary);font-size:12px;max-width:680px;line-height:1.6}.sf-hero-stamp{border-left:1px solid var(--sf-border2);padding:4px 0 4px 18px;color:var(--sf-muted);font:10px/1.8 'JetBrains Mono',monospace;text-align:right}
       .sf-workspace{display:grid;grid-template-columns:minmax(285px,350px) minmax(0,1fr);gap:14px;align-items:start}.sf-left-column{display:flex;flex-direction:column;gap:12px;min-width:0}.sf-panel{background:var(--sf-panel);border:1px solid var(--sf-border);min-width:0}.sf-panel-head{padding:12px 14px;background:var(--sf-header);border-bottom:1px solid var(--sf-border);display:flex;justify-content:space-between;align-items:center}.sf-panel-head h2{font:600 12px 'JetBrains Mono',monospace;margin:4px 0 0}.sf-eyebrow{font-size:8px;font-weight:700;letter-spacing:1px;color:var(--sf-muted)}.sf-panel-index{font-size:9px;color:var(--sf-muted)}
       .sf-search-form{padding:13px;display:flex;flex-direction:column;gap:12px}.sf-grid{display:grid;gap:10px}.sf-grid-two{grid-template-columns:1fr 1fr}.sf-area-row{margin-top:1px}.sf-hint{color:var(--sf-muted);font:9px/1.55 'IBM Plex Sans',sans-serif;margin:-7px 0 0}.sf-segment{display:flex;border:1px solid var(--sf-border);height:34px}.sf-segment button{flex:1;border:0;background:transparent;color:var(--sf-muted);font:9px 'JetBrains Mono',monospace}.sf-segment button.selected{background:#00BCD41B;color:#00BCD4;box-shadow:inset 0 -2px #00BCD4}.sf-inline-field{display:flex;gap:4px}.sf-inline-field select{width:52px;flex:none}.sf-unit{max-width:180px}.sf-field{min-width:0}.sf-county-list{display:grid;grid-template-columns:1fr;gap:2px}.sf-county{display:flex;align-items:center;gap:8px;background:transparent;border:1px solid transparent;color:var(--sf-secondary);text-align:left;padding:5px;font-size:10px}.sf-county:hover,.sf-county.active{border-color:var(--sf-border);background:var(--sf-panel2);color:var(--sf-text)}.sf-checkbox{height:13px;width:13px;border:1px solid var(--sf-border2);display:grid;place-items:center;color:#00BCD4;font-size:10px}.sf-county.active .sf-checkbox{border-color:#00BCD4}.sf-municipality{margin-top:9px}.sf-run-button{width:100%;display:flex;justify-content:space-between;align-items:center;border:1px solid #00BCD4;background:#00BCD4;color:#08121A;padding:11px 12px;font:700 10px 'JetBrains Mono',monospace;letter-spacing:.7px}.sf-run-button:hover:not(:disabled){background:#23c9dc}.sf-disclaimer{font-size:9px;line-height:1.5;color:var(--sf-muted);border-top:1px solid var(--sf-border);padding-top:9px}
-      .sf-interpret{padding:13px}.sf-interpret textarea{width:100%;min-height:78px;background:var(--sf-input);border:1px solid var(--sf-border);color:var(--sf-text);padding:9px;resize:vertical;font:10px/1.6 'JetBrains Mono',monospace}.sf-interpret button,.sf-secondary-button{background:transparent;border:1px solid var(--sf-border2);color:#00BCD4;padding:8px 10px;font:700 9px 'JetBrains Mono',monospace;margin-top:8px}.sf-interpret button:hover,.sf-secondary-button:hover{border-color:#00BCD4}.sf-interpret-summary{margin-top:11px;border-left:2px solid #00BCD4;padding:8px 10px;background:var(--sf-panel2);font-size:10px;line-height:1.6}.sf-interpret-summary ul{padding-left:15px;margin:7px 0}.sf-issue{color:#FF8C42}.sf-notice{border:1px solid #F5A62355;color:var(--sf-secondary);background:#F5A6230A;padding:9px 11px;font-size:10px;line-height:1.5;margin-bottom:12px}.sf-error{border-left:3px solid #FF4757;background:#FF47570D;color:var(--sf-text);padding:10px 12px;margin-bottom:12px;font-size:10px}
+       .sf-interpret{padding:13px}.sf-interpret textarea{width:100%;min-height:108px;background:var(--sf-input);border:1px solid var(--sf-border);color:var(--sf-text);padding:10px;resize:vertical;font:10px/1.6 'JetBrains Mono',monospace}.sf-interpret form>button,.sf-interpret button,.sf-secondary-button{background:transparent;border:1px solid var(--sf-border2);color:#00BCD4;padding:8px 10px;font:700 9px 'JetBrains Mono',monospace;margin-top:8px}.sf-interpret button:hover,.sf-secondary-button:hover{border-color:#00BCD4}.sf-interpret-summary{margin-top:11px;border-left:2px solid #00BCD4;padding:8px 10px;background:var(--sf-panel2);font-size:10px;line-height:1.6}.sf-interpret-summary ul{padding-left:15px;margin:7px 0}.sf-issue{color:#FF8C42}.sf-notice{border:1px solid #F5A62355;color:var(--sf-secondary);background:#F5A6230A;padding:9px 11px;font-size:10px;line-height:1.5;margin-bottom:12px}.sf-error{border-left:3px solid #FF4757;background:#FF47570D;color:var(--sf-text);padding:10px 12px;margin-bottom:12px}
+       .sf-instruction-meta{display:flex;justify-content:space-between;gap:8px;color:var(--sf-muted);font:8px/1.5 'JetBrains Mono',monospace;margin-top:5px}.sf-instruction-status{display:flex;justify-content:space-between;gap:8px;color:#00BCD4;font:9px 'JetBrains Mono',monospace}.sf-instruction-status span{color:var(--sf-muted)}.sf-validated-criteria{border-top:1px solid var(--sf-border);margin-top:9px;padding-top:9px}.sf-validated-criteria>strong{color:var(--sf-muted);font:700 8px 'JetBrains Mono',monospace;letter-spacing:.6px}.sf-validated-criteria ul{margin:6px 0 0}.sf-clarification-hint{color:#F5A623}.sf-instruction-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--sf-border);padding-top:8px;margin-top:8px;color:var(--sf-muted);font-size:9px}.sf-instruction-actions button{flex:none}.sf-instruction-history{margin-top:14px}.sf-instruction-history .sf-history-item{align-items:flex-start}.sf-instruction-history .sf-history-item span:first-child{max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .sf-results{min-width:0;background:var(--sf-panel);border:1px solid var(--sf-border)}.sf-results-header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;background:var(--sf-header);border-bottom:1px solid var(--sf-border)}.sf-results-header h2{margin:4px 0 0;font:600 12px 'JetBrains Mono',monospace}.sf-run-id{color:var(--sf-muted);font:9px 'JetBrains Mono',monospace;margin-top:5px}.sf-run-actions{display:flex;gap:8px;align-items:center}.sf-run-actions button{background:transparent;border:1px solid var(--sf-border2);color:var(--sf-secondary);padding:6px 9px;font:9px 'JetBrains Mono',monospace}.sf-run-actions button:hover{border-color:#00BCD4;color:#00BCD4}
       .sf-progress{border-bottom:1px solid var(--sf-border);padding:9px 14px;background:var(--sf-panel2)}.sf-progress-title{display:flex;justify-content:space-between;color:var(--sf-secondary);font:9px 'JetBrains Mono',monospace;margin-bottom:7px}.sf-source-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.sf-source{border:1px solid var(--sf-border);padding:7px 8px;min-width:0}.sf-source-top{display:flex;justify-content:space-between;gap:5px;font:8px 'JetBrains Mono',monospace}.sf-source-count{margin-top:4px;color:var(--sf-muted);font:8px 'JetBrains Mono',monospace}.sf-source-msg{font:8px/1.4 'IBM Plex Sans',sans-serif;color:#FF8C42;margin-top:4px}
       .sf-run-warnings{padding:8px 14px;border-bottom:1px solid var(--sf-border);color:#F5A623;font-size:9px;line-height:1.6}.sf-result-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid var(--sf-border)}.sf-tabs{display:flex;gap:2px;overflow:auto}.sf-tabs button{white-space:nowrap;border:0;border-bottom:2px solid transparent;background:none;padding:8px 9px;color:var(--sf-muted);font:9px 'JetBrains Mono',monospace}.sf-tabs button.active{color:#00BCD4;border-color:#00BCD4}.sf-tabs em{font-style:normal;color:var(--sf-secondary);margin-left:4px}.sf-filter{width:200px;max-width:40%;padding:7px 8px;background:var(--sf-input);border:1px solid var(--sf-border);color:var(--sf-text);font:9px 'JetBrains Mono',monospace}
@@ -256,22 +432,28 @@ export const SiteFinderPage: React.FC = () => {
     <div className="sf-topline"><div className="sf-brand"><span className="sf-brand-mark">J</span> JEDIRE / RESEARCH TERMINAL <span style={{ color: 'var(--sf-border2)' }}>/</span> SITE FINDER</div><div className="sf-status"><i /> PARCEL SCREENING · SOUTH FLORIDA</div></div>
     <header className="sf-hero"><div><div className="sf-kicker">LAND INTELLIGENCE / FIELD NOTE 01</div><h1>Site Finder</h1><p>Screen public parcel records across Miami-Dade, Broward, and Palm Beach. Every match carries source coverage, jurisdiction signals, and an explicit evidence status.</p></div><div className="sf-hero-stamp">FLORIDA · 3 COUNTIES<br/>EVIDENCE-LED · PRELIMINARY</div></header>
     {pageError && <div className="sf-error" role="alert">{pageError}</div>}
-    {catalogError && <div className="sf-notice">{catalogError}</div>}
+    {instructionError && <div className="sf-error" role="alert">{instructionError}</div>}
     <div className="sf-workspace">
       <div className="sf-left-column">
-        <section className="sf-panel">
-          <div className="sf-panel-head"><div><span className="sf-eyebrow">01 / START WITH A DESCRIPTION</span><h2>Describe the search</h2></div><span className="sf-panel-index">TEXT FIRST</span></div>
-          <div className="sf-interpret"><textarea value={naturalText} onChange={e => setNaturalText(e.target.value)} placeholder={'Find parcels over 3 acres zoned for assisted living in Broward\nFind industrial sites between 5 and 10 acres in Palm Beach County'} aria-label="Describe your parcel search" />
-            <button onClick={interpret} disabled={interpretBusy || !naturalText.trim()}>{interpretBusy ? 'INTERPRETING…' : 'INTERPRET REQUEST'}</button>
-            {interpretation && <div className="sf-interpret-summary"><strong>Interpretation</strong>{interpretation.interpretation.map((line, i) => <div key={i}>· {line}</div>)}{interpretation.issues.length > 0 && <div className="sf-issue"><strong>Execution blocked · unsupported request terms</strong><ul>{interpretation.issues.map((issue, i) => <li key={i}>{issue}</li>)}</ul></div>}<button onClick={applyInterpretation}>APPLY TO STRUCTURED FILTERS · CLEAR TEXT</button></div>}
-            {interpretationIssues.length > 0 && !interpretation && <div className="sf-interpret-summary sf-issue"><strong>Run blocked by unresolved interpretation issues</strong><ul>{interpretationIssues.map((issue, i) => <li key={i}>{issue}</li>)}</ul><button onClick={() => { setInterpretationIssues([]); setPageError(''); }}>USE STRUCTURED FILTERS ONLY</button></div>}
-          </div>
-        </section>
-        <SiteFinderWidget criteria={criteria} setCriteria={setCriteria} catalog={catalog} busy={runBusy} onRun={startRun} />
-        <section className="sf-panel sf-history"><div className="sf-history-title">RECENT SERVER RUNS · LAST 10</div>{history.length ? history.slice(0, 10).map(item => <button className="sf-history-item" key={item.id} onClick={() => { setParams({ run: item.id }); void loadRun(item.id); }}><span>{new Date(item.createdAt).toLocaleDateString()} · {item.criteria.counties.join(', ')}</span><span>{item.status.toUpperCase()} ↗</span></button>) : <div style={{ color: 'var(--sf-muted)', fontSize: 9 }}>No recent runs returned.</div>}</section>
+        <SiteFinderWidget
+          text={instructionText}
+          onTextChange={setInstructionText}
+          onSubmit={submitInstruction}
+          busy={instructionBusy}
+          instruction={instruction}
+          clarification={instruction?.status === 'clarification' || Boolean(clarificationOf)}
+          canRetryNetwork={canRetryNetwork}
+          onRetryNetwork={retrySameInstruction}
+          onRetryNew={retryInstructionAsNew}
+          onResume={resumePolling}
+          pollingPaused={pollingPaused || runPollingPaused}
+          history={instructionHistory}
+          onRestore={restoreInstruction}
+        />
+        <section className="sf-panel sf-history"><div className="sf-history-title">RECENT SERVER RUNS · LAST 10</div>{history.length ? history.slice(0, 10).map(item => <button className="sf-history-item" key={item.id} onClick={() => selectRun(item.id)}><span>{new Date(item.createdAt).toLocaleDateString()} · {item.criteria.counties.join(', ')}</span><span>{item.status.toUpperCase()} ↗</span></button>) : <div style={{ color: 'var(--sf-muted)', fontSize: 9 }}>No recent runs returned.</div>}</section>
       </div>
       <section className="sf-results">
-        <div className="sf-results-header"><div><div className="sf-eyebrow">02 / PUBLIC PARCEL EVIDENCE</div><h2>{run ? `Screen ${run.status.toUpperCase()}` : 'Awaiting a parcel screen'}</h2>{run && <div className="sf-run-id">RUN {run.id} · STARTED {formatDate(run.createdAt)}</div>}</div><div className="sf-run-actions">{run && ['error', 'partial'].includes(run.status) && <button onClick={retryRun} disabled={runBusy}>RETRY SOURCES</button>}{run && <button onClick={() => { setRun(null); setSelectedKey(''); setParams({}); }}>NEW SCREEN</button>}</div></div>
+        <div className="sf-results-header"><div><div className="sf-eyebrow">02 / PUBLIC PARCEL EVIDENCE</div><h2>{run ? `Screen ${run.status.toUpperCase()}` : 'Awaiting a parcel screen'}</h2>{run && <div className="sf-run-id">RUN {run.id} · STARTED {formatDate(run.createdAt)}</div>}</div><div className="sf-run-actions">{run && ['error', 'partial'].includes(run.status) && <button onClick={retryRun} disabled={runBusy}>RETRY SOURCES</button>}{run && <button onClick={newScreen}>NEW SCREEN</button>}</div></div>
         {run && <>
           <div className="sf-progress"><div className="sf-progress-title"><span>COUNTY SOURCE COVERAGE</span><span>{run.results.length} returned · cap {run.criteria.limit}</span></div><div className="sf-source-grid">{run.sources.map(source => {
             const color = source.status === 'error' ? '#FF4757' : source.status === 'partial' ? '#F5A623' : source.status === 'working' ? '#00BCD4' : source.status === 'pending' ? '#6B7A8D' : '#00D26A';
@@ -286,7 +468,7 @@ export const SiteFinderPage: React.FC = () => {
             </tr>;
           })}</tbody></table></div><div className="sf-table-footer"><span>{shown.length} parcel{shown.length === 1 ? '' : 's'} · preliminary screen, not a legal determination</span><div className="sf-pager"><button disabled={page === 0} onClick={() => setPage(value => Math.max(0, value - 1))}>PREV</button><span>{page + 1} / {Math.max(1, Math.ceil(shown.length / pageSize))}</span><button disabled={(page + 1) * pageSize >= shown.length} onClick={() => setPage(value => value + 1)}>NEXT</button></div></div></> : <div className="sf-empty"><div className="sf-empty-mark">∅</div><strong>{run.results.length ? 'No parcels in this screen' : 'No matched parcels returned'}</strong><p>{run.results.length ? 'Try another evidence tab, clear the local filter, or widen the criteria and run another screen.' : 'Source coverage is shown above. A zero-result screen is not evidence that no parcels exist in the geography.'}</p></div>}
         </>}
-        {!run && <div className="sf-empty"><div className="sf-empty-mark">⌖</div><strong>Start with one signal. Add more only when needed.</strong><p>Property type, zoning code, parcel size, address text, and geography are independent optional filters. Interpret plain language first, inspect its structured reading, then make a server-backed screen.</p><div className="sf-empty-note">CURRENT PROPERTY CLASSIFICATION ≠ PERMITTED FUTURE USE</div></div>}
+         {!run && <div className="sf-empty"><div className="sf-empty-mark">⌖</div><strong>Describe the site. The server resolves the search.</strong><p>Share the geography, intended use, parcel size, or other requirements in one instruction. Validated criteria and evidence appear here as the screen progresses.</p><div className="sf-empty-note">CURRENT PROPERTY CLASSIFICATION ≠ PERMITTED FUTURE USE</div></div>}
         {run && (run.status === 'queued' || run.status === 'running') && <div className="sf-loading"><span /><span /><span /> County assessor sources are working. Results and partial coverage appear as returned.</div>}
       </section>
     </div>

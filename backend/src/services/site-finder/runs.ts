@@ -7,7 +7,9 @@ import { reviewParcel } from './review';
 import { logger } from '../../utils/logger';
 
 export async function siteCatalog(pool: Pool): Promise<CatalogType[]> {
-  return (await pool.query('SELECT type_key,display_name,category FROM property_types WHERE enabled=true ORDER BY sort_order,display_name')).rows;
+  const rows = (await pool.query('SELECT type_key,display_name,category FROM property_types WHERE enabled=true ORDER BY sort_order,display_name')).rows;
+  if (!rows.length) throw new Error('Site Finder catalog unavailable.');
+  return rows;
 }
 export class SiteFinderRuns {
   private initialized?: Promise<void>;
@@ -36,14 +38,22 @@ export class SiteFinderRuns {
     await this.ensureReady();
     return (await this.pool.query('SELECT snapshot FROM site_finder_runs WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 10', [owner])).rows.map(r => r.snapshot);
   }
-  async create(owner: string, criteria: SiteCriteria): Promise<SiteRun> {
+  async create(owner: string, criteria: SiteCriteria, requestId?: string, fromInstruction = false): Promise<SiteRun> {
     await this.ensureReady();
     const now = new Date().toISOString();
-    const run: SiteRun = { id: randomUUID(), criteria, status: 'queued', createdAt: now, updatedAt: now, results: [], warnings: ['Preliminary bounded screening, not an exhaustive inventory. Current property classification is not a zoning permission.'], sources: criteria.counties.map(county => ({ county, status: 'pending', sourceUrl: SOURCES[county].parcel, scanned: 0, matched: 0, limited: false, messages: [] })) };
+    const run: SiteRun = { id: requestId ?? randomUUID(), criteria, status: 'queued', createdAt: now, updatedAt: now, results: [], warnings: ['Preliminary bounded screening, not an exhaustive inventory. Current property classification is not a zoning permission.'], sources: criteria.counties.map(county => ({ county, status: 'pending', sourceUrl: SOURCES[county].parcel, scanned: 0, matched: 0, limited: false, messages: [] })) };
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`site-finder:${owner}`]);
+      if (requestId) {
+        const existing = await client.query('SELECT snapshot FROM site_finder_runs WHERE id=$1 AND owner_id=$2', [requestId, owner]);
+        if (existing.rows.length) { await client.query('COMMIT'); return existing.rows[0].snapshot; }
+      }
+      if (fromInstruction) {
+        const current = await client.query('SELECT snapshot FROM site_finder_instructions WHERE id=$1 AND owner_id=$2 FOR UPDATE', [requestId, owner]);
+        if (current.rows[0]?.snapshot.status !== 'understanding') throw new Error('Instruction processing was interrupted.');
+      }
       const active = await client.query("SELECT count(*)::int AS n FROM site_finder_runs WHERE owner_id=$1 AND status IN ('queued','running')", [owner]);
       if (active.rows[0].n >= 2) throw new Error('Two searches are already active. Wait for one to finish, then retry.');
       const recent = await client.query("SELECT count(*)::int AS n FROM site_finder_runs WHERE owner_id=$1 AND created_at > now()-interval '1 hour'", [owner]);
@@ -83,10 +93,10 @@ export class SiteFinderRuns {
       if (!claimed.rows.length) return;
       const run: SiteRun = claimed.rows[0].snapshot;
       run.status = 'running';
-      const catalog = await siteCatalog(this.pool);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 150000);
       try {
+        const catalog = await siteCatalog(this.pool);
         for (const county of run.criteria.counties) {
           const prior = run.sources.find(s => s.county === county)!;
           if (prior.finishedAt) continue;
@@ -94,6 +104,10 @@ export class SiteFinderRuns {
             // On recovery, re-run an interrupted county from page zero and deduplicate.
             run.results = run.results.filter(p => p.county !== county);
           }
+          prior.status = 'working';
+          prior.checkedAt = new Date().toISOString();
+          prior.messages = ['Requesting the official parcel source and checking coverage.'];
+          await this.save(run, lease);
           await discoverCounty(county,run.criteria,catalog, async (parcels, health) => {
             for (const p of parcels) {
               p.review = await reviewParcel(p);
@@ -107,7 +121,7 @@ export class SiteFinderRuns {
         run.status = failed.length === run.sources.length ? 'error' : run.sources.some(s => s.status === 'error' || s.status === 'partial' || s.limited) ||
           run.results.some(p => p.review.status === 'unverified') ? 'partial' : 'complete';
         if (run.criteria.intendedUse && run.results.some(p => p.review.status === 'unverified')) run.warnings.push('Use-permission checks are incomplete. Unverified leads are not permission matches.');
-      } catch (e: any) { run.status = run.results.length ? 'partial' : 'error'; run.warnings.push(`Run interrupted: ${e.message}. Retry with narrower criteria.`); }
+      } catch { run.status = run.results.length ? 'partial' : 'error'; run.warnings.push('Search dependency unavailable or timed out. Results are saved. Retry sources shortly or narrow the request.'); }
       finally { clearTimeout(timeout); }
       await this.save(run,lease);
     } finally { this.busy = false; }

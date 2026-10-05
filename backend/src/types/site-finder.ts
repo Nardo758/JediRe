@@ -69,3 +69,14 @@ export interface SiteRun {
   sources: SiteSourceHealth[];
   warnings: string[];
 }
+
+export interface SiteInstruction {
+  id: string;
+  text: string;
+  status: 'queued' | 'understanding' | 'clarification' | 'searching' | 'error';
+  message?: string;
+  runId?: string;
+  criteria?: SiteCriteria;
+  summary?: string[];
+  clarificationOf?: string;
+}

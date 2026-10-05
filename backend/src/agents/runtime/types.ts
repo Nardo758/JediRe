@@ -15,6 +15,7 @@ import { z } from 'zod';
 // ── Agent identity ────────────────────────────────────────────────────────────
 
 export type AgentId =
+  | 'site-finder'
   | 'research'
   | 'zoning'
   | 'supply'
@@ -141,6 +142,11 @@ export interface AgentConfig {
    *  Supports wildcard: 'read:all' grants any 'read:*' capability.
    */
   capabilities: string[];
+  /** Bound provider time/retries for short, interactive agents without changing other agents. */
+  requestTimeoutMs?: number;
+  providerMaxRetries?: number;
+  /** Optional response ceiling; existing agents retain their 8,192-token default. */
+  maxOutputTokens?: number;
   /** Override the LLM provider for this agent (default: auto-detected from modelName) */
   provider?: LlmProvider;
   /**

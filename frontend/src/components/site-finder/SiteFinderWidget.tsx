@@ -1,128 +1,80 @@
-import React, { useEffect, useState } from 'react';
-import type { SiteCriteria, SiteCounty } from '../../../../shared/site-finder';
-import { SITE_COUNTIES } from '../../../../shared/site-finder';
-
-export interface SiteFinderCatalog {
-  propertyTypes: { type_key: string; display_name: string; category: string }[];
-  counties: string[];
-}
+import React from 'react';
+import type { SiteCriteria, SiteInstruction } from '../../../../shared/site-finder';
+export type SiteInstructionView = SiteInstruction;
 
 interface Props {
-  criteria: SiteCriteria;
-  setCriteria: React.Dispatch<React.SetStateAction<SiteCriteria>>;
-  catalog: SiteFinderCatalog | null;
+  text: string;
+  onTextChange: (text: string) => void;
+  onSubmit: () => void;
   busy: boolean;
-  onRun: () => void;
+  instruction: SiteInstructionView | null;
+  clarification: boolean;
+  canRetryNetwork: boolean;
+  onRetryNetwork: () => void;
+  onRetryNew: () => void;
+  onResume: () => void;
+  pollingPaused: boolean;
+  history: SiteInstructionView[];
+  onRestore: (id: string) => void;
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', minWidth: 0, boxSizing: 'border-box', border: '1px solid var(--sf-border)',
-  background: 'var(--sf-input)', color: 'var(--sf-text)', padding: '9px 10px',
-  fontFamily: 'var(--sf-mono)', fontSize: 11, outline: 'none',
-};
-const labelStyle: React.CSSProperties = {
-  display: 'block', color: 'var(--sf-muted)', fontSize: 9, letterSpacing: 1,
-  fontWeight: 700, textTransform: 'uppercase', marginBottom: 6,
+const criteriaLines = (criteria: SiteCriteria): string[] => {
+  const lines: string[] = [];
+  if (criteria.counties?.length) lines.push(`Counties: ${criteria.counties.join(', ')}`);
+  if (criteria.municipality) lines.push(`Municipality: ${criteria.municipality}`);
+  if (criteria.propertyType) lines.push(`Property type: ${criteria.propertyType}${criteria.typeSemantics ? ` (${criteria.typeSemantics})` : ''}`);
+  if (criteria.intendedUse) lines.push(`Intended use: ${criteria.intendedUse}`);
+  if (criteria.zoning) lines.push(`Zoning: ${criteria.zoning.code} · ${criteria.zoning.jurisdiction}`);
+  if (criteria.area) {
+    const { min, max, unit, minInclusive, maxInclusive } = criteria.area;
+    const areaParts = [
+      min !== undefined ? `${minInclusive === false ? '>' : '≥'} ${min}` : null,
+      max !== undefined ? `${maxInclusive === false ? '<' : '≤'} ${max}` : null,
+    ].filter(Boolean);
+    if (areaParts.length) lines.push(`Parcel area: ${areaParts.join(' and ')} ${unit}`);
+  }
+  if (criteria.addressText) lines.push(`Address contains: ${criteria.addressText}`);
+  lines.push(`Result cap: ${criteria.limit} per county`);
+  return lines;
 };
 
-export function SiteFinderWidget({ criteria, setCriteria, catalog, busy, onRun }: Props) {
-  const [areaUnit, setAreaUnit] = useState<NonNullable<SiteCriteria['area']>['unit']>(criteria.area?.unit ?? 'acres');
-  const [minInclusive, setMinInclusive] = useState(criteria.area?.minInclusive ?? true);
-  const [maxInclusive, setMaxInclusive] = useState(criteria.area?.maxInclusive ?? true);
-  const [zoningCode, setZoningCode] = useState(criteria.zoning?.code ?? '');
-  const [zoningJurisdiction, setZoningJurisdiction] = useState(criteria.zoning?.jurisdiction ?? '');
-  const patch = (next: Partial<SiteCriteria>) => setCriteria(current => ({ ...current, ...next }));
-  useEffect(() => {
-    setAreaUnit(criteria.area?.unit ?? 'acres');
-    setMinInclusive(criteria.area?.minInclusive ?? true);
-    setMaxInclusive(criteria.area?.maxInclusive ?? true);
-  }, [criteria.area?.unit, criteria.area?.minInclusive, criteria.area?.maxInclusive]);
-  useEffect(() => {
-    setZoningCode(criteria.zoning?.code ?? '');
-    setZoningJurisdiction(criteria.zoning?.jurisdiction ?? '');
-  }, [criteria.zoning?.code, criteria.zoning?.jurisdiction]);
-  const toggleCounty = (county: SiteCounty) => {
-    const current = criteria.counties;
-    patch({ counties: current.includes(county) ? current.filter(value => value !== county) : [...current, county] });
+export function SiteFinderWidget({
+  text, onTextChange, onSubmit, busy, instruction, clarification, canRetryNetwork,
+  onRetryNetwork, onRetryNew, onResume, pollingPaused, history, onRestore,
+}: Props) {
+  const isTerminalError = instruction?.status === 'error';
+  const isActive = instruction && ['queued', 'understanding'].includes(instruction.status);
+  const statusLabel: Record<SiteInstructionView['status'], string> = {
+    queued: 'QUEUED', understanding: 'UNDERSTANDING REQUEST', clarification: 'NEEDS CLARIFICATION',
+    searching: 'SEARCHING PARCEL SOURCES', error: 'INSTRUCTION ERROR',
   };
-  const area = criteria.area ?? { unit: areaUnit, minInclusive, maxInclusive };
-  const zoningIncomplete = Boolean(zoningCode.trim()) !== Boolean(zoningJurisdiction.trim());
-  const setArea = (next: Partial<NonNullable<SiteCriteria['area']>>) => {
-    if (next.unit) setAreaUnit(next.unit);
-    if (next.minInclusive !== undefined) setMinInclusive(next.minInclusive);
-    if (next.maxInclusive !== undefined) setMaxInclusive(next.maxInclusive);
-    setCriteria(current => {
-      const prior = current.area;
-      const updated = {
-        unit: next.unit ?? prior?.unit ?? areaUnit,
-        min: Object.prototype.hasOwnProperty.call(next, 'min') ? next.min : prior?.min,
-        max: Object.prototype.hasOwnProperty.call(next, 'max') ? next.max : prior?.max,
-        minInclusive: next.minInclusive ?? prior?.minInclusive ?? minInclusive,
-        maxInclusive: next.maxInclusive ?? prior?.maxInclusive ?? maxInclusive,
-      };
-      if (updated.min === undefined && updated.max === undefined) {
-        const withoutArea = { ...current };
-        delete withoutArea.area;
-        return withoutArea;
-      }
-      return { ...current, area: updated };
-    });
-  };
-  const updateZoning = (code: string, jurisdiction: string) => {
-    setZoningCode(code);
-    setZoningJurisdiction(jurisdiction);
-    setCriteria(current => {
-      if (code.trim() && jurisdiction.trim()) return { ...current, zoning: { code: code.trim(), jurisdiction: jurisdiction.trim() } };
-      const withoutZoning = { ...current };
-      delete withoutZoning.zoning;
-      return withoutZoning;
-    });
-  };
-  const field = (label: string, child: React.ReactNode) => <div><label style={labelStyle}>{label}</label>{child}</div>;
 
   return <section className="sf-panel">
-    <div className="sf-panel-head"><div><span className="sf-eyebrow">02 / OPTIONAL STRUCTURED FILTERS</span><h2>Site Finder</h2></div><span className="sf-panel-index">SFL · 02</span></div>
-    <div className="sf-search-form">
-      <div className="sf-grid sf-grid-two">
-        {field('Property type · assessor category', <select style={inputStyle} value={criteria.propertyType ?? ''} onChange={e => patch({ propertyType: e.target.value || undefined, typeSemantics: e.target.value ? criteria.typeSemantics ?? 'current' : undefined })}>
-          <option value="">Any catalog type</option>
-          {[...new Set(catalog?.propertyTypes.map(item=>item.category) || [])].map(category => <option key={category} value={`category:${category}`}>All {category} catalog types</option>)}
-          {catalog?.propertyTypes.map(item => <option key={item.type_key} value={item.type_key}>{item.display_name} · {item.category}</option>)}
-        </select>)}
-        {field('Type semantics', <div className="sf-segment">
-          <button type="button" disabled={!criteria.propertyType} className={criteria.typeSemantics !== 'proposed' ? 'selected' : ''} onClick={() => patch({ typeSemantics: 'current' })}>Current use</button>
-          <button type="button" disabled={!criteria.propertyType} className={criteria.typeSemantics === 'proposed' ? 'selected' : ''} onClick={() => patch({ typeSemantics: 'proposed' })}>Proposed use</button>
-        </div>)}
-      </div>
-      {field('Intended use · describe the specific program', <input style={inputStyle} value={criteria.intendedUse ?? ''} onChange={e => patch({ intendedUse: e.target.value || undefined })} placeholder="e.g. independent senior housing" />)}
-      <p className="sf-hint">Keep proposed permission distinct from the parcel’s current assessor classification. “Senior living” needs a precise use such as assisted living or independent senior housing.</p>
-
-      <div className="sf-grid sf-grid-two">
-        {field('Zoning code', <input style={inputStyle} value={zoningCode} onChange={e => updateZoning(e.target.value, zoningJurisdiction)} placeholder="Authority-specific code" />)}
-        {field('Zoning jurisdiction', <input style={inputStyle} value={zoningJurisdiction} onChange={e => updateZoning(zoningCode, e.target.value)} placeholder="Municipality / authority" />)}
-      </div>
-      {zoningIncomplete && <p className="sf-hint">A zoning code must be paired with its jurisdiction. Complete both values or clear the partial entry before running.</p>}
-      <div className="sf-grid sf-grid-two sf-area-row">
-        {field('Parcel area · minimum', <div className="sf-inline-field"><input type="number" min="0" style={inputStyle} value={criteria.area?.min ?? ''} onChange={e => setArea({ min: e.target.value === '' ? undefined : Number(e.target.value) })} placeholder="No minimum" /><select aria-label="Minimum boundary" style={inputStyle} value={area.minInclusive ? 'inclusive' : 'exclusive'} onChange={e => setArea({ minInclusive: e.target.value === 'inclusive' })}><option value="inclusive">≥</option><option value="exclusive">&gt;</option></select></div>)}
-        {field('Parcel area · maximum', <div className="sf-inline-field"><input type="number" min="0" style={inputStyle} value={criteria.area?.max ?? ''} onChange={e => setArea({ max: e.target.value === '' ? undefined : Number(e.target.value) })} placeholder="No maximum" /><select aria-label="Maximum boundary" style={inputStyle} value={area.maxInclusive ? 'inclusive' : 'exclusive'} onChange={e => setArea({ maxInclusive: e.target.value === 'inclusive' })}><option value="inclusive">≤</option><option value="exclusive">&lt;</option></select></div>)}
-      </div>
-      {field('Area unit', <div className="sf-segment sf-unit">
-        <button type="button" className={areaUnit === 'acres' ? 'selected' : ''} onClick={() => setArea({ unit: 'acres' })}>Acres</button>
-        <button type="button" className={areaUnit === 'sqft' ? 'selected' : ''} onClick={() => setArea({ unit: 'sqft' })}>Square feet</button>
-      </div>)}
-
-      <div className="sf-field">
-        <label style={labelStyle}>County coverage</label>
-        <div className="sf-county-list">{SITE_COUNTIES.map(county => <button type="button" key={county} className={`sf-county ${criteria.counties.includes(county) ? 'active' : ''}`} onClick={() => toggleCounty(county)}><span className="sf-checkbox">{criteria.counties.includes(county) ? '✓' : ''}</span>{county}</button>)}</div>
-        <div className="sf-grid sf-grid-two sf-municipality">
-          {field('Optional municipality', <input style={inputStyle} value={criteria.municipality ?? ''} onChange={e => patch({ municipality: e.target.value || undefined })} placeholder="Any municipality" />)}
-          {field('Result cap per county', <select style={inputStyle} value={criteria.limit} onChange={e => patch({ limit: Number(e.target.value) })}>{[25, 50, 100].map(value => <option key={value} value={value}>{value} parcels</option>)}</select>)}
-        </div>
-      </div>
-      <div className="sf-field">{field('Situs address contains · optional', <input style={inputStyle} value={criteria.addressText ?? ''} onChange={e => patch({ addressText: e.target.value.trim() || undefined })} placeholder="Literal situs address substring" />)}</div>
-      <button type="button" className="sf-run-button" onClick={onRun} disabled={busy || criteria.counties.length === 0 || zoningIncomplete}>
-        <span>{busy ? 'SCREENING SOURCES…' : 'RUN PARCEL SCREEN'}</span><span aria-hidden="true">↗</span>
-      </button>
+    <div className="sf-panel-head"><div><span className="sf-eyebrow">01 / DESCRIBE THE PARCEL YOU NEED</span><h2>{clarification ? 'Clarify the request' : 'Describe the search'}</h2></div><span className="sf-panel-index">PLAIN LANGUAGE</span></div>
+    <div className="sf-interpret">
+      <form onSubmit={event => { event.preventDefault(); onSubmit(); }}>
+        <textarea
+          value={text}
+          maxLength={1000}
+          onChange={event => onTextChange(event.target.value)}
+          placeholder={clarification ? 'Answer the question above. Your reply will be added to this instruction.' : 'For example: Find parcels over 3 acres in Broward suitable for assisted living.'}
+          aria-label={clarification ? 'Clarification response' : 'Describe your parcel search'}
+          aria-describedby="sf-instruction-hint"
+        />
+        <div className="sf-instruction-meta"><span id="sf-instruction-hint">{clarification ? 'Your answer will refine the existing request.' : 'Describe location, intended use, size, or other requirements.'}</span><span>{text.length}/1000</span></div>
+        <button type="submit" disabled={busy || !text.trim() || Boolean(isActive)}>{busy ? 'SENDING…' : clarification ? 'SEND CLARIFICATION' : 'FIND SITES'}</button>
+      </form>
+      {instruction && <div className="sf-interpret-summary" aria-live="polite">
+        <div className="sf-instruction-status"><strong>{statusLabel[instruction.status]}</strong><span>REF {instruction.id.slice(0, 8)}</span></div>
+        {instruction.message && <p className={isTerminalError ? 'sf-issue' : ''}>{instruction.message}</p>}
+        {instruction.summary?.length ? <ul>{instruction.summary.map((line, index) => <li key={`${index}-${line}`}>{line}</li>)}</ul> : null}
+        {instruction.criteria && <div className="sf-validated-criteria"><strong>VALIDATED SEARCH CRITERIA · READ ONLY</strong><ul>{criteriaLines(instruction.criteria).map((line, index) => <li key={`${index}-${line}`}>{line}</li>)}</ul></div>}
+        {instruction.status === 'clarification' && <p className="sf-clarification-hint">The search is paused until you answer in the box above.</p>}
+        {isTerminalError && <div className="sf-instruction-actions"><span>Keep this request for reference, or explicitly start it again with a new ID.</span><button type="button" onClick={onRetryNew}>RETRY AS NEW REQUEST</button></div>}
+      </div>}
+      {pollingPaused && <div className="sf-instruction-actions"><span>Progress updates paused after repeated connection failures.</span><button type="button" onClick={onResume}>RESUME CHECKS</button></div>}
+      {canRetryNetwork && <div className="sf-instruction-actions"><span>Request not confirmed. Retry safely with the same instruction ID.</span><button type="button" onClick={onRetryNetwork}>RETRY SAME REQUEST</button></div>}
+      {history.length > 0 && <div className="sf-instruction-history"><div className="sf-section-label">RECENT INSTRUCTIONS</div>{history.slice(0, 6).map(item => <button type="button" className="sf-history-item" key={item.id} onClick={() => onRestore(item.id)}><span>{item.text}</span><span>{statusLabel[item.status]}</span></button>)}</div>}
       <div className="sf-disclaimer">Preliminary screening only. Not legal zoning, licensing, availability, or for-sale advice.</div>
     </div>
   </section>;
