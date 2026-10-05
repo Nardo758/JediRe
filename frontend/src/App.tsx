@@ -48,6 +48,7 @@ import WatchlistPage from './pages/MarketIntelligence/WatchlistPage';
 import TerminalPage from './pages/TerminalPage';
 import { MapPage } from './pages/MapPage';
 import { MapDiscoveryPage } from './pages/MapDiscoveryPage';
+import SiteFinderPage from './pages/SiteFinderPage';
 const F4CommentarySpecPage = lazy(() => import('./pages/docs/F4CommentarySpecPage'));
 const TimeSeriesExplorerPage = lazy(() => import('./pages/TimeSeriesExplorerPage'));
 const DriverAnalysisPage = lazy(() => import('./pages/DriverAnalysisPage'));
@@ -272,6 +273,7 @@ function AppContent() {
         <Route path="/dashboard/email/flagged" element={<Navigate to="/terminal/dashboard" replace />} />
         <Route path="/map" element={<MapPage />} />
         <Route path="/surface" element={<MapDiscoveryPage />} />
+        <Route path="/site-finder" element={<SiteFinderPage />} />
         <Route path="/strategy-builder" element={<Navigate to="/terminal/strategies" replace />} />
         <Route path="/strategy-builder/:id" element={<Navigate to="/terminal/strategies" replace />} />
         <Route path="/news-intel" element={<Navigate to="/terminal/news" replace />} />

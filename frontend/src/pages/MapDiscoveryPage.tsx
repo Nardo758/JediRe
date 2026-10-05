@@ -361,6 +361,15 @@ export const MapDiscoveryPage: React.FC = () => {
         </div>
       </div>
 
+      <button
+        type="button"
+        onClick={() => navigate('/site-finder')}
+        className="absolute bottom-16 right-4 z-10 bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:text-cyan-700 hover:border-cyan-500 transition"
+        aria-label="Open Site Finder parcel screening"
+      >
+        SITE FINDER <span aria-hidden="true">→</span>
+      </button>
+
       {/* ─── Slide-in Parcel Panel (left) ─── */}
       <div
         className={`absolute top-0 left-0 h-full z-20 transition-transform duration-300 ease-out ${

@@ -1788,6 +1788,9 @@ export default function TerminalPage() {
             <button onClick={() => { navigate('/surface'); setMapMenuOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', fontFamily: T.font.mono, fontSize: 10, fontWeight: 600, color: T.text.cyan, background: 'transparent', border: 'none', padding: '6px 10px', cursor: 'pointer', textAlign: 'left' }}>
               <span>🌐</span> Discovery Surface →
             </button>
+            <button onClick={() => { navigate('/site-finder'); setMapMenuOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', fontFamily: T.font.mono, fontSize: 10, fontWeight: 700, color: T.text.amber, background: 'transparent', border: 'none', borderTop: `1px solid ${T.border.subtle}`, padding: '7px 10px', cursor: 'pointer', textAlign: 'left' }}>
+              <span style={{ width: 12, textAlign: 'center', color: T.text.amber }}>⌖</span> Site Finder · parcel evidence →
+            </button>
           </div>
         )}
       </div>

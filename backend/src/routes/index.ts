@@ -201,6 +201,7 @@ export function mountDealRoutes(app: Express) {
 // /api/v1/properties (unified before CRUD so /unified isn't shadowed by /:id).
 
 import propertyTypesRouter from '../api/rest/property-types.routes';
+import { createSiteFinderRoutes } from '../api/rest/site-finder.routes';
 import propertyTypeStrategiesRouter from '../api/rest/property-type-strategies.routes';
 import propertyProxyRoutes from '../api/rest/property-proxy.routes';
 import propertyRoutes from '../api/rest/property.routes';
@@ -252,6 +253,7 @@ export function mountPropertyRoutes(app: Express, pool: any) {
 
   // Property types & strategies
   app.use('/api/v1/property-types', requireAuth, propertyTypesRouter);
+  app.use('/api/v1/site-finder', requireAuth, createSiteFinderRoutes(pool));
   app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesRouter);
   app.use('/api/v1/property-metrics', requireAuth, createPropertyMetricsRouter(pool));
   app.use('/api/v1/property-scoring', requireAuth, createPropertyScoringRouter(pool));

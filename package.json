@@ -7,13 +7,15 @@
     "dev": "bash start.sh",
     "build": "bash build.sh",
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:site-finder:ui": "node scripts/site-finder-ui-check.cjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@playwright/test": "^1.63.0",
     "@turf/area": "^7.3.4",
     "@turf/union": "^7.3.4",
     "@types/multer": "^2.0.0",
