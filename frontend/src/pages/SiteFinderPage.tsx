@@ -4,6 +4,8 @@ import { apiClient } from '../services/api.client';
 import { useTheme } from '../contexts/ThemeContext';
 import SiteFinderWidget, { type SiteInstructionView } from '../components/site-finder/SiteFinderWidget';
 import type { SiteParcel, SiteReview, SiteRun } from '../../../shared/site-finder';
+import { trackEvent } from '../utils/analytics';
+import { failureCategory, SiteFinderMeasurement } from '../utils/siteFinderAnalytics';
 
 type SortKey = 'county' | 'address' | 'parcelId' | 'acres' | 'currentPropertyType' | 'district';
 const statusColors: Record<string, string> = { 'by-right': '#00D26A', conditional: '#F5A623', prohibited: '#FF4757', unverified: '#A78BFA', 'not-requested': '#6B7A8D' };
@@ -111,8 +113,11 @@ export const SiteFinderPage: React.FC = () => {
   const runRetryIdRef = useRef<{ runId: string; id: string } | null>(null);
   const recoveryKeyRef = useRef('');
   const historyLoadedForRef = useRef('');
+  const measurement = useRef(new SiteFinderMeasurement());
   const [runPollFailures, setRunPollFailures] = useState(0);
   const [runPollingPaused, setRunPollingPaused] = useState(false);
+  const connectionMeasurementRef = useRef({ hasRun: Boolean(run), failures: runPollFailures });
+  connectionMeasurementRef.current = { hasRun: Boolean(run), failures: runPollFailures };
   const dark = theme !== 'light';
 
   const loadRun = useCallback(async (id: string): Promise<boolean> => {
@@ -120,6 +125,7 @@ export const SiteFinderPage: React.FC = () => {
       const response = await apiClient.get(`/api/v1/site-finder/runs/${encodeURIComponent(id)}`);
       const value = response.data.data as SiteRun;
       if (navigationRef.current.runId !== id) return true;
+      measurement.current.run(value);
       setRun(value); setPageError('');
       if (activeRunRef.current !== value.id) {
         activeRunRef.current=value.id;
@@ -129,6 +135,9 @@ export const SiteFinderPage: React.FC = () => {
       return true;
     } catch (error) {
       if (navigationRef.current.runId !== id) return true;
+      // One connection-failure outcome when polling pauses, not on every tick.
+      const connection = connectionMeasurementRef.current;
+      if (connection.failures >= 4 || !connection.hasRun) trackEvent('site_finder_failure', { stage: 'search_connection', category: failureCategory(error) });
       setPageError(errorMessage(error, 'Could not restore this server-side run. It may have expired or may not be available to this account.'));
       return false;
     }
@@ -149,6 +158,7 @@ export const SiteFinderPage: React.FC = () => {
     const value = response.data.data as SiteInstructionView;
     if (!isInstruction(value)) throw new Error('The instruction response was not valid.');
     if (navigationRef.current.instructionId !== id) return value;
+    measurement.current.instruction(value);
     setInstruction(value);
     setInstructionHistory(old => [value, ...old.filter(item => item.id !== value.id)].slice(0, 10));
     setInstructionError('');
@@ -172,6 +182,7 @@ export const SiteFinderPage: React.FC = () => {
   }, [loadInstructionRun, setParams]);
 
   const postInstruction = useCallback(async (request: { id: string; text: string; clarificationOf?: string }) => {
+    measurement.current.startInstruction(request.id, Boolean(request.clarificationOf));
     setInstructionBusy(true);
     setInstructionError('');
     setCanRetryNetwork(false);
@@ -185,6 +196,7 @@ export const SiteFinderPage: React.FC = () => {
       const value = response.data.data as SiteInstructionView;
       if (!isInstruction(value)) throw new Error('The instruction response was not valid.');
       if (navigationRef.current.instructionId !== request.id) return value;
+      measurement.current.instruction(value);
       retryRequestRef.current = null;
       setInstruction(value);
       setInstructionHistory(old => [value, ...old.filter(item => item.id !== value.id)].slice(0, 10));
@@ -198,6 +210,7 @@ export const SiteFinderPage: React.FC = () => {
       return value;
     } catch (error) {
       if (navigationRef.current.instructionId !== request.id) return null;
+      trackEvent('site_finder_failure', { stage: 'submission', category: failureCategory(error) });
       const status = (error as { response?: { status?: number } })?.response?.status;
       setInstructionError(actionableError(error, 'Could not submit the instruction. Your request is retained and can be retried.'));
       const safelyRetryable = status === undefined || status === 401 || status === 429 || status === 503 || (status !== undefined && status >= 500);
@@ -236,6 +249,7 @@ export const SiteFinderPage: React.FC = () => {
       } catch { /* A malformed local draft is not a server request. */ }
       void loadInstruction(instructionId).catch(error => {
         if (navigationRef.current.instructionId !== instructionId) return;
+        trackEvent('site_finder_failure', { stage: 'instruction_recovery', category: failureCategory(error) });
         if (savedRequest) { retryRequestRef.current = savedRequest; setCanRetryNetwork(true); }
         setInstructionError(actionableError(error, 'Could not restore this instruction. Its saved text remains available for a new request.'));
       });
@@ -252,6 +266,7 @@ export const SiteFinderPage: React.FC = () => {
             setInstructionText(pending.text);
             void loadInstruction(pending.id).catch(error => {
               if (navigationRef.current.instructionId !== pending.id) return;
+              trackEvent('site_finder_failure', { stage: 'instruction_recovery', category: failureCategory(error) });
               setInstructionText(pending.text || '');
               retryRequestRef.current = request;
               setCanRetryNetwork(true);
@@ -271,7 +286,10 @@ export const SiteFinderPage: React.FC = () => {
         if (navigationRef.current.instructionId !== instruction.id) return;
         const next = pollFailures + 1;
         setPollFailures(next);
-        if (next >= 5) setPollingPaused(true);
+        if (next >= 5) {
+          setPollingPaused(true);
+          trackEvent('site_finder_failure', { stage: 'instruction_connection', category: failureCategory(error) });
+        }
         setInstructionError(actionableError(error, 'Connection interrupted while checking progress. Existing results are preserved; resume checks to try again.'));
       });
     }, 1800);
@@ -300,11 +318,15 @@ export const SiteFinderPage: React.FC = () => {
     void postInstruction({ id: crypto.randomUUID(), text, ...(clarificationOf ? { clarificationOf } : {}) });
   };
   const retrySameInstruction = () => {
-    if (retryRequestRef.current) void postInstruction(retryRequestRef.current);
+    if (retryRequestRef.current) {
+      trackEvent('site_finder_retry', { kind: 'same_instruction' });
+      void postInstruction(retryRequestRef.current);
+    }
   };
   const retryInstructionAsNew = () => {
     const text = instructionText.trim() || instruction?.text || '';
     if (!text) return;
+    trackEvent('site_finder_retry', { kind: 'new_instruction' });
     setInstructionText(text);
     const parent = instruction?.clarificationOf ?? clarificationOf;
     void postInstruction({ id: crypto.randomUUID(), text, ...(parent ? { clarificationOf: parent } : {}) });
@@ -314,9 +336,13 @@ export const SiteFinderPage: React.FC = () => {
     navigationRef.current = { instructionId: id, runId: null };
     setRun(null); setInstruction(null); setSelectedKey('');
     setParams(current => { current.set('instruction', id); current.delete('run'); return current; });
-    void loadInstruction(id).catch(error => setInstructionError(actionableError(error, 'Could not restore this instruction.')));
+    void loadInstruction(id).catch(error => {
+      trackEvent('site_finder_failure', { stage: 'instruction_recovery', category: failureCategory(error) });
+      setInstructionError(actionableError(error, 'Could not restore this instruction.'));
+    });
   };
   const resumePolling = () => {
+    trackEvent('site_finder_retry', { kind: 'resume_checks' });
     setPollFailures(0);
     setPollingPaused(false);
     setRunPollFailures(0);
@@ -342,6 +368,7 @@ export const SiteFinderPage: React.FC = () => {
   };
   const retryRun = async () => {
     if (!run) return;
+    trackEvent('site_finder_retry', { kind: 'sources' });
     setRunBusy(true); setPageError('');
     const sourceRunId = run.id;
     try {
@@ -351,20 +378,31 @@ export const SiteFinderPage: React.FC = () => {
       const created = response.data.data as SiteRun;
       runRetryIdRef.current = null;
       if (navigationRef.current.runId !== sourceRunId) return;
+      measurement.current.startRun(created.id);
       selectRun(created.id);
       setHistory(old => [created, ...old.filter(item => item.id !== created.id)].slice(0, 10));
-    } catch (error) { setPageError(errorMessage(error, 'Retry could not be started.')); }
+    } catch (error) {
+      trackEvent('site_finder_failure', { stage: 'source_retry', category: failureCategory(error) });
+      setPageError(errorMessage(error, 'Retry could not be started.'));
+    }
     finally { setRunBusy(false); }
+  };
+  const openReview = (parcel: SiteParcel) => {
+    if (selectedKey !== parcel.key) trackEvent('site_finder_evidence_opened');
+    setSelectedKey(parcel.key);
   };
   const requestReview = async (parcel: SiteParcel) => {
     if (!run) return;
-    setSelectedKey(parcel.key); setReviewBusy(true);
+    openReview(parcel); setReviewBusy(true);
     try {
       const response = await apiClient.post(`/api/v1/site-finder/runs/${encodeURIComponent(run.id)}/parcels/${encodeURIComponent(parcel.key)}/review`);
       const review = response.data.data as SiteReview;
       setRun(current => current ? { ...current, results: current.results.map(item => item.key === parcel.key ? { ...item, review } : item) } : current);
       await loadRun(run.id);
-    } catch (error) { setPageError(errorMessage(error, 'Parcel review could not be refreshed.')); }
+    } catch (error) {
+      trackEvent('site_finder_failure', { stage: 'evidence_refresh', category: failureCategory(error) });
+      setPageError(errorMessage(error, 'Parcel review could not be refreshed.'));
+    }
     finally { setReviewBusy(false); }
   };
 
@@ -463,7 +501,7 @@ export const SiteFinderPage: React.FC = () => {
           <div className="sf-result-toolbar"><div className="sf-tabs"><button className={tab === 'qualified' ? 'active' : ''} onClick={() => { setTab('qualified'); setPage(0); }}>BY-RIGHT / CONDITIONAL <em>{qualifiedCount}</em></button><button className={tab === 'leads' ? 'active' : ''} onClick={() => { setTab('leads'); setPage(0); }}>UNVERIFIED LEADS <em>{unverifiedCount}</em></button><button className={tab === 'prohibited' ? 'active' : ''} onClick={() => { setTab('prohibited'); setPage(0); }}>PROHIBITED <em>{prohibitedCount}</em></button><button className={tab === 'not-requested' ? 'active' : ''} onClick={() => { setTab('not-requested'); setPage(0); }}>USE NOT REQUESTED <em>{notRequestedCount}</em></button></div><input className="sf-filter" value={filterText} onChange={e => { setFilterText(e.target.value); setPage(0); }} placeholder="Filter shown parcels…" /></div>
           {visible.length ? <><div className="sf-table-wrap"><table className="sf-table"><thead><tr><th><button onClick={() => toggleSort('county')}>COUNTY {sortKey === 'county' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}</button></th><th><button onClick={() => toggleSort('address')}>PARCEL / ADDRESS {sortKey === 'address' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}</button></th><th><button onClick={() => toggleSort('acres')}>AREA {sortKey === 'acres' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}</button></th><th><button onClick={() => toggleSort('currentPropertyType')}>CURRENT TYPE</button></th><th><button onClick={() => toggleSort('district')}>DISTRICT / JURISDICTION</button></th><th>USE SCREEN</th></tr></thead><tbody>{visible.map(parcel => {
             const status = parcelStatus(parcel); const statusColor = statusColors[status] ?? '#6B7A8D';
-            return <tr key={parcel.key} className={`parcel-row ${selectedKey === parcel.key ? 'is-selected' : ''}`} onClick={() => { setSelectedKey(parcel.key); }} onDoubleClick={() => void requestReview(parcel)} onKeyDown={event => { if (event.key === 'Enter') setSelectedKey(parcel.key); }} tabIndex={0}>
+            return <tr key={parcel.key} className={`parcel-row ${selectedKey === parcel.key ? 'is-selected' : ''}`} onClick={() => openReview(parcel)} onDoubleClick={() => void requestReview(parcel)} onKeyDown={event => { if (event.key === 'Enter') openReview(parcel); }} tabIndex={0}>
               <td>{parcel.county}</td><td><span className="parcel-address">{parcel.address || 'Address not reported'}</span><span className="subcell">{parcel.parcelId}</span></td><td>{parcel.acres.toLocaleString(undefined, { maximumFractionDigits: 3 })} ac<span className="subcell">{parcel.areaSqft.toLocaleString()} sqft</span></td><td>{parcel.currentPropertyType || 'Catalog classification unknown'}<span className="subcell">{parcel.currentLandUse || 'Assessor land use not reported'}</span></td><td>{parcel.district || 'Unknown'}<span className="subcell">{parcel.jurisdiction || 'Jurisdiction unverified'}</span></td><td><span className="sf-badge" style={{ color: statusColor }}>{status.replace('-', ' ').toUpperCase()}</span><button className="sf-open-review" onClick={event => { event.stopPropagation(); void requestReview(parcel); }}>REVIEW</button></td>
             </tr>;
           })}</tbody></table></div><div className="sf-table-footer"><span>{shown.length} parcel{shown.length === 1 ? '' : 's'} · preliminary screen, not a legal determination</span><div className="sf-pager"><button disabled={page === 0} onClick={() => setPage(value => Math.max(0, value - 1))}>PREV</button><span>{page + 1} / {Math.max(1, Math.ceil(shown.length / pageSize))}</span><button disabled={(page + 1) * pageSize >= shown.length} onClick={() => setPage(value => value + 1)}>NEXT</button></div></div></> : <div className="sf-empty"><div className="sf-empty-mark">∅</div><strong>{run.results.length ? 'No parcels in this screen' : 'No matched parcels returned'}</strong><p>{run.results.length ? 'Try another evidence tab, clear the local filter, or widen the criteria and run another screen.' : 'Source coverage is shown above. A zero-result screen is not evidence that no parcels exist in the geography.'}</p></div>}

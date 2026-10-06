@@ -19,3 +19,4 @@
 - [I2 chat firewall design](i2-chat-firewall.md) — skill_chat_messages.contains_restricted flags CoStar-derived assistant turns; replay gated, display unrestricted; fail-open on lineage check error
 - [South Florida screening](site-finder-source-review.md) — current-use and legal-use evidence differ; spatial hits may be shared edges; discovery envelopes do not establish zoning.
 - [Nix browser verification](nix-browser-verification.md) — downloaded browsers may lack shared-library discovery; use a verified wrapped system Chromium without bypassing application auth.
+- [Site Finder measurement](site-finder-measurement.md) — sanitize custom-event URL/referrer metadata as well as properties; restored history is not a new search outcome.
