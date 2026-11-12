@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import { pool } from '../../database';
 import { TrafficDataSourcesService } from '../../services/traffic-data-sources.service';
-import { TrafficGrowthIndexService, TrafficGrowthResult } from '../../services/traffic-growth-index.service';
+import { TrafficGrowthIndexService, TrafficGrowthResult, TRAFFIC_GROWTH_RESPONSE_META } from '../../services/traffic-growth-index.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -171,13 +171,7 @@ router.get('/growth-index/:propertyId', async (req: Request, res: Response) => {
       });
     }
 
-    res.json({
-      success: true,
-      metric: 'C_TRAFFIC_GROWTH_INDEX',
-      metricName: 'Traffic Growth Index (TGI)',
-      formula: '(Google Realtime ADT - DOT Historical Avg ADT) / DOT Historical Avg ADT × 100',
-      data: result,
-    });
+    res.json({ success: true, ...TRAFFIC_GROWTH_RESPONSE_META, data: result });
   } catch (error: any) {
     logger.error('[TrafficData] Growth index compute failed', { error: error.message });
     res.status(500).json({ error: 'Failed to compute Traffic Growth Index', message: error.message });
@@ -196,13 +190,7 @@ router.post('/growth-index/:propertyId/store', async (req: Request, res: Respons
       });
     }
 
-    res.json({
-      success: true,
-      metric: 'C_TRAFFIC_GROWTH_INDEX',
-      metricName: 'Traffic Growth Index (TGI)',
-      stored: true,
-      data: result,
-    });
+    res.json({ success: true, ...TRAFFIC_GROWTH_RESPONSE_META, stored: result.stored, data: result });
   } catch (error: any) {
     logger.error('[TrafficData] Growth index store failed', { error: error.message });
     res.status(500).json({ error: 'Failed to store Traffic Growth Index', message: error.message });
@@ -230,8 +218,7 @@ router.post('/growth-index/batch', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      metric: 'C_TRAFFIC_GROWTH_INDEX',
-      metricName: 'Traffic Growth Index (TGI)',
+      ...TRAFFIC_GROWTH_RESPONSE_META,
       computed: results.length,
       failed: errors.length,
       requested: propertyIds.length,

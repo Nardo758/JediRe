@@ -420,7 +420,7 @@ import { blsQcewMonthlyCron } from './inngest/functions/bls-qcew-monthly';
 import { censusPermitsMonthlyCron } from './inngest/functions/census-permits-monthly';
 import { concessionExtractionCron } from './inngest/functions/concession-extraction-cron';
 import { assetClassSpreadBacktestCron } from './inngest/functions/asset-class-spread-backtest';
-import { googleRealtimeRefreshCron } from './inngest/functions/google-realtime-refresh-cron';
+import { googleRealtimeRefreshCron, trafficSpeedSampleCron } from './inngest/functions/google-realtime-refresh-cron';
 import { spyfuMissingDataCron } from './inngest/functions/spyfu-missing-data-cron';
 import { m35ConnectorsNightlyCron } from './inngest/functions/m35-connectors-nightly';
 import { verasetNightlyIngest } from './inngest/functions/veraset-nightly';
@@ -501,7 +501,7 @@ app.use(
       assetClassSpreadBacktestCron,
       // Lower #7: Daily Google realtime traffic factor refresh (07:00 UTC)
       // Keeps google_realtime_factor current for all properties with traffic context.
-      googleRealtimeRefreshCron,
+      googleRealtimeRefreshCron, trafficSpeedSampleCron, // DL-192: hourly speed sampling, off unless TRAFFIC_SPEED_SAMPLING_ENABLED=true
       // Lower #8: Weekly SpyFu missing-data health check (Mon 08:00 UTC)
       // Surfaces domains with stale, missing, or errored SpyFu data.
       spyfuMissingDataCron,

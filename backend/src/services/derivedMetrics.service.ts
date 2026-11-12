@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { logger } from '../utils/logger';
+import { TRAFFIC_METRIC_IDS } from '../config/traffic-growth.config';
 
 interface TSPoint {
   date: string;
@@ -30,7 +31,7 @@ export class DerivedMetricsService {
       { name: 'C_DIGITAL_PHYSICAL_GAP', fn: () => this.computeDigitalPhysicalGap() },
       { name: 'C_TPI', fn: () => this.computeTrafficPositionIndex() },
       { name: 'C_TVS', fn: () => this.computeTrafficVelocityScore() },
-      { name: 'C_TRAFFIC_GROWTH_INDEX', fn: () => this.computeTrafficGrowthIndex() },
+      { name: TRAFFIC_METRIC_IDS.DEMAND_COMPOSITE, fn: () => this.computeDemandGrowthComposite() },
       { name: 'S_MONTHS_OF_SUPPLY', fn: () => this.computeMonthsOfSupply() },
       { name: 'M_SUBMARKET_RANK', fn: () => this.computeSubmarketRank() },
       { name: 'R_SUPPLY_RISK', fn: () => this.computeSupplyRisk() },
@@ -321,27 +322,33 @@ export class DerivedMetricsService {
     return total;
   }
 
-  async computeTrafficGrowthIndex(): Promise<number> {
+  /**
+   * 0–100 normalised search-volume YoY per geography, falling back to AADT YoY
+   * where there is no search series (DL-192: formerly computeTrafficGrowthIndex,
+   * written as C_TRAFFIC_GROWTH_INDEX).
+   *
+   * The same series is mirrored to the legacy ID so presets and the Strategy
+   * Builder keep resolving until they are repointed. This method is the only
+   * writer of either ID.
+   */
+  async computeDemandGrowthComposite(): Promise<number> {
     const searchYoyGeos = await this.getSeriesAllGeos('D_SEARCH_VOL_YOY');
     const aadtYoyGeos = await this.getSeriesAllGeos('T_AADT_YOY');
     let total = 0;
 
-    for (const [key, series] of searchYoyGeos) {
+    const store = async (key: string, series: TSPoint[]): Promise<void> => {
       const [geoType, geoId] = key.split('|');
       const normalized = this.normalize0to100(series);
-      if (normalized.length > 0) {
-        total += await this.storeSeries('C_TRAFFIC_GROWTH_INDEX', geoType, geoId, 'derived', normalized);
-      }
-    }
+      if (normalized.length === 0) return;
+      total += await this.storeSeries(TRAFFIC_METRIC_IDS.DEMAND_COMPOSITE, geoType, geoId, 'derived', normalized);
+      await this.storeSeries(TRAFFIC_METRIC_IDS.LEGACY_GROWTH_INDEX, geoType, geoId, 'derived', normalized);
+    };
 
+    for (const [key, series] of searchYoyGeos) {
+      await store(key, series);
+    }
     for (const [key, series] of aadtYoyGeos) {
-      if (!searchYoyGeos.has(key)) {
-        const [geoType, geoId] = key.split('|');
-        const normalized = this.normalize0to100(series);
-        if (normalized.length > 0) {
-          total += await this.storeSeries('C_TRAFFIC_GROWTH_INDEX', geoType, geoId, 'derived', normalized);
-        }
-      }
+      if (!searchYoyGeos.has(key)) await store(key, series);
     }
     return total;
   }
