@@ -19,7 +19,8 @@ jobs:
           node-version: '20'
 
       - name: Install backend dependencies
-        run: cd backend && npm ci
+        # backend/.gitignore ignores package-lock.json, so npm ci has no lockfile.
+        run: cd backend && npm install
 
       - name: TypeScript compile guard
         run: cd backend && npx tsc --noEmit --skipLibCheck
