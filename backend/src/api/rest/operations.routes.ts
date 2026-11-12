@@ -15,7 +15,8 @@ import {
   getOperationsSummary,
   feedOperationsToLearning,
 } from '../../services/revenue-management.service';
-import { query, getClient } from '../../database/connection';
+import { query, getPool, getClient } from '../../database/connection';
+import { bindDealParam } from '../../middleware/deal-access';
 import { logger } from '../../utils/logger';
 import { CommentaryAgent } from '../../agents/commentary.agent';
 import type { StrategySignalInputs } from '../../services/module-wiring/strategy-arbitrage-engine';
@@ -29,6 +30,8 @@ import {
 } from '../../services/property-entity';
 
 const router = Router();
+const pool = getPool();
+bindDealParam(router);
 
 // ─── Operations Summary ───────────────────────────────────────────────
 

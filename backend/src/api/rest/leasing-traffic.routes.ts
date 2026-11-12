@@ -23,6 +23,8 @@ import { TrafficDataSourcesService } from '../../services/traffic-data-sources.s
 import { trendPatternDetector } from '../../services/trend-pattern-detector';
 import { visibilityScoringService } from '../../services/visibility-scoring.service';
 import { logger } from '../../utils/logger';
+import { requireSession, AuthenticatedRequest } from '../../middleware/auth';
+import { bindDealParam, requireDealBodyAccess } from '../../middleware/deal-access';
 import { CompTrafficService } from '../../services/comp-traffic.service';
 import {
   dealPropertyLinkService,
@@ -33,6 +35,7 @@ import {
 } from '../../services/property-entity';
 
 const router = Router();
+bindDealParam(router);
 const compTrafficService = new CompTrafficService(pool);
 const trafficService = new MultifamilyTrafficService(pool);
 const digitalTrafficService = new DigitalTrafficService(pool);
@@ -427,7 +430,9 @@ const weeklyUpload = multer({
     }
   });
 
-  router.post('/weekly-report/upload', weeklyUpload.single('file') as any, async (req: Request, res: Response) => {
+  router.post('/weekly-report/upload', requireSession, weeklyUpload.single('file') as any, (req, res, next) => {
+    void requireDealBodyAccess(req as AuthenticatedRequest, res, next);
+  }, async (req: Request, res: Response) => {
     try {
       const file = req.file;
       const dealId = req.body.dealId;

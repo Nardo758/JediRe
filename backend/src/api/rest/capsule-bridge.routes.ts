@@ -393,7 +393,15 @@ export function createDealCapsuleBridge(pool: Pool): Router {
     try {
       const { dealId } = req.params;
       const { seedData } = req.body;
-      const userId = (req as any).user?.userId || 'demo-user';
+      const userId = (req as any).user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      const { assertDealOrgAccess } = await import('../../services/deal-scoping.service');
+      const allowed = await assertDealOrgAccess(dealId, userId, pool).catch(() => null);
+      if (!allowed) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
 
       // 1. Create/modify capsule
       const capsule = await findOrCreateCapsule(dealId, userId);

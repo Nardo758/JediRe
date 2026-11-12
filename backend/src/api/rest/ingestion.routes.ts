@@ -21,9 +21,12 @@ router.use(requireAuth);
 
 const requireAdmin = async (req: Request, res: Response, next: Function) => {
   try {
-    const userId = (req as any).user?.userId;
-    if (!userId) {
+    const user = (req as any).user;
+    if (!user?.userId) {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+    if (user.role !== 'admin' && user.role !== 'service') {
+      return res.status(403).json({ success: false, error: 'Admin or service role required' });
     }
     next();
   } catch (error) {

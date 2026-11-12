@@ -1,11 +1,32 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import { requireSession, AuthenticatedRequest } from '../../middleware/auth';
+import { resolveOrgForUser } from '../../services/ai/orgCreditService';
+import { seriesVisibilitySql } from '../../services/metric-series-access';
 
 const router = Router();
 
+// Ignore the public-prefix bypass. Anonymous callers never read this store.
+router.use(requireSession);
+router.use(async (req: AuthenticatedRequest, res, next) => {
+  try {
+    res.locals.seriesOrgId = await resolveOrgForUser(req.user!.userId);
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+function orgParam(res: Response): string | null {
+  const orgId = res.locals.seriesOrgId;
+  return typeof orgId === 'string' && orgId.length > 0 ? orgId : null;
+}
+
 router.get('/metrics', async (_req: Request, res: Response) => {
   try {
+    const orgId = orgParam(res);
+    const visible = seriesVisibilitySql('$1');
     const result = await query(`
       SELECT
         metric_id,
@@ -21,9 +42,10 @@ router.get('/metrics', async (_req: Request, res: Response) => {
         MAX(value) as max_value,
         AVG(value) as avg_value
       FROM metric_time_series
+      WHERE ${visible}
       GROUP BY metric_id, geography_type, geography_id, geography_name, source, period_type
       ORDER BY metric_id, geography_id
-    `);
+    `, [orgId]);
     res.json({ success: true, metrics: result.rows });
   } catch (error) {
     logger.error('Time series metrics list error:', error);
@@ -52,9 +74,10 @@ router.get('/data', async (req: Request, res: Response) => {
         confidence
       FROM metric_time_series
       WHERE metric_id = $1
+        AND ${seriesVisibilitySql('$2')}
     `;
-    const params: any[] = [metric_id];
-    let paramIdx = 2;
+    const params: any[] = [metric_id, orgParam(res)];
+    let paramIdx = 3;
 
     if (geography_id) {
       sql += ` AND geography_id = $${paramIdx}`;
@@ -90,6 +113,8 @@ router.get('/data', async (req: Request, res: Response) => {
 
 router.get('/summary', async (_req: Request, res: Response) => {
   try {
+    const orgId = orgParam(res);
+    const visible = seriesVisibilitySql('$1');
     const result = await query(`
       SELECT
         source,
@@ -100,16 +125,18 @@ router.get('/summary', async (_req: Request, res: Response) => {
         MAX(period_date)::text as latest,
         MAX(created_at)::text as last_ingested
       FROM metric_time_series
+      WHERE ${visible}
       GROUP BY source
       ORDER BY source
-    `);
+    `, [orgId]);
     const totals = await query(`
       SELECT
         COUNT(DISTINCT metric_id) as total_metrics,
         COUNT(DISTINCT geography_id) as total_geos,
         COUNT(*) as total_points
       FROM metric_time_series
-    `);
+      WHERE ${visible}
+    `, [orgId]);
     res.json({ success: true, sources: result.rows, totals: totals.rows[0] });
   } catch (error) {
     logger.error('Time series summary error:', error);
@@ -127,9 +154,10 @@ router.get('/geographies', async (_req: Request, res: Response) => {
         COUNT(DISTINCT metric_id) as metric_count,
         COUNT(*) as data_points
       FROM metric_time_series
+      WHERE ${seriesVisibilitySql('$1')}
       GROUP BY geography_type, geography_id, geography_name
       ORDER BY geography_type, geography_name
-    `);
+    `, [orgParam(res)]);
     res.json({ success: true, geographies: result.rows });
   } catch (error) {
     logger.error('Time series geographies error:', error);

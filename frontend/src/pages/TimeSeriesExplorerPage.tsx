@@ -116,13 +116,18 @@ export function TimeSeriesExplorerPage() {
     loadData();
   }, []);
 
+  const authHeaders = (): HeadersInit => {
+    const token = localStorage.getItem('auth_token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
   const loadData = async () => {
     setLoading(true);
     setLoadError(null);
     try {
       const [metricsResp, summaryResp] = await Promise.all([
-        fetch('/api/v1/time-series/metrics'),
-        fetch('/api/v1/time-series/summary'),
+        fetch('/api/v1/time-series/metrics', { headers: authHeaders() }),
+        fetch('/api/v1/time-series/summary', { headers: authHeaders() }),
       ]);
       if (!metricsResp.ok) throw new Error(`Metrics API returned ${metricsResp.status}`);
       if (!summaryResp.ok) throw new Error(`Summary API returned ${summaryResp.status}`);
@@ -149,7 +154,7 @@ export function TimeSeriesExplorerPage() {
     setDetailData([]);
     try {
       const params = new URLSearchParams({ metric_id: m.metric_id, geography_id: m.geography_id });
-      const resp = await fetch(`/api/v1/time-series/data?${params}`);
+      const resp = await fetch(`/api/v1/time-series/data?${params}`, { headers: authHeaders() });
       if (!resp.ok) throw new Error(`Data API returned ${resp.status}`);
       const res = await resp.json();
       if (!res.success) throw new Error(res.error || 'Data request failed');

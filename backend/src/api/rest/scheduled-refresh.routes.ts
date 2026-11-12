@@ -8,15 +8,24 @@
 import { Router, Request, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { getScheduledRefreshService } from '../../services/neural-network/scheduled-refresh';
+import { requireSession } from '../../middleware/auth';
+import { requirePaidJobAdmin, paidJobLimiter } from '../../middleware/paid-job';
+import { AuthenticatedRequest } from '../../middleware/auth';
 
 const router = Router();
+
+function gatePlatformJob(req: Request, res: Response, next: () => void): void {
+  void requireSession(req as AuthenticatedRequest, res, () => {
+    requirePaidJobAdmin(req as AuthenticatedRequest, res, () => paidJobLimiter(req, res, next));
+  });
+}
 
 /**
  * POST /run
  * Trigger a scheduled refresh run
  * Can be called by cron or manually
  */
-router.post('/run', async (_req: Request, res: Response) => {
+router.post('/run', gatePlatformJob, async (_req: Request, res: Response) => {
   try {
     const pool = getPool();
     const refreshService = getScheduledRefreshService(pool);
@@ -83,7 +92,7 @@ router.get('/stale', async (req: Request, res: Response) => {
  * POST /refresh/:nodeType
  * Manually refresh all nodes of a specific type
  */
-router.post('/refresh/:nodeType', async (req: Request, res: Response) => {
+router.post('/refresh/:nodeType', gatePlatformJob, async (req: Request, res: Response) => {
   try {
     const { nodeType } = req.params;
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);

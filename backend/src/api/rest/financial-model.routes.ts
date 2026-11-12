@@ -5,7 +5,7 @@ import { getPool } from '../../database/connection';
 import { buildAssumptionsFromStore } from '../../services/assumption-store-builder';
 import { dealVersionsService, type SaveTrigger, type DealVersionRow } from '../../services/proforma/deal-versions.service';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
-import { requireDealAccess } from '../../middleware/deal-access';
+import { requireDealAccess, requireDealBodyAccess, bindDealParam } from '../../middleware/deal-access';
 import type { ProFormaAssumptions } from '../../services/financial-model-engine.service';
 import { parseSummaryMetrics, computeAnnualDebtService } from './financial-model.snapshot-parser';
 import { getFieldSeries } from '../../services/proforma/periodic-seeder.service';
@@ -277,6 +277,7 @@ async function getAgentVersionRows(dealId: string): Promise<DealVersionRow[]> {
 }
 
 const router = Router();
+bindDealParam(router);
 
 // In-process idempotency cache.
 // Value is a live Promise while the build is running so concurrent requests
@@ -540,7 +541,7 @@ export function normalizeToEngineFormat(raw: any): ProFormaAssumptions {
 // buildAssumptionsFromStore now lives in ../../services/assumption-store-builder.
 
 
-router.post('/build', async (req: Request, res: Response) => {
+router.post('/build', requireAuth, (req, res, next) => { void requireDealBodyAccess(req as AuthenticatedRequest, res, next); }, async (req: Request, res: Response) => {
   try {
     // B1 (F-P1): client-supplied assumptions body retired. Server-fetch is now the
     // ONLY build path. If a caller supplies `assumptions`, reject with a named error

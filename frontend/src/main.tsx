@@ -10,7 +10,9 @@ async function bootstrap() {
   // from a previous backend restart) never silently breaks the session.
   // /api/inngest and /api/v1/auth/dev-login are excluded from the global
   // rate limiter so this call does not burn the user-facing budget.
-  if (import.meta.env.DEV) {
+  // Local opt-in only. The server also refuses the route unless ALLOW_DEV_LOGIN=1
+  // and the process is not a deployed/hosted build.
+  if (import.meta.env.DEV && import.meta.env.VITE_ALLOW_DEV_LOGIN === '1') {
     // Skip auto-login if the user explicitly clicked Logout
     const isExplicitLogout = new URLSearchParams(window.location.search).get('logged_out') === '1';
     if (!isExplicitLogout) {

@@ -155,6 +155,10 @@ router.post('/:agentId/run', requireAuth, async (req: AuthenticatedRequest, res:
       if (!entity_id || typeof entity_id !== 'string') {
         throw new AppError(400, 'commentary agent requires entity_id');
       }
+      if (deal_id) {
+        if (!UUID_RE.test(deal_id)) throw new AppError(400, 'deal_id must be a valid UUID');
+        await assertDealAccess(deal_id, req.user!.userId);
+      }
     } else {
       if (!deal_id || !UUID_RE.test(deal_id)) {
         throw new AppError(400, 'deal_id must be a valid UUID');

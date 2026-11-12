@@ -6,16 +6,20 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { authMiddleware, AuthenticatedRequest } from '../../middleware/auth';
+import { bindDealParam } from '../../middleware/deal-access';
 import { verifyAccessToken, extractTokenFromHeader } from '../../auth/jwt';
 import { documentsFilesService } from '../../services/documentsFiles.service';
 import { triggerExtractionInBackground } from '../../services/document-extraction/auto-extract-on-upload';
-import { query as dbQuery } from '../../database/connection';
+import { getPool, query as dbQuery } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs/promises';
 
 const router = Router();
+const pool = getPool();
+// Every /deals/:dealId/files route (upload, list, download, delete, extract).
+bindDealParam(router);
 
 // ============================================================================
 // MULTER CONFIGURATION

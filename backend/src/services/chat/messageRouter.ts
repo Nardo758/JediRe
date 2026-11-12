@@ -23,7 +23,9 @@ import { dispatchAction } from '../notifications/openclaw-actions';
 import { sendTelegramText, telegramChannel } from '../notifications/channels/telegram';
 import { parseTwilioActionCommand } from '../notifications/channels/twilio';
 import { verifyTelegramSecret, verifyTwilioSignature } from '../notifications/webhook-verification';
-import { requireAuth, requireSurface } from '../../middleware/auth';
+import { requireAuth, requireSurface, AuthenticatedRequest } from '../../middleware/auth';
+import { assertDealOrgAccess } from '../deal-scoping.service';
+import { getPool } from '../../database/connection';
 
 // ============================================================================
 // Message Router
@@ -312,11 +314,19 @@ export class MessageRouter {
 
   private async handleAPI(req: Request, res: Response): Promise<void> {
     try {
-      const { userId, text, dealId, msaId, sessionId, platform = 'web' } = req.body;
+      const { text, dealId, msaId, sessionId, platform = 'web' } = req.body;
+      const userId = (req as AuthenticatedRequest).user?.userId;
 
       if (!userId || !text) {
         res.status(400).json({ error: 'userId and text are required' });
         return;
+      }
+      if (dealId) {
+        const allowed = await assertDealOrgAccess(String(dealId), userId, getPool()).catch(() => null);
+        if (!allowed) {
+          res.status(404).json({ error: 'Deal not found' });
+          return;
+        }
       }
 
       // Check credits
@@ -362,11 +372,19 @@ export class MessageRouter {
 
   private async handleMobile(req: Request, res: Response): Promise<void> {
     try {
-      const { userId, text, dealId, msaId, deviceId } = req.body;
+      const { text, dealId, msaId, deviceId } = req.body;
+      const userId = (req as AuthenticatedRequest).user?.userId;
 
       if (!userId || !text) {
         res.status(400).json({ error: 'userId and text are required' });
         return;
+      }
+      if (dealId) {
+        const allowed = await assertDealOrgAccess(String(dealId), userId, getPool()).catch(() => null);
+        if (!allowed) {
+          res.status(404).json({ error: 'Deal not found' });
+          return;
+        }
       }
 
       const orchestratorRequest: OrchestratorRequest = {

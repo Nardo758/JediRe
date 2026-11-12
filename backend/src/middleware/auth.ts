@@ -51,22 +51,15 @@ function extractApiKey(req: Request): string | null {
 }
 
 /**
- * Require authentication
- * Verifies JWT token and sets req.user. No per-request DB client acquisition.
+ * Require a real session and ignore the public-prefix bypass flag.
+ * Use this on stores that must stay authenticated even if a prefix is
+ * allowlisted (metric store, capsule mutations, paid job triggers).
  */
-export async function requireAuth(
+export async function requireSession(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  // INVARIANT: any middleware that gates /api/v1 MUST check res.locals.bypassAuth first.
-  // The public-route allowlist floor (index.replit.ts, conditionalApiV1Auth) sets this flag
-  // for allowlisted paths (/auth, /ticker, /oppgrid, /webhooks/notarize, /clawdbot, token
-  // shares, etc). Skipping this check silently 401s public routes. See AUTH_STEP4_DEBT.
-  if (res.locals.bypassAuth === true) {
-    return next();
-  }
-
   // Allow API key auth on any route that requires auth
   const apiKey = extractApiKey(req);
   if (apiKey) {
@@ -99,6 +92,26 @@ export async function requireAuth(
 
   req.user = payload;
   next();
+}
+
+/**
+ * Require authentication.
+ * Verifies JWT token and sets req.user. No per-request DB client acquisition.
+ *
+ * INVARIANT: any middleware that gates /api/v1 MUST check res.locals.bypassAuth first.
+ * The public-route allowlist floor sets this flag for allowlisted paths. Skipping
+ * this check silently 401s public routes. Routes that must stay closed use
+ * requireSession instead, which does not honor the flag.
+ */
+export async function requireAuth(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  if (res.locals.bypassAuth === true) {
+    return next();
+  }
+  return requireSession(req, res, next);
 }
 
 /**
