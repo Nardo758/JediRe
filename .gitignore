@@ -2,6 +2,8 @@ node_modules/
 .env
 .env.local
 .env.production
+# Keep local environment files out of future commits at every directory level.
+.env*
 dist/
 *.log
 credentials/
