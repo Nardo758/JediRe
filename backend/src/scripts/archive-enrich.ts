@@ -5,7 +5,7 @@
  *  3. Tavily search for property details (year built, units, stories, class)
  *
  * Uses Tavily API for the web search step — handles JS rendering,
- * returns clean structured text from apartments.com and other listing sites.
+ * returns clean structured text from permitted listing sites (not Apartments.com).
  *
  * Usage:
  *   npx ts-node --transpile-only src/scripts/archive-enrich.ts
@@ -226,34 +226,11 @@ async function searchTavily(
       mapTextToFields(answer, result);
     }
 
-    // Find apartments.com URL from results
-    const aptUrl = searchResult.results
-      .filter((r: any) => r.url && /apartments\.com/i.test(r.url))
-      .map((r: any) => r.url);
-
-    if (aptUrl.length > 0) {
-      console.log('  [TAV] Found apartments.com: ' + aptUrl[0]);
-      // Step 3b: Extract the page content via Tavily extract
-      const extractResult = await httpsPostJson(TAVILY_EXTRACT, {
-        api_key: TAVILY_KEY,
-        urls: [aptUrl[0]],
-        include_images: false,
-      });
-
-      if (extractResult && extractResult.results && extractResult.results.length > 0) {
-        const content = extractResult.results[0].raw_content || '';
-        if (content.length > 100) {
-          console.log('  [TAV] Extracted ' + content.length + ' chars');
-          mapTextToFields(content, result);
-        }
-      }
-    }
-
     // Also check other listing sites (apartmentlist, rent, realtor)
     for (const r of searchResult.results) {
       const url = r.url || '';
-      if (!/(apartments\.com|apartmentlist\.com|realtor\.com|rent\.com|zillow\.com)/i.test(url)) continue;
-      if (url === aptUrl[0]) continue; // already processed
+      if (/apartments\.com/i.test(url)) continue;
+      if (!/(apartmentlist\.com|realtor\.com|rent\.com|zillow\.com)/i.test(url)) continue;
 
       console.log('  [TAV] Also extracting: ' + url);
       try {

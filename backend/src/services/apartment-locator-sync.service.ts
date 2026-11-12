@@ -7,6 +7,7 @@
 
 import { getPool, query as dbQuery } from '../database/connection';
 import { logger } from '../utils/logger';
+import { writeRentSnapshots } from './apartment-locator-rent-history.service';
 
 const pool = getPool();
 
@@ -299,6 +300,7 @@ export class ApartmentLocatorSyncService {
   }
   
   async syncCity(city: string, state: string): Promise<{ success: boolean; stats: any }> {
+    const snapshotDate = new Date().toISOString().slice(0, 10);
     logger.info(`Starting ${city} sync from Apartment Locator AI...`);
     
     try {
@@ -552,6 +554,10 @@ export class ApartmentLocatorSyncService {
       }
       logger.info('apartment_locator_properties synced', { alpInserted, city, state });
 
+      // Latest tables above remain unchanged; observations accumulate separately.
+      const supplySnapshots = await writeRentSnapshots(pool, supplyProps, 'supply-pipeline', city, state, snapshotDate);
+      const compSnapshots = await writeRentSnapshots(pool, rentComps, 'rent-comps', city, state, snapshotDate);
+
       // Task #353: capture today's class-level rent aggregates so the
       // MSATrendsTab can show trends over time (not just today's snapshot).
       let classSnapshotsInserted = 0;
@@ -572,6 +578,7 @@ export class ApartmentLocatorSyncService {
             AND state = $2
             AND avg_asking_rent IS NOT NULL
             AND avg_asking_rent > 0
+            AND year_built IS NOT NULL
           GROUP BY asset_class
         `, [city, state]);
 
@@ -579,13 +586,14 @@ export class ApartmentLocatorSyncService {
           await pool.query(`
             INSERT INTO apartment_class_rent_snapshots (
               city, state, asset_class, snapshot_date,
-              property_count, avg_rent, min_rent, max_rent, source
-            ) VALUES ($1, $2, $3, CURRENT_DATE, $4, $5, $6, $7, 'apartment_locator_ai')
+              property_count, avg_rent, min_rent, max_rent, source, asset_class_basis
+            ) VALUES ($1, $2, $3, CURRENT_DATE, $4, $5, $6, $7, 'apartment_locator_ai', 'year_built_proxy')
             ON CONFLICT (city, state, asset_class, snapshot_date) DO UPDATE SET
               property_count = EXCLUDED.property_count,
               avg_rent       = EXCLUDED.avg_rent,
               min_rent       = EXCLUDED.min_rent,
               max_rent       = EXCLUDED.max_rent,
+              asset_class_basis = EXCLUDED.asset_class_basis,
               updated_at     = NOW()
           `, [
             city, state, row.asset_class,
@@ -613,6 +621,8 @@ export class ApartmentLocatorSyncService {
           supply_pipeline_inserted: supplyInserted,
           apt_locator_properties_synced: alpInserted,
           class_snapshots_inserted: classSnapshotsInserted,
+          rent_snapshots_written: supplySnapshots.written + compSnapshots.written,
+          rent_snapshots_failed: supplySnapshots.failed + compSnapshots.failed,
           forecast: marketData.forecast,
         }
       };

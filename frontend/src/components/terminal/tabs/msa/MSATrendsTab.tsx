@@ -565,7 +565,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: compareMode ? 10 : 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14 }}>
-                Rent by Vintage Class
+                Rent by Vintage Proxy (year built)
               </h3>
               <button
                 onClick={() => {
@@ -738,7 +738,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
             if (chartSeries.length === 0) {
               return (
                 <div style={{ padding: 20, textAlign: 'center', fontSize: 11, color: BT.text.muted }}>
-                  No class rent data available for selected cities.
+                  No year-built proxy rent data available for selected cities.
                 </div>
               );
             }
@@ -765,9 +765,9 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
             // Single-city view (original logic)
             const CLASS_COLORS: Record<string, string> = { A: '#22c55e', B: '#3b82f6', C: '#f59e0b' };
             const CLASS_LABELS: Record<string, string> = {
-              A: 'Class A (2010+)',
-              B: 'Class B (1995–2009)',
-              C: 'Class C (pre-1995)',
+              A: 'Vintage proxy A (2010+)',
+              B: 'Vintage proxy B (1995–2009)',
+              C: 'Vintage proxy C (pre-1995)',
             };
             const trendData: ChartDataPoint[] = rentByClassHistory.map(h => {
               const iso = h.snapshot_date.slice(0, 10);
@@ -781,7 +781,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
               .filter(cls => trendData.some(d => typeof d[`class${cls}`] === 'number'))
               .map(cls => ({
                 key: `class${cls}`,
-                name: CLASS_LABELS[cls] || `Class ${cls}`,
+                name: CLASS_LABELS[cls] || `Vintage proxy ${cls}`,
                 color: CLASS_COLORS[cls] || BT.accent.blue,
                 data: [],
               }));
@@ -822,7 +822,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                       <div key={i}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                           <span style={{ fontSize: 11, fontWeight: 600, color: CLASS_COLORS[c.asset_class] || BT.text.secondary }}>
-                            {CLASS_LABELS[c.asset_class] || `Class ${c.asset_class}`}
+                            {CLASS_LABELS[c.asset_class] || `Vintage proxy ${c.asset_class}`}
                           </span>
                           <span style={{ fontSize: 11, color: BT.text.primary, fontWeight: 700 }}>
                             {c.avg_rent != null ? `$${c.avg_rent.toLocaleString()}` : '—'}
@@ -856,11 +856,11 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
             const last = RENT_VINTAGE_DATA[RENT_VINTAGE_DATA.length - 1];
             const FB_CLASS_COLORS = ['#22c55e', '#3b82f6', '#f97316', '#f59e0b', '#a78bfa'];
             const entries = [
-              { label: 'Class A+ (2015+)', value: last.aPlus, color: FB_CLASS_COLORS[0] },
-              { label: 'Class A (2010–2014)', value: last.a, color: FB_CLASS_COLORS[1] },
-              { label: 'Class B+ (2000–2009)', value: last.bPlus, color: FB_CLASS_COLORS[2] },
-              { label: 'Class B (1990–1999)', value: last.b, color: FB_CLASS_COLORS[3] },
-              { label: 'Class C (pre-1990)', value: last.c, color: FB_CLASS_COLORS[4] },
+              { label: 'Vintage proxy A+ (2015+)', value: last.aPlus, color: FB_CLASS_COLORS[0] },
+              { label: 'Vintage proxy A (2010–2014)', value: last.a, color: FB_CLASS_COLORS[1] },
+              { label: 'Vintage proxy B+ (2000–2009)', value: last.bPlus, color: FB_CLASS_COLORS[2] },
+              { label: 'Vintage proxy B (1990–1999)', value: last.b, color: FB_CLASS_COLORS[3] },
+              { label: 'Vintage proxy C (pre-1990)', value: last.c, color: FB_CLASS_COLORS[4] },
             ];
             const maxRent = Math.max(...entries.map(e => e.value), 1);
             return (
@@ -1020,7 +1020,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
         <div style={{ flex: 1, ...terminalStyles.card, padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14 }}>
-              Rent by Class
+              Rent by Class (year-built proxy)
             </h3>
             {!rentByClassLoading && rentByClass.length > 0 ? (
               <span style={{
@@ -1038,7 +1038,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
           </div>
           {rentByClassLoading ? (
             <div style={{ fontSize: 11, color: BT.text.muted, textAlign: 'center', padding: 20 }}>
-              Loading rent by class...
+              Loading year-built proxy rents...
             </div>
           ) : rentByClass.length > 0 ? (
             <>
@@ -1064,7 +1064,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                           <span style={{
                             width: 24, fontSize: 11, fontWeight: 700,
                             color, textAlign: 'right', flexShrink: 0,
-                          }}>Class {tier.asset_class}</span>
+                          }}>Vintage proxy {tier.asset_class}</span>
                           <div style={{
                             flex: 1, height: 14, background: BT.bg.elevated,
                             position: 'relative', borderRadius: 0,
@@ -1113,7 +1113,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
           ) : (
             <div style={{ padding: 24, textAlign: 'center', borderLeft: `2px solid ${BT.border.subtle}` }}>
               <div style={{ fontSize: 12, color: BT.text.muted, marginBottom: 6 }}>
-                No class breakdown available
+                No year-built proxy breakdown available
               </div>
               <div style={{ fontSize: 10, color: BT.text.muted }}>
                 Run the Atlanta apartment sync to populate property data.

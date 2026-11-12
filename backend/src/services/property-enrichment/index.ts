@@ -68,7 +68,7 @@ export {
 } from './rent-data/provider-registry';
 
 export { BaseRentDataProvider } from './rent-data/base-provider';
-export { ApartmentsComProvider } from './rent-data/apartments-com-provider';
+export { ApartmentLocatorRentProvider } from './rent-data/apartment-locator-provider';
 
 // Discovery
 export {

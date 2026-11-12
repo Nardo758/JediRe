@@ -553,6 +553,7 @@ router.get('/analytics/rent-by-class', requireAuth, async (req: Request, res: Re
         SELECT
           snapshot_date,
           asset_class,
+          asset_class_basis,
           property_count,
           avg_rent,
           min_rent,
@@ -575,6 +576,7 @@ router.get('/analytics/rent-by-class', requireAuth, async (req: Request, res: Re
         }
         byDate.get(dateStr).classes.push({
           asset_class: r.asset_class,
+          asset_class_basis: r.asset_class_basis,
           property_count: r.property_count,
           avg_rent: r.avg_rent != null ? Number(r.avg_rent) : null,
           min_rent: r.min_rent != null ? Number(r.min_rent) : null,
@@ -608,12 +610,14 @@ router.get('/analytics/rent-by-class', requireAuth, async (req: Request, res: Re
         AND state = $2
         AND avg_asking_rent IS NOT NULL
         AND avg_asking_rent > 0
+        AND year_built IS NOT NULL
       GROUP BY asset_class
       ORDER BY asset_class
     `, [city, state]);
 
     const classes = result.rows.map((r: any) => ({
       asset_class: r.asset_class,
+      asset_class_basis: 'year_built_proxy',
       property_count: r.property_count,
       avg_rent: r.avg_rent != null ? Number(r.avg_rent) : null,
       min_rent: r.min_rent != null ? Number(r.min_rent) : null,
@@ -680,6 +684,7 @@ router.get('/analytics/rent-by-class/multi', requireAuth, async (req: Request, r
         SELECT
           snapshot_date,
           asset_class,
+          asset_class_basis,
           property_count,
           avg_rent,
           min_rent,
@@ -699,6 +704,7 @@ router.get('/analytics/rent-by-class/multi', requireAuth, async (req: Request, r
         if (!byDate.has(dateStr)) byDate.set(dateStr, { snapshot_date: dateStr, classes: [] });
         byDate.get(dateStr).classes.push({
           asset_class: r.asset_class,
+          asset_class_basis: r.asset_class_basis,
           property_count: r.property_count,
           avg_rent: r.avg_rent != null ? Number(r.avg_rent) : null,
           min_rent: r.min_rent != null ? Number(r.min_rent) : null,
