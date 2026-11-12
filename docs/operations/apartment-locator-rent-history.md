@@ -177,10 +177,12 @@ npm test -- --reporter=dot \
 PostgreSQL tests use an isolated schema inside a rolled-back transaction.
 No live HTTP calls are made in new tests.
 
-The final full backend suite is not green: 16 failing files, 26 failing tests,
+The full backend suite run on the isolated GitHub-base branch was not green: 16 failing files, 26 failing tests,
 1,209 passing tests, and 23 skipped tests. Every failing file also fails in an
 untouched GitHub master checkout (that checkout has two additional fixture/path
-failures). These unrelated failures were not fixed.
+failures). These unrelated failures were not fixed. After correcting the partial-
+snapshot rent fallback, the 14-test targeted suite passed; the full suite was not
+rerun for that correction.
 
 Full backend TypeScript checking also remains red; no diagnostics name the new
 history/provider modules or modified sync/archive modules. The untouched checkout
