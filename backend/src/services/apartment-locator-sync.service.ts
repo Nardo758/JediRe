@@ -65,6 +65,15 @@ interface RentComp {
   concessions: string;
 }
 
+interface ApiEnvelope<T> {
+  success?: boolean;
+  data?: T;
+}
+
+function isApiEnvelope<T>(value: unknown): value is ApiEnvelope<T> {
+  return typeof value === 'object' && value !== null;
+}
+
 interface SupplyProperty {
   id: string;
   name: string;
@@ -233,8 +242,11 @@ export class ApartmentLocatorSyncService {
         return null;
       }
       
-      const result = await response.json();
-      return result.success ? result.data : null;
+      const result: unknown = await response.json();
+      if (!isApiEnvelope<ApartmentLocatorMarketData>(result) || !result.success || result.data == null) {
+        return null;
+      }
+      return result.data;
       
     } catch (error: any) {
       logger.error('Failed to fetch market data', { error: error.message, city, state });
@@ -261,8 +273,11 @@ export class ApartmentLocatorSyncService {
         return [];
       }
       
-      const result = await response.json();
-      return result.success ? result.data : [];
+      const result: unknown = await response.json();
+      if (!isApiEnvelope<RentComp[]>(result) || !result.success || !result.data) {
+        return [];
+      }
+      return result.data;
       
     } catch (error: any) {
       logger.error('Failed to fetch rent comps', { error: error.message, city, state });
@@ -289,8 +304,11 @@ export class ApartmentLocatorSyncService {
         return [];
       }
       
-      const result = await response.json();
-      return result.success ? result.data : [];
+      const result: unknown = await response.json();
+      if (!isApiEnvelope<SupplyProperty[]>(result) || !result.success || !result.data) {
+        return [];
+      }
+      return result.data;
       
     } catch (error: any) {
       logger.error('Failed to fetch supply pipeline', { error: error.message, city, state });

@@ -375,8 +375,6 @@ IMPORTANT GUIDANCE:
           preferredReturn: 8,
           tier1Hurdle: 12,
           tier1Split: { lp: 80, gp: 20 },
-          tier2Hurdle: 15,
-          tier2Split: { lp: 70, gp: 30 },
           tier2Hurdle: 18,
           tier2Split: { lp: 60, gp: 40 },
           catchUpProvision: true,

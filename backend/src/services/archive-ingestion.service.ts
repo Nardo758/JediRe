@@ -20,6 +20,27 @@ import { logger } from '../utils/logger';
 import { type ProvenanceStamp } from '../utils/provenance-stamp';
 import { createProfileFromOM } from './building-profiles/building-profile.service';
 
+interface ArchiveLooseProperty {
+  yearBuilt?: number | null;
+  stories?: number | null;
+  squareFeet?: number | null;
+  parkingSpaces?: number | null;
+  parkingRatio?: number | null;
+  amenities?: unknown;
+}
+
+interface ArchiveLooseSite {
+  acres?: number | null;
+}
+
+function isArchiveLooseProperty(value: unknown): value is ArchiveLooseProperty {
+  return typeof value === 'object' && value !== null;
+}
+
+function isArchiveLooseSite(value: unknown): value is ArchiveLooseSite {
+  return typeof value === 'object' && value !== null;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ArchiveDealFolder {
@@ -863,16 +884,21 @@ export async function ingestArchiveDeals(
       }
       if (parsed.extractionData?.property) {
         try {
-          const omProp = parsed.extractionData.property;
+          const omProp = isArchiveLooseProperty(parsed.extractionData.property)
+            ? parsed.extractionData.property
+            : {};
+          const site = isArchiveLooseSite(parsed.extractionData.site)
+            ? parsed.extractionData.site
+            : undefined;
           await createProfileFromOM(assetId, {
             yearBuilt: omProp.yearBuilt,
             stories: omProp.stories,
             units: parsed.units,
             squareFeet: omProp.squareFeet,
-            siteAcres: parsed.extractionData.site?.acres,
+            siteAcres: site?.acres,
             parkingSpaces: omProp.parkingSpaces,
             parkingRatio: omProp.parkingRatio,
-            amenities: omProp.amenities,
+            amenities: Array.isArray(omProp.amenities) ? omProp.amenities as string[] : undefined,
           });
         } catch (profileErr) {
           result.warnings.push(`${folder.name}: building profile creation failed — ${profileErr instanceof Error ? profileErr.message : String(profileErr)}`);

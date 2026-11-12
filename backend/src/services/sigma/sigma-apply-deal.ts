@@ -11,7 +11,7 @@
 
 import { logger } from '../../utils/logger';
 import { query } from '../../database/connection';
-import { goalSeek, computePlausibility, DEBT_BUNDLES, type DebtBundle, type AssumptionVector } from '../../services/sigma/sigma-engine';
+import { goalSeek, computePlausibility, type DebtBundle, type AssumptionVector } from '../../services/sigma/sigma-engine';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -323,7 +323,7 @@ export async function applyGoalSeekToDeal(
     }
 
     const rec = result.recommendation;
-    const recBundle = DEBT_BUNDLES.find(b => b.id === rec.bundle)!;
+    const recBundle = rec.bundle;
 
     // 3. Apply to deal (if not dry run)
     let modelRebuilt = false;

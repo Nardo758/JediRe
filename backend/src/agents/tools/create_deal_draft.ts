@@ -25,6 +25,7 @@ import { ExtractedDealFields } from './extract_deal_fields';
 import { FitScoreResult } from './score_fit_against_profile';
 import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
 import { stampProvenance, type ProvenanceStamp } from '../../utils/provenance-stamp';
+import type { RunContext } from '../runtime/types';
 
 export interface IntakeMetadata {
   gmail_message_id: string;
@@ -186,5 +187,22 @@ Use after extract_deal_fields + score_fit_against_profile confirm a deal.`,
     deal_name: z.string(),
     status: z.string(),
   }),
-  execute: createDealDraft,
+  execute: async (input: unknown, ctx: RunContext) => {
+    const fields = input as ExtractedDealFields & { email_thread_id?: string };
+    const trigger = (ctx.triggerContext ?? {}) as Partial<IntakeMetadata>;
+    return createDealDraft(fields, ctx.userId ?? '', {
+      gmail_message_id: fields.email_thread_id ?? trigger.gmail_message_id ?? '',
+      from_address: trigger.from_address ?? '',
+      classification_confidence: trigger.classification_confidence ?? 0,
+      asset_class_hint: trigger.asset_class_hint ?? fields.asset_class ?? '',
+      fit_score: trigger.fit_score ?? 0,
+      fit_breakdown: trigger.fit_breakdown ?? {
+        market_match: false,
+        asset_match: false,
+        unit_range: false,
+        price_range: false,
+        strategy_match: false,
+      },
+    });
+  },
 };

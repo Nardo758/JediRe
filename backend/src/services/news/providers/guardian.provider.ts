@@ -19,6 +19,20 @@ import {
 } from '../news-provider.interface';
 import { logger } from '../../../utils/logger';
 
+interface GuardianResponseBody {
+  response?: {
+    results?: unknown[];
+    total?: number;
+    currentPage?: number;
+    pageSize?: number;
+    content?: unknown;
+  };
+}
+
+function isGuardianResponseBody(value: unknown): value is GuardianResponseBody {
+  return typeof value === 'object' && value !== null;
+}
+
 const GUARDIAN_API_KEY = process.env.GUARDIAN_API_KEY || '';
 const BASE_URL = 'https://content.guardianapis.com';
 
@@ -92,7 +106,10 @@ class GuardianProvider implements NewsProvider {
       throw new Error(`Guardian API error: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data: unknown = await response.json();
+    if (!isGuardianResponseBody(data) || !data.response) {
+      throw new Error('Guardian API error: invalid response');
+    }
     const results = data.response;
 
     return {
@@ -118,8 +135,8 @@ class GuardianProvider implements NewsProvider {
       throw new Error(`Guardian API error: ${response.status}`);
     }
 
-    const data = await response.json();
-    const content = data.response?.content;
+    const data: unknown = await response.json();
+    const content = isGuardianResponseBody(data) ? data.response?.content : undefined;
     if (!content) return null;
 
     return this.mapArticle(content);

@@ -24,6 +24,13 @@
 
 import type { VendorDeclaration, VendorParseOptions, VendorParseResult } from './types';
 
+/** Comp upload stores file_id as an integer. Non-numeric library ids stay null. */
+function numericFileId(fileId: string | undefined): number | null {
+  if (fileId == null || !/^\d+$/.test(fileId)) return null;
+  const n = Number(fileId);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
 export const COSTAR_VENDOR: VendorDeclaration = {
   vendorId: 'costar',
   displayName: 'CoStar',
@@ -198,7 +205,7 @@ export const COSTAR_VENDOR: VendorDeclaration = {
         const result = await processCoStarUpload(pool, {
           buffer,
           filename: options.fileId ?? 'Near By Sales.xlsx',
-          fileId: options.fileId ?? null,
+          fileId: numericFileId(options.fileId),
           compType: 'sale',
           dealId: options.dealId,
         });
@@ -261,7 +268,7 @@ export const COSTAR_VENDOR: VendorDeclaration = {
         const result = await processCoStarUpload(pool, {
           buffer,
           filename: options.fileId ?? 'Rent Comp Properties.xlsx',
-          fileId: options.fileId ?? null,
+          fileId: numericFileId(options.fileId),
           compType: 'rent',
           dealId: options.dealId,
         });

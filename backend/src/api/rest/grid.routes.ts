@@ -132,10 +132,15 @@ router.get('/owned', async (req: AuthenticatedRequest, res: Response) => {
       whereClause += ` AND (pr.address ILIKE $${params.length} OR pr.owner_name ILIKE $${params.length} OR pr.city ILIKE $${params.length})`;
     }
 
+    let sc2 = '';
+    let sp2: string[] = [];
+
     if (userId) {
       // B4a: org-scoped deal query
       const callerOrg2 = await resolveCallerOrg(userId);
-      const { clause: sc2, params: sp2 } = dealListWhereClause('d', callerOrg2, userId, false);
+      const dealScope = dealListWhereClause('d', callerOrg2, userId, false);
+      sc2 = dealScope.clause;
+      sp2 = dealScope.params;
       const userDeals = await pool.query(`
         SELECT d.property_address, d.address FROM deals d 
         WHERE ${sc2} AND d.status = 'closed_won' AND d.archived_at IS NULL

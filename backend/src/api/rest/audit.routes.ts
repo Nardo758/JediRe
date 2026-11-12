@@ -4,12 +4,13 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { pool } from '../../database/connection';
+import { getPool } from '../../database/connection';
 import { AuditTrailService } from '../../services/audit-trail.service';
 import { authenticateToken } from '../../middleware/auth';
 import { requireDealAccess } from '../../middleware/deal-access';
 
 const router = Router();
+const pool = getPool();
 const auditService = new AuditTrailService(pool);
 
 // All routes require authentication

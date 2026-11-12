@@ -538,6 +538,7 @@ export class TrafficDataSourcesService {
       trend_direction: row.trend_direction,
       trend_pct: row.trend_pct ? parseFloat(row.trend_pct) : null,
       adt_measurement_year: row.adt_measurement_year,
+      state: row.state ?? null,
       last_updated: row.last_updated,
     };
 

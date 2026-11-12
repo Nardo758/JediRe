@@ -47,13 +47,27 @@ export const m35ConnectorsNightlyCron = inngest.createFunction(
       'dallas',
     ];
 
-    // Step 1 — Run connectors per MSA in parallel
-    const allResults: ConnectorRunStats[][] = await step.run('run-connectors', async () => {
+    // Step 1 — Run connectors per MSA in parallel.
+    // step.run JSON-serializes the return, so required stats are copied back
+    // onto ConnectorRunStats after the step (values are unchanged when present).
+    const rawResults = await step.run('run-connectors', async () => {
       const msaResults = await Promise.all(
         activeMsas.map(async (msaId) => runConnectorsForMsa(msaId))
       );
       return msaResults;
     });
+    const allResults: ConnectorRunStats[][] = rawResults.map((batch) =>
+      batch.map((row) => ({
+        connector: row.connector ?? '',
+        recordsScanned: row.recordsScanned ?? 0,
+        draftEventsCreated: row.draftEventsCreated ?? 0,
+        draftEventsMerged: row.draftEventsMerged ?? 0,
+        draftEventsSkipped: row.draftEventsSkipped ?? 0,
+        duplicatesIgnored: row.duplicatesIgnored ?? 0,
+        errors: row.errors ?? [],
+        durationMs: row.durationMs ?? 0,
+      })),
+    );
 
     // Flatten for logging
     const flatResults = allResults.flat();

@@ -15,6 +15,7 @@
  * 3. Forced-failure proof: a double-conversion would produce 4320; we assert it does NOT.
  */
 
+import { describe, expect, test } from 'vitest';
 import { mapProFormaAssumptionsToModelAssumptions } from '../proforma-assumptions-bridge';
 import type { ProFormaAssumptions } from '../../financial-model-engine.service';
 
@@ -31,6 +32,8 @@ function makeMinimalProForma(overrides: Partial<ProFormaAssumptions> = {}): ProF
     capex: { lineItems: [], contingencyPct: 0.10 },
     financing: {
       loanAmount: 7_500_000,
+      loanType: 'fixed',
+      spread: 0,
       interestRate: 0.065,
       term: 30,
       amortization: 30,
@@ -55,6 +58,8 @@ describe('Finding W — Bridge double-conversion guard', () => {
     const pfa = makeMinimalProForma({
       financing: {
         loanAmount: 7_500_000,
+        loanType: 'fixed',
+        spread: 0,
         interestRate: 0.065,
         term: 30,        // 30 YEARS
         amortization: 30, // 30 YEARS
@@ -74,6 +79,8 @@ describe('Finding W — Bridge double-conversion guard', () => {
     const pfa = makeMinimalProForma({
       financing: {
         loanAmount: 7_500_000,
+        loanType: 'fixed',
+        spread: 0,
         interestRate: 0.065,
         term: 5,
         amortization: 30,
@@ -98,6 +105,8 @@ describe('Finding W — Bridge double-conversion guard', () => {
     const pfa = makeMinimalProForma({
       financing: {
         loanAmount: 7_500_000,
+        loanType: 'fixed',
+        spread: 0,
         interestRate: 0.065,
         term: 360,        // ALREADY in months
         amortization: 360, // ALREADY in months
@@ -145,6 +154,8 @@ describe('Finding W — Bridge double-conversion guard', () => {
     const pfa = makeMinimalProForma({
       financing: {
         loanAmount: 7_500_000,
+        loanType: 'fixed',
+        spread: 0,
         interestRate: 0.065,
         term: 30,
         amortization: 30,

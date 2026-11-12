@@ -759,6 +759,7 @@ export async function runConnectorsForMsa(
       connector: 'unknown',
       recordsScanned: 0,
       draftEventsCreated: 0,
+      draftEventsMerged: 0,
       draftEventsSkipped: 0,
       duplicatesIgnored: 0,
       errors: [`No connectors available for MSA: ${msaId}`],

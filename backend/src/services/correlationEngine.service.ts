@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
 import { logger } from '../utils/logger';
 import { transaction } from '../database/connection';

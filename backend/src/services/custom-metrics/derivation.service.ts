@@ -95,12 +95,22 @@ export async function loadCustomMetricDefinitions(
  * Zone inheritance: the metric's zone = the least-real of its inputs.
  * All inputs actual → metric actual. Any input projection → metric projection.
  */
+function resolutionForDerived(
+  resolved: number | null,
+  zone: PeriodLayeredValue['zone'],
+): PeriodLayeredValue['resolution'] {
+  if (resolved == null) return 'unresolved';
+  if (zone === 'gap') return 'derived_gap';
+  if (zone === 'projection') return 'derived_projection';
+  return 'computed';
+}
+
 export function evaluateDerivedMetric(
   definition: CustomMetricDefinition,
   periodicSeed: ProFormaPeriodicSeed,
   otherMetrics: Record<string, CustomMetricSeries>,
   month: string,
-): { resolved: number | null; resolution: string; source: string | null; zone: 'actual' | 'gap' | 'projection' | 'override' } {
+): { resolved: number | null; resolution: PeriodLayeredValue['resolution']; source: string | null; zone: 'actual' | 'gap' | 'projection' | 'override' } {
   if (!definition.formula_ast) {
     return { resolved: null, resolution: 'unresolved', source: null, zone: 'projection' };
   }
@@ -144,7 +154,7 @@ export function evaluateDerivedMetric(
 
   return {
     resolved,
-    resolution: resolved != null ? 'derived' : 'unresolved',
+    resolution: resolutionForDerived(resolved, leastRealZone),
     source: `custom_metric:${definition.metric_key}`,
     zone: leastRealZone,
   };

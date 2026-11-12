@@ -293,8 +293,8 @@ router.post('/ingest/census-building-permits', requireAdminApiKey, async (req: A
       });
     }
 
-    const { ingestBuildingPermits } = await import('../../services/ingestion/census-permits-ingest.service');
-    const result = await ingestBuildingPermits(censusApiKey);
+    const { ingestCensusPermits } = await import('../../services/ingestion/census-permits-ingest.service');
+    const result = await ingestCensusPermits(censusApiKey);
 
     res.json({
       success: true,

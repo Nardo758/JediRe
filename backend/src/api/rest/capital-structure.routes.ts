@@ -475,6 +475,24 @@ router.post('/optimal-strategy', async (req: Request, res: Response) => {
   }
 });
 
+interface CapitalResultSummary {
+  purchasePrice?: number;
+  totalDebt?: number;
+  noiYear1?: number;
+}
+
+interface CapitalDebtMetrics {
+  ltv?: number;
+}
+
+function isCapitalResultSummary(value: unknown): value is CapitalResultSummary {
+  return typeof value === 'object' && value !== null;
+}
+
+function isCapitalDebtMetrics(value: unknown): value is CapitalDebtMetrics {
+  return typeof value === 'object' && value !== null;
+}
+
 // ============================================================================
 // Deal Capital Structure Lookup (persisted deal_data)
 // ============================================================================
@@ -508,8 +526,10 @@ router.get('/:dealId', async (req: Request, res: Response) => {
     const { assumptions, results } = modelEnvelope;
     const acq = (assumptions as any)?.acquisition || {};
     const fin = (assumptions as any)?.financing || {};
-    const summary = results?.summary || {};
-    const debtMetrics = results?.debtMetrics || {};
+    const rawSummary: unknown = results?.summary;
+    const summary: CapitalResultSummary = isCapitalResultSummary(rawSummary) ? rawSummary : {};
+    const rawDebt: unknown = results?.debtMetrics;
+    const debtMetrics: CapitalDebtMetrics = isCapitalDebtMetrics(rawDebt) ? rawDebt : {};
 
     const purchasePrice: number = summary.purchasePrice || acq.purchasePrice || 0;
     const loanAmount: number = summary.totalDebt || fin.loanAmount || 0;

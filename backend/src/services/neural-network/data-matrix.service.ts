@@ -812,6 +812,9 @@ export class DataMatrixService {
         context.benchmarks = {
           similarDealsCount: parseInt(row.count),
           avgCapRate: row.avg_projected_exit_cap ? parseFloat(row.avg_projected_exit_cap) : row.avg_actual_exit_cap ? parseFloat(row.avg_actual_exit_cap) : 0,
+          avgRentPsf: 0,
+          avgExpenseRatio: 0,
+          avgRentGrowthYear1: 0,
           avgIrr: row.avg_actual_irr ? parseFloat(row.avg_actual_irr) : 0,
           avgHoldPeriod: row.avg_hold_years ? parseInt(row.avg_hold_years) : 5,
           source: 'archive_deals'

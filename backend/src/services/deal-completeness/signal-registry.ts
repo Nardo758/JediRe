@@ -336,7 +336,7 @@ const SIGNAL_REGISTRY: SignalDefinition[] = [
 
   {
     id:       'proforma_window_undefined',
-    severity: 'warning',
+    severity: 'advisory',
     title:    'Pro Forma window undefined',
     description:
       'The Cashflow Agent could not identify a hold-period year where projected vacancy ' +

@@ -573,7 +573,7 @@ const updateDealStatus: SkillDefinition = {
 
     try {
       // Validate transition before applying
-      const { guardTransition } = await import('../../../lifecycle/transition-guard.service');
+      const { guardTransition } = await import('../../lifecycle/transition-guard.service');
       const guardResult = await guardTransition(dealId, status);
       if (!guardResult.allowed) {
         return { success: false, error: guardResult.reason ?? 'Invalid status transition' };

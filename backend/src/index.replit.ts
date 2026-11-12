@@ -10,7 +10,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
-import { requireAuth, optionalAuth, requireSurface } from './middleware/auth';
+import { requireAuth, optionalAuth, requireSurface, type AuthenticatedRequest } from './middleware/auth';
 import { rateLimiter, authLimiter, strictLimiter } from './middleware/rateLimit';
 import { getPool } from './database/connection';
 import { logger } from './utils/logger';
@@ -291,7 +291,7 @@ app.use('/api/v1', (
       return next();
     }
   }
-  return requireAuth(req, res, next);
+  return requireAuth(req as AuthenticatedRequest, res, next);
 });
 
 app.use('/api/v1', dataRouter);

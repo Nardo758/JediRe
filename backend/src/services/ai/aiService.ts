@@ -58,6 +58,15 @@ const MODEL_ROUTING: ModelRouting = {
     coordinator: 'claude-opus-4-5',
     commentary: 'claude-sonnet-4-5',
   },
+  // Legacy tier: same model map as scout (see TIER_CONFIG in creditService).
+  basic: {
+    research: 'deepseek-chat',
+    zoning: 'deepseek-chat',
+    supply: 'deepseek-chat',
+    cashflow: 'deepseek-chat',
+    coordinator: 'deepseek-chat',
+    commentary: 'deepseek-chat',
+  },
 };
 
 // Per-surface default models for non-agent surfaces (pipelines + skills).
@@ -315,7 +324,8 @@ export class JediAIService {
   async *stream(
     context: AICallContext,
     systemPrompt: string,
-    messages: Anthropic.MessageParam[]
+    messages: Anthropic.MessageParam[],
+    options?: { maxTokens?: number }
   ): AsyncGenerator<string> {
     const tier = await this.getUserTier(context.userId);
     // Pass routingSurface so per-surface preferences and SURFACE_DEFAULTS

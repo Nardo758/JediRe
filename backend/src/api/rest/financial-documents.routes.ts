@@ -15,8 +15,9 @@ async function verifyDealOwnership(req: AuthenticatedRequest, res: Response): Pr
     res.status(401).json({ error: 'Unauthorized' });
     return false;
   }
-  if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
-    return res.status(403).json({ success: false, error: 'Access denied' });
+  if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+    res.status(403).json({ success: false, error: 'Access denied' });
+    return false;
   }
   return true;
 }

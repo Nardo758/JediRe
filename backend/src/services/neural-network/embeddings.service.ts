@@ -26,6 +26,10 @@ const DIMENSIONS = 384; // must match knowledge_graph_nodes.embedding column typ
 const MAX_INPUT_CHARS = 8000;
 const BATCH_SIZE_API = 96; // OpenAI accepts up to 2048; keep payload small
 
+interface OpenAIEmbeddingResponse {
+  data?: Array<{ index: number; embedding?: number[] }>;
+}
+
 export interface EmbeddingResult {
   nodeId: string;
   dimensions: number;
@@ -118,7 +122,7 @@ export class EmbeddingsService {
       throw new Error(`[Embeddings] OpenAI API ${response.status}: ${errBody.slice(0, 300)}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as OpenAIEmbeddingResponse;
     const vec = data?.data?.[0]?.embedding;
     if (!Array.isArray(vec) || vec.length !== DIMENSIONS) {
       throw new Error(`[Embeddings] OpenAI returned unexpected vector (len=${vec?.length})`);
@@ -157,8 +161,8 @@ export class EmbeddingsService {
           continue;
         }
 
-        const data = await response.json();
-        const items = (data?.data || []) as Array<{ index: number; embedding: number[] }>;
+        const data = (await response.json()) as OpenAIEmbeddingResponse;
+        const items = data?.data || [];
         for (const item of items) {
           const absoluteIdx = start + item.index;
           if (Array.isArray(item.embedding) && item.embedding.length === DIMENSIONS) {

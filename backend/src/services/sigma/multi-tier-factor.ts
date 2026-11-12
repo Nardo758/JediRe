@@ -17,8 +17,7 @@
  * spec: M36_Multi_Tier_Factor_Addendum.md
  */
 
-import type { Logger } from 'pino';
-import { createLogger } from '../../utils/logger';
+import { createServiceLogger } from '../../utils/logger';
 import { factorEstimator } from './factor-estimator';
 import { spatialKernel } from './spatial-kernel';
 
@@ -68,7 +67,7 @@ export interface ThreeTierSigma {
 
 // ─── Logger ──────────────────────────────────────────────────────────────────
 
-const log: Logger = createLogger('multi-tier-factor');
+const log = createServiceLogger('multi-tier-factor');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

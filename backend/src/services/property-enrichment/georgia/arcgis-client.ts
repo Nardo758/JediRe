@@ -242,7 +242,7 @@ export class ArcGISClient {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
+      const data = (await response.json()) as { error?: { message?: string } };
       
       if (data.error) {
         throw new Error(data.error.message || JSON.stringify(data.error));

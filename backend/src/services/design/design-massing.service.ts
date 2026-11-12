@@ -12,6 +12,9 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { generateDesignMassingTool } from '../../agents/tools/generate_design_massing';
 import { computeEnvelopeTool } from '../../agents/tools/compute_envelope';
+import type { RunContext } from '../../agents/runtime/types';
+
+const designToolContext: RunContext = { triggeredBy: 'user' };
 
 const router = Router();
 
@@ -69,7 +72,8 @@ router.post('/generate-massing', async (req: Request, res: Response) => {
         setback_side_ft: body.setback_side_ft,
         max_lot_coverage_pct: body.max_lot_coverage_pct,
         avg_unit_size_sqft: 900,
-      });
+        floor_to_floor_height_ft: 12,
+      }, designToolContext);
       maxGfa = envelopeResult.max_gfa_sqft;
       maxStories = envelopeResult.max_stories ?? maxStories;
       maxFootprint = envelopeResult.max_footprint_sqft ?? maxFootprint;
@@ -98,13 +102,13 @@ router.post('/generate-massing', async (req: Request, res: Response) => {
       parking_structure: body.parking_structure,
       design_priority: body.design_priority,
       form_factor: body.form_factor,
-    });
+    }, designToolContext);
 
     res.json(result);
   } catch (err: any) {
     console.error('Design massing generation failed:', err);
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation error', details: err.errors });
+      return res.status(400).json({ error: 'Validation error', details: err.issues });
     }
     res.status(500).json({ error: err.message || 'Massing generation failed' });
   }

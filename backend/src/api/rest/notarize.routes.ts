@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { getPool } from '../../database/connection';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import {
   initiateClosing,
   getSessionStatus,

@@ -19,8 +19,7 @@
  *   Cov(Y_sm_a, Y_sm_b) = β_a · Σ_F_national · β_bᵀ + 𝟙[same MSA] · γ_a · Σ_F_MSA · γ_bᵀ + 𝟙[same MSA] · ρ_spatial · σ_res_a · σ_res_b
  */
 
-import type { Logger } from 'pino';
-import { createLogger } from '../../utils/logger';
+import { createServiceLogger } from '../../utils/logger';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -82,7 +81,7 @@ const DEFAULT_MSA_TIERS: Record<string, number> = {
 
 // ─── Logger ──────────────────────────────────────────────────────────────────
 
-const log: Logger = createLogger('spatial-kernel');
+const log = createServiceLogger('spatial-kernel');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

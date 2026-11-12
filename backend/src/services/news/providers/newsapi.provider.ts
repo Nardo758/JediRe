@@ -24,6 +24,25 @@ import { logger } from '../../../utils/logger';
 const NEWSAPI_KEY = process.env.NEWSAPI_KEY || '';
 const BASE_URL = 'https://newsapi.org/v2';
 
+interface NewsApiArticle {
+  url: string;
+  title?: string;
+  description?: string;
+  content?: string;
+  urlToImage?: string;
+  publishedAt: string;
+  source?: { id?: string; name?: string };
+  author?: string;
+}
+
+interface NewsApiResponse {
+  status: string;
+  code?: string;
+  message?: string;
+  articles?: NewsApiArticle[];
+  totalResults?: number;
+}
+
 // ============================================================================
 // PROVIDER CONFIG
 // ============================================================================
@@ -84,7 +103,7 @@ class NewsAPIProvider implements NewsProvider {
     logger.debug('NewsAPI search', { url: url.replace(NEWSAPI_KEY, '***') });
 
     const response = await fetch(url);
-    const data = await response.json();
+    const data = await response.json() as NewsApiResponse;
 
     if (data.status !== 'ok') {
       throw new Error(`NewsAPI error: ${data.code} - ${data.message}`);
@@ -124,7 +143,7 @@ class NewsAPIProvider implements NewsProvider {
     const url = `${BASE_URL}/top-headlines?${params.toString()}`;
 
     const response = await fetch(url);
-    const data = await response.json();
+    const data = await response.json() as NewsApiResponse;
 
     if (data.status !== 'ok') {
       throw new Error(`NewsAPI error: ${data.code} - ${data.message}`);
@@ -144,14 +163,14 @@ class NewsAPIProvider implements NewsProvider {
 
     try {
       const response = await fetch(`${BASE_URL}/top-headlines?apiKey=${NEWSAPI_KEY}&country=us&pageSize=1`);
-      const data = await response.json();
+      const data = await response.json() as NewsApiResponse;
       return data.status === 'ok';
     } catch {
       return false;
     }
   }
 
-  private mapArticle(article: any): NewsArticle {
+  private mapArticle(article: NewsApiArticle): NewsArticle {
     return {
       id: article.url, // NewsAPI uses URL as identifier
       provider: 'newsapi',

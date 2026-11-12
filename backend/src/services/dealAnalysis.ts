@@ -90,7 +90,14 @@ export class DealAnalysisService {
 
       // Send completion notification through OpenClaw (Telegram + Twilio).
       if (openclawNotifier.isEnabled()) {
-        openclawNotifier.notifyAnalysisComplete(input.dealId, analysisResult).catch((error) => {
+        const notificationAnalysis: Record<string, unknown> & {
+          jediScore?: number | string;
+          verdict?: string;
+        } = {
+          jediScore: analysisResult.jediScore,
+          verdict: analysisResult.verdict,
+        };
+        openclawNotifier.notifyAnalysisComplete(input.dealId, notificationAnalysis).catch((error) => {
           console.error('Failed to send analysis completion notification:', error);
         });
       }

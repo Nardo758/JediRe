@@ -23,6 +23,7 @@
  * This test MUST fail if someone reintroduces double-multiplication in the bridge.
  */
 
+import { describe, expect, test } from 'vitest';
 import { mapProFormaAssumptionsToModelAssumptions } from '../proforma-assumptions-bridge';
 import type { ProFormaAssumptions } from '../../financial-model-engine.service';
 

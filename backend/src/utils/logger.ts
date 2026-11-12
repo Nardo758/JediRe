@@ -77,3 +77,34 @@ export type Logger = typeof logger;
 export function createLogger(context: string) {
   return logger.child({ context });
 }
+
+/**
+ * Call shape used by services that pass either a message or a metadata
+ * object followed by a message. Winston accepts both at runtime; its
+ * published overloads only type the message-first form.
+ */
+export interface ServiceLogger {
+  info(msg: string, ...args: unknown[]): void;
+  info(obj: object, msg?: string, ...args: unknown[]): void;
+  warn(msg: string, ...args: unknown[]): void;
+  warn(obj: object, msg?: string, ...args: unknown[]): void;
+  error(msg: string, ...args: unknown[]): void;
+  error(obj: object, msg?: string, ...args: unknown[]): void;
+  debug(msg: string, ...args: unknown[]): void;
+  debug(obj: object, msg?: string, ...args: unknown[]): void;
+}
+
+export function createServiceLogger(context: string): ServiceLogger {
+  const child = logger.child({ context });
+  const forward = (level: 'info' | 'warn' | 'error' | 'debug') =>
+    (first: string | object, ...rest: unknown[]) => {
+      const write = child[level] as (message: string, ...meta: unknown[]) => void;
+      write(first as string, ...rest);
+    };
+  return {
+    info: forward('info'),
+    warn: forward('warn'),
+    error: forward('error'),
+    debug: forward('debug'),
+  };
+}

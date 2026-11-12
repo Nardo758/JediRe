@@ -45,6 +45,25 @@ interface DealT12Row {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+function asDealT12Row(row: {
+  deal_id?: string;
+  noi?: number | null;
+  gpr?: number | null;
+  vacancy_loss?: number | null;
+  vacancy_pct?: number | null;
+  updated_at?: string | null;
+} | null | undefined): DealT12Row | null {
+  if (!row?.deal_id) return null;
+  return {
+    deal_id: row.deal_id,
+    noi: row.noi ?? null,
+    gpr: row.gpr ?? null,
+    vacancy_loss: row.vacancy_loss ?? null,
+    vacancy_pct: row.vacancy_pct ?? null,
+    updated_at: row.updated_at ?? null,
+  };
+}
+
 /**
  * Derive occupancy from T-12 data.
  * Prefers vacancy_pct; falls back to vacancy_loss / gpr.
@@ -163,7 +182,7 @@ export const calibrationRealizationCron = inngest.createFunction(
       let skipped = 0;
 
       for (const pred of maturedPredictions) {
-        const t12 = t12ByDeal[pred.dealId];
+        const t12 = asDealT12Row(t12ByDeal[pred.dealId]);
         if (!t12) {
           skipped++;
           continue;

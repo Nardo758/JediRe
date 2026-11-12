@@ -18,8 +18,7 @@
  *   - OLS regression for loadings given factors
  */
 
-import type { Logger } from 'pino';
-import { createLogger } from '../../utils/logger';
+import { createServiceLogger } from '../../utils/logger';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -58,7 +57,7 @@ export interface EstimatorOptions {
 
 // ─── Logger ──────────────────────────────────────────────────────────────────
 
-const log: Logger = createLogger('factor-estimator');
+const log = createServiceLogger('factor-estimator');
 
 // ─── Matrix Utilities ────────────────────────────────────────────────────────
 

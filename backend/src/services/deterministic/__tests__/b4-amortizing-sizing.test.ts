@@ -9,6 +9,7 @@
  * 5. Bishop new epoch: loan moves from ~$39M to ~$32.5M
  */
 
+import { describe, expect, test } from 'vitest';
 import {
   computeYear1DebtService,
   computeDscrWithAmortizing,

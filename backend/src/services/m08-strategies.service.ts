@@ -61,7 +61,7 @@ export interface SubStrategyScore {
   finalScore: number;
   disqualified: boolean;
   financialPreview: FinancialPreview;
-  strategyAssumptions: Record<string, StrategyStrategyLayeredValue<number | string>>;
+  strategyAssumptions: Record<string, StrategyLayeredValue<number | string>>;
   appliedCorrelations: string[];
   evidenceReport: EvidenceReport;
 }

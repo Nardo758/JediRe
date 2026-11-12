@@ -39,8 +39,9 @@ import { fetchInflationContextTool } from './tools/fetch_inflation_context';
 import { classifyAsDealOpportunityTool } from './tools/classify_as_deal_opportunity';
 import { createDealDraftTool } from './tools/create_deal_draft';
 import { extractDealFieldsTool } from './tools/extract_deal_fields';
-import { scoreFitAgainstProfileTool } from './tools/score_fit_against_profile';
-import { ocrDocumentTool } from './tools/ocr_document';
+import { scoreFitAgainstProfile, scoreFitAgainstProfileTool } from './tools/score_fit_against_profile';
+import { ocrDocument, ocrDocumentTool } from './tools/ocr_document';
+import type { ExtractedDealFields } from './tools/extract_deal_fields';
 import { computeEnvelopeTool } from './tools/compute_envelope';
 import { generateDesignMassingTool } from './tools/generate_design_massing';
 import { fetchMunicipalSaleCompsTool } from './tools/fetch_municipal_sale_comps';
@@ -95,14 +96,37 @@ export const RESEARCH_AGENT_CONFIG: AgentConfig = {
     fetchBacktestContextTool,
     fetchDataLibraryCompsTool,
     // Inflation context — JCIS composite score & regime for rent growth, expense esc, cap spread
-    fetchInflationContextTool,
+    {
+      ...fetchInflationContextTool,
+      outputSchema: z.unknown(),
+    },
     // Deal intake pipeline — classify emails, extract fields, score fit, create draft
     classifyAsDealOpportunityTool,
     createDealDraftTool,
     extractDealFieldsTool,
-    scoreFitAgainstProfileTool,
+    {
+      name: scoreFitAgainstProfileTool.name,
+      description: scoreFitAgainstProfileTool.description,
+      inputSchema: scoreFitAgainstProfileTool.inputSchema,
+      outputSchema: scoreFitAgainstProfileTool.outputSchema,
+      execute: async (input, ctx) =>
+        scoreFitAgainstProfile(input as ExtractedDealFields, ctx.userId ?? ''),
+    },
     // Document OCR for email attachments
-    ocrDocumentTool,
+    {
+      name: ocrDocumentTool.name,
+      description: ocrDocumentTool.description,
+      inputSchema: ocrDocumentTool.inputSchema,
+      outputSchema: ocrDocumentTool.outputSchema,
+      execute: async (input) => {
+        const doc = input as { content_base64?: string; mime_type?: string; filename?: string };
+        return ocrDocument(
+          doc.content_base64 ?? '',
+          doc.mime_type ?? 'application/pdf',
+          doc.filename ?? '',
+        );
+      },
+    },
     // Design tools — zoning envelope + AI massing generation
     computeEnvelopeTool,
     generateDesignMassingTool,

@@ -118,6 +118,7 @@ export interface ComparisonResult {
     exitCap: number;
     absorption: number;
   };
+  recentAdjustments: AssumptionAdjustment[];
 }
 
 // W1-8: LayeredValue resolver for year1 assumption fields
@@ -1740,6 +1741,15 @@ export interface DealFinancials {
   /** Persisted user overrides (camelCase field → hold year → value). Used by frontend to
    *  reconstruct the USER display layer across sessions, keyed from per_year_overrides JSONB. */
   userOverrides: Record<string, Record<number, number | null>>;
+  /** Buyer rationale text stored next to a per-year override, keyed by field then year. */
+  userOverrideRationales: Record<string, Record<number, string>>;
+  otherIncomeBreakdown: ReturnType<typeof composeOtherIncomeBreakdown>;
+  otherIncomeUserLines: Array<{
+    id: string;
+    label: string;
+    monthly: number;
+    source?: string;
+  }>;
   meta: {
     seeded: boolean;
     updatedAt: string | null;
@@ -2155,7 +2165,7 @@ export function projectProformaForDeal(
     /** M18 property tax anchor from real millage (decimal growth rate). */
     propertyTaxAnchor?: import('../types/provenanced-value').ProvenancedValue<number> | null;
     /** M22 CPI-anchored OPEX anchors per line (overrides DEFAULT_LINE_ANCHORS). */
-    opexAnchors?: Record<import('../blueprint/proforma-blueprint').OpexLineKey, import('../types/provenanced-value').ProvenancedValue<number>>;
+    opexAnchors?: Record<import('./proforma/blueprint/proforma-blueprint').OpexLineKey, import('../types/provenanced-value').ProvenancedValue<number>>;
     /** State code for state-specific OPEX line shares (e.g., 'FL', 'CA'). */
     state?: string | null;
   }
@@ -2245,7 +2255,6 @@ export function projectProformaForDeal(
       cyclePressureIndex: opts.cyclePressureIndex ?? null,
       cpiShelterYoY: null,
       eventDeltas: opts.eventDeltas ?? [],
-      position: opts.position ?? null,
     },
     opexBase,
     lineShares: (() => {
@@ -2322,8 +2331,7 @@ export async function getDealFinancials(
   const rrCapsule = ((deal.deal_data ?? {}) as Record<string, unknown>).extraction_rent_roll as Record<string, unknown> | undefined;
   const totalUnits: number = assumptionsRes.rows[0]?.total_units
     ?? deal.target_units
-    ?? (rrCapsule?.total_units != null ? +rrCapsule.total_units : 0)
-    ?? 0;
+    ?? (rrCapsule?.total_units != null ? +rrCapsule.total_units : 0);
   const year1Seed: Record<string, unknown> = (assumptionsRes.rows[0]?.year1 as Record<string, unknown>) ?? {};
 
   // ── F9 Unit-Mix → GPR override (per-deal opt-in) ────────────────────────────
@@ -3233,6 +3241,12 @@ export async function getDealFinancials(
     _position = await computePositionAdjustment(pool, dealId, _city, _state);
   } catch (_posErr) { /* non-fatal: position component falls back to zero */ }
 
+  // Resolve county before the tax anchor. Prefer deal_data.county, then city→county.
+  const dealDataJson = (deal.deal_data ?? {}) as Record<string, unknown>;
+  const dealCountyRaw = (dealDataJson.county ?? dealDataJson.property_county ?? null) as string | null;
+  const dealState = (deal.state_code ?? '').toUpperCase().trim();
+  const resolvedCounty = dealCountyRaw ?? deriveCounty(deal.city ?? null, dealState);
+
   // ── Medium #18: property tax anchor from real millage ───────────────────────
   let _propertyTaxAnchor: import('../types/provenanced-value').ProvenancedValue<number> | null = null;
   try {
@@ -3241,7 +3255,7 @@ export async function getDealFinancials(
   } catch (_taxErr) { /* non-fatal: falls back to 4% placeholder */ }
 
   // ── Medium #22: CPI-anchored OPEX line anchors ──────────────────────────────
-  let _opexAnchors: Record<import('../blueprint/proforma-blueprint').OpexLineKey, import('../types/provenanced-value').ProvenancedValue<number>> | undefined;
+  let _opexAnchors: Record<import('./proforma/blueprint/proforma-blueprint').OpexLineKey, import('../types/provenanced-value').ProvenancedValue<number>> | undefined;
   try {
     const { computeOpexAnchors } = await import('./proforma/opex-anchors.service');
     _opexAnchors = await computeOpexAnchors(pool, deal.state_code ?? undefined);
@@ -3734,12 +3748,6 @@ export async function getDealFinancials(
   const refiTriggerYear = typeof refiTriggerYearRaw === 'number' ? refiTriggerYearRaw : 3;
   const refiNewLoanTypeRaw = (refiRawPyr['debt:senior:refiNewLoanType'] as Record<string, unknown> | null)?.value;
   const refiNewLoanType = refiNewLoanTypeRaw != null ? String(refiNewLoanTypeRaw) : null;
-
-  // Resolve county: prefer deal_data.county (if present) then city→county derivation
-  const dealDataJson = (deal.deal_data ?? {}) as Record<string, unknown>;
-  const dealCountyRaw = (dealDataJson.county ?? dealDataJson.property_county ?? null) as string | null;
-  const dealState = (deal.state_code ?? '').toUpperCase().trim();
-  const resolvedCounty = dealCountyRaw ?? deriveCounty(deal.city ?? null, dealState);
 
   // ── Section C context fields — wire from deal data sources ──────────────────
   // Valid set guard: reject unknown enum values so the federal ruleset doesn't throw.
@@ -5956,7 +5964,7 @@ export async function applyFinancialsOverride(
 ): Promise<{
   year1Key: string;
   year: number;
-  appliedValue: number | string | null;
+  appliedValue: number | string | boolean | null;
   resolution: string | null;
   updatedCell: Record<string, unknown> | null;
   derivedRecomputation: {

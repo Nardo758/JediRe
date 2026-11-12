@@ -19,6 +19,26 @@ import {
 } from '../news-provider.interface';
 import { logger } from '../../../utils/logger';
 
+interface NytArticleSearchBody {
+  response?: {
+    docs?: unknown[];
+    meta?: { hits?: number };
+  };
+}
+
+interface NytTopStoriesBody {
+  results?: unknown[];
+  num_results?: number;
+}
+
+function isNytArticleSearchBody(value: unknown): value is NytArticleSearchBody {
+  return typeof value === 'object' && value !== null;
+}
+
+function isNytTopStoriesBody(value: unknown): value is NytTopStoriesBody {
+  return typeof value === 'object' && value !== null;
+}
+
 const NYT_API_KEY = process.env.NYT_API_KEY || '';
 const BASE_URL = 'https://api.nytimes.com/svc';
 
@@ -102,7 +122,10 @@ class NYTProvider implements NewsProvider {
       throw new Error(`NYT API error: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data: unknown = await response.json();
+    if (!isNytArticleSearchBody(data) || !data.response) {
+      throw new Error('NYT API error: invalid response');
+    }
     const results = data.response;
 
     return {
@@ -135,7 +158,10 @@ class NYTProvider implements NewsProvider {
       throw new Error(`NYT Top Stories API error: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data: unknown = await response.json();
+    if (!isNytTopStoriesBody(data)) {
+      throw new Error('NYT Top Stories API error: invalid response');
+    }
 
     return {
       articles: data.results?.slice(0, options?.pageSize || 10).map(this.mapTopStory) || [],

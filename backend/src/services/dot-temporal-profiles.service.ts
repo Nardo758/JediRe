@@ -20,7 +20,7 @@ export interface TemporalMultiplierResult {
   seasonal_factor: number;
   dow_factor: number;
   combined: number;
-  source: 'fdot_profile' | 'default';
+  source: 'fdot_profile' | 'state_profile' | 'default';
 }
 
 const DEFAULT_HOURLY_FACTORS: Record<string, number> = {

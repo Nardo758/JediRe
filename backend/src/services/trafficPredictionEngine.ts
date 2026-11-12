@@ -180,6 +180,8 @@ interface Property {
   property_class?: string;   // 'A', 'B', 'C', or null
   year_built?: string;       // stored as string in DB; parsed to int when needed
   msa_id?: string;           // MSA identifier for scope-hierarchy resolution
+  /** Rent-roll occupancy percent written by M07 (SELECT * includes this column). */
+  current_occupancy?: number | null;
 }
 
 export interface ConversionChainRates {

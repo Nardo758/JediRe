@@ -673,29 +673,38 @@ function parsePdfLeasingSection(pageText: string): {
       if (/^[A-Za-z]/.test(trimmed)) {
         const parts = trimmed.split(/\s+/);
         if (parts.length >= 4) {
-          const activityRow: LeasingStatsActivity = {
-            floorPlanGroup: parts[0] || '',
-            floorPlan: parts[1] || '',
-            units: parseNum(parts[2]) || 0,
-          };
+          const floorPlanGroup = parts[0] || '';
+          let moveIns: number | undefined;
+          let moveOuts: number | undefined;
+          let netChange: number | undefined;
 
           // Map known column positions: Move-Ins, Move-Outs, Net Change
-          // PDF columns are: Units, Occupied, Vacant, ... , MoveIns, MoveOuts, NetChange
-          // After the first ~3 fields, scan for move-related tokens
           for (let c = 3; c < parts.length; c++) {
             const val = parseNum(parts[c]);
             if (val != null) {
-              if (activityRow.moveIns === undefined) {
-                activityRow.moveIns = val;
-              } else if (activityRow.moveOuts === undefined) {
-                activityRow.moveOuts = val;
-              } else if (activityRow.netChange === undefined) {
-                activityRow.netChange = val;
-              }
+              if (moveIns === undefined) moveIns = val;
+              else if (moveOuts === undefined) moveOuts = val;
+              else if (netChange === undefined) netChange = val;
             }
           }
 
-          if (activityRow.units > 0 && activityRow.floorPlanGroup !== 'Floor') {
+          const activityRow: LeasingStatsActivity = {
+            floor_plan: parts[1] || floorPlanGroup,
+            units: parseNum(parts[2]) || 0,
+            move_ins: moveIns ?? 0,
+            move_outs: moveOuts ?? 0,
+            net_change: netChange ?? 0,
+            units_reserved: 0,
+            signed_renewals: 0,
+            transferring: 0,
+            cancelled_denied: 0,
+            net_leases: 0,
+            waitlist: 0,
+            waitlist_cancelled: 0,
+            net_waitlist: 0,
+          };
+
+          if (activityRow.units > 0 && floorPlanGroup !== 'Floor') {
             activity.push(activityRow);
           }
 
@@ -751,14 +760,15 @@ function parsePdfNewLeaseSection(pageText: string): LeasingStatsLease[] {
         if (parts.length >= 5) {
           const lease: LeasingStatsLease = {
             unit: parts[0] || '',
-            floorPlan: parts[1] || '',
-            applyDate: parts[3] || undefined,
-            moveInDate: parts[4] || undefined,
-            leaseTerm: parts[5] || undefined,
-            marketRent: parseNum(parts[6]) || undefined,
-            leaseRent: parseNum(parts[7]) || undefined,
-            adSource: parts.length > 11 ? parts[11] : undefined,
-            effectiveRent: parts.length > 13 ? parseNum(parts[13]) : undefined,
+            floor_plan: parts[1] || null,
+            signed_date: parts[3] || null,
+            term_months: parseNum(parts[5]),
+            market_rent: parseNum(parts[6]),
+            lease_rent: parseNum(parts[7]),
+            effective_rent: parts.length > 13 ? parseNum(parts[13]) : null,
+            concession: null,
+            source: parts.length > 11 ? parts[11] : null,
+            tenant_name: null,
           };
           leases.push(lease);
         }
@@ -827,14 +837,26 @@ function parseLeasingStatsPdf(buffer: Buffer, filename: string): ExtractionResul
       : 0;
   }
 
+  const occupancyPct = boxScoreOccupancy && boxScoreOccupancy.units > 0
+    ? Math.round((boxScoreOccupancy.occupied / boxScoreOccupancy.units) * 10000) / 100
+    : 0;
+
   const data: LeasingStatsData = {
+    reporting_period: reportingPeriod ?? { start: '', end: '' },
     summary: {
-      ...occupancySummary,
+      total_move_ins: allActivity.reduce((sum, row) => sum + row.move_ins, 0),
+      total_move_outs: allActivity.reduce((sum, row) => sum + row.move_outs, 0),
+      net_absorption: allActivity.reduce((sum, row) => sum + row.net_change, 0),
       total_new_leases: allNewLeases.length,
-      leasing_activity_rows: allActivity.length,
+      total_renewals: allActivity.reduce((sum, row) => sum + row.signed_renewals, 0),
+      total_cancelled: allActivity.reduce((sum, row) => sum + row.cancelled_denied, 0),
+      total_waitlist: allActivity.reduce((sum, row) => sum + row.waitlist, 0),
+      total_units: boxScoreOccupancy?.units ?? 0,
+      total_occupied: boxScoreOccupancy?.occupied ?? 0,
+      occupancy_pct: occupancyPct,
     },
-    activity: allActivity.length > 0 ? allActivity : undefined,
-    new_leases: allNewLeases.length > 0 ? allNewLeases : undefined,
+    activity: allActivity,
+    new_leases: allNewLeases,
   };
 
   return {

@@ -610,11 +610,15 @@ export class ReplacementCostService {
     const basketService = getMarketBasketService(this.pool);
     
     // Get market-specific pricing
+    const interiorCondition: 'light' | 'standard' | 'heavy' =
+      scope.unitInteriors === 'light' ? 'light'
+      : scope.unitInteriors === 'full' ? 'heavy'
+      : 'standard';
     const turnCost = await basketService.getTurnCostEstimate(
       input.city,
       input.state,
       Math.round(input.totalSF / input.units),
-      scope.unitInteriors || 'standard'
+      interiorCondition
     );
     
     const breakdown: Record<string, number> = {};

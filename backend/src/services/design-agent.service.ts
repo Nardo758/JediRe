@@ -7,7 +7,31 @@
  * to generate optimal building parameters, unit mix, and reasoning.
  */
 
-import type { BuildingParameters } from '../../../frontend/src/lib/building-engine/types';
+type FacadeType = 'brick' | 'glass' | 'concrete' | 'wood_panel' | 'stucco' | 'mixed';
+type RoofType = 'flat' | 'pitched' | 'terraced';
+type TimeOfDay = 'golden_hour' | 'midday' | 'dusk' | 'overcast';
+
+interface BuildingParameters {
+  levels: number;
+  floorHeight: number;
+  facade: FacadeType;
+  roofType: RoofType;
+  setbackFront: number;
+  setbackRear: number;
+  setbackSide: number;
+  windowRatio: number;
+  balconyDepth: number;
+  timeOfDay: TimeOfDay;
+}
+
+interface OpenAIResponsesBody {
+  output?: Array<{ content?: Array<{ text?: string }> }>;
+  text?: string;
+}
+
+function isOpenAIResponsesBody(value: unknown): value is OpenAIResponsesBody {
+  return typeof value === 'object' && value !== null;
+}
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_API_URL = process.env.OPENAI_API_URL || 'https://api.openai.com/v1';
@@ -105,11 +129,14 @@ export async function generateDesign(
     throw new Error(`OpenAI API error: ${response.status} ${error}`);
   }
 
-  const data = await response.json();
+  const data: unknown = await response.json();
 
   // Parse the JSON from the response
   let result: DesignAgentResult;
   try {
+    if (!isOpenAIResponsesBody(data)) {
+      throw new Error('invalid response');
+    }
     const content = data.output?.[0]?.content?.[0]?.text || data.text;
     const parsed = JSON.parse(content);
     result = {
@@ -159,7 +186,7 @@ export function generateDesignMock(
     buildingParams: {
       levels,
       floorHeight: 12,
-      facade: facade as any,
+      facade,
       roofType: 'flat',
       setbackFront: 10,
       setbackRear: 10,

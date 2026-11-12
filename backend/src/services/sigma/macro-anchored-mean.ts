@@ -22,8 +22,7 @@
  *   - Platform M05: Market rent levels, cap rate trends
  */
 
-import type { Logger } from 'pino';
-import { createLogger } from '../../utils/logger';
+import { createServiceLogger } from '../../utils/logger';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -135,7 +134,7 @@ const TIER_DEFINITIONS: Record<string, GeographicTier> = {
 
 // ─── Logger ──────────────────────────────────────────────────────────────────
 
-const log: Logger = createLogger('macro-anchored-mean');
+const log = createServiceLogger('macro-anchored-mean');
 
 // ─── Class ───────────────────────────────────────────────────────────────────
 

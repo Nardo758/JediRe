@@ -674,7 +674,7 @@ export async function cashflowPostProcess(
           // keys like management_fee_dollars / concessions). This preserves existing
           // slots (t12, om, override, platform) while adding/updating agent,
           // resolved, and resolution sub-keys.
-          const sourceTag = resolveSourceTag(field);
+          const sourceTag = resolveSourceTag(pfFieldsForWriteback[agentKey]);
           try {
             // M40: write agent value to the target underwriting scenario.
             // When scenarioTarget='create_new', this writes to a new agent scenario.
@@ -1657,6 +1657,9 @@ export async function cashflowPostProcess(
                     noi_growth_rate:   0.03,
                     deal_strategy:     dealStrategy,
                     selling_costs_pct: 0.02,
+                    platform_role:     'sponsor',
+                    max_alternatives:  3,
+                    include_infeasible: false,
                     ...(gprYear1 !== undefined ? { gpr_year1: gprYear1 } : {}),
                   });
 

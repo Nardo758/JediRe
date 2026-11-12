@@ -16,17 +16,22 @@ export interface AmortProfile {
   refiExpected?: boolean;
 }
 
-export const AMORT_PROFILE_RULESET = {
+export const AMORT_PROFILE_RULESET: {
+  version: string;
+  provenanceTag: string;
+  rules: Array<{ trigger: { lender_type: LenderType }; defaults: AmortProfile }>;
+  fallback: AmortProfile;
+} = {
   version: '2026-07-03',
   provenanceTag: 'platform_estimate',
   rules: [
-    { trigger: { lender_type: 'agency' as LenderType },   defaults: { amortizationYears: 30, rateType: 'fixed', ioPeriodMonths: 0 } },
-    { trigger: { lender_type: 'bank' as LenderType },     defaults: { amortizationYears: 25, rateType: 'fixed_or_floating', ioPeriodMonths: 12 } },
-    { trigger: { lender_type: 'bridge' as LenderType },   defaults: { amortizationType: 'IO', refiExpected: true, ioPeriodMonths: 36 } },
-    { trigger: { lender_type: 'cmbs' as LenderType },     defaults: { amortizationYears: 30, rateType: 'fixed', ioPeriodMonths: 24 } },
-    { trigger: { lender_type: 'life_co' as LenderType },  defaults: { amortizationYears: 30, rateType: 'fixed', ioPeriodMonths: 0 } },
+    { trigger: { lender_type: 'agency' },   defaults: { amortizationYears: 30, rateType: 'fixed', ioPeriodMonths: 0 } },
+    { trigger: { lender_type: 'bank' },     defaults: { amortizationYears: 25, rateType: 'fixed_or_floating', ioPeriodMonths: 12 } },
+    { trigger: { lender_type: 'bridge' },   defaults: { amortizationType: 'IO', refiExpected: true, ioPeriodMonths: 36 } },
+    { trigger: { lender_type: 'cmbs' },     defaults: { amortizationYears: 30, rateType: 'fixed', ioPeriodMonths: 24 } },
+    { trigger: { lender_type: 'life_co' },  defaults: { amortizationYears: 30, rateType: 'fixed', ioPeriodMonths: 0 } },
   ],
-  fallback: { amortizationYears: 30, rateType: 'fixed', ioPeriodMonths: 0 } as AmortProfile,
+  fallback: { amortizationYears: 30, rateType: 'fixed', ioPeriodMonths: 0 },
 };
 
 /**

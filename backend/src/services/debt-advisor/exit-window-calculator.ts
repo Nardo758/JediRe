@@ -632,12 +632,3 @@ function makeAbsence(dealId: string, computedAt: string, reason: string): ExitWi
   };
 }
 
-// ============================================================================
-// Exports
-// ============================================================================
-
-export type {
-  ExitWindowInput,
-  ExitWindowAnalysis,
-  RefiWindow,
-};

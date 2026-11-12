@@ -6,6 +6,7 @@ import axios from 'axios';
 import { z } from 'zod';
 import { AgentRuntime } from '../../agents/runtime/AgentRuntime';
 import { BudgetEnforcer } from '../../agents/runtime/BudgetEnforcer';
+import { StubMeteringAdapter } from '../../agents/runtime/StubMeteringAdapter';
 import { BudgetExceededError } from '../../agents/runtime/types';
 import type { AgentConfig } from '../../agents/runtime/types';
 import { scenarioArchivalService } from '../../services/scenario-archival.service';
@@ -1297,8 +1298,8 @@ router.post('/ingest/census-building-permits', requireAdminAuth, async (req: Aut
         throw new Error('CENSUS_API_KEY environment variable not configured');
       }
 
-      const { ingestBuildingPermits } = await import('../../services/ingestion/census-permits-ingest.service');
-      const result = await ingestBuildingPermits(censusApiKey);
+      const { ingestCensusPermits } = await import('../../services/ingestion/census-permits-ingest.service');
+      const result = await ingestCensusPermits(censusApiKey);
 
       job.recordsProcessed = result.rowsInserted;
       job.recordsTotal = result.countiesProcessed * 120; // ~120 months * 2 metrics (SF + MF)

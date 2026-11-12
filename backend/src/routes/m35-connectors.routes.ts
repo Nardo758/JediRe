@@ -281,8 +281,9 @@ router.post('/ingest', async (req: AuthenticatedRequest, res: Response) => {
       return;
     }
 
-    // Create the event in key_events (which also publishes to Kafka)
-    const event = await createEvent({
+    // Create the event in key_events (which also publishes to Kafka).
+    // `status` is kept on the payload object; createEvent reads `initialStatus`.
+    const eventInput = {
       category: payload.category,
       subtype: payload.subtype,
       name: payload.name,
@@ -307,7 +308,8 @@ router.post('/ingest', async (req: AuthenticatedRequest, res: Response) => {
       rawPayload: payload.rawPayload ?? payload,
       ingestionSource: 'api_submission',
       createdBy: payload.createdBy ?? req.user?.userId ?? 'external-api',
-    });
+    };
+    const event = await createEvent(eventInput);
 
     res.status(201).json({
       success: true,

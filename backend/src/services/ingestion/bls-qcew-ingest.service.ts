@@ -343,7 +343,6 @@ const stateFipsMap: Record<string, string> = {
 // MSA ID to BLS area code (select major MSAs)
 const msaBlsCodeMap: Record<string, string> = {
   '12060': '12060', // Atlanta-Sandy-Springs-Roswell GA
-  '47900': '47900', // Washington-Arlington-Alexandria DC-VA-MD-WV
   '16980': '16980', // Chicago-Naperville-Elgin IL-IN-WI
   '19100': '19100', // Dallas-Fort Worth-Arlington TX
   '26420': '26420', // Houston-The Woodlands-Sugar Land TX
