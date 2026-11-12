@@ -17,6 +17,7 @@
 import { Router, Request, Response } from 'express';
 import { Pool } from 'pg';
 import { randomUUID } from 'crypto';
+import { AuthenticatedRequest } from '../../middleware/auth';
 
 // ─── Premium tier config (mirroring renovationPremium.yaml + valueAdd.yaml) ──
 
@@ -152,6 +153,44 @@ export function calcPremiumRamp(
 export function createRenovationRoutes(pool: Pool): Router {
   const router = Router({ mergeParams: true });
 
+  // Acting user is the authenticated session only. Query and body user ids
+  // are ignored. There is no demo-user fallback.
+  function sessionUserId(req: Request): string | null {
+    const id = (req as AuthenticatedRequest).user?.userId;
+    return typeof id === 'string' && id.length > 0 ? id : null;
+  }
+
+  /**
+   * Same access rule as requireDealAccess: 404 if the deal is missing,
+   * 403 if the caller is not an org member (org-owned deal) or not the
+   * creator (legacy deal with no organization).
+   */
+  async function denyDealAccess(
+    dealId: string,
+    userId: string
+  ): Promise<{ status: number; error: string } | null> {
+    const r = await pool.query(
+      `SELECT organization_id, user_id FROM deals WHERE id = $1`,
+      [dealId]
+    );
+    if (r.rows.length === 0) {
+      return { status: 404, error: 'Deal not found' };
+    }
+    const { organization_id, user_id: ownerUserId } = r.rows[0];
+    if (organization_id) {
+      const members = await pool.query(
+        `SELECT 1 FROM organization_members WHERE user_id = $1 AND organization_id = $2 LIMIT 1`,
+        [userId, organization_id]
+      );
+      if (members.rows.length === 0) {
+        return { status: 403, error: 'Forbidden: not a member of deal organization' };
+      }
+    } else if (!ownerUserId || ownerUserId !== userId) {
+      return { status: 403, error: 'Forbidden: not the deal creator' };
+    }
+    return null;
+  }
+
   /**
    * GET /api/v1/deals/:dealId/renovation
    *
@@ -160,7 +199,14 @@ export function createRenovationRoutes(pool: Pool): Router {
   router.get('/', async (req: Request, res: Response) => {
     try {
       const { dealId } = req.params;
-      const userId = (req as any).user?.userId || (req.query.user_id as string) || 'demo-user';
+      const userId = sessionUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      const denied = await denyDealAccess(dealId, userId);
+      if (denied) {
+        return res.status(denied.status).json({ error: denied.error });
+      }
 
       // 1. Deal info (year_renovated, deal_data rehab cost)
       const dealResult = await pool.query(
@@ -299,10 +345,18 @@ export function createRenovationRoutes(pool: Pool): Router {
     try {
       const { dealId } = req.params;
       const { tierId, manualPremium } = req.body;
-      const userId = (req as any).user?.userId || 'demo-user';
+      const userId = sessionUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
 
       if (!tierId || !['light', 'moderate', 'heavy', 'gut'].includes(tierId)) {
         return res.status(400).json({ error: 'tierId must be one of: light, moderate, heavy, gut' });
+      }
+
+      const denied = await denyDealAccess(dealId, userId);
+      if (denied) {
+        return res.status(denied.status).json({ error: denied.error });
       }
 
       const tier = PREMIUM_TIERS.find(t => t.id === tierId)!;
@@ -373,7 +427,14 @@ export function createRenovationRoutes(pool: Pool): Router {
     try {
       const { dealId } = req.params;
       const { id, category, description, vendor, budgeted, startDate, completionDate } = req.body;
-      const userId = (req as any).user?.userId || 'demo-user';
+      const userId = sessionUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      const denied = await denyDealAccess(dealId, userId);
+      if (denied) {
+        return res.status(denied.status).json({ error: denied.error });
+      }
 
       if (id) {
         // UPDATE existing row
@@ -390,13 +451,19 @@ export function createRenovationRoutes(pool: Pool): Router {
         updates.push(`updated_by = $${idx++}`); values.push(userId);
         updates.push(`updated_at = NOW()`);
 
-        values.push(id);
-        await pool.query(
-          `UPDATE deal_capex_items SET ${updates.join(', ')} WHERE id = $${idx}`,
+        values.push(id, dealId);
+        const updated = await pool.query(
+          `UPDATE deal_capex_items SET ${updates.join(', ')} WHERE id = $${idx} AND deal_id = $${idx + 1}`,
           values
         );
+        if (updated.rowCount === 0) {
+          return res.status(404).json({ error: 'Capex item not found' });
+        }
 
-        const result = await pool.query(`SELECT * FROM deal_capex_items WHERE id = $1`, [id]);
+        const result = await pool.query(
+          `SELECT * FROM deal_capex_items WHERE id = $1 AND deal_id = $2`,
+          [id, dealId]
+        );
         return res.json({ success: true, data: result.rows[0] });
       }
 
