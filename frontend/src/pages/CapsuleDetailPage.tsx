@@ -16,7 +16,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Copy, Check, X, ExternalLink, Loader2, AlertTriangle, RefreshCw, Users, FileText, TrendingUp, Clock, Mail, Download, FileSpreadsheet, ChevronDown } from 'lucide-react';
 import { apiClient } from '../services/api.client';
-import { useAuthStore } from '../stores/authStore';
 import { DivergenceDisagreementsSection } from '../components/capsule/DivergenceDisagreementsSection';
 
 // ─── Design tokens ─────────────────────────────────────────────────────────
@@ -447,7 +446,6 @@ function OverviewTab({ capsule }: { capsule: CapsuleMeta }) {
 export default function CapsuleDetailPage() {
   const { id: capsuleId } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const user = useAuthStore(s => s.user);
 
   const [capsule, setCapsule] = useState<CapsuleMeta | null>(null);
   const [loading, setLoading] = useState(true);
@@ -491,9 +489,9 @@ export default function CapsuleDetailPage() {
 
   useEffect(() => {
     if (!capsuleId) { navigate('/capsules', { replace: true }); return; }
-    const userId = user?.id || 'demo-user';
     setLoading(true);
-    apiClient.get(`/api/v1/capsules/${capsuleId}?user_id=${userId}`)
+    // Identity comes from the bearer token attached by apiClient, not a client user id.
+    apiClient.get(`/api/v1/capsules/${capsuleId}`)
       .then(r => {
         const c = r.data?.capsule ?? r.data;
         setCapsule(c);
@@ -501,7 +499,7 @@ export default function CapsuleDetailPage() {
       })
       .catch(() => setError('Failed to load capsule.'))
       .finally(() => setLoading(false));
-  }, [capsuleId, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [capsuleId, navigate]);
 
   const tabs: { key: 'overview' | 'shares'; label: string; icon: React.ReactNode }[] = [
     { key: 'shares',   label: 'SHARES',   icon: <Users size={12} /> },

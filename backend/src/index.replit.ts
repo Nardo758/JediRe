@@ -268,9 +268,10 @@ const API_V1_PUBLIC_PREFIXES = [
   '/grid-templates',          // /api/v1/grid-templates — optionalAuth (serves both)
   '/microsoft/auth/callback', // OAuth callback — Microsoft reaches this unauthenticated
   '/oppgrid',                 // /api/v1/oppgrid/* — public market intelligence
-  '/shares',                  // /api/v1/shares/* — token-gated capsule exports
+  '/shares',                  // /api/v1/shares/* — public share reads. Fork forces a session.
   '/capsule-links',           // /api/v1/capsule-links/* — token-gated capsule data
-  '/capsules',                // /api/v1/capsules/* — token-gated (legacy)
+  '/capsules',                // /api/v1/capsules/* — public share-token resolution.
+                              // Owner CRUD in capsule.routes forces a session and ignores bypassAuth.
   '/webhooks',                // /api/v1/webhooks/* — signature-verified (notarize)
   '/clawdbot',                // /api/v1/clawdbot/* — HMAC webhook (command + query)
 ] as const;

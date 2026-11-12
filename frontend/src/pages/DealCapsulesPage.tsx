@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Plus, Search, Filter, Download, Share2, TrendingUp, Loader2, AlertTriangle, X, FileSpreadsheet, FileText, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
-import { useAuthStore } from '../stores/authStore';
 import { PinToWorkspaceButton } from '../components/workspace/PinToWorkspaceButton';
 
 // ═══════════════════════════════════════════════════════════════
@@ -57,7 +56,6 @@ interface DealCapsule {
 
 const DealCapsulesPage: React.FC = () => {
   const navigate = useNavigate();
-  const user = useAuthStore((s) => s.user);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [capsules, setCapsules] = useState<DealCapsule[]>([]);
@@ -104,9 +102,9 @@ const DealCapsulesPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const userId = user?.id || 'demo-user';
     setLoading(true);
-    const params: Record<string, string> = { user_id: userId };
+    // Identity comes from the bearer token attached by apiClient, not a client user id.
+    const params: Record<string, string> = {};
     if (searchQuery.trim()) params.search = searchQuery.trim();
 
     apiClient.get('/api/v1/capsules', { params })
@@ -133,7 +131,7 @@ const DealCapsulesPage: React.FC = () => {
         setCapsules([]);
       })
       .finally(() => setLoading(false));
-  }, [user?.id, searchQuery]);
+  }, [searchQuery]);
 
   const getScoreColor = (score: number) => {
     if (score >= 85) return { color: T.text.green, bg: 'rgba(0, 210, 106, 0.15)' };

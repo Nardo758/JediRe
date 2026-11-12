@@ -51,6 +51,27 @@ const SHARE_DIVERGENCE_FIELDS = [
 
 const router = Router();
 
+/**
+ * Acting user is the authenticated session only.
+ * Client-supplied user ids in the body, query, or headers are ignored.
+ * `user.id` is accepted only as a legacy session field, never from the request.
+ */
+function sessionUserId(req: Request): string | null {
+  const user = (req as AuthenticatedRequest).user as { userId?: string; id?: string } | undefined;
+  const id = user?.userId ?? user?.id;
+  return typeof id === 'string' && id.length > 0 ? id : null;
+}
+
+/**
+ * /api/v1/shares is on the public allowlist, so the auth floor sets bypassAuth
+ * and the stock requireAuth middleware returns without loading the session.
+ * Owner actions mounted on that prefix (fork) must still authenticate.
+ */
+function requireAuthenticatedSession(req: Request, res: Response, next: NextFunction): void {
+  res.locals.bypassAuth = false;
+  void requireAuth(req as AuthenticatedRequest, res, next);
+}
+
 // In-memory store for capsule resolution rate limiting
 const rateLimitStore = new Map<string, number[]>();
 
@@ -304,9 +325,10 @@ async function createExternalShareInternal(
 
 // ─── POST /:capsuleId/share/external ─────────────────────────────────────────
 
-router.post('/:capsuleId/share/external', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:capsuleId/share/external', requireAuthenticatedSession, async (req: AuthenticatedRequest, res: Response) => {
   const { capsuleId } = req.params;
-  const userId = req.user?.userId ?? (req as any).user?.id;
+  const userId = sessionUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   try {
     await createExternalShareInternal(capsuleId, userId, req.body, req, res);
   } catch (err: any) {
@@ -320,9 +342,10 @@ router.post('/:capsuleId/share/external', requireAuth, async (req: Authenticated
 // :dealId is treated as the capsule UUID — see createExternalShareInternal for
 // the API contract note on this naming.
 
-router.post('/deals/:dealId/share/external', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/deals/:dealId/share/external', requireAuthenticatedSession, async (req: AuthenticatedRequest, res: Response) => {
   const capsuleId = req.params.dealId;
-  const userId = req.user?.userId ?? (req as any).user?.id;
+  const userId = sessionUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   try {
     await createExternalShareInternal(capsuleId, userId, req.body, req, res);
   } catch (err: any) {
@@ -1692,9 +1715,9 @@ router.delete('/shares/:shortcode/connect_api', async (req: Request, res: Respon
 // share landing page. Creates a new pipeline deal seeded from the capsule data.
 // Requires platform auth (the user just registered/logged in).
 
-router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/shares/:shortcode/fork', requireAuthenticatedSession, async (req: AuthenticatedRequest, res: Response) => {
   const { shortcode } = req.params;
-  const userId = req.user?.userId ?? (req as any).user?.id;
+  const userId = sessionUserId(req);
 
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
@@ -1870,9 +1893,10 @@ router.post('/shares/:shortcode/fork', requireAuth, async (req: AuthenticatedReq
 
 // ─── GET /:capsuleId/shares ───────────────────────────────────────────────────
 
-router.get('/:capsuleId/shares', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:capsuleId/shares', requireAuthenticatedSession, async (req: AuthenticatedRequest, res: Response) => {
   const { capsuleId } = req.params;
-  const userId = req.user?.userId ?? (req as any).user?.id;
+  const userId = sessionUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
     const pool = getPool();
@@ -1909,9 +1933,10 @@ router.get('/:capsuleId/shares', requireAuth, async (req: AuthenticatedRequest, 
 
 // ─── POST /:capsuleId/shares/:shareId/revoke ─────────────────────────────────
 
-router.post('/:capsuleId/shares/:shareId/revoke', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:capsuleId/shares/:shareId/revoke', requireAuthenticatedSession, async (req: AuthenticatedRequest, res: Response) => {
   const { capsuleId, shareId } = req.params;
-  const userId = req.user?.userId ?? (req as any).user?.id;
+  const userId = sessionUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
     const pool = getPool();
@@ -2182,9 +2207,9 @@ function buildCapsuleWorkbook(capsule: {
 
 // ─── GET /:capsuleId/export/excel — XLSX workbook download ───────────────────
 
-router.get('/:capsuleId/export/excel', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:capsuleId/export/excel', requireAuthenticatedSession, async (req: AuthenticatedRequest, res: Response) => {
   const { capsuleId } = req.params;
-  const userId = req.user?.userId ?? (req as any).user?.id;
+  const userId = sessionUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
@@ -2235,9 +2260,9 @@ async function safeFetchLogoBuffer(rawUrl: string): Promise<Buffer | null> {
 
 // ─── GET /:capsuleId/export/pdf — PDF pitch deck download ────────────────────
 
-router.get('/:capsuleId/export/pdf', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:capsuleId/export/pdf', requireAuthenticatedSession, async (req: AuthenticatedRequest, res: Response) => {
   const { capsuleId } = req.params;
-  const userId = req.user?.userId ?? (req as any).user?.id;
+  const userId = sessionUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
@@ -2698,9 +2723,9 @@ router.get('/capsule-links/:accessToken/export/pdf', async (req: Request, res: R
 // Requires auth (inline requireAuth — this router is mounted both publicly and
 // at /capsules-ext with requireAuth, so the inline guard covers both cases).
 
-router.get('/:capsuleId/resolve-deal', requireAuth, async (req: Request, res: Response) => {
+router.get('/:capsuleId/resolve-deal', requireAuthenticatedSession, async (req: Request, res: Response) => {
   const { capsuleId } = req.params;
-  const userId = (req as AuthenticatedRequest).user?.id;
+  const userId = sessionUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
