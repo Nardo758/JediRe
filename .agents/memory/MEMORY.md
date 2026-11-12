@@ -17,3 +17,4 @@
 - [Data source provisioning audit](data-source-provisioning-audit.md) — Claude uses AI_INTEGRATIONS_ANTHROPIC_API_KEY not ANTHROPIC_API_KEY; fetch_permits/fetch_submarket_deliveries 404 (no route); market_inventory table never populated
 - [Capsule fill-lane audit](capsule-fill-lane-audit.md) — restricted-vendor tag enforced only at external-share export; internal correlation engine pools CoStar uploads cross-deal unfiltered; no fine-tuning firewall exists
 - [I2 chat firewall design](i2-chat-firewall.md) — skill_chat_messages.contains_restricted flags CoStar-derived assistant turns; replay gated, display unrestricted; fail-open on lineage check error
+- [Apartment Locator source policy](apartment-locator-source-policy.md) — use the API and local observations, not Apartments.com scraping; keep vintage and floor-plan proxies explicit.

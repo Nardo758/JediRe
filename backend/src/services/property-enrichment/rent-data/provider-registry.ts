@@ -5,7 +5,7 @@
  */
 
 import { RentData, RentDataProvider } from '../types';
-import { ApartmentsComProvider } from './apartments-com-provider';
+import { ApartmentLocatorRentProvider } from './apartment-locator-provider';
 
 export class RentDataProviderRegistry {
   private providers: RentDataProvider[] = [];
@@ -23,7 +23,7 @@ export class RentDataProviderRegistry {
     
     // Add providers in priority order
     this.providers = [
-      new ApartmentsComProvider(),
+      new ApartmentLocatorRentProvider(),
       // Future providers:
       // new CoStarAPIProvider(),
       // new ZillowProvider(),
@@ -104,7 +104,7 @@ export class RentDataProviderRegistry {
       try {
         const data = await provider.fetchRentData(address, city, state, propertyName);
         
-        if (data && data.unitMix.length > 0) {
+        if (data && (data.unitMix.length > 0 || data.avgAskingRent > 0)) {
           console.log(`[RentDataRegistry] Success with provider: ${provider.config.name}`);
           return { data, provider: provider.config.name };
         }
