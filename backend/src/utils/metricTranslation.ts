@@ -35,6 +35,20 @@ export const METRIC_ID_TRANSLATE: Record<string, string> = {
   HM_DISTRESS_SCORE: 'home_value_index_yoy',
 };
 
+/**
+ * DL-192 traffic metric IDs.
+ *
+ * C_TRAFFIC_GROWTH_INDEX_EST, C_TRAFFIC_CONGESTION_INDEX and
+ * C_DEMAND_GROWTH_COMPOSITE are deliberately absent from METRIC_ID_TRANSLATE:
+ * translateMetricId() returns them unchanged, so a query for one of them reads
+ * its own series instead of being swapped for a Zillow series.
+ *
+ * C_TRAFFIC_GROWTH_INDEX stays in the table above, unchanged, because presets
+ * and the Strategy Builder have not been repointed. Its documented alias is
+ * resolved by resolveMetricAlias().
+ */
+export { LEGACY_METRIC_ALIASES, resolveMetricAlias } from '../config/traffic-growth.config';
+
 export const OUTCOME_METRICS_DB = ['rent_index_yoy', 'home_value_index_yoy', 'home_value_index', 'rent_index'];
 
 export function translateMetricId(raw: string): string {

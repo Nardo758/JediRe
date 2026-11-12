@@ -12,14 +12,18 @@
  * - google_realtime_factor only updates when someone actively reads a
  *   property's traffic context (getPropertyTrafficContext). Properties
  *   that are not frequently viewed will have stale realtime factors.
- * - TrafficGrowthIndexService computes misleading growth indices because
- *   the realtime factor is stale.
+ *
+ * The traffic growth index no longer reads google_realtime_factor (DL-192):
+ * that factor is a congestion ratio, not a volume. Growth is computed from
+ * the hourly speed samples collected by trafficSpeedSampleCron below.
  */
 
 import { inngest } from '../../lib/inngest';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { TrafficDataSourcesService } from '../../services/traffic-data-sources.service';
+import { TrafficSpeedSamplerService } from '../../services/traffic-speed-sampler.service';
+import { isTrafficSpeedSamplingEnabled } from '../../config/traffic-growth.config';
 
 export const googleRealtimeRefreshCron = inngest.createFunction(
   {
@@ -53,5 +57,45 @@ export const googleRealtimeRefreshCron = inngest.createFunction(
       failed: result.failed,
       elapsedMs: result.elapsedMs,
     };
+  },
+);
+
+/**
+ * Inngest Cron: hourly traffic speed sampling (DL-192)
+ *
+ * Runs every hour and samples the properties whose local clock reads one of
+ * the configured sample hours. Each run is capped so a full day stays within
+ * the daily sample budget. Does nothing unless TRAFFIC_SPEED_SAMPLING_ENABLED
+ * is 'true', because every sample is a Google Directions call.
+ */
+export const trafficSpeedSampleCron = inngest.createFunction(
+  {
+    id: 'traffic-speed-sample',
+    name: 'Traffic: Hourly speed sampling for the growth index',
+    triggers: [{ cron: '5 * * * *' }], // Hourly at :05
+    retries: 1,
+  },
+  async ({ step }) => {
+    if (!isTrafficSpeedSamplingEnabled()) {
+      return { status: 'disabled' as const };
+    }
+
+    const run = await step.run('sample-due-properties', async () => {
+      const pool = getPool();
+      const sampler = new TrafficSpeedSamplerService(pool, {
+        travelTimes: new TrafficDataSourcesService(pool),
+      });
+      return sampler.sampleDueProperties();
+    });
+
+    const purged = await step.run('purge-expired-samples', async () => {
+      const pool = getPool();
+      const sampler = new TrafficSpeedSamplerService(pool, {
+        travelTimes: new TrafficDataSourcesService(pool),
+      });
+      return sampler.purgeExpiredSamples();
+    });
+
+    return { status: 'ran' as const, ...run, purged };
   },
 );
