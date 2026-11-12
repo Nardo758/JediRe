@@ -176,16 +176,15 @@ npm test -- --reporter=dot \
 PostgreSQL tests use an isolated schema inside a rolled-back transaction.
 No live HTTP calls are made in new tests.
 
-The full backend suite is not green: the initial run had 16 failing files,
-26 failing tests, 1,244 passing tests, and 23 skipped tests. Every failing file
-also fails in an untouched HEAD checkout (that checkout has two additional
-fixture/path failures). These unrelated failures were not fixed.
+The final full backend suite is not green: 16 failing files, 26 failing tests,
+1,209 passing tests, and 23 skipped tests. Every failing file also fails in an
+untouched GitHub master checkout (that checkout has two additional fixture/path
+failures). These unrelated failures were not fixed.
 
-Full backend TypeScript checking also remains red (320 diagnostics in the
-working tree); no diagnostics name the new history/provider modules or modified
-sync/archive modules. The untouched checkout also fails (398 diagnostics with
-different ambient-type resolution under its temporary path). This is not a
-clean full-project type-check claim.
+Full backend TypeScript checking also remains red; no diagnostics name the new
+history/provider modules or modified sync/archive modules. The untouched checkout
+also fails with different ambient-type resolution under its temporary path.
+This is not a clean full-project type-check claim.
 
 Both workflows restarted. Backend listened on port 4000 with two existing
 startup migration failures in lenient mode; frontend returned HTTP 200 and the
