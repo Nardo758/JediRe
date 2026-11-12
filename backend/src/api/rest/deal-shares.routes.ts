@@ -22,7 +22,7 @@ const router = Router();
 
 router.get('/:dealId/shares', requireAuth, async (req: Request, res: Response) => {
   const { dealId } = req.params;
-  const userId = (req as AuthenticatedRequest).user?.id;
+  const userId = (req as AuthenticatedRequest).user?.userId;
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
@@ -78,7 +78,7 @@ router.get('/:dealId/shares', requireAuth, async (req: Request, res: Response) =
 
 router.post('/:dealId/shares/:shareId/revoke', requireAuth, async (req: Request, res: Response) => {
   const { dealId, shareId } = req.params;
-  const userId = (req as AuthenticatedRequest).user?.id;
+  const userId = (req as AuthenticatedRequest).user?.userId;
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {

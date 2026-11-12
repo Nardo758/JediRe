@@ -1,21 +1,35 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { Pool } from 'pg';
 import {
   DealCapsule,
 } from '../../models/deal-capsule-updated';
 import { getReplacementCostServiceV2 } from '../../services/inflation';
+import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 
-const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * Acting user is the authenticated session only.
+ * Body, query, and header user ids are never consulted.
+ */
+function sessionUserId(req: Request): string | null {
+  const id = (req as AuthenticatedRequest).user?.userId;
+  return typeof id === 'string' && id.length > 0 ? id : null;
+}
 
-function resolveUserId(req: Request, candidate?: string): string | null {
-  const authed = (req as any).user?.userId;
-  if (authed && _UUID_RE.test(authed)) return authed;
-  if (candidate && _UUID_RE.test(candidate)) return candidate;
-  return null;
+/**
+ * /api/v1/capsules is on the public allowlist so share tokens can resolve
+ * without login. That floor sets bypassAuth and skips requireAuth, which
+ * also skipped it for owner CRUD on this same prefix. Public tokens are
+ * served by capsule-sharing.routes and do not enter this router. Force a
+ * real session check here.
+ */
+function requireCapsuleSession(req: Request, res: Response, next: NextFunction): void {
+  res.locals.bypassAuth = false;
+  void requireAuth(req as AuthenticatedRequest, res, next);
 }
 
 export function createCapsuleRoutes(pool: Pool): Router {
   const router = Router();
+  router.use(requireCapsuleSession);
 
   /**
    * POST /api/capsules
@@ -23,8 +37,12 @@ export function createCapsuleRoutes(pool: Pool): Router {
    */
   router.post('/', async (req: Request, res: Response) => {
     try {
+      const user_id = sessionUserId(req);
+      if (!user_id) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
       const {
-        user_id,
         property_address,
         deal_data,
         platform_intel,
@@ -32,7 +50,6 @@ export function createCapsuleRoutes(pool: Pool): Router {
         asset_class,
         status = 'DISCOVER'
       } = req.body as {
-        user_id: string;
         property_address: string;
         deal_data: any;
         platform_intel?: any;
@@ -41,8 +58,8 @@ export function createCapsuleRoutes(pool: Pool): Router {
         status?: string;
       };
 
-      if (!user_id || !property_address || !deal_data) {
-        return res.status(400).json({ error: 'Missing required fields: user_id, property_address, deal_data' });
+      if (!property_address || !deal_data) {
+        return res.status(400).json({ error: 'Missing required fields: property_address, deal_data' });
       }
 
       const result = await pool.query(
@@ -88,20 +105,20 @@ export function createCapsuleRoutes(pool: Pool): Router {
    */
   router.get('/', async (req: Request, res: Response) => {
     try {
-      const { user_id, status, search, limit = 50, offset = 0 } = req.query;
+      const user_id = sessionUserId(req);
+      if (!user_id) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
 
-      const isValidUuid = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-      const useUserFilter = isValidUuid(user_id);
+      const { status, search, limit = 50, offset = 0 } = req.query;
 
       let query = `SELECT * FROM capsule_summary`;
       const params: any[] = [];
       let paramIndex = 1;
       const conditions: string[] = [];
 
-      if (useUserFilter) {
-        conditions.push(`user_id = $${paramIndex++}`);
-        params.push(user_id);
-      }
+      conditions.push(`user_id = $${paramIndex++}`);
+      params.push(user_id);
 
       if (status) {
         conditions.push(`status = $${paramIndex++}`);
@@ -124,10 +141,8 @@ export function createCapsuleRoutes(pool: Pool): Router {
       const countConditions: string[] = [];
       let countParamIndex = 1;
 
-      if (useUserFilter) {
-        countConditions.push(`user_id = $${countParamIndex++}`);
-        countParams.push(user_id);
-      }
+      countConditions.push(`user_id = $${countParamIndex++}`);
+      countParams.push(user_id);
       if (status) {
         countConditions.push(`status = $${countParamIndex++}`);
         countParams.push(status);
@@ -160,7 +175,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.get('/:id', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const resolvedUserId = resolveUserId(req, req.query.user_id as string);
+      const resolvedUserId = sessionUserId(req);
 
       if (!resolvedUserId) {
         return res.status(401).json({ error: 'Authentication required' });
@@ -217,8 +232,11 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.put('/:id', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
+      const user_id = sessionUserId(req);
+      if (!user_id) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
       const {
-        user_id,
         deal_data,
         platform_intel,
         user_adjustments,
@@ -226,7 +244,6 @@ export function createCapsuleRoutes(pool: Pool): Router {
         asset_class,
         status
       } = req.body as {
-        user_id: string;
         deal_data?: any;
         platform_intel?: any;
         user_adjustments?: any;
@@ -234,10 +251,6 @@ export function createCapsuleRoutes(pool: Pool): Router {
         asset_class?: string;
         status?: string;
       };
-
-      if (!user_id) {
-        return res.status(400).json({ error: 'Missing required field: user_id' });
-      }
 
       const updates: string[] = [];
       const values: any[] = [];
@@ -325,7 +338,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.delete('/:id', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const resolvedUserId = resolveUserId(req, req.query.user_id as string);
+      const resolvedUserId = sessionUserId(req);
 
       if (!resolvedUserId) {
         return res.status(401).json({ error: 'Authentication required' });
@@ -376,10 +389,14 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.post('/:id/documents', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { user_id, file_name, document_type, file_path, file_size_bytes, mime_type, extracted_data } = req.body;
+      const user_id = sessionUserId(req);
+      if (!user_id) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      const { file_name, document_type, file_path, file_size_bytes, mime_type, extracted_data } = req.body;
 
-      if (!user_id || !file_name || !file_path) {
-        return res.status(400).json({ error: 'Missing required fields: user_id, file_name, file_path' });
+      if (!file_name || !file_path) {
+        return res.status(400).json({ error: 'Missing required fields: file_name, file_path' });
       }
 
       const capsuleResult = await pool.query(
@@ -457,7 +474,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.delete('/:id/documents/:documentId', async (req: Request, res: Response) => {
     try {
       const { id, documentId } = req.params;
-      const resolvedUserId = resolveUserId(req, req.query.user_id as string);
+      const resolvedUserId = sessionUserId(req);
 
       if (!resolvedUserId) {
         return res.status(401).json({ error: 'Authentication required' });
@@ -478,7 +495,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
       await pool.query(
         `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
          VALUES ($1, $2, 'document_deleted', $3)`,
-        [id, user_id, { file_name: result.rows[0].file_name }]
+        [id, resolvedUserId, { file_name: result.rows[0].file_name }]
       );
 
       res.json({
@@ -498,20 +515,22 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.post('/:id/share', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
+      const user_id = sessionUserId(req);
+      if (!user_id) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
       const {
-        user_id,
         shared_with,
         permission_tier,
         expires_at
       } = req.body as {
-        user_id: string;
         shared_with: string;
         permission_tier: string;
         expires_at?: string;
       };
 
-      if (!user_id || !shared_with || !permission_tier) {
-        return res.status(400).json({ error: 'Missing required fields: user_id, shared_with, permission_tier' });
+      if (!shared_with || !permission_tier) {
+        return res.status(400).json({ error: 'Missing required fields: shared_with, permission_tier' });
       }
 
       const capsuleResult = await pool.query(
@@ -558,7 +577,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.delete('/:id/share/:shareId', async (req: Request, res: Response) => {
     try {
       const { id, shareId } = req.params;
-      const resolvedUserId = resolveUserId(req, req.query.user_id as string);
+      const resolvedUserId = sessionUserId(req);
 
       if (!resolvedUserId) {
         return res.status(401).json({ error: 'Authentication required' });
@@ -579,7 +598,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
       await pool.query(
         `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
          VALUES ($1, $2, 'share_revoked', $3)`,
-        [id, user_id, { shared_with: result.rows[0].shared_with }]
+        [id, resolvedUserId, { shared_with: result.rows[0].shared_with }]
       );
 
       res.json({
@@ -599,6 +618,10 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.post('/:id/activity', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
+      const userId = sessionUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
       const { activity_type, activity_data } = req.body;
 
       if (!activity_type) {
@@ -606,21 +629,19 @@ export function createCapsuleRoutes(pool: Pool): Router {
       }
 
       const capsuleResult = await pool.query(
-        `SELECT id, user_id FROM deal_capsules WHERE id = $1`,
-        [id]
+        `SELECT id FROM deal_capsules WHERE id = $1 AND user_id = $2`,
+        [id, userId]
       );
 
       if (capsuleResult.rows.length === 0) {
         return res.status(404).json({ error: 'Capsule not found' });
       }
 
-      const ownerUserId = capsuleResult.rows[0].user_id;
-
       const result = await pool.query(
         `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
          VALUES ($1, $2, $3, $4)
          RETURNING *`,
-        [id, ownerUserId, activity_type, JSON.stringify(activity_data ?? {})]
+        [id, userId, activity_type, JSON.stringify(activity_data ?? {})]
       );
 
       res.status(201).json({ success: true, activity: result.rows[0] });
@@ -634,7 +655,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
     try {
       const { id } = req.params;
       const { limit = 50, offset = 0 } = req.query;
-      const resolvedUserId = resolveUserId(req, req.query.user_id as string);
+      const resolvedUserId = sessionUserId(req);
 
       if (!resolvedUserId) {
         return res.status(401).json({ error: 'Authentication required' });
@@ -678,7 +699,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.get('/:id/replacement-cost', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const resolvedUserId = resolveUserId(req, req.query.user_id as string);
+      const resolvedUserId = sessionUserId(req);
 
       if (!resolvedUserId) {
         return res.status(401).json({ error: 'Authentication required' });
@@ -729,7 +750,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
         assetClass,
         yearBuilt,
         stories,
-        userId: user_id as string
+        userId: resolvedUserId
       });
 
       // Build comparison if we have asking price
@@ -785,7 +806,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
          VALUES ($1, $2, 'replacement_cost_computed', $3)`,
         [
           id,
-          user_id,
+          resolvedUserId,
           {
             totalCost: estimate.totalCost.value,
             costPerUnit: estimate.costPerUnit.value,
@@ -840,11 +861,11 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.post('/:id/replacement-cost/override', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { user_id, costPerSF, totalCost, source, notes } = req.body;
-
+      const user_id = sessionUserId(req);
       if (!user_id) {
-        return res.status(400).json({ error: 'Missing required field: user_id' });
+        return res.status(401).json({ error: 'Authentication required' });
       }
+      const { costPerSF, totalCost, source, notes } = req.body;
 
       if (!costPerSF && !totalCost) {
         return res.status(400).json({ error: 'Provide either costPerSF or totalCost' });
@@ -931,10 +952,14 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.post('/:id/insurance-check', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { user_id, currentCoverage } = req.body;
+      const user_id = sessionUserId(req);
+      if (!user_id) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      const { currentCoverage } = req.body;
 
-      if (!user_id || !currentCoverage) {
-        return res.status(400).json({ error: 'Missing required fields: user_id, currentCoverage' });
+      if (!currentCoverage) {
+        return res.status(400).json({ error: 'Missing required field: currentCoverage' });
       }
 
       // Get capsule with replacement cost

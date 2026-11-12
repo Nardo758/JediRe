@@ -21,6 +21,7 @@ import { Pool } from 'pg';
 import { randomUUID } from 'crypto';
 import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
 import { stampProvenance } from '../../utils/provenance-stamp';
+import { AuthenticatedRequest } from '../../middleware/auth';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -59,6 +60,45 @@ interface ProFormaRow {
 
 export function createDealCapsuleBridge(pool: Pool): Router {
   const router = Router({ mergeParams: true });
+
+  // Acting user is the authenticated session only. Query, body, and header
+  // user ids are ignored. There is no demo-user fallback.
+  function sessionUserId(req: Request): string | null {
+    const id = (req as AuthenticatedRequest).user?.userId;
+    return typeof id === 'string' && id.length > 0 ? id : null;
+  }
+
+  /**
+   * Same access rule as requireDealAccess: 404 if the deal is missing,
+   * 403 if the caller is not an org member (org-owned deal) or not the
+   * creator (legacy deal with no organization).
+   * Returns null when access is allowed.
+   */
+  async function denyDealAccess(
+    dealId: string,
+    userId: string
+  ): Promise<{ status: number; error: string } | null> {
+    const r = await pool.query(
+      `SELECT organization_id, user_id FROM deals WHERE id = $1`,
+      [dealId]
+    );
+    if (r.rows.length === 0) {
+      return { status: 404, error: 'Deal not found' };
+    }
+    const { organization_id, user_id: ownerUserId } = r.rows[0];
+    if (organization_id) {
+      const members = await pool.query(
+        `SELECT 1 FROM organization_members WHERE user_id = $1 AND organization_id = $2 LIMIT 1`,
+        [userId, organization_id]
+      );
+      if (members.rows.length === 0) {
+        return { status: 403, error: 'Forbidden: not a member of deal organization' };
+      }
+    } else if (!ownerUserId || ownerUserId !== userId) {
+      return { status: 403, error: 'Forbidden: not the deal creator' };
+    }
+    return null;
+  }
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -184,10 +224,18 @@ export function createDealCapsuleBridge(pool: Pool): Router {
   router.get('/', async (req: Request, res: Response) => {
     try {
       const { dealId } = req.params;
-      const userId = (req as any).user?.userId || (req.query.user_id as string) || 'demo-user';
+      const userId = sessionUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
 
       if (!dealId) {
         return res.status(400).json({ error: 'dealId is required' });
+      }
+
+      const denied = await denyDealAccess(dealId, userId);
+      if (denied) {
+        return res.status(denied.status).json({ error: denied.error });
       }
 
       // Auto-create capsule + proforma
@@ -265,11 +313,19 @@ export function createDealCapsuleBridge(pool: Pool): Router {
   router.post('/seed', async (req: Request, res: Response) => {
     try {
       const { dealId } = req.params;
-      const { source, data, userId: reqUserId } = req.body;
-      const userId = (req as any).user?.userId || reqUserId || 'demo-user';
+      const { source, data } = req.body;
+      const userId = sessionUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
 
       if (!source || !data) {
         return res.status(400).json({ error: 'source and data are required' });
+      }
+
+      const denied = await denyDealAccess(dealId, userId);
+      if (denied) {
+        return res.status(denied.status).json({ error: denied.error });
       }
 
       const validSources = ['zoning', 'program', 'massing', 'research', 'design_targets', 'manual'];
@@ -393,7 +449,15 @@ export function createDealCapsuleBridge(pool: Pool): Router {
     try {
       const { dealId } = req.params;
       const { seedData } = req.body;
-      const userId = (req as any).user?.userId || 'demo-user';
+      const userId = sessionUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const denied = await denyDealAccess(dealId, userId);
+      if (denied) {
+        return res.status(denied.status).json({ error: denied.error });
+      }
 
       // 1. Create/modify capsule
       const capsule = await findOrCreateCapsule(dealId, userId);
@@ -492,10 +556,18 @@ export function createDealCapsuleBridge(pool: Pool): Router {
     try {
       const { dealId } = req.params;
       const { adjustments } = req.body;
-      const userId = (req as any).user?.userId || 'demo-user';
+      const userId = sessionUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
 
       if (!adjustments) {
         return res.status(400).json({ error: 'adjustments object is required' });
+      }
+
+      const denied = await denyDealAccess(dealId, userId);
+      if (denied) {
+        return res.status(denied.status).json({ error: denied.error });
       }
 
       const capsule = await findOrCreateCapsule(dealId, userId);
