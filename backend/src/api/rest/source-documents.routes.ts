@@ -12,10 +12,12 @@ import { assertDealOrgAccess } from '../../services/deal-scoping.service';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { bindDealParam } from '../../middleware/deal-access';
 import * as fs from 'fs';
 import * as path from 'path';
 
 const router = Router({ mergeParams: true });
+bindDealParam(router);
 
 interface SourceDocRecord {
   file_id: string | null;

@@ -10,6 +10,7 @@ import { Router, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { bindDealParam } from '../../middleware/deal-access';
 import { requireCapability } from '../../middleware/rbac';
 import { moduleEventBus, ModuleEventType } from '../../services/module-wiring/module-event-bus';
 import { bustM08Cache } from '../../services/m08-strategies.service';
@@ -42,6 +43,7 @@ const ANTHROPIC_BASE_URL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || 'ht
 const CLAUDE_MODEL       = 'claude-sonnet-4-5';
 
 const router = Router();
+bindDealParam(router);
 
 // ─── Narrative types and cache ───────────────────────────────────────────────
 export interface NarrativeBlock {

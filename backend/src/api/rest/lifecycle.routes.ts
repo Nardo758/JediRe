@@ -11,6 +11,7 @@
 
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { bindDealParam } from '../../middleware/deal-access';
 import { logger } from '../../utils/logger';
 import { query } from '../../database/connection';
 
@@ -58,6 +59,7 @@ import {
 } from '../../services/lifecycle/transition-guard.service';
 
 const router = Router();
+bindDealParam(router);
 
 // ═══════════════════════════════════════════════════════════════════════
 // DISPOSITION ENDPOINTS

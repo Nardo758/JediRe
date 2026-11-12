@@ -17,10 +17,12 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import { bindDealParam } from '../../middleware/deal-access';
 import { uwScenarioService } from '../../services/underwriting-scenarios.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
+bindDealParam(router);
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 

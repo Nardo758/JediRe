@@ -13,6 +13,9 @@ import { proformaAdjustmentService } from '../../services/proforma-adjustment.se
 import { financialModelEngine } from '../../services/financial-model-engine.service';
 import { trafficToProForma } from '../../services/trafficToProFormaService';
 import { getPool } from '../../database/connection';
+import { bindDealParam } from '../../middleware/deal-access';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
+import { AuthenticatedRequest } from '../../middleware/auth';
 import Decimal from 'decimal.js';
 
 const logger = { 
@@ -21,6 +24,7 @@ const logger = {
 };
 
 const router = Router();
+bindDealParam(router);
 
 // ─── M35 attribution helper ───────────────────────────────────────────────────
 
@@ -504,41 +508,36 @@ router.delete('/:dealId/override/:assumptionType', authMiddleware.requireAuth, a
 router.post('/batch/recalculate', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { dealIds } = req.body;
-    const userId = (req as any).user?.userId;
-    
-    // Check if user has admin permissions (implement based on your auth system)
-    // For now, allow all authenticated users
-    
+    const userId = (req as AuthenticatedRequest).user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+    if (!Array.isArray(dealIds) || dealIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'dealIds is required' });
+    }
+    const pool = getPool();
+    for (const dealId of dealIds) {
+      const allowed = await assertDealOrgAccess(String(dealId), userId, pool).catch(() => null);
+      if (!allowed) {
+        return res.status(404).json({ success: false, error: 'Deal not found' });
+      }
+    }
+
     let recalculatedCount = 0;
     const errors: any[] = [];
-    
-    if (dealIds && Array.isArray(dealIds)) {
-      // Recalculate specific deals
-      for (const dealId of dealIds) {
-        try {
-          await proformaAdjustmentService.recalculate({
-            dealId,
-            triggerType: 'periodic_update',
-            userId
-          });
-          recalculatedCount++;
-        } catch (error: any) {
-          errors.push({ dealId, error: error.message });
-        }
+
+    for (const dealId of dealIds) {
+      try {
+        await proformaAdjustmentService.recalculate({
+          dealId,
+          triggerType: 'periodic_update',
+          userId
+        });
+        recalculatedCount++;
+      } catch (error: any) {
+        errors.push({ dealId, error: error.message });
       }
-    } else {
-      // Recalculate all active deals
-      logger.info('Batch recalculating all active deals');
-      
-      // This would be better as a background job, but for now we'll do it synchronously
-      // In production, use a job queue (Bull, BeeQueue, etc.)
-      
-      res.status(202).json({
-        success: true,
-        message: 'Batch recalculation started (not yet implemented for all deals)',
-        note: 'Provide dealIds array to recalculate specific deals'
-      });
-      return;
     }
     
     res.json({

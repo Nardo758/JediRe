@@ -1,10 +1,27 @@
 import { Router, Request, Response } from 'express';
 import { Pool } from 'pg';
 import { OpusService } from '../../services/opus.service';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
+import { requireSession, AuthenticatedRequest } from '../../middleware/auth';
 
 export function createOpusRoutes(pool: Pool): Router {
   const router = Router();
   const opus = new OpusService(pool);
+  router.use(requireSession);
+
+  async function assertOpusDeal(req: Request, res: Response, dealId: string): Promise<boolean> {
+    const userId = (req as AuthenticatedRequest).user?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Authentication required' });
+      return false;
+    }
+    const allowed = await assertDealOrgAccess(dealId, userId, pool).catch(() => null);
+    if (!allowed) {
+      res.status(404).json({ error: 'Deal not found' });
+      return false;
+    }
+    return true;
+  }
 
   router.get('/conversations', async (req: Request, res: Response) => {
     try {
@@ -22,7 +39,8 @@ export function createOpusRoutes(pool: Pool): Router {
     try {
       const { dealId, title } = req.body;
       if (!dealId) return res.status(400).json({ error: 'dealId required' });
-      const conversation = await opus.createConversation(dealId, (req as any).user?.userId, title);
+      if (!(await assertOpusDeal(req, res, dealId))) return;
+      const conversation = await opus.createConversation(dealId, (req as AuthenticatedRequest).user?.userId, title);
       res.status(201).json(conversation);
     } catch (err: any) {
       console.error('Opus create conversation error:', err);
@@ -59,6 +77,7 @@ export function createOpusRoutes(pool: Pool): Router {
       const conversationId = parseInt(req.params.id);
       const { content, dealId } = req.body;
       if (!content || !dealId) return res.status(400).json({ error: 'content and dealId required' });
+      if (!(await assertOpusDeal(req, res, dealId))) return;
 
       const conversation = await opus.getConversation(conversationId);
       if (!conversation) return res.status(404).json({ error: 'Conversation not found' });

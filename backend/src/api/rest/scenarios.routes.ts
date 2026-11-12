@@ -10,10 +10,13 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { bindDealParam, requireDealBodyAccess, requireScenarioDealAccess } from '../../middleware/deal-access';
+import { requireSession } from '../../middleware/auth';
 import { scenarioGenerationService } from '../../services/scenario-generation.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
+bindDealParam(router);
 
 // ============================================================================
 // GET /api/v1/scenarios/templates
@@ -56,7 +59,7 @@ router.get('/templates', async (req: Request, res: Response) => {
 // (MUST be before /:dealId to avoid matching "custom" as a UUID)
 // ============================================================================
 
-router.post('/custom', async (req: Request, res: Response) => {
+router.post('/custom', requireSession, (req, res, next) => { void requireDealBodyAccess(req as any, res, next); }, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.userId;
     const {
@@ -188,7 +191,7 @@ router.get('/:dealId', async (req: Request, res: Response) => {
 // Get full scenario details including events and results
 // ============================================================================
 
-router.get('/:scenarioId/details', async (req: Request, res: Response) => {
+router.get('/:scenarioId/details', requireSession, (req, res, next) => { void requireScenarioDealAccess(req as any, res, next); }, async (req: Request, res: Response) => {
   try {
     const { scenarioId } = req.params;
 
@@ -236,7 +239,7 @@ router.get('/:dealId/comparison', async (req: Request, res: Response) => {
 // Recalculate scenario with updated events
 // ============================================================================
 
-router.put('/:scenarioId/recalculate', async (req: Request, res: Response) => {
+router.put('/:scenarioId/recalculate', requireSession, (req, res, next) => { void requireScenarioDealAccess(req as any, res, next); }, async (req: Request, res: Response) => {
   try {
     const { scenarioId } = req.params;
     const authUserId = (req as any).user?.userId;
@@ -267,7 +270,7 @@ router.put('/:scenarioId/recalculate', async (req: Request, res: Response) => {
 // Update custom scenario
 // ============================================================================
 
-router.put('/:scenarioId', async (req: Request, res: Response) => {
+router.put('/:scenarioId', requireSession, (req, res, next) => { void requireScenarioDealAccess(req as any, res, next); }, async (req: Request, res: Response) => {
   try {
     const { scenarioId } = req.params;
     const {
@@ -328,7 +331,7 @@ router.put('/:scenarioId', async (req: Request, res: Response) => {
 // Delete custom scenario
 // ============================================================================
 
-router.delete('/:scenarioId', async (req: Request, res: Response) => {
+router.delete('/:scenarioId', requireSession, (req, res, next) => { void requireScenarioDealAccess(req as any, res, next); }, async (req: Request, res: Response) => {
   try {
     const { scenarioId } = req.params;
 

@@ -6,6 +6,8 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { bindDealParam, requireDealBodyAccess } from '../../middleware/deal-access';
+import { AuthenticatedRequest } from '../../middleware/auth';
 import multer from 'multer';
 import path from 'path';
 import Decimal from 'decimal.js';
@@ -33,6 +35,7 @@ const upload = multer({
 });
 
 const router = Router();
+bindDealParam(router);
 
 // ============================================================================
 // Input Validation Helpers
@@ -91,7 +94,7 @@ function validateCapitalUses(uses: any): CapitalUses {
 // ============================================================================
 
 /** POST /capital-structure/stack - Build capital stack with metrics */
-router.post('/stack', (req: Request, res: Response) => {
+router.post('/stack', (req, res, next) => { void requireDealBodyAccess(req as AuthenticatedRequest, res, next); }, (req: Request, res: Response) => {
   try {
     const { dealId, strategy, layers, uses, noi, propertyValue, grossPotentialRent } = req.body;
 
@@ -405,7 +408,7 @@ router.get('/rates/history', async (req: Request, res: Response) => {
 // Rate Sheet Upload Endpoints
 // ============================================================================
 
-router.post('/rate-sheet/upload', upload.single('file') as any, async (req: Request, res: Response) => {
+router.post('/rate-sheet/upload', (req, res, next) => { void requireDealBodyAccess(req as AuthenticatedRequest, res, next); }, upload.single('file') as any, async (req: Request, res: Response) => {
   try {
     const file = req.file;
     const dealId = req.body.dealId;

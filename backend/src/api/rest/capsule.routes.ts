@@ -4,6 +4,9 @@ import {
   DealCapsule,
 } from '../../models/deal-capsule-updated';
 import { getReplacementCostServiceV2 } from '../../services/inflation';
+import { requireSession, AuthenticatedRequest } from '../../middleware/auth';
+import { assertDealOrgAccess } from '../../services/deal-scoping.service';
+import { paidJobLimiter } from '../../middleware/paid-job';
 
 const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -14,8 +17,55 @@ function resolveUserId(req: Request, candidate?: string): string | null {
   return null;
 }
 
+const TOKEN_FIELD = /token|shortcode|encryption_key|secret/i;
+
+function stripShareSecrets<T extends Record<string, unknown>>(row: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (TOKEN_FIELD.test(key)) continue;
+    out[key] = value;
+  }
+  return out as T;
+}
+
+async function callerCanAccessCapsule(pool: Pool, capsuleId: string, userId: string): Promise<boolean> {
+  const found = await pool.query(
+    `SELECT id, deal_id, user_id, created_by FROM deal_capsules WHERE id = $1`,
+    [capsuleId]
+  );
+  if (found.rows.length === 0) return false;
+  const row = found.rows[0];
+  if (row.deal_id) {
+    const deal = await assertDealOrgAccess(row.deal_id, userId, pool).catch(() => null);
+    return !!deal;
+  }
+  return row.user_id === userId || row.created_by === userId;
+}
+
 export function createCapsuleRoutes(pool: Pool): Router {
   const router = Router();
+
+  // Share-token GETs are answered by capsule-sharing before they reach here.
+  // Every remaining capsule route requires a session that ignores the public bypass.
+  router.use(requireSession);
+  router.use('/:id', paidJobLimiter, async (req: Request, res: Response, next) => {
+    try {
+      const userId = (req as AuthenticatedRequest).user?.userId;
+      if (!userId) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+      const ok = await callerCanAccessCapsule(pool, req.params.id, userId);
+      if (!ok) {
+        res.status(404).json({ error: 'Capsule not found' });
+        return;
+      }
+      next();
+    } catch (err) {
+      console.error('Capsule access check failed:', err);
+      res.status(500).json({ error: 'Authorization check failed' });
+    }
+  });
 
   /**
    * POST /api/capsules
@@ -41,8 +91,17 @@ export function createCapsuleRoutes(pool: Pool): Router {
         status?: string;
       };
 
-      if (!user_id || !property_address || !deal_data) {
-        return res.status(400).json({ error: 'Missing required fields: user_id, property_address, deal_data' });
+      const authedUserId = (req as AuthenticatedRequest).user?.userId;
+      if (!authedUserId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      if (!property_address || !deal_data) {
+        return res.status(400).json({ error: 'Missing required fields: property_address, deal_data' });
+      }
+      const linkedDealId = (req.body as any).deal_id ?? deal_data?.deal_id ?? deal_data?.dealId;
+      if (linkedDealId) {
+        const allowed = await assertDealOrgAccess(String(linkedDealId), authedUserId, pool).catch(() => null);
+        if (!allowed) return res.status(404).json({ error: 'Deal not found' });
       }
 
       const result = await pool.query(
@@ -51,7 +110,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
         [
-          user_id,
+          authedUserId,
           property_address,
           deal_data,
           platform_intel || {},
@@ -66,7 +125,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
          VALUES ($1, $2, 'created', $3)`,
         [
           result.rows[0].id,
-          user_id,
+          authedUserId,
           { message: 'Capsule created', property_address }
         ]
       );
@@ -88,20 +147,18 @@ export function createCapsuleRoutes(pool: Pool): Router {
    */
   router.get('/', async (req: Request, res: Response) => {
     try {
-      const { user_id, status, search, limit = 50, offset = 0 } = req.query;
-
-      const isValidUuid = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-      const useUserFilter = isValidUuid(user_id);
+      const authedUserId = (req as AuthenticatedRequest).user?.userId;
+      if (!authedUserId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      const { status, search, limit = 50, offset = 0 } = req.query;
 
       let query = `SELECT * FROM capsule_summary`;
-      const params: any[] = [];
-      let paramIndex = 1;
-      const conditions: string[] = [];
-
-      if (useUserFilter) {
-        conditions.push(`user_id = $${paramIndex++}`);
-        params.push(user_id);
-      }
+      const params: any[] = [authedUserId];
+      let paramIndex = 2;
+      const conditions: string[] = [
+        `(user_id = $1 OR created_by = $1 OR deal_id IN (SELECT id FROM deals d WHERE d.org_id = (SELECT default_org_id FROM users WHERE id = $1) OR (d.org_id IS NULL AND d.user_id = $1)))`,
+      ];
 
       if (status) {
         conditions.push(`status = $${paramIndex++}`);
@@ -120,14 +177,11 @@ export function createCapsuleRoutes(pool: Pool): Router {
       const result = await pool.query(query, params);
 
       let countQuery = `SELECT COUNT(*) FROM deal_capsules`;
-      const countParams: any[] = [];
-      const countConditions: string[] = [];
-      let countParamIndex = 1;
-
-      if (useUserFilter) {
-        countConditions.push(`user_id = $${countParamIndex++}`);
-        countParams.push(user_id);
-      }
+      const countParams: any[] = [authedUserId];
+      const countConditions: string[] = [
+        `(user_id = $1 OR created_by = $1 OR deal_id IN (SELECT id FROM deals d WHERE d.org_id = (SELECT default_org_id FROM users WHERE id = $1) OR (d.org_id IS NULL AND d.user_id = $1)))`,
+      ];
+      let countParamIndex = 2;
       if (status) {
         countConditions.push(`status = $${countParamIndex++}`);
         countParams.push(status);
@@ -142,7 +196,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
 
       res.json({
         success: true,
-        capsules: result.rows,
+        capsules: result.rows.map((row: Record<string, unknown>) => stripShareSecrets(row)),
         total: parseInt(countResult.rows[0].count),
         limit: parseInt(limit as string),
         offset: parseInt(offset as string)
@@ -202,7 +256,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
         capsule: result.rows[0],
         documents: docsResult.rows,
         activity: activityResult.rows,
-        shares: sharesResult.rows
+        shares: sharesResult.rows.map((row: Record<string, unknown>) => stripShareSecrets(row))
       });
     } catch (error) {
       console.error('Error fetching capsule:', error);
@@ -478,7 +532,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
       await pool.query(
         `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
          VALUES ($1, $2, 'document_deleted', $3)`,
-        [id, user_id, { file_name: result.rows[0].file_name }]
+        [id, resolvedUserId, { file_name: result.rows[0].file_name }]
       );
 
       res.json({
@@ -579,7 +633,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
       await pool.query(
         `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
          VALUES ($1, $2, 'share_revoked', $3)`,
-        [id, user_id, { shared_with: result.rows[0].shared_with }]
+        [id, resolvedUserId, { shared_with: result.rows[0].shared_with }]
       );
 
       res.json({
@@ -729,7 +783,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
         assetClass,
         yearBuilt,
         stories,
-        userId: user_id as string
+        userId: resolvedUserId
       });
 
       // Build comparison if we have asking price
@@ -785,7 +839,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
          VALUES ($1, $2, 'replacement_cost_computed', $3)`,
         [
           id,
-          user_id,
+          resolvedUserId,
           {
             totalCost: estimate.totalCost.value,
             costPerUnit: estimate.costPerUnit.value,

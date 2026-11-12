@@ -8,6 +8,7 @@ import { validate, loginSchema } from './validation';
 import { emailService } from '../../services/email.service';
 import { createRateLimiter } from '../../middleware/rateLimit';
 import { logger } from '../../utils/logger';
+import { isDevLoginAllowed } from '../../auth/dev-login-policy';
 
 const router = Router();
 const pool = getPool();
@@ -195,7 +196,9 @@ router.post('/login', validate(loginSchema), async (req, res) => {
 });
 
 router.get('/dev-login', async (_req, res) => {
-  if (process.env.REPLIT_DEPLOYMENT === '1') {
+  // Off unless ALLOW_DEV_LOGIN=1, and that flag cannot enable the route on a
+  // deployed or hosted build (production, Replit deployment, staging, preview).
+  if (!isDevLoginAllowed()) {
     res.status(404).json({ error: 'Not found' });
     return;
   }

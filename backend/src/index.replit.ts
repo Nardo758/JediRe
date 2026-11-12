@@ -11,6 +11,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
 import { requireAuth, optionalAuth, requireSurface } from './middleware/auth';
+import { isPublicApiV1Path } from './auth/public-api-paths';
 import { rateLimiter, authLimiter, strictLimiter } from './middleware/rateLimit';
 import { getPool } from './database/connection';
 import { logger } from './utils/logger';
@@ -254,42 +255,21 @@ app.use('/api/v1/supply', requireAuth, supplyRoutes);
 // flag checked at the top of requireAuth and requireSurface (auth.ts:66, auth.ts:310).
 // INVARIANT: any NEW middleware that gates /api/v1 must check bypassAuth first —
 // ignoring it silently 401s the allowlisted public paths below.
-const API_V1_PUBLIC_PREFIXES = [
-  '/auth',                    // /api/v1/auth/* — login, register, dev-login
-  '/ticker',                  // /api/v1/ticker/* — FRED tickers (validatePublicQuery)
-  '/time-series',             // /api/v1/time-series/* (validatePublicQuery)
-  '/data-macro',              // /api/v1/data-macro/* (validatePublicQuery)
-  '/driver-analysis',         // /api/v1/driver-analysis/* (validatePublicQuery)
-  '/derived-metrics',         // /api/v1/derived-metrics/* (validatePublicQuery)
-  '/columns',                 // /api/v1/columns/* (validatePublicQuery)
-  '/column-catalog',          // /api/v1/column-catalog — public catalog handler
-  '/grid-data',               // /api/v1/grid-data — public grid data handler
-  '/column-insights',         // /api/v1/column-insights — public insights handler
-  '/grid-templates',          // /api/v1/grid-templates — optionalAuth (serves both)
-  '/microsoft/auth/callback', // OAuth callback — Microsoft reaches this unauthenticated
-  '/oppgrid',                 // /api/v1/oppgrid/* — public market intelligence
-  '/shares',                  // /api/v1/shares/* — token-gated capsule exports
-  '/capsule-links',           // /api/v1/capsule-links/* — token-gated capsule data
-  '/capsules',                // /api/v1/capsules/* — token-gated (legacy)
-  '/webhooks',                // /api/v1/webhooks/* — signature-verified (notarize)
-  '/clawdbot',                // /api/v1/clawdbot/* — HMAC webhook (command + query)
-] as const;
-
+// Public prefixes live in auth/public-api-paths.ts.
+// /time-series is not public. /capsules is public only for a single GET of a
+// non-UUID share token; list/create/edit/delete require a session.
 app.use('/api/v1', (
   req: import('express').Request,
   res: import('express').Response,
   next: import('express').NextFunction,
 ) => {
-  const p = req.path;
-  for (const prefix of API_V1_PUBLIC_PREFIXES) {
-    if (p === prefix || p.startsWith(prefix + '/')) {
-      // Set the bypass flag so that ALL downstream requireAuth and
-      // requireSurface calls (including legacy broad-prefix guards that
-      // run after this floor) honour the allowlist decision without
-      // needing to be individually modified.
-      res.locals.bypassAuth = true;
-      return next();
-    }
+  if (isPublicApiV1Path(req.method, req.path)) {
+    // Set the bypass flag so that ALL downstream requireAuth and
+    // requireSurface calls (including legacy broad-prefix guards that
+    // run after this floor) honour the allowlist decision without
+    // needing to be individually modified.
+    res.locals.bypassAuth = true;
+    return next();
   }
   return requireAuth(req, res, next);
 });
@@ -337,7 +317,8 @@ app.use('/api/v1', taxCompAnalysisRouter);
 import tickerRoutes from './api/rest/ticker.routes';
 app.use('/api/v1/ticker', validatePublicQuery, tickerRoutes);
 
-// Time Series Explorer â€” public (no auth required) â€” used by TimeSeriesExplorerPage
+// Time Series Explorer — session required. Public market series (FRED, Census,
+// Zillow, DOT) are readable by any signed-in org; private owner series are not.
 import timeSeriesRoutes from './api/rest/time-series.routes';
 app.use('/api/v1/time-series', validatePublicQuery, timeSeriesRoutes);
 

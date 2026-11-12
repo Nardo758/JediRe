@@ -26,6 +26,15 @@ router.post('/tasks', requireAuthOrApiKey, async (req: AuthenticatedRequest, res
       throw new AppError(400, 'taskType and inputData are required');
     }
 
+    const dealKey = (inputData as any).dealId ?? (inputData as any).deal_id;
+    if (typeof dealKey === 'string' && dealKey.length > 0) {
+      const { assertDealOrgAccess } = await import('../../services/deal-scoping.service');
+      const allowed = await assertDealOrgAccess(dealKey, req.user!.userId, { query } as any).catch(() => null);
+      if (!allowed) {
+        throw new AppError(404, 'Deal not found');
+      }
+    }
+
     const task = await jobQueue.submitTask({
       taskType,
       inputData,

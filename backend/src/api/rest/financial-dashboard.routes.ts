@@ -1,9 +1,19 @@
 import { Router, Request, Response } from 'express';
+import { bindDealParam } from '../../middleware/deal-access';
+import { requireOrgCreditHeadroom, paidJobLimiter } from '../../middleware/paid-job';
+import { requireSession, AuthenticatedRequest } from '../../middleware/auth';
 import { getPool } from '../../database/connection';
 import { financialModelEngine } from '../../services/financial-model-engine.service';
 import axios from 'axios';
 
 const router = Router();
+bindDealParam(router);
+router.use('/:dealId/analyze', requireSession, paidJobLimiter, (req, res, next) => {
+  void requireOrgCreditHeadroom(req as AuthenticatedRequest, res, next);
+});
+router.use('/:dealId/chat', requireSession, paidJobLimiter, (req, res, next) => {
+  void requireOrgCreditHeadroom(req as AuthenticatedRequest, res, next);
+});
 
 const ANTHROPIC_API_KEY = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
 const ANTHROPIC_BASE_URL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || 'https://api.anthropic.com';

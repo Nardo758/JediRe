@@ -17,7 +17,8 @@ import { georgiaSaleCompsService } from '../../services/saleComps/georgia-sale-c
 import { apartmentLocatorSyncService } from '../../services/apartment-locator-sync.service';
 import { ingestAtlantaNews } from '../../scripts/ingest-atlanta-news';
 import { getPool } from '../../database/connection';
-import { requireAuth, requireRole, AuthenticatedRequest } from '../../middleware/auth';
+import { requireAuth, requireRole, requireSession, AuthenticatedRequest } from '../../middleware/auth';
+import { requirePaidJobAdmin, paidJobLimiter } from '../../middleware/paid-job';
 import { geocodingService } from '../../services/geocoding.service';
 import { syncMartaGtfs } from '../../services/real-data/marta-gtfs.service';
 import { syncOsmPois } from '../../services/real-data/osm-overpass.service';
@@ -26,6 +27,28 @@ import { BacktestService } from '../../services/proximity/backtest.service';
 
 const router = Router();
 const orchestrator = getGeorgiaIngestionOrchestrator();
+
+const PLATFORM_INGEST = new Set([
+  '/ingest',
+  '/ingest/sales',
+  '/cobb/ingest',
+  '/gwinnett/ingest',
+  '/dekalb/ingest',
+  '/fulton/ingest',
+  '/fulton/ingest/sales',
+  '/fulton/ingest/parcels-geometry',
+  '/fulton/ingest/structures',
+  '/fulton/structures/spatial-join',
+  '/comps/promote',
+  '/geocode-apt-locator',
+]);
+
+router.use((req, res, next) => {
+  if (req.method !== 'POST' || !PLATFORM_INGEST.has(req.path)) return next();
+  void requireSession(req as AuthenticatedRequest, res, () => {
+    requirePaidJobAdmin(req as AuthenticatedRequest, res, () => paidJobLimiter(req, res, next));
+  });
+});
 
 // ============================================================================
 // ORCHESTRATOR ROUTES

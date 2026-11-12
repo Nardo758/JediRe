@@ -88,6 +88,7 @@ import { Router, Response } from 'express';
 import multer from 'multer';
 import { Pool } from 'pg';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { requireDealAccess } from '../../middleware/deal-access';
 import {
   previewCoStarUpload,
   commitCoStarUpload,
@@ -109,6 +110,10 @@ const memUpload = multer({
 
 export function createCoStarUploadRoutes(pool: Pool): Router {
   const router = Router({ mergeParams: true });
+  // Mounted at /deals/:dealId/costar — every preview/commit/summary/delete is deal-scoped.
+  router.use((req, res, next) => {
+    void requireDealAccess(req as AuthenticatedRequest, res, next);
+  });
 
   // ── Preview ────────────────────────────────────────────────────────────────
   router.post(

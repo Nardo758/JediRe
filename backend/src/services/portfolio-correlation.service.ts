@@ -754,8 +754,10 @@ export class PortfolioCorrelationService {
    */
   private async syncToMetricTimeSeries(
     propertyId: string, propertyName: string,
-    actuals: PropertyActualRow[], submarket_id: string | null
+    actuals: PropertyActualRow[], submarket_id: string | null,
+    orgId: string
   ): Promise<void> {
+    const orgScope = `org:${orgId}`;
     const METRIC_MAP: Array<{ metricId: string; field: keyof PropertyActualRow; scale?: number }> = [
       { metricId: 'PORT_OCCUPANCY',   field: 'occupancy_rate',     scale: 100 },
       { metricId: 'PORT_EFF_RENT',    field: 'avg_effective_rent' },
@@ -775,18 +777,30 @@ export class PortfolioCorrelationService {
           : parseFloat(String(rawVal));
         if (isNaN(value)) continue;
 
-        // Property-level row (always written)
+        // Property-level row. scope_id is the org, never GLOBAL, so owner
+        // NOI is not redistributable. Re-tag a legacy GLOBAL row in place
+        // before inserting so the old shareable copy does not remain.
+        await this.pool.query(
+          `UPDATE metric_time_series
+              SET scope_id = $4, org_id = $5::uuid
+            WHERE metric_id = $1 AND geography_type = 'property'
+              AND geography_id = $2 AND period_date = $3
+              AND source = 'portfolio_actuals'
+              AND COALESCE(scope_id, 'GLOBAL') = 'GLOBAL'`,
+          [mapping.metricId, propertyId, periodDate, orgScope, orgId]
+        );
         await this.pool.query(
           `INSERT INTO metric_time_series
              (metric_id, geography_type, geography_id, geography_name,
-              period_date, period_type, value, source, confidence)
-           SELECT $1, 'property', $2, $3, $4, 'monthly', $5, 'portfolio_actuals', 0.95
+              period_date, period_type, value, source, confidence, scope_id, org_id)
+           SELECT $1, 'property', $2, $3, $4, 'monthly', $5, 'portfolio_actuals', 0.95, $6, $7::uuid
            WHERE NOT EXISTS (
              SELECT 1 FROM metric_time_series
              WHERE metric_id = $1 AND geography_type = 'property'
                AND geography_id = $2 AND period_date = $4
+               AND scope_id = $6
            )`,
-          [mapping.metricId, propertyId, propertyName, periodDate, value]
+          [mapping.metricId, propertyId, propertyName, periodDate, value, orgScope, orgId]
         );
 
         // Submarket-level row (written when property is linked to a submarket so that
@@ -794,16 +808,27 @@ export class PortfolioCorrelationService {
         // these owned-portfolio observations against submarket metrics in F4).
         if (submarket_id) {
           await this.pool.query(
+            `UPDATE metric_time_series
+                SET scope_id = $5, org_id = $6::uuid
+              WHERE metric_id = $1 AND geography_type = 'submarket'
+                AND geography_id = $2 AND period_date = $4
+                AND source = 'portfolio_actuals'
+                AND geography_name = $3
+                AND COALESCE(scope_id, 'GLOBAL') = 'GLOBAL'`,
+            [mapping.metricId, submarket_id, propertyName, periodDate, orgScope, orgId]
+          );
+          await this.pool.query(
             `INSERT INTO metric_time_series
                (metric_id, geography_type, geography_id, geography_name,
-                period_date, period_type, value, source, confidence)
-             SELECT $1, 'submarket', $2, $3, $4, 'monthly', $5, 'portfolio_actuals', 0.90
+                period_date, period_type, value, source, confidence, scope_id, org_id)
+             SELECT $1, 'submarket', $2, $3, $4, 'monthly', $5, 'portfolio_actuals', 0.90, $6, $7::uuid
              WHERE NOT EXISTS (
                SELECT 1 FROM metric_time_series
                WHERE metric_id = $1 AND geography_type = 'submarket'
                  AND geography_id = $2 AND period_date = $4
+                 AND scope_id = $6
              )`,
-            [mapping.metricId, submarket_id, propertyName, periodDate, value]
+            [mapping.metricId, submarket_id, propertyName, periodDate, value, orgScope, orgId]
           );
         }
       }
@@ -840,6 +865,15 @@ export class PortfolioCorrelationService {
     const computedAt = new Date().toISOString();
     const allSignals: PortfolioCorrelationSignal[] = [];
     const allCoefficients: PortfolioCorrelationSummary['coefficients'] = [];
+
+    const orgRow = await this.pool.query<{ default_org_id: string | null }>(
+      `SELECT default_org_id FROM users WHERE id = $1`,
+      [userId]
+    );
+    const orgId = orgRow.rows[0]?.default_org_id ?? null;
+    if (!orgId) {
+      logger.warn('[PortfolioCorrelation] Skipping metric_time_series sync — caller has no org');
+    }
 
     const properties = await this.fetchOwnedProperties(userId);
 
@@ -920,7 +954,9 @@ export class PortfolioCorrelationService {
           await this.persistSignalsToTable(prop.id, perPropertySignals, false);
 
           // 7. Sync actuals to metric_time_series; refresh submarket correlations if linked
-          await this.syncToMetricTimeSeries(prop.id, prop.name, prop.actuals, prop.submarket_id);
+          if (orgId) {
+            await this.syncToMetricTimeSeries(prop.id, prop.name, prop.actuals, prop.submarket_id, orgId);
+          }
 
           // 8. Persist all computed enriched signals to linked deals (userId-scoped)
           await this.persistEnrichedSignalsToDeal(prop.id, userId, perPropertySignals);

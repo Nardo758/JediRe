@@ -117,7 +117,12 @@ async function assertDealOwnership(req: Request, res: Response, dealId: string):
 
 // Admin role check for privileged operations
 function assertAdminRole(req: Request, res: Response): boolean {
-  const role = (req as AuthenticatedRequest).user?.role;
+  const user = (req as AuthenticatedRequest).user;
+  if (!user?.userId) {
+    res.status(401).json({ error: 'Authentication required' });
+    return false;
+  }
+  const role = user.role;
   if (role !== 'admin' && role !== 'service') {
     res.status(403).json({ error: 'Admin or service role required' });
     return false;

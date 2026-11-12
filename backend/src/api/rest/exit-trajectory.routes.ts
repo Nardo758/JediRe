@@ -29,11 +29,13 @@
  */
 
 import { Router } from 'express';
+import { bindDealParam } from '../../middleware/deal-access';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { m35TrafficApiService } from '../../services/m35-traffic-api.service';
 
 const router = Router();
+bindDealParam(router);
 
 const WINDOWS = [12, 24, 36, 48, 60, 72, 84, 96, 108, 120] as const;
 

@@ -10,8 +10,21 @@ import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import Anthropic from '@anthropic-ai/sdk';
+import { resolveOrgForUser } from '../../services/ai/orgCreditService';
 
 const router = Router();
+
+/** Owned-deal filter: caller's org, plus legacy deals that have no org and belong to the caller. */
+async function ownedDealFilter(userId: string, alias: string, startAt: number): Promise<{ sql: string; params: string[] }> {
+  const orgId = await resolveOrgForUser(userId);
+  if (orgId) {
+    return {
+      sql: `(${alias}.org_id = $${startAt}::uuid OR (${alias}.org_id IS NULL AND ${alias}.user_id = $${startAt + 1}::uuid))`,
+      params: [orgId, userId],
+    };
+  }
+  return { sql: `${alias}.user_id = $${startAt}::uuid`, params: [userId] };
+}
 
 /**
  * GET /api/v1/portfolio/metrics
@@ -21,6 +34,7 @@ const router = Router();
  */
 router.get('/metrics', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const scope = await ownedDealFilter(req.user!.userId, 'd', 1);
     const result = await query(`
       SELECT
         COUNT(DISTINCT p.id)::int                          AS total_assets,
@@ -28,7 +42,11 @@ router.get('/metrics', requireAuth, async (req: AuthenticatedRequest, res: Respo
           SELECT SUM(pu.units)
           FROM properties pu
           WHERE pu.id IN (
-            SELECT DISTINCT property_id FROM deal_monthly_actuals WHERE is_portfolio_asset = TRUE
+            SELECT DISTINCT dma2.property_id
+            FROM deal_monthly_actuals dma2
+            JOIN deals d2 ON d2.id = dma2.deal_id
+            WHERE dma2.is_portfolio_asset = TRUE
+              AND ${scope.sql.replace(/\bd\./g, 'd2.')}
           )
         ), 0)::int                                         AS total_units,
         COALESCE(AVG(dma.occupancy_rate) * 100, 0)         AS avg_occupancy,
@@ -36,8 +54,10 @@ router.get('/metrics', requireAuth, async (req: AuthenticatedRequest, res: Respo
         COALESCE(AVG(dma.noi), 0)                          AS avg_monthly_noi
       FROM deal_monthly_actuals dma
       JOIN properties p ON p.id = dma.property_id
+      JOIN deals d ON d.id = dma.deal_id
       WHERE dma.is_portfolio_asset = TRUE
-    `);
+        AND ${scope.sql}
+    `, scope.params);
 
     const row = result.rows[0] as Record<string, unknown>;
     const avgMonthlyNoi = Number(row.avg_monthly_noi ?? 0);
@@ -360,6 +380,7 @@ router.get('/performance', requireAuth, async (req: AuthenticatedRequest, res: R
 
     // Portfolio-wide pro forma projections (monthly) from deal_data
     // These are aggregated once and applied to every period bucket.
+    const scope = await ownedDealFilter(req.user!.userId, 'deals', 2);
     const result = await query(`
       WITH portfolio_projection AS (
         SELECT
@@ -369,6 +390,7 @@ router.get('/performance', requireAuth, async (req: AuthenticatedRequest, res: R
         WHERE (deal_data->>'noi') IS NOT NULL
           AND (deal_data->>'noi')::numeric > 0
           AND (status IN ('owned', 'closed', 'portfolio') OR deal_category = 'portfolio')
+          AND ${scope.sql}
           AND EXISTS (
             SELECT 1 FROM deal_properties dp
             JOIN properties p ON p.id = dp.property_id
@@ -388,8 +410,10 @@ router.get('/performance', requireAuth, async (req: AuthenticatedRequest, res: R
           SUM(actual_noi) AS actual_noi,
           AVG(actual_occupancy_pct) AS actual_occupancy,
           COUNT(DISTINCT deal_id) AS n_deals
-        FROM actual_performance
+        FROM actual_performance ap
+        JOIN deals od ON od.id = ap.deal_id
         WHERE period_start >= NOW() - $1 * INTERVAL '1 month'
+          AND ${scope.sql.replace(/\bdeals\./g, 'od.')}
         GROUP BY DATE_TRUNC('month', period_start)::date
       )
       SELECT
@@ -404,7 +428,7 @@ router.get('/performance', requireAuth, async (req: AuthenticatedRequest, res: R
       CROSS JOIN portfolio_projection pp
       LEFT JOIN actuals a ON a.period_date = ds.period_date
       ORDER BY ds.period_date
-    `, [months]);
+    `, [months, ...scope.params]);
 
     res.json({
       data: result.rows.map((r: Record<string, unknown>) => {
@@ -446,6 +470,7 @@ router.get('/performance/contributors', requireAuth, async (req: AuthenticatedRe
       return res.status(400).json({ error: 'period query param required (YYYY-MM-DD)' });
     }
 
+    const scope = await ownedDealFilter(req.user!.userId, 'd', 2);
     const result = await query(`
       SELECT
         d.id,
@@ -460,6 +485,7 @@ router.get('/performance/contributors', requireAuth, async (req: AuthenticatedRe
       FROM actual_performance ap
       JOIN deals d ON d.id = ap.deal_id
       WHERE DATE_TRUNC('month', ap.period_start) = DATE_TRUNC('month', $1::date)
+        AND ${scope.sql}
         AND (d.status IN ('owned', 'closed', 'portfolio') OR d.deal_category = 'portfolio')
         AND EXISTS (
           SELECT 1 FROM deal_properties dp
@@ -467,7 +493,7 @@ router.get('/performance/contributors', requireAuth, async (req: AuthenticatedRe
           WHERE dp.deal_id = d.id AND p.name IS NOT NULL
         )
       ORDER BY ap.actual_noi DESC NULLS LAST
-    `, [period]);
+    `, [period, ...scope.params]);
 
     res.json({ contributors: result.rows });
   } catch (err) {
@@ -484,6 +510,7 @@ router.get('/performance/contributors', requireAuth, async (req: AuthenticatedRe
  */
 router.get('/allocation', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const scope = await ownedDealFilter(req.user!.userId, 'd', 1);
     const byClass = await query(`
       SELECT 
         COALESCE(d.deal_data->>'asset_class', 'B') as asset_class,
@@ -491,13 +518,14 @@ router.get('/allocation', requireAuth, async (req: AuthenticatedRequest, res: Re
         COALESCE(SUM((d.deal_data->>'current_value')::numeric), 0) as value
       FROM deals d
       WHERE (d.status IN ('owned', 'closed', 'portfolio') OR d.deal_category = 'portfolio')
+        AND ${scope.sql}
         AND EXISTS (
           SELECT 1 FROM deal_properties dp
           JOIN properties p ON p.id = dp.property_id
           WHERE dp.deal_id = d.id AND p.name IS NOT NULL
         )
       GROUP BY d.deal_data->>'asset_class'
-    `);
+    `, scope.params);
 
     const byMarket = await query(`
       SELECT 
@@ -506,6 +534,7 @@ router.get('/allocation', requireAuth, async (req: AuthenticatedRequest, res: Re
         COALESCE(SUM((d.deal_data->>'unit_count')::int), 0) as units
       FROM deals d
       WHERE (d.status IN ('owned', 'closed', 'portfolio') OR d.deal_category = 'portfolio')
+        AND ${scope.sql}
         AND EXISTS (
           SELECT 1 FROM deal_properties dp
           JOIN properties p ON p.id = dp.property_id
@@ -514,7 +543,7 @@ router.get('/allocation', requireAuth, async (req: AuthenticatedRequest, res: Re
       GROUP BY COALESCE(d.deal_data->>'msa', d.deal_data->>'city', 'Unknown')
       ORDER BY units DESC
       LIMIT 10
-    `);
+    `, scope.params);
 
     res.json({
       byClass: byClass.rows,
@@ -989,6 +1018,18 @@ router.post('/:dealId/agent-report', requireAuth, async (req: AuthenticatedReque
 
   if (!prompt || typeof prompt !== 'string') {
     res.status(400).json({ error: 'prompt is required' });
+    return;
+  }
+
+  const callerId = req.user?.userId;
+  if (!callerId) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+  const { assertDealOrgAccess } = await import('../../services/deal-scoping.service');
+  const allowed = await assertDealOrgAccess(dealId, callerId, { query } as any).catch(() => null);
+  if (!allowed) {
+    res.status(404).json({ error: 'Deal not found' });
     return;
   }
 

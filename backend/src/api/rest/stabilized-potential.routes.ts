@@ -13,6 +13,7 @@
 
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { bindDealParam } from '../../middleware/deal-access';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import {
@@ -25,6 +26,7 @@ import { resolveLvSource } from '../../services/assumption-store-builder';
 import { detectAndEmitEpochFlag } from '../../services/epoch-flag.service';
 
 const router = Router();
+bindDealParam(router);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

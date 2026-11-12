@@ -6,6 +6,8 @@
 
 import { Router } from 'express';
 import { generateDesign, generateDesignMock, type ParcelContext } from '../../services/design-agent.service';
+import { requireSession, AuthenticatedRequest } from '../../middleware/auth';
+import { paidJobLimiter, requireOrgCreditHeadroom } from '../../middleware/paid-job';
 
 const router = Router();
 
@@ -27,7 +29,9 @@ const router = Router();
  *   }
  * }
  */
-router.post('/generate', async (req: any, res) => {
+router.post('/generate', requireSession, paidJobLimiter, (req, res, next) => {
+  void requireOrgCreditHeadroom(req as AuthenticatedRequest, res, next);
+}, async (req: any, res) => {
   try {
     const { prompt, parcelContext } = req.body;
 

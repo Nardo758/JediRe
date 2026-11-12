@@ -1633,18 +1633,14 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
   try {
     const { dealId } = req.params;
     const client = pool;
-    
-    // Verify deal exists
-    const dealResult = await client.query(
-      `SELECT id, name, project_type FROM deals WHERE id = $1`,
-      [dealId]
-    );
-    
-    if (dealResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Deal not found'
-      });
+
+    const callerId = req.user?.userId;
+    if (!callerId) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+    const accessible = await assertDealOrgAccess(dealId, callerId, pool).catch(() => null);
+    if (!accessible) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
     }
     
     // Create a pipeline run record for tracking

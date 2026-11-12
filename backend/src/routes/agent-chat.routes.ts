@@ -22,6 +22,8 @@ import {
   isPushServiceAvailable,
 } from '../services/push-notification.service';
 import { authMiddleware } from '../middleware/auth';
+import { assertDealOrgAccess } from '../services/deal-scoping.service';
+import { getPool } from '../database/connection';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -36,7 +38,7 @@ router.use(authMiddleware.requireAuth);
 router.post('/chat', async (req: Request, res: Response) => {
   try {
     const { agentCode, message, dealId, msaId, sessionId } = req.body;
-    const userId = (req as any).user?.id;
+    const userId = (req as any).user?.userId ?? (req as any).user?.id;
 
     if (!agentCode || !message) {
       return res.status(400).json({
@@ -56,6 +58,16 @@ router.post('/chat', async (req: Request, res: Response) => {
         success: false,
         error: `Invalid agent code. Valid options: ${validAgents.join(', ')}`,
       });
+    }
+
+    if (dealId) {
+      if (!userId) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+      const allowed = await assertDealOrgAccess(String(dealId), userId, getPool()).catch(() => null);
+      if (!allowed) {
+        return res.status(404).json({ success: false, error: 'Deal not found' });
+      }
     }
 
     const response = await agentChat({

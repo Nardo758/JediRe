@@ -19,7 +19,7 @@ jobs:
           node-version: '20'
 
       - name: Install backend dependencies
-        run: cd backend && npm ci
+        run: cd backend && npm install
 
       - name: TypeScript compile guard
         run: cd backend && npx tsc --noEmit --skipLibCheck
