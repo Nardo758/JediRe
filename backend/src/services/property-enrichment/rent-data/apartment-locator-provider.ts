@@ -36,7 +36,9 @@ export class ApartmentLocatorRentProvider extends BaseRentDataProvider {
       ORDER BY s.unit_type_key
     `, [address, city, state]);
     let rows = snapshots.rows;
-    if (!rows.length) {
+    // Partial observations can have identity/availability but no usable price.
+    // They must not hide a valid retained latest-table rent.
+    if (!rows.some(r => (observationNumber(r.asking_rent) ?? 0) > 0)) {
       const latest = await query(`
         SELECT property_name, avg_asking_rent AS asking_rent, total_units,
           available_units AS units_available, concessions AS concessions_text,

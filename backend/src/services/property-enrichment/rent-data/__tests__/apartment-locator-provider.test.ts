@@ -47,4 +47,19 @@ describe('local Apartment Locator rent provider', () => {
     vi.mocked(query).mockRejectedValue(new Error('DB unavailable'));
     expect(await new RentDataProviderRegistry().fetchRentData('123 Test', 'Test', 'GA')).toEqual({ data: null, provider: null });
   });
+
+  it('falls back to latest rent when a matched snapshot has no asking rent', async () => {
+    vi.mocked(query).mockResolvedValueOnce({ rows: [{
+      unit_type_key: 'property', asking_rent: null, total_units: 90,
+      snapshot_date: '2026-11-11',
+    }] } as any).mockResolvedValueOnce({ rows: [{
+      asking_rent: '1550', total_units: 90, snapshot_date: '2026-11-10',
+    }] } as any);
+    const result = await new RentDataProviderRegistry().fetchRentData('123 Test', 'Test', 'GA');
+    expect(result.provider).toBe('apartment_locator_ai');
+    expect(result.data?.avgAskingRent).toBe(1550);
+    expect(result.data?.unitMix).toEqual([]);
+    expect(vi.mocked(query)).toHaveBeenCalledTimes(2);
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });

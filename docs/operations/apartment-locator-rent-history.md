@@ -92,7 +92,8 @@ No production database was changed.
 
 Removed the Apartments.com provider file, registration, and exports. Registered
 `ApartmentLocatorRentProvider`, which reads local snapshots by address/city/state
-and falls back to the retained latest table. It makes no network calls.
+and falls back to the retained latest table when snapshots are absent or have
+no usable asking rent. It makes no network calls.
 
 Property-level rent data can complete enrichment without fabricating a studio or
 unit inventory. Missing rent returns NULL through the registry; the existing
@@ -158,7 +159,7 @@ No additional endpoint or unverified capability was assumed:
 
 ## Verification
 
-All 13 new tests passed across three files. They cover deterministic identity, real PostgreSQL uniqueness and reruns,
+All 14 new tests passed across three files. They cover deterministic identity, real PostgreSQL uniqueness and reruns,
 history preservation, nullable matching, idempotent backfill/date fallback,
 per-row failure isolation, the three mocked HTTP endpoints, scraper-free provider
 registration, local-only reads, property-level fallback, and clean no-data behavior.
