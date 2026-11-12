@@ -56,8 +56,8 @@ export async function computePositionAdjustment(
       if (rr && typeof rr === 'object') {
         const floorPlans = rr.floor_plan_mix as Record<string, unknown> | undefined;
         if (floorPlans && typeof floorPlans === 'object') {
-          const weighted = Object.values(floorPlans).reduce(
-            (acc: { sum: number; count: number }, p: any) => {
+          const weighted = Object.values(floorPlans).reduce<{ sum: number; count: number }>(
+            (acc, p: any) => {
               const rent = p?.avg_effective_rent ?? p?.avg_rent ?? 0;
               const count = p?.count ?? p?.units ?? 0;
               return { sum: acc.sum + rent * count, count: acc.count + count };

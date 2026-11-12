@@ -292,21 +292,23 @@ router.post('/:dealId/compute-returns', requireAuth, async (req: AuthenticatedRe
       return res.status(404).json({ error: 'Deal not found' });
     }
     
-    const assumptions = {
-      ...DEFAULT_ASSUMPTIONS,
-      ...(assumptionsResult || {}),
-      ...overrides
-    };
-    
-    const site = siteResult || {};
-    const deal = dealResult;
+    const assumptionRow = (assumptionsResult.rows[0] ?? {}) as Record<string, unknown>;
+    const siteRow = (siteResult.rows[0] ?? {}) as Record<string, unknown>;
+    const dealRow = (dealResult.rows[0] ?? {}) as Record<string, unknown>;
+    const body = overrides as unknown as Record<string, unknown>;
+    // Body snake_case wins, then the camelCase field on the typed input, then the stored row.
+    const pick = (snake: string, camel?: keyof DealAssumptionsInput): unknown =>
+      body[snake] ?? (camel !== undefined ? overrides[camel] : undefined) ?? assumptionRow[snake];
+
+    const site = siteRow;
+    const deal = dealRow;
     
     const n = (v: any, fallback: number) => {
       const parsed = parseFloat(v);
       return isNaN(parsed) ? fallback : parsed;
     };
 
-    const units = n(assumptions.total_units, 0) || n(deal.target_units, 0);
+    const units = n(pick('total_units', 'totalUnits'), 0) || n(deal.target_units, 0);
     if (!units || units <= 0) {
       return res.status(400).json({ 
         error: 'Cannot compute returns without total_units. Set totalUnits in assumptions or target_units on the deal first.' 
@@ -314,21 +316,21 @@ router.post('/:dealId/compute-returns', requireAuth, async (req: AuthenticatedRe
     }
 
     const returns = computeReturns({
-      landCost: n(assumptions.land_cost, 0) || n(overrides.landCost, 0),
+      landCost: n(pick('land_cost', 'landCost'), 0) || n(overrides.landCost, 0),
       units,
-      avgUnitSf: n(assumptions.avg_unit_sf, 900),
-      efficiency: n(assumptions.efficiency, 0.85),
-      hardCostPsf: n(assumptions.hard_cost_psf, 185),
-      softCostPct: n(assumptions.soft_cost_pct, 25),
-      contingencyPct: n(assumptions.contingency_pct, 5),
-      developerFeePct: n(assumptions.developer_fee_pct, 4),
-      avgRentPerUnit: n(assumptions.avg_rent_per_unit, 1950),
-      vacancyPct: n(assumptions.vacancy_pct, 5),
-      opexRatio: n(assumptions.opex_ratio, 35),
-      interestRate: n(assumptions.interest_rate, 0.075),
-      ltc: n(assumptions.ltc, 0.65),
-      exitCap: n(assumptions.exit_cap, 0.05),
-      holdPeriodYears: n(assumptions.hold_period_years, 3),
+      avgUnitSf: n(pick('avg_unit_sf', 'avgUnitSf'), 900),
+      efficiency: n(pick('efficiency', 'efficiency'), 0.85),
+      hardCostPsf: n(pick('hard_cost_psf', 'hardCostPsf'), 185),
+      softCostPct: n(pick('soft_cost_pct', 'softCostPct'), 25),
+      contingencyPct: n(pick('contingency_pct', 'contingencyPct'), 5),
+      developerFeePct: n(pick('developer_fee_pct', 'developerFeePct'), 4),
+      avgRentPerUnit: n(pick('avg_rent_per_unit', 'avgRentPerUnit'), 1950),
+      vacancyPct: n(pick('vacancy_pct', 'vacancyPct'), 5),
+      opexRatio: n(pick('opex_ratio', 'opexRatio'), 35),
+      interestRate: n(pick('interest_rate', 'interestRate'), 0.075),
+      ltc: n(pick('ltc', 'ltc'), 0.65),
+      exitCap: n(pick('exit_cap', 'exitCap'), 0.05),
+      holdPeriodYears: n(pick('hold_period_years', 'holdPeriodYears'), 3),
     });
     
     if (assumptionsResult.rows.length > 0) {
@@ -360,12 +362,12 @@ router.post('/:dealId/compute-returns', requireAuth, async (req: AuthenticatedRe
       success: true,
       data: {
         assumptions: {
-          landCost: assumptions.land_cost || overrides.landCost,
-          units: assumptions.total_units || deal.target_units,
-          avgUnitSf: assumptions.avg_unit_sf,
-          hardCostPsf: assumptions.hard_cost_psf,
-          avgRentPerUnit: assumptions.avg_rent_per_unit,
-          exitCap: assumptions.exit_cap,
+          landCost: pick('land_cost', 'landCost') || overrides.landCost,
+          units: pick('total_units', 'totalUnits') || deal.target_units,
+          avgUnitSf: pick('avg_unit_sf', 'avgUnitSf'),
+          hardCostPsf: pick('hard_cost_psf', 'hardCostPsf'),
+          avgRentPerUnit: pick('avg_rent_per_unit', 'avgRentPerUnit'),
+          exitCap: pick('exit_cap', 'exitCap'),
         },
         returns,
         site: {
@@ -395,7 +397,7 @@ router.put('/:dealId/site-data', requireAuth, async (req: AuthenticatedRequest, 
       return res.status(404).json({ error: 'Property not found for this deal' });
     }
 
-    const propertyId = propLookup.property_id;
+    const propertyId = propLookup.rows[0].property_id;
 
     const result = await pool.query(`
       UPDATE properties SET
@@ -776,7 +778,7 @@ router.post('/:dealId/assumptions/apply-from-module', requireAuth, async (req: A
       `SELECT per_year_overrides FROM deal_assumptions WHERE deal_id = $1`,
       [dealId]
     );
-    const existingPyo = (pyRes?.per_year_overrides ?? {}) as Record<string, unknown>;
+    const existingPyo = (pyRes.rows[0]?.per_year_overrides ?? {}) as Record<string, unknown>;
 
     const applied: Array<{ fieldPath: string; value: unknown }> = [];
     const conflicts: Array<{ fieldPath: string; reason: string; existingValue: unknown }> = [];
@@ -1259,21 +1261,22 @@ router.patch('/:dealId/assumptions/adoption-timeline', requireAuth, async (req: 
             `SELECT construction_months, total_units FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
             [dealId]
           );
-          const ar = assumRow;
+          const ar = assumRow.rows[0] as { construction_months?: unknown; total_units?: unknown } | undefined;
           const dealDataRes = await pool.query(
             `SELECT deal_data->'extraction_rent_roll'->>'weighted_occupancy_pct' AS occ,
                     deal_data->'capex_schedule'->>'total_budget' AS total_budget
              FROM deals WHERE id = $1 /* B4a-safe */`,
             [dealId]
           );
-          const rawOcc = dealDataRes?.occ;
+          const dealData = dealDataRes.rows[0] as { occ?: string | null; total_budget?: string | null } | undefined;
+          const rawOcc = dealData?.occ;
           const occupancyPct = rawOcc != null ? parseFloat(rawOcc) || null : null;
-          const totalBudget = parseFloat(dealDataRes?.total_budget ?? '') || null;
+          const totalBudget = parseFloat(dealData?.total_budget ?? '') || null;
           const units = ar?.total_units != null ? +ar.total_units : null;
           const renovationBudgetPerUnit = totalBudget != null && units != null && units > 0
             ? totalBudget / units : null;
           const detected = detectLifecycleProfile({
-            constructionMonths: ar?.construction_months != null ? +parseFloat(ar.construction_months) : null,
+            constructionMonths: ar?.construction_months != null ? +parseFloat(String(ar.construction_months)) : null,
             currentOccupancyPct: occupancyPct,
             renovationBudgetPerUnit,
           });
@@ -1664,20 +1667,21 @@ async function mutateUserLines(
     await client.query('BEGIN');
     // Ownership check (IDOR guard) — must match deals.user_id.
     if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
-      return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
+      return { ok: false, status: 403, error: 'Not authorized for this deal' };
     }
     // Row-lock the assumptions row to serialize concurrent CRUD on user_lines.
-    const res = await client.query(
+    const locked = await client.query(
       `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 FOR UPDATE`,
       [dealId]
     );
-    if (res.rows.length === 0) {
+    if (locked.rows.length === 0) {
       await client.query('ROLLBACK');
       return { ok: false, status: 404, error: 'deal_assumptions not seeded for this deal yet' };
     }
-    const year1 = typeof res.year1 === 'string'
-      ? JSON.parse(res.year1)
-      : res.year1;
+    const year1Raw = locked.rows[0].year1;
+    const year1 = typeof year1Raw === 'string'
+      ? JSON.parse(year1Raw)
+      : year1Raw;
     if (!year1) {
       await client.query('ROLLBACK');
       return { ok: false, status: 404, error: 'deal_assumptions.year1 is empty' };
@@ -1805,7 +1809,8 @@ router.post('/:dealId/financials/other-income/user-lines', requireAuth, async (r
       return res.status(400).json({ error: derived.error });
     }
     const adoptionResult = validateAdoption(rawAdoption);
-    if (!adoptionResult.ok) return res.status(400).json({ error: adoptionResult.error });
+    if (adoptionResult.ok === false) return res.status(400).json({ error: adoptionResult.error });
+    const adopted = adoptionResult.adoption;
 
     const userId = req.user?.userId ?? 'unknown';
     const result = await mutateUserLines(dealId, userId, (lines) => [
@@ -1820,7 +1825,7 @@ router.post('/:dealId/financials/other-income/user-lines', requireAuth, async (r
         note: note?.trim() || undefined,
         ...(source_tag ? { source_tag: source_tag.trim() } : {}),
         ...(confirmed === true ? { confirmed: true } : {}),
-        ...(rawAdoption !== undefined ? { adoption: adoptionResult.adoption } : {}),
+        ...(rawAdoption !== undefined ? { adoption: adopted } : {}),
         created_by: userId,
         created_at: new Date().toISOString(),
       },
@@ -1846,7 +1851,10 @@ router.patch('/:dealId/financials/other-income/user-lines/:lineId', requireAuth,
     };
     if (label != null && typeof label !== 'string') return res.status(400).json({ error: 'label must be a string' });
     const adoptionResult = rawAdoption !== undefined ? validateAdoption(rawAdoption) : null;
-    if (adoptionResult && !adoptionResult.ok) return res.status(400).json({ error: adoptionResult.error });
+    if (adoptionResult !== null && adoptionResult.ok === false) {
+      return res.status(400).json({ error: adoptionResult.error });
+    }
+    const adopted = adoptionResult !== null && adoptionResult.ok === true ? adoptionResult.adoption : undefined;
     const userId = req.user?.userId ?? 'unknown';
     // Determine the user's INTENT from which fields were posted:
     //   • any of {qty, rate, frequency} present → per-unit mode (merge with
@@ -1905,8 +1913,8 @@ router.patch('/:dealId/financials/other-income/user-lines/:lineId', requireAuth,
       if (nextFreq != null) updated.frequency = nextFreq;      else delete updated.frequency;
       // Adoption block: explicitly null → clear; present object → replace; absent → preserve.
       if (adoptionResult) {
-        if (adoptionResult.adoption === null) delete updated.adoption;
-        else updated.adoption = adoptionResult.adoption;
+        if (adopted === null) delete updated.adoption;
+        else if (adopted !== undefined) updated.adoption = adopted;
       }
       lines[idx] = updated;
       return lines;
@@ -1980,9 +1988,10 @@ router.patch('/:dealId/financials/other-income/category-overrides', requireAuth,
         return res.status(404).json({ error: 'deal_assumptions not seeded for this deal yet' });
       }
 
-      const year1 = typeof res2.year1 === 'string'
-        ? JSON.parse(res2.year1)
-        : res2.year1;
+      const year1Raw = res2.rows[0].year1;
+      const year1 = typeof year1Raw === 'string'
+        ? JSON.parse(year1Raw)
+        : year1Raw;
 
       if (!year1) {
         await client.query('ROLLBACK');
@@ -2266,8 +2275,8 @@ router.get('/:dealId/financials/narrative', requireAuth, async (req: Authenticat
           `SELECT narrative_text, narrative_generated_at FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
           [dealId],
         );
-        const dbNarrative = dbRow?.narrative_text ?? null;
-        const dbGeneratedAt = dbRow?.narrative_generated_at;
+        const dbNarrative = dbRow.rows[0]?.narrative_text ?? null;
+        const dbGeneratedAt = dbRow.rows[0]?.narrative_generated_at;
         if (dbNarrative && dbGeneratedAt) {
           const dbAge = now - new Date(dbGeneratedAt).getTime();
           if (dbAge < NARRATIVE_TTL_MS) {
@@ -2751,7 +2760,8 @@ router.patch('/:dealId/unit-mix', requireAuth, async (req: AuthenticatedRequest,
 
     const pool = getPool();
 
-    if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
+    const mixDeal = await assertDealOrgAccess(dealId, userId, pool).catch(() => null);
+    if (!mixDeal) {
       return res.status(404).json({ error: 'Deal not found' });
     }
 
@@ -2779,8 +2789,8 @@ router.patch('/:dealId/unit-mix', requireAuth, async (req: AuthenticatedRequest,
       };
     }).filter((e): e is NonNullable<typeof e> => e !== null);
 
-    const dealTargetUnits: number | null = dealCheck.target_units
-      ? Number(dealCheck.target_units)
+    const dealTargetUnits: number | null = mixDeal.target_units
+      ? Number(mixDeal.target_units)
       : null;
     const totalCount = validated.reduce((s, e) => s + e.count, 0);
 

@@ -13,8 +13,7 @@
  * and sampling.
  */
 
-import type { Logger } from 'pino';
-import { createLogger } from '../../utils/logger';
+import { createServiceLogger } from '../../utils/logger';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -36,7 +35,7 @@ export interface ConfidenceIntervalResult {
 
 // ─── Logger ─────────────────────────────────────────────────────────────────
 
-const log: Logger = createLogger('conditional-sampler');
+const log = createServiceLogger('conditional-sampler');
 
 // ─── Matrix Utilities ────────────────────────────────────────────────────────
 

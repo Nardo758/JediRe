@@ -672,7 +672,8 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
     const userId = req.user!.userId;
 
     // Verify deal ownership
-    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+    const ownerCheck = await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null);
+    if (!ownerCheck) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
 

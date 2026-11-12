@@ -257,7 +257,7 @@ router.post('/:id/quick-task', requireAuth, async (req: Request, res: Response, 
     let createdTask: any = null;
 
     if (dealId) {
-      if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+      if (!await assertDealOrgAccess(dealId, userId, pool).catch(() => null)) {
         return res.status(403).json({ success: false, error: 'Not authorized' });
       }
       const result = await pool.query(

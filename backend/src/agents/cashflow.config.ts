@@ -24,7 +24,7 @@ import { BudgetEnforcer } from './runtime/BudgetEnforcer';
 import { detectProvider } from './runtime/types';
 import { DEFAULT_BUDGET_CAPS } from './config/budget';
 import { query } from '../database/connection';
-import type { AgentConfig } from './runtime/types';
+import type { AgentConfig, ModelName } from './runtime/types';
 import { cashflowPostProcess } from './cashflow.postprocess';
 import { normalizeEvidence } from './utils/evidenceNormalizer';
 
@@ -709,14 +709,14 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
 // Both DeepSeekMeteringAdapter and MeteringAdapter implement the same interface
 // so AgentRuntime works identically regardless of which is selected.
 
-const _cashflowModel  = process.env.CASHFLOW_LLM_MODEL ?? 'deepseek-chat';
+const _cashflowModel = process.env.CASHFLOW_LLM_MODEL ?? 'deepseek-chat';
 const _cashflowAdapter =
   detectProvider(_cashflowModel) === 'deepseek'
     ? new DeepSeekMeteringAdapter()
     : new MeteringAdapter();
 
 export const cashflowRuntime = new AgentRuntime(
-  { ...CASHFLOW_AGENT_CONFIG, modelName: _cashflowModel },
+  { ...CASHFLOW_AGENT_CONFIG, modelName: _cashflowModel as ModelName },
   _cashflowAdapter,
   new BudgetEnforcer()
 );

@@ -55,6 +55,11 @@ export interface StripeSync {
   processWebhook(payload: Buffer, signature: string): Promise<Stripe.Event>;
   /** Find existing webhook endpoint or create one for this Replit domain. */
   findOrCreateManagedWebhook(url: string): Promise<{ webhook: Stripe.WebhookEndpoint | null }>;
+  /**
+   * Historical stripe-replit-sync entry point. Billing tables are owned by
+   * the main migration system, so there is no separate backfill to run.
+   */
+  syncBackfill(): Promise<void>;
 }
 
 let stripeSync: StripeSync | null = null;
@@ -99,6 +104,10 @@ function createStripeSync(): StripeSync {
         ],
       });
       return { webhook: created };
+    },
+
+    async syncBackfill(): Promise<void> {
+      // No-op. stripe-replit-sync is gone; schema lives in the main migrations.
     },
   };
 }

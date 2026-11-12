@@ -3,6 +3,14 @@ import path from 'path';
 import fs from 'fs';
 import type { ProFormaAssumptions, FinancialModelResult } from './financial-model-engine.service';
 
+function readFirstPresent(summary: object, keys: string[]): unknown {
+  const record = summary as Record<string, unknown>;
+  for (const key of keys) {
+    if (key in record && record[key] != null) return record[key];
+  }
+  return null;
+}
+
 export class ExcelExportService {
   private outputDir: string;
 
@@ -413,7 +421,7 @@ export class ExcelExportService {
 
     data.push([]);
     // B6 (F-P1): three-quantity NOI naming — in-place / year-1 underwritten / stabilized.
-    data.push(['NOI — In-Place (Run-Rate)', r.summary.inPlaceNOI ?? r.summary.noiInPlace ?? null]);
+    data.push(['NOI — In-Place (Run-Rate)', readFirstPresent(r.summary, ['inPlaceNOI', 'noiInPlace'])]);
     data.push(['NOI — Year 1 (Underwritten)', r.summary.noiYear1]);
     data.push(['NOI — Stabilized', r.summary.noiStabilized ?? null]);
     data.push(['Exit Value', r.summary.exitValue]);

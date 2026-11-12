@@ -588,6 +588,9 @@ export interface LayeredValue<T = number> {
   resolvedFrom?: 'broker' | 'platform' | 'user' | 't12' | 'rent_roll' | 'tax_bill' | 'om' | 'agent' | 'computed' | string;
 }
 
+/** Historical name for LayeredValue. Same shape, kept for existing importers. */
+export type ExtractedFieldSources<T = number> = LayeredValue<T>;
+
 export interface ProFormaYear1Seed {
   gpr: LayeredValue<number>;
   loss_to_lease_pct: LayeredValue<number>;

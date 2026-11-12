@@ -341,13 +341,17 @@ export class OpusService {
   buildSystemPrompt(
     dealContext: string,
     comparableData: string,
-    opts?: { dealType?: 'existing' | 'development' | 'redevelopment'; strategy?: string | null }
+    opts?: { dealType?: string | null; strategy?: string | null }
   ): string {
     let templateId: ProFormaTemplateId = 'acquisition_stabilized';
     if (opts?.strategy) templateId = pickTemplateForStrategy(opts.strategy);
     else if (opts?.dealType) templateId = defaultTemplateForDealType(opts.dealType);
 
-    const blueprintSlice = buildOpusBlueprintSlice({ templateId, dealType: opts?.dealType });
+    const blueprintDealType =
+      opts?.dealType === 'existing' || opts?.dealType === 'development' || opts?.dealType === 'redevelopment'
+        ? opts.dealType
+        : undefined;
+    const blueprintSlice = buildOpusBlueprintSlice({ templateId, dealType: blueprintDealType });
     const blueprintRules = buildOpusBlueprintRules();
 
     return `You are Opus, JEDI RE's AI-powered pro forma model builder. You are an expert real estate financial analyst specializing in multifamily investment analysis.

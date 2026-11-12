@@ -90,7 +90,7 @@ const rentRollUpload = multer({
   },
 });
 
-// @ts-expect-error — multer resolves RequestHandler against workspace-root
+// multer resolves RequestHandler against workspace-root
 // @types/express while this module resolves against backend-local @types/express.
 // Both resolve to the same interface at runtime; the dual-tree node_modules layout
 // causes nominal divergence that cannot be fixed without consolidating tsconfig paths.

@@ -11,6 +11,29 @@ const DROPBOX_TOKEN_URL = 'https://api.dropboxapi.com/oauth2/token';
 const DROPBOX_API = 'https://api.dropboxapi.com/2';
 const DROPBOX_CONTENT_API = 'https://content.dropboxapi.com/2';
 
+interface DropboxTokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+}
+
+interface DropboxAccount {
+  email?: string;
+}
+
+interface DropboxEntry {
+  '.tag'?: string;
+  id: string;
+  name: string;
+  path_display?: string;
+  size?: number;
+  server_modified?: string;
+}
+
+interface DropboxList {
+  entries: DropboxEntry[];
+}
+
 export function getDropboxConfig(): CloudOAuthConfig {
   return {
     clientId: process.env.DROPBOX_CLIENT_ID || '',
@@ -55,14 +78,14 @@ export const dropboxAdapter: CloudStorageAdapter = {
       throw new Error(`Token exchange failed: ${error}`);
     }
     
-    const data = await response.json();
+    const data = await response.json() as DropboxTokenResponse;
     
     // Get user email
     const userResponse = await fetch(`${DROPBOX_API}/users/get_current_account`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${data.access_token}` },
     });
-    const userData = await userResponse.json();
+    const userData = await userResponse.json() as DropboxAccount;
     
     return {
       accessToken: data.access_token,
@@ -90,7 +113,7 @@ export const dropboxAdapter: CloudStorageAdapter = {
       throw new Error('Token refresh failed');
     }
     
-    const data = await response.json();
+    const data = await response.json() as DropboxTokenResponse;
     return {
       accessToken: data.access_token,
       expiresIn: data.expires_in || 14400,
@@ -117,11 +140,11 @@ export const dropboxAdapter: CloudStorageAdapter = {
       throw new Error('Failed to list folders');
     }
     
-    const data = await response.json();
+    const data = await response.json() as DropboxList;
     
     return data.entries
-      .filter((e: any) => e['.tag'] === 'folder')
-      .map((f: any) => ({
+      .filter((e) => e['.tag'] === 'folder')
+      .map((f) => ({
         id: f.id,
         name: f.name,
         path: f.path_display,
@@ -149,11 +172,11 @@ export const dropboxAdapter: CloudStorageAdapter = {
       throw new Error('Failed to list files');
     }
     
-    const data = await response.json();
+    const data = await response.json() as DropboxList;
     
     return data.entries
-      .filter((e: any) => e['.tag'] === 'file')
-      .map((f: any) => ({
+      .filter((e) => e['.tag'] === 'file')
+      .map((f) => ({
         id: f.id,
         name: f.name,
         path: f.path_display,
@@ -196,7 +219,7 @@ export const dropboxAdapter: CloudStorageAdapter = {
       throw new Error('Failed to get file metadata');
     }
     
-    const f = await response.json();
+    const f = await response.json() as DropboxEntry;
     
     return {
       id: f.id,

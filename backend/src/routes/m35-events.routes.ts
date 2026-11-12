@@ -664,10 +664,13 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
           msaId: ev.msa_id,
           submarketId: ev.submarket_id,
           magnitudeScore: parseFloat(ev.magnitude_score ?? '2'),
+          magnitudeValue: ev.magnitude_value != null && ev.magnitude_value !== '' ? parseFloat(ev.magnitude_value) : null,
           defaultMagnitude: parseFloat(ev.magnitude_value ?? '0'),
           confidence: parseFloat(ev.confidence ?? '0.5'),
           materializationDate: ev.materialization_date ? new Date(ev.materialization_date) : null,
           announcedDate: ev.announced_date ? new Date(ev.announced_date) : null,
+          completionDate: ev.completion_date ? new Date(ev.completion_date) : null,
+          baselineTreatment: ev.baseline_treatment || 'PASS_THROUGH',
           decayShape: ev.decay_shape || 'linear',
           typicalDecayMonths: parseInt(ev.typical_decay_months ?? '12', 10),
         },
@@ -677,41 +680,6 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
     }).filter((ev: any) => (ev.proximityScore ?? 0) >= PROXIMITY_THRESHOLD);
 
     events = eventsWithProximity;
-
-    // Compute sensitivity from total projected rent-growth delta (not naive magnitude avg)
-    let sensitivityScore = 0;
-    let sensitivity = 'LOW';
-    const totalProjectedDelta = rentGrowthAttributions.reduce((s, a) => s + (a.delta / 100), 0); // delta is in pp
-    if (events.length > 0) {
-      sensitivityScore = Math.min(1, Math.abs(totalProjectedDelta) / 0.05); // 5pp = max sensitivity
-      sensitivity = Math.abs(totalProjectedDelta) >= 0.035 ? 'HIGH' : Math.abs(totalProjectedDelta) >= 0.015 ? 'MEDIUM' : 'LOW';
-    }
-
-    // Compute concentration (top event share of total projected delta)
-    let concentration = null;
-    if (rentGrowthAttributions.length > 0) {
-      const totalDelta = rentGrowthAttributions.reduce((s, a) => s + Math.abs(a.delta / 100), 0);
-      const top = rentGrowthAttributions[0];
-      const topShare = totalDelta > 0 ? Math.abs(top.delta / 100) / totalDelta : 0;
-      concentration = {
-        topEventName:  top.eventName,
-        irrShare:      topShare, // still named irrShare for API compat, but it's delta share until IRR is wired
-        isConcentrated: topShare > 0.30,
-      };
-    }
-
-    // projectedIrrImpact: stub — requires pro forma counterfactual API (P1 remaining)
-    const projectedIrrImpact = {
-      status: 'not_computed',
-      note: 'Requires pro forma counterfactual run (baseline + all-events vs baseline-only). See P1 projectedIrrImpact.',
-      allEvents: null,
-      baselineOnly: null,
-      perEvent: rentGrowthAttributions.map(a => ({
-        eventId: a.eventId,
-        eventName: a.eventName,
-        assumptionDelta: a.delta / 100, // decimal pp
-      })),
-    };
 
     // Inline attributions: playbook-driven assumption deltas (P0.1)
     // Replaces the legacy synthetic attribution (magnitude * 0.5) with real
@@ -860,6 +828,41 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
     }
 
     inlineAttributions['rent_growth_yoy'] = rentGrowthAttributions;
+
+    // Compute sensitivity from total projected rent-growth delta (not naive magnitude avg)
+    let sensitivityScore = 0;
+    let sensitivity = 'LOW';
+    const totalProjectedDelta = rentGrowthAttributions.reduce((s, a) => s + (a.delta / 100), 0); // delta is in pp
+    if (events.length > 0) {
+      sensitivityScore = Math.min(1, Math.abs(totalProjectedDelta) / 0.05); // 5pp = max sensitivity
+      sensitivity = Math.abs(totalProjectedDelta) >= 0.035 ? 'HIGH' : Math.abs(totalProjectedDelta) >= 0.015 ? 'MEDIUM' : 'LOW';
+    }
+
+    // Compute concentration (top event share of total projected delta)
+    let concentration = null;
+    if (rentGrowthAttributions.length > 0) {
+      const totalDelta = rentGrowthAttributions.reduce((s, a) => s + Math.abs(a.delta / 100), 0);
+      const top = rentGrowthAttributions[0];
+      const topShare = totalDelta > 0 ? Math.abs(top.delta / 100) / totalDelta : 0;
+      concentration = {
+        topEventName:  top.eventName,
+        irrShare:      topShare, // still named irrShare for API compat, but it's delta share until IRR is wired
+        isConcentrated: topShare > 0.30,
+      };
+    }
+
+    // projectedIrrImpact: stub — requires pro forma counterfactual API (P1 remaining)
+    const projectedIrrImpact = {
+      status: 'not_computed',
+      note: 'Requires pro forma counterfactual run (baseline + all-events vs baseline-only). See P1 projectedIrrImpact.',
+      allEvents: null,
+      baselineOnly: null,
+      perEvent: rentGrowthAttributions.map(a => ({
+        eventId: a.eventId,
+        eventName: a.eventName,
+        assumptionDelta: a.delta / 100, // decimal pp
+      })),
+    };
 
     // ── Other metrics: stubs (no playbooks yet) ─────────────────────────────────
     // When playbooks for cap_rate, absorption, permits are built, wire them here

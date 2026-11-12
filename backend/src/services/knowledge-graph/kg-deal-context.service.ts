@@ -12,7 +12,7 @@
  */
 
 import { Pool } from 'pg';
-import { KnowledgeGraphService } from '../neural-network/knowledge-graph.service';
+import { KnowledgeGraphService, type NodeType } from '../neural-network/knowledge-graph.service';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -29,18 +29,8 @@ export interface DealContext {
     envelope: Record<string, any> | null;
     market: string;
   }>;
-  zoningPrecedents: Array<{
-    zoneCode: string;
-    jurisdiction: string;
-    dimensional: Record<string, any>;
-    parking: Record<string, any>;
-    count: number;
-  }>;
-  marketInsights: {
-    market: string;
-    dealCount: number;
-    avgEnvelope: Record<string, number> | null;
-  } | null;
+  zoningPrecedents: ZoningPrecedent[];
+  marketInsights: MarketInsight | null;
 }
 
 export interface SimilarDealSearchOpts {
@@ -147,7 +137,7 @@ export class KGDealContextService {
       const zoneId = `zoning-${opts.zoneCode.toLowerCase()}-${opts.jurisdiction.toLowerCase().replace(/\s+/g, '-')}`;
       const edges = await this.kg.getEdges(zoneId, 'incoming', ['ZONED_AS'] as any);
       for (const e of edges) {
-        const dealNode = await this.kg.getNode(e.source_id);
+        const dealNode = await this.kg.getNode(e.sourceId);
         if (dealNode && !seen.has(dealNode.id)) {
           seen.add(dealNode.id);
           const p = dealNode.properties || {};
@@ -166,7 +156,7 @@ export class KGDealContextService {
 
     // 2. Same jurisdiction, similar zone prefix
     if (opts.jurisdiction && opts.zoneCode) {
-      const zoneNodes = await this.kg.getNodesByType('ZoningProfile', 200);
+      const zoneNodes = await this.kg.getNodesByType('ZoningProfile' as NodeType, 200);
       const similarZoneNodes = zoneNodes.filter(
         (n) =>
           n.properties?.jurisdiction === opts.jurisdiction &&
@@ -176,7 +166,7 @@ export class KGDealContextService {
       for (const zn of similarZoneNodes) {
         const edges = await this.kg.getEdges(zn.id, 'incoming', ['ZONED_AS'] as any);
         for (const e of edges.slice(0, 3)) {
-          const dealNode = await this.kg.getNode(e.source_id);
+          const dealNode = await this.kg.getNode(e.sourceId);
           if (dealNode && !seen.has(dealNode.id)) {
             seen.add(dealNode.id);
             const p = dealNode.properties || {};
@@ -223,7 +213,7 @@ export class KGDealContextService {
       const marketId = `market-${opts.market.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
       const edges = await this.kg.getEdges(marketId, 'incoming', ['IN_MARKET'] as any);
       for (const e of edges) {
-        const dealNode = await this.kg.getNode(e.source_id);
+        const dealNode = await this.kg.getNode(e.sourceId);
         if (dealNode && !seen.has(dealNode.id)) {
           seen.add(dealNode.id);
           const p = dealNode.properties || {};
@@ -259,7 +249,7 @@ export class KGDealContextService {
     const envelopeAccum = { units: 0, gfaSf: 0, floors: 0, far: 0, count: 0 };
 
     for (const e of edges) {
-      const dealNode = await this.kg.getNode(e.source_id);
+      const dealNode = await this.kg.getNode(e.sourceId);
       if (!dealNode) continue;
       const p = dealNode.properties || {};
       const env = p.envelope;
@@ -320,7 +310,7 @@ export class KGDealContextService {
     const envAccum = { units: 0, gfaSf: 0, heightFt: 0, count: 0 };
 
     for (const e of edges) {
-      const dn = await this.kg.getNode(e.source_id);
+      const dn = await this.kg.getNode(e.sourceId);
       if (!dn) continue;
       const p = dn.properties || {};
       dealIds.push(p.dealId || dn.id.replace('deal-', ''));

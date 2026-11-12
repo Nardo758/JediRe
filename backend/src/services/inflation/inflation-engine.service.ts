@@ -59,6 +59,14 @@ export interface PPIComponents {
   laborCosts: number;
 }
 
+interface FredSeriesResponse {
+  observations?: Array<{ value?: string }>;
+}
+
+function isFredSeriesResponse(value: unknown): value is FredSeriesResponse {
+  return typeof value === 'object' && value !== null;
+}
+
 export interface FREDIndicators {
   fedFundsRate: number;
   breakeven5Year: number;
@@ -371,9 +379,10 @@ export class InflationEngineService {
         );
         
         if (response.ok) {
-          const data = await response.json();
-          if (data.observations?.[0]?.value) {
-            results[key as keyof FREDIndicators] = parseFloat(data.observations[0].value);
+          const data: unknown = await response.json();
+          const observation = isFredSeriesResponse(data) ? data.observations?.[0]?.value : undefined;
+          if (observation) {
+            results[key as keyof FREDIndicators] = parseFloat(observation);
           }
         }
       }

@@ -35,6 +35,7 @@ export interface ExtractedDealFields {
   property_type: string | null;
   sqft: number | null;
   deal_name: string | null;
+  deal_type?: string | null;
 }
 
 const EXTRACT_MODEL = 'claude-haiku-4-5-20251001';

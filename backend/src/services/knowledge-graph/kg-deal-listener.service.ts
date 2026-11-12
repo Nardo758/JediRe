@@ -24,7 +24,7 @@
  */
 
 import { Pool } from 'pg';
-import { KnowledgeGraphService } from '../neural-network/knowledge-graph.service';
+import { KnowledgeGraphService, type NodeType } from '../neural-network/knowledge-graph.service';
 
 // ─── Edge Types ─────────────────────────────────────────────────────────────
 
@@ -111,7 +111,7 @@ export class KGDealListener {
     const zoneId = `zoning-${zoningCode.toLowerCase()}-${jurisdiction.toLowerCase().replace(/\s+/g, '-')}`;
     await this.kg.upsertNode({
       id: zoneId,
-      type: 'ZoningProfile',
+      type: 'ZoningProfile' as NodeType,
       name: `Zone ${zoningCode} — ${jurisdiction}`,
       externalId: zoneId,
       properties: {
@@ -225,7 +225,7 @@ export class KGDealListener {
     const targetId = `program-target-${dealId}`;
     await this.kg.upsertNode({
       id: targetId,
-      type: 'ProgramTarget',
+      type: 'ProgramTarget' as NodeType,
       name: `Program ${params.targetUnits}u / ${Math.round(params.targetGFA / 1000)}K GFA`,
       externalId: targetId,
       properties: {
@@ -254,7 +254,7 @@ export class KGDealListener {
         const amId = `amenity-${amenity.id}`;
         await this.kg.upsertNode({
           id: amId,
-          type: 'AmenityFeature',
+          type: 'AmenityFeature' as NodeType,
           name: amenity.name,
           externalId: amId,
           properties: {
@@ -317,7 +317,7 @@ export class KGDealListener {
   ): Promise<void> {
     try {
       // Find other zoning nodes in the same jurisdiction with similar codes
-      const result = await this.kg.getNodesByType('ZoningProfile', 50);
+      const result = await this.kg.getNodesByType('ZoningProfile' as NodeType, 50);
 
       const similar = result.filter(
         (n) =>

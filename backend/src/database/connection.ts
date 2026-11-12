@@ -209,7 +209,9 @@ class DatabaseConnection {
 const db = new DatabaseConnection();
 
 export const connectDatabase = () => db.connect();
-export const query = (text: string, params?: any[]) => db.query(text, params);
+export function query<T = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
+  return db.query<T>(text, params);
+}
 export const getClient = () => db.getClient();
 export const transaction = <T>(callback: (client: PoolClient) => Promise<T>) =>
   db.transaction(callback);

@@ -10,6 +10,7 @@
  * - Contacts (owner, management)
  */
 
+import { PDFParse } from 'pdf-parse';
 import { logger } from '../../../utils/logger';
 
 export interface CoStarPropertyData {
@@ -422,11 +423,13 @@ export function parseCoStarText(text: string): { success: boolean; data?: CoStar
  */
 export async function parseCoStarPDF(buffer: Buffer, filename: string): Promise<{ success: boolean; data?: CoStarPropertyData; error?: string; warnings?: string[] }> {
   try {
-    // Use pdf-parse to extract text
-    const pdfParse = (await import('pdf-parse')).default;
-    const pdfData = await pdfParse(buffer);
-    
-    return parseCoStarText(pdfData.text);
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const pdfData = await parser.getText();
+      return parseCoStarText(pdfData.text);
+    } finally {
+      await parser.destroy();
+    }
   } catch (err) {
     logger.error('CoStar PDF parse error:', err);
     return { success: false, error: `PDF extraction failed: ${err instanceof Error ? err.message : 'Unknown error'}` };

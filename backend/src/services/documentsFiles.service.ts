@@ -397,6 +397,62 @@ class DocumentsFilesService {
     }
   }
 
+  /** Alias used by the version-history route. */
+  async getVersionHistory(fileId: string): Promise<DealFile[]> {
+    return this.getFileVersions(fileId);
+  }
+
+  /** Alias used by the file-detail route. */
+  async getFileById(fileId: string): Promise<DealFile | null> {
+    return this.getFile(fileId);
+  }
+
+  async searchFiles(dealId: string, q: string): Promise<DealFile[]> {
+    return this.getFiles(dealId, { search: q, onlyLatestVersions: true });
+  }
+
+  /**
+   * New version of a specific file. Reuses uploadFile's storage path and
+   * points the version chain at this file even when the uploaded name differs.
+   */
+  async uploadNewVersion(
+    fileId: string,
+    file: Express.Multer.File,
+    userId: string,
+    versionNotes?: string
+  ): Promise<DealFile> {
+    const existing = await this.getFile(fileId);
+    if (!existing) {
+      throw new Error('File not found');
+    }
+    const uploaded = await this.uploadFile({
+      dealId: existing.deal_id,
+      file: { ...file, originalname: existing.original_filename },
+      userId,
+      category: existing.category,
+      folderPath: existing.folder_path,
+      description: versionNotes,
+    });
+    if (versionNotes) {
+      await query(
+        `UPDATE deal_files SET version_notes = $2, updated_at = NOW() WHERE id = $1`,
+        [uploaded.id, versionNotes]
+      );
+    }
+    return (await this.getFile(uploaded.id)) ?? uploaded;
+  }
+
+  async getAvailableCategories(_dealId: string): Promise<string[]> {
+    return [...new Set(CATEGORY_PATTERNS.map((entry) => entry.category))];
+  }
+
+  async getMissingFileSuggestions(dealId: string): Promise<string[]> {
+    const files = await this.getFiles(dealId, { onlyLatestVersions: true });
+    const present = new Set(files.map((file) => file.category));
+    const categories = await this.getAvailableCategories(dealId);
+    return categories.filter((category) => !present.has(category));
+  }
+
   /**
    * Log file access for audit trail
    */

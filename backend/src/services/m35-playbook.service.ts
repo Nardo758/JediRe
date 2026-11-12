@@ -128,7 +128,7 @@ export interface MagnitudeScaleResult {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function classifyMsaTier(msaId: string | null): 'large' | 'mid' | 'small' {
+export function classifyMsaTier(msaId: string | null): 'large' | 'mid' | 'small' {
   if (!msaId) return 'mid';
   const large = ['new-york', 'los-angeles', 'chicago', 'dallas', 'houston', 'atlanta', 'washington', 'miami', 'phoenix', 'philadelphia', 'boston', 'san-francisco', 'seattle', 'detroit', 'minneapolis'];
   if (large.some(l => msaId.toLowerCase().includes(l))) return 'large';

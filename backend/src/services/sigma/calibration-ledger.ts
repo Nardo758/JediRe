@@ -16,8 +16,7 @@
  * CI adjustment (spec §6): widening factors based on reliability score.
  */
 
-import type { Logger } from 'pino';
-import { createLogger } from '../../utils/logger';
+import { createServiceLogger } from '../../utils/logger';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -140,7 +139,7 @@ export interface CalibrationProfile {
 
 // ─── Logger ──────────────────────────────────────────────────────────────────
 
-const log: Logger = createLogger('calibration-ledger');
+const log = createServiceLogger('calibration-ledger');
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

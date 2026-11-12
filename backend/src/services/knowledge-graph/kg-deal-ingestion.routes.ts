@@ -28,7 +28,7 @@ export function createKGDealIngestionRoutes(pool: Pool): Router {
     jurisdiction: z.string(),
     state: z.string(),
     zoningCode: z.string(),
-    zoningProfile: z.record(z.any()),
+    zoningProfile: z.record(z.string(), z.any()),
     bindingConstraint: z.string(),
     developmentEnvelope: z.object({
       maxUnits: z.number(),
@@ -64,8 +64,8 @@ export function createKGDealIngestionRoutes(pool: Pool): Router {
     msa: z.string(),
     region: z.string(),
     compDealIds: z.array(z.string()).optional(),
-    marketStats: z.record(z.any()).optional(),
-    submarketStats: z.record(z.any()).optional(),
+    marketStats: z.record(z.string(), z.any()).optional(),
+    submarketStats: z.record(z.string(), z.any()).optional(),
   });
 
   router.post(

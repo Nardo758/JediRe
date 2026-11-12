@@ -66,7 +66,10 @@ export type NodeType =
   | 'BrokerNarrative'
   | 'RentComp'
   | 'SaleComp'
-  | 'ExpenseBenchmark';
+  | 'ExpenseBenchmark'
+  | 'ZoningProfile'
+  | 'ProgramTarget'
+  | 'AmenityFeature';
 
 export interface GraphNode {
   id: string;
@@ -182,7 +185,7 @@ export class KnowledgeGraphService {
   /**
    * Create or update a node in the graph
    */
-  async upsertNode(node: Omit<GraphNode, 'createdAt' | 'updatedAt' | 'staleness'> & { externalId?: string }): Promise<string> {
+  async upsertNode(node: Omit<GraphNode, 'id' | 'createdAt' | 'updatedAt' | 'staleness'> & { id?: string; externalId?: string }): Promise<string> {
     // Use externalId as the node ID if provided, otherwise use node.id or generate one
     const nodeId = (node as any).externalId || node.id || `${node.type}-${Date.now()}`;
     
@@ -814,9 +817,9 @@ export class KnowledgeGraphService {
     longitude?: number;
     submarket?: string;
     market?: string;
-  }): Promise<GraphNode> {
+  }): Promise<string> {
     // Create property node
-    const node = await this.upsertNode({
+    const nodeId = await this.upsertNode({
       id: `property:${property.id}`,
       type: 'Property',
       name: property.address,
@@ -836,7 +839,7 @@ export class KnowledgeGraphService {
     if (property.market) {
       await this.createEdge({
         type: 'IN_MARKET',
-        sourceId: node.id,
+        sourceId: nodeId,
         sourceType: 'Property',
         targetId: `market:${property.market.toLowerCase()}`,
         targetType: 'Market',
@@ -851,7 +854,7 @@ export class KnowledgeGraphService {
     if (property.submarket) {
       await this.createEdge({
         type: 'IN_SUBMARKET',
-        sourceId: node.id,
+        sourceId: nodeId,
         sourceType: 'Property',
         targetId: `submarket:${property.submarket.toLowerCase().replace(/\s+/g, '-')}`,
         targetType: 'Submarket',
@@ -862,7 +865,7 @@ export class KnowledgeGraphService {
       });
     }
     
-    return node;
+    return nodeId;
   }
   
   /**
@@ -877,8 +880,8 @@ export class KnowledgeGraphService {
     submarket?: string;
     impactScore?: number;
     affectedPropertyIds?: string[];
-  }): Promise<GraphNode> {
-    const node = await this.upsertNode({
+  }): Promise<string> {
+    const nodeId = await this.upsertNode({
       id: `event:${event.id}`,
       type: 'Event',
       name: event.title,
@@ -896,7 +899,7 @@ export class KnowledgeGraphService {
       for (const propId of event.affectedPropertyIds) {
         await this.createEdge({
           type: 'AFFECTS',
-          sourceId: node.id,
+          sourceId: nodeId,
           sourceType: 'Event',
           targetId: `property:${propId}`,
           targetType: 'Property',
@@ -908,7 +911,7 @@ export class KnowledgeGraphService {
       }
     }
     
-    return node;
+    return nodeId;
   }
   
   // ==========================================================================
@@ -991,7 +994,10 @@ export class KnowledgeGraphService {
       Route: 0.5,
       Document: 0.4,
       Metric: 0.4,
-      Agent: 0.3
+      Agent: 0.3,
+      ZoningProfile: 0.6,
+      ProgramTarget: 0.5,
+      AmenityFeature: 0.4,
     };
     
     return typeWeights[node.type] || 0.5;

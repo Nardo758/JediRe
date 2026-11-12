@@ -16,8 +16,7 @@
  *   sim = sim_national_factor · sim_character · sim_macro_tier
  */
 
-import type { Logger } from 'pino';
-import { createLogger } from '../../utils/logger';
+import { createServiceLogger } from '../../utils/logger';
 import { spatialKernel } from './spatial-kernel';
 import { multiTierFactorDecomposition, type SubmarketFactors } from './multi-tier-factor';
 
@@ -120,7 +119,7 @@ const LAMBDA_GAMMA = 0.6;
 
 // ─── Logger ──────────────────────────────────────────────────────────────────
 
-const log: Logger = createLogger('peer-intelligence');
+const log = createServiceLogger('peer-intelligence');
 
 // ─── Class ───────────────────────────────────────────────────────────────────
 

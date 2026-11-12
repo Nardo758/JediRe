@@ -478,7 +478,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
       await pool.query(
         `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
          VALUES ($1, $2, 'document_deleted', $3)`,
-        [id, user_id, { file_name: result.rows[0].file_name }]
+        [id, resolvedUserId, { file_name: result.rows[0].file_name }]
       );
 
       res.json({
@@ -579,7 +579,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
       await pool.query(
         `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
          VALUES ($1, $2, 'share_revoked', $3)`,
-        [id, user_id, { shared_with: result.rows[0].shared_with }]
+        [id, resolvedUserId, { shared_with: result.rows[0].shared_with }]
       );
 
       res.json({
@@ -729,7 +729,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
         assetClass,
         yearBuilt,
         stories,
-        userId: user_id as string
+        userId: resolvedUserId
       });
 
       // Build comparison if we have asking price
@@ -785,7 +785,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
          VALUES ($1, $2, 'replacement_cost_computed', $3)`,
         [
           id,
-          user_id,
+          resolvedUserId,
           {
             totalCost: estimate.totalCost.value,
             costPerUnit: estimate.costPerUnit.value,

@@ -176,10 +176,12 @@ class Parser {
   // expression → term ((+|-) term)*
   private parseExpression(): ASTNode {
     let left = this.parseTerm();
-    while (this.current().type === 'operator' && (this.current().value === '+' || this.current().value === '-')) {
-      const op = this.advance().value as '+' | '-';
+    while (true) {
+      const tok = this.current();
+      if (tok.type !== 'operator' || (tok.value !== '+' && tok.value !== '-')) break;
+      this.advance();
       const right = this.parseTerm();
-      left = { type: 'binary', op, left, right };
+      left = { type: 'binary', op: tok.value, left, right };
     }
     return left;
   }
@@ -187,10 +189,12 @@ class Parser {
   // term → factor ((*|/) factor)*
   private parseTerm(): ASTNode {
     let left = this.parseFactor();
-    while (this.current().type === 'operator' && (this.current().value === '*' || this.current().value === '/')) {
-      const op = this.advance().value as '*' | '/';
+    while (true) {
+      const tok = this.current();
+      if (tok.type !== 'operator' || (tok.value !== '*' && tok.value !== '/')) break;
+      this.advance();
       const right = this.parseFactor();
-      left = { type: 'binary', op, left, right };
+      left = { type: 'binary', op: tok.value, left, right };
     }
     return left;
   }
@@ -199,9 +203,9 @@ class Parser {
   private parseFactor(): ASTNode {
     const tok = this.current();
     if (tok.type === 'operator' && (tok.value === '+' || tok.value === '-')) {
-      const op = this.advance().value as '+' | '-';
+      this.advance();
       const operand = this.parseFactor();
-      return { type: 'unary', op, operand };
+      return { type: 'unary', op: tok.value, operand };
     }
     return this.parsePrimary();
   }

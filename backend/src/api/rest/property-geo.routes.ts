@@ -130,8 +130,6 @@ router.get('/geo', requireAuth, async (req: AuthenticatedRequest, res: Response,
       lng: row.lng,
       yearBuilt: row.year_built,
       acquisitionPrice: row.acquisition_price,
-      lng: row.lng,
-      acquisitionPrice: row.acquisition_price,
       // Current property-level metrics (fallback to monthly actuals)
       metrics: {
         occupancyRate: row.occ_rate ?? row.current_occupancy,

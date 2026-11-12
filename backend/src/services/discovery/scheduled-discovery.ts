@@ -17,6 +17,16 @@ import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { fetchCreTradePressFeeds } from './sources/cre-rss';
 
+interface DiscoveredRates {
+  sofr?: unknown;
+  fedFunds?: unknown;
+  [key: string]: unknown;
+}
+
+function isDiscoveredRates(value: unknown): value is DiscoveredRates {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 // ============================================================================
 // HOURLY DISCOVERY
 // ============================================================================
@@ -32,9 +42,10 @@ export const hourlyMarketDiscovery = inngest.createFunction(
     logger.info('Starting hourly market discovery');
 
     // Interest rates
-    const rates = await step.run('discover-rates', async () => {
+    const ratesRaw: unknown = await step.run('discover-rates', async () => {
       return await discoveryEngine.discoverInterestRates();
     });
+    const rates: DiscoveredRates = isDiscoveredRates(ratesRaw) ? ratesRaw : {};
 
     // Check for significant rate changes
     if (rates.sofr || rates.fedFunds) {

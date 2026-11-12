@@ -461,6 +461,43 @@ router.get('/nearby/:lat/:lng', requireAuth, async (req: AuthenticatedRequest, r
   }
 });
 
+interface FultonScrapedProperty {
+  parcelId?: string;
+  county?: string;
+  state?: string;
+  address?: string;
+  city?: string | null;
+  zip?: string | null;
+  propertyType?: string | null;
+  yearBuilt?: number | null;
+  buildingSqft?: number | null;
+  lotSizeSqft?: number | null;
+  lotSizeAcres?: number | null;
+  landAssessedValue?: number | null;
+  improvementAssessedValue?: number | null;
+  totalAssessedValue?: number | null;
+  ownerName?: string | null;
+  ownerType?: string | null;
+  ownerAddress?: string | null;
+  ownerCity?: string | null;
+  ownerState?: string | null;
+  ownerZip?: string | null;
+  subdivision?: string | null;
+  dataSourceUrl?: string | null;
+  scrapedAt?: string | Date | null;
+}
+
+interface FultonScrapeResponse {
+  error?: string;
+  success?: boolean;
+  property?: FultonScrapedProperty;
+  durationMs?: number;
+}
+
+function isFultonScrapeResponse(value: unknown): value is FultonScrapeResponse {
+  return typeof value === 'object' && value !== null;
+}
+
 /**
  * POST /api/v1/properties/scrape/fulton
  * Scrape property data from Fulton County API
@@ -482,13 +519,16 @@ router.post('/scrape/fulton', requireAuth, async (req: AuthenticatedRequest, res
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new AppError(response.status, error.error || 'Failed to scrape property');
+      const errorBody: unknown = await response.json();
+      const message = isFultonScrapeResponse(errorBody)
+        ? (errorBody.error || 'Failed to scrape property')
+        : 'Failed to scrape property';
+      throw new AppError(response.status, message);
     }
 
-    const data = await response.json();
+    const data: unknown = await response.json();
 
-    if (!data.success || !data.property) {
+    if (!isFultonScrapeResponse(data) || !data.success || !data.property) {
       throw new AppError(404, 'Property not found');
     }
 

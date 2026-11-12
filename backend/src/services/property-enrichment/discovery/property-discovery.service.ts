@@ -11,6 +11,15 @@ import { PropertyInfo, CountyAPIConfig } from '../types';
 import { COUNTY_CONFIGS } from '../property-info/county-configs';
 import { query as dbQuery } from '../../../database/connection';
 
+interface ArcGisQueryJson {
+  error?: { message?: string };
+  features?: Array<ArcGisFeature>;
+}
+
+interface ArcGisFeature extends Record<string, unknown> {
+  attributes?: Record<string, unknown>;
+}
+
 export interface DiscoveredProperty {
   id: string;
   parcelId: string;
@@ -222,7 +231,7 @@ export class PropertyDiscoveryService {
         throw new Error(`HTTP ${response.status}`);
       }
       
-      const data = await response.json();
+      const data = (await response.json()) as ArcGisQueryJson;
       
       if (data.error) {
         throw new Error(data.error.message || 'API Error');

@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { getPool } from '../../database/connection';
 import { ExtractionResult, DocumentType, T12Data, RentRollData, AgedReceivablesData, BoxScoreData, ConcessionBurnoffData, LTOData, TaxBillData, OtherIncomeData, LeasingStatsData, CoStarSubmarketData } from './types';
 import { processCoStarUpload } from '../valuation/costar-comp-upload.service';
-import type { OMExtraction } from './parsers/om-parser';
+import type { OMBrokerProforma, OMExtraction } from './parsers/om-parser';
 import { buildOmKgEventData } from './om-distribution.service';
 import { getGraphIngestionListener } from '../neural-network/graph-ingestion-listener';
 import type { OmGeoTags } from './om-geo';
@@ -1083,6 +1083,42 @@ async function routeOtherIncome(pool: Pool, data: OtherIncomeData, dealId: strin
   return data.categories.length;
 }
 
+function brokerProformaRecord(proforma: OMBrokerProforma): Record<string, unknown> {
+  return {
+    stabilizedVacancy: proforma.stabilizedVacancy,
+    lossToLease: proforma.lossToLease,
+    concessionsPct: proforma.concessionsPct,
+    badDebtPct: proforma.badDebtPct,
+    rentGrowthY1: proforma.rentGrowthY1,
+    rentGrowthY2: proforma.rentGrowthY2,
+    rentGrowthY3: proforma.rentGrowthY3,
+    rentGrowthY4: proforma.rentGrowthY4,
+    rentGrowthY5: proforma.rentGrowthY5,
+    opexGrowth: proforma.opexGrowth,
+    managementFeePct: proforma.managementFeePct,
+    replacementReservesPerUnit: proforma.replacementReservesPerUnit,
+    exitCapRate: proforma.exitCapRate,
+    holdPeriodYears: proforma.holdPeriodYears,
+    goingInCapRate: proforma.goingInCapRate,
+    targetIRR: proforma.targetIRR,
+    stabilizedNOI: proforma.stabilizedNOI,
+    yearOneNOI: proforma.yearOneNOI,
+    stabilizedGpr: proforma.stabilizedGpr,
+    stabilizedEgi: proforma.stabilizedEgi,
+    stabilizedOtherIncomeAnnual: proforma.stabilizedOtherIncomeAnnual,
+    payrollAnnual: proforma.payrollAnnual,
+    insuranceAnnual: proforma.insuranceAnnual,
+    utilitiesAnnual: proforma.utilitiesAnnual,
+    repairsMaintenanceAnnual: proforma.repairsMaintenanceAnnual,
+    turnoverAnnual: proforma.turnoverAnnual,
+    marketingAnnual: proforma.marketingAnnual,
+    gAndAAnnual: proforma.gAndAAnnual,
+    contractServicesAnnual: proforma.contractServicesAnnual,
+    realEstateTaxesAnnual: proforma.realEstateTaxesAnnual,
+    totalOpexAnnual: proforma.totalOpexAnnual,
+  };
+}
+
 async function routeOM(
   pool: Pool,
   data: OMExtraction,
@@ -1135,7 +1171,7 @@ async function routeOM(
   // which replaces the deals.updated_at proxy. discoverSeedGaps() uses the
   // extraction_events table directly as the "source present" oracle (Task #698).
   setImmediate(() => {
-    emitOmProformaEvents(pool, dealId, data.brokerProforma as Record<string, unknown>)
+    emitOmProformaEvents(pool, dealId, brokerProformaRecord(data.brokerProforma))
       .catch((err: unknown) => console.error('[ExtractionEvents] OM emit error:', err instanceof Error ? err.message : err));
   });
 

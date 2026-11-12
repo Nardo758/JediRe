@@ -46,6 +46,20 @@ export interface AssessorLookupOptions {
 
 const FULTON_SCRAPER_URL = 'https://property-api.m-dixon5030.workers.dev/scrape';
 
+interface AssessorLookupBody {
+  success?: boolean;
+  property?: unknown;
+  error?: unknown;
+}
+
+function isAssessorLookupBody(value: unknown): value is AssessorLookupBody {
+  return typeof value === 'object' && value !== null;
+}
+
+function isPropertyRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
  * Lookup a parcel via the external assessor API.
  * Currently supports Fulton County via the property-api worker.
@@ -73,26 +87,24 @@ export async function lookupParcel(
     });
 
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
+      const errorBody: unknown = await response.json().catch(() => ({}));
       logger.warn('[Assessor] Scraper returned non-OK', {
         status: response.status,
-        error: errorBody.error,
+        error: isAssessorLookupBody(errorBody) ? errorBody.error : undefined,
         address,
         parcelId,
       });
       return null;
     }
 
-    const data = await response.json();
+    const data: unknown = await response.json();
 
-    if (!data.success || !data.property) {
+    if (!isAssessorLookupBody(data) || !data.success || !isPropertyRecord(data.property)) {
       logger.info('[Assessor] No property found', { address, parcelId });
       return null;
     }
 
-    const prop = data.property;
-
-    return normalizeParcelRecord(prop);
+    return normalizeParcelRecord(data.property);
   } catch (err) {
     logger.error('[Assessor] Lookup failed', { error: (err as Error).message, address, parcelId });
     return null;

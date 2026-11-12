@@ -1032,12 +1032,18 @@ router.get('/market-dynamics/:tradeAreaId', async (req, res) => {
       } : null,
       
       // Supply
-      supply: {
+      supply: 'totalPipelineUnits' in pipeline ? {
         pipelineUnits: pipeline.totalPipelineUnits,
         weightedPipelineUnits: pipeline.totalWeightedUnits,
         permittedUnits: pipeline.permittedUnits,
         constructionUnits: pipeline.constructionUnits,
         delivered12moUnits: pipeline.delivered12moUnits
+      } : {
+        pipelineUnits: undefined,
+        weightedPipelineUnits: undefined,
+        permittedUnits: undefined,
+        constructionUnits: undefined,
+        delivered12moUnits: undefined
       },
       
       // Risk Scores

@@ -15,8 +15,7 @@
  *   sim(target, analog) = sim_market × sim_regime × sim_event
  */
 
-import type { Logger } from 'pino';
-import { createLogger } from '../../utils/logger';
+import { createServiceLogger } from '../../utils/logger';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -165,7 +164,7 @@ const REGIME_SIM_HARD: Record<string, Record<string, number>> = {
 
 // ─── Logger ──────────────────────────────────────────────────────────────────
 
-const log: Logger = createLogger('analog-engine');
+const log = createServiceLogger('analog-engine');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -573,9 +572,10 @@ export class AnalogEngine {
     if ('hypothetical' in params.event) {
       eventSubtype = params.event.hypothetical.subtype;
       magnitude = params.event.hypothetical.magnitude;
-    } else if (params.event.eventId) {
+    } else if ('eventId' in params.event && params.event.eventId) {
+      const eventId = params.event.eventId;
       // Look up event from pool
-      const match = this.analogPool.find(a => a.eventId === params.event.eventId);
+      const match = this.analogPool.find(a => a.eventId === eventId);
       if (match) {
         eventSubtype = match.eventSubtype;
         eventCategory = match.eventCategory;

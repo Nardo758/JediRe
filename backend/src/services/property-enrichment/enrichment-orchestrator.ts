@@ -18,6 +18,17 @@ import {
 import { getPropertyInfoRegistry } from './property-info/provider-registry';
 import { getRentDataRegistry } from './rent-data/provider-registry';
 import { BuildingCharacteristicsWebProvider } from './building-characteristics/web-research-provider';
+
+interface CensusGeocodeResponse {
+  result?: {
+    addressMatches?: Array<{
+      matchedAddress?: string;
+      addressComponents?: { city?: string; state?: string; zip?: string };
+      geographies?: { Counties?: Array<{ BASENAME?: string; NAME?: string }> };
+      coordinates?: { x?: number; y?: number };
+    }>;
+  };
+}
 import { upsertBuildingProfile } from '../building-profiles/building-profile.service';
 
 export class PropertyEnrichmentOrchestrator {
@@ -342,7 +353,7 @@ export class PropertyEnrichmentOrchestrator {
       const response = await fetch(url);
       if (!response.ok) return null;
       
-      const data = await response.json();
+      const data = (await response.json()) as CensusGeocodeResponse;
       const match = data.result?.addressMatches?.[0];
       
       if (!match) return null;

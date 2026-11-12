@@ -15,8 +15,7 @@
  * Inference: forward algorithm for posterior regime probabilities.
  */
 
-import type { Logger } from 'pino';
-import { createLogger } from '../../utils/logger';
+import { createServiceLogger } from '../../utils/logger';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -123,7 +122,7 @@ function matTranspose(m: number[][]): number[][] {
 
 // ─── Logger ──────────────────────────────────────────────────────────────────
 
-const log: Logger = createLogger('hmm-regime-classifier');
+const log = createServiceLogger('hmm-regime-classifier');
 
 // ─── Class ───────────────────────────────────────────────────────────────────
 

@@ -19,8 +19,7 @@
  *   ~ χ²_N under the null (N = number of variables)
  */
 
-import type { Logger } from 'pino';
-import { createLogger } from '../../utils/logger';
+import { createServiceLogger } from '../../utils/logger';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -52,7 +51,7 @@ export interface AnomalyTimeSeries {
 
 // ─── Logger ──────────────────────────────────────────────────────────────────
 
-const log: Logger = createLogger('stress-tester');
+const log = createServiceLogger('stress-tester');
 
 // ─── Matrix Utilities ────────────────────────────────────────────────────────
 

@@ -20,6 +20,7 @@ import type { SolveVariable, TargetMetric } from '../../services/sigma/broader-g
 import { FACTORS } from '../../services/sigma/sigma-variable-registry';
 import { DEBT_BUNDLES } from '../../services/sigma/debt-bundle-registry';
 import { applyGoalSeekToDeal } from '../../services/sigma/sigma-apply-deal';
+import { buildHeuristicSigma } from '../../services/sigma/heuristic-sigma-builder';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 

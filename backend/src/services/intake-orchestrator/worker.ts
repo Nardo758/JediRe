@@ -39,6 +39,7 @@ export type IntakeJobState =
   | 'parsing'
   | 'enriching'
   | 'complete'
+  | 'awaiting_review'
   | 'blocked_needs_user'
   | 'failed'
   | 'ignored';
@@ -607,7 +608,7 @@ async function processJob(job: {
   source_type: string | null;
   file_id: string | null;
   /** Analyst-submitted resolution data; non-null when analyst previously resolved a conflict. */
-  user_input: Record<string, unknown> | null;
+  user_input?: Record<string, unknown> | null;
 }): Promise<void> {
   const { id, source_data, source_type, file_id, user_input } = job;
   let parcel_id = job.parcel_id;

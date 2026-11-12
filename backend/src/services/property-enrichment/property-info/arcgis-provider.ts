@@ -11,6 +11,20 @@
  */
 
 import { PropertyInfo, ProviderConfig, CountyAPIConfig, CountyFieldMappings } from '../types';
+
+interface ArcGisServiceInfo {
+  layers?: unknown;
+  currentVersion?: unknown;
+}
+
+interface ArcGisFeatureQuery {
+  error?: { message?: string };
+  features?: Array<ArcGisFeatureRecord>;
+}
+
+interface ArcGisFeatureRecord extends Record<string, unknown> {
+  attributes?: Record<string, unknown>;
+}
 import { BasePropertyInfoProvider } from './base-provider';
 
 export class ArcGISFeatureServerProvider extends BasePropertyInfoProvider {
@@ -113,7 +127,7 @@ export class ArcGISFeatureServerProvider extends BasePropertyInfoProvider {
     try {
       const url = `${this.countyConfig.baseUrl}?f=json`;
       const response = await fetch(url);
-      const data = await response.json();
+      const data = (await response.json()) as ArcGisServiceInfo;
       return !!data.layers || !!data.currentVersion;
     } catch {
       return false;
@@ -276,7 +290,7 @@ export class ArcGISFeatureServerProvider extends BasePropertyInfoProvider {
         return null;
       }
       
-      const data = await response.json();
+      const data = (await response.json()) as ArcGisFeatureQuery;
       
       if (data.error) {
         console.error(`[${this.config.name}] API Error:`, data.error);

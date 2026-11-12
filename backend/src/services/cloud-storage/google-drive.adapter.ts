@@ -10,6 +10,29 @@ const GOOGLE_OAUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_DRIVE_API = 'https://www.googleapis.com/drive/v3';
 
+interface GoogleTokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+}
+
+interface GoogleUserInfo {
+  email?: string;
+}
+
+interface GoogleDriveFile {
+  id: string;
+  name: string;
+  mimeType?: string;
+  size?: string;
+  modifiedTime?: string;
+  parents?: string[];
+}
+
+interface GoogleDriveList {
+  files: GoogleDriveFile[];
+}
+
 export function getGoogleDriveConfig(): CloudOAuthConfig {
   return {
     clientId: process.env.GOOGLE_CLIENT_ID || '',
@@ -59,13 +82,13 @@ export const googleDriveAdapter: CloudStorageAdapter = {
       throw new Error(`Token exchange failed: ${error}`);
     }
     
-    const data = await response.json();
+    const data = await response.json() as GoogleTokenResponse;
     
     // Get user email
     const userResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: { Authorization: `Bearer ${data.access_token}` },
     });
-    const userData = await userResponse.json();
+    const userData = await userResponse.json() as GoogleUserInfo;
     
     return {
       accessToken: data.access_token,
@@ -93,7 +116,7 @@ export const googleDriveAdapter: CloudStorageAdapter = {
       throw new Error('Token refresh failed');
     }
     
-    const data = await response.json();
+    const data = await response.json() as GoogleTokenResponse;
     return {
       accessToken: data.access_token,
       expiresIn: data.expires_in,
@@ -119,9 +142,9 @@ export const googleDriveAdapter: CloudStorageAdapter = {
       throw new Error('Failed to list folders');
     }
     
-    const data = await response.json();
+    const data = await response.json() as GoogleDriveList;
     
-    return data.files.map((f: any) => ({
+    return data.files.map((f) => ({
       id: f.id,
       name: f.name,
       path: f.name, // Would need recursive call to build full path
@@ -149,9 +172,9 @@ export const googleDriveAdapter: CloudStorageAdapter = {
       throw new Error('Failed to list files');
     }
     
-    const data = await response.json();
+    const data = await response.json() as GoogleDriveList;
     
-    return data.files.map((f: any) => ({
+    return data.files.map((f) => ({
       id: f.id,
       name: f.name,
       path: f.name,
@@ -189,7 +212,7 @@ export const googleDriveAdapter: CloudStorageAdapter = {
       throw new Error('Failed to get file metadata');
     }
     
-    const f = await response.json();
+    const f = await response.json() as GoogleDriveFile;
     
     return {
       id: f.id,

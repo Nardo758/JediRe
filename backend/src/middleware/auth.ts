@@ -13,6 +13,8 @@ export interface AuthenticatedRequest extends Request {
   user?: {
     userId: string;
     email: string;
+    /** Legacy session field. New tokens set userId. */
+    id?: string;
     role: string;
     user_type?: 'human' | 'agent' | 'human_sponsor' | 'human_lp' | 'human_lender' | 'system';
     agent_id?: string;

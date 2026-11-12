@@ -99,7 +99,8 @@ router.post('/investors', requireAuth, async (req: AuthenticatedRequest, res: Re
         tax_id_last4 ?? null, notes ?? null, metadata ? JSON.stringify(metadata) : null,
       ],
     );
-    res.status(201).json({ success: true, investor: fmtInvestor(r) });
+    const investor = r.rows[0];
+    res.status(201).json({ success: true, investor: fmtInvestor(investor) });
   } catch (err) {
     logger.error('POST /investors', err);
     res.status(500).json({ success: false, error: 'Failed to create investor' });
@@ -113,7 +114,8 @@ router.get('/investors/:investorId', requireAuth, async (req: AuthenticatedReque
       [req.params.investorId, req.user!.userId],
     );
     if (!r.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
-    res.json({ success: true, investor: fmtInvestor(r) });
+    const investor = r.rows[0];
+    res.json({ success: true, investor: fmtInvestor(investor) });
   } catch (err) {
     logger.error('GET /investors/:id', err);
     res.status(500).json({ success: false, error: 'Failed to fetch investor' });
@@ -139,7 +141,8 @@ router.patch('/investors/:investorId', requireAuth, async (req: AuthenticatedReq
       params,
     );
     if (!r.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
-    res.json({ success: true, investor: fmtInvestor(r) });
+    const investor = r.rows[0];
+    res.json({ success: true, investor: fmtInvestor(investor) });
   } catch (err) {
     logger.error('PATCH /investors/:id', err);
     res.status(500).json({ success: false, error: 'Failed to update investor' });
@@ -287,7 +290,7 @@ router.post('/deals/:dealId/capital-calls', requireAuth, async (req: Authenticat
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [req.params.dealId, nextNum.rows[0].n, call_date, due_date, total_amount, purpose ?? null, allocation_method, notes ?? null, req.user!.userId],
     );
-    const call = r;
+    const call = r.rows[0];
 
     if (allocation_method === 'pro_rata') {
       const investors = await query(
@@ -305,7 +308,7 @@ router.post('/deals/:dealId/capital-calls', requireAuth, async (req: Authenticat
         }
       }
     }
-    res.status(201).json({ success: true, capitalCall: call });
+    res.status(201).json({ success: true, capitalCall: r });
   } catch (err) {
     logger.error('POST capital-calls', err);
     res.status(500).json({ success: false, error: 'Failed to create capital call' });
@@ -380,7 +383,7 @@ router.patch('/deals/:dealId/capital-calls/:callId/items/:itemId/pay', requireAu
     const callStatus = Number(paid_count) === Number(total) ? 'fully_paid' : 'partially_paid';
     await query('UPDATE capital_calls SET status=$1,updated_at=NOW() WHERE id=$2', [callStatus, req.params.callId]);
 
-    const item = r;
+    const item = r.rows[0];
     await query(
       'INSERT INTO capital_account_entries (deal_id,investor_id,entry_type,amount,reference_id,reference_type,entry_date,description) VALUES ($1,$2,\'contribution\',$3,$4,\'capital_call\',CURRENT_DATE,$5)',
       [req.params.dealId, item.investor_id, paid_amount, req.params.callId, `Capital Call #${req.params.callId.slice(-6)}`],
@@ -445,7 +448,7 @@ router.post('/deals/:dealId/distributions', requireAuth, async (req: Authenticat
           const gross = Math.round(Number(total_amount) * (Number(inv.commitment_amount) / totalCommit) * 100) / 100;
           await query(
             'INSERT INTO distribution_items (distribution_id,investor_id,gross_amount,profit_share) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
-            [r.id, inv.investor_id, gross, gross],
+            [r.rows[0].id, inv.investor_id, gross, gross],
           );
         }
       }

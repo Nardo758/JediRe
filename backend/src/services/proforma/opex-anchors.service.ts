@@ -220,11 +220,6 @@ const STATE_SPREADS: Record<string, Partial<StateSpreads>> = {
     insurance: 0.015,
     utilities: 0.008,      // heating costs, We Energies
   },
-  // Desert — extreme heat, water scarcity
-  NV: {
-    insurance: 0.010,
-    utilities: 0.010,      // extreme AC, water scarcity
-  },
 };
 
 // ─── Default anchors (historical, used when CPI unavailable) ─────────────

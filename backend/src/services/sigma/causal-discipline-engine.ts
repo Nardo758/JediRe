@@ -16,8 +16,7 @@
  * spec: Causal_Discipline_Addendum.md
  */
 
-import type { Logger } from 'pino';
-import { createLogger } from '../../utils/logger';
+import { createServiceLogger } from '../../utils/logger';
 import { calibrationLedger } from './calibration-ledger';
 import { hmmRegimeClassifier } from './hmm-regime-classifier';
 import { analogEngine } from './analog-engine';
@@ -102,7 +101,7 @@ export interface ScoredDeal {
 
 // ─── Logger ──────────────────────────────────────────────────────────────────
 
-const log: Logger = createLogger('causal-discipline');
+const log = createServiceLogger('causal-discipline');
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 

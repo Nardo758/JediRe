@@ -241,7 +241,7 @@ class EventDispatcher {
    * Market data changed (new comps, rate changes, etc.)
    */
   async onMarketDataChanged(data: {
-    type: 'rents' | 'cap_rates' | 'rates' | 'supply';
+    type: 'rents' | 'cap_rates' | 'rates' | 'supply' | 'weekly_update';
     msaId?: string;
     dealId?: string;
     change: Record<string, any>;

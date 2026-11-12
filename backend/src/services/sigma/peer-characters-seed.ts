@@ -17,9 +17,9 @@
 import type { Pool } from 'pg';
 import { peerIntelligenceService, type SubmarketCharacter } from './peer-intelligence';
 import { multiTierFactorDecomposition, type SubmarketFactors } from './multi-tier-factor';
-import { createLogger } from '../../utils/logger';
+import { createServiceLogger } from '../../utils/logger';
 
-const log = createLogger('peer-characters-seed');
+const log = createServiceLogger('peer-characters-seed');
 
 // ─── DDL ─────────────────────────────────────────────────────────────────────
 

@@ -26,11 +26,10 @@ router.post('/:dealId/validate', async (req: Request, res: Response) => {
     const { dealId } = req.params;
 
     // Verify user has access to this deal
-    if (!await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null)) {
+    const deal = await assertDealOrgAccess(dealId, userId, { query } as any).catch(() => null);
+    if (!deal) {
       return res.status(404).json({ success: false, error: 'Deal not found or access denied' });
     }
-
-    const deal = dealCheck.rows[0];
 
     logger.info('Running consistency validation:', { userId, dealId, dealName: deal.name });
 

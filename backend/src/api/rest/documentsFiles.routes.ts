@@ -9,13 +9,14 @@ import { authMiddleware, AuthenticatedRequest } from '../../middleware/auth';
 import { verifyAccessToken, extractTokenFromHeader } from '../../auth/jwt';
 import { documentsFilesService } from '../../services/documentsFiles.service';
 import { triggerExtractionInBackground } from '../../services/document-extraction/auto-extract-on-upload';
-import { query as dbQuery } from '../../database/connection';
+import { query as dbQuery, getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs/promises';
 
 const router = Router();
+const pool = getPool();
 
 // ============================================================================
 // MULTER CONFIGURATION
@@ -150,9 +151,9 @@ router.post(
           dealId,
           userId,
           fileId: file.id,
-          filename: file.original_filename || file.originalFilename,
+          filename: file.original_filename,
           category: file.category || category,
-          mimeType: file.mime_type || file.mimeType || 'application/octet-stream',
+          mimeType: file.mime_type || 'application/octet-stream',
         });
 
         // If it's a financial document, also trigger financials event

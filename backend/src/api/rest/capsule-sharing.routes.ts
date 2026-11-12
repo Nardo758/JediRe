@@ -643,7 +643,7 @@ router.get('/shares/:shortcode/export/pdf', async (req: Request, res: Response) 
 
     if (logoBuffer) {
       try {
-        doc.image(logoBuffer, 50, 50, { fit: [120, 40], align: 'left' });
+        doc.image(logoBuffer, 50, 50, { fit: [120, 40] });
         doc.fillColor(MID_SC).font('Helvetica').fontSize(9).text('DEAL CAPSULE — CONFIDENTIAL', 50, 96);
       } catch {
         doc.fillColor(AMBER_SC).font('Helvetica-Bold').fontSize(14).text(companyName.toUpperCase(), 50, 60, { width: W - 100 });
@@ -2301,7 +2301,7 @@ router.get('/:capsuleId/export/pdf', requireAuth, async (req: AuthenticatedReque
     // Company branding — embed logo if available, else text fallback
     if (logoBuffer) {
       try {
-        doc.image(logoBuffer, 50, 50, { fit: [120, 40], align: 'left' });
+        doc.image(logoBuffer, 50, 50, { fit: [120, 40] });
         doc.fillColor(MID).font('Helvetica').fontSize(9)
           .text('DEAL CAPSULE — CONFIDENTIAL', 50, 96);
       } catch {
@@ -2611,7 +2611,7 @@ router.get('/capsule-links/:accessToken/export/pdf', async (req: Request, res: R
 
     if (logoBuffer) {
       try {
-        doc.image(logoBuffer, 50, 50, { fit: [120, 40], align: 'left' });
+        doc.image(logoBuffer, 50, 50, { fit: [120, 40] });
         doc.fillColor(MID_ST).font('Helvetica').fontSize(9).text('DEAL CAPSULE — CONFIDENTIAL', 50, 96);
       } catch {
         doc.fillColor(AMBER_ST).font('Helvetica-Bold').fontSize(14).text(companyName.toUpperCase(), 50, 60, { width: W - 100 });

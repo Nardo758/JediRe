@@ -101,7 +101,7 @@ class SkillRegistry {
       if (error instanceof z.ZodError) {
         return { 
           success: false, 
-          error: `Invalid parameters: ${error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}` 
+          error: `Invalid parameters: ${error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}` 
         };
       }
       return { success: false, error: error.message };
@@ -144,13 +144,13 @@ class SkillRegistry {
       return { type: 'boolean' };
     }
     if (zodType instanceof z.ZodArray) {
-      return { type: 'array', items: this.zodTypeToJsonSchema(zodType.element) };
+      return { type: 'array', items: this.zodTypeToJsonSchema(zodType.element as z.ZodType) };
     }
     if (zodType instanceof z.ZodEnum) {
       return { type: 'string', enum: zodType.options };
     }
     if (zodType instanceof z.ZodOptional) {
-      return this.zodTypeToJsonSchema(zodType.unwrap());
+      return this.zodTypeToJsonSchema(zodType.unwrap() as z.ZodType);
     }
     if (zodType instanceof z.ZodObject) {
       return this.zodToJsonSchema(zodType);

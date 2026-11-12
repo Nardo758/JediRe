@@ -504,7 +504,7 @@ export class GmailSyncService {
             });
 
             // Trigger autonomous agent system for email processing
-            import('../../services/agents/platform-hooks').then(({ onEmailReceived }) => {
+            import('./agents/platform-hooks').then(({ onEmailReceived }) => {
               const hasAttachments = (fullMessage.data.payload?.parts ?? []).some(
                 p => p.filename && p.filename.length > 0
               );

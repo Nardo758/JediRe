@@ -1,5 +1,12 @@
 import type { Pool } from 'pg';
 
+function readResolvedNumber(val: object): { resolved: number; resolution: string } | null {
+  if (!('resolved' in val) || typeof val.resolved !== 'number') return null;
+  const resolution =
+    'resolution' in val && typeof val.resolution === 'string' ? val.resolution : 'unknown';
+  return { resolved: val.resolved, resolution };
+}
+
 /**
  * Decompose a deal_underwriting_scenarios.year1 JSONB blob into individual
  * deal_assumption_overlays rows.
@@ -54,16 +61,18 @@ export function decomposeYear1ToOverlays(
   for (const [key, val] of Object.entries(year1)) {
     if (val == null) continue;
 
-    if (typeof val === 'object' && !Array.isArray(val)) {
-      // LayeredValue or nested object
-      if ('resolved' in val && typeof val.resolved === 'number') {
-        // Standard LayeredValue<number>
-        addRow(key, val.resolved, val.resolution || 'unknown', val);
+      if (typeof val === 'object' && !Array.isArray(val)) {
+      const layered = readResolvedNumber(val);
+      if (layered) {
+        addRow(key, layered.resolved, layered.resolution, val);
       } else if (key === 'other_income_breakdown') {
         // Nested object: each sub-key is a LayeredValue
         for (const [subKey, subVal] of Object.entries(val)) {
           if (typeof subVal === 'object' && subVal != null && 'resolved' in subVal) {
-            addRow(`${key}.${subKey}`, subVal.resolved, subVal.resolution || 'unknown', subVal);
+            const layered = readResolvedNumber(subVal);
+            if (layered) {
+              addRow(`${key}.${subKey}`, layered.resolved, layered.resolution, subVal);
+            }
           }
         }
       } else if (key === 'source_docs' || key === '_boundary_context') {
