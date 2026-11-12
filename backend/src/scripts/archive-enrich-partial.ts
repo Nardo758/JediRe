@@ -6,7 +6,7 @@
  * 3-step process:
  *   1. OM PDF -> AI extraction via parse-om endpoint
  *   2. Get address from OM result or file names
- *   3. apartments.com search for remaining null fields
+ *   Missing fields remain unknown; rent enrichment uses the local Apartment Locator provider.
  *
  * Usage:
  *   npx ts-node --transpile-only src/scripts/archive-enrich.ts
@@ -110,48 +110,6 @@ function extractAddrFromFiles(pid: string): string|null {
   return null;
 }
 
-async function searchApt(pid: string, known: Record<string,string>): Promise<Record<string,string>> {
-  const city = known.city || getCity(pid);
-  const state = known.state || getState(pid);
-  const parts = known.address ? [known.address] : [pid];
-  if (city) parts.push(city);
-  if (state) parts.push(state);
-  const url = `https://www.apartments.com/search/${encodeURIComponent(parts.join(' '))}/`;
-  const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/134.0.0.0 Safari/537.36';
-  const tmpDir = require('os').tmpdir();
-  const ck = pid.replace(/[^a-zA-Z0-9]/g,'_').slice(0,30);
-  console.log(`  [APT] ${parts.join(', ')}`);
-
-  try {
-    const sf = path.join(tmpDir, `_s_${ck}.html`);
-    execSync(`curl.exe -s -L "${url}" -H "User-Agent: ${ua}" --connect-timeout 15 --max-time 45 --max-filesize 3000000 -o "${sf}" 2>&1`, { timeout:50000 });
-    if (!fs.existsSync(sf) || fs.statSync(sf).size < 1000) return {};
-    const h = fs.readFileSync(sf, 'utf8').slice(0,500000);
-    const slugs = [...new Set([...h.matchAll(/href="\/([a-z0-9\-]+\/[0-9]+[^"]*)"/gi)].map(m=>m[1]))];
-    console.log(`  [APT] ${slugs.length} listing(s)`);
-
-    for (const slug of slugs.slice(0, 2)) {
-      const du = `https://www.apartments.com/${slug}`;
-      const dk = slug.replace(/[^a-zA-Z0-9]/g,'_').slice(0,40);
-      const df = path.join(tmpDir, `_d_${dk}.html`);
-      execSync(`curl.exe -s -L "${du}" -H "User-Agent: ${ua}" --connect-timeout 15 --max-time 45 --max-filesize 3000000 -o "${df}" 2>&1`, { timeout:50000 });
-      if (!fs.existsSync(df) || fs.statSync(df).size < 1000) continue;
-      const dh = fs.readFileSync(df, 'utf8').slice(0,500000);
-      const f: Record<string,string> = {};
-      const s = dh.match(/"streetAddress"\s*:\s*"([^"]+)"/); if (s) f.address = s[1];
-      const c = dh.match(/"addressLocality"\s*:\s*"([^"]+)"/); if (c) f.city = c[1];
-      const t = dh.match(/"addressRegion"\s*:\s*"([^"]+)"/); if (t) f.state = t[1];
-      const z = dh.match(/"postalCode"\s*:\s*"(\d{5})"/); if (z) f.zip = z[1];
-      const y = dh.match(/Year\s+[Bb]uilt[^:]*:\s*(\d{4})/); if (y) f.year_built = y[1];
-      const u = dh.match(/(\d{2,4})\s*(?:unit|home)[^a-z]/i); if (u) f.unit_count = u[1];
-      const fl = dh.match(/numberOfFloors["\s:]+(\d+)/i); if (fl) f.stories = fl[1];
-      const ti = dh.match(/<title>([^<]+)<\/title>/i);
-      if (ti && /luxury/i.test(ti[1])) f.building_class = 'A';
-      if (Object.keys(f).length > 2) { console.log(`  [APT] Got: ${Object.keys(f).length}`); return f; }
-    }
-  } catch (e: any) { console.log(`  [APT] Error: ${(e.message||'').slice(0,60)}`); }
-  return {};
-}
 
 function loadState(): any {
   try { return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); }
@@ -199,11 +157,7 @@ async function main() {
     // Address from files
     if (!f.address) { const a = extractAddrFromFiles(pid); if (a) f.address = a; }
 
-    // apartments.com
-    if (!f.building_class || !f.stories) {
-      const apt = await searchApt(pid, f);
-      for (const [k,v] of Object.entries(apt)) if (!f[k]) f[k] = v;
-    }
+    // Do not scrape listing sites to fill unknown facts.
 
     enriched[pid] = f;
     console.log(`  Outcome: ${Object.keys(f).length} fields`);

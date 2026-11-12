@@ -6,7 +6,8 @@ import { logger } from '../../utils/logger';
  * Task #635 — Nightly apartment sync cron
  *
  * Fires at 04:00 UTC every day.  Calls syncAllMetros() which iterates 11 metros,
- * writes apartment_class_rent_snapshots (trend history), apartment_supply_pipeline,
+ * writes apartment_class_rent_snapshots (year-built proxy trends),
+ * apartment_locator_rent_snapshots (daily property/unit-type history), apartment_supply_pipeline,
  * apartment_locator_properties, and apartment_market_snapshots.
  *
  * Per-metro failures are caught inside syncAllMetros() and do not abort the run.

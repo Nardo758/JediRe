@@ -20,3 +20,4 @@
 - [South Florida screening](site-finder-source-review.md) — current-use and legal-use evidence differ; spatial hits may be shared edges; discovery envelopes do not establish zoning.
 - [Nix browser verification](nix-browser-verification.md) — downloaded browsers may lack shared-library discovery; use a verified wrapped system Chromium without bypassing application auth.
 - [Site Finder measurement](site-finder-measurement.md) — sanitize custom-event URL/referrer metadata as well as properties; restored history is not a new search outcome.
+- [Apartment Locator source policy](apartment-locator-source-policy.md) — use the API and local observations, not Apartments.com scraping; keep vintage and floor-plan proxies explicit.
